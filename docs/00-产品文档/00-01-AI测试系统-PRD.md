@@ -285,7 +285,7 @@ MVP 不做：
 | 指标 | 口径 | 说明 |
 | --- | --- | --- |
 | 项目数 | 未归档项目总数，可展示本周新增 | 衡量系统内活跃测试项目规模 |
-| 用例资产数 | 测试用例总数，包含草稿、待评审、已采纳 | 衡量项目测试资产沉淀规模 |
+| 用例资产数 | 测试用例总数，包含待评审、已采纳、不采纳 | 衡量项目测试资产沉淀规模 |
 | 测试用例采纳率 | 已采纳用例数 / AI 生成用例总数 | 衡量 AI 生成用例质量和人工可用性 |
 | UI 自动化测试用例数 | 已生成 pytest + Playwright UI 自动化代码且可执行的用例数 | 衡量第一期 UI 自动化资产规模 |
 | UI 自动化覆盖率 | UI 自动化测试用例数 / 已采纳测试用例数 | 衡量已确认用例中有多少进入 UI 自动化回归 |
@@ -693,7 +693,8 @@ MVP 不做：
 | 预期结果 | 可断言结果 |
 | 覆盖来源 | 需求点、页面事实、知识条目 |
 | 自动化建议 | 适合/不适合/需人工准备 |
-| 评审状态 | 草稿、待评审、已通过、需修改、废弃 |
+| 评审状态 | 待评审、已采纳、不采纳 |
+| 不采纳原因 | 不采纳时必填，可用于后续改进用例生成 Skill |
 
 验收标准：
 
@@ -1069,13 +1070,12 @@ stateDiagram-v2
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Draft
-    Draft --> PendingReview
-    PendingReview --> Approved
-    PendingReview --> NeedChanges
-    NeedChanges --> Draft
-    Approved --> ReadyForAutomation
-    ReadyForAutomation --> Deprecated
+    [*] --> PendingReview
+    PendingReview --> Adopted
+    PendingReview --> NotAdopted
+    Adopted --> ReadyForAutomation
+    Adopted --> PendingReview: edited_new_version
+    NotAdopted --> FeedbackForSkill
 ```
 
 ### 9.3 自动化失败诊断状态

@@ -423,7 +423,10 @@ SQLite 中状态字段可以使用英文枚举，便于代码判断和迁移；�
 | module_key | 模块 |
 | priority | P0、P1、P2 |
 | risk_level | high、medium、low |
-| review_status | draft、reviewing、adopted、rejected、deprecated |
+| review_status | pending_review、adopted、not_adopted；前端显示为待评审、已采纳、不采纳 |
+| reject_reason_type | 不采纳原因分类，可为空 |
+| reject_reason_note | 不采纳补充说明，可为空 |
+| feedback_to_skill | 是否可用于改进用例生成 Skill |
 | automation_type | none、ui、api |
 | automation_status | none、queued、generating、generated、running、passed、failed、bug_confirmed |
 | source_refs | 来源引用 JSON |

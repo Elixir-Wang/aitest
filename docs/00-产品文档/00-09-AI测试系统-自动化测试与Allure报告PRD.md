@@ -115,7 +115,7 @@ automation/
 
 ```mermaid
 flowchart LR
-    Pick["选择已评审或已采纳用例"] --> Create["创建 UI 自动化生成任务"]
+    Pick["选择已采纳用例"] --> Create["创建 UI 自动化生成任务"]
     Create --> Progress["逐条生成并显示进度"]
     Progress --> Code["生成代码与页面对象"]
     Code --> Run["本地执行 pytest + Playwright"]
