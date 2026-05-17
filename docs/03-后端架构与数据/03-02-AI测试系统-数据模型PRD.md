@@ -46,8 +46,8 @@
 | WikiIndexEntry | llm-wiki index 结构化索引 |
 | WikiLogEntry | llm-wiki log 结构化日志 |
 | WikiLintIssue | llm-wiki 健康检查问题 |
-| KnowledgeGraphNode | 知识图谱节点 |
-| KnowledgeGraphEdge | 知识图谱关系 |
+| KnowledgeGraphNode | 知识库模块关系图谱节点 |
+| KnowledgeGraphEdge | 知识库模块关系图谱关系 |
 | KnowledgeItem | 知识条目 |
 | SourceReference | 来源引用 |
 | TestCase | 测试用例 |
@@ -123,6 +123,58 @@ SQLite 中状态字段可以使用英文枚举，便于代码判断和迁移；�
 | success | 成功 |
 | failed | 失败 |
 | cancelled | 已取消 |
+
+状态枚举必须按业务对象细分，不要求所有表共用同一个状态全集。通用枚举只用于展示和筛选归类，具体业务判断必须使用各对象自己的状态字段。
+
+### 4.2 核心对象状态字段建议
+
+| 对象 | 状态字段 | 建议枚举 | 说明 |
+| --- | --- | --- | --- |
+| SourceDocumentVersion | status | uploaded、markdown_ready、conversion_failed、analyzing、waiting_clarification、clarification_pending_apply、pending_review、review_blocked、ready_for_knowledge、needs_re_review、deprecated | 表示需求文档版本在需求分析和评审链路中的状态 |
+| ExplorationRun | status | queued、running、waiting_human、partial_success、pending_confirm、edit_pending_confirm、ready_for_knowledge、needs_update_confirm、failed、cancelled、deprecated | 表示一次站点探索运行及其探索结果是否可作为知识库来源 |
+| KnowledgeBuild | status | building、blocked、published | 表示知识库版本构建、阻塞和发布状态；前端显示为构建中、阻塞、已发布 |
+| TestCase | status | generating、pending_review、adopted、not_adopted、ready_for_automation、needs_review、generation_failed、deprecated | 表示测试用例从生成、评审到自动化准入的状态 |
+| AutomationSuite | status | code_generating、generation_blocked、generation_failed、executable、archived | 表示自动化套件代码是否可执行 |
+| AutomationRun | status | queued、running、passed、failed_pending_diagnosis、execution_error、cancelled、archived | 表示一次自动化执行运行结果 |
+| FailureDiagnosis | status | pending、diagnosing、product_bug_pending_confirm、product_bug_confirmed、code_issue_pending_fix、data_issue_pending_action、environment_issue_pending_action、clarification_needed、unknown_pending_manual、closed、failed、cancelled | 表示失败诊断的分类和处理状态 |
+| SelfHealingRecord | status | generating、pending_review、generation_failed、rejected、applied_pending_verify、healed、verify_failed、rolled_back、deprecated、cancelled | 表示自愈补丁从生成、审核、应用、验证到回滚的状态 |
+| TaskRun | status | queued、running、waiting_human、success、failed、cancelled、expired | 表示异步任务中心的任务状态，不替代业务对象状态 |
+
+### 4.5 批量任务补充字段
+
+| 对象 | 建议新增字段 | 说明 |
+| --- | --- | --- |
+| AutomationRun | batch_total_count、batch_success_count、batch_waiting_human_count、batch_failed_count | 用于批量 UI 自动化生成或执行时汇总单条用例结果 |
+| AutomationCase | generation_status、generation_block_reason、locator_source_refs、waiting_human_reason、candidate_elements、handling_status | 用于记录单条用例是否因 locator 缺失进入等待人工，以及候选元素和处理结果 |
+| TaskRun | progress_summary、waiting_human_count、failed_item_count、result_summary | 用于任务中心展示批量任务总览与汇总处理入口 |
+
+### 4.3 状态变更审计字段
+
+所有有状态核心对象建议至少保留以下字段，便于排查状态跳转和权限问题：
+
+| 字段 | 说明 |
+| --- | --- |
+| status | 当前业务状态 |
+| previous_status | 上一个业务状态，可为空 |
+| status_reason | 状态变化原因摘要 |
+| status_updated_by | 状态变化触发人；系统触发时记录 system |
+| status_updated_at | 状态变化时间 |
+| status_task_id | 触发该状态变化的 TaskRun ID，可为空 |
+
+状态变化事件也应写入 TaskEvent 或 audit_logs。业务对象保存当前状态，事件表保存状态变化历史。
+
+### 4.4 下游引用有效性字段
+
+为了避免旧版本继续进入下游，核心产物之间的引用必须保存来源版本，而不是只保存项目 ID 或当前最新版本。
+
+| 下游对象 | 必须保存的来源引用 |
+| --- | --- |
+| KnowledgeBuild | source_document_version_ids、exploration_run_ids、source_change_log_ids |
+| TestCaseVersion | knowledge_build_id、source_reference_ids |
+| AutomationCase | test_case_version_id、knowledge_build_id、exploration_run_id、locator_source_refs |
+| AutomationRun | automation_suite_id、automation_case_ids、code_generation_record_id |
+| FailureDiagnosis | automation_run_id、failed_case_id、knowledge_build_id、test_case_version_id、evidence_artifact_ids |
+| SelfHealingRecord | failure_diagnosis_id、automation_case_id、patch_base_file_hash、patch_version |
 
 ---
 
@@ -315,7 +367,7 @@ SQLite 中状态字段可以使用英文枚举，便于代码判断和迁移；�
 | build_no | 构建编号 |
 | build_type | initial、incremental、rebuild |
 | input_sources | 来源 JSON |
-| status | 状态 |
+| status | building、blocked、published |
 | output_dir | 知识库目录 |
 | index_path | index.md 路径 |
 | log_path | log.md 路径 |
@@ -324,6 +376,12 @@ SQLite 中状态字段可以使用英文枚举，便于代码判断和迁移；�
 | change_summary | 变更摘要 |
 | created_by | 创建人 |
 | created_at | 创建时间 |
+
+说明：
+
+- 知识库第一版只保留 `building`、`blocked`、`published` 三类业务状态。
+- 构建失败、取消、废弃、来源已更新等情况不扩展 KnowledgeBuild 主状态，通过 TaskRun 状态、构建阻塞报告、版本历史或页面提示表达。
+- 已发布后出现来源更新时，已发布版本仍保持 `published`，页面提示“存在来源更新”，用户点击更新后创建新的 `KnowledgeBuild` 并进入 `building`。
 
 ### 5.14 wiki_pages
 
@@ -518,7 +576,7 @@ SQLite 中状态字段可以使用英文枚举，便于代码判断和迁移；�
 - 探索文档、截图、trace、video、快照保存在文件系统，SQLite 保存任务、模块覆盖、页面事实、失败原因和附件路径。
 - 需求文档和探索文档的 AI 对话修改必须保存会话、补丁、diff 路径、来源引用和确认状态。
 - 需求文档和探索文档的版本变化日志必须保存，供知识库判断是否需要增量更新。
-- 知识库图谱节点和边必须有 SQLite 索引，支持前端绘制 Obsidian 式知识图谱。
+- 知识库图谱节点和边必须有 SQLite 索引，支持前端绘制 Obsidian 式知识库模块关系图谱。
 - 来源引用能追踪到需求、探索、澄清写回、知识库条目。
 - llm-wiki 的 `AGENTS.md`、`index.md`、`log.md`、模块页、lint 结果都有 SQLite 索引。
 - 知识库检索能先通过 `wiki_index_entries` 定位页面，再读取 Markdown 文件。

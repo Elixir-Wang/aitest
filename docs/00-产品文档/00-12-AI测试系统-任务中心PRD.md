@@ -10,6 +10,7 @@
 - 所有长耗时操作必须进入任务中心可追踪。
 - 等待人工输入、失败、可重试、已取消等状态必须明确展示。
 - 任务必须可跳转回来源模块和结果页面。
+- 批量任务允许部分成功、部分等待人工；例如 UI 自动化批量生成时，单条用例 locator 补齐失败不阻塞整批，任务中心必须展示已完成数量、等待人工数量、失败原因汇总和处理入口。
 
 ---
 
@@ -50,7 +51,102 @@
 
 ---
 
-## 4. 任务状态
+## 4. 任务输入输出契约
+
+### 4.1 契约总原则
+
+- 所有长耗时任务创建后必须立即返回 `task_id`，前端通过任务中心或来源模块轮询/订阅状态。
+- 任务输入摘要必须可回看，但不能记录明文密码、token、验证码和完整模型上下文。
+- 任务输出必须同时包含业务对象 ID 和文件系统产物路径，方便从任务中心跳回结果页。
+- 任务失败必须保存失败摘要、错误码、日志路径和可恢复建议。
+- 重试必须创建新的 TaskRun，原任务保留为历史，并记录 `retry_from_task_id`。
+- 取消任务只表示系统停止继续处理；已生成的业务产物需要标记为草稿、失败或已取消，不能静默删除。
+- 等待人工状态必须给出阻塞原因、处理入口和超时策略；第一版可不自动超时，但必须展示等待时长。
+- 不同类型任务可以并行执行，但同一项目下同一类型、同一来源对象、同一关键资源的任务必须避免冲突。
+- 例如同一项目可同时进行知识库更新和 UI 自动化执行，但不应同时对同一文档版本发起两次需求分析，或同时对同一套件发起两次执行。
+
+### 4.2 各类任务契约
+
+| 任务类型 | 触发入口 | 输入参数 | 成功输出产物 | 失败产物 | 可重试条件 | 是否可取消 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 需求分析 | 需求文档详情页点击“发起分析” | project_id、document_id、document_version_id、分析范围、模型配置 ID | RequirementAnalysis、SourceCoverageItem、RequirementReviewModule、ClarificationQuestion、分析摘要 | 失败日志、模型错误摘要、无法解析章节清单 | 文档版本未废弃，且没有同一版本运行中的需求分析任务 | 排队中可取消；运行中允许请求取消，已产生的分析结果标记为已取消或草稿 |
+| 候选需求生成 | 探索文档详情页或需求模块空状态点击“生成候选需求” | project_id、exploration_run_id、探索文档版本、模块范围、模型配置 ID | 候选 SourceDocumentVersion、候选需求模块、待确认问题、来源引用 | 失败日志、探索来源不足说明、无法推断模块清单 | 探索结果未废弃，且项目仍缺少正式需求文档或用户明确选择重新生成 | 排队中可取消；运行中可请求取消 |
+| 站点探索 | 站点探索页点击“开始探索” | project_id、site_url、登录方式、账号引用、探索范围、浏览器参数、是否有头、模型配置 ID | ExplorationRun、探索 Markdown、ExplorationPage、ExplorationElement、ExplorationModuleCoverage、截图/trace/video 路径 | 失败日志、截图/trace、ExplorationBlocker、登录失败或验证码等待记录 | Runner 可用，站点配置未删除，且没有同一项目同范围运行中的探索任务 | 排队中可取消；运行中可请求取消；等待人工时可取消 |
+| 知识库生成 | 知识库首页首次点击“生成知识库” | project_id、需求文档版本、探索版本、来源范围、构建策略、模型配置 ID | KnowledgeBuild、WikiPage、KnowledgeItem、SourceReference、知识库模块图谱节点和边、lint 报告 | 构建失败日志、阻塞报告、冲突项、未满足门禁清单、半成品路径 | 来源版本仍有效，阻塞项已处理或用户选择重新生成检查结果 | 排队中可取消；运行中可请求取消，半成品标记为构建失败或草稿 |
+| 知识库更新 | 知识库页点击“更新知识库”或来源变化提示中点击更新 | project_id、base_knowledge_build_id、变更来源版本、影响范围、更新策略、模型配置 ID | 新 KnowledgeBuild、更新后的 WikiPage、变更日志、影响用例/脚本清单 | 更新失败日志、阻塞报告、冲突项、未应用变更清单、半成品路径 | 基线版本未废弃，来源变更仍存在，且没有同项目运行中的知识库构建任务 | 排队中可取消；运行中可请求取消 |
+| 测试用例生成 | 测试用例页点击“生成用例” | project_id、knowledge_build_id、模块范围、场景类型、生成数量策略、模型配置 ID | TestCase、TestCaseVersion、覆盖矩阵、待评审用例清单 | 失败日志、知识库门禁失败说明、未覆盖模块清单 | 知识库版本已发布，且阻塞项已清理 | 排队中可取消；运行中可请求取消，已生成用例标记为草稿或待评审 |
+| UI 自动化代码生成 | 用例详情页点击“UI 自动化”或用例列表批量生成 | project_id、test_case_ids、knowledge_build_id、exploration_run_id、代码生成策略、模型配置 ID | AutomationSuite、AutomationCase、自动化代码文件、生成记录、缺失 locator 补充记录 | 失败日志、代码生成错误、缺失 locator 清单、不可自动化用例清单 | 用例仍为已采纳，自动化准入检查通过，相关套件没有运行中的代码生成任务 | 排队中可取消；运行中可请求取消，已生成文件标记为草稿或生成失败 |
+| UI 自动化本地执行 | UI 自动化套件页点击“执行” | project_id、automation_suite_id、automation_case_ids、环境、浏览器、headed、重试次数、pytest 参数 | AutomationRun、AutomationRunReport、Allure results、Allure report、用例执行结果、失败记录 | pytest 日志、Runner 错误、截图/trace/video、Allure 半成品路径、环境检查失败说明 | Runner 可用，代码版本存在，且套件没有运行中的执行任务；环境类失败可直接重试 | 排队中可取消；运行中可请求取消，但已启动的 pytest 需要安全终止并保存日志 |
+| 失败诊断 | 失败详情页点击“启用诊断”或“启用自愈”前置诊断 | project_id、automation_run_id、failed_case_id、failure_id、证据路径、关联知识库和用例 | FailureDiagnosis、失败分类、证据摘要、内部 Bug 建议/澄清问题/修复建议入口 | 诊断失败日志、证据缺失清单、模型错误摘要 | 失败记录仍存在，证据文件可读取，且没有同一失败运行中的诊断任务 | 排队中可取消；运行中可请求取消 |
+| 自愈验证 | 自愈补丁详情页点击“应用并验证”或“重新验证” | project_id、failure_diagnosis_id、self_healing_record_id、补丁版本、验证命令、运行环境 | SelfHealingRecord 更新、补丁应用记录、验证 AutomationRun、验证日志、Allure 报告 | 补丁应用失败日志、验证失败证据、回滚建议、pytest 日志 | 补丁处于待审核或验证失败状态，且诊断分类仍为测试代码问题 | 排队中可取消；补丁未应用前可取消；补丁应用后取消必须进入回滚或验证失败处理 |
+
+### 4.3 重试规则
+
+| 场景 | 是否允许重试 | 规则 |
+| --- | --- | --- |
+| 模型调用超时、限流、临时失败 | 是 | 使用相同输入创建新任务，可选择更换模型配置 |
+| Runner、Playwright、pytest、Allure 环境异常 | 是 | 需先通过系统设置连通性检查，或由用户确认继续重试 |
+| 用户取消 | 是 | 由用户重新发起或在任务详情点击重试 |
+| 权限不足 | 否 | 必须调整权限或项目分配后重新发起 |
+| 来源版本已废弃 | 否 | 必须选择新的来源版本 |
+| 知识库门禁阻塞 | 有条件 | 允许重新生成检查结果，但不允许发布正式知识库 |
+| 业务规则待确认 | 有条件 | 可生成草稿或检查结果，但不能进入正式知识库、正式用例基线、正式自动化基线或已发布资产 |
+
+### 4.4 取消规则
+
+| 任务阶段 | 取消行为 |
+| --- | --- |
+| 排队中 | 直接标记为已取消，不执行任务逻辑 |
+| 运行中，尚未产生业务产物 | 请求执行器停止，记录取消事件和日志 |
+| 运行中，已产生部分产物 | 停止后将产物标记为草稿、失败或已取消，保留路径和摘要 |
+| 等待人工 | 可取消，并记录未处理的阻塞原因 |
+| 成功、失败、已过期 | 不允许取消，只能查看、重试或归档 |
+
+### 4.5 任务事件流
+
+每个 TaskRun 必须通过 TaskEvent 记录关键过程。事件用于任务详情时间线、失败排查、审计和重试判断。
+
+通用事件类型：
+
+| 事件类型 | 触发时机 | 事件内容 |
+| --- | --- | --- |
+| task_created | 创建任务 | 输入摘要、来源模块、来源对象 |
+| task_queued | 任务进入队列 | 队列时间、执行器信息 |
+| task_started | Worker 开始执行 | 开始时间、worker_id |
+| task_progress | 阶段性进度 | 当前阶段、进度百分比、摘要日志 |
+| task_waiting_human | 等待人工 | 阻塞原因、处理入口、证据路径 |
+| task_resumed | 人工处理后继续 | 处理人、处理结果 |
+| task_output_created | 生成中间或最终产物 | 产物类型、对象 ID、文件路径 |
+| task_status_changed | 业务对象状态变化 | 对象类型、对象 ID、旧状态、新状态 |
+| task_failed | 任务失败 | 错误码、错误摘要、日志路径、可恢复建议 |
+| task_cancel_requested | 用户请求取消 | 操作人、取消原因 |
+| task_cancelled | 取消完成 | 已处理阶段、保留产物 |
+| task_retry_created | 创建重试任务 | 原 task_id、新 task_id、重试原因 |
+| task_succeeded | 任务成功 | 输出摘要、结果跳转 |
+
+各类任务必须至少写入以下事件：
+
+| 任务类型 | 必须事件 |
+| --- | --- |
+| 需求分析 | task_created、task_started、task_progress、task_output_created、task_status_changed、task_succeeded 或 task_failed |
+| 站点探索 | task_created、task_started、task_progress、task_waiting_human、task_resumed、task_output_created、task_succeeded 或 task_failed |
+| 知识库生成/更新 | task_created、task_started、task_progress、task_output_created、task_status_changed、task_succeeded 或 task_failed |
+| 测试用例生成 | task_created、task_started、task_output_created、task_status_changed、task_succeeded 或 task_failed |
+| UI 自动化代码生成 | task_created、task_started、task_progress、task_output_created、task_status_changed、task_succeeded 或 task_failed |
+| UI 自动化本地执行 | task_created、task_started、task_progress、task_output_created、task_status_changed、task_succeeded 或 task_failed |
+| 失败诊断 | task_created、task_started、task_output_created、task_status_changed、task_succeeded 或 task_failed |
+| 自愈验证 | task_created、task_started、task_output_created、task_status_changed、task_succeeded、task_failed；涉及取消时还必须写取消事件 |
+
+事件记录规则：
+
+- 高频日志不能逐行写入 TaskEvent，应写入日志文件，TaskEvent 只保存阶段摘要。
+- task_progress 写入频率需要节流，避免 SQLite 被频繁写入拖慢。
+- task_status_changed 必须和业务对象状态更新在同一事务或可补偿流程中完成。
+- task_output_created 必须包含可跳转结果，不能只写文件路径。
+
+---
+
+## 5. 任务状态
 
 | 状态 | 说明 | 可执行操作 |
 | --- | --- | --- |
@@ -64,9 +160,9 @@
 
 ---
 
-## 5. 页面设计
+## 6. 页面设计
 
-### 5.1 任务中心首页
+### 6.1 任务中心首页
 
 字段：
 
@@ -92,7 +188,7 @@
 - 时间范围
 - 是否等待人工
 
-### 5.2 任务详情
+### 6.2 任务详情
 
 必须展示：
 
@@ -106,7 +202,7 @@
 - 结果跳转
 - 关联任务
 
-### 5.3 等待人工任务
+### 6.3 等待人工任务
 
 等待人工任务必须明确展示阻塞原因：
 
@@ -116,13 +212,21 @@
 | 等待澄清回答 | 需求澄清问题 |
 | 等待候选需求评审 | 需求评审页 |
 | 等待冲突项确认 | 探索冲突项或知识库更新预览 |
+| 等待 locator 人工处理 | UI 自动化套件页或定向探索定位详情 |
 | 等待自愈补丁确认 | 失败诊断详情 |
+
+批量 UI 自动化生成任务的等待人工展示：
+
+- 显示批次总用例数、已生成数、等待人工数、生成失败数。
+- 每条等待人工用例展示用例编号、缺失步骤、目标页面、目标元素、失败原因、候选元素、来源证据和建议动作。
+- 用户可以从任务详情跳转到 UI 自动化套件页、定向探索定位详情或探索文档补充入口。
+- 人工处理完成后，用户可对等待人工用例单独继续生成，也可重新触发整个批次的 locator 准入检查。
 
 ---
 
-## 6. 数据对象
+## 7. 数据对象
 
-### 6.1 TaskRun
+### 7.1 TaskRun
 
 | 字段 | 说明 |
 | --- | --- |
@@ -143,7 +247,7 @@
 | 开始时间 | 系统生成 |
 | 结束时间 | 系统生成 |
 
-### 6.2 TaskEvent
+### 7.2 TaskEvent
 
 | 字段 | 说明 |
 | --- | --- |
@@ -155,7 +259,7 @@
 
 ---
 
-## 7. 权限规则
+## 8. 权限规则
 
 | 操作 | 管理员 | 测试工程师 | 访客 |
 | --- | --- | --- | --- |
@@ -168,7 +272,7 @@
 
 ---
 
-## 8. 验收标准
+## 9. 验收标准
 
 - 长耗时任务必须在任务中心可见。
 - 任务状态变化必须记录事件。
@@ -177,3 +281,6 @@
 - 成功任务必须能跳转到结果页面。
 - 测试工程师只能看到分配项目范围内任务。
 - 访客能查看任务和日志，但不能重试、取消或处理。
+- 每类任务必须保存输入摘要、输出摘要、日志路径和结果跳转。
+- 任务重试必须创建新任务，并保留原任务历史。
+- 任务取消后不得静默删除已产生的业务产物。
