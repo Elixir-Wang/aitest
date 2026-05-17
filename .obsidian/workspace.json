@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "docs/00-产品文档/00-01-AI测试系统-PRD.md",
+                "file": "docs/00-产品文档/00-11-AI测试系统-模型配置与AgentRuntimePRD.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "00-01-AI测试系统-PRD"
+              "title": "00-11-AI测试系统-模型配置与AgentRuntimePRD"
             }
           }
         ]
@@ -186,6 +186,9 @@
   },
   "active": "bb8dd245b030f7b4",
   "lastOpenFiles": [
+    "docs/00-产品文档/00-03-AI测试系统-需求文档分析与版本管理PRD.md",
+    "docs/00-产品文档/00-02-AI测试系统-权限管理PRD.md",
+    "docs/00-产品文档/00-01-AI测试系统-PRD.md",
     "next-shadcn-admin-dashboard-main/src/app/(main)/dashboard/projects/[projectId]/test-cases/page.tsx",
     "next-shadcn-admin-dashboard-main/src/app/(main)/dashboard/projects/[projectId]/test-cases",
     "next-shadcn-admin-dashboard-main/src/app/(main)/dashboard/projects/[projectId]",
@@ -197,7 +200,6 @@
     "docs/00-产品文档/00-15-AI测试系统-系统设置PRD.md",
     "docs/00-产品文档/00-12-AI测试系统-任务中心PRD.md",
     "docs/00-产品文档/00-11-AI测试系统-模型配置与AgentRuntimePRD.md",
-    "docs/00-产品文档/00-01-AI测试系统-PRD.md",
     "docs/00-产品文档/00-09-AI测试系统-自动化测试与Allure报告PRD.md",
     "docs/00-产品文档/00-08-AI测试系统-测试用例生成PRD.md"
   ]
