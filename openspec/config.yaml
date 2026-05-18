@@ -1,20 +1,131 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Project: AI 测试系统
+  Primary language for product artifacts: Chinese.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Product goal:
+    Build an AI-assisted testing workbench around projects, requirements,
+    site exploration, project knowledge, test cases, UI automation, reports,
+    failure diagnosis, and human-approved self-healing.
+
+  Source documents:
+    - Product PRDs live in docs/00-产品文档.
+    - Backend and data PRDs live in docs/03-后端架构与数据.
+    - Frontend PRDs live in docs/05-前端方案.
+    - docs/01-总览索引/01-01-AI测试系统-PRD确认索引.md records the recommended confirmation order and confirmed product decisions.
+
+  Implementation directories:
+    - apps/frontend is the target frontend application directory.
+    - apps/backend is the target backend application directory.
+    - next-shadcn-admin-dashboard-main is the frontend shell/reference project.
+    - openspec contains change proposals, tasks, and spec deltas.
+
+  Frontend stack:
+    - Next.js
+    - React
+    - shadcn/ui
+    - Tailwind CSS
+    - Lucide Icons
+    - React Hook Form
+    - Zod
+    - TanStack Table
+
+  Frontend conventions:
+    - Use next-shadcn-admin-dashboard-main as the admin shell reference.
+    - Keep a quiet, work-focused admin UI, not a marketing-style layout.
+    - Left navigation shows only grouped high-frequency first-level modules.
+    - Page-internal secondary navigation uses tabs, segmented controls, cards, or breadcrumbs.
+    - Project context is shown with the top-right ProjectSwitcher, page title, and breadcrumbs; do not put a project tree in the sidebar.
+    - Project-scoped write actions require a specific project, not the "全部项目" partition.
+    - Reuse common shells and components: PageHeader, PageToolbar, PageTabs, DataTable, StatusBadge, TaskTimeline, SourceReference, MarkdownPreview, MarkdownEditor, VersionDiffViewer, ConfirmRiskDialog, EmptyState, SoonPage.
+    - Use Lucide Icons for icons. Do not hand-write one-off page icons.
+    - Show backend status enums as Chinese labels in the UI.
+    - Interface automation is Soon in version 1: visible but disabled, with no create/generate/execute actions.
+
+  Backend stack:
+    - Python
+    - FastAPI
+    - SQLite for version 1
+    - SQLAlchemy or SQLModel
+    - Pydantic
+    - BackgroundTasks or a local task-queue wrapper for version 1 async work
+    - OpenAI Agents SDK for Agent orchestration
+    - Playwright CLI for site exploration
+    - pytest + Playwright for UI automation execution
+    - Allure for automation reports
+    - Local filesystem for documents, Markdown, generated code, screenshots, trace/video, and reports
+
+  Backend conventions:
+    - All APIs use the /api/v1 prefix.
+    - Project-scoped resources must include project_id and enforce project visibility.
+    - Long-running operations must create TaskRun and return task_id.
+    - Do not execute long-running analysis, exploration, knowledge generation, automation runs, or diagnosis directly inside HTTP requests.
+    - Responses include trace_id.
+    - List responses return items, pagination, and optional filters.
+    - Detail responses return item, source_refs, related_tasks, and available_actions where relevant.
+    - Error responses include code, message, detail, and trace_id; user-facing messages are Chinese.
+    - available_actions is computed by the backend from user, project, and object state; the frontend must not infer core permissions by itself.
+    - Write operations perform permission checks, state gates, and transaction control in the Service layer.
+    - Repository is for SQLite access only and must not contain business decisions.
+    - Storage is the only layer that reads/writes file artifacts; business modules must not concatenate local paths directly.
+    - File paths must stay under the configured storage root.
+    - Core state changes must write audit/task events and preserve previous state context.
+    - Task status and business object status are separate; task success does not automatically mean a business object is publishable.
+
+  Domain boundaries:
+    - auth: login, session, current user.
+    - users: users, roles, project assignment.
+    - projects: project management.
+    - documents: source documents, versions, Markdown.
+    - requirements: requirement analysis, review, clarification write-back, candidate requirements.
+    - exploration: site configuration, exploration tasks, exploration documents, page facts.
+    - knowledge: llm-wiki generation, updates, source references.
+    - test_cases: test case generation, review, coverage matrix.
+    - automation: UI automation code, suites, local execution.
+    - reports: Allure report indexes, run summaries, internal bug records.
+    - diagnosis: failure diagnosis, self-healing suggestions, patch confirmation.
+    - models: providers, model profiles, model purpose configuration.
+    - agents: Agent Runtime, skill calls, safety policies.
+    - tasks: unified task center, task events, logs.
+    - settings: system settings.
+
+  Product constraints:
+    - Version 1 has only three roles: 管理员, 测试工程师, 访客.
+    - Users cannot self-register; administrators create accounts.
+    - Project is the first business isolation boundary.
+    - Original documents, exploration documents, and clarification records are upstream sources of truth.
+    - Generated test cases must not replace upstream requirements.
+    - Requirement and exploration sources do not enter the official knowledge base automatically; users explicitly generate or update the knowledge base.
+    - Knowledge base states are only 构建中, 阻塞, 已发布 in version 1.
+    - Only a published knowledge base can be used for formal test case generation.
+    - UI automation generation must not fabricate locators; it may trigger targeted exploration to supplement locator information.
+    - Self-healing is never automatic. A user must manually enable it after a failure.
+    - Diagnosis must classify product bug, environment issue, test data issue, or automation code issue before any patch suggestion.
+    - Do not loosen assertions or make compatibility branches to hide real product defects.
+    - AI-generated content must include source references, confidence, pending confirmation items, and human confirmation state where applicable.
+
+rules:
+  proposal:
+    - Write proposals in Chinese.
+    - Start from the PRD source documents; do not invent scope beyond the confirmed PRD口径.
+    - Keep each change narrowly scoped to an implementable slice.
+    - Include non-goals, especially deferred Agent, automation, interface automation, or self-healing work when not in scope.
+    - Name the primary PRD documents that justify the change.
+  design:
+    - Write designs in Chinese.
+    - Describe frontend, backend, data model, state transitions, async tasks, file artifacts, permissions, and error handling when relevant.
+    - Use the backend layering model: API, Service, Domain, Worker, Repository, Storage.
+    - Preserve separation between TaskRun status and business object status.
+    - Include available_actions behavior for user-facing state-gated operations.
+    - Include source/version references for downstream objects.
+  specs:
+    - Use normative MUST/SHALL style requirements.
+    - Include scenarios for permissions, project scope, state gates, source traceability, and failure paths.
+    - Use Chinese display names and user-facing wording, while allowing backend enum values to stay English.
+    - Mark interface automation as Soon unless a future change explicitly brings it into scope.
+  tasks:
+    - Break tasks into small, reviewable implementation chunks.
+    - Separate backend, frontend, data model, tests, and documentation tasks.
+    - Include verification steps for API responses, permission behavior, state transitions, and UI disabled states.
+    - Do not create coding tasks for features outside the proposal scope.
