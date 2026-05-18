@@ -1,0 +1,56 @@
+# macOS
+.DS_Store
+
+# Editor / local workspace
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Obsidian local state
+.obsidian/workspace.json
+
+# Dependencies
+node_modules/
+**/node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# Next.js / build output
+.next/
+**/.next/
+out/
+**/out/
+build/
+**/build/
+dist/
+**/dist/
+
+# Test and coverage output
+coverage/
+**/coverage/
+playwright-report/
+test-results/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local env files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Vercel
+.vercel/
+**/.vercel/
+
+# TypeScript generated files
+*.tsbuildinfo
+next-env.d.ts
+**/next-env.d.ts
