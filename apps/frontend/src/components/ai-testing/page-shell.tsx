@@ -152,7 +152,6 @@ export function ListToolbar({
   placeholder = "搜索名称、状态或负责人",
   createLabel = "新建",
   selectedCount = 0,
-  onDelete,
   onBatchDelete,
   onCreate,
   onSearch,
@@ -162,7 +161,6 @@ export function ListToolbar({
   placeholder?: string;
   createLabel?: string;
   selectedCount?: number;
-  onDelete?: () => void;
   onBatchDelete?: () => void;
   onCreate?: () => void;
   onSearch?: (value: string) => void;
@@ -173,10 +171,7 @@ export function ListToolbar({
     <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
       <div className="min-w-0">
         <h2 className="font-medium text-sm">{title}</h2>
-        <p className="text-muted-foreground text-xs">
-          {description}
-          {hasSelection && <span className="ml-2 text-foreground">已选择 {selectedCount} 项</span>}
-        </p>
+        <p className="text-muted-foreground text-xs">{description}</p>
       </div>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
         <div className="relative h-8 w-20 font-medium text-sm">
@@ -190,13 +185,14 @@ export function ListToolbar({
             />
           </div>
         </div>
-        <Button disabled={!hasSelection} onClick={onDelete} variant="outline">
+        <Button
+          className="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100 hover:text-red-800 disabled:border-red-100 disabled:bg-red-50 disabled:text-red-300 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300 dark:disabled:text-red-900/70 dark:hover:bg-red-950/30"
+          disabled={!hasSelection}
+          onClick={onBatchDelete}
+          variant="outline"
+        >
           <Trash2 className="size-4" />
-          删除
-        </Button>
-        <Button disabled={!hasSelection} onClick={onBatchDelete} variant="outline">
-          <Trash2 className="size-4" />
-          批量删除
+          批量删除{hasSelection ? ` (${selectedCount})` : ""}
         </Button>
         <Button onClick={onCreate}>
           <Plus className="size-4" />

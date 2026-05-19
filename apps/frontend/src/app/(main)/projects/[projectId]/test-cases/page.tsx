@@ -44,7 +44,6 @@ export default function Page() {
           createLabel="生成用例"
           description="生成、评审、采纳和覆盖矩阵统一从这里进入。"
           onBatchDelete={deleteSelected}
-          onDelete={deleteSelected}
           onSearch={setSearchText}
           placeholder="搜索用例名称、模块或优先级"
           selectedCount={selectedCount}

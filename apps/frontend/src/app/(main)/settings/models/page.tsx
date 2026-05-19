@@ -146,7 +146,6 @@ export default function Page() {
           createLabel="新增模型"
           onBatchDelete={deleteSelected}
           onCreate={openCreateDialog}
-          onDelete={deleteSelected}
           onSearch={setSearchText}
           placeholder="搜索模型提供商、模型或 Base URL"
           selectedCount={selectedCount}

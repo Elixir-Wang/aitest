@@ -74,7 +74,6 @@ export default function Page() {
           createLabel="新建任务"
           description="汇总需求分析、探索、知识库、用例与自动化任务。"
           onBatchDelete={deleteSelected}
-          onDelete={deleteSelected}
           onSearch={setSearchText}
           placeholder="搜索任务名称、模块或项目"
           selectedCount={selectedCount}

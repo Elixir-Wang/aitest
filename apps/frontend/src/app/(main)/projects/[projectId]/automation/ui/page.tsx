@@ -44,7 +44,6 @@ export default function Page() {
           createLabel="生成自动化"
           description="套件、代码、本地执行、Allure 报告和失败诊断统一从这里进入。"
           onBatchDelete={deleteSelected}
-          onDelete={deleteSelected}
           onSearch={setSearchText}
           placeholder="搜索套件、用例或执行记录"
           selectedCount={selectedCount}

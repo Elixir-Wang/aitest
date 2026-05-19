@@ -65,7 +65,6 @@ export default function Page() {
           createLabel="开始探索"
           description="用于记录站点探索过程、页面事实和冲突项。"
           onBatchDelete={deleteSelected}
-          onDelete={deleteSelected}
           onSearch={setSearchText}
           placeholder="搜索探索任务、页面或冲突项"
           selectedCount={selectedCount}

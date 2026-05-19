@@ -145,10 +145,6 @@ export default function Page() {
             saveDemoUsers(rows.filter((row) => !selectedIds.includes(row.id)));
           }}
           onCreate={openCreateDialog}
-          onDelete={() => {
-            deleteSelected();
-            saveDemoUsers(rows.filter((row) => !selectedIds.includes(row.id)));
-          }}
           onSearch={setSearchText}
           placeholder="搜索用户、角色或项目"
           selectedCount={selectedCount}

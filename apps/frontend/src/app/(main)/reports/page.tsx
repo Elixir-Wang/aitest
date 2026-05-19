@@ -44,7 +44,6 @@ export default function Page() {
           createLabel="新建报告"
           description="运行记录、Allure 报告和失败诊断统一从这里进入。"
           onBatchDelete={deleteSelected}
-          onDelete={deleteSelected}
           onSearch={setSearchText}
           placeholder="搜索报告、任务或失败原因"
           selectedCount={selectedCount}

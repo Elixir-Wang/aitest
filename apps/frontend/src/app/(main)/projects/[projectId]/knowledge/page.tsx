@@ -65,7 +65,6 @@ export default function Page() {
           createLabel="生成知识库"
           description="展示模块文档、来源材料和历史版本的统一入口。"
           onBatchDelete={deleteSelected}
-          onDelete={deleteSelected}
           onSearch={setSearchText}
           placeholder="搜索模块、来源或版本"
           selectedCount={selectedCount}

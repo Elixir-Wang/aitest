@@ -51,7 +51,6 @@ export default function Page() {
           createLabel="上传需求"
           description="文档预览、澄清写回和版本评审统一在此入口。"
           onBatchDelete={deleteSelected}
-          onDelete={deleteSelected}
           onSearch={setSearchText}
           placeholder="搜索需求文档、模块或状态"
           selectedCount={selectedCount}

@@ -156,7 +156,6 @@ export default function Page() {
           createLabel="新建项目"
           description="项目列表、项目概览和项目设置统一从这里进入。"
           onBatchDelete={deleteSelected}
-          onDelete={deleteSelected}
           onCreate={openCreateDialog}
           onSearch={setSearchText}
           placeholder="搜索项目名称、编码或负责人"

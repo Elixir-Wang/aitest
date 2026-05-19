@@ -56,41 +56,41 @@
 These serve as the fallback; there is no separate default.css file. */
 :root {
   --radius: 0.625rem;
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --card: #ffffff;
+  --card-foreground: #1f2a37;
+  --popover: #ffffff;
+  --popover-foreground: #1f2a37;
+  --primary: #3b82b8;
+  --primary-foreground: #ffffff;
+  --secondary: #eef4fb;
+  --secondary-foreground: #304761;
+  --muted: #eef4fb;
+  --muted-foreground: #66778c;
+  --accent: #e7f1fb;
+  --accent-foreground: #255982;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --border: #dce7f3;
+  --input: #dce7f3;
+  --ring: #8cb8dc;
+  --chart-1: #3b82b8;
+  --chart-2: #5a9bcf;
+  --chart-3: #4f7fa6;
+  --chart-4: #9dbbd2;
+  --chart-5: #255982;
+  --sidebar: #f8fbfe;
+  --sidebar-foreground: #243244;
+  --sidebar-primary: #3b82b8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e9f3fc;
+  --sidebar-accent-foreground: #255982;
+  --sidebar-border: #dce7f3;
+  --sidebar-ring: #8cb8dc;
 
   /* fonts */
   --font-sans: var(--font-geist);
   --font-mono: var(--font-geist-mono);
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --background: #f6f9fc;
+  --foreground: #1f2a37;
 }
 
 .dark {
