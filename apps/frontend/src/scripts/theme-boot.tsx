@@ -78,12 +78,9 @@ export function ThemeBootScript() {
         var rawSidebarVariant = readPreference("sidebar_variant", DEFAULTS.sidebar_variant);
         var rawSidebarCollapsible = readPreference("sidebar_collapsible", DEFAULTS.sidebar_collapsible);
 
-        var isValidMode = rawMode === "dark" || rawMode === "light" || rawMode === "system";
+        var isValidMode = rawMode === "dark" || rawMode === "light";
         var mode = isValidMode ? rawMode : DEFAULTS.theme_mode;
-        var resolvedMode =
-          mode === "system" && window.matchMedia
-            ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-            : mode;
+        var resolvedMode = mode;
         var preset = rawPreset || DEFAULTS.theme_preset;
         var font = rawFont || DEFAULTS.font;
         var contentLayout = rawContentLayout || DEFAULTS.content_layout;

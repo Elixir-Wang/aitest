@@ -30,10 +30,6 @@ interface ProjectContextState {
   selectProject: (projectId: string) => void;
 }
 
-function getInitialProjectId() {
-  return projectOptions[0]?.id ?? null;
-}
-
 export function getProjectScopedUrl(url: string, projectId: string | null) {
   if (!url.includes(":projectId")) {
     return url;
@@ -47,25 +43,23 @@ export function getProjectScopedUrl(url: string, projectId: string | null) {
 }
 
 export const useProjectContextStore = create<ProjectContextState>((set) => ({
-  scope: "project",
-  currentProjectId: getInitialProjectId(),
+  scope: "all",
+  currentProjectId: null,
   hasHydrated: false,
   hydrate: () => {
     const storedScope = getLocalStorageValue(PROJECT_SCOPE_KEY);
     const storedProjectId = getLocalStorageValue(CURRENT_PROJECT_KEY);
-    const safeProjectId = projectOptions.some((item) => item.id === storedProjectId)
-      ? storedProjectId
-      : getInitialProjectId();
+    const safeProjectId = projectOptions.some((item) => item.id === storedProjectId) ? storedProjectId : null;
 
     set({
-      scope: storedScope === "all" ? "all" : "project",
-      currentProjectId: safeProjectId,
+      scope: storedScope === "project" && safeProjectId ? "project" : "all",
+      currentProjectId: storedScope === "project" ? safeProjectId : null,
       hasHydrated: true,
     });
   },
   selectAllProjects: () => {
     setLocalStorageValue(PROJECT_SCOPE_KEY, "all");
-    set({ scope: "all", hasHydrated: true });
+    set({ scope: "all", currentProjectId: null, hasHydrated: true });
   },
   selectProject: (projectId) => {
     setLocalStorageValue(PROJECT_SCOPE_KEY, "project");

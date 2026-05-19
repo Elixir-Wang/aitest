@@ -25,6 +25,7 @@ interface AuthState {
   user: AuthUser | null;
   hasHydrated: boolean;
   hydrate: () => void;
+  setAuth: (payload: { token: string; user: AuthUser }) => void;
   login: (payload: { token: string; user: AuthUser; remember?: boolean }) => void;
   logout: () => void;
 }
@@ -57,6 +58,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({
       token: readStoredToken(),
       user: readStoredUser(),
+      hasHydrated: true,
+    });
+  },
+  setAuth: ({ token, user }) => {
+    set({
+      token,
+      user,
       hasHydrated: true,
     });
   },

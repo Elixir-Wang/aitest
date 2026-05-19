@@ -5,7 +5,6 @@ import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { CircleAlert, Ellipsis, Plus, Search, Trash2 } from "lucide-react";
 
-import { ProjectSwitcher } from "@/components/ai-testing/project-switcher";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,8 +24,10 @@ type ProjectScope = "all" | "project" | "none";
 type ModuleTab = string | { label: string; href: string };
 type RowAction = {
   label: string;
+  icon: LucideIcon;
   href?: string;
   destructive?: boolean;
+  disabled?: boolean;
   onSelect?: () => void;
 };
 
@@ -52,7 +53,6 @@ export function PageShell({
   title,
   description,
   breadcrumbs,
-  projectScope = "all",
   tabs = [],
   activeTab,
   primaryAction,
@@ -64,7 +64,6 @@ export function PageShell({
         breadcrumbs={breadcrumbs}
         description={description}
         primaryAction={primaryAction}
-        projectScope={projectScope}
         title={title}
       />
       {tabs.length > 0 && <ModuleTabs activeTab={activeTab} tabs={tabs} />}
@@ -75,13 +74,11 @@ export function PageShell({
 
 export function PageHeader({
   title,
-  projectScope,
   primaryAction,
 }: {
   title: string;
   description: string;
   breadcrumbs: string[];
-  projectScope: ProjectScope;
   primaryAction?: string;
 }) {
   return (
@@ -92,7 +89,6 @@ export function PageHeader({
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {projectScope !== "none" && <ProjectSwitcher scope={projectScope} />}
         {primaryAction && <Button>{primaryAction}</Button>}
       </div>
     </div>
@@ -171,7 +167,7 @@ export function ListToolbar({
     <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
       <div className="min-w-0">
         <h2 className="font-medium text-sm">{title}</h2>
-        <p className="text-muted-foreground text-xs">{description}</p>
+        {description ? <p className="text-muted-foreground text-xs">{description}</p> : null}
       </div>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
         <div className="relative h-8 w-20 font-medium text-sm">
@@ -219,16 +215,28 @@ export function RowActions({ label, actions }: { label: string; actions: RowActi
           <Ellipsis className="size-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align="end" className="w-36">
         {actions.map((action, index) => (
           <div key={`${action.label}-${action.href ?? "action"}`}>
             {action.destructive && index > 0 && <DropdownMenuSeparator />}
             <DropdownMenuItem
+              className="gap-2"
               asChild={Boolean(action.href)}
+              disabled={action.disabled}
               onClick={action.onSelect}
               variant={action.destructive ? "destructive" : undefined}
             >
-              {action.href ? <Link href={action.href}>{action.label}</Link> : action.label}
+              {action.href ? (
+                <Link href={action.href}>
+                  <action.icon className="size-4" />
+                  {action.label}
+                </Link>
+              ) : (
+                <>
+                  <action.icon className="size-4" />
+                  {action.label}
+                </>
+              )}
             </DropdownMenuItem>
           </div>
         ))}

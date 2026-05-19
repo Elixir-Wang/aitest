@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { PlaySquare } from "lucide-react";
+import { Eye, PlaySquare } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
@@ -42,7 +42,6 @@ export default function Page() {
       <ShellSection>
         <ListToolbar
           createLabel="生成自动化"
-          description="套件、代码、本地执行、Allure 报告和失败诊断统一从这里进入。"
           onBatchDelete={deleteSelected}
           onSearch={setSearchText}
           placeholder="搜索套件、用例或执行记录"
@@ -86,7 +85,7 @@ export default function Page() {
                   <TableCell>{item.passRate}</TableCell>
                   <TableCell>{item.updated}</TableCell>
                   <TableCell>
-                    <RowActions actions={[{ label: "查看" }]} label={`打开 ${item.name} 操作菜单`} />
+                    <RowActions actions={[{ label: "查看", icon: Eye }]} label={`打开 ${item.name} 操作菜单`} />
                   </TableCell>
                 </TableRow>
               ))}

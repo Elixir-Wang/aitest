@@ -6,20 +6,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
-import { findDemoUser } from "@/lib/demo-users.client";
+import { apiRequest, roleToLabel, type ApiUser } from "@/lib/api-client";
 import { getLocalStorageValue, setLocalStorageValue } from "@/lib/local-storage.client";
+import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { Eye, EyeOff, Mail, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 const REMEMBER_PREFERENCE_KEY = "ai-testing.auth.remember";
-
-const roleMap = {
-  管理员: "admin",
-  测试工程师: "tester",
-  访客: "guest",
-} as const;
 
 interface PupilProps {
   size?: number;
@@ -177,7 +171,7 @@ function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("admin");
-  const [remember, setRemember] = useState(() => getLocalStorageValue(REMEMBER_PREFERENCE_KEY) === "true");
+  const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [mouseX, setMouseX] = useState(0);
@@ -191,6 +185,10 @@ function LoginPage() {
   const blackRef = useRef<HTMLDivElement>(null);
   const yellowRef = useRef<HTMLDivElement>(null);
   const orangeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setRemember(getLocalStorageValue(REMEMBER_PREFERENCE_KEY) === "true");
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
@@ -297,31 +295,30 @@ function LoginPage() {
     event.preventDefault();
     setError("");
     setIsLoading(true);
-    await new Promise((resolve) => window.setTimeout(resolve, 300));
 
-    const user = findDemoUser(username);
-
-    if (user?.status === "禁用") {
-      setError("账号或密码不正确，请联系管理员确认账号状态。");
-    } else if (user && user.password === password) {
+    try {
+      const result = await apiRequest<{ access_token: string; current_user: ApiUser }>("/auth/login", {
+        body: JSON.stringify({ password, username }),
+        method: "POST",
+      });
       login({
-        token: `local-demo-token-${Date.now()}`,
+        token: result.access_token,
         remember,
         user: {
-          email: user.email,
-          name: user.username,
-          role: roleMap[user.role as keyof typeof roleMap] ?? "tester",
+          email: result.current_user.email,
+          name: result.current_user.nickname || result.current_user.username,
+          role: result.current_user.role,
         },
       });
       toast.success("登录成功", {
-        description: "已进入 AI 测试系统工作台。",
+        description: `已以${roleToLabel(result.current_user.role)}身份进入 AI 测试系统。`,
       });
       router.replace(searchParams.get("next") || "/dashboard");
-    } else {
-      setError("账号或密码不正确，请联系管理员确认账号状态。");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "账号或密码不正确，请联系管理员确认账号状态。");
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   const handleRememberChange = (checked: boolean) => {

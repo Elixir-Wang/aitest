@@ -4,9 +4,9 @@ import { useState } from "react";
 
 import Link from "next/link";
 
-import { EllipsisVertical } from "lucide-react";
+import { Eye, Pencil, Trash2 } from "lucide-react";
 
-import { ListToolbar, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,15 +19,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -56,6 +50,7 @@ const projects = [
 ];
 
 type ProjectRow = (typeof projects)[number];
+const statusOptions = ["活跃", "归档"];
 
 const emptyForm = {
   description: "",
@@ -154,7 +149,6 @@ export default function Page() {
       <ShellSection>
         <ListToolbar
           createLabel="新建项目"
-          description="项目列表、项目概览和项目设置统一从这里进入。"
           onBatchDelete={deleteSelected}
           onCreate={openCreateDialog}
           onSearch={setSearchText}
@@ -201,23 +195,14 @@ export default function Page() {
                   </TableCell>
                   <TableCell>{project.updated}</TableCell>
                   <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button aria-label={`打开 ${project.name} 操作菜单`} size="icon" variant="ghost">
-                          <EllipsisVertical className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link href={`/projects/${project.id}`}>概览</Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openEditDialog(project)}>编辑</DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => deleteOne(project.id)} variant="destructive">
-                          删除
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <RowActions
+                      actions={[
+                        { label: "概览", href: `/projects/${project.id}`, icon: Eye },
+                        { label: "编辑", icon: Pencil, onSelect: () => openEditDialog(project) },
+                        { label: "删除", destructive: true, icon: Trash2, onSelect: () => deleteOne(project.id) },
+                      ]}
+                      label={`打开 ${project.name} 操作菜单`}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
@@ -243,12 +228,18 @@ export default function Page() {
             </Field>
             <Field>
               <FieldLabel htmlFor="project-status">项目状态</FieldLabel>
-              <Input
+              <Select
                 id="project-status"
-                onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}
-                placeholder="活跃 / 归档"
+                placeholder="选择项目状态"
+                setValue={(value) => setForm((current) => ({ ...current, status: value }))}
                 value={form.status}
-              />
+              >
+                {statusOptions.map((status) => (
+                  <SelectOption key={status} value={status}>
+                    {status}
+                  </SelectOption>
+                ))}
+              </Select>
             </Field>
             <Field>
               <FieldLabel htmlFor="project-description">项目描述</FieldLabel>

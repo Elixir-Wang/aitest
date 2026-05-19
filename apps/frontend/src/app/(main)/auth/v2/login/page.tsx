@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { Globe } from "lucide-react";
 
 import { APP_CONFIG } from "@/config/app-config";
@@ -13,7 +15,9 @@ export default function LoginV2() {
           <p className="text-muted-foreground text-sm">请输入管理员分配的账号和密码。</p>
         </div>
         <div className="space-y-4">
-          <LoginForm />
+          <Suspense>
+            <LoginForm />
+          </Suspense>
         </div>
       </div>
 

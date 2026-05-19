@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { apiRequest, roleToLabel, type ApiUser } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 
 const formSchema = z.object({
@@ -32,20 +33,28 @@ export function LoginForm() {
     },
   });
 
-  const onSubmit = (data: z.infer<typeof formSchema>) => {
-    login({
-      token: `local-demo-token-${Date.now()}`,
-      remember: data.remember,
-      user: {
-        email: "admin",
-        name: "admin",
-        role: "admin",
-      },
-    });
-    toast.success("登录成功", {
-      description: "已进入 AI 测试系统工作台。",
-    });
-    router.replace(searchParams.get("next") || "/dashboard");
+  const onSubmit = async (data: z.infer<typeof formSchema>) => {
+    try {
+      const result = await apiRequest<{ access_token: string; current_user: ApiUser }>("/auth/login", {
+        body: JSON.stringify({ password: data.password, username: data.email }),
+        method: "POST",
+      });
+      login({
+        token: result.access_token,
+        remember: data.remember,
+        user: {
+          email: result.current_user.email,
+          name: result.current_user.nickname || result.current_user.username,
+          role: result.current_user.role,
+        },
+      });
+      toast.success("登录成功", {
+        description: `已以${roleToLabel(result.current_user.role)}身份进入 AI 测试系统。`,
+      });
+      router.replace(searchParams.get("next") || "/dashboard");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "登录失败，请检查账号和密码。");
+    }
   };
 
   return (

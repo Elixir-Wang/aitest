@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { DatabaseZap } from "lucide-react";
+import { DatabaseZap, Eye } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
@@ -63,7 +63,6 @@ export default function Page() {
       <ShellSection>
         <ListToolbar
           createLabel="生成知识库"
-          description="展示模块文档、来源材料和历史版本的统一入口。"
           onBatchDelete={deleteSelected}
           onSearch={setSearchText}
           placeholder="搜索模块、来源或版本"
@@ -109,7 +108,7 @@ export default function Page() {
                   <TableCell>{item.owner}</TableCell>
                   <TableCell>{item.updated}</TableCell>
                   <TableCell>
-                    <RowActions actions={[{ label: "查看", href: "." }]} label="打开操作菜单" />
+                    <RowActions actions={[{ label: "查看", href: ".", icon: Eye }]} label="打开操作菜单" />
                   </TableCell>
                 </TableRow>
               ))}

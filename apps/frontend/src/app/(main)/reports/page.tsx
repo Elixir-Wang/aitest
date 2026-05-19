@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { Activity, ClipboardList, FileClock } from "lucide-react";
+import { Activity, ClipboardList, Eye, FileClock } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
@@ -42,7 +42,6 @@ export default function Page() {
       <ShellSection>
         <ListToolbar
           createLabel="新建报告"
-          description="运行记录、Allure 报告和失败诊断统一从这里进入。"
           onBatchDelete={deleteSelected}
           onSearch={setSearchText}
           placeholder="搜索报告、任务或失败原因"
@@ -86,7 +85,7 @@ export default function Page() {
                   </TableCell>
                   <TableCell>{report.updated}</TableCell>
                   <TableCell>
-                    <RowActions actions={[{ label: "查看", href: "/reports" }]} label="打开操作菜单" />
+                    <RowActions actions={[{ label: "查看", href: "/reports", icon: Eye }]} label="打开操作菜单" />
                   </TableCell>
                 </TableRow>
               ))}

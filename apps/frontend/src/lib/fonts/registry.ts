@@ -1,5 +1,5 @@
 const systemFont = {
-  variable: "--font-system-sans",
+  variable: "--font-noto-sans-sc",
   className: "font-sans",
 };
 
@@ -10,7 +10,7 @@ const systemMonoFont = {
 
 export const fontRegistry = {
   geist: {
-    label: "Geist",
+    label: "Noto Sans SC",
     font: systemFont,
   },
   inter: {

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { AlertTriangle, CheckCircle2, Clock3, ListTodo } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Eye, ListTodo } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
@@ -50,7 +50,7 @@ export default function Page() {
     useLocalTableSelection(tasks);
   const [searchText, setSearchText] = useState("");
   const filteredRows = rows.filter((task) =>
-    [task.id, task.project, task.name, task.status, task.owner, task.updated].some((value) =>
+    [task.project, task.name, task.status, task.owner, task.updated].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
     ),
   );
@@ -72,10 +72,9 @@ export default function Page() {
       <ShellSection>
         <ListToolbar
           createLabel="新建任务"
-          description="汇总需求分析、探索、知识库、用例与自动化任务。"
           onBatchDelete={deleteSelected}
           onSearch={setSearchText}
-          placeholder="搜索任务名称、模块或项目"
+          placeholder="搜索任务种类、模块或项目"
           selectedCount={selectedCount}
           title="任务列表"
         />
@@ -90,9 +89,8 @@ export default function Page() {
                     onCheckedChange={(checked) => toggleAll(Boolean(checked))}
                   />
                 </TableHead>
-                <TableHead>任务编号</TableHead>
                 <TableHead>项目</TableHead>
-                <TableHead>任务名称</TableHead>
+                <TableHead>任务种类</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>负责人</TableHead>
                 <TableHead>更新时间</TableHead>
@@ -109,9 +107,8 @@ export default function Page() {
                       onCheckedChange={(checked) => toggleOne(task.id, Boolean(checked))}
                     />
                   </TableCell>
-                  <TableCell className="font-medium">{task.id}</TableCell>
                   <TableCell>{task.project}</TableCell>
-                  <TableCell>{task.name}</TableCell>
+                  <TableCell className="font-medium">{task.name}</TableCell>
                   <TableCell>
                     <Badge
                       variant={
@@ -124,7 +121,7 @@ export default function Page() {
                   <TableCell>{task.owner}</TableCell>
                   <TableCell>{task.updated}</TableCell>
                   <TableCell>
-                    <RowActions actions={[{ label: "查看", href: "/tasks" }]} label="打开操作菜单" />
+                    <RowActions actions={[{ label: "查看", href: "/tasks", icon: Eye }]} label="打开操作菜单" />
                   </TableCell>
                 </TableRow>
               ))}

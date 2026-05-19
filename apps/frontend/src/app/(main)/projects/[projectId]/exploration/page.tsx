@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { FileSearch } from "lucide-react";
+import { Eye, FileSearch } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
@@ -63,7 +63,6 @@ export default function Page() {
       <ShellSection>
         <ListToolbar
           createLabel="开始探索"
-          description="用于记录站点探索过程、页面事实和冲突项。"
           onBatchDelete={deleteSelected}
           onSearch={setSearchText}
           placeholder="搜索探索任务、页面或冲突项"
@@ -109,7 +108,7 @@ export default function Page() {
                   <TableCell>{item.owner}</TableCell>
                   <TableCell>{item.updated}</TableCell>
                   <TableCell>
-                    <RowActions actions={[{ label: "查看", href: "." }]} label="打开操作菜单" />
+                    <RowActions actions={[{ label: "查看", href: ".", icon: Eye }]} label="打开操作菜单" />
                   </TableCell>
                 </TableRow>
               ))}

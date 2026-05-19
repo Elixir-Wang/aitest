@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { FileText } from "lucide-react";
+import { Eye, FileText } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
@@ -49,7 +49,6 @@ export default function Page() {
       <ShellSection>
         <ListToolbar
           createLabel="上传需求"
-          description="文档预览、澄清写回和版本评审统一在此入口。"
           onBatchDelete={deleteSelected}
           onSearch={setSearchText}
           placeholder="搜索需求文档、模块或状态"
@@ -95,7 +94,7 @@ export default function Page() {
                   <TableCell>{item.owner}</TableCell>
                   <TableCell>{item.updated}</TableCell>
                   <TableCell>
-                    <RowActions actions={[{ label: "查看", href: "." }]} label="打开操作菜单" />
+                    <RowActions actions={[{ label: "查看", href: ".", icon: Eye }]} label="打开操作菜单" />
                   </TableCell>
                 </TableRow>
               ))}
