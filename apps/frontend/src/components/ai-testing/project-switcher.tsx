@@ -1,24 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect } from "react";
 
 import { Check, ChevronDown, FolderKanban } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { projectOptions, useProjectContextStore } from "@/stores/project-context-store";
 
 export function ProjectSwitcher({ scope }: { scope: "all" | "project" }) {
-  const options = useMemo(
-    () => [
-      { key: "all", text: "全部项目", helper: "跨项目查看与汇总" },
-      { key: "zhiliao", text: "知了平台", helper: "当前项目" },
-      { key: "hawk", text: "鹰眼平台", helper: "示例项目" },
-    ],
-    [],
-  );
-  const [selected, setSelected] = useState(scope === "all" ? "all" : "zhiliao");
-  const label = options.find((item) => item.key === selected)?.text ?? "全部项目";
+  const { currentProjectId, hydrate, scope: currentScope, selectAllProjects, selectProject } = useProjectContextStore();
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  const selected = scope === "all" && currentScope === "all" ? "all" : (currentProjectId ?? projectOptions[0]?.id);
+  const selectedProject = projectOptions.find((item) => item.id === selected);
+  const label = selected === "all" ? "全部项目" : (selectedProject?.name ?? "请选择项目");
+  const options =
+    scope === "all" ? [{ id: "all", name: "全部项目", helper: "跨项目查看与汇总" }, ...projectOptions] : projectOptions;
 
   return (
     <Popover>
@@ -38,19 +40,25 @@ export function ProjectSwitcher({ scope }: { scope: "all" | "project" }) {
         <div className="mt-2 space-y-1">
           {options.map((item) => (
             <button
-              key={item.key}
+              key={item.id}
               className={cn(
                 "flex w-full items-start gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-accent",
-                item.key === selected && "bg-accent",
+                item.id === selected && "bg-accent",
               )}
-              onClick={() => setSelected(item.key)}
+              onClick={() => {
+                if (item.id === "all") {
+                  selectAllProjects();
+                  return;
+                }
+                selectProject(item.id);
+              }}
               type="button"
             >
               <span className="mt-0.5 flex size-4 items-center justify-center rounded-full border border-border">
-                {item.key === selected ? <Check className="size-3" /> : null}
+                {item.id === selected ? <Check className="size-3" /> : null}
               </span>
               <span className="flex flex-col">
-                <span>{item.text}</span>
+                <span>{item.name}</span>
                 <span className="text-muted-foreground text-xs">{item.helper}</span>
               </span>
             </button>

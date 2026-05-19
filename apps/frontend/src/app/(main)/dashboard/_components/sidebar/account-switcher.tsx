@@ -2,18 +2,27 @@
 
 import { useState } from "react";
 
-import { BadgeCheck, Bell, Check, CreditCard, LogOut } from "lucide-react";
+import { useRouter } from "next/navigation";
+
+import { Check, LogOut, Pencil } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn, getInitials } from "@/lib/utils";
+import { useAuthStore } from "@/stores/auth-store";
+
+const roleLabels: Record<string, string> = {
+  admin: "管理员",
+  guest: "访客",
+  tester: "测试工程师",
+};
 
 export function AccountSwitcher({
   users,
@@ -26,6 +35,8 @@ export function AccountSwitcher({
     readonly role: string;
   }>;
 }) {
+  const router = useRouter();
+  const logout = useAuthStore((state) => state.logout);
   const [activeUser, setActiveUser] = useState(users[0]);
 
   if (!activeUser) {
@@ -35,10 +46,14 @@ export function AccountSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Avatar className="size-8 rounded-lg">
-          <AvatarImage src={activeUser.avatar || undefined} alt={activeUser.name} />
-          <AvatarFallback>{getInitials(activeUser.name)}</AvatarFallback>
-        </Avatar>
+        <Button aria-label="打开用户菜单" size="icon">
+          <Avatar className="size-5 rounded-md after:hidden">
+            <AvatarImage src={activeUser.avatar || undefined} alt={activeUser.name} />
+            <AvatarFallback className="rounded-md bg-transparent text-current text-xs">
+              {getInitials(activeUser.name)}
+            </AvatarFallback>
+          </Avatar>
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="min-w-56 space-y-1 rounded-lg" side="bottom" align="end" sideOffset={4}>
         {users.map((user) => (
@@ -55,7 +70,7 @@ export function AccountSwitcher({
               </Avatar>
               <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">{user.name}</span>
-                <span className="truncate text-xs capitalize">{user.role}</span>
+                <span className="truncate text-xs">{roleLabels[user.role] ?? user.role}</span>
               </div>
               <span
                 className={cn(
@@ -69,24 +84,19 @@ export function AccountSwitcher({
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuItem>
-            <BadgeCheck />
-            Account
-          </DropdownMenuItem>
-          <DropdownMenuItem>
-            <CreditCard />
-            Billing
-          </DropdownMenuItem>
-          <DropdownMenuItem>
-            <Bell />
-            Notifications
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
         <DropdownMenuItem>
+          <Pencil />
+          编辑
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => {
+            logout();
+            router.replace("/auth/v1/login");
+          }}
+        >
           <LogOut />
-          Log out
+          登出
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

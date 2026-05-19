@@ -1,136 +1,52 @@
-# Next.js Admin Template with TypeScript & Shadcn UI
+# AI 测试系统前端
 
-**Studio Admin** - Includes multiple dashboards, authentication layouts, customizable theme presets, and more.
+`apps/frontend` 是 AI 测试系统的前端实现目录，基于 `next-shadcn-admin-dashboard-main` 模板继续改造。
 
-<img src="https://github.com/arhamkhnz/next-shadcn-admin-dashboard/blob/main/media/dashboard.png?version=5" alt="Dashboard Screenshot">
+## 工作流规则
 
-Most admin templates I found, free or paid, felt cluttered, outdated, or too rigid. I built this as a cleaner alternative with features often missing in others, such as theme toggling and layout controls, while keeping the design modern, minimal, and flexible.
+- 不再使用 OpenSpec 进行前端规划、实现或验收。
+- `next-shadcn-admin-dashboard-main` 只作为模板参考和回归对照。
+- 产品范围以 `docs/05-前端方案` 和 `docs/00-产品文档` 为准。
+- 产品导航只展示 AI 测试系统入口，不把模板示例业务作为产品入口。
 
-> **View demo:** [studio admin](https://next-shadcn-admin-dashboard.vercel.app)
+## 启动
 
-> [!NOTE]
-> Looking for the Base UI version? Check out [next-shadcn-admin-dashboard-baseui](https://github.com/arhamkhnz/next-shadcn-admin-dashboard-baseui).
-
-> [!TIP]
-> I’m also working on Nuxt.js, Svelte, and React (Vite + TanStack Router) versions of this dashboard. They’ll be live soon.
-
-## Features
-
-- Built with Next.js 16, TypeScript, Tailwind CSS v4, and Shadcn UI  
-- Responsive and mobile-friendly  
-- Customizable theme presets (light/dark modes with color schemes like Tangerine, Brutalist, and more)  
-- Flexible layouts (collapsible sidebar, variable content widths)  
-- Authentication flows and screens  
-- Prebuilt dashboards (Default, CRM, Finance, Analytics, Productivity) plus legacy variants  
-- Role-Based Access Control (RBAC) with config-driven UI and multi-tenant support *(planned)*  
-
-> [!NOTE]
-> The default dashboard uses the **shadcn neutral** theme.  
-> It also includes additional color presets inspired by [Tweakcn](https://tweakcn.com):  
->
-> - Tangerine  
-> - Neo Brutalism  
-> - Soft Pop  
->
-> You can create more presets by following the same structure as the existing ones.
-
-> Looking for the **Next.js 15** version?  
-> Check out the [`archive/next15`](https://github.com/arhamkhnz/next-shadcn-admin-dashboard/tree/archive/next15) branch.  
-> This branch contains the setup prior to upgrading to Next 16 and the React Compiler.
-
-> Looking for the **Next.js 14 + Tailwind CSS v3** version?  
-> Check out the [`archive/next14-tailwindv3`](https://github.com/arhamkhnz/next-shadcn-admin-dashboard/tree/archive/next14-tailwindv3) branch.  
-> It has a different color theme and is not actively maintained, but I try to keep it updated with major changes.  
-
-## Tech Stack
-
-- **Framework**: Next.js 16 (App Router), TypeScript, Tailwind CSS v4  
-- **UI Components**: Shadcn UI  
-- **Validation**: Zod  
-- **Forms & State Management**: React Hook Form, Zustand  
-- **Tables & Data Handling**: TanStack Table  
-- **Tooling & DX**: Biome, Husky  
-
-## Screens
-
-### Available
-- Default Dashboard  
-- CRM Dashboard  
-- Finance Dashboard  
-- Analytics Dashboard  
-- Productivity Dashboard  
-- E-commerce Dashboard  
-- Academy Dashboard  
-- Authentication (4 screens)  
-- Legacy: Default v1, CRM v1, Finance v1, Analytics v1
-
-### Coming Soon
-- Logistics Dashboard  
-- Email Page  
-- Chat Page  
-- Calendar Page  
-- Kanban Board  
-- Invoice Page  
-- Users Management  
-- Roles Management  
-
-## Colocation File System Architecture
-
-This project follows a **colocation-based architecture** each feature keeps its own pages, components, and logic inside its route folder.  
-Shared UI, hooks, and configuration live at the top level, making the codebase modular, scalable, and easier to maintain as the app grows.
-
-For a full breakdown of the structure with examples, see the [Next Colocation Template](https://github.com/arhamkhnz/next-colocation-template).
-
-## Getting Started
-
-You can run this project locally, or deploy it instantly with Vercel.
-
-### Deploy with Vercel
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Farhamkhnz%2Fnext-shadcn-admin-dashboard)
-
-_Deploy your own copy with one click._
-
-### Run locally
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/arhamkhnz/next-shadcn-admin-dashboard.git
-   ```
-   
-2. **Navigate into the project**
-   ```bash
-    cd next-shadcn-admin-dashboard
-   ```
-   
-3. **Install dependencies**
-   ```bash
-    npm install
-   ```
-
-4. **Start the development server**
-   ```bash
-   npm run dev
-   ```
-
-Your app will be running at [http://localhost:3000](http://localhost:3000)
-
-### Formatting and Linting
-
-Format, lint, and organize imports
-```bash
-npx @biomejs/biome check --write
+```powershell
+npm install
+npm run dev
 ```
-> For more information on available rules, fixes, and CLI options, refer to the [Biome documentation](https://biomejs.dev/).
 
----
+默认地址：
 
-> [!IMPORTANT]  
-> This project is updated frequently. If you’re working from a fork or an older clone, pull the latest changes before syncing. Some updates may include breaking changes.
+```text
+http://localhost:3000
+```
 
----
+## 登录
 
-Contributions are welcome. Feel free to open issues, feature requests, or start a discussion.
+正式登录路由：
 
+```text
+/auth/v1/login
+```
 
-**Happy Vibe Coding!**
+第一版不开放公开注册。账号由管理员在“用户与权限”中创建并分配项目。
+
+当前前端使用本地演示登录态，提交登录表单后会写入本地 token 和用户信息。后续接入后端时，需要把登录表单替换为调用后端登录 API，并在 401/token 失效时清理本地状态后跳转登录页。
+
+## 项目上下文
+
+项目上下文由 `ProjectSwitcher` 和 `project-context-store` 管理：
+
+- 控制台、任务中心、报告中心允许“全部项目”。
+- 需求、探索、知识库、测试用例、UI 自动化、接口自动化必须使用指定项目。
+- 侧边栏中的项目作用域路由使用当前项目解析，不应硬编码为某一个项目。
+
+## 检查
+
+```powershell
+npm run check
+npx tsc --noEmit
+```
+
+当前模板文件中仍存在一批历史 CRLF/LF 格式差异，可能导致全量 `npm run check` 输出大量格式诊断。修改前端时优先对本次触碰文件运行定向 Biome 检查，避免把无关模板文件一起格式化。

@@ -1,18 +1,31 @@
-import Link from "next/link";
+"use client";
 
-import { Activity, ArrowRight, ClipboardList, FileClock } from "lucide-react";
-import { MetricCard, PageShell, PageToolbar, ShellSection, StatusBadge } from "@/components/ai-testing/page-shell";
+import { useState } from "react";
+
+import { Activity, ClipboardList, FileClock } from "lucide-react";
+
+import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const reports = [
-  { id: "r-2101", project: "知了平台", name: "UI 自动化周报", status: "完成", updated: "2 小时前" },
-  { id: "r-2102", project: "知了平台", name: "失败诊断摘要", status: "处理中", updated: "5 小时前" },
-  { id: "r-2103", project: "鹰眼平台", name: "Allure 报告", status: "完成", updated: "1 天前" },
+  { id: "r-2101", project: "知了平台", name: "UI 自动化周报", status: "完成", updated: "2026-05-19 12:30:00" },
+  { id: "r-2102", project: "知了平台", name: "失败诊断摘要", status: "处理中", updated: "2026-05-19 09:30:00" },
+  { id: "r-2103", project: "鹰眼平台", name: "Allure 报告", status: "完成", updated: "2026-05-18 10:15:00" },
 ];
 
 export default function Page() {
+  const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
+    useLocalTableSelection(reports);
+  const [searchText, setSearchText] = useState("");
+  const filteredRows = rows.filter((report) =>
+    [report.id, report.project, report.name, report.status, report.updated].some((value) =>
+      value.toLowerCase().includes(searchText.trim().toLowerCase()),
+    ),
+  );
+
   return (
     <PageShell
       breadcrumbs={["测试资产", "报告中心"]}
@@ -26,75 +39,62 @@ export default function Page() {
         <MetricCard helper="可跳转查看" icon={ClipboardList} label="Allure 报告" value="31" />
         <MetricCard helper="已关闭 12 个" icon={FileClock} label="失败诊断" value="17" />
       </div>
-      <PageToolbar placeholder="搜索报告、任务或失败原因" />
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.9fr)]">
-        <ShellSection>
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="font-medium text-sm">报告列表</h2>
-              <p className="text-muted-foreground text-xs">运行记录、Allure 报告和失败诊断统一从这里进入。</p>
-            </div>
-            <Button variant="outline" size="sm">
-              Allure 报告
-            </Button>
-          </div>
-          <div className="overflow-hidden rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>报告编号</TableHead>
-                  <TableHead>项目</TableHead>
-                  <TableHead>报告名称</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>更新时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+      <ShellSection>
+        <ListToolbar
+          createLabel="新建报告"
+          description="运行记录、Allure 报告和失败诊断统一从这里进入。"
+          onBatchDelete={deleteSelected}
+          onDelete={deleteSelected}
+          onSearch={setSearchText}
+          placeholder="搜索报告、任务或失败原因"
+          selectedCount={selectedCount}
+          title="报告列表"
+        />
+        <div className="overflow-hidden rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    aria-label="选择全部报告"
+                    checked={allSelected || (partiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => toggleAll(Boolean(checked))}
+                  />
+                </TableHead>
+                <TableHead>报告编号</TableHead>
+                <TableHead>项目</TableHead>
+                <TableHead>报告名称</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead>更新时间</TableHead>
+                <TableHead className="w-16">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredRows.map((report) => (
+                <TableRow data-state={selectedIds.includes(report.id) ? "selected" : undefined} key={report.id}>
+                  <TableCell>
+                    <Checkbox
+                      aria-label={`选择 ${report.id}`}
+                      checked={selectedIds.includes(report.id)}
+                      onCheckedChange={(checked) => toggleOne(report.id, Boolean(checked))}
+                    />
+                  </TableCell>
+                  <TableCell className="font-medium">{report.id}</TableCell>
+                  <TableCell>{report.project}</TableCell>
+                  <TableCell>{report.name}</TableCell>
+                  <TableCell>
+                    <Badge variant={report.status === "完成" ? "secondary" : "outline"}>{report.status}</Badge>
+                  </TableCell>
+                  <TableCell>{report.updated}</TableCell>
+                  <TableCell>
+                    <RowActions actions={[{ label: "查看", href: "/reports" }]} label="打开操作菜单" />
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reports.map((report) => (
-                  <TableRow key={report.id}>
-                    <TableCell className="font-medium">{report.id}</TableCell>
-                    <TableCell>{report.project}</TableCell>
-                    <TableCell>{report.name}</TableCell>
-                    <TableCell>
-                      <Badge variant={report.status === "完成" ? "secondary" : "outline"}>{report.status}</Badge>
-                    </TableCell>
-                    <TableCell>{report.updated}</TableCell>
-                    <TableCell className="text-right">
-                      <Button asChild size="sm" variant="ghost">
-                        <Link href="/reports">
-                          查看
-                          <ArrowRight className="size-4" />
-                        </Link>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </ShellSection>
-        <div className="space-y-4">
-          <ShellSection>
-            <div className="flex items-center gap-2">
-              <StatusBadge>完成</StatusBadge>
-              <span className="text-muted-foreground text-xs">项目维度与全局维度均可查看</span>
-            </div>
-            <div className="mt-3 space-y-3 text-sm">
-              <p className="font-medium">报告中心</p>
-              <p className="text-muted-foreground">报告页继续承载运行记录、Allure 报告与失败诊断列表。</p>
-            </div>
-          </ShellSection>
-          <ShellSection>
-            <h2 className="font-medium text-sm">可用操作</h2>
-            <div className="mt-3 flex flex-col gap-2">
-              <Button variant="outline">查看失败诊断</Button>
-              <Button variant="outline">打开运行记录</Button>
-              <Button>刷新报告</Button>
-            </div>
-          </ShellSection>
+              ))}
+            </TableBody>
+          </Table>
         </div>
-      </div>
+      </ShellSection>
     </PageShell>
   );
 }

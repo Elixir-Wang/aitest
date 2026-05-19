@@ -7,11 +7,10 @@ import {
   FileText,
   LayoutDashboard,
   ListTodo,
+  type LucideIcon,
   NotebookTabs,
   PlaySquare,
-  Settings,
   TestTubeDiagonal,
-  type LucideIcon,
   Users,
 } from "lucide-react";
 
@@ -20,6 +19,7 @@ export interface NavSubItem {
   url: string;
   icon?: LucideIcon;
   comingSoon?: boolean;
+  projectScoped?: boolean;
   newTab?: boolean;
   isNew?: boolean;
 }
@@ -71,19 +71,19 @@ export const sidebarItems: NavGroup[] = [
       },
       {
         title: "需求",
-        url: "/projects/zhiliao/requirements",
+        url: "/projects/:projectId/requirements",
         icon: FileText,
         projectScoped: true,
       },
       {
         title: "探索",
-        url: "/projects/zhiliao/exploration",
+        url: "/projects/:projectId/exploration",
         icon: FileSearch,
         projectScoped: true,
       },
       {
         title: "知识库",
-        url: "/projects/zhiliao/knowledge",
+        url: "/projects/:projectId/knowledge",
         icon: DatabaseZap,
         projectScoped: true,
       },
@@ -95,19 +95,19 @@ export const sidebarItems: NavGroup[] = [
     items: [
       {
         title: "测试用例",
-        url: "/projects/zhiliao/test-cases",
+        url: "/projects/:projectId/test-cases",
         icon: ClipboardCheck,
         projectScoped: true,
       },
       {
         title: "UI 自动化",
-        url: "/projects/zhiliao/automation/ui",
+        url: "/projects/:projectId/automation/ui",
         icon: PlaySquare,
         projectScoped: true,
       },
       {
         title: "接口自动化",
-        url: "/projects/zhiliao/automation/api",
+        url: "/projects/:projectId/automation/api",
         icon: TestTubeDiagonal,
         comingSoon: true,
         disabled: true,
@@ -134,12 +134,6 @@ export const sidebarItems: NavGroup[] = [
         title: "用户与权限",
         url: "/settings/users",
         icon: Users,
-        requiredRole: "admin",
-      },
-      {
-        title: "系统设置",
-        url: "/settings/system",
-        icon: Settings,
         requiredRole: "admin",
       },
     ],

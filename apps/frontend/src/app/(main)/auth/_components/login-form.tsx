@@ -1,5 +1,7 @@
 "use client";
 
+import { useRouter, useSearchParams } from "next/navigation";
+
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -9,31 +11,41 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useAuthStore } from "@/stores/auth-store";
 
 const formSchema = z.object({
-  email: z.string().email({ message: "Please enter a valid email address." }),
-  password: z.string().min(6, { message: "Password must be at least 6 characters." }),
+  email: z.string().min(1, { message: "请输入用户名或邮箱。" }),
+  password: z.string().min(1, { message: "请输入密码。" }),
   remember: z.boolean().optional(),
 });
 
 export function LoginForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const login = useAuthStore((state) => state.login);
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      email: "",
-      password: "",
+      email: "admin",
+      password: "admin",
       remember: false,
     },
   });
 
   const onSubmit = (data: z.infer<typeof formSchema>) => {
-    toast("You submitted the following values", {
-      description: (
-        <pre className="mt-2 w-[320px] rounded-md bg-neutral-950 p-4">
-          <code className="text-white">{JSON.stringify(data, null, 2)}</code>
-        </pre>
-      ),
+    login({
+      token: `local-demo-token-${Date.now()}`,
+      remember: data.remember,
+      user: {
+        email: "admin",
+        name: "admin",
+        role: "admin",
+      },
     });
+    toast.success("登录成功", {
+      description: "已进入 AI 测试系统工作台。",
+    });
+    router.replace(searchParams.get("next") || "/dashboard");
   };
 
   return (
@@ -44,13 +56,13 @@ export function LoginForm() {
           name="email"
           render={({ field, fieldState }) => (
             <Field className="gap-1.5" data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="login-email">Email Address</FieldLabel>
+              <FieldLabel htmlFor="login-email">用户名或邮箱</FieldLabel>
               <Input
                 {...field}
                 id="login-email"
-                type="email"
-                placeholder="you@example.com"
-                autoComplete="email"
+                type="text"
+                placeholder="admin@example.com"
+                autoComplete="username"
                 aria-invalid={fieldState.invalid}
               />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -62,7 +74,7 @@ export function LoginForm() {
           name="password"
           render={({ field, fieldState }) => (
             <Field className="gap-1.5" data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="login-password">Password</FieldLabel>
+              <FieldLabel htmlFor="login-password">密码</FieldLabel>
               <Input
                 {...field}
                 id="login-password"
@@ -89,7 +101,7 @@ export function LoginForm() {
               />
               <FieldContent>
                 <FieldLabel htmlFor="login-remember" className="font-normal">
-                  Remember me for 30 days
+                  记住登录状态
                 </FieldLabel>
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
               </FieldContent>
@@ -98,7 +110,7 @@ export function LoginForm() {
         />
       </FieldGroup>
       <Button className="w-full" type="submit">
-        Login
+        登录
       </Button>
     </form>
   );

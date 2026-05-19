@@ -7,11 +7,17 @@ import { Button } from "@/components/ui/button";
 export default function Page() {
   return (
     <PageShell
-      breadcrumbs={["项目工作区", "项目", "知了平台"]}
-      description="查看项目基础信息、成员、环境配置和测试资产健康度。"
+      breadcrumbs={[]}
+      description=""
       primaryAction="编辑项目"
       projectScope="project"
-      tabs={["项目概览", "项目设置", "成员", "环境配置"]}
+      activeTab="项目概览"
+      tabs={[
+        { label: "项目概览", href: "/projects/zhiliao" },
+        { label: "项目设置", href: "/projects/zhiliao/settings" },
+        "成员",
+        "环境配置",
+      ]}
       title="知了平台"
     >
       <div className="grid gap-4 md:grid-cols-3">
@@ -23,7 +29,7 @@ export default function Page() {
         <Badge variant="secondary">需求 3</Badge>
         <Badge variant="secondary">用例 426</Badge>
         <Badge variant="secondary">UI 自动化 18</Badge>
-        <Badge variant="outline">最近更新 2 小时前</Badge>
+        <Badge variant="outline">最近更新 2026-05-19 12:30:00</Badge>
       </div>
       <PageToolbar placeholder="搜索项目成员、配置或资产" />
       <div className="grid gap-4 lg:grid-cols-3">

@@ -1,32 +1,42 @@
 import type { ReactNode } from "react";
 
-import type { LucideIcon } from "lucide-react";
-import { CircleAlert } from "lucide-react";
+import Link from "next/link";
 
+import type { LucideIcon } from "lucide-react";
+import { CircleAlert, Ellipsis, Plus, Search, Trash2 } from "lucide-react";
+
+import { ProjectSwitcher } from "@/components/ai-testing/project-switcher";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { ProjectSwitcher } from "@/components/ai-testing/project-switcher";
 
 type ProjectScope = "all" | "project" | "none";
+type ModuleTab = string | { label: string; href: string };
+type RowAction = {
+  label: string;
+  href?: string;
+  destructive?: boolean;
+  onSelect?: () => void;
+};
 
 interface PageShellProps {
   title: string;
   description: string;
   breadcrumbs: string[];
   projectScope?: ProjectScope;
-  tabs?: string[];
+  tabs?: ModuleTab[];
+  activeTab?: string;
   primaryAction?: string;
   children: ReactNode;
 }
@@ -44,6 +54,7 @@ export function PageShell({
   breadcrumbs,
   projectScope = "all",
   tabs = [],
+  activeTab,
   primaryAction,
   children,
 }: PageShellProps) {
@@ -56,7 +67,7 @@ export function PageShell({
         projectScope={projectScope}
         title={title}
       />
-      {tabs.length > 0 && <ModuleTabs tabs={tabs} />}
+      {tabs.length > 0 && <ModuleTabs activeTab={activeTab} tabs={tabs} />}
       {children}
     </div>
   );
@@ -64,8 +75,6 @@ export function PageShell({
 
 export function PageHeader({
   title,
-  description,
-  breadcrumbs,
   projectScope,
   primaryAction,
 }: {
@@ -78,17 +87,8 @@ export function PageHeader({
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
       <div className="min-w-0 space-y-2">
-        <div className="flex flex-wrap items-center gap-1 text-muted-foreground text-xs">
-          {breadcrumbs.map((item, index) => (
-            <span key={breadcrumbs.slice(0, index + 1).join("/")} className="flex items-center gap-1">
-              {index > 0 && <span>/</span>}
-              <span>{item}</span>
-            </span>
-          ))}
-        </div>
         <div className="space-y-1">
           <h1 className="font-heading font-semibold text-2xl tracking-normal">{title}</h1>
-          <p className="max-w-3xl text-muted-foreground text-sm">{description}</p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -99,13 +99,19 @@ export function PageHeader({
   );
 }
 
-export function ModuleTabs({ tabs }: { tabs: string[] }) {
+export function ModuleTabs({ tabs, activeTab }: { tabs: ModuleTab[]; activeTab?: string }) {
+  const firstTab = tabs[0];
+  const defaultValue = activeTab ?? (typeof firstTab === "string" ? firstTab : firstTab.label);
+
   return (
-    <Tabs defaultValue={tabs[0]} className="w-full">
+    <Tabs defaultValue={defaultValue} className="w-full">
       <TabsList className="flex h-auto flex-wrap justify-start">
         {tabs.map((tab) => (
-          <TabsTrigger key={tab} value={tab}>
-            {tab}
+          <TabsTrigger
+            key={typeof tab === "string" ? tab : tab.label}
+            value={typeof tab === "string" ? tab : tab.label}
+          >
+            {typeof tab === "string" ? tab : <Link href={tab.href}>{tab.label}</Link>}
           </TabsTrigger>
         ))}
       </TabsList>
@@ -140,11 +146,98 @@ export function PageToolbar({ placeholder = "搜索名称、状态或负责人" 
   );
 }
 
+export function ListToolbar({
+  title,
+  description = "",
+  placeholder = "搜索名称、状态或负责人",
+  createLabel = "新建",
+  selectedCount = 0,
+  onDelete,
+  onBatchDelete,
+  onCreate,
+  onSearch,
+}: {
+  title: string;
+  description?: string;
+  placeholder?: string;
+  createLabel?: string;
+  selectedCount?: number;
+  onDelete?: () => void;
+  onBatchDelete?: () => void;
+  onCreate?: () => void;
+  onSearch?: (value: string) => void;
+}) {
+  const hasSelection = selectedCount > 0;
+
+  return (
+    <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="min-w-0">
+        <h2 className="font-medium text-sm">{title}</h2>
+        <p className="text-muted-foreground text-xs">
+          {description}
+          {hasSelection && <span className="ml-2 text-foreground">已选择 {selectedCount} 项</span>}
+        </p>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+        <div className="relative h-8 w-20 font-medium text-sm">
+          <div className="group/search absolute top-0 right-0 h-8 w-20 transition-all duration-200 focus-within:w-56">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-foreground" />
+            <Input
+              aria-label={placeholder}
+              className="h-8 w-full rounded-lg border-border bg-background pr-2 pl-8 font-medium text-foreground text-sm transition-all duration-200 placeholder:text-foreground hover:bg-muted hover:text-foreground focus-visible:border-border focus-visible:ring-0 dark:border-input dark:bg-input/30 dark:hover:bg-input/50"
+              onChange={(event) => onSearch?.(event.target.value)}
+              placeholder="搜索"
+            />
+          </div>
+        </div>
+        <Button disabled={!hasSelection} onClick={onDelete} variant="outline">
+          <Trash2 className="size-4" />
+          删除
+        </Button>
+        <Button disabled={!hasSelection} onClick={onBatchDelete} variant="outline">
+          <Trash2 className="size-4" />
+          批量删除
+        </Button>
+        <Button onClick={onCreate}>
+          <Plus className="size-4" />
+          {createLabel}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function StatusBadge({ children, tone = "default" }: { children: ReactNode; tone?: "default" | "muted" }) {
   return (
     <Badge className={cn(tone === "muted" && "bg-muted text-muted-foreground")} variant="secondary">
       {children}
     </Badge>
+  );
+}
+
+export function RowActions({ label, actions }: { label: string; actions: RowAction[] }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button aria-label={label} size="icon" variant="ghost">
+          <Ellipsis className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {actions.map((action, index) => (
+          <div key={`${action.label}-${action.href ?? "action"}`}>
+            {action.destructive && index > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuItem
+              asChild={Boolean(action.href)}
+              onClick={action.onSelect}
+              variant={action.destructive ? "destructive" : undefined}
+            >
+              {action.href ? <Link href={action.href}>{action.label}</Link> : action.label}
+            </DropdownMenuItem>
+          </div>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
