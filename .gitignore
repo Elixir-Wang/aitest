@@ -32,6 +32,8 @@ coverage/
 **/coverage/
 playwright-report/
 test-results/
+.playwright-mcp/
+**/.playwright-mcp/
 
 # Logs
 *.log
@@ -54,3 +56,8 @@ pnpm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 **/next-env.d.ts
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.pyc
