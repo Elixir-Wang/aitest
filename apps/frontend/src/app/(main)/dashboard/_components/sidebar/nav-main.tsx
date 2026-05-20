@@ -157,13 +157,13 @@ export function NavMain({ items }: NavMainProps) {
 
   const isItemActive = (url: string, subItems?: NavMainItem["subItems"]) => {
     if (subItems?.length) {
-      return subItems.some((sub) => path.startsWith(sub.url));
+      return subItems.some((sub) => path === sub.url);
     }
-    return path === url || (url !== "/dashboard" && path.startsWith(url));
+    return path === url;
   };
 
   const isSubmenuOpen = (subItems?: NavMainItem["subItems"]) => {
-    return subItems?.some((sub) => path.startsWith(sub.url)) ?? false;
+    return subItems?.some((sub) => path === sub.url) ?? false;
   };
 
   return (
