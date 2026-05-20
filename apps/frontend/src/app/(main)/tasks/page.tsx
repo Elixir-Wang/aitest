@@ -16,7 +16,6 @@ const tasks = [
     project: "知了平台",
     name: "需求分析",
     status: "运行中",
-    owner: "张敏",
     updated: "2026-05-19 14:48:00",
   },
   {
@@ -24,7 +23,6 @@ const tasks = [
     project: "知了平台",
     name: "探索任务",
     status: "等待人工",
-    owner: "李强",
     updated: "2026-05-19 14:36:00",
   },
   {
@@ -32,7 +30,6 @@ const tasks = [
     project: "鹰眼平台",
     name: "用例生成",
     status: "成功",
-    owner: "陈晨",
     updated: "2026-05-19 13:30:00",
   },
   {
@@ -40,7 +37,6 @@ const tasks = [
     project: "鹰眼平台",
     name: "UI 自动化",
     status: "失败",
-    owner: "王磊",
     updated: "2026-05-19 12:30:00",
   },
 ];
@@ -50,7 +46,7 @@ export default function Page() {
     useLocalTableSelection(tasks);
   const [searchText, setSearchText] = useState("");
   const filteredRows = rows.filter((task) =>
-    [task.project, task.name, task.status, task.owner, task.updated].some((value) =>
+    [task.project, task.name, task.status, task.updated].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
     ),
   );
@@ -92,7 +88,6 @@ export default function Page() {
                 <TableHead>项目</TableHead>
                 <TableHead>任务种类</TableHead>
                 <TableHead>状态</TableHead>
-                <TableHead>负责人</TableHead>
                 <TableHead>更新时间</TableHead>
                 <TableHead className="w-16">操作</TableHead>
               </TableRow>
@@ -118,7 +113,6 @@ export default function Page() {
                       {task.status}
                     </Badge>
                   </TableCell>
-                  <TableCell>{task.owner}</TableCell>
                   <TableCell>{task.updated}</TableCell>
                   <TableCell>
                     <RowActions actions={[{ label: "查看", href: "/tasks", icon: Eye }]} label="打开操作菜单" />

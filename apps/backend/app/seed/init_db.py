@@ -1,47 +1,9 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
-import secrets
 import sqlite3
-from contextlib import contextmanager
-from pathlib import Path
-from typing import Iterator
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT_DIR / "data"
-DB_PATH = DATA_DIR / "ai_testing.db"
-
-
-def hash_secret(value: str, salt: str | None = None) -> str:
-    secret_salt = salt or secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac("sha256", value.encode("utf-8"), secret_salt.encode("utf-8"), 120_000)
-    return f"{secret_salt}${digest.hex()}"
-
-
-def verify_secret(value: str, stored: str) -> bool:
-    try:
-        salt, expected = stored.split("$", 1)
-    except ValueError:
-        return False
-    candidate = hash_secret(value, salt).split("$", 1)[1]
-    return hmac.compare_digest(candidate, expected)
-
-
-@contextmanager
-def connect() -> Iterator[sqlite3.Connection]:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DB_PATH)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    try:
-        yield connection
-        connection.commit()
-    except Exception:
-        connection.rollback()
-        raise
-    finally:
-        connection.close()
+from app.core.db import connect
+from app.core.security import hash_secret
 
 
 def init_db() -> None:
@@ -241,3 +203,4 @@ def _seed_dashboard_stats(db: sqlite3.Connection) -> None:
                     generated_cases,
                 ),
             )
+

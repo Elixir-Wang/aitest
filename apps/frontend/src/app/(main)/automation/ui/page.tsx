@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { ClipboardCheck, Eye } from "lucide-react";
+import { Eye, PlaySquare } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
@@ -10,43 +10,42 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const testCases = [
-  { id: "tc-001", title: "登录流程", status: "待评审", coverage: "高", owner: "张敏", updated: "2026-05-19 12:30:00" },
-  { id: "tc-002", title: "项目创建", status: "已采纳", coverage: "中", owner: "李强", updated: "2026-05-19 08:30:00" },
-  { id: "tc-003", title: "报告查看", status: "待采纳", coverage: "低", owner: "王磊", updated: "2026-05-18 10:15:00" },
+const automationJobs = [
+  { id: "ui-001", title: "登录自动化", status: "运行中", suite: "核心回归", updated: "2026-05-19 14:48:00" },
+  { id: "ui-002", title: "项目管理自动化", status: "通过", suite: "冒烟", updated: "2026-05-19 10:30:00" },
+  { id: "ui-003", title: "报告中心自动化", status: "待执行", suite: "全量回归", updated: "2026-05-18 10:15:00" },
 ];
 
 export default function Page() {
   const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
-    useLocalTableSelection(testCases);
+    useLocalTableSelection(automationJobs);
   const [searchText, setSearchText] = useState("");
   const filteredRows = rows.filter((item) =>
-    [item.title, item.status, item.coverage, item.updated].some((value) =>
+    [item.title, item.status, item.suite, item.updated].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
     ),
   );
 
   return (
     <PageShell
-      breadcrumbs={["项目", "知了平台", "测试用例"]}
-      description="从知识库生成测试用例，支持人工评审、采纳和覆盖矩阵追踪。"
-      projectScope="project"
-      tabs={["用例列表", "用例评审", "覆盖矩阵", "版本历史"]}
-      title="测试用例"
+      breadcrumbs={["项目工作区", "UI 自动化"]}
+      description="查看全部项目的 UI 自动化任务、套件和执行状态。"
+      projectScope="all"
+      title="UI 自动化"
     >
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard helper="采纳 351 条" icon={ClipboardCheck} label="用例总数" value="426" />
-        <MetricCard helper="高优先级 6 条" icon={ClipboardCheck} label="待评审" value="28" />
-        <MetricCard helper="较上次 +9%" icon={ClipboardCheck} label="覆盖率" value="76%" />
+        <MetricCard helper="1 个运行中" icon={PlaySquare} label="自动化任务" value="3" />
+        <MetricCard helper="覆盖 2 个套件" icon={PlaySquare} label="执行套件" value="3" />
+        <MetricCard helper="1 个待执行" icon={PlaySquare} label="待执行" value="1" />
       </div>
       <ShellSection>
         <ListToolbar
-          createLabel="生成用例"
+          createLabel="新建自动化"
           onBatchDelete={deleteSelected}
           onSearch={setSearchText}
-          placeholder="搜索用例名称、模块或优先级"
+          placeholder="搜索任务、套件或状态"
           selectedCount={selectedCount}
-          title="测试用例列表"
+          title="自动化任务列表"
         />
         <div className="overflow-hidden rounded-lg border">
           <Table>
@@ -54,14 +53,14 @@ export default function Page() {
               <TableRow>
                 <TableHead className="w-10">
                   <Checkbox
-                    aria-label="选择全部用例"
+                    aria-label="选择全部自动化任务"
                     checked={allSelected || (partiallySelected ? "indeterminate" : false)}
                     onCheckedChange={(checked) => toggleAll(Boolean(checked))}
                   />
                 </TableHead>
-                <TableHead>用例标题</TableHead>
+                <TableHead>任务标题</TableHead>
                 <TableHead>状态</TableHead>
-                <TableHead>覆盖等级</TableHead>
+                <TableHead>套件</TableHead>
                 <TableHead>更新时间</TableHead>
                 <TableHead className="w-16">操作</TableHead>
               </TableRow>
@@ -78,9 +77,9 @@ export default function Page() {
                   </TableCell>
                   <TableCell>{item.title}</TableCell>
                   <TableCell>
-                    <Badge variant={item.status === "已采纳" ? "secondary" : "outline"}>{item.status}</Badge>
+                    <Badge variant={item.status === "通过" ? "secondary" : "outline"}>{item.status}</Badge>
                   </TableCell>
-                  <TableCell>{item.coverage}</TableCell>
+                  <TableCell>{item.suite}</TableCell>
                   <TableCell>{item.updated}</TableCell>
                   <TableCell>
                     <RowActions actions={[{ label: "查看", href: ".", icon: Eye }]} label="打开操作菜单" />

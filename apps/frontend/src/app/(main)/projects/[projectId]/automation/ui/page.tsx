@@ -21,7 +21,7 @@ export default function Page() {
     useLocalTableSelection(suites);
   const [searchText, setSearchText] = useState("");
   const filteredRows = rows.filter((item) =>
-    [item.id, item.name, item.status, item.passRate, item.updated].some((value) =>
+    [item.name, item.status, item.passRate, item.updated].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
     ),
   );
@@ -59,7 +59,6 @@ export default function Page() {
                     onCheckedChange={(checked) => toggleAll(Boolean(checked))}
                   />
                 </TableHead>
-                <TableHead>套件编号</TableHead>
                 <TableHead>套件名称</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>通过率</TableHead>
@@ -77,7 +76,6 @@ export default function Page() {
                       onCheckedChange={(checked) => toggleOne(item.id, Boolean(checked))}
                     />
                   </TableCell>
-                  <TableCell className="font-medium">{item.id}</TableCell>
                   <TableCell>{item.name}</TableCell>
                   <TableCell>
                     <Badge variant={item.status === "可执行" ? "secondary" : "outline"}>{item.status}</Badge>

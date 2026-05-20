@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import Link from "next/link";
 
@@ -21,36 +21,15 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { apiRequest, formatDateTime, type ApiProject } from "@/lib/api-client";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 
-const projects = [
-  {
-    id: "zhiliao",
-    name: "知了平台",
-    description: "承载需求、探索、知识库和测试资产链路。",
-    status: "活跃",
-    updated: "2026-05-19 14:30:00",
-  },
-  {
-    id: "hawk",
-    name: "鹰眼平台",
-    description: "用于验证跨项目任务、报告和自动化执行流程。",
-    status: "活跃",
-    updated: "2026-05-18 10:15:00",
-  },
-  {
-    id: "atlas",
-    name: "Atlas 内测",
-    description: "归档项目，保留历史需求和用例资产。",
-    status: "归档",
-    updated: "2026-05-11 09:00:00",
-  },
-];
-
-type ProjectRow = (typeof projects)[number];
+type ProjectRow = ApiProject;
 const statusOptions = ["活跃", "归档"];
+const statusToLabel = (status: ProjectRow["status"]) => (status === "archived" ? "归档" : "活跃");
+const labelToStatus = (label: string): ProjectRow["status"] => (label === "归档" ? "archived" : "active");
 
 const emptyForm = {
   description: "",
@@ -58,46 +37,37 @@ const emptyForm = {
   status: "活跃",
 };
 
-function nowText() {
-  const now = new Date();
-  const pad = (value: number) => value.toString().padStart(2, "0");
-
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-}
-
-function projectIdFromName(name: string) {
-  return `project-${Date.now()}-${
-    name
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "") || "new"
-  }`;
-}
-
 export default function Page() {
-  const {
-    addRow,
-    allSelected,
-    deleteOne,
-    deleteSelected,
-    partiallySelected,
-    rows,
-    selectedCount,
-    selectedIds,
-    toggleAll,
-    toggleOne,
-    updateRow,
-  } = useLocalTableSelection(projects);
+  const { allSelected, partiallySelected, rows, selectedCount, selectedIds, setRows, toggleAll, toggleOne } =
+    useLocalTableSelection<ProjectRow>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectRow | null>(null);
+  const [error, setError] = useState("");
   const [form, setForm] = useState(emptyForm);
+  const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
   const filteredRows = rows.filter((project) =>
-    [project.name, project.description, project.status, project.updated].some((value) =>
+    [project.name, project.description, statusToLabel(project.status), project.updated_at].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
     ),
   );
+  const canWrite = rows.some((project) => project.available_actions.includes("create"));
+
+  const loadProjects = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setRows(await apiRequest<ProjectRow[]>("/projects"));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "项目列表加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [setRows]);
+
+  useEffect(() => {
+    void loadProjects();
+  }, [loadProjects]);
 
   function openCreateDialog() {
     setEditingProject(null);
@@ -110,33 +80,51 @@ export default function Page() {
     setForm({
       description: project.description,
       name: project.name,
-      status: project.status,
+      status: statusToLabel(project.status),
     });
     setDialogOpen(true);
   }
 
-  function submitProject() {
+  async function submitProject() {
     const name = form.name.trim();
 
     if (!name) {
       return;
     }
 
-    const row = {
+    const payload = {
       description: form.description.trim(),
-      id: editingProject?.id ?? projectIdFromName(name),
       name,
-      status: form.status,
-      updated: nowText(),
+      status: labelToStatus(form.status),
     };
 
-    if (editingProject) {
-      updateRow(row);
-    } else {
-      addRow(row);
+    try {
+      if (editingProject) {
+        await apiRequest<ProjectRow>(`/projects/${editingProject.id}`, {
+          body: JSON.stringify(payload),
+          method: "PATCH",
+        });
+      } else {
+        await apiRequest<ProjectRow>("/projects", {
+          body: JSON.stringify(payload),
+          method: "POST",
+        });
+      }
+      await loadProjects();
+      setDialogOpen(false);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "项目保存失败");
     }
+  }
 
-    setDialogOpen(false);
+  async function deleteProjects(ids: string[]) {
+    setError("");
+    try {
+      await Promise.all(ids.map((id) => apiRequest(`/projects/${id}`, { method: "DELETE" })));
+      await loadProjects();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "项目删除失败");
+    }
   }
 
   return (
@@ -147,13 +135,14 @@ export default function Page() {
       title="项目"
     >
       <ShellSection>
+        {error ? <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">{error}</div> : null}
         <ListToolbar
           createLabel="新建项目"
-          onBatchDelete={deleteSelected}
-          onCreate={openCreateDialog}
+          onBatchDelete={canWrite ? () => deleteProjects(selectedIds) : undefined}
+          onCreate={canWrite ? openCreateDialog : undefined}
           onSearch={setSearchText}
-          placeholder="搜索项目名称、编码或负责人"
-          selectedCount={selectedCount}
+          placeholder="搜索项目名称、编码或描述"
+          selectedCount={canWrite ? selectedCount : 0}
           title="项目列表"
         />
         <div className="overflow-hidden rounded-lg border">
@@ -164,6 +153,7 @@ export default function Page() {
                   <Checkbox
                     aria-label="选择全部项目"
                     checked={allSelected || (partiallySelected ? "indeterminate" : false)}
+                    disabled={!canWrite || loading}
                     onCheckedChange={(checked) => toggleAll(Boolean(checked))}
                   />
                 </TableHead>
@@ -181,6 +171,7 @@ export default function Page() {
                     <Checkbox
                       aria-label={`选择 ${project.name}`}
                       checked={selectedIds.includes(project.id)}
+                      disabled={!project.available_actions.includes("delete")}
                       onCheckedChange={(checked) => toggleOne(project.id, Boolean(checked))}
                     />
                   </TableCell>
@@ -191,15 +182,28 @@ export default function Page() {
                   </TableCell>
                   <TableCell className="max-w-md text-muted-foreground">{project.description}</TableCell>
                   <TableCell>
-                    <Badge variant={project.status === "归档" ? "outline" : "secondary"}>{project.status}</Badge>
+                    <Badge variant={project.status === "archived" ? "outline" : "secondary"}>
+                      {statusToLabel(project.status)}
+                    </Badge>
                   </TableCell>
-                  <TableCell>{project.updated}</TableCell>
+                  <TableCell>{formatDateTime(project.updated_at)}</TableCell>
                   <TableCell>
                     <RowActions
                       actions={[
                         { label: "概览", href: `/projects/${project.id}`, icon: Eye },
-                        { label: "编辑", icon: Pencil, onSelect: () => openEditDialog(project) },
-                        { label: "删除", destructive: true, icon: Trash2, onSelect: () => deleteOne(project.id) },
+                        {
+                          label: "编辑",
+                          disabled: !project.available_actions.includes("update"),
+                          icon: Pencil,
+                          onSelect: project.available_actions.includes("update") ? () => openEditDialog(project) : undefined,
+                        },
+                        {
+                          label: "删除",
+                          destructive: true,
+                          disabled: !project.available_actions.includes("delete"),
+                          icon: Trash2,
+                          onSelect: project.available_actions.includes("delete") ? () => deleteProjects([project.id]) : undefined,
+                        },
                       ]}
                       label={`打开 ${project.name} 操作菜单`}
                     />

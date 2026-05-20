@@ -21,7 +21,7 @@ export default function Page() {
     useLocalTableSelection(reports);
   const [searchText, setSearchText] = useState("");
   const filteredRows = rows.filter((report) =>
-    [report.id, report.project, report.name, report.status, report.updated].some((value) =>
+    [report.project, report.name, report.status, report.updated].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
     ),
   );
@@ -59,7 +59,6 @@ export default function Page() {
                     onCheckedChange={(checked) => toggleAll(Boolean(checked))}
                   />
                 </TableHead>
-                <TableHead>报告编号</TableHead>
                 <TableHead>项目</TableHead>
                 <TableHead>报告名称</TableHead>
                 <TableHead>状态</TableHead>
@@ -77,7 +76,6 @@ export default function Page() {
                       onCheckedChange={(checked) => toggleOne(report.id, Boolean(checked))}
                     />
                   </TableCell>
-                  <TableCell className="font-medium">{report.id}</TableCell>
                   <TableCell>{report.project}</TableCell>
                   <TableCell>{report.name}</TableCell>
                   <TableCell>

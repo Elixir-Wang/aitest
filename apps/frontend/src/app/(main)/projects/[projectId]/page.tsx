@@ -1,16 +1,33 @@
+"use client";
+
+import { useParams, useRouter } from "next/navigation";
+
 import { ClipboardCheck, FileText, PlaySquare } from "lucide-react";
 
 import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Button } from "@/components/ui/button";
+import { projectOptions } from "@/stores/project-context-store";
+import { useProjectContextStore } from "@/stores/project-context-store";
 
 export default function Page() {
+  const router = useRouter();
+  const selectProject = useProjectContextStore((state) => state.selectProject);
+  const params = useParams<{ projectId: string }>();
+  const projectId = params.projectId;
+  const projectName = projectOptions.find((item) => item.id === projectId)?.name ?? "项目";
+
+  function goToModule(modulePath: string) {
+    selectProject(projectId);
+    router.push(`/projects/${projectId}/${modulePath}`);
+  }
+
   return (
     <PageShell
       breadcrumbs={[]}
       description=""
       primaryAction="编辑项目"
       projectScope="project"
-      title="知了平台"
+      title={projectName}
     >
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard helper="已确认 9 个模块" icon={FileText} label="需求数" value="3" />
@@ -29,9 +46,13 @@ export default function Page() {
         <ShellSection>
           <h2 className="mb-3 font-medium text-sm">可用操作</h2>
           <div className="flex flex-col gap-2">
-            <Button variant="outline">进入需求</Button>
-            <Button variant="outline">进入探索</Button>
-            <Button>进入测试用例</Button>
+            <Button variant="outline" onClick={() => goToModule("requirements")}>
+              进入需求
+            </Button>
+            <Button variant="outline" onClick={() => goToModule("exploration")}>
+              进入探索
+            </Button>
+            <Button onClick={() => goToModule("test-cases")}>进入测试用例</Button>
           </div>
         </ShellSection>
       </div>

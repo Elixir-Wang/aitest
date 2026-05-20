@@ -42,7 +42,7 @@ export default function Page() {
     useLocalTableSelection(knowledge);
   const [searchText, setSearchText] = useState("");
   const filteredRows = rows.filter((item) =>
-    [item.id, item.title, item.status, item.source, item.owner, item.updated].some((value) =>
+    [item.title, item.status, item.source, item.updated].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
     ),
   );
@@ -80,11 +80,9 @@ export default function Page() {
                     onCheckedChange={(checked) => toggleAll(Boolean(checked))}
                   />
                 </TableHead>
-                <TableHead>模块编号</TableHead>
                 <TableHead>模块标题</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>来源</TableHead>
-                <TableHead>负责人</TableHead>
                 <TableHead>更新时间</TableHead>
                 <TableHead className="w-16">操作</TableHead>
               </TableRow>
@@ -99,13 +97,11 @@ export default function Page() {
                       onCheckedChange={(checked) => toggleOne(item.id, Boolean(checked))}
                     />
                   </TableCell>
-                  <TableCell className="font-medium">{item.id}</TableCell>
                   <TableCell>{item.title}</TableCell>
                   <TableCell>
                     <Badge variant={item.status === "已发布" ? "secondary" : "outline"}>{item.status}</Badge>
                   </TableCell>
                   <TableCell>{item.source}</TableCell>
-                  <TableCell>{item.owner}</TableCell>
                   <TableCell>{item.updated}</TableCell>
                   <TableCell>
                     <RowActions actions={[{ label: "查看", href: ".", icon: Eye }]} label="打开操作菜单" />

@@ -11,9 +11,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const testCases = [
-  { id: "tc-001", title: "登录流程", status: "待评审", coverage: "高", owner: "张敏", updated: "2026-05-19 12:30:00" },
-  { id: "tc-002", title: "项目创建", status: "已采纳", coverage: "中", owner: "李强", updated: "2026-05-19 08:30:00" },
-  { id: "tc-003", title: "报告查看", status: "待采纳", coverage: "低", owner: "王磊", updated: "2026-05-18 10:15:00" },
+  { id: "tc-001", title: "登录成功", status: "已采纳", module: "登录与权限", updated: "2026-05-19 14:48:00" },
+  { id: "tc-002", title: "项目列表筛选", status: "待审", module: "项目管理", updated: "2026-05-19 10:30:00" },
+  { id: "tc-003", title: "报告导出", status: "已采纳", module: "报告中心", updated: "2026-05-18 10:15:00" },
 ];
 
 export default function Page() {
@@ -21,30 +21,29 @@ export default function Page() {
     useLocalTableSelection(testCases);
   const [searchText, setSearchText] = useState("");
   const filteredRows = rows.filter((item) =>
-    [item.title, item.status, item.coverage, item.updated].some((value) =>
+    [item.title, item.status, item.module, item.updated].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
     ),
   );
 
   return (
     <PageShell
-      breadcrumbs={["项目", "知了平台", "测试用例"]}
-      description="从知识库生成测试用例，支持人工评审、采纳和覆盖矩阵追踪。"
-      projectScope="project"
-      tabs={["用例列表", "用例评审", "覆盖矩阵", "版本历史"]}
+      breadcrumbs={["项目工作区", "测试用例"]}
+      description="查看全部项目的测试用例、采纳状态和更新时间。"
+      projectScope="all"
       title="测试用例"
     >
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard helper="采纳 351 条" icon={ClipboardCheck} label="用例总数" value="426" />
-        <MetricCard helper="高优先级 6 条" icon={ClipboardCheck} label="待评审" value="28" />
-        <MetricCard helper="较上次 +9%" icon={ClipboardCheck} label="覆盖率" value="76%" />
+        <MetricCard helper="已采纳 2 个" icon={ClipboardCheck} label="测试用例" value="3" />
+        <MetricCard helper="待审 1 个" icon={ClipboardCheck} label="采纳状态" value="2/3" />
+        <MetricCard helper="覆盖 3 个模块" icon={ClipboardCheck} label="模块覆盖" value="3" />
       </div>
       <ShellSection>
         <ListToolbar
-          createLabel="生成用例"
+          createLabel="新建用例"
           onBatchDelete={deleteSelected}
           onSearch={setSearchText}
-          placeholder="搜索用例名称、模块或优先级"
+          placeholder="搜索用例、模块或状态"
           selectedCount={selectedCount}
           title="测试用例列表"
         />
@@ -54,14 +53,14 @@ export default function Page() {
               <TableRow>
                 <TableHead className="w-10">
                   <Checkbox
-                    aria-label="选择全部用例"
+                    aria-label="选择全部测试用例"
                     checked={allSelected || (partiallySelected ? "indeterminate" : false)}
                     onCheckedChange={(checked) => toggleAll(Boolean(checked))}
                   />
                 </TableHead>
                 <TableHead>用例标题</TableHead>
                 <TableHead>状态</TableHead>
-                <TableHead>覆盖等级</TableHead>
+                <TableHead>所属模块</TableHead>
                 <TableHead>更新时间</TableHead>
                 <TableHead className="w-16">操作</TableHead>
               </TableRow>
@@ -80,7 +79,7 @@ export default function Page() {
                   <TableCell>
                     <Badge variant={item.status === "已采纳" ? "secondary" : "outline"}>{item.status}</Badge>
                   </TableCell>
-                  <TableCell>{item.coverage}</TableCell>
+                  <TableCell>{item.module}</TableCell>
                   <TableCell>{item.updated}</TableCell>
                   <TableCell>
                     <RowActions actions={[{ label: "查看", href: ".", icon: Eye }]} label="打开操作菜单" />

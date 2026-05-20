@@ -82,7 +82,7 @@ function groupBy(items: SearchItem[]) {
 export function SearchDialog() {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
-  const { currentProjectId, hydrate } = useProjectContextStore();
+  const { currentProjectId, hydrate, scope } = useProjectContextStore();
   const router = useRouter();
 
   React.useEffect(() => {
@@ -108,7 +108,7 @@ export function SearchDialog() {
   const handleSelect = (item: SearchItem) => {
     if (item.disabled) return;
     handleOpenChange(false);
-    const href = item.projectScoped ? getProjectScopedUrl(item.url, currentProjectId) : item.url;
+    const href = item.projectScoped ? getProjectScopedUrl(item.url, currentProjectId, scope) : item.url;
     if (item.newTab) {
       window.open(href, "_blank", "noopener,noreferrer");
     } else {

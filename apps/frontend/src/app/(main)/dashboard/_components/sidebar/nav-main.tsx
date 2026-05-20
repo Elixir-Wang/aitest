@@ -141,7 +141,7 @@ const NavItemCollapsed = ({
 export function NavMain({ items }: NavMainProps) {
   const path = usePathname();
   const { state, isMobile } = useSidebar();
-  const { currentProjectId, hydrate } = useProjectContextStore();
+  const { currentProjectId, hydrate, scope } = useProjectContextStore();
 
   React.useEffect(() => {
     hydrate();
@@ -152,18 +152,18 @@ export function NavMain({ items }: NavMainProps) {
       return item.url;
     }
 
-    return getProjectScopedUrl(item.url, currentProjectId);
+    return getProjectScopedUrl(item.url, currentProjectId, scope);
   };
 
   const isItemActive = (url: string, subItems?: NavMainItem["subItems"]) => {
     if (subItems?.length) {
-      return subItems.some((sub) => path === sub.url);
+      return subItems.some((sub) => path === resolveUrl(sub));
     }
     return path === url;
   };
 
   const isSubmenuOpen = (subItems?: NavMainItem["subItems"]) => {
-    return subItems?.some((sub) => path === sub.url) ?? false;
+    return subItems?.some((sub) => path === resolveUrl(sub)) ?? false;
   };
 
   return (

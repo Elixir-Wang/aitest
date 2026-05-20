@@ -16,11 +16,10 @@ const requirements = [
     title: "登录与权限",
     status: "待评审",
     version: "v3",
-    owner: "张敏",
     updated: "2026-05-19 12:30:00",
   },
-  { id: "req-002", title: "项目管理", status: "已确认", version: "v2", owner: "李强", updated: "2026-05-19 08:30:00" },
-  { id: "req-003", title: "报告中心", status: "待澄清", version: "v1", owner: "王磊", updated: "2026-05-18 10:15:00" },
+  { id: "req-002", title: "项目管理", status: "已确认", version: "v2", updated: "2026-05-19 08:30:00" },
+  { id: "req-003", title: "报告中心", status: "待澄清", version: "v1", updated: "2026-05-18 10:15:00" },
 ];
 
 export default function Page() {
@@ -28,7 +27,7 @@ export default function Page() {
     useLocalTableSelection(requirements);
   const [searchText, setSearchText] = useState("");
   const filteredRows = rows.filter((item) =>
-    [item.id, item.title, item.status, item.version, item.owner, item.updated].some((value) =>
+    [item.title, item.status, item.version, item.updated].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
     ),
   );
@@ -66,11 +65,9 @@ export default function Page() {
                     onCheckedChange={(checked) => toggleAll(Boolean(checked))}
                   />
                 </TableHead>
-                <TableHead>需求编号</TableHead>
                 <TableHead>需求标题</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>版本</TableHead>
-                <TableHead>负责人</TableHead>
                 <TableHead>更新时间</TableHead>
                 <TableHead className="w-16">操作</TableHead>
               </TableRow>
@@ -85,13 +82,11 @@ export default function Page() {
                       onCheckedChange={(checked) => toggleOne(item.id, Boolean(checked))}
                     />
                   </TableCell>
-                  <TableCell className="font-medium">{item.id}</TableCell>
                   <TableCell>{item.title}</TableCell>
                   <TableCell>
                     <Badge variant={item.status === "已确认" ? "secondary" : "outline"}>{item.status}</Badge>
                   </TableCell>
                   <TableCell>{item.version}</TableCell>
-                  <TableCell>{item.owner}</TableCell>
                   <TableCell>{item.updated}</TableCell>
                   <TableCell>
                     <RowActions actions={[{ label: "查看", href: ".", icon: Eye }]} label="打开操作菜单" />

@@ -30,9 +30,13 @@ interface ProjectContextState {
   selectProject: (projectId: string) => void;
 }
 
-export function getProjectScopedUrl(url: string, projectId: string | null) {
+export function getProjectScopedUrl(url: string, projectId: string | null, scope: ProjectScope) {
   if (!url.includes(":projectId")) {
     return url;
+  }
+
+  if (scope === "all") {
+    return url.replace("/projects/:projectId", "");
   }
 
   if (!projectId) {

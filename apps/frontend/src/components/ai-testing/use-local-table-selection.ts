@@ -49,6 +49,7 @@ export function useLocalTableSelection<T extends { id: string }>(initialRows: T[
     rows,
     selectedCount,
     selectedIds,
+    setRows,
     toggleAll,
     toggleOne,
     updateRow,
