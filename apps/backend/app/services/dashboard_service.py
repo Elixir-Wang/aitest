@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from fastapi import HTTPException
-
 from app.core.db import connect
+from app.core.exceptions import api_error
 from app.repositories import dashboard_repo, project_repo
 
 
@@ -17,7 +16,7 @@ def dashboard_overview(project_id: str, days: int, actor) -> dict:
         if project_id != "all":
             selected_project = next((project for project in visible_projects if project["id"] == project_id), None)
             if not selected_project:
-                raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND", "message": "项目不存在或无权访问。"})
+                raise api_error(404, "PROJECT_NOT_FOUND", "项目不存在或无权访问。")
             project_ids = [project_id]
 
         trend = dashboard_repo.get_trend(db, project_ids, days)
@@ -83,4 +82,3 @@ def _empty_dashboard(project_id: str) -> dict:
         ],
         "trend": [],
     }
-

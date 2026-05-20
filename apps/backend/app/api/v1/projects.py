@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.core.auth import current_user, require_admin
+from app.dependencies.auth import current_user, require_admin
 from app.schemas.project import ProjectCreateIn, ProjectOut, ProjectUpdateIn
 from app.services import project_service
 

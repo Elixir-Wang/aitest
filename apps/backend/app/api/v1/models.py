@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.core.auth import current_user, require_admin
+from app.dependencies.auth import current_user, require_admin
 from app.schemas.model import ModelProviderIn, ModelProviderOut
 from app.services import model_service
 
@@ -27,4 +27,3 @@ def update_model_provider(provider_id: str, payload: ModelProviderIn, actor=Depe
 @router.delete("/providers/{provider_id}")
 def delete_model_provider(provider_id: str, actor=Depends(require_admin)) -> dict:
     return model_service.delete_model_provider(provider_id)
-

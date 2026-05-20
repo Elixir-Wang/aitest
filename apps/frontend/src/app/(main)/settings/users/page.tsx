@@ -6,6 +6,7 @@ import { Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ export default function Page() {
   const [form, setForm] = useState(emptyForm);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [loading, setLoading] = useState(true);
   const filteredRows = rows.filter((user) =>
     [user.username, user.email, roleToLabel(user.role), user.project_scope, statusToLabel(user.status), user.updated_at].some(
       (value) => value.toLowerCase().includes(searchText.trim().toLowerCase()),
@@ -68,10 +70,13 @@ export default function Page() {
   const partiallySelected = selectedCount > 0 && !allSelected;
 
   const loadUsers = useCallback(async () => {
+    setLoading(true);
     try {
       setRows(await apiRequest<UserRow[]>("/users"));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "用户列表加载失败");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -179,7 +184,7 @@ export default function Page() {
                   <Checkbox
                     aria-label="选择全部用户"
                     checked={allSelected || (partiallySelected ? "indeterminate" : false)}
-                    disabled={!canWrite}
+                    disabled={!canWrite || loading}
                     onCheckedChange={(checked) => toggleAll(Boolean(checked))}
                   />
                 </TableHead>
@@ -226,6 +231,7 @@ export default function Page() {
                   </TableCell>
                 </TableRow>
               ))}
+              {loading && filteredRows.length === 0 ? <TableLoadingRow colSpan={7} label="用户列表加载中" /> : null}
             </TableBody>
           </Table>
         </div>

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
-from app.core.auth import current_user
+from app.dependencies.auth import current_user
 from app.schemas.dashboard import DashboardOut
 from app.services import dashboard_service
 
@@ -16,4 +16,3 @@ def dashboard_overview(
     actor=Depends(current_user),
 ) -> dict:
     return dashboard_service.dashboard_overview(project_id, days, actor)
-

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Eye, Pencil, Trash2 } from "lucide-react";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -210,6 +211,7 @@ export default function Page() {
                   </TableCell>
                 </TableRow>
               ))}
+              {loading && filteredRows.length === 0 ? <TableLoadingRow colSpan={6} label="项目列表加载中" /> : null}
             </TableBody>
           </Table>
         </div>

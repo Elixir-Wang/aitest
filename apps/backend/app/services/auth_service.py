@@ -3,12 +3,11 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import HTTPException
-
 from app.core.db import connect
+from app.core.exceptions import api_error
 from app.core.security import verify_secret
 from app.repositories import session_repo, user_repo
-from app.services.serializers import serialize_user
+from app.presentation.serializers import serialize_user
 
 
 def login(username: str, password: str) -> dict:
@@ -47,6 +46,5 @@ def create_session(db, user_id: str) -> str:
     return token
 
 
-def _login_failed() -> HTTPException:
-    return HTTPException(status_code=401, detail={"code": "LOGIN_FAILED", "message": "账号或密码不正确，请联系管理员确认账号状态。"})
-
+def _login_failed():
+    return api_error(401, "LOGIN_FAILED", "账号或密码不正确，请联系管理员确认账号状态。")

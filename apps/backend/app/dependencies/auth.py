@@ -28,4 +28,3 @@ def require_admin(user: Row = Depends(current_user)) -> Row:
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail={"code": "PERMISSION_DENIED", "message": "仅管理员可执行该操作。"})
     return user
-

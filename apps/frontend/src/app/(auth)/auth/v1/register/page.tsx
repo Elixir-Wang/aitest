@@ -1,6 +1,6 @@
 import { Command } from "lucide-react";
 
-import { RegisterForm } from "../../_components/register-form";
+import { RegisterForm } from "@/app/(main)/auth/_components/register-form";
 
 export default function RegisterV1() {
   return (

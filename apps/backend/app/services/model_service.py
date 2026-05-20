@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import secrets
 
-from fastapi import HTTPException
-
 from app.core.db import connect
+from app.core.exceptions import api_error
 from app.core.security import hash_secret
 from app.repositories import model_repo
 from app.schemas.model import ModelProviderIn
-from app.services.serializers import serialize_model_provider
+from app.presentation.serializers import serialize_model_provider
 
 
 def list_model_providers(actor) -> list[dict]:
@@ -34,7 +33,7 @@ def create_model_provider(payload: ModelProviderIn, actor) -> dict:
                 created_by=actor["id"],
             )
         except Exception as exc:
-            raise HTTPException(status_code=409, detail={"code": "MODEL_CONFLICT", "message": "模型配置已存在。"}) from exc
+            raise api_error(409, "MODEL_CONFLICT", "模型配置已存在。") from exc
         row = model_repo.find_provider_by_id(db, provider_id)
         return serialize_model_provider(row, actor["role"])
 
@@ -43,7 +42,7 @@ def update_model_provider(provider_id: str, payload: ModelProviderIn, actor) -> 
     with connect() as db:
         existing = model_repo.find_provider_by_id(db, provider_id)
         if not existing:
-            raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "模型配置不存在。"})
+            raise api_error(404, "NOT_FOUND", "模型配置不存在。")
         api_key_hash = existing["api_key_hash"]
         api_key_mask = existing["api_key_mask"]
         if payload.api_key:
@@ -62,7 +61,7 @@ def update_model_provider(provider_id: str, payload: ModelProviderIn, actor) -> 
                 status=payload.status,
             )
         except Exception as exc:
-            raise HTTPException(status_code=409, detail={"code": "MODEL_CONFLICT", "message": "模型配置已存在。"}) from exc
+            raise api_error(409, "MODEL_CONFLICT", "模型配置已存在。") from exc
         row = model_repo.find_provider_by_id(db, provider_id)
         return serialize_model_provider(row, actor["role"])
 
@@ -79,4 +78,3 @@ def mask_key(api_key: str) -> str:
     if len(api_key) <= 8:
         return "****"
     return f"{api_key[:4]}****{api_key[-4:]}"
-

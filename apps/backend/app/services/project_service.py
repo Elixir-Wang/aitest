@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import secrets
 
-from fastapi import HTTPException
-
 from app.core.db import connect
+from app.core.exceptions import api_error
 from app.repositories import project_repo
 from app.schemas.project import ProjectCreateIn, ProjectUpdateIn
-from app.services.serializers import serialize_project
+from app.presentation.serializers import serialize_project
 
 STATUSES = {"active", "archived"}
 
@@ -34,7 +33,7 @@ def create_project(payload: ProjectCreateIn, actor) -> dict:
                 description=payload.description.strip(),
             )
         except Exception as exc:
-            raise HTTPException(status_code=409, detail={"code": "PROJECT_CONFLICT", "message": "项目名称已存在。"}) from exc
+            raise api_error(409, "PROJECT_CONFLICT", "项目名称已存在。") from exc
         row = project_repo.find_by_id(db, project_id)
         return serialize_project(row, actor["role"])
 
@@ -48,13 +47,13 @@ def update_project(project_id: str, payload: ProjectUpdateIn, actor) -> dict:
     with connect() as db:
         existing = project_repo.find_by_id(db, project_id)
         if not existing:
-            raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "项目不存在。"})
+            raise api_error(404, "NOT_FOUND", "项目不存在。")
         if assignments:
             assignments.append("updated_at = CURRENT_TIMESTAMP")
             try:
                 project_repo.update(db, project_id, assignments, values)
             except Exception as exc:
-                raise HTTPException(status_code=409, detail={"code": "PROJECT_CONFLICT", "message": "项目名称已存在。"}) from exc
+                raise api_error(409, "PROJECT_CONFLICT", "项目名称已存在。") from exc
         row = project_repo.find_by_id(db, project_id)
         return serialize_project(row, actor["role"])
 
@@ -67,7 +66,7 @@ def delete_project(project_id: str, actor) -> dict:
 
 def validate_status(status: str) -> None:
     if status not in STATUSES:
-        raise HTTPException(status_code=400, detail={"code": "INVALID_STATUS", "message": "项目状态不合法。"})
+        raise api_error(400, "INVALID_STATUS", "项目状态不合法。")
 
 
 def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:

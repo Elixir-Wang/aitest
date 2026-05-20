@@ -6,6 +6,7 @@ import { Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -43,6 +44,7 @@ export default function Page() {
   const [form, setForm] = useState(emptyForm);
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [loading, setLoading] = useState(true);
   const filteredRows = rows.filter((provider) =>
     [provider.provider, provider.model, provider.base_url, provider.description, provider.updated_at].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
@@ -53,10 +55,13 @@ export default function Page() {
   const partiallySelected = selectedCount > 0 && !allSelected;
 
   const loadProviders = useCallback(async () => {
+    setLoading(true);
     try {
       setRows(await apiRequest<ModelRow[]>("/models/providers"));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "模型配置加载失败");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -158,7 +163,7 @@ export default function Page() {
                   <Checkbox
                     aria-label="选择全部模型配置"
                     checked={allSelected || (partiallySelected ? "indeterminate" : false)}
-                    disabled={!canWrite}
+                    disabled={!canWrite || loading}
                     onCheckedChange={(checked) => toggleAll(Boolean(checked))}
                   />
                 </TableHead>
@@ -197,6 +202,7 @@ export default function Page() {
                   </TableCell>
                 </TableRow>
               ))}
+              {loading && filteredRows.length === 0 ? <TableLoadingRow colSpan={7} label="模型列表加载中" /> : null}
             </TableBody>
           </Table>
         </div>

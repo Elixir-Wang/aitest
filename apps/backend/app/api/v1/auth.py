@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.core.auth import current_user, get_token
+from app.dependencies.auth import current_user, get_token
 from app.schemas.auth import CurrentUserOut, LoginIn, LoginOut
 from app.services import auth_service
 
@@ -22,4 +22,3 @@ def logout(token: str = Depends(get_token)) -> dict:
 @router.get("/me", response_model=CurrentUserOut)
 def me(user=Depends(current_user)) -> dict:
     return auth_service.me(user)
-

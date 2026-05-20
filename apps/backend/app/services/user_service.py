@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import secrets
 
-from fastapi import HTTPException
-
 from app.core.db import connect
+from app.core.exceptions import api_error
 from app.core.security import hash_secret
 from app.repositories import user_repo
 from app.schemas.user import UserCreateIn, UserUpdateIn
-from app.services.serializers import serialize_user
+from app.presentation.serializers import serialize_user
 
 ROLES = {"admin", "tester", "guest"}
 STATUSES = {"enabled", "disabled"}
@@ -37,7 +36,7 @@ def create_user(payload: UserCreateIn, actor) -> dict:
                 description=payload.description,
             )
         except Exception as exc:
-            raise HTTPException(status_code=409, detail={"code": "USER_CONFLICT", "message": "用户名或邮箱已存在。"}) from exc
+            raise api_error(409, "USER_CONFLICT", "用户名或邮箱已存在。") from exc
         row = user_repo.find_by_id(db, user_id)
         return serialize_user(row, actor["role"])
 
@@ -54,17 +53,17 @@ def update_user(user_id: str, payload: UserUpdateIn, actor) -> dict:
             try:
                 user_repo.update(db, user_id, assignments, values)
             except Exception as exc:
-                raise HTTPException(status_code=409, detail={"code": "USER_CONFLICT", "message": "邮箱已存在。"}) from exc
+                raise api_error(409, "USER_CONFLICT", "邮箱已存在。") from exc
 
         row = user_repo.find_by_id(db, user_id)
         if not row:
-            raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "用户不存在。"})
+            raise api_error(404, "NOT_FOUND", "用户不存在。")
         return serialize_user(row, actor["role"])
 
 
 def delete_user(user_id: str, actor) -> dict:
     if user_id == actor["id"]:
-        raise HTTPException(status_code=400, detail={"code": "SELF_DELETE_DENIED", "message": "不能删除当前登录账号。"})
+        raise api_error(400, "SELF_DELETE_DENIED", "不能删除当前登录账号。")
     with connect() as db:
         user_repo.delete(db, user_id)
         return {"success": True}
@@ -72,9 +71,9 @@ def delete_user(user_id: str, actor) -> dict:
 
 def validate_role_status(role: str, status: str) -> None:
     if role not in ROLES:
-        raise HTTPException(status_code=400, detail={"code": "INVALID_ROLE", "message": "角色不合法。"})
+        raise api_error(400, "INVALID_ROLE", "角色不合法。")
     if status not in STATUSES:
-        raise HTTPException(status_code=400, detail={"code": "INVALID_STATUS", "message": "状态不合法。"})
+        raise api_error(400, "INVALID_STATUS", "状态不合法。")
 
 
 def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
@@ -96,4 +95,3 @@ def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
         assignments.append("password_hash = ?")
         values.append(hash_secret(updates["password"]))
     return assignments, values
-

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.core.auth import current_user, require_admin
+from app.dependencies.auth import current_user, require_admin
 from app.schemas.user import UserCreateIn, UserOut, UserUpdateIn
 from app.services import user_service
 
@@ -27,4 +27,3 @@ def update_user(user_id: str, payload: UserUpdateIn, actor=Depends(require_admin
 @router.delete("/{user_id}")
 def delete_user(user_id: str, actor=Depends(require_admin)) -> dict:
     return user_service.delete_user(user_id, actor)
-

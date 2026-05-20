@@ -52,10 +52,55 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS projects (
               id TEXT PRIMARY KEY,
               name TEXT NOT NULL UNIQUE,
+              code TEXT NOT NULL DEFAULT '',
+              default_site_url TEXT NOT NULL DEFAULT '',
               status TEXT NOT NULL CHECK(status IN ('active', 'archived')),
               description TEXT NOT NULL DEFAULT '',
+              created_by TEXT NOT NULL DEFAULT 'system',
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS source_documents (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              document_type TEXT NOT NULL,
+              original_file_path TEXT NOT NULL,
+              current_version_id TEXT,
+              status TEXT NOT NULL DEFAULT 'uploaded',
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS source_document_versions (
+              id TEXT PRIMARY KEY,
+              document_id TEXT NOT NULL,
+              version_no INTEGER NOT NULL,
+              markdown_content TEXT NOT NULL DEFAULT '',
+              file_path TEXT NOT NULL,
+              source_action TEXT NOT NULL,
+              change_summary TEXT NOT NULL DEFAULT '',
+              diff_summary TEXT NOT NULL DEFAULT '',
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
+              UNIQUE(document_id, version_no)
+            );
+
+            CREATE TABLE IF NOT EXISTS source_document_file_mappings (
+              id TEXT PRIMARY KEY,
+              document_id TEXT NOT NULL,
+              version_id TEXT NOT NULL,
+              source_file_path TEXT NOT NULL,
+              markdown_file_path TEXT NOT NULL,
+              mapping_status TEXT NOT NULL DEFAULT 'parsing',
+              conversion_summary TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
+              FOREIGN KEY(version_id) REFERENCES source_document_versions(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS dashboard_daily_stats (
@@ -72,6 +117,9 @@ def init_db() -> None:
             """
         )
         _ensure_column(db, "model_providers", "description", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(db, "projects", "code", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(db, "projects", "default_site_url", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(db, "projects", "created_by", "TEXT NOT NULL DEFAULT 'system'")
         _seed_user(db, "u-admin", "admin", "admin@example.com", "平台管理员", "admin", "admin", "enabled", "全部项目", "平台管理员，负责用户、模型和项目权限维护。")
         _sync_seed_password(db, "u-admin", "admin")
         _seed_user(db, "u-tester", "tester", "tester@example.com", "测试工程师", "tester123", "tester", "enabled", "知了平台", "负责具体项目测试资产建设。")
@@ -203,4 +251,3 @@ def _seed_dashboard_stats(db: sqlite3.Connection) -> None:
                     generated_cases,
                 ),
             )
-
