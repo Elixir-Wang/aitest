@@ -3,6 +3,13 @@ from __future__ import annotations
 from sqlite3 import Connection, Row
 
 
+def find_by_project_and_id(db: Connection, project_id: str, document_id: str) -> Row | None:
+    return db.execute(
+        "SELECT * FROM source_documents WHERE project_id = ? AND id = ?",
+        (project_id, document_id),
+    ).fetchone()
+
+
 def list_by_project(db: Connection, project_id: str) -> list[Row]:
     return db.execute(
         """
@@ -22,6 +29,16 @@ def list_by_project(db: Connection, project_id: str) -> list[Row]:
         """,
         (project_id,),
     ).fetchall()
+
+
+def delete(db: Connection, document_id: str) -> None:
+    db.execute("DELETE FROM source_documents WHERE id = ?", (document_id,))
+
+
+def delete_graph(db: Connection, document_id: str) -> None:
+    db.execute("DELETE FROM source_document_file_mappings WHERE document_id = ?", (document_id,))
+    db.execute("DELETE FROM source_document_versions WHERE document_id = ?", (document_id,))
+    db.execute("DELETE FROM source_documents WHERE id = ?", (document_id,))
 
 
 def create_document(

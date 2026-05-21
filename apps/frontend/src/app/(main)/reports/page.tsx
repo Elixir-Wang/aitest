@@ -11,16 +11,21 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const reports = [
-  { id: "r-2101", project: "知了平台", name: "UI 自动化周报", status: "完成", updated: "2026-05-19 12:30:00" },
-  { id: "r-2102", project: "知了平台", name: "失败诊断摘要", status: "处理中", updated: "2026-05-19 09:30:00" },
-  { id: "r-2103", project: "鹰眼平台", name: "Allure 报告", status: "完成", updated: "2026-05-18 10:15:00" },
-];
+const reports: Array<{ id: string; project: string; name: string; status: string; updated: string }> = [];
 
 export default function Page() {
-  const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
-    useLocalTableSelection(reports);
+  const {
+    allSelected,
+    deleteSelected,
+    partiallySelected,
+    rows,
+    selectedCount,
+    selectedIds,
+    toggleAll,
+    toggleOne,
+  } = useLocalTableSelection(reports);
   const [searchText, setSearchText] = useState("");
+
   const filteredRows = rows.filter((report) =>
     [report.project, report.name, report.status, report.updated].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
@@ -36,9 +41,9 @@ export default function Page() {
       title="报告中心"
     >
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard helper="近 30 天" icon={Activity} label="运行记录" value="94" />
-        <MetricCard helper="可跳转查看" icon={ClipboardList} label="Allure 报告" value="31" />
-        <MetricCard helper="已关闭 12 个" icon={FileClock} label="失败诊断" value="17" />
+        <MetricCard helper="真实接口接入后展示" icon={Activity} label="运行记录" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={ClipboardList} label="Allure 报告" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={FileClock} label="失败诊断" value="-" />
       </div>
       <ShellSection>
         <ListToolbar

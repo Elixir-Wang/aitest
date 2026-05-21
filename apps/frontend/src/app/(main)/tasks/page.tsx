@@ -10,41 +10,21 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const tasks = [
-  {
-    id: "t-1001",
-    project: "知了平台",
-    name: "需求分析",
-    status: "运行中",
-    updated: "2026-05-19 14:48:00",
-  },
-  {
-    id: "t-1002",
-    project: "知了平台",
-    name: "探索任务",
-    status: "等待人工",
-    updated: "2026-05-19 14:36:00",
-  },
-  {
-    id: "t-1003",
-    project: "鹰眼平台",
-    name: "用例生成",
-    status: "成功",
-    updated: "2026-05-19 13:30:00",
-  },
-  {
-    id: "t-1004",
-    project: "鹰眼平台",
-    name: "UI 自动化",
-    status: "失败",
-    updated: "2026-05-19 12:30:00",
-  },
-];
+const tasks: Array<{ id: string; project: string; name: string; status: string; updated: string }> = [];
 
 export default function Page() {
-  const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
-    useLocalTableSelection(tasks);
+  const {
+    allSelected,
+    deleteSelected,
+    partiallySelected,
+    rows,
+    selectedCount,
+    selectedIds,
+    toggleAll,
+    toggleOne,
+  } = useLocalTableSelection(tasks);
   const [searchText, setSearchText] = useState("");
+
   const filteredRows = rows.filter((task) =>
     [task.project, task.name, task.status, task.updated].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
@@ -60,10 +40,10 @@ export default function Page() {
       title="任务中心"
     >
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard helper="近 7 天 36 个" icon={ListTodo} label="全部任务" value="128" />
-        <MetricCard helper="平均耗时 12 分钟" icon={Clock3} label="运行中" value="9" />
-        <MetricCard helper="需要评审或确认" icon={AlertTriangle} label="等待人工" value="3" />
-        <MetricCard helper="失败 5 个" icon={CheckCircle2} label="成功率" value="91%" />
+        <MetricCard helper="真实接口接入后展示" icon={ListTodo} label="全部任务" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={Clock3} label="运行中" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={AlertTriangle} label="等待人工" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={CheckCircle2} label="成功率" value="-" />
       </div>
       <ShellSection>
         <ListToolbar

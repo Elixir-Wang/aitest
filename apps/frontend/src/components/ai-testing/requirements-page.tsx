@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Eye, FileText } from "lucide-react";
@@ -45,13 +46,29 @@ const statusLabels: Record<string, string> = {
   pending_review: "待评审",
 };
 
-export function RequirementsPage({ title, breadcrumbs, projectScope, description, projectId, uploadHref }: RequirementPageProps) {
+export function RequirementsPage({
+  title,
+  breadcrumbs,
+  projectScope,
+  description,
+  projectId,
+  uploadHref,
+}: RequirementPageProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchText, setSearchText] = useState("");
-  const { allSelected, partiallySelected, rows, selectedCount, selectedIds, setRows, toggleAll, toggleOne } =
-    useLocalTableSelection<RequirementRow>([]);
+  const {
+    allSelected,
+    clearSelection,
+    partiallySelected,
+    rows,
+    selectedCount,
+    selectedIds,
+    setRows,
+    toggleAll,
+    toggleOne,
+  } = useLocalTableSelection<RequirementRow>([]);
 
   useEffect(() => {
     let ignore = false;
@@ -60,7 +77,7 @@ export function RequirementsPage({ title, breadcrumbs, projectScope, description
       setLoading(true);
       setError("");
       try {
-        const data = await apiRequest<RequirementRow[]>(`/projects/${projectId}/documents`);
+        const data = await apiRequest<RequirementRow[]>(`/projects/${projectId}/requirements`);
         if (!ignore) {
           setRows(data);
         }
@@ -85,8 +102,8 @@ export function RequirementsPage({ title, breadcrumbs, projectScope, description
   const filteredRows = useMemo(
     () =>
       rows.filter((item) =>
-        [item.name, item.document_type, item.status, item.current_version?.change_summary ?? "", item.updated_at].some((value) =>
-          value.toLowerCase().includes(searchText.trim().toLowerCase()),
+        [item.name, item.document_type, item.status, item.current_version?.change_summary ?? "", item.updated_at].some(
+          (value) => value.toLowerCase().includes(searchText.trim().toLowerCase()),
         ),
       ),
     [rows, searchText],
@@ -96,8 +113,14 @@ export function RequirementsPage({ title, breadcrumbs, projectScope, description
     if (ids.length === 0) {
       return;
     }
-    setRows((current) => current.filter((row) => !ids.includes(row.id)));
-    toast.success("已从列表移除本地显示项");
+    try {
+      await Promise.all(ids.map((id) => apiRequest(`/projects/${projectId}/requirements/${id}`, { method: "DELETE" })));
+      setRows((current) => current.filter((row) => !ids.includes(row.id)));
+      clearSelection();
+      toast.success(`已删除 ${ids.length} 个需求文档`);
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "需求文档删除失败");
+    }
   }
 
   return (
@@ -111,10 +134,19 @@ export function RequirementsPage({ title, breadcrumbs, projectScope, description
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard helper="当前文档数" icon={FileText} label="需求文档" value={String(rows.length)} />
         <MetricCard helper="已上传即进入待评审" icon={FileText} label="模块覆盖" value="-" />
-        <MetricCard helper="最新版本信息" icon={FileText} label="版本记录" value={String(rows.reduce((count, item) => count + (item.current_version ? 1 : 0), 0))} />
+        <MetricCard
+          helper="最新版本信息"
+          icon={FileText}
+          label="版本记录"
+          value={String(rows.reduce((count, item) => count + (item.current_version ? 1 : 0), 0))}
+        />
       </div>
       <ShellSection>
-        {error ? <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">{error}</div> : null}
+        {error ? (
+          <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
+            {error}
+          </div>
+        ) : null}
         <ListToolbar
           createLabel="上传需求"
           onBatchDelete={() => deleteDocuments(selectedIds)}
@@ -154,17 +186,32 @@ export function RequirementsPage({ title, breadcrumbs, projectScope, description
                       onCheckedChange={(checked) => toggleOne(item.id, Boolean(checked))}
                     />
                   </TableCell>
-                  <TableCell className="font-medium">{item.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <Link
+                      className="block truncate hover:underline"
+                      href={`/projects/${projectId}/requirements/${item.id}`}
+                      title={item.name}
+                    >
+                      {item.name}
+                    </Link>
+                  </TableCell>
                   <TableCell>{item.document_type}</TableCell>
                   <TableCell>
                     <Badge variant={item.status === "parsing" ? "outline" : "secondary"}>
-                      {item.status === "parsing" ? <ProcessingState label={statusLabels[item.status]} /> : (statusLabels[item.status] ?? item.status)}
+                      {item.status === "parsing" ? (
+                        <ProcessingState label={statusLabels[item.status]} />
+                      ) : (
+                        (statusLabels[item.status] ?? item.status)
+                      )}
                     </Badge>
                   </TableCell>
                   <TableCell>{item.current_version ? `v${item.current_version.version_no}` : "-"}</TableCell>
                   <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                   <TableCell>
-                    <RowActions actions={[{ label: "查看", href: "#", icon: Eye }]} label={`打开 ${item.name} 操作菜单`} />
+                    <RowActions
+                      actions={[{ label: "查看", href: `/projects/${projectId}/requirements/${item.id}`, icon: Eye }]}
+                      label={`打开 ${item.name} 操作菜单`}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

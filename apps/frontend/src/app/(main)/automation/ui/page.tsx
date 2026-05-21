@@ -10,11 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const automationJobs = [
-  { id: "ui-001", title: "登录自动化", status: "运行中", suite: "核心回归", updated: "2026-05-19 14:48:00" },
-  { id: "ui-002", title: "项目管理自动化", status: "通过", suite: "冒烟", updated: "2026-05-19 10:30:00" },
-  { id: "ui-003", title: "报告中心自动化", status: "待执行", suite: "全量回归", updated: "2026-05-18 10:15:00" },
-];
+const automationJobs: Array<{ id: string; title: string; status: string; suite: string; updated: string }> = [];
 
 export default function Page() {
   const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
@@ -34,9 +30,9 @@ export default function Page() {
       title="UI 自动化"
     >
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard helper="1 个运行中" icon={PlaySquare} label="自动化任务" value="3" />
-        <MetricCard helper="覆盖 2 个套件" icon={PlaySquare} label="执行套件" value="3" />
-        <MetricCard helper="1 个待执行" icon={PlaySquare} label="待执行" value="1" />
+        <MetricCard helper="真实接口接入后展示" icon={PlaySquare} label="自动化任务" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={PlaySquare} label="执行套件" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={PlaySquare} label="待执行" value="-" />
       </div>
       <ShellSection>
         <ListToolbar

@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import secrets
+import shutil
 from pathlib import Path
 
 from fastapi import UploadFile
 
+from app.agents.document_parser import requirement_file_parser_agent
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir
 from app.repositories import document_repo
 
 PARSING_STATUS = "parsing"
+READY_STATUS = "pending_review"
 
 
 def list_documents(project_id: str, actor) -> list[dict]:
@@ -48,8 +51,20 @@ async def upload_documents(
             markdown_path.parent.mkdir(parents=True, exist_ok=True)
             original_path.write_bytes(raw_bytes)
 
-            markdown_content = _to_markdown(safe_filename, raw_bytes)
-            markdown_path.write_text(markdown_content, encoding="utf-8")
+            is_markdown = safe_filename.lower().endswith((".md", ".markdown"))
+            if is_markdown:
+                markdown_text = _decode_text(raw_bytes)
+                parsed_summary = "Markdown 文件直接保存，无需解析。"
+                document_status = READY_STATUS
+                mapping_status = READY_STATUS
+            else:
+                parsed_document = requirement_file_parser_agent.parse(safe_filename, raw_bytes)
+                markdown_text = parsed_document.markdown
+                parsed_summary = parsed_document.summary
+                document_status = PARSING_STATUS
+                mapping_status = PARSING_STATUS
+
+            markdown_path.write_text(markdown_text, encoding="utf-8")
 
             document_repo.create_document(
                 db,
@@ -58,7 +73,7 @@ async def upload_documents(
                 name=name or safe_filename,
                 document_type=document_type,
                 original_file_path=str(original_path),
-                status=PARSING_STATUS,
+                status=document_status,
                 created_by=actor["id"],
             )
             document_repo.create_version(
@@ -79,10 +94,10 @@ async def upload_documents(
                 version_id=version_id,
                 source_file_path=str(original_path),
                 markdown_file_path=str(markdown_path),
-                mapping_status=PARSING_STATUS,
-                conversion_summary="已生成 Markdown 工作稿，等待后续解析任务处理。",
+                mapping_status=mapping_status,
+                conversion_summary=parsed_summary,
             )
-            document_repo.update_current_version(db, document_id, version_id, PARSING_STATUS)
+            document_repo.update_current_version(db, document_id, version_id, document_status)
             created.append(_serialize_document_from_db(db, document_id, actor["role"]))
     return created
 
@@ -103,6 +118,59 @@ def get_document_versions(document_id: str) -> list[dict]:
             }
             for row in rows
         ]
+
+
+def get_document_detail(project_id: str, document_id: str, actor) -> dict:
+    with connect() as db:
+        row = db.execute(
+            """
+            SELECT d.*,
+                   v.id AS version_id,
+                   v.version_no AS version_no,
+                   v.file_path AS markdown_file_path,
+                   v.source_action AS source_action,
+                   v.change_summary AS change_summary,
+                   v.diff_summary AS diff_summary,
+                   v.created_by AS version_created_by,
+                   v.created_at AS version_created_at
+            FROM source_documents d
+            LEFT JOIN source_document_versions v ON v.id = d.current_version_id
+            WHERE d.project_id = ? AND d.id = ?
+            """,
+            (project_id, document_id),
+        ).fetchone()
+        if row is None:
+            raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
+
+        document = serialize_document(row, actor["role"])
+        versions = get_document_versions(document_id)
+        markdown_content = ""
+        current_version = document["current_version"]
+        if current_version and current_version["file_path"]:
+            markdown_path = Path(current_version["file_path"])
+            if markdown_path.exists():
+                markdown_content = markdown_path.read_text(encoding="utf-8")
+
+        return {
+            "document": document,
+            "versions": versions,
+            "markdown_content": markdown_content,
+        }
+
+
+def delete_document(project_id: str, document_id: str) -> dict:
+    with connect() as db:
+        existing = document_repo.find_by_project_and_id(db, project_id, document_id)
+        if not existing:
+            raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
+
+        document_dir = project_requirement_dir(project_id, document_id)
+        document_repo.delete_graph(db, document_id)
+
+    if document_dir.exists():
+        shutil.rmtree(document_dir)
+
+    return {"success": True}
 
 
 def serialize_document(row, actor_role: str) -> dict:
@@ -156,18 +224,14 @@ def _serialize_document_from_db(db, document_id: str, actor_role: str) -> dict:
     return serialize_document(row, actor_role)
 
 
-def _to_markdown(filename: str, raw_bytes: bytes) -> str:
-    try:
-        text = raw_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        text = raw_bytes.decode("utf-8", errors="ignore")
-
-    lowered = filename.lower()
-    if lowered.endswith((".md", ".markdown", ".txt")):
-        return text
-
-    return f"# {filename}\n\n已上传原始文件，当前版本暂存为文本预览。\n\n```\n{text[:4000]}\n```"
-
-
 def _safe_filename(filename: str) -> str:
     return Path(filename).name.replace("/", "_").replace("\\", "_")
+
+
+def _decode_text(raw_bytes: bytes) -> str:
+    for encoding in ("utf-8", "utf-8-sig", "gb18030"):
+        try:
+            return raw_bytes.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw_bytes.decode("utf-8", errors="ignore")

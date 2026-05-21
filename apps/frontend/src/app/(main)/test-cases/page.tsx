@@ -10,11 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const testCases = [
-  { id: "tc-001", title: "登录成功", status: "已采纳", module: "登录与权限", updated: "2026-05-19 14:48:00" },
-  { id: "tc-002", title: "项目列表筛选", status: "待审", module: "项目管理", updated: "2026-05-19 10:30:00" },
-  { id: "tc-003", title: "报告导出", status: "已采纳", module: "报告中心", updated: "2026-05-18 10:15:00" },
-];
+const testCases: Array<{ id: string; title: string; status: string; module: string; updated: string }> = [];
 
 export default function Page() {
   const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
@@ -34,9 +30,9 @@ export default function Page() {
       title="测试用例"
     >
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard helper="已采纳 2 个" icon={ClipboardCheck} label="测试用例" value="3" />
-        <MetricCard helper="待审 1 个" icon={ClipboardCheck} label="采纳状态" value="2/3" />
-        <MetricCard helper="覆盖 3 个模块" icon={ClipboardCheck} label="模块覆盖" value="3" />
+        <MetricCard helper="真实接口接入后展示" icon={ClipboardCheck} label="测试用例" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={ClipboardCheck} label="采纳状态" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={ClipboardCheck} label="模块覆盖" value="-" />
       </div>
       <ShellSection>
         <ListToolbar

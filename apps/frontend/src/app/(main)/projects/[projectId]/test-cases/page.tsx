@@ -2,21 +2,22 @@
 
 import { useState } from "react";
 
+import { useParams } from "next/navigation";
+
 import { ClipboardCheck, Eye } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
+import { useProjectName } from "@/components/ai-testing/use-project-name";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const testCases = [
-  { id: "tc-001", title: "登录流程", status: "待评审", coverage: "高", owner: "张敏", updated: "2026-05-19 12:30:00" },
-  { id: "tc-002", title: "项目创建", status: "已采纳", coverage: "中", owner: "李强", updated: "2026-05-19 08:30:00" },
-  { id: "tc-003", title: "报告查看", status: "待采纳", coverage: "低", owner: "王磊", updated: "2026-05-18 10:15:00" },
-];
+const testCases: Array<{ id: string; title: string; status: string; coverage: string; updated: string }> = [];
 
 export default function Page() {
+  const params = useParams<{ projectId: string }>();
+  const projectName = useProjectName(params.projectId);
   const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
     useLocalTableSelection(testCases);
   const [searchText, setSearchText] = useState("");
@@ -28,16 +29,16 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={["项目", "知了平台", "测试用例"]}
+      breadcrumbs={["项目", projectName, "测试用例"]}
       description="从知识库生成测试用例，支持人工评审、采纳和覆盖矩阵追踪。"
       projectScope="project"
       tabs={["用例列表", "用例评审", "覆盖矩阵", "版本历史"]}
       title="测试用例"
     >
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard helper="采纳 351 条" icon={ClipboardCheck} label="用例总数" value="426" />
-        <MetricCard helper="高优先级 6 条" icon={ClipboardCheck} label="待评审" value="28" />
-        <MetricCard helper="较上次 +9%" icon={ClipboardCheck} label="覆盖率" value="76%" />
+        <MetricCard helper="真实接口接入后展示" icon={ClipboardCheck} label="用例总数" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={ClipboardCheck} label="待评审" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={ClipboardCheck} label="覆盖率" value="-" />
       </div>
       <ShellSection>
         <ListToolbar

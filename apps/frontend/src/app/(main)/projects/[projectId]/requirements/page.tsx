@@ -1,14 +1,40 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { useParams } from "next/navigation";
 
 import { RequirementsPage } from "@/components/ai-testing/requirements-page";
-import { projectOptions } from "@/stores/project-context-store";
+import { apiRequest, type ApiProject } from "@/lib/api-client";
 
 export default function Page() {
   const params = useParams<{ projectId: string }>();
   const projectId = params.projectId;
-  const projectName = projectOptions.find((project) => project.id === projectId)?.name ?? "项目";
+  const [projectName, setProjectName] = useState("项目");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadProjectName() {
+      try {
+        const projects = await apiRequest<ApiProject[]>("/projects");
+        const project = projects.find((item) => item.id === projectId);
+        if (!ignore) {
+          setProjectName(project?.name ?? "项目");
+        }
+      } catch {
+        if (!ignore) {
+          setProjectName("项目");
+        }
+      }
+    }
+
+    void loadProjectName();
+
+    return () => {
+      ignore = true;
+    };
+  }, [projectId]);
 
   return (
     <RequirementsPage

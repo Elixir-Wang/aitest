@@ -3,6 +3,7 @@
 import { FileUpload } from "@ark-ui/react/file-upload";
 import { File as FileIcon, FileArchive, FileSpreadsheet, FileText, Headphones, Image, Video, X } from "lucide-react";
 
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
 function getFileIcon(file: File) {
@@ -37,6 +38,9 @@ type FileUpload1Props = {
   maxFiles?: number;
   maxFileSize?: number;
   accept?: string | string[] | Record<string, string[]>;
+  hint?: string;
+  title?: string;
+  uploadStates?: Record<string, { progress: number; status: "idle" | "uploading" | "completed" | "error" }>;
 };
 
 export default function FileUpload1({
@@ -46,6 +50,9 @@ export default function FileUpload1({
   maxFiles = 10,
   maxFileSize = 100 * 1024 * 1024,
   accept,
+  hint,
+  title = "上传需求文件",
+  uploadStates = {},
 }: FileUpload1Props) {
   return (
     <FileUpload.Root
@@ -64,9 +71,11 @@ export default function FileUpload1({
                 <FileText className="size-5 text-muted-foreground" />
               </div>
               <div className="space-y-2 text-center">
-                <h3 className="font-medium text-sm">上传需求文件</h3>
+                <h3 className="font-medium text-sm">{title}</h3>
                 <p className="text-muted-foreground text-sm">拖拽文件到此处，或点击选择文件</p>
-                <p className="text-muted-foreground text-xs">最多 {maxFiles} 个文件，单文件不超过 {Math.round(maxFileSize / 1024 / 1024)}MB</p>
+                <p className="text-muted-foreground text-xs">
+                  {hint ?? `最多 ${maxFiles} 个文件，单文件不超过 ${Math.round(maxFileSize / 1024 / 1024)}MB`}
+                </p>
               </div>
             </FileUpload.Dropzone>
 
@@ -74,7 +83,11 @@ export default function FileUpload1({
               <div className="space-y-3">
                 <FileUpload.ItemGroup>
                   {acceptedFiles.map((file) => (
-                    <FileUpload.Item file={file} key={`${file.name}-${file.lastModified}`}>
+                    <FileUpload.Item file={file} key={`${file.name}-${file.lastModified}-${file.size}`}>
+                      {(() => {
+                        const fileKey = `${file.name}-${file.lastModified}-${file.size}`;
+                        const uploadState = uploadStates[fileKey];
+                        return (
                       <div className="flex items-center gap-3 rounded-lg border bg-background p-3">
                         <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted/40">
                           {file.type.startsWith("image/") ? (
@@ -88,11 +101,30 @@ export default function FileUpload1({
                         <div className="min-w-0 flex-1">
                           <FileUpload.ItemName className="truncate font-medium text-sm" />
                           <FileUpload.ItemSizeText className="text-muted-foreground text-xs" />
+                          {uploadState ? (
+                            <div className="mt-2 space-y-1">
+                              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                                <span>
+                                  {uploadState.status === "uploading"
+                                    ? "上传中"
+                                    : uploadState.status === "completed"
+                                      ? "已完成"
+                                      : uploadState.status === "error"
+                                        ? "上传失败"
+                                        : "等待上传"}
+                                </span>
+                                <span>{uploadState.progress}%</span>
+                              </div>
+                              <Progress className="h-1.5" value={uploadState.progress} />
+                            </div>
+                          ) : null}
                         </div>
                         <FileUpload.ItemDeleteTrigger className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
                           <X className="size-4" />
                         </FileUpload.ItemDeleteTrigger>
                       </div>
+                        );
+                      })()}
                     </FileUpload.Item>
                   ))}
                 </FileUpload.ItemGroup>

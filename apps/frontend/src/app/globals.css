@@ -162,6 +162,410 @@ These serve as the fallback; there is no separate default.css file. */
   }
 }
 
+@layer components {
+  .markdown-preview {
+    --markdown-accent: var(--primary);
+    --markdown-accent-deep: var(--accent-foreground);
+    --markdown-accent-soft: color-mix(in srgb, var(--primary), transparent 86%);
+    --markdown-accent-softer: color-mix(in srgb, var(--primary), transparent 94%);
+    --markdown-border: color-mix(in srgb, var(--border), var(--primary) 16%);
+    --markdown-code-bg: color-mix(in srgb, var(--muted), white 38%);
+    position: relative;
+    border: 1px solid var(--markdown-border);
+    border-radius: 10px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--card), var(--primary) 3%), var(--card) 220px),
+      radial-gradient(circle at 18px 18px, var(--markdown-accent-soft) 1px, transparent 1.5px);
+    background-size:
+      auto,
+      22px 22px;
+    color: var(--card-foreground);
+    font-size: 0.95rem;
+    line-height: 1.9;
+    padding: clamp(1rem, 2vw, 1.75rem);
+    transition:
+      border-color 0.25s ease,
+      box-shadow 0.25s ease,
+      background-position 0.45s ease;
+  }
+
+  .markdown-preview:hover {
+    border-color: color-mix(in srgb, var(--markdown-accent), var(--border) 45%);
+    box-shadow: 0 14px 35px color-mix(in srgb, var(--primary), transparent 88%);
+  }
+
+  .markdown-preview-empty {
+    color: var(--muted-foreground);
+    min-height: 180px;
+  }
+
+  .markdown-preview > *:first-child {
+    margin-top: 0;
+  }
+
+  .markdown-preview > *:last-child {
+    margin-bottom: 0;
+  }
+
+  .markdown-preview h1,
+  .markdown-preview h2,
+  .markdown-preview h3,
+  .markdown-preview h4,
+  .markdown-preview h5,
+  .markdown-preview h6 {
+    color: var(--foreground);
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1.45;
+    transition:
+      color 0.25s ease,
+      transform 0.25s ease;
+  }
+
+  .markdown-preview h1 {
+    margin: 0 auto 1.75rem;
+    width: fit-content;
+    max-width: 100%;
+    padding-bottom: 0.65rem;
+    text-align: center;
+    font-size: clamp(1.45rem, 1.2rem + 0.8vw, 2rem);
+    position: relative;
+  }
+
+  .markdown-preview h1:hover {
+    color: var(--markdown-accent-deep);
+    transform: translateY(-2px);
+  }
+
+  .markdown-preview h1::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 3.5rem;
+    height: 0.25rem;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--markdown-accent-deep), var(--markdown-accent));
+    transform: translateX(-50%);
+    transition: width 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
+  }
+
+  .markdown-preview h1:hover::after {
+    width: 100%;
+  }
+
+  .markdown-preview h2 {
+    display: inline-flex;
+    max-width: 100%;
+    margin: 1.8rem 0 0.9rem;
+    border-radius: 8px;
+    background: linear-gradient(
+      90deg,
+      var(--markdown-accent-deep),
+      var(--markdown-accent),
+      var(--markdown-accent-deep)
+    );
+    background-position: 0 center;
+    background-size: 200% auto;
+    color: var(--primary-foreground);
+    font-size: 1.22rem;
+    padding: 0.28rem 0.75rem;
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--primary), transparent 82%);
+    transition:
+      background-position 0.45s ease,
+      box-shadow 0.25s ease,
+      transform 0.25s ease;
+  }
+
+  .markdown-preview h2:hover {
+    background-position: 100% center;
+    box-shadow: 0 12px 28px color-mix(in srgb, var(--primary), transparent 76%);
+    transform: scale(1.01) translateY(-1px);
+  }
+
+  .markdown-preview h3 {
+    position: relative;
+    margin: 1.55rem 0 0.75rem;
+    padding-left: 0.8rem;
+    font-size: 1.1rem;
+    transition:
+      color 0.25s ease,
+      padding-left 0.25s ease;
+  }
+
+  .markdown-preview h3:hover {
+    color: var(--markdown-accent-deep);
+    padding-left: 1.1rem;
+  }
+
+  .markdown-preview h3::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.35em;
+    bottom: 0.35em;
+    width: 4px;
+    border-radius: 999px;
+    background: var(--markdown-accent);
+    transition:
+      width 0.25s ease,
+      top 0.25s ease,
+      bottom 0.25s ease;
+  }
+
+  .markdown-preview h3:hover::before {
+    top: 0.22em;
+    bottom: 0.22em;
+    width: 6px;
+  }
+
+  .markdown-preview h4 {
+    margin: 1.25rem 0 0.5rem;
+    font-size: 1rem;
+    transition:
+      color 0.25s ease,
+      transform 0.25s ease;
+  }
+
+  .markdown-preview h4::before {
+    content: "";
+    display: inline-block;
+    width: 0.48rem;
+    height: 0.48rem;
+    margin-right: 0.45rem;
+    border-radius: 999px;
+    background: var(--markdown-accent);
+    vertical-align: 0.08rem;
+    transition:
+      box-shadow 0.25s ease,
+      transform 0.25s ease;
+  }
+
+  .markdown-preview h4:hover {
+    color: var(--markdown-accent-deep);
+    transform: translateX(4px);
+  }
+
+  .markdown-preview h4:hover::before {
+    box-shadow: 0 0 0 4px var(--markdown-accent-softer);
+    transform: scale(1.25);
+  }
+
+  .markdown-preview p,
+  .markdown-preview li {
+    color: color-mix(in srgb, var(--foreground), var(--muted-foreground) 18%);
+  }
+
+  .markdown-preview p {
+    margin: 0.65rem 0;
+  }
+
+  .requirement-document-preview p {
+    text-indent: 2em;
+  }
+
+  .requirement-document-preview blockquote p,
+  .requirement-document-preview li p,
+  .requirement-document-preview table p {
+    text-indent: 0;
+  }
+
+  .markdown-preview ul,
+  .markdown-preview ol {
+    margin: 0.5rem 0 1rem;
+    padding-left: 1.45rem;
+  }
+
+  .markdown-preview li {
+    margin: 0.32rem 0;
+    padding-left: 0.2rem;
+  }
+
+  .markdown-preview li::marker {
+    color: var(--markdown-accent);
+    font-weight: 700;
+  }
+
+  .markdown-preview blockquote {
+    margin: 1.1rem 0;
+    border-left: 4px solid var(--markdown-accent);
+    border-radius: 8px;
+    background: var(--markdown-accent-softer);
+    padding: 0.8rem 1rem;
+    color: var(--muted-foreground);
+    transition:
+      background-color 0.25s ease,
+      box-shadow 0.25s ease,
+      transform 0.25s ease;
+  }
+
+  .markdown-preview blockquote:hover {
+    background: color-mix(in srgb, var(--markdown-accent-softer), white 22%);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--primary), transparent 88%);
+    transform: translateY(-2px);
+  }
+
+  .markdown-preview blockquote p {
+    color: inherit;
+  }
+
+  .markdown-preview a {
+    color: var(--markdown-accent-deep);
+    font-weight: 600;
+    text-decoration-color: color-mix(in srgb, var(--markdown-accent), transparent 45%);
+    text-underline-offset: 0.22em;
+    transition:
+      background-size 0.25s ease,
+      color 0.2s ease;
+    background-image: linear-gradient(var(--markdown-accent-softer), var(--markdown-accent-softer));
+    background-position: 0 100%;
+    background-repeat: no-repeat;
+    background-size: 0 45%;
+    border-radius: 4px;
+  }
+
+  .markdown-preview a:hover {
+    color: var(--markdown-accent);
+    background-size: 100% 45%;
+  }
+
+  .markdown-preview strong {
+    color: var(--markdown-accent-deep);
+    font-weight: 700;
+  }
+
+  .markdown-preview code {
+    border-radius: 6px;
+    background: var(--markdown-code-bg);
+    color: var(--markdown-accent-deep);
+    font-family: var(--font-mono), "Cascadia Code", Consolas, monospace;
+    font-size: 0.9em;
+    padding: 0.15rem 0.36rem;
+    transition:
+      background-color 0.2s ease,
+      box-shadow 0.2s ease,
+      color 0.2s ease,
+      transform 0.2s ease;
+  }
+
+  .markdown-preview :not(pre) > code:hover {
+    background: var(--markdown-accent);
+    box-shadow: 0 4px 10px color-mix(in srgb, var(--primary), transparent 78%);
+    color: var(--primary-foreground);
+  }
+
+  .markdown-preview pre {
+    margin: 1rem 0;
+    overflow: auto;
+    border: 1px solid var(--markdown-border);
+    border-radius: 8px;
+    background: #f8fafc;
+    padding: 1rem;
+    line-height: 1.65;
+    transition:
+      border-color 0.25s ease,
+      box-shadow 0.25s ease,
+      transform 0.25s ease;
+  }
+
+  .markdown-preview pre:hover {
+    border-color: color-mix(in srgb, var(--markdown-accent), var(--border) 25%);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--primary), transparent 88%);
+    transform: translateY(-2px);
+  }
+
+  .markdown-preview pre code {
+    background: transparent;
+    color: #334155;
+    padding: 0;
+  }
+
+  .markdown-preview table {
+    display: block;
+    width: 100%;
+    margin: 1.15rem 0;
+    overflow: auto;
+    border-spacing: 0;
+    border-collapse: separate;
+    border: 1px solid var(--markdown-border);
+    border-radius: 8px;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    transition:
+      border-color 0.25s ease,
+      box-shadow 0.25s ease;
+  }
+
+  .markdown-preview table:hover {
+    border-color: color-mix(in srgb, var(--markdown-accent), var(--border) 35%);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--primary), transparent 90%);
+  }
+
+  .markdown-preview th,
+  .markdown-preview td {
+    min-width: 8rem;
+    border-right: 1px solid color-mix(in srgb, var(--border), transparent 18%);
+    border-bottom: 1px solid color-mix(in srgb, var(--border), transparent 18%);
+    padding: 0.55rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+    transition:
+      background-color 0.2s ease,
+      box-shadow 0.2s ease,
+      color 0.2s ease;
+  }
+
+  .markdown-preview th:last-child,
+  .markdown-preview td:last-child {
+    border-right: 0;
+  }
+
+  .markdown-preview tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .markdown-preview th {
+    background: var(--markdown-accent-softer);
+    color: var(--markdown-accent-deep);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .markdown-preview tbody tr:hover td {
+    background: color-mix(in srgb, var(--markdown-accent-softer), white 35%);
+  }
+
+  .markdown-preview tbody td:hover {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--markdown-accent), transparent 55%);
+    color: var(--markdown-accent-deep);
+  }
+
+  .markdown-preview hr {
+    margin: 1.5rem 0;
+    border: 0;
+    border-top: 1px dashed color-mix(in srgb, var(--markdown-accent), transparent 45%);
+    transform: scaleX(0.88);
+    transition:
+      border-color 0.25s ease,
+      transform 0.25s ease;
+  }
+
+  .markdown-preview hr:hover {
+    border-color: var(--markdown-accent);
+    transform: scaleX(1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .markdown-preview,
+    .markdown-preview *,
+    .markdown-preview *::before,
+    .markdown-preview *::after {
+      transition: none !important;
+      transform: none !important;
+    }
+  }
+}
+
 @layer utilities {
   [data-theme-preset]:not([data-theme-preset="default"]) .shadow-2xs {
     box-shadow: var(--shadow-2xs);

@@ -1,19 +1,61 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+import { useParams } from "next/navigation";
+
 import { FolderCog, ShieldCheck, SlidersHorizontal } from "lucide-react";
 
-import { MetricCard, PageShell, ShellSection, StatusBadge } from "@/components/ai-testing/page-shell";
+import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Button } from "@/components/ui/button";
+import { apiRequest, type ApiProject } from "@/lib/api-client";
+import { useProjectContextStore } from "@/stores/project-context-store";
 
 export default function Page() {
+  const params = useParams<{ projectId: string }>();
+  const projectId = params.projectId;
+  const hydrate = useProjectContextStore((state) => state.hydrate);
+  const [project, setProject] = useState<ApiProject | null>(null);
+  const projectName = project?.name ?? "项目";
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadProject() {
+      try {
+        const projects = await apiRequest<ApiProject[]>("/projects");
+        const nextProject = projects.find((item) => item.id === projectId) ?? null;
+        if (!ignore) {
+          setProject(nextProject);
+        }
+      } catch {
+        if (!ignore) {
+          setProject(null);
+        }
+      }
+    }
+
+    void loadProject();
+
+    return () => {
+      ignore = true;
+    };
+  }, [projectId]);
+
   return (
     <PageShell
-      breadcrumbs={["项目工作区", "项目", "知了平台", "项目设置"]}
+      breadcrumbs={["项目工作区", "项目", projectName, "项目设置"]}
       description="维护项目基础信息、成员权限、环境配置和测试资产策略。"
       primaryAction="保存设置"
       projectScope="project"
       activeTab="项目设置"
       tabs={[
-        { label: "项目概览", href: "/projects/zhiliao" },
-        { label: "项目设置", href: "/projects/zhiliao/settings" },
+        { label: "项目概览", href: `/projects/${projectId}` },
+        { label: "项目设置", href: `/projects/${projectId}/settings` },
         "成员",
         "环境配置",
       ]}
@@ -29,16 +71,14 @@ export default function Page() {
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="font-medium text-sm">基础设置</h2>
-              <p className="text-muted-foreground text-xs">项目名称、编码、负责人和说明。</p>
+              <p className="text-muted-foreground text-xs">项目名称、状态和说明。</p>
             </div>
-            <StatusBadge>本地示例</StatusBadge>
           </div>
           <div className="grid gap-3 text-sm md:grid-cols-2">
-            <p>项目名称：知了平台</p>
-            <p>项目编码：ZL-001</p>
-            <p>负责人：张敏</p>
-            <p>项目状态：活跃</p>
-            <p className="md:col-span-2">说明：用于承载 PRD 指定的需求、探索、知识库和测试资产链路。</p>
+            <p>项目名称：{project?.name ?? "-"}</p>
+            <p>项目 ID：{projectId}</p>
+            <p>项目状态：{project?.status === "archived" ? "归档" : "活跃"}</p>
+            <p className="md:col-span-2">说明：{project?.description ?? "-"}</p>
           </div>
         </ShellSection>
         <ShellSection>

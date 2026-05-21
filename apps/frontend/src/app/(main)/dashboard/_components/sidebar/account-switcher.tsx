@@ -4,10 +4,19 @@ import { useState } from "react";
 
 import { useRouter } from "next/navigation";
 
-import { Check, LogOut, Pencil } from "lucide-react";
+import { LogOut, Pencil } from "lucide-react";
+import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,7 +24,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn, getInitials } from "@/lib/utils";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { getInitials } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 
 const roleLabels: Record<string, string> = {
@@ -37,68 +48,137 @@ export function AccountSwitcher({
 }) {
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
+  const storedUser = useAuthStore((state) => state.user);
+  const updateUser = useAuthStore((state) => state.updateUser);
   const [activeUser, setActiveUser] = useState(users[0]);
+  const displayUser = {
+    avatar: activeUser?.avatar ?? "",
+    email: storedUser?.email || activeUser?.email || "",
+    id: activeUser?.id ?? "current",
+    name: storedUser?.name || activeUser?.name || "",
+    role: storedUser?.role || activeUser?.role || "guest",
+  };
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [form, setForm] = useState({
+    email: displayUser.email,
+    name: displayUser.name,
+  });
 
-  if (!activeUser) {
+  if (!displayUser.name) {
     return null;
   }
 
+  function openEditDialog() {
+    setForm({
+      email: displayUser.email,
+      name: displayUser.name,
+    });
+    setDialogOpen(true);
+  }
+
+  function submitUserInfo() {
+    const name = form.name.trim();
+    const email = form.email.trim();
+
+    if (!name || !email) {
+      return;
+    }
+
+    updateUser({
+      email,
+      name,
+      role: displayUser.role as "admin" | "tester" | "guest",
+    });
+    setActiveUser((current) => (current ? { ...current, email, name } : current));
+    setDialogOpen(false);
+    toast.success("用户信息已更新");
+  }
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button aria-label="打开用户菜单" size="icon">
-          <Avatar className="size-5 rounded-md after:hidden">
-            <AvatarImage src={activeUser.avatar || undefined} alt={activeUser.name} />
-            <AvatarFallback className="rounded-md bg-transparent text-current text-xs">
-              {getInitials(activeUser.name)}
-            </AvatarFallback>
-          </Avatar>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="min-w-56 space-y-1 rounded-lg" side="bottom" align="end" sideOffset={4}>
-        {users.map((user) => (
-          <DropdownMenuItem
-            key={user.email}
-            className={cn("p-0", user.id === activeUser.id && "bg-accent/50")}
-            aria-current={user.id === activeUser.id ? "true" : undefined}
-            onClick={() => setActiveUser(user)}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            aria-label="打开用户菜单"
+            className="h-8 max-w-40 justify-start gap-2 px-2"
+            size="sm"
+            variant="ghost"
           >
-            <div className="flex w-full items-center gap-2 px-1 py-1.5">
+            <Avatar className="size-5 rounded-md after:hidden">
+              <AvatarImage src={displayUser.avatar || undefined} alt={displayUser.name} />
+              <AvatarFallback className="rounded-md bg-muted text-current text-xs">
+                {getInitials(displayUser.name)}
+              </AvatarFallback>
+            </Avatar>
+            <span className="min-w-0 truncate text-sm">{displayUser.name}</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-fit min-w-44 space-y-1 rounded-lg" side="bottom" align="end" sideOffset={4}>
+          <DropdownMenuItem className="p-0" aria-current="true">
+            <div className="flex w-fit max-w-52 items-center gap-2 px-1 py-1.5">
               <Avatar className="size-9 rounded-lg">
-                <AvatarImage src={user.avatar || undefined} alt={user.name} />
-                <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                <AvatarImage src={displayUser.avatar || undefined} alt={displayUser.name} />
+                <AvatarFallback>{getInitials(displayUser.name)}</AvatarFallback>
               </Avatar>
-              <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{user.name}</span>
-                <span className="truncate text-xs">{roleLabels[user.role] ?? user.role}</span>
+              <div className="grid min-w-0 text-left text-sm leading-tight">
+                <span className="truncate font-semibold">{displayUser.name}</span>
+                <span className="truncate text-xs">{roleLabels[displayUser.role] ?? displayUser.role}</span>
               </div>
-              <span
-                className={cn(
-                  "mr-1 flex size-5 items-center justify-center rounded-full text-primary opacity-0",
-                  user.id === activeUser.id && "opacity-100",
-                )}
-              >
-                <Check aria-hidden="true" />
-              </span>
             </div>
           </DropdownMenuItem>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem>
-          <Pencil />
-          编辑
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={() => {
-            logout();
-            router.replace("/auth/v1/login");
-          }}
-        >
-          <LogOut />
-          登出
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={openEditDialog}>
+            <Pencil />
+            编辑
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => {
+              logout();
+              router.replace("/auth/v1/login");
+            }}
+          >
+            <LogOut />
+            登出
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Dialog onOpenChange={setDialogOpen} open={dialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>编辑用户信息</DialogTitle>
+            <DialogDescription>维护右上角展示的用户名和邮箱。</DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="account-name">用户名</FieldLabel>
+              <Input
+                id="account-name"
+                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                placeholder="请输入用户名"
+                value={form.name}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="account-email">邮箱</FieldLabel>
+              <Input
+                id="account-email"
+                onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                placeholder="请输入邮箱"
+                value={form.email}
+              />
+            </Field>
+          </FieldGroup>
+          <DialogFooter>
+            <Button onClick={() => setDialogOpen(false)} type="button" variant="outline">
+              取消
+            </Button>
+            <Button disabled={!form.name.trim() || !form.email.trim()} onClick={submitUserInfo} type="button">
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

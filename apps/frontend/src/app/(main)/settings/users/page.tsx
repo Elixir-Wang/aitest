@@ -23,15 +23,17 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
+  type ApiProject,
+  type ApiUser,
   apiRequest,
   formatDateTime,
   labelToRole,
   labelToStatus,
   roleToLabel,
   statusToLabel,
-  type ApiUser,
 } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
+import { useProjectContextStore } from "@/stores/project-context-store";
 
 type UserRow = ApiUser;
 
@@ -46,12 +48,14 @@ const emptyForm = {
 };
 
 const roleOptions = ["管理员", "测试工程师", "访客"];
-const projectOptions = ["全部项目", "知了平台", "鹰眼平台"];
 const statusOptions = ["启用", "禁用"];
 
 export default function Page() {
   const currentUser = useAuthStore((state) => state.user);
   const canWrite = currentUser?.role === "admin";
+  const hydrateProjectContext = useProjectContextStore((state) => state.hydrate);
+  const [projects, setProjects] = useState<ApiProject[]>([]);
+  const projectScopeOptions = ["全部项目", ...projects.map((project) => project.name)];
   const [rows, setRows] = useState<UserRow[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -61,9 +65,14 @@ export default function Page() {
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
   const filteredRows = rows.filter((user) =>
-    [user.username, user.email, roleToLabel(user.role), user.project_scope, statusToLabel(user.status), user.updated_at].some(
-      (value) => value.toLowerCase().includes(searchText.trim().toLowerCase()),
-    ),
+    [
+      user.username,
+      user.email,
+      roleToLabel(user.role),
+      user.project_scope,
+      statusToLabel(user.status),
+      user.updated_at,
+    ].some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase())),
   );
   const selectedCount = selectedIds.length;
   const allSelected = filteredRows.length > 0 && filteredRows.every((row) => selectedIds.includes(row.id));
@@ -83,6 +92,33 @@ export default function Page() {
   useEffect(() => {
     void loadUsers();
   }, [loadUsers]);
+
+  useEffect(() => {
+    hydrateProjectContext();
+  }, [hydrateProjectContext]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadProjects() {
+      try {
+        const nextProjects = await apiRequest<ApiProject[]>("/projects");
+        if (!ignore) {
+          setProjects(nextProjects);
+        }
+      } catch {
+        if (!ignore) {
+          setProjects([]);
+        }
+      }
+    }
+
+    void loadProjects();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   function toggleAll(checked: boolean) {
     setSelectedIds(checked ? filteredRows.map((row) => row.id) : []);
@@ -211,13 +247,20 @@ export default function Page() {
                   <TableCell>{roleToLabel(item.role)}</TableCell>
                   <TableCell>{item.project_scope}</TableCell>
                   <TableCell>
-                    <Badge variant={item.status === "disabled" ? "outline" : "secondary"}>{statusToLabel(item.status)}</Badge>
+                    <Badge variant={item.status === "disabled" ? "outline" : "secondary"}>
+                      {statusToLabel(item.status)}
+                    </Badge>
                   </TableCell>
                   <TableCell>{formatDateTime(item.last_login_at)}</TableCell>
                   <TableCell>
                     <RowActions
                       actions={[
-                        { label: "编辑", disabled: !canWrite, icon: Pencil, onSelect: canWrite ? () => openEditDialog(item) : undefined },
+                        {
+                          label: "编辑",
+                          disabled: !canWrite,
+                          icon: Pencil,
+                          onSelect: canWrite ? () => openEditDialog(item) : undefined,
+                        },
                         {
                           label: "删除",
                           disabled: !canWrite,
@@ -245,28 +288,64 @@ export default function Page() {
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="user-username">用户名</FieldLabel>
-              <Input disabled={Boolean(editingUser)} id="user-username" onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} placeholder="请输入非中文用户名" value={form.username} />
+              <Input
+                disabled={Boolean(editingUser)}
+                id="user-username"
+                onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
+                placeholder="请输入非中文用户名"
+                value={form.username}
+              />
             </Field>
             <Field>
               <FieldLabel htmlFor="user-email">邮箱</FieldLabel>
-              <Input id="user-email" onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} placeholder="请输入邮箱" type="email" value={form.email} />
+              <Input
+                id="user-email"
+                onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                placeholder="请输入邮箱"
+                type="email"
+                value={form.email}
+              />
             </Field>
             <Field>
               <FieldLabel htmlFor="user-description">描述</FieldLabel>
-              <Input id="user-description" onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="请输入描述" value={form.description} />
+              <Input
+                id="user-description"
+                onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+                placeholder="请输入描述"
+                value={form.description}
+              />
             </Field>
             <Field>
               <FieldLabel htmlFor="user-password">密码</FieldLabel>
               <div className="relative">
-                <Input className="pr-9" id="user-password" onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} placeholder={editingUser ? "留空则不修改密码" : "请输入密码"} type={passwordVisible ? "text" : "password"} value={form.password} />
-                <Button aria-label={passwordVisible ? "隐藏密码" : "显示密码"} className="absolute top-0 right-0" onClick={() => setPasswordVisible((value) => !value)} size="icon" type="button" variant="ghost">
+                <Input
+                  className="pr-9"
+                  id="user-password"
+                  onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                  placeholder={editingUser ? "留空则不修改密码" : "请输入密码"}
+                  type={passwordVisible ? "text" : "password"}
+                  value={form.password}
+                />
+                <Button
+                  aria-label={passwordVisible ? "隐藏密码" : "显示密码"}
+                  className="absolute top-0 right-0"
+                  onClick={() => setPasswordVisible((value) => !value)}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
                   {passwordVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </Button>
               </div>
             </Field>
             <Field>
               <FieldLabel htmlFor="user-role">角色</FieldLabel>
-              <Select id="user-role" placeholder="选择角色" setValue={(value) => setForm((current) => ({ ...current, role: value }))} value={form.role}>
+              <Select
+                id="user-role"
+                placeholder="选择角色"
+                setValue={(value) => setForm((current) => ({ ...current, role: value }))}
+                value={form.role}
+              >
                 {roleOptions.map((role) => (
                   <SelectOption key={role} value={role}>
                     {role}
@@ -276,8 +355,13 @@ export default function Page() {
             </Field>
             <Field>
               <FieldLabel htmlFor="user-project">项目范围</FieldLabel>
-              <Select id="user-project" placeholder="选择项目范围" setValue={(value) => setForm((current) => ({ ...current, project_scope: value }))} value={form.project_scope}>
-                {projectOptions.map((project) => (
+              <Select
+                id="user-project"
+                placeholder="选择项目范围"
+                setValue={(value) => setForm((current) => ({ ...current, project_scope: value }))}
+                value={form.project_scope}
+              >
+                {projectScopeOptions.map((project) => (
                   <SelectOption key={project} value={project}>
                     {project}
                   </SelectOption>
@@ -286,7 +370,12 @@ export default function Page() {
             </Field>
             <Field>
               <FieldLabel htmlFor="user-status">状态</FieldLabel>
-              <Select id="user-status" placeholder="选择状态" setValue={(value) => setForm((current) => ({ ...current, status: value }))} value={form.status}>
+              <Select
+                id="user-status"
+                placeholder="选择状态"
+                setValue={(value) => setForm((current) => ({ ...current, status: value }))}
+                value={form.status}
+              >
                 {statusOptions.map((status) => (
                   <SelectOption key={status} value={status}>
                     {status}
@@ -299,7 +388,11 @@ export default function Page() {
             <Button onClick={() => setDialogOpen(false)} type="button" variant="outline">
               取消
             </Button>
-            <Button disabled={!form.username.trim() || !form.email.trim() || (!editingUser && !form.password.trim())} onClick={submitUser} type="button">
+            <Button
+              disabled={!form.username.trim() || !form.email.trim() || (!editingUser && !form.password.trim())}
+              onClick={submitUser}
+              type="button"
+            >
               {editingUser ? "保存" : "新增"}
             </Button>
           </DialogFooter>

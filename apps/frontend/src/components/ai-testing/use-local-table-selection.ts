@@ -27,6 +27,10 @@ export function useLocalTableSelection<T extends { id: string }>(initialRows: T[
     setSelectedIds([]);
   }
 
+  function clearSelection() {
+    setSelectedIds([]);
+  }
+
   function deleteOne(id: string) {
     setRows((current) => current.filter((row) => row.id !== id));
     setSelectedIds((current) => current.filter((selectedId) => selectedId !== id));
@@ -43,6 +47,7 @@ export function useLocalTableSelection<T extends { id: string }>(initialRows: T[
   return {
     addRow,
     allSelected,
+    clearSelection,
     deleteOne,
     deleteSelected,
     partiallySelected,

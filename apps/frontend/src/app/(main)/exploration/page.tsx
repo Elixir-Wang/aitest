@@ -10,11 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const explorations = [
-  { id: "exp-001", title: "登录流程探索", status: "运行中", site: "官网", updated: "2026-05-19 14:48:00" },
-  { id: "exp-002", title: "项目管理探索", status: "完成", site: "管理台", updated: "2026-05-19 10:30:00" },
-  { id: "exp-003", title: "报告中心探索", status: "待确认", site: "报告台", updated: "2026-05-18 10:15:00" },
-];
+const explorations: Array<{ id: string; title: string; status: string; site: string; updated: string }> = [];
 
 export default function Page() {
   const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
@@ -35,9 +31,9 @@ export default function Page() {
       title="探索"
     >
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard helper="1 个运行中" icon={FileSearch} label="探索任务" value="7" />
-        <MetricCard helper="覆盖 12 个流程" icon={FileSearch} label="页面事实" value="86" />
-        <MetricCard helper="2 个等待确认" icon={FileSearch} label="冲突项" value="4" />
+        <MetricCard helper="真实接口接入后展示" icon={FileSearch} label="探索任务" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={FileSearch} label="页面事实" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={FileSearch} label="冲突项" value="-" />
       </div>
       <ShellSection>
         <ListToolbar

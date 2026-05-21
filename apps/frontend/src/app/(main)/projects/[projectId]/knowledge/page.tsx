@@ -2,42 +2,22 @@
 
 import { useState } from "react";
 
+import { useParams } from "next/navigation";
+
 import { DatabaseZap, Eye } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
+import { useProjectName } from "@/components/ai-testing/use-project-name";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const knowledge = [
-  {
-    id: "kb-001",
-    title: "登录与权限知识块",
-    status: "已发布",
-    source: "需求 + 探索",
-    owner: "张敏",
-    updated: "2026-05-19 12:30:00",
-  },
-  {
-    id: "kb-002",
-    title: "项目管理知识块",
-    status: "待更新",
-    source: "需求",
-    owner: "李强",
-    updated: "2026-05-19 08:30:00",
-  },
-  {
-    id: "kb-003",
-    title: "报告中心知识块",
-    status: "已发布",
-    source: "探索",
-    owner: "王磊",
-    updated: "2026-05-18 10:15:00",
-  },
-];
+const knowledge: Array<{ id: string; title: string; status: string; source: string; updated: string }> = [];
 
 export default function Page() {
+  const params = useParams<{ projectId: string }>();
+  const projectName = useProjectName(params.projectId);
   const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
     useLocalTableSelection(knowledge);
   const [searchText, setSearchText] = useState("");
@@ -49,16 +29,16 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={["项目", "知了平台", "知识库"]}
+      breadcrumbs={["项目", projectName, "知识库"]}
       description="基于需求和探索来源生成 llm-wiki 风格知识库，并追踪来源和版本。"
       projectScope="project"
       tabs={["知识库首页", "来源材料", "模块文档", "更新预览", "历史版本"]}
       title="知识库"
     >
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard helper="12 个已发布" icon={DatabaseZap} label="模块文档" value="14" />
-        <MetricCard helper="需求与探索融合" icon={DatabaseZap} label="来源引用" value="238" />
-        <MetricCard helper="需人工确认" icon={DatabaseZap} label="待更新" value="3" />
+        <MetricCard helper="真实接口接入后展示" icon={DatabaseZap} label="模块文档" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={DatabaseZap} label="来源引用" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={DatabaseZap} label="待更新" value="-" />
       </div>
       <ShellSection>
         <ListToolbar

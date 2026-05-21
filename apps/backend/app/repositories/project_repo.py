@@ -3,6 +3,16 @@ from __future__ import annotations
 from sqlite3 import Connection, Row
 
 
+PROJECT_ASSET_TABLES = (
+    "source_documents",
+    "exploration_runs",
+    "knowledge_builds",
+    "test_cases",
+    "automation_cases",
+    "automation_runs",
+)
+
+
 def list_visible(db: Connection, actor: Row) -> list[Row]:
     if actor["role"] in {"admin", "guest"} or actor["project_scope"] == "全部项目":
         return db.execute("SELECT * FROM projects WHERE status != 'archived' ORDER BY created_at ASC").fetchall()
@@ -37,3 +47,26 @@ def update(db: Connection, project_id: str, assignments: list[str], values: list
 
 def delete(db: Connection, project_id: str) -> None:
     db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+
+
+def has_project_assets(db: Connection, project_id: str) -> bool:
+    for table in PROJECT_ASSET_TABLES:
+        if not _table_exists(db, table):
+            continue
+        if db.execute(f"SELECT 1 FROM {table} WHERE project_id = ? LIMIT 1", (project_id,)).fetchone():
+            return True
+    return False
+
+
+def list_requirement_names(db: Connection, project_id: str) -> list[str]:
+    if not _table_exists(db, "source_documents"):
+        return []
+    rows = db.execute(
+        "SELECT name FROM source_documents WHERE project_id = ? ORDER BY created_at ASC",
+        (project_id,),
+    ).fetchall()
+    return [row["name"] for row in rows]
+
+
+def _table_exists(db: Connection, table: str) -> bool:
+    return db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone() is not None

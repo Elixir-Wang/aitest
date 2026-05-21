@@ -11,8 +11,13 @@ def model_actions(role: str) -> list[str]:
     return ["read", "create", "update", "delete"] if role == "admin" else ["read"]
 
 
-def project_actions(role: str) -> list[str]:
-    return ["read", "create", "update", "delete"] if role == "admin" else ["read"]
+def project_actions(role: str, has_assets: bool = False) -> list[str]:
+    if role != "admin":
+        return ["read"]
+    actions = ["read", "create", "update"]
+    if not has_assets:
+        actions.append("delete")
+    return actions
 
 
 def serialize_user(row: Row, actor_role: str | None = None) -> dict:
@@ -49,7 +54,7 @@ def serialize_model_provider(row: Row, actor_role: str) -> dict:
     }
 
 
-def serialize_project(row: Row, actor_role: str) -> dict:
+def serialize_project(row: Row, actor_role: str, has_assets: bool = False) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
@@ -57,5 +62,5 @@ def serialize_project(row: Row, actor_role: str) -> dict:
         "status": row["status"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
-        "available_actions": project_actions(actor_role),
+        "available_actions": project_actions(actor_role, has_assets),
     }

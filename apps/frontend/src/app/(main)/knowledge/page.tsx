@@ -10,11 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const knowledge = [
-  { id: "kb-001", title: "登录与权限知识块", status: "已发布", source: "需求 + 探索", updated: "2026-05-19 12:30:00" },
-  { id: "kb-002", title: "项目管理知识块", status: "待更新", source: "需求", updated: "2026-05-19 08:30:00" },
-  { id: "kb-003", title: "报告中心知识块", status: "已发布", source: "探索", updated: "2026-05-18 10:15:00" },
-];
+const knowledge: Array<{ id: string; title: string; status: string; source: string; updated: string }> = [];
 
 export default function Page() {
   const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
@@ -35,9 +31,9 @@ export default function Page() {
       title="知识库"
     >
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard helper="12 个已发布" icon={DatabaseZap} label="模块文档" value="14" />
-        <MetricCard helper="需求与探索融合" icon={DatabaseZap} label="来源引用" value="238" />
-        <MetricCard helper="需人工确认" icon={DatabaseZap} label="待更新" value="3" />
+        <MetricCard helper="真实接口接入后展示" icon={DatabaseZap} label="模块文档" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={DatabaseZap} label="来源引用" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={DatabaseZap} label="待更新" value="-" />
       </div>
       <ShellSection>
         <ListToolbar

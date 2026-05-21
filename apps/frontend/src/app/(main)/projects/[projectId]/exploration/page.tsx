@@ -2,42 +2,22 @@
 
 import { useState } from "react";
 
+import { useParams } from "next/navigation";
+
 import { Eye, FileSearch } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
+import { useProjectName } from "@/components/ai-testing/use-project-name";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const explorations = [
-  {
-    id: "exp-001",
-    title: "登录流程探索",
-    status: "运行中",
-    site: "官网",
-    owner: "张敏",
-    updated: "2026-05-19 14:48:00",
-  },
-  {
-    id: "exp-002",
-    title: "项目管理探索",
-    status: "完成",
-    site: "管理台",
-    owner: "李强",
-    updated: "2026-05-19 10:30:00",
-  },
-  {
-    id: "exp-003",
-    title: "报告中心探索",
-    status: "待确认",
-    site: "报告台",
-    owner: "王磊",
-    updated: "2026-05-18 10:15:00",
-  },
-];
+const explorations: Array<{ id: string; title: string; status: string; site: string; updated: string }> = [];
 
 export default function Page() {
+  const params = useParams<{ projectId: string }>();
+  const projectName = useProjectName(params.projectId);
   const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
     useLocalTableSelection(explorations);
   const [searchText, setSearchText] = useState("");
@@ -49,16 +29,16 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={["项目", "知了平台", "探索"]}
+      breadcrumbs={["项目", projectName, "探索"]}
       description="配置站点探索任务，沉淀页面事实、探索文档、候选需求和冲突项。"
       projectScope="project"
       tabs={["站点配置", "探索任务", "探索文档", "候选需求文档", "冲突项"]}
       title="探索"
     >
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard helper="1 个运行中" icon={FileSearch} label="探索任务" value="7" />
-        <MetricCard helper="覆盖 12 个流程" icon={FileSearch} label="页面事实" value="86" />
-        <MetricCard helper="2 个等待确认" icon={FileSearch} label="冲突项" value="4" />
+        <MetricCard helper="真实接口接入后展示" icon={FileSearch} label="探索任务" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={FileSearch} label="页面事实" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={FileSearch} label="冲突项" value="-" />
       </div>
       <ShellSection>
         <ListToolbar

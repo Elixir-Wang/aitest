@@ -5,6 +5,7 @@ import {
   type ReactNode,
   cloneElement,
   isValidElement,
+  useMemo,
   useEffect,
   useRef,
   useState,
@@ -41,10 +42,17 @@ export function Select({
   const [displayText, setDisplayText] = useState(value ?? "");
   const selectRef = useRef<HTMLDivElement>(null);
   const childrenArray = Array.isArray(children) ? children : [children];
+  const selectedLabel = useMemo(() => {
+    const selected = childrenArray.find((child) => isValidElement<SelectOptionProps>(child) && child.props.value === value);
+    if (!selected || !isValidElement<SelectOptionProps>(selected)) {
+      return value ?? "";
+    }
+    return selected.props.children;
+  }, [childrenArray, value]);
 
   useEffect(() => {
-    setDisplayText(value ?? "");
-  }, [value]);
+    setDisplayText(selectedLabel);
+  }, [selectedLabel]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

@@ -2,21 +2,22 @@
 
 import { useState } from "react";
 
+import { useParams } from "next/navigation";
+
 import { Eye, PlaySquare } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
+import { useProjectName } from "@/components/ai-testing/use-project-name";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const suites = [
-  { id: "suite-001", name: "登录流程自动化", status: "可执行", passRate: "96%", updated: "2026-05-19 12:30:00" },
-  { id: "suite-002", name: "项目管理自动化", status: "生成中", passRate: "-", updated: "2026-05-19 08:30:00" },
-  { id: "suite-003", name: "报告中心自动化", status: "失败待诊断", passRate: "72%", updated: "2026-05-18 10:15:00" },
-];
+const suites: Array<{ id: string; name: string; status: string; passRate: string; updated: string }> = [];
 
 export default function Page() {
+  const params = useParams<{ projectId: string }>();
+  const projectName = useProjectName(params.projectId);
   const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
     useLocalTableSelection(suites);
   const [searchText, setSearchText] = useState("");
@@ -28,16 +29,16 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={["项目", "知了平台", "UI 自动化"]}
+      breadcrumbs={["项目", projectName, "UI 自动化"]}
       description="基于 pytest + Playwright + Allure 生成、查看、执行和诊断 UI 自动化。"
       projectScope="project"
       tabs={["套件列表", "代码查看", "本地执行", "Allure 报告", "失败诊断"]}
       title="UI 自动化"
     >
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard helper="可执行 15 个" icon={PlaySquare} label="自动化套件" value="18" />
-        <MetricCard helper="失败 7 条" icon={PlaySquare} label="最近通过率" value="88%" />
-        <MetricCard helper="需人工启用自愈" icon={PlaySquare} label="待诊断" value="5" />
+        <MetricCard helper="真实接口接入后展示" icon={PlaySquare} label="自动化套件" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={PlaySquare} label="最近通过率" value="-" />
+        <MetricCard helper="真实接口接入后展示" icon={PlaySquare} label="待诊断" value="-" />
       </div>
       <ShellSection>
         <ListToolbar

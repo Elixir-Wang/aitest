@@ -22,6 +22,7 @@ const metricIcons: Record<string, LucideIcon> = {
 export default function Page() {
   const { currentProjectId, hydrate, scope } = useProjectContextStore();
   const [overview, setOverview] = useState<ApiDashboardOverview | null>(null);
+  const [trendDays, setTrendDays] = useState(7);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const projectId = scope === "project" && currentProjectId ? currentProjectId : "all";
@@ -37,7 +38,7 @@ export default function Page() {
       setLoading(true);
       setError("");
       try {
-        const result = await apiRequest<ApiDashboardOverview>(`/dashboard/overview?project_id=${projectId}&days=17`);
+        const result = await apiRequest<ApiDashboardOverview>(`/dashboard/overview?project_id=${projectId}&days=${trendDays}`);
         if (!ignore) {
           setOverview(result);
         }
@@ -57,7 +58,7 @@ export default function Page() {
     return () => {
       ignore = true;
     };
-  }, [projectId]);
+  }, [projectId, trendDays]);
 
   const projectLabel = useMemo(() => {
     if (!overview || overview.scope === "all") {
@@ -88,7 +89,7 @@ export default function Page() {
               />
             ))}
           </div>
-          <AssetTrendChart data={overview.trend} projectLabel={projectLabel} />
+          <AssetTrendChart data={overview.trend} days={trendDays} onDaysChange={setTrendDays} projectLabel={projectLabel} />
         </>
       ) : null}
     </PageShell>

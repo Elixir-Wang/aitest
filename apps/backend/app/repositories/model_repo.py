@@ -58,3 +58,54 @@ def update_provider(
 def delete_provider(db: Connection, provider_id: str) -> None:
     db.execute("DELETE FROM model_providers WHERE id = ?", (provider_id,))
 
+
+def list_agent_assignments(db: Connection) -> list[Row]:
+    return db.execute(
+        """
+        SELECT ama.agent_id,
+               ama.model_provider_id,
+               ama.created_at,
+               ama.updated_at,
+               mp.provider,
+               mp.model,
+               mp.base_url,
+               mp.api_key_mask,
+               mp.status AS model_status
+        FROM agent_model_assignments ama
+        JOIN model_providers mp ON mp.id = ama.model_provider_id
+        ORDER BY ama.agent_id ASC
+        """
+    ).fetchall()
+
+
+def find_agent_assignment(db: Connection, agent_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT ama.agent_id,
+               ama.model_provider_id,
+               ama.created_at,
+               ama.updated_at,
+               mp.provider,
+               mp.model,
+               mp.base_url,
+               mp.api_key_mask,
+               mp.status AS model_status
+        FROM agent_model_assignments ama
+        JOIN model_providers mp ON mp.id = ama.model_provider_id
+        WHERE ama.agent_id = ?
+        """,
+        (agent_id,),
+    ).fetchone()
+
+
+def upsert_agent_assignment(db: Connection, *, agent_id: str, model_provider_id: str) -> None:
+    db.execute(
+        """
+        INSERT INTO agent_model_assignments (agent_id, model_provider_id)
+        VALUES (?, ?)
+        ON CONFLICT(agent_id) DO UPDATE SET
+          model_provider_id = excluded.model_provider_id,
+          updated_at = CURRENT_TIMESTAMP
+        """,
+        (agent_id, model_provider_id),
+    )

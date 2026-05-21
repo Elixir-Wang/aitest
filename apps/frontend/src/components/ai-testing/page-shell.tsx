@@ -39,6 +39,7 @@ interface PageShellProps {
   tabs?: ModuleTab[];
   activeTab?: string;
   primaryAction?: string;
+  onPrimaryAction?: () => void;
   children: ReactNode;
 }
 
@@ -56,6 +57,7 @@ export function PageShell({
   tabs = [],
   activeTab,
   primaryAction,
+  onPrimaryAction,
   children,
 }: PageShellProps) {
   return (
@@ -63,6 +65,7 @@ export function PageShell({
       <PageHeader
         breadcrumbs={breadcrumbs}
         description={description}
+        onPrimaryAction={onPrimaryAction}
         primaryAction={primaryAction}
         title={title}
       />
@@ -75,11 +78,13 @@ export function PageShell({
 export function PageHeader({
   title,
   primaryAction,
+  onPrimaryAction,
 }: {
   title: string;
   description: string;
   breadcrumbs: string[];
   primaryAction?: string;
+  onPrimaryAction?: () => void;
 }) {
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -89,7 +94,7 @@ export function PageHeader({
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {primaryAction && <Button>{primaryAction}</Button>}
+        {primaryAction && <Button onClick={onPrimaryAction}>{primaryAction}</Button>}
       </div>
     </div>
   );
@@ -215,12 +220,12 @@ export function RowActions({ label, actions }: { label: string; actions: RowActi
           <Ellipsis className="size-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-36">
+      <DropdownMenuContent align="end" className="w-max">
         {actions.map((action, index) => (
           <div key={`${action.label}-${action.href ?? "action"}`}>
             {action.destructive && index > 0 && <DropdownMenuSeparator />}
             <DropdownMenuItem
-              className="gap-2"
+              className="gap-2 whitespace-nowrap pr-3"
               asChild={Boolean(action.href)}
               disabled={action.disabled}
               onClick={action.onSelect}

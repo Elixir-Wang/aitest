@@ -25,6 +25,7 @@ interface AuthState {
   user: AuthUser | null;
   hasHydrated: boolean;
   hydrate: () => void;
+  updateUser: (user: AuthUser) => void;
   setAuth: (payload: { token: string; user: AuthUser }) => void;
   login: (payload: { token: string; user: AuthUser; remember?: boolean }) => void;
   logout: () => void;
@@ -67,6 +68,18 @@ export const useAuthStore = create<AuthState>((set) => ({
       user,
       hasHydrated: true,
     });
+  },
+  updateUser: (user) => {
+    const localToken = getLocalStorageValue(AUTH_TOKEN_KEY);
+    const sessionToken = getSessionStorageValue(AUTH_TOKEN_KEY);
+
+    if (localToken) {
+      setLocalStorageValue(AUTH_USER_KEY, JSON.stringify(user));
+    } else if (sessionToken) {
+      setSessionStorageValue(AUTH_USER_KEY, JSON.stringify(user));
+    }
+
+    set({ user, hasHydrated: true });
   },
   login: ({ token, user, remember }) => {
     removeLocalStorageValue(AUTH_TOKEN_KEY);

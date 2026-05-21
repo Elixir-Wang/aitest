@@ -1,14 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import Link from "next/link";
 
 import { Eye, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
+import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,12 +24,15 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { apiRequest, formatDateTime, type ApiProject } from "@/lib/api-client";
-import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { type ApiProject, apiRequest, formatDateTime } from "@/lib/api-client";
+import { useAuthStore } from "@/stores/auth-store";
+import { useProjectContextStore } from "@/stores/project-context-store";
 
 type ProjectRow = ApiProject;
+const PROJECT_LIST_CHANGED_EVENT = "ai-testing:project-list-changed";
 const statusOptions = ["活跃", "归档"];
 const statusToLabel = (status: ProjectRow["status"]) => (status === "archived" ? "归档" : "活跃");
 const labelToStatus = (label: string): ProjectRow["status"] => (label === "归档" ? "archived" : "active");
@@ -39,20 +44,30 @@ const emptyForm = {
 };
 
 export default function Page() {
-  const { allSelected, partiallySelected, rows, selectedCount, selectedIds, setRows, toggleAll, toggleOne } =
-    useLocalTableSelection<ProjectRow>([]);
+  const currentUser = useAuthStore((state) => state.user);
+  const { currentProjectId, hydrate, hasHydrated, scope } = useProjectContextStore();
+  const { clearSelection, rows, selectedIds, setRows, toggleAll, toggleOne } = useLocalTableSelection<ProjectRow>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectRow | null>(null);
   const [error, setError] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
-  const filteredRows = rows.filter((project) =>
+  const visibleRows =
+    scope === "project" && currentProjectId && hasHydrated
+      ? rows.filter((project) => project.id === currentProjectId)
+      : rows;
+  const visibleRowIds = visibleRows.map((project) => project.id);
+  const visibleSelectedIds = selectedIds.filter((id) => visibleRowIds.includes(id));
+  const visibleSelectedCount = visibleSelectedIds.length;
+  const allSelected = visibleRowIds.length > 0 && visibleSelectedCount === visibleRowIds.length;
+  const partiallySelected = visibleSelectedCount > 0 && visibleSelectedCount < visibleRowIds.length;
+  const filteredRows = visibleRows.filter((project) =>
     [project.name, project.description, statusToLabel(project.status), project.updated_at].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
     ),
   );
-  const canWrite = rows.some((project) => project.available_actions.includes("create"));
+  const canWrite = currentUser?.role === "admin";
 
   const loadProjects = useCallback(async () => {
     setLoading(true);
@@ -69,6 +84,16 @@ export default function Page() {
   useEffect(() => {
     void loadProjects();
   }, [loadProjects]);
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  useEffect(() => {
+    void currentProjectId;
+    void scope;
+    clearSelection();
+  }, [clearSelection, currentProjectId, scope]);
 
   function openCreateDialog() {
     setEditingProject(null);
@@ -112,6 +137,7 @@ export default function Page() {
         });
       }
       await loadProjects();
+      window.dispatchEvent(new Event(PROJECT_LIST_CHANGED_EVENT));
       setDialogOpen(false);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "项目保存失败");
@@ -122,9 +148,12 @@ export default function Page() {
     setError("");
     try {
       await Promise.all(ids.map((id) => apiRequest(`/projects/${id}`, { method: "DELETE" })));
+      clearSelection();
       await loadProjects();
+      window.dispatchEvent(new Event(PROJECT_LIST_CHANGED_EVENT));
+      toast.success(`已删除 ${ids.length} 个项目`);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "项目删除失败");
+      toast.error(requestError instanceof Error ? requestError.message : "项目删除失败");
     }
   }
 
@@ -136,21 +165,25 @@ export default function Page() {
       title="项目"
     >
       <ShellSection>
-        {error ? <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">{error}</div> : null}
+        {error ? (
+          <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
+            {error}
+          </div>
+        ) : null}
         <ListToolbar
           createLabel="新建项目"
-          onBatchDelete={canWrite ? () => deleteProjects(selectedIds) : undefined}
+          onBatchDelete={canWrite ? () => deleteProjects(visibleSelectedIds) : undefined}
           onCreate={canWrite ? openCreateDialog : undefined}
           onSearch={setSearchText}
           placeholder="搜索项目名称、编码或描述"
-          selectedCount={canWrite ? selectedCount : 0}
+          selectedCount={canWrite ? visibleSelectedCount : 0}
           title="项目列表"
         />
         <div className="overflow-hidden rounded-lg border">
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">
+                <TableHead className="w-[6%]">
                   <Checkbox
                     aria-label="选择全部项目"
                     checked={allSelected || (partiallySelected ? "indeterminate" : false)}
@@ -158,11 +191,11 @@ export default function Page() {
                     onCheckedChange={(checked) => toggleAll(Boolean(checked))}
                   />
                 </TableHead>
-                <TableHead>项目名称</TableHead>
-                <TableHead>项目描述</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>最近更新时间</TableHead>
-                <TableHead className="w-16">操作</TableHead>
+                <TableHead className="w-[20%]">项目名称</TableHead>
+                <TableHead className="w-[30%]">项目描述</TableHead>
+                <TableHead className="w-[10%]">状态</TableHead>
+                <TableHead className="w-[26%]">最近更新时间</TableHead>
+                <TableHead className="w-[8%]">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -172,16 +205,22 @@ export default function Page() {
                     <Checkbox
                       aria-label={`选择 ${project.name}`}
                       checked={selectedIds.includes(project.id)}
-                      disabled={!project.available_actions.includes("delete")}
+                      disabled={!canWrite}
                       onCheckedChange={(checked) => toggleOne(project.id, Boolean(checked))}
                     />
                   </TableCell>
                   <TableCell className="font-medium">
-                    <Link className="hover:underline" href={`/projects/${project.id}`}>
+                    <Link
+                      className="block truncate hover:underline"
+                      href={`/projects/${project.id}`}
+                      title={project.name}
+                    >
                       {project.name}
                     </Link>
                   </TableCell>
-                  <TableCell className="max-w-md text-muted-foreground">{project.description}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    <OverflowTooltipText value={project.description} />
+                  </TableCell>
                   <TableCell>
                     <Badge variant={project.status === "archived" ? "outline" : "secondary"}>
                       {statusToLabel(project.status)}
@@ -196,14 +235,16 @@ export default function Page() {
                           label: "编辑",
                           disabled: !project.available_actions.includes("update"),
                           icon: Pencil,
-                          onSelect: project.available_actions.includes("update") ? () => openEditDialog(project) : undefined,
+                          onSelect: project.available_actions.includes("update")
+                            ? () => openEditDialog(project)
+                            : undefined,
                         },
                         {
                           label: "删除",
                           destructive: true,
-                          disabled: !project.available_actions.includes("delete"),
+                          disabled: !canWrite,
                           icon: Trash2,
-                          onSelect: project.available_actions.includes("delete") ? () => deleteProjects([project.id]) : undefined,
+                          onSelect: canWrite ? () => deleteProjects([project.id]) : undefined,
                         },
                       ]}
                       label={`打开 ${project.name} 操作菜单`}
@@ -268,5 +309,43 @@ export default function Page() {
         </DialogContent>
       </Dialog>
     </PageShell>
+  );
+}
+
+function OverflowTooltipText({ value }: { value: string }) {
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  useEffect(() => {
+    const node = textRef.current;
+    if (!node) {
+      return;
+    }
+
+    const updateOverflowState = () => {
+      setIsOverflowing(node.scrollWidth > node.clientWidth);
+    };
+
+    updateOverflowState();
+    const resizeObserver = new ResizeObserver(updateOverflowState);
+    resizeObserver.observe(node);
+    return () => resizeObserver.disconnect();
+  });
+
+  const content = (
+    <span ref={textRef} className="block truncate">
+      {value}
+    </span>
+  );
+
+  if (!value || !isOverflowing) {
+    return content;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{content}</TooltipTrigger>
+      <TooltipContent className="max-w-sm whitespace-normal break-words leading-relaxed">{value}</TooltipContent>
+    </Tooltip>
   );
 }

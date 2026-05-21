@@ -3,7 +3,6 @@
 import { format, parseISO } from "date-fns";
 import { Area, CartesianGrid, ComposedChart, Line, XAxis } from "recharts";
 
-import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   type ChartConfig,
@@ -39,45 +38,41 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
-export function AssetTrendChart({ data, projectLabel }: { data: ApiDashboardTrendPoint[]; projectLabel: string }) {
+export function AssetTrendChart({
+  data,
+  days,
+  onDaysChange,
+  projectLabel,
+}: {
+  data: ApiDashboardTrendPoint[];
+  days: number;
+  onDaysChange: (days: number) => void;
+  projectLabel: string;
+}) {
   return (
     <Card className="@container/card">
       <CardHeader>
         <CardTitle className="leading-none">测试资产趋势</CardTitle>
         <CardDescription>
-          <span className="@[540px]/card:block hidden">按{projectLabel}统计近 17 天资产沉淀趋势</span>
-          <span className="@[540px]/card:hidden">近 17 天资产趋势</span>
+          <span className="@[540px]/card:block hidden">
+            按{projectLabel}统计近 {days} 天资产沉淀趋势
+          </span>
+          <span className="@[540px]/card:hidden">近 {days} 天资产趋势</span>
         </CardDescription>
-        <CardAction className="flex items-center gap-2">
-          <Select defaultValue="17d">
+        <CardAction>
+          <Select value={`${days}d`} onValueChange={(value) => onDaysChange(Number.parseInt(value, 10))}>
             <SelectTrigger className="w-24" size="sm">
               <SelectValue placeholder="周期" />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
                 <SelectLabel>统计周期</SelectLabel>
-                <SelectItem value="17d">近 17 天</SelectItem>
+                <SelectItem value="7d">近 7 天</SelectItem>
+                <SelectItem value="15d">近 15 天</SelectItem>
                 <SelectItem value="30d">近 30 天</SelectItem>
-                <SelectItem value="90d">近 90 天</SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>
-
-          <Select defaultValue="all">
-            <SelectTrigger className="w-28" size="sm">
-              <SelectValue placeholder="范围" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectLabel>项目范围</SelectLabel>
-                <SelectItem value="current">{projectLabel}</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-
-          <Button size="sm" variant="outline">
-            查看报告
-          </Button>
         </CardAction>
       </CardHeader>
 

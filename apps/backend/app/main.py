@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import auth, dashboard, documents, models, projects, users
+from app.api.v1 import v1_router
 from app.core.response import wrap_api_response
 from app.seed.init_db import init_db
 
@@ -31,9 +31,4 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-app.include_router(auth.router, prefix="/api/v1")
-app.include_router(dashboard.router, prefix="/api/v1")
-app.include_router(users.router, prefix="/api/v1")
-app.include_router(models.router, prefix="/api/v1")
-app.include_router(projects.router, prefix="/api/v1")
-app.include_router(documents.router, prefix="/api/v1")
+app.include_router(v1_router, prefix="/api/v1")

@@ -49,6 +49,14 @@ def init_db() -> None:
               FOREIGN KEY(created_by) REFERENCES users(id)
             );
 
+            CREATE TABLE IF NOT EXISTS agent_model_assignments (
+              agent_id TEXT PRIMARY KEY,
+              model_provider_id TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(model_provider_id) REFERENCES model_providers(id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS projects (
               id TEXT PRIMARY KEY,
               name TEXT NOT NULL UNIQUE,
@@ -122,12 +130,8 @@ def init_db() -> None:
         _ensure_column(db, "projects", "created_by", "TEXT NOT NULL DEFAULT 'system'")
         _seed_user(db, "u-admin", "admin", "admin@example.com", "平台管理员", "admin", "admin", "enabled", "全部项目", "平台管理员，负责用户、模型和项目权限维护。")
         _sync_seed_password(db, "u-admin", "admin")
-        _seed_user(db, "u-tester", "tester", "tester@example.com", "测试工程师", "tester123", "tester", "enabled", "知了平台", "负责具体项目测试资产建设。")
+        _seed_user(db, "u-tester", "tester", "tester@example.com", "测试工程师", "tester123", "tester", "enabled", "全部项目", "负责具体项目测试资产建设。")
         _seed_user(db, "u-guest", "guest", "guest@example.com", "访客", "guest123", "guest", "enabled", "全部项目", "只读查看系统内容与报告。")
-        _seed_project(db, "zhiliao", "知了平台", "active", "核心业务项目，承载需求、探索、知识库和测试资产链路。")
-        _seed_project(db, "hawk", "鹰眼平台", "active", "示例项目，用于验证跨项目任务、报告和自动化执行流程。")
-        _seed_project(db, "atlas", "Atlas 内测", "archived", "归档项目，保留历史需求和用例资产。")
-        _seed_dashboard_stats(db)
 
 
 def _seed_user(db: sqlite3.Connection, user_id: str, username: str, email: str, nickname: str, password: str, role: str, status: str, project_scope: str, description: str) -> None:
@@ -157,97 +161,3 @@ def _sync_seed_password(db: sqlite3.Connection, user_id: str, password: str) -> 
     )
 
 
-def _seed_project(db: sqlite3.Connection, project_id: str, name: str, status: str, description: str) -> None:
-    exists = db.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone()
-    if exists:
-        return
-    db.execute(
-        """
-        INSERT INTO projects (id, name, status, description)
-        VALUES (?, ?, ?, ?)
-        """,
-        (project_id, name, status, description),
-    )
-
-
-def _seed_dashboard_stats(db: sqlite3.Connection) -> None:
-    exists = db.execute("SELECT id FROM dashboard_daily_stats LIMIT 1").fetchone()
-    if exists:
-        return
-
-    dates = [
-        "2026-05-03",
-        "2026-05-04",
-        "2026-05-05",
-        "2026-05-06",
-        "2026-05-07",
-        "2026-05-08",
-        "2026-05-09",
-        "2026-05-10",
-        "2026-05-11",
-        "2026-05-12",
-        "2026-05-13",
-        "2026-05-14",
-        "2026-05-15",
-        "2026-05-16",
-        "2026-05-17",
-        "2026-05-18",
-        "2026-05-19",
-    ]
-    zhiliao = [
-        (188, 142, 58, 166),
-        (193, 146, 61, 171),
-        (198, 151, 65, 176),
-        (207, 159, 69, 185),
-        (212, 165, 73, 191),
-        (218, 170, 77, 198),
-        (225, 176, 81, 205),
-        (231, 183, 86, 212),
-        (236, 189, 90, 219),
-        (242, 195, 94, 226),
-        (246, 201, 97, 232),
-        (251, 207, 101, 239),
-        (257, 214, 104, 247),
-        (263, 219, 108, 254),
-        (269, 225, 111, 261),
-        (274, 229, 114, 267),
-        (282, 242, 117, 281),
-    ]
-    hawk = [
-        (98, 72, 30, 84),
-        (101, 75, 31, 87),
-        (104, 78, 33, 90),
-        (108, 82, 35, 95),
-        (111, 85, 38, 99),
-        (113, 88, 40, 102),
-        (117, 91, 42, 106),
-        (120, 94, 44, 110),
-        (123, 97, 46, 114),
-        (126, 100, 48, 118),
-        (128, 103, 50, 121),
-        (131, 106, 52, 125),
-        (134, 109, 54, 129),
-        (136, 112, 55, 132),
-        (138, 114, 57, 135),
-        (140, 117, 58, 138),
-        (144, 124, 59, 145),
-    ]
-
-    for project_id, values in (("zhiliao", zhiliao), ("hawk", hawk)):
-        for stat_date, (case_assets, adopted_cases, automation_cases, generated_cases) in zip(dates, values):
-            db.execute(
-                """
-                INSERT INTO dashboard_daily_stats
-                  (id, project_id, stat_date, case_assets, adopted_cases, automation_cases, generated_cases)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    f"ds-{project_id}-{stat_date}",
-                    project_id,
-                    stat_date,
-                    case_assets,
-                    adopted_cases,
-                    automation_cases,
-                    generated_cases,
-                ),
-            )

@@ -17,7 +17,7 @@ def list_projects(actor) -> list[dict]:
             rows = project_repo.list_all(db)
         else:
             rows = project_repo.list_visible(db, actor)
-        return [serialize_project(row, actor["role"]) for row in rows]
+        return [serialize_project(row, actor["role"], project_repo.has_project_assets(db, row["id"])) for row in rows]
 
 
 def create_project(payload: ProjectCreateIn, actor) -> dict:
@@ -35,7 +35,7 @@ def create_project(payload: ProjectCreateIn, actor) -> dict:
         except Exception as exc:
             raise api_error(409, "PROJECT_CONFLICT", "项目名称已存在。") from exc
         row = project_repo.find_by_id(db, project_id)
-        return serialize_project(row, actor["role"])
+        return serialize_project(row, actor["role"], False)
 
 
 def update_project(project_id: str, payload: ProjectUpdateIn, actor) -> dict:
@@ -55,11 +55,19 @@ def update_project(project_id: str, payload: ProjectUpdateIn, actor) -> dict:
             except Exception as exc:
                 raise api_error(409, "PROJECT_CONFLICT", "项目名称已存在。") from exc
         row = project_repo.find_by_id(db, project_id)
-        return serialize_project(row, actor["role"])
+        return serialize_project(row, actor["role"], project_repo.has_project_assets(db, project_id))
 
 
 def delete_project(project_id: str, actor) -> dict:
     with connect() as db:
+        existing = project_repo.find_by_id(db, project_id)
+        if not existing:
+            raise api_error(404, "NOT_FOUND", "项目不存在。")
+        if project_repo.has_project_assets(db, project_id):
+            requirement_names = project_repo.list_requirement_names(db, project_id)
+            if requirement_names:
+                raise api_error(409, "PROJECT_HAS_REQUIREMENTS", f"项目下存在需求：{'、'.join(requirement_names)}")
+            raise api_error(409, "PROJECT_HAS_ASSETS", "项目下存在关联数据，不能删除项目。")
         project_repo.delete(db, project_id)
         return {"success": True}
 

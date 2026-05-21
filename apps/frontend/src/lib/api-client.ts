@@ -41,6 +41,19 @@ export type ApiModelProvider = {
   available_actions: string[];
 };
 
+export type ApiAgentModelAssignment = {
+  agent_id: string;
+  agent_name: string;
+  agent_description: string;
+  model_provider_id: string | null;
+  provider: string | null;
+  model: string | null;
+  base_url: string | null;
+  api_key_mask: string | null;
+  model_status: ApiStatus | null;
+  updated_at: string | null;
+};
+
 export type ApiProject = {
   id: string;
   name: string;
@@ -73,7 +86,13 @@ export type ApiDashboardOverview = {
 };
 
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = useAuthStore.getState().token;
+  let { hasHydrated, token } = useAuthStore.getState();
+
+  if (!hasHydrated) {
+    useAuthStore.getState().hydrate();
+    ({ hasHydrated, token } = useAuthStore.getState());
+  }
+
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
   if (token) {
