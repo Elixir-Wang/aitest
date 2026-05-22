@@ -268,6 +268,104 @@ def get_document_overview(project_id: str, document_id: str, actor) -> dict:
     }
 
 
+def merge_document_markdown(project_id: str, document_id: str, actor) -> dict:
+    with connect() as db:
+        existing = document_repo.find_by_project_and_id(db, project_id, document_id)
+        if not existing:
+            raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
+        files = [
+            row
+            for row in document_repo.list_file_mappings(db, document_id)
+            if row["conversion_status"] in {CONVERSION_SUCCESS_STATUS, "warning"} and row["mapping_status"] != "discarded"
+        ]
+        if not files:
+            raise api_error(409, "DOCUMENT_MERGE_NO_FILES", "暂无可合并的标准文件。")
+
+        open_conflicts = document_repo.list_conflicts(db, document_id, status="open")
+        if open_conflicts:
+            return {
+                "status": "conflict",
+                "conflict_count": len(open_conflicts),
+                "conflicts": [_serialize_conflict(row) for row in open_conflicts],
+            }
+
+        contents = []
+        for file_row in files:
+            markdown_path_value = file_row["markdown_file_path"]
+            if not markdown_path_value:
+                continue
+            markdown_path = Path(markdown_path_value)
+            if not markdown_path.exists():
+                continue
+            contents.append((file_row["id"], file_row["original_filename"], markdown_path.read_text(encoding="utf-8")))
+        if not contents:
+            raise api_error(409, "DOCUMENT_MERGE_NO_FILES", "暂无可合并的标准文件。")
+
+        resolved_conflicts = document_repo.list_conflicts(db, document_id, status="resolved")
+        detected_conflict = _detect_simple_conflict(contents, resolved_conflicts)
+        if detected_conflict:
+            conflict_id = f"conflict-{secrets.token_hex(8)}"
+            document_repo.create_conflict(db, conflict_id=conflict_id, document_id=document_id, **detected_conflict)
+            conflict_row = document_repo.list_conflicts(db, document_id, status="open")[0]
+            return {"status": "conflict", "conflict_count": 1, "conflicts": [_serialize_conflict(conflict_row)]}
+
+        merged_markdown = _merge_markdown_contents(existing["name"], contents, resolved_conflicts)
+        version_id = f"docver-{secrets.token_hex(8)}"
+        version_no = document_repo.next_version_no(db, document_id)
+        markdown_path = project_requirement_dir(project_id, document_id) / "markdown" / "versions" / f"v{version_no}.md"
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text(merged_markdown, encoding="utf-8")
+        document_repo.create_version(
+            db,
+            version_id=version_id,
+            document_id=document_id,
+            version_no=version_no,
+            file_path=str(markdown_path),
+            source_action="merge",
+            change_summary="生成初始需求",
+            diff_summary=f"合并 {len(contents)} 个标准文件。",
+            created_by=actor["id"],
+        )
+        document_repo.mark_file_mappings_merged(db, document_id, version_id)
+        document_repo.close_open_conflicts(db, document_id)
+        document_repo.update_current_version(db, document_id, version_id, DOCUMENT_VERSIONED_STATUS)
+
+    return {
+        "status": "merged",
+        "version_id": version_id,
+        "version_no": version_no,
+        "markdown_content": merged_markdown,
+        "merge_summary": f"已合并 {len(contents)} 个标准文件。",
+        "source_file_ids": [item[0] for item in contents],
+    }
+
+
+def list_document_conflicts(project_id: str, document_id: str, actor) -> list[dict]:
+    _ = actor
+    with connect() as db:
+        if not document_repo.find_by_project_and_id(db, project_id, document_id):
+            raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
+        return [_serialize_conflict(row) for row in document_repo.list_conflicts(db, document_id, status="open")]
+
+
+def resolve_document_conflict(
+    project_id: str,
+    document_id: str,
+    conflict_id: str,
+    *,
+    resolution: str,
+    resolution_type: str,
+    actor,
+) -> dict:
+    _ = actor
+    with connect() as db:
+        if not document_repo.find_by_project_and_id(db, project_id, document_id):
+            raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
+        document_repo.resolve_conflict(db, conflict_id, resolution.strip(), resolution_type)
+        open_conflicts = document_repo.list_conflicts(db, document_id, status="open")
+        return {"success": True, "has_open_conflicts": len(open_conflicts) > 0}
+
+
 def update_document(project_id: str, document_id: str, payload: SourceDocumentUpdateIn, actor) -> dict:
     name = payload.name.strip()
     if not name:
@@ -378,6 +476,65 @@ def _standard_file_status(row) -> str:
     if "人工修订" in summary:
         return "edited"
     return "ready"
+
+
+def _merge_markdown_contents(document_name: str, contents: list[tuple[str, str, str]], resolved_conflicts: list) -> str:
+    seen: set[str] = set()
+    lines = [f"# {document_name}", "", "## 合并需求"]
+    for _mapping_id, filename, markdown in contents:
+        lines.extend(["", f"### 来源：{filename}"])
+        for raw_line in markdown.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            normalized = line.lstrip("-*0123456789.、 ").strip()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            lines.append(f"- {normalized}")
+    resolved_lines = [row["resolution"].strip() for row in resolved_conflicts if row["resolution"].strip()]
+    if resolved_lines:
+        lines.extend(["", "## 已解决冲突"])
+        for resolution in resolved_lines:
+            if resolution not in seen:
+                seen.add(resolution)
+                lines.append(f"- {resolution}")
+    return "\n".join(lines).strip() + "\n"
+
+
+def _detect_simple_conflict(contents: list[tuple[str, str, str]], resolved_conflicts: list) -> dict | None:
+    if any(row["resolution"].strip() for row in resolved_conflicts):
+        return None
+    lock_lines = [
+        (filename, line.strip())
+        for _id, filename, markdown in contents
+        for line in markdown.splitlines()
+        if "锁定次数" in line
+    ]
+    if len({line for _filename, line in lock_lines}) > 1:
+        return {
+            "title": "锁定次数不一致",
+            "source_file_names": "、".join(filename for filename, _line in lock_lines),
+            "fragment_a": lock_lines[0][1],
+            "fragment_b": lock_lines[1][1],
+        }
+    return None
+
+
+def _serialize_conflict(row) -> dict:
+    return {
+        "id": row["id"],
+        "document_id": row["document_id"],
+        "title": row["title"],
+        "source_file_names": row["source_file_names"],
+        "fragment_a": row["fragment_a"],
+        "fragment_b": row["fragment_b"],
+        "resolution": row["resolution"],
+        "resolution_type": row["resolution_type"],
+        "status": row["status"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
 
 
 async def _save_source_file(db, project_id: str, document_id: str, upload: UploadFile, index: int, actor) -> dict:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
 from app.dependencies.auth import current_user, require_admin
-from app.schemas.document import SourceDocumentUpdateIn, SourceMarkdownUpdateIn
+from app.schemas.document import ConflictResolutionIn, SourceDocumentUpdateIn, SourceMarkdownUpdateIn
 from app.services import document_service
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirements"])
@@ -76,6 +76,34 @@ async def append_requirement_files(
     actor=Depends(current_user),
 ) -> dict:
     return await document_service.append_document_files(project_id, document_id, files, actor)
+
+
+@router.post("/{document_id}/merge")
+def merge_requirement(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
+    return document_service.merge_document_markdown(project_id, document_id, actor)
+
+
+@router.get("/{document_id}/conflicts")
+def list_requirement_conflicts(project_id: str, document_id: str, actor=Depends(current_user)) -> list[dict]:
+    return document_service.list_document_conflicts(project_id, document_id, actor)
+
+
+@router.put("/{document_id}/conflicts/{conflict_id}")
+def resolve_requirement_conflict(
+    project_id: str,
+    document_id: str,
+    conflict_id: str,
+    payload: ConflictResolutionIn,
+    actor=Depends(current_user),
+) -> dict:
+    return document_service.resolve_document_conflict(
+        project_id,
+        document_id,
+        conflict_id,
+        resolution=payload.resolution,
+        resolution_type=payload.resolution_type,
+        actor=actor,
+    )
 
 
 @router.put("/{document_id}")

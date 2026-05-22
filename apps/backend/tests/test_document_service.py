@@ -270,6 +270,133 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(overview["stats"]["mergeable_files"], 1)
             self.assertEqual(overview["has_open_conflicts"], False)
 
+    def test_merge_document_markdown_deduplicates_and_creates_initial_version(self):
+        with isolated_document_store() as actor:
+            base_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "markdown" / "conversions"
+            base_dir.mkdir(parents=True)
+            first = base_dir / "first.md"
+            second = base_dir / "second.md"
+            first.write_text("# 登录\n\n- 支持账号登录\n- 支持退出", encoding="utf-8")
+            second.write_text("# 登录补充\n\n- 支持账号登录\n- 支持验证码", encoding="utf-8")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+                for mapping_id, path, name in (("docmap-1", first, "first.md"), ("docmap-2", second, "second.md")):
+                    document_repo.create_file_mapping(
+                        db,
+                        mapping_id=mapping_id,
+                        document_id="doc-1",
+                        version_id=None,
+                        source_file_path=name,
+                        original_filename=name,
+                        file_format="md",
+                        markdown_file_path=str(path),
+                        conversion_status="success",
+                        mapping_status="pending_merge",
+                        conversion_summary="成功",
+                        created_by="u-admin",
+                    )
+
+            result = document_service.merge_document_markdown("project-1", "doc-1", actor)
+
+            self.assertEqual(result["status"], "merged")
+            self.assertIn("支持账号登录", result["markdown_content"])
+            self.assertEqual(result["markdown_content"].count("支持账号登录"), 1)
+            self.assertEqual(document_service.get_document_versions("doc-1")[0]["source_action"], "merge")
+
+    def test_merge_document_markdown_returns_conflict_without_creating_version(self):
+        with isolated_document_store() as actor:
+            base_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "markdown" / "conversions"
+            base_dir.mkdir(parents=True)
+            first = base_dir / "first.md"
+            second = base_dir / "second.md"
+            first.write_text("登录失败锁定次数：5次", encoding="utf-8")
+            second.write_text("登录失败锁定次数：3次", encoding="utf-8")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+                for mapping_id, path, name in (("docmap-1", first, "first.md"), ("docmap-2", second, "second.md")):
+                    document_repo.create_file_mapping(
+                        db,
+                        mapping_id=mapping_id,
+                        document_id="doc-1",
+                        version_id=None,
+                        source_file_path=name,
+                        original_filename=name,
+                        file_format="md",
+                        markdown_file_path=str(path),
+                        conversion_status="success",
+                        mapping_status="pending_merge",
+                        conversion_summary="成功",
+                        created_by="u-admin",
+                    )
+
+            result = document_service.merge_document_markdown("project-1", "doc-1", actor)
+
+            self.assertEqual(result["status"], "conflict")
+            self.assertEqual(result["conflict_count"], 1)
+            self.assertEqual(document_service.get_document_versions("doc-1"), [])
+
+    def test_resolved_conflict_allows_merge_to_continue(self):
+        with isolated_document_store() as actor:
+            base_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "markdown" / "conversions"
+            base_dir.mkdir(parents=True)
+            first = base_dir / "first.md"
+            second = base_dir / "second.md"
+            first.write_text("登录失败锁定次数：5次", encoding="utf-8")
+            second.write_text("登录失败锁定次数：3次", encoding="utf-8")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+                for mapping_id, path, name in (("docmap-1", first, "first.md"), ("docmap-2", second, "second.md")):
+                    document_repo.create_file_mapping(
+                        db,
+                        mapping_id=mapping_id,
+                        document_id="doc-1",
+                        version_id=None,
+                        source_file_path=name,
+                        original_filename=name,
+                        file_format="md",
+                        markdown_file_path=str(path),
+                        conversion_status="success",
+                        mapping_status="pending_merge",
+                        conversion_summary="成功",
+                        created_by="u-admin",
+                    )
+
+            conflict_result = document_service.merge_document_markdown("project-1", "doc-1", actor)
+            conflict_id = conflict_result["conflicts"][0]["id"]
+            document_service.resolve_document_conflict(
+                "project-1",
+                "doc-1",
+                conflict_id,
+                resolution="登录失败锁定次数：5次",
+                resolution_type="manual",
+                actor=actor,
+            )
+            merge_result = document_service.merge_document_markdown("project-1", "doc-1", actor)
+
+            self.assertEqual(merge_result["status"], "merged")
+            self.assertIn("登录失败锁定次数：5次", merge_result["markdown_content"])
+
 
 def make_upload_file(filename: str, content: bytes) -> TestUploadFile:
     return TestUploadFile(filename, content)

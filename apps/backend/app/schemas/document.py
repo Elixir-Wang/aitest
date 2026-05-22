@@ -44,3 +44,8 @@ class SourceDocumentUpdateIn(BaseModel):
 class SourceMarkdownUpdateIn(BaseModel):
     markdown_content: str = ""
     change_summary: str = ""
+
+
+class ConflictResolutionIn(BaseModel):
+    resolution: str = Field(min_length=1)
+    resolution_type: str = "manual"
