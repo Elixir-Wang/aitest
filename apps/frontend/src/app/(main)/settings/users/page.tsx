@@ -71,7 +71,6 @@ export default function Page() {
       roleToLabel(user.role),
       user.project_scope,
       statusToLabel(user.status),
-      user.updated_at,
     ].some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase())),
   );
   const selectedCount = selectedIds.length;

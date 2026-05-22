@@ -29,6 +29,7 @@ def list_skills(_actor) -> list[dict]:
             "name": skill.name,
             "description": skill.description,
             "enabled": skill.enabled,
+            "tool_count": len(skill.tools),
         }
         for skill in skill_registry.list()
     ]
@@ -36,10 +37,24 @@ def list_skills(_actor) -> list[dict]:
 
 async def execute_agent(agent_id: str, payload: AgentRunIn, _actor) -> dict:
     try:
-        output = await run_agent(agent_id, payload.prompt)
+        result = await run_agent(agent_id, payload.prompt)
     except KeyError as exc:
         raise api_error(404, "AGENT_NOT_FOUND", "智能体不存在。") from exc
-    return {"agent_id": agent_id, "output": output}
+    return {
+        "run_id": result.run_id,
+        "agent_id": result.agent_id,
+        "output": result.output,
+        "model": result.model,
+        "model_provider_id": result.model_provider_id,
+        "provider": result.provider,
+        "base_url": result.base_url,
+        "api_key_env": result.api_key_env,
+        "skill_ids": result.skill_ids,
+        "tool_names": result.tool_names,
+        "raw_response_count": result.raw_response_count,
+        "item_count": result.item_count,
+        "usage": result.usage,
+    }
 
 
 def list_model_assignments(_actor) -> list[dict]:
@@ -84,6 +99,7 @@ def _serialize_assignment(agent_id: str, row) -> dict:
         "provider": row["provider"],
         "model": row["model"],
         "base_url": row["base_url"],
+        "api_key_env": row["api_key_env"],
         "api_key_mask": row["api_key_mask"],
         "model_status": row["model_status"],
         "updated_at": row["updated_at"],

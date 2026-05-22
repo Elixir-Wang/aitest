@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 import Link from "next/link";
 
@@ -279,6 +279,10 @@ export function SoonPage({ title, description }: { title: string; description: s
   return <EmptyState description={description} status="Soon" title={title} />;
 }
 
-export function ShellSection({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("rounded-xl border bg-card p-4", className)}>{children}</div>;
+export function ShellSection({ children, className, ...props }: ComponentPropsWithoutRef<"div">) {
+  return (
+    <div className={cn("rounded-xl border bg-card p-4", className)} {...props}>
+      {children}
+    </div>
+  );
 }

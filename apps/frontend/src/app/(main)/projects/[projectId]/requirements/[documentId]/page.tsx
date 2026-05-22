@@ -4,21 +4,25 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
-import { ArrowLeft, Check, FilePlus2, GitMerge, Pencil, Save, X } from "lucide-react";
+import { ArrowLeft, Check, ExternalLink, FileText, GitMerge, Pencil, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
+import { ListToolbar, PageShell, RowActions, ShellSection, SoonPage } from "@/components/ai-testing/page-shell";
 import {
   RequirementFileSwitcher,
   type RequirementSwitcherFile,
 } from "@/components/ai-testing/requirement-file-switcher";
-import { PageShell, ShellSection, SoonPage } from "@/components/ai-testing/page-shell";
+import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { apiRequest, formatDateTime } from "@/lib/api-client";
+import { apiBlobRequest, apiRequest, formatDateTime } from "@/lib/api-client";
+
+const STANDARD_FILE_SECTION_ID = "standard-file-section";
 
 type RequirementConflict = {
   id: string;
@@ -36,7 +40,7 @@ type SourceFile = RequirementSwitcherFile & {
   version_no: number | null;
   markdown_file_path: string | null;
   conversion_summary: string;
-  standard_file_status?: string;
+  standard_file_status?: "generating" | "ready" | "edited" | "failed";
   conflict_status?: string;
 };
 
@@ -67,8 +71,9 @@ type RequirementOverviewResponse = {
 type OriginalPreview = {
   title: string;
   fileFormat: string;
-  contentType: "text" | "download";
+  contentType: "text" | "file";
   content: string;
+  objectUrl?: string;
 };
 
 type StandardPreview = {
@@ -108,10 +113,10 @@ const mappingLabels: Record<string, string> = {
 };
 
 const standardFileLabels: Record<string, string> = {
-  not_generated: "未生成",
+  generating: "生成中",
   ready: "可合并",
   edited: "已修改",
-  failed: "转换失败",
+  failed: "生成失败",
 };
 
 const initialRequirementLabels: Record<string, string> = {
@@ -131,27 +136,51 @@ export default function DocumentDetailPage() {
   const [selectedFileId, setSelectedFileId] = useState("");
   const [originalPreview, setOriginalPreview] = useState<OriginalPreview | null>(null);
   const [standardPreview, setStandardPreview] = useState<StandardPreview | null>(null);
+  const [standardLoading, setStandardLoading] = useState(false);
+  const [standardError, setStandardError] = useState("");
   const [markdownDraft, setMarkdownDraft] = useState("");
   const [editingStandard, setEditingStandard] = useState(false);
   const [savingStandard, setSavingStandard] = useState(false);
   const [merging, setMerging] = useState(false);
   const [conflicts, setConflicts] = useState<RequirementConflict[]>([]);
   const [conflictDrafts, setConflictDrafts] = useState<Record<string, string>>({});
+  const [fileSearchText, setFileSearchText] = useState("");
+  const {
+    allSelected: allFilesSelected,
+    clearSelection: clearFileSelection,
+    partiallySelected: partiallyFilesSelected,
+    rows: fileRows,
+    selectedCount: fileSelectedCount,
+    selectedIds: fileSelectedIds,
+    setRows: setFileRows,
+    toggleAll: toggleAllFiles,
+    toggleOne: toggleOneFile,
+  } = useLocalTableSelection<SourceFile>([]);
 
   const selectedFile = useMemo(
     () => overview?.files.find((file) => file.id === selectedFileId) ?? overview?.files[0] ?? null,
-    [overview?.files, selectedFileId]
+    [overview?.files, selectedFileId],
   );
+  const filteredFiles = useMemo(
+    () =>
+      fileRows.filter((file) =>
+        [file.original_filename, file.file_format, file.conversion_status, file.mapping_status].some((value) =>
+          value?.toLowerCase().includes(fileSearchText.trim().toLowerCase()),
+        ),
+      ),
+    [fileRows, fileSearchText],
+  );
+  const canEditStandard = Boolean(standardPreview) && !standardLoading && standardError.length === 0;
   const showConflictTab = Boolean(overview?.has_open_conflicts || conflicts.length > 0);
 
   const loadConflicts = useCallback(async () => {
     try {
       const data = await apiRequest<RequirementConflict[]>(
-        `/projects/${projectId}/requirements/${documentId}/conflicts`
+        `/projects/${projectId}/requirements/${documentId}/conflicts`,
       );
       setConflicts(data);
       setConflictDrafts(
-        Object.fromEntries(data.map((conflict) => [conflict.id, conflict.resolution || conflict.fragment_a]))
+        Object.fromEntries(data.map((conflict) => [conflict.id, conflict.resolution || conflict.fragment_a])),
       );
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "冲突列表加载失败");
@@ -166,9 +195,10 @@ export default function DocumentDetailPage() {
       setError("");
       try {
         const data = await apiRequest<RequirementOverviewResponse>(
-          `/projects/${projectId}/requirements/${documentId}/overview`
+          `/projects/${projectId}/requirements/${documentId}/overview`,
         );
         setOverview(data);
+        setFileRows(data.files);
         setSelectedFileId((current) => current || data.files[0]?.id || "");
         if (data.has_open_conflicts) {
           void loadConflicts();
@@ -186,10 +216,11 @@ export default function DocumentDetailPage() {
         }
       }
     },
-    [documentId, loadConflicts, projectId]
+    [documentId, loadConflicts, projectId, setFileRows],
   );
 
-  const loadOriginalPreview = useCallback(async (file: SourceFile) => {
+  const loadReadableOriginalPreview = useCallback(async (file: SourceFile) => {
+    setOriginalPreview(null);
     try {
       const data = await apiRequest<{
         original_filename: string;
@@ -198,11 +229,22 @@ export default function DocumentDetailPage() {
         content?: string;
         download_path?: string;
       }>(`/requirement-files/${file.id}/original`);
+      if (data.content_type === "text") {
+        setOriginalPreview({
+          title: data.original_filename,
+          fileFormat: data.file_format,
+          contentType: "text",
+          content: data.content ?? "",
+        });
+        return;
+      }
+      const blob = await apiBlobRequest(`/requirement-files/${file.id}/original/content`);
       setOriginalPreview({
         title: data.original_filename,
         fileFormat: data.file_format,
-        contentType: data.content_type,
-        content: data.content ?? data.download_path ?? "",
+        contentType: "file",
+        content: data.download_path ?? "",
+        objectUrl: URL.createObjectURL(blob),
       });
     } catch (requestError) {
       setOriginalPreview(null);
@@ -211,6 +253,14 @@ export default function DocumentDetailPage() {
   }, []);
 
   const loadStandardPreview = useCallback(async (file: SourceFile) => {
+    setStandardLoading(true);
+    setStandardError("");
+    setStandardPreview(null);
+    setMarkdownDraft("");
+    if (file.standard_file_status === "generating") {
+      setStandardLoading(false);
+      return;
+    }
     try {
       const data = await apiRequest<{
         original_filename: string;
@@ -218,7 +268,7 @@ export default function DocumentDetailPage() {
         conversion_summary: string;
       }>(`/requirement-files/${file.id}/markdown`);
       setStandardPreview({
-        title: data.original_filename,
+        title: standardMarkdownFilename(data.original_filename),
         markdownContent: data.markdown_content,
         conversionSummary: data.conversion_summary,
       });
@@ -226,7 +276,10 @@ export default function DocumentDetailPage() {
     } catch (requestError) {
       setStandardPreview(null);
       setMarkdownDraft("");
+      setStandardError(requestError instanceof Error ? requestError.message : "标准文件生成失败");
       toast.error(requestError instanceof Error ? requestError.message : "标准文件加载失败");
+    } finally {
+      setStandardLoading(false);
     }
   }, []);
 
@@ -243,13 +296,21 @@ export default function DocumentDetailPage() {
       return;
     }
     if (activeTab === "original") {
-      void loadOriginalPreview(selectedFile);
+      void loadReadableOriginalPreview(selectedFile);
     }
     if (activeTab === "standard") {
       setEditingStandard(false);
       void loadStandardPreview(selectedFile);
     }
-  }, [activeTab, loadOriginalPreview, loadStandardPreview, selectedFile]);
+  }, [activeTab, loadReadableOriginalPreview, loadStandardPreview, selectedFile]);
+
+  useEffect(() => {
+    return () => {
+      if (originalPreview?.objectUrl) {
+        URL.revokeObjectURL(originalPreview.objectUrl);
+      }
+    };
+  }, [originalPreview?.objectUrl]);
 
   function selectFileForTab(fileId: string, tab: string) {
     setSelectedFileId(fileId);
@@ -300,8 +361,8 @@ export default function DocumentDetailPage() {
       setConflicts(result.conflicts);
       setConflictDrafts(
         Object.fromEntries(
-          result.conflicts.map((conflict) => [conflict.id, conflict.resolution || conflict.fragment_a])
-        )
+          result.conflicts.map((conflict) => [conflict.id, conflict.resolution || conflict.fragment_a]),
+        ),
       );
       await loadOverview({ silent: true });
       setActiveTab("conflicts");
@@ -309,6 +370,19 @@ export default function DocumentDetailPage() {
       toast.error(requestError instanceof Error ? requestError.message : "需求合并失败");
     } finally {
       setMerging(false);
+    }
+  }
+
+  async function deleteSourceFiles(ids: string[]) {
+    if (ids.length === 0) return;
+    try {
+      await Promise.all(ids.map((id) => apiRequest(`/requirement-files/${id}`, { method: "DELETE" })));
+      setFileRows((current) => current.filter((row) => !ids.includes(row.id)));
+      clearFileSelection();
+      toast.success(`已删除 ${ids.length} 个原始文件`);
+      await loadOverview({ silent: true });
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "原始文件删除失败");
     }
   }
 
@@ -324,7 +398,7 @@ export default function DocumentDetailPage() {
         {
           method: "PUT",
           body: JSON.stringify({ resolution, resolution_type: "manual" }),
-        }
+        },
       );
       toast.success("冲突解决结果已保存");
       await loadConflicts();
@@ -363,21 +437,6 @@ export default function DocumentDetailPage() {
       description="查看原始文件、标准文件、合并冲突和初始需求。"
       title="需求概览"
     >
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button
-          onClick={() => router.push(`/projects/${projectId}/requirements/upload?mode=append&documentId=${documentId}`)}
-          type="button"
-          variant="outline"
-        >
-          <FilePlus2 className="size-4" />
-          追加文件
-        </Button>
-        <Button onClick={() => router.back()} variant="outline">
-          <ArrowLeft className="size-4" />
-          返回
-        </Button>
-      </div>
-
       <Tabs className="space-y-4" onValueChange={setActiveTab} value={activeTab}>
         <TabsList>
           <TabsTrigger value="overview">概览</TabsTrigger>
@@ -397,19 +456,30 @@ export default function DocumentDetailPage() {
               value={initialRequirementLabels[overview.stats.initial_requirement_status] ?? "未生成"}
             />
           </div>
-          <ShellSection>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="font-medium text-sm">原始文件列表</h2>
-              <div className="flex flex-wrap gap-2 text-muted-foreground text-xs">
-                <span>转换成功 {overview.stats.conversion_success}</span>
-                <span>有警告 {overview.stats.conversion_warning}</span>
-                <span>失败 {overview.stats.conversion_failed}</span>
-              </div>
-            </div>
+          <ShellSection className="mt-6">
+            <ListToolbar
+              description={`转换成功 ${overview.stats.conversion_success} · 有警告 ${overview.stats.conversion_warning} · 失败 ${overview.stats.conversion_failed}`}
+              onBatchDelete={() => deleteSourceFiles(fileSelectedIds)}
+              onCreate={() =>
+                router.push(`/projects/${projectId}/requirements/upload?mode=append&documentId=${documentId}`)
+              }
+              onSearch={setFileSearchText}
+              createLabel="上传文件"
+              placeholder="搜索文件名、格式或状态"
+              selectedCount={fileSelectedCount}
+              title="原始文件列表"
+            />
             <div className="overflow-hidden rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        aria-label="选择全部文件"
+                        checked={allFilesSelected || (partiallyFilesSelected ? "indeterminate" : false)}
+                        onCheckedChange={(checked) => toggleAllFiles(Boolean(checked))}
+                      />
+                    </TableHead>
                     <TableHead>文件名</TableHead>
                     <TableHead>格式</TableHead>
                     <TableHead>上传时间</TableHead>
@@ -417,20 +487,27 @@ export default function DocumentDetailPage() {
                     <TableHead>标准文件</TableHead>
                     <TableHead>合并状态</TableHead>
                     <TableHead>冲突</TableHead>
+                    <TableHead className="w-16">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {overview.files.map((file) => (
-                    <TableRow key={file.id}>
+                  {filteredFiles.map((file) => (
+                    <TableRow data-state={fileSelectedIds.includes(file.id) ? "selected" : undefined} key={file.id}>
                       <TableCell>
-                        <Button
-                          className="h-auto px-0 font-medium"
+                        <Checkbox
+                          aria-label={`选择 ${displayFilename(file.original_filename)}`}
+                          checked={fileSelectedIds.includes(file.id)}
+                          onCheckedChange={(checked) => toggleOneFile(file.id, Boolean(checked))}
+                        />
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        <button
+                          className="block truncate text-left hover:underline"
                           onClick={() => selectFileForTab(file.id, "original")}
                           type="button"
-                          variant="link"
                         >
                           {displayFilename(file.original_filename)}
-                        </Button>
+                        </button>
                       </TableCell>
                       <TableCell>{file.file_format.toUpperCase()}</TableCell>
                       <TableCell>{formatDateTime(file.created_at)}</TableCell>
@@ -440,7 +517,6 @@ export default function DocumentDetailPage() {
                       <TableCell>
                         <Button
                           className="h-auto px-0"
-                          disabled={file.conversion_status === "failed"}
                           onClick={() => selectFileForTab(file.id, "standard")}
                           type="button"
                           variant="link"
@@ -462,11 +538,34 @@ export default function DocumentDetailPage() {
                           <span className="text-muted-foreground text-sm">无</span>
                         )}
                       </TableCell>
+                      <TableCell>
+                        <RowActions
+                          actions={[
+                            {
+                              label: "查看原文",
+                              icon: FileText,
+                              onSelect: () => selectFileForTab(file.id, "original"),
+                            },
+                            {
+                              label: "查看标准文件",
+                              icon: FileText,
+                              onSelect: () => selectFileForTab(file.id, "standard"),
+                            },
+                            {
+                              label: "删除",
+                              icon: Trash2,
+                              destructive: true,
+                              onSelect: () => deleteSourceFiles([file.id]),
+                            },
+                          ]}
+                          label={`打开 ${displayFilename(file.original_filename)} 操作菜单`}
+                        />
+                      </TableCell>
                     </TableRow>
                   ))}
-                  {overview.files.length === 0 ? (
+                  {filteredFiles.length === 0 ? (
                     <TableRow>
-                      <TableCell className="py-8 text-center text-muted-foreground text-sm" colSpan={7}>
+                      <TableCell className="py-8 text-center text-muted-foreground text-sm" colSpan={9}>
                         暂无原始文件
                       </TableCell>
                     </TableRow>
@@ -479,24 +578,49 @@ export default function DocumentDetailPage() {
 
         <TabsContent value="original">
           <ShellSection>
-            <RequirementFileSwitcher
-              files={overview.files}
-              onSelect={setSelectedFileId}
-              selectedFileId={selectedFile?.id ?? ""}
-              statusLabel={(status) => conversionLabels[status] ?? status}
-            />
-          </ShellSection>
-          <ShellSection>
-            <h2 className="mb-3 font-medium text-sm">原始文件预览</h2>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-medium text-sm">原始文件预览</h2>
+              </div>
+              <RequirementFileSwitcher
+                files={overview.files}
+                onSelect={setSelectedFileId}
+                selectedFileId={selectedFile?.id ?? ""}
+              />
+            </div>
             {originalPreview?.contentType === "text" ? (
               <pre className="max-h-[640px] overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-4 text-sm">
                 {originalPreview.content}
               </pre>
+            ) : originalPreview?.objectUrl ? (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3 text-sm">
+                  <div>
+                    <div className="font-medium">{displayFilename(originalPreview.title)}</div>
+                    <div className="mt-1 text-muted-foreground">
+                      {originalPreview.fileFormat.toUpperCase()} 原始文件
+                    </div>
+                  </div>
+                  <Button asChild type="button" variant="outline">
+                    <a href={originalPreview.objectUrl} rel="noreferrer" target="_blank">
+                      <ExternalLink className="size-4" />
+                      打开原始文件
+                    </a>
+                  </Button>
+                </div>
+                {originalPreview.fileFormat.toLowerCase() === "pdf" ? (
+                  <iframe
+                    className="h-[720px] w-full rounded-lg border bg-background"
+                    src={originalPreview.objectUrl}
+                    title={displayFilename(originalPreview.title)}
+                  />
+                ) : null}
+              </div>
             ) : (
               <div className="rounded-lg border bg-muted/20 p-4 text-sm">
-              <div className="font-medium">
-                {displayFilename(originalPreview?.title ?? selectedFile?.original_filename ?? "未选择文件")}
-              </div>
+                <div className="font-medium">
+                  {displayFilename(originalPreview?.title ?? selectedFile?.original_filename ?? "未选择文件")}
+                </div>
                 <div className="mt-2 text-muted-foreground">
                   {originalPreview
                     ? `${originalPreview.fileFormat.toUpperCase()} 暂以文件访问方式查看：${originalPreview.content || "无访问路径"}`
@@ -508,21 +632,22 @@ export default function DocumentDetailPage() {
         </TabsContent>
 
         <TabsContent value="standard">
-          <ShellSection>
-            <RequirementFileSwitcher
-              files={overview.files}
-              onSelect={setSelectedFileId}
-              selectedFileId={selectedFile?.id ?? ""}
-              statusLabel={(status) => conversionLabels[status] ?? status}
-            />
-          </ShellSection>
-          <ShellSection>
+          <ShellSection id={STANDARD_FILE_SECTION_ID}>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="font-medium text-sm">{standardPreview?.title ?? "标准文件"}</h2>
-                <p className="text-muted-foreground text-xs">{standardPreview?.conversionSummary ?? "选择文件后查看标准 Markdown。"}</p>
+                <h2 className="font-medium text-sm">
+                  {displayFilename(
+                    standardPreview?.title ??
+                      (selectedFile ? standardMarkdownFilename(selectedFile.original_filename) : "标准文件.md"),
+                  )}
+                </h2>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <RequirementFileSwitcher
+                  files={overview.files}
+                  onSelect={setSelectedFileId}
+                  selectedFileId={selectedFile?.id ?? ""}
+                />
                 {editingStandard ? (
                   <>
                     <Button disabled={savingStandard} onClick={saveStandardMarkdown} type="button">
@@ -542,26 +667,17 @@ export default function DocumentDetailPage() {
                       取消
                     </Button>
                   </>
-                ) : (
-                  <>
-                    <Button
-                      disabled={!standardPreview}
-                      onClick={() => setEditingStandard(true)}
-                      type="button"
-                      variant="outline"
-                    >
-                      <Pencil className="size-4" />
-                      修改
-                    </Button>
-                    <Button disabled={merging || overview.stats.mergeable_files === 0} onClick={mergeRequirement} type="button">
-                      <GitMerge className="size-4" />
-                      {merging ? "合并中" : "合并"}
-                    </Button>
-                  </>
-                )}
+                ) : null}
               </div>
             </div>
-            {editingStandard ? (
+            {standardLoading ? (
+              <StandardFileState
+                description="系统正在生成该原始文件对应的 Markdown 标准文件，请稍后刷新。"
+                title="标准文件生成中"
+              />
+            ) : standardError ? (
+              <StandardFileState description={standardError} tone="failed" title="标准文件生成失败" />
+            ) : editingStandard ? (
               <Textarea
                 className="min-h-[560px] font-mono text-sm"
                 onChange={(event) => setMarkdownDraft(event.target.value)}
@@ -575,7 +691,35 @@ export default function DocumentDetailPage() {
                 indentParagraphs
               />
             )}
-            <div className="mt-3 text-muted-foreground text-xs">合并会处理当前需求下全部可用标准文件。</div>
+            {!editingStandard ? (
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2 border-t pt-4">
+                <Button
+                  onClick={() => document.getElementById(STANDARD_FILE_SECTION_ID)?.scrollIntoView()}
+                  type="button"
+                  variant="outline"
+                >
+                  <ArrowLeft className="size-4 rotate-90" />
+                  返回顶部
+                </Button>
+                <Button
+                  disabled={!canEditStandard}
+                  onClick={() => setEditingStandard(true)}
+                  type="button"
+                  variant="outline"
+                >
+                  <Pencil className="size-4" />
+                  修改
+                </Button>
+                <Button
+                  disabled={merging || overview.stats.mergeable_files === 0}
+                  onClick={mergeRequirement}
+                  type="button"
+                >
+                  <GitMerge className="size-4" />
+                  {merging ? "合并中" : "合并全部文件"}
+                </Button>
+              </div>
+            ) : null}
           </ShellSection>
         </TabsContent>
 
@@ -651,6 +795,28 @@ function StatusBadge({ status, statusLabels }: { status: string; statusLabels: R
   return <Badge variant={status === "failed" ? "destructive" : "secondary"}>{statusLabels[status] ?? status}</Badge>;
 }
 
+function StandardFileState({
+  description,
+  title,
+  tone = "generating",
+}: {
+  description: string;
+  title: string;
+  tone?: "generating" | "failed";
+}) {
+  return (
+    <div className="rounded-lg border bg-muted/20 p-6 text-sm">
+      <div className={tone === "failed" ? "font-medium text-destructive" : "font-medium"}>{title}</div>
+      <div className="mt-2 text-muted-foreground">{description}</div>
+    </div>
+  );
+}
+
 function displayFilename(filename: string) {
   return filename.split(/[\\/]/).filter(Boolean).pop() ?? filename;
+}
+
+function standardMarkdownFilename(filename: string) {
+  const displayName = displayFilename(filename);
+  return `${displayName.replace(/\.[^.]+$/, "")}.md`;
 }

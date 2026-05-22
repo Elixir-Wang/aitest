@@ -31,11 +31,23 @@ def logout(token: str) -> dict:
 
 
 def me(user) -> dict:
-    actions = ["read", "write"] if user["role"] in {"admin", "tester"} else ["read"]
+    role = user["role"]
+    project_scope = user["project_scope"]
+
+    if role == "admin":
+        # 管理员：始终全局读写
+        actions = ["read", "write"]
+    elif role == "tester":
+        # 测试工程师：在已分配的范围内（project_scope 即为授权边界）可读写
+        actions = ["read", "write"]
+    else:
+        # 访客：全局只读
+        actions = ["read"]
+
     return {
         "user": serialize_user(user),
-        "roles": [user["role"]],
-        "project_permissions": {user["project_scope"]: actions},
+        "roles": [role],
+        "project_permissions": {project_scope: actions},
     }
 
 

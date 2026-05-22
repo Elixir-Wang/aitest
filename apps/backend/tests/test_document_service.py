@@ -269,6 +269,79 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(overview["stats"]["conversion_failed"], 1)
             self.assertEqual(overview["stats"]["mergeable_files"], 1)
             self.assertEqual(overview["has_open_conflicts"], False)
+            statuses = {item["id"]: item["standard_file_status"] for item in overview["files"]}
+            self.assertEqual(statuses["docmap-ready"], "ready")
+            self.assertEqual(statuses["docmap-failed"], "failed")
+
+    def test_get_document_overview_marks_missing_standard_file_as_generating(self):
+        with isolated_document_store() as actor:
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+                document_repo.create_file_mapping(
+                    db,
+                    mapping_id="docmap-generating",
+                    document_id="doc-1",
+                    version_id=None,
+                    source_file_path="raw.pdf",
+                    original_filename="raw.pdf",
+                    file_format="pdf",
+                    markdown_file_path=None,
+                    conversion_status="processing",
+                    mapping_status="pending_merge",
+                    conversion_summary="正在生成标准文件",
+                    created_by="u-admin",
+                )
+
+            overview = document_service.get_document_overview("project-1", "doc-1", actor)
+
+            self.assertEqual(overview["files"][0]["standard_file_status"], "generating")
+
+    def test_get_converted_markdown_retries_failed_pdf_mapping_when_source_exists(self):
+        with isolated_document_store():
+            source_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "raw" / "failed.pdf"
+            source_path.parent.mkdir(parents=True)
+            source_path.write_bytes(b"%PDF-1.4")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+                document_repo.create_file_mapping(
+                    db,
+                    mapping_id="docmap-failed",
+                    document_id="doc-1",
+                    version_id=None,
+                    source_file_path=str(source_path),
+                    original_filename="failed.pdf",
+                    file_format="pdf",
+                    markdown_file_path=None,
+                    conversion_status="failed",
+                    mapping_status="pending_merge",
+                    conversion_summary="旧转换失败",
+                    created_by="u-admin",
+                )
+
+            with patch("app.services.document_service.convert_requirement_file_to_markdown") as convert:
+                convert.return_value = ("# PDF 标准文件\n", "重试转换成功")
+                result = document_service.get_converted_markdown("docmap-failed")
+
+            self.assertEqual(result["markdown_content"], "# PDF 标准文件\n")
+            self.assertEqual(result["conversion_status"], "success")
+            with connect() as db:
+                row = document_repo.find_file_mapping(db, "docmap-failed")
+            self.assertEqual(row["conversion_status"], "success")
+            self.assertTrue(Path(row["markdown_file_path"]).exists())
 
     def test_merge_document_markdown_deduplicates_and_creates_initial_version(self):
         with isolated_document_store() as actor:

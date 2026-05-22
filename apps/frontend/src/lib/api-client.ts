@@ -113,6 +113,33 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   return (payload as ApiEnvelope<T>).data;
 }
 
+export async function apiBlobRequest(path: string, options: RequestInit = {}): Promise<Blob> {
+  let { hasHydrated, token } = useAuthStore.getState();
+
+  if (!hasHydrated) {
+    useAuthStore.getState().hydrate();
+    ({ hasHydrated, token } = useAuthStore.getState());
+  }
+
+  const headers = new Headers(options.headers);
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    const detail = payload?.detail;
+    throw new Error(detail?.message ?? "请求失败，请稍后重试。");
+  }
+
+  return response.blob();
+}
+
 export function roleToLabel(role: ApiRole) {
   return { admin: "管理员", tester: "测试工程师", guest: "访客" }[role];
 }

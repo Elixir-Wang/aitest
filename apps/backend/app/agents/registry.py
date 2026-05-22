@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import importlib
+from pathlib import Path
+
 from app.agents.definitions import AgentDefinition
 
 
@@ -14,18 +17,22 @@ class AgentRegistry:
         return self._agents[agent_id]
 
 
-agent_registry = AgentRegistry(
-    [
-        AgentDefinition(
-            id="requirement_file_parser",
-            name="需求文件解析智能体",
-            description="负责将上传的 PDF、Word、TXT 和 Markdown 需求文件解析为 Markdown 工作稿。",
-            instructions=(
-                "你是 AI 测试系统中的需求文件解析智能体。"
-                "你需要将 PDF、Word、TXT 和 Markdown 源文件转换为结构清晰的 Markdown 工作稿，"
-                "尽量保留标题、段落、列表和表格信息，并为后续需求分析提供稳定输入。"
-            ),
-            skill_ids=("requirement_file_to_markdown",),
-        ),
-    ]
-)
+def discover_agent_definitions(agents_dir: Path | None = None) -> list[AgentDefinition]:
+    root = agents_dir or Path(__file__).parent
+    definitions: list[AgentDefinition] = []
+    for agent_file in sorted(root.glob("*/*_agent.py")):
+        package_dir = agent_file.parent
+        if not _is_agent_package(package_dir):
+            continue
+        module = importlib.import_module(f"app.agents.{package_dir.name}.{agent_file.stem}")
+        definition = getattr(module, "agent_definition", None)
+        if isinstance(definition, AgentDefinition):
+            definitions.append(definition)
+    return sorted(definitions, key=lambda item: (item.sort_order, item.id))
+
+
+def _is_agent_package(path: Path) -> bool:
+    return path.is_dir() and not path.name.startswith("_") and path.name != "skills" and (path / "__init__.py").exists()
+
+
+agent_registry = AgentRegistry(discover_agent_definitions())

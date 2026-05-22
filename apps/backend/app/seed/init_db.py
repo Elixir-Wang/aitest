@@ -38,6 +38,7 @@ def init_db() -> None:
               provider TEXT NOT NULL,
               model TEXT NOT NULL,
               base_url TEXT NOT NULL,
+              api_key_env TEXT NOT NULL DEFAULT '',
               api_key_hash TEXT NOT NULL DEFAULT '',
               api_key_mask TEXT NOT NULL DEFAULT '',
               description TEXT NOT NULL DEFAULT '',
@@ -145,6 +146,7 @@ def init_db() -> None:
             """
         )
         _ensure_column(db, "model_providers", "description", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(db, "model_providers", "api_key_env", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "projects", "code", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "projects", "default_site_url", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "projects", "created_by", "TEXT NOT NULL DEFAULT 'system'")

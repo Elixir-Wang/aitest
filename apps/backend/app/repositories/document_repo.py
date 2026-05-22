@@ -226,6 +226,10 @@ def find_file_mapping(db: Connection, mapping_id: str) -> Row | None:
     ).fetchone()
 
 
+def delete_file_mapping(db: Connection, mapping_id: str) -> None:
+    db.execute("DELETE FROM source_document_file_mappings WHERE id = ?", (mapping_id,))
+
+
 def list_conflicts(db: Connection, document_id: str, *, status: str | None = None) -> list[Row]:
     if status:
         return db.execute(

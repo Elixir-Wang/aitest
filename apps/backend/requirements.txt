@@ -7,3 +7,4 @@ python-multipart==0.0.20
 openai-agents==0.17.3
 pypdf==6.4.2
 python-docx==1.2.0
+loguru==0.7.3

@@ -6,12 +6,12 @@ from pathlib import Path
 
 from fastapi import UploadFile
 
-from app.agents.document_parser import requirement_file_parser_agent
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir
 from app.repositories import document_repo, project_repo
 from app.schemas.document import SourceDocumentUpdateIn
+from app.services.requirement_file_converter import convert_requirement_file_to_markdown
 
 DOCUMENT_PENDING_MERGE_STATUS = "pending_merge"
 DOCUMENT_VERSIONED_STATUS = "versioned"
@@ -120,6 +120,7 @@ def get_original_file(mapping_id: str) -> dict:
                 "file_format": row["file_format"],
                 "content_type": "text",
                 "content": path.read_text(encoding="utf-8", errors="ignore"),
+                "content_path": str(path),
             }
         return {
             "id": row["id"],
@@ -135,6 +136,7 @@ def get_converted_markdown(mapping_id: str) -> dict:
         row = document_repo.find_file_mapping(db, mapping_id)
         if not row:
             raise api_error(404, "DOCUMENT_FILE_NOT_FOUND", "来源文件不存在。")
+        row = _ensure_converted_markdown(db, row)
         if row["conversion_status"] not in {CONVERSION_SUCCESS_STATUS, "warning"}:
             raise api_error(409, "DOCUMENT_CONVERSION_NOT_READY", row["conversion_summary"] or "转换稿尚未生成。")
         markdown_path_value = row["markdown_file_path"]
@@ -403,6 +405,30 @@ def update_document(project_id: str, document_id: str, payload: SourceDocumentUp
     return get_document_detail(project_id, document_id, actor)
 
 
+def delete_source_file(mapping_id: str, actor) -> dict:
+    _ = actor
+    with connect() as db:
+        row = document_repo.find_file_mapping(db, mapping_id)
+        if not row:
+            raise api_error(404, "DOCUMENT_FILE_NOT_FOUND", "来源文件不存在。")
+
+        source_path = row["source_file_path"]
+        markdown_path_value = row["markdown_file_path"]
+        document_repo.delete_file_mapping(db, mapping_id)
+
+    if source_path:
+        path = Path(source_path)
+        if path.exists():
+            path.unlink()
+
+    if markdown_path_value:
+        md_path = Path(markdown_path_value)
+        if md_path.exists():
+            md_path.unlink()
+
+    return {"success": True}
+
+
 def delete_document(project_id: str, document_id: str) -> dict:
     with connect() as db:
         existing = document_repo.find_by_project_and_id(db, project_id, document_id)
@@ -471,7 +497,7 @@ def _standard_file_status(row) -> str:
     if row["conversion_status"] == CONVERSION_FAILED_STATUS:
         return "failed"
     if not row["markdown_file_path"]:
-        return "not_generated"
+        return "generating"
     summary = row["conversion_summary"] or ""
     if "人工修订" in summary:
         return "edited"
@@ -606,10 +632,31 @@ def _serialize_document_from_db(db, document_id: str, actor_role: str) -> dict:
 
 
 def _convert_to_markdown(filename: str, raw_bytes: bytes) -> tuple[str, str]:
-    if filename.lower().endswith((".md", ".markdown", ".txt")):
-        return _decode_text(raw_bytes), "文本文件直接保存为 Markdown 转换稿。"
-    parsed_document = requirement_file_parser_agent.parse(filename, raw_bytes)
-    return parsed_document.markdown, parsed_document.summary
+    return convert_requirement_file_to_markdown(filename, raw_bytes)
+
+
+def _ensure_converted_markdown(db, row):
+    markdown_path_value = row["markdown_file_path"]
+    if row["conversion_status"] in {CONVERSION_SUCCESS_STATUS, "warning"} and markdown_path_value:
+        markdown_path = Path(markdown_path_value)
+        if markdown_path.exists():
+            return row
+
+    source_path = Path(row["source_file_path"])
+    if not source_path.exists():
+        return row
+
+    try:
+        markdown_text, conversion_summary = _convert_to_markdown(row["original_filename"], source_path.read_bytes())
+    except Exception:
+        return row
+
+    document_dir = project_requirement_dir(row["project_id"], row["document_id"])
+    markdown_path = document_dir / "markdown" / "conversions" / f"{row['id']}.md"
+    markdown_path.parent.mkdir(parents=True, exist_ok=True)
+    markdown_path.write_text(markdown_text, encoding="utf-8")
+    document_repo.update_file_mapping_markdown(db, row["id"], str(markdown_path), conversion_summary)
+    return document_repo.find_file_mapping(db, row["id"])
 
 
 def _safe_filename(filename: str) -> str:

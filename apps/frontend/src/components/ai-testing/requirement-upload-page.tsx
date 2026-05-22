@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -62,11 +62,9 @@ export function RequirementUploadPage({
   const [files, setFiles] = useState<File[]>([]);
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState("");
-  const [checkingName, setCheckingName] = useState(false);
   const [projectId, setProjectId] = useState(defaultProjectId);
   const [mode, setMode] = useState<UploadMode>("new");
   const [requirements, setRequirements] = useState<RequirementOption[]>([]);
-  const [requirementSearch, setRequirementSearch] = useState("");
   const [existingDocumentId, setExistingDocumentId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [uploadStates, setUploadStates] = useState<
@@ -116,39 +114,6 @@ export function RequirementUploadPage({
     };
   }, [mode, projectId]);
 
-  const filteredRequirements = useMemo(() => {
-    const keyword = requirementSearch.trim().toLowerCase();
-    if (!keyword) {
-      return requirements;
-    }
-    return requirements.filter((item) => item.name.toLowerCase().includes(keyword));
-  }, [requirementSearch, requirements]);
-
-  async function checkName() {
-    const nextName = name.trim();
-    setNameError("");
-    if (mode !== "new" || !nextName || !projectId) {
-      return true;
-    }
-    setCheckingName(true);
-    try {
-      const result = await apiRequest<{ exists: boolean }>(
-        `/projects/${projectId}/requirements/check-name?name=${encodeURIComponent(nextName)}`,
-      );
-      if (result.exists) {
-        setNameError("该需求名称已存在");
-        return false;
-      }
-      return true;
-    } catch (requestError) {
-      const message = requestError instanceof Error ? requestError.message : "需求名称校验失败";
-      setNameError(message);
-      return false;
-    } finally {
-      setCheckingName(false);
-    }
-  }
-
   async function submitUpload() {
     const unsupportedFile = files.find((file) => !isSupportedRequirementFile(file));
     if (unsupportedFile) {
@@ -166,11 +131,6 @@ export function RequirementUploadPage({
     if (mode === "new") {
       if (!name.trim()) {
         setNameError("请填写需求名称");
-        nameInputRef.current?.focus();
-        return;
-      }
-      const nameAvailable = await checkName();
-      if (!nameAvailable) {
         nameInputRef.current?.focus();
         return;
       }
@@ -294,7 +254,6 @@ export function RequirementUploadPage({
                 placeholder="请输入需求名称"
                 ref={nameInputRef}
                 value={name}
-                onBlur={() => void checkName()}
                 onChange={(event) => {
                   setName(event.target.value);
                   setNameError("");
@@ -302,29 +261,21 @@ export function RequirementUploadPage({
               />
               {nameError ? (
                 <div className="text-destructive text-xs">{nameError}</div>
-              ) : (
-                <FieldDescription>{checkingName ? "正在校验需求名称" : "需求名称在同一项目内不可重复。"}</FieldDescription>
-              )}
+              ) : null}
             </Field>
           ) : (
             <Field>
-              <FieldLabel htmlFor="requirement-search">选择已有需求</FieldLabel>
-              <Input
-                id="requirement-search"
-                placeholder="输入关键词过滤需求"
-                value={requirementSearch}
-                onChange={(event) => setRequirementSearch(event.target.value)}
-              />
+              <FieldLabel htmlFor="requirement-select">选择已有需求</FieldLabel>
               <Select placeholder="请选择需求" setValue={setExistingDocumentId} value={existingDocumentId}>
-                {filteredRequirements.map((item) => (
+                {requirements.map((item) => (
                   <SelectOption key={item.id} value={item.id}>
                     {item.name}
                   </SelectOption>
                 ))}
               </Select>
-              <FieldDescription>
-                {selectedRequirement ? `当前已有来源文件：${selectedRequirement.file_count} 个` : "下拉列表仅展示当前项目下的需求名称。"}
-              </FieldDescription>
+              {selectedRequirement ? (
+                <FieldDescription>当前已有来源文件：{selectedRequirement.file_count} 个</FieldDescription>
+              ) : null}
             </Field>
           )}
 

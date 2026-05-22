@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi.responses import FileResponse
 
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.document import ConflictResolutionIn, SourceDocumentUpdateIn, SourceMarkdownUpdateIn
@@ -128,10 +131,28 @@ def get_requirement_original_file(mapping_id: str, actor=Depends(current_user)) 
     return document_service.get_original_file(mapping_id)
 
 
+@file_router.get("/{mapping_id}/original/content")
+def get_requirement_original_file_content(mapping_id: str, actor=Depends(current_user)) -> FileResponse:
+    _ = actor
+    original_file = document_service.get_original_file(mapping_id)
+    if original_file["content_type"] == "text":
+        path = original_file["content_path"]
+        media_type = "text/plain; charset=utf-8"
+    else:
+        path = original_file["download_path"]
+        media_type = "application/pdf" if original_file["file_format"].lower() == "pdf" else "application/octet-stream"
+    return FileResponse(Path(path), media_type=media_type, filename=original_file["original_filename"])
+
+
 @file_router.get("/{mapping_id}/markdown")
 def get_requirement_markdown_file(mapping_id: str, actor=Depends(current_user)) -> dict:
     _ = actor
     return document_service.get_converted_markdown(mapping_id)
+
+
+@file_router.delete("/{mapping_id}")
+def delete_requirement_file(mapping_id: str, actor=Depends(current_user)) -> dict:
+    return document_service.delete_source_file(mapping_id, actor)
 
 
 @file_router.put("/{mapping_id}/markdown")

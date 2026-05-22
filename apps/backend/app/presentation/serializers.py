@@ -44,6 +44,7 @@ def serialize_model_provider(row: Row, actor_role: str) -> dict:
         "provider": row["provider"],
         "model": row["model"],
         "base_url": row["base_url"],
+        "api_key_env": row["api_key_env"] if "api_key_env" in row.keys() else "",
         "api_key_mask": row["api_key_mask"],
         "description": row["description"],
         "status": row["status"],

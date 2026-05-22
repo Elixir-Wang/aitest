@@ -27,7 +27,23 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import type { NavGroup, NavMainItem } from "@/navigation/sidebar/sidebar-items";
+import { useAuthStore } from "@/stores/auth-store";
 import { getProjectScopedUrl, useProjectContextStore } from "@/stores/project-context-store";
+
+const ROLE_RANK: Record<"admin" | "tester" | "guest", number> = {
+  admin: 3,
+  tester: 2,
+  guest: 1,
+};
+
+function hasRequiredRole(
+  userRole: "admin" | "tester" | "guest" | undefined,
+  requiredRole: "admin" | "tester" | "guest" | undefined,
+): boolean {
+  if (!requiredRole) return true;
+  if (!userRole) return false;
+  return ROLE_RANK[userRole] >= ROLE_RANK[requiredRole];
+}
 
 interface NavMainProps {
   readonly items: readonly NavGroup[];
@@ -142,6 +158,7 @@ export function NavMain({ items }: NavMainProps) {
   const path = usePathname();
   const { state, isMobile } = useSidebar();
   const { currentProjectId, hydrate, scope } = useProjectContextStore();
+  const user = useAuthStore((s) => s.user);
 
   React.useEffect(() => {
     hydrate();
@@ -183,12 +200,17 @@ export function NavMain({ items }: NavMainProps) {
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
-      {items.map((group) => (
+      {items.map((group) => {
+        const visibleItems = group.items.filter((item) =>
+          hasRequiredRole(user?.role, item.requiredRole),
+        );
+        if (visibleItems.length === 0) return null;
+        return (
         <SidebarGroup key={group.id}>
           {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
           <SidebarGroupContent className="flex flex-col gap-2">
             <SidebarMenu>
-              {group.items.map((item) => {
+              {visibleItems.map((item) => {
                 if (state === "collapsed" && !isMobile) {
                   // If no subItems, just render the button as a link
                   if (!item.subItems) {
@@ -228,7 +250,8 @@ export function NavMain({ items }: NavMainProps) {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-      ))}
+        );
+      })}
     </>
   );
 }
