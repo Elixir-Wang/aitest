@@ -221,6 +221,55 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(markdown_path.read_text(encoding="utf-8"), "# 新标准文件")
             self.assertEqual(document_service.get_document_versions("doc-1"), [])
 
+    def test_get_document_overview_returns_file_status_summary(self):
+        with isolated_document_store() as actor:
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+                document_repo.create_file_mapping(
+                    db,
+                    mapping_id="docmap-ready",
+                    document_id="doc-1",
+                    version_id=None,
+                    source_file_path="ready.md",
+                    original_filename="ready.md",
+                    file_format="md",
+                    markdown_file_path="ready.md",
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                    conversion_summary="成功",
+                    created_by="u-admin",
+                )
+                document_repo.create_file_mapping(
+                    db,
+                    mapping_id="docmap-failed",
+                    document_id="doc-1",
+                    version_id=None,
+                    source_file_path="failed.pdf",
+                    original_filename="failed.pdf",
+                    file_format="pdf",
+                    markdown_file_path=None,
+                    conversion_status="failed",
+                    mapping_status="pending_merge",
+                    conversion_summary="失败",
+                    created_by="u-admin",
+                )
+
+            overview = document_service.get_document_overview("project-1", "doc-1", actor)
+
+            self.assertEqual(overview["document"]["name"], "登录需求")
+            self.assertEqual(overview["stats"]["total_files"], 2)
+            self.assertEqual(overview["stats"]["conversion_success"], 1)
+            self.assertEqual(overview["stats"]["conversion_failed"], 1)
+            self.assertEqual(overview["stats"]["mergeable_files"], 1)
+            self.assertEqual(overview["has_open_conflicts"], False)
+
 
 def make_upload_file(filename: str, content: bytes) -> TestUploadFile:
     return TestUploadFile(filename, content)

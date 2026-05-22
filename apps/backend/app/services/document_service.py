@@ -230,6 +230,44 @@ def get_document_detail(project_id: str, document_id: str, actor) -> dict:
         }
 
 
+def get_document_overview(project_id: str, document_id: str, actor) -> dict:
+    detail = get_document_detail(project_id, document_id, actor)
+    files = list_document_files(project_id, document_id)
+    with connect() as db:
+        open_conflicts = document_repo.list_conflicts(db, document_id, status="open")
+
+    stats = {
+        "total_files": len(files),
+        "conversion_success": sum(1 for item in files if item["conversion_status"] == CONVERSION_SUCCESS_STATUS),
+        "conversion_warning": sum(1 for item in files if item["conversion_status"] == "warning"),
+        "conversion_failed": sum(1 for item in files if item["conversion_status"] == CONVERSION_FAILED_STATUS),
+        "mergeable_files": sum(
+            1
+            for item in files
+            if item["conversion_status"] in {CONVERSION_SUCCESS_STATUS, "warning"} and item["mapping_status"] != "discarded"
+        ),
+        "open_conflicts": len(open_conflicts),
+        "initial_requirement_status": "generated" if detail["document"]["current_version_id"] else "not_generated",
+    }
+
+    overview_files = [
+        {
+            **item,
+            "standard_file_status": _standard_file_status(item),
+            "conflict_status": "open" if open_conflicts else "none",
+        }
+        for item in files
+    ]
+
+    return {
+        "document": detail["document"],
+        "stats": stats,
+        "files": overview_files,
+        "has_open_conflicts": len(open_conflicts) > 0,
+        "initial_markdown_content": detail["markdown_content"],
+    }
+
+
 def update_document(project_id: str, document_id: str, payload: SourceDocumentUpdateIn, actor) -> dict:
     name = payload.name.strip()
     if not name:
@@ -329,6 +367,17 @@ def serialize_file_mapping(row) -> dict:
         "created_by": row["created_by"],
         "created_at": row["created_at"],
     }
+
+
+def _standard_file_status(row) -> str:
+    if row["conversion_status"] == CONVERSION_FAILED_STATUS:
+        return "failed"
+    if not row["markdown_file_path"]:
+        return "not_generated"
+    summary = row["conversion_summary"] or ""
+    if "人工修订" in summary:
+        return "edited"
+    return "ready"
 
 
 async def _save_source_file(db, project_id: str, document_id: str, upload: UploadFile, index: int, actor) -> dict:

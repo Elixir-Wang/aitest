@@ -52,6 +52,11 @@ def list_requirement_versions(project_id: str, document_id: str, actor=Depends(c
     return document_service.get_document_versions(document_id)
 
 
+@router.get("/{document_id}/overview")
+def get_requirement_overview(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
+    return document_service.get_document_overview(project_id, document_id, actor)
+
+
 @router.get("/{document_id}")
 def get_requirement(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
     return document_service.get_document_detail(project_id, document_id, actor)
