@@ -74,13 +74,13 @@ def init_db() -> None:
               project_id TEXT NOT NULL,
               name TEXT NOT NULL,
               document_type TEXT NOT NULL,
-              original_file_path TEXT NOT NULL,
               current_version_id TEXT,
-              status TEXT NOT NULL DEFAULT 'uploaded',
+              status TEXT NOT NULL DEFAULT 'collecting',
               created_by TEXT NOT NULL,
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+              UNIQUE(project_id, name)
             );
 
             CREATE TABLE IF NOT EXISTS source_document_versions (
@@ -101,14 +101,19 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS source_document_file_mappings (
               id TEXT PRIMARY KEY,
               document_id TEXT NOT NULL,
-              version_id TEXT NOT NULL,
+              version_id TEXT,
               source_file_path TEXT NOT NULL,
-              markdown_file_path TEXT NOT NULL,
-              mapping_status TEXT NOT NULL DEFAULT 'parsing',
+              original_filename TEXT NOT NULL DEFAULT '',
+              file_format TEXT NOT NULL DEFAULT '',
+              markdown_file_path TEXT,
+              conversion_status TEXT NOT NULL DEFAULT 'pending',
+              mapping_status TEXT NOT NULL DEFAULT 'pending_merge',
               conversion_summary TEXT NOT NULL DEFAULT '',
+              conversion_quality INTEGER,
+              created_by TEXT NOT NULL DEFAULT 'system',
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
-              FOREIGN KEY(version_id) REFERENCES source_document_versions(id) ON DELETE CASCADE
+              FOREIGN KEY(version_id) REFERENCES source_document_versions(id) ON DELETE SET NULL
             );
 
             CREATE TABLE IF NOT EXISTS dashboard_daily_stats (
@@ -128,10 +133,10 @@ def init_db() -> None:
         _ensure_column(db, "projects", "code", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "projects", "default_site_url", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "projects", "created_by", "TEXT NOT NULL DEFAULT 'system'")
+        _migrate_source_documents(db)
+        _migrate_file_mappings(db)
         _seed_user(db, "u-admin", "admin", "admin@example.com", "平台管理员", "admin", "admin", "enabled", "全部项目", "平台管理员，负责用户、模型和项目权限维护。")
         _sync_seed_password(db, "u-admin", "admin")
-        _seed_user(db, "u-tester", "tester", "tester@example.com", "测试工程师", "tester123", "tester", "enabled", "全部项目", "负责具体项目测试资产建设。")
-        _seed_user(db, "u-guest", "guest", "guest@example.com", "访客", "guest123", "guest", "enabled", "全部项目", "只读查看系统内容与报告。")
 
 
 def _seed_user(db: sqlite3.Connection, user_id: str, username: str, email: str, nickname: str, password: str, role: str, status: str, project_scope: str, description: str) -> None:
@@ -152,6 +157,88 @@ def _ensure_column(db: sqlite3.Connection, table: str, column: str, definition: 
     if column in columns:
         return
     db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _migrate_source_documents(db: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in db.execute("PRAGMA table_info(source_documents)").fetchall()}
+    if "original_file_path" not in columns:
+        return
+    db.executescript(
+        """
+        PRAGMA foreign_keys=off;
+        CREATE TABLE IF NOT EXISTS source_documents_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          document_type TEXT NOT NULL,
+          current_version_id TEXT,
+          status TEXT NOT NULL DEFAULT 'collecting',
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          UNIQUE(project_id, name)
+        );
+        INSERT OR IGNORE INTO source_documents_new
+          (id, project_id, name, document_type, current_version_id, status, created_by, created_at, updated_at)
+        SELECT id, project_id, name, document_type, current_version_id, status, created_by, created_at, updated_at
+        FROM source_documents;
+        DROP TABLE source_documents;
+        ALTER TABLE source_documents_new RENAME TO source_documents;
+        PRAGMA foreign_keys=on;
+        """
+    )
+
+
+def _migrate_file_mappings(db: sqlite3.Connection) -> None:
+    columns = {row["name"]: row for row in db.execute("PRAGMA table_info(source_document_file_mappings)").fetchall()}
+    version_id_column = columns.get("version_id")
+    if (version_id_column and version_id_column["notnull"]) or "conversion_status" not in columns:
+        db.executescript(
+            """
+            PRAGMA foreign_keys=off;
+            CREATE TABLE IF NOT EXISTS source_document_file_mappings_new (
+              id TEXT PRIMARY KEY,
+              document_id TEXT NOT NULL,
+              version_id TEXT,
+              source_file_path TEXT NOT NULL,
+              original_filename TEXT NOT NULL DEFAULT '',
+              file_format TEXT NOT NULL DEFAULT '',
+              markdown_file_path TEXT,
+              conversion_status TEXT NOT NULL DEFAULT 'success',
+              mapping_status TEXT NOT NULL DEFAULT 'pending_merge',
+              conversion_summary TEXT NOT NULL DEFAULT '',
+              conversion_quality INTEGER,
+              created_by TEXT NOT NULL DEFAULT 'system',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
+              FOREIGN KEY(version_id) REFERENCES source_document_versions(id) ON DELETE SET NULL
+            );
+            INSERT OR IGNORE INTO source_document_file_mappings_new
+              (id, document_id, version_id, source_file_path, original_filename, file_format, markdown_file_path,
+               conversion_status, mapping_status, conversion_summary, created_by, created_at)
+            SELECT id, document_id, version_id, source_file_path, source_file_path, 'unknown', markdown_file_path,
+                   'success', mapping_status, conversion_summary, 'system', created_at
+            FROM source_document_file_mappings;
+            DROP TABLE source_document_file_mappings;
+            ALTER TABLE source_document_file_mappings_new RENAME TO source_document_file_mappings;
+            PRAGMA foreign_keys=on;
+            """
+        )
+        return
+
+    _ensure_column(db, "source_document_file_mappings", "original_filename", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(db, "source_document_file_mappings", "file_format", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(db, "source_document_file_mappings", "conversion_status", "TEXT NOT NULL DEFAULT 'success'")
+    _ensure_column(db, "source_document_file_mappings", "conversion_quality", "INTEGER")
+    _ensure_column(db, "source_document_file_mappings", "created_by", "TEXT NOT NULL DEFAULT 'system'")
+    db.execute(
+        """
+        UPDATE source_document_file_mappings
+        SET original_filename = CASE WHEN original_filename = '' THEN source_file_path ELSE original_filename END,
+            file_format = CASE WHEN file_format = '' THEN 'unknown' ELSE file_format END
+        """
+    )
 
 
 def _sync_seed_password(db: sqlite3.Connection, user_id: str, password: str) -> None:

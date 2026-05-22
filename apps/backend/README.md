@@ -17,5 +17,3 @@ Seed accounts:
 | Username | Password | Role |
 | --- | --- | --- |
 | admin | admin | 管理员 |
-| tester | tester123 | 测试工程师 |
-| guest | guest123 | 访客 |

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
@@ -35,34 +35,33 @@ const roleLabels: Record<string, string> = {
   tester: "测试工程师",
 };
 
-export function AccountSwitcher({
-  users,
-}: {
-  readonly users: ReadonlyArray<{
-    readonly id: string;
-    readonly name: string;
-    readonly email: string;
-    readonly avatar: string;
-    readonly role: string;
-  }>;
-}) {
+export function AccountSwitcher() {
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
   const storedUser = useAuthStore((state) => state.user);
   const updateUser = useAuthStore((state) => state.updateUser);
-  const [activeUser, setActiveUser] = useState(users[0]);
   const displayUser = {
-    avatar: activeUser?.avatar ?? "",
-    email: storedUser?.email || activeUser?.email || "",
-    id: activeUser?.id ?? "current",
-    name: storedUser?.name || activeUser?.name || "",
-    role: storedUser?.role || activeUser?.role || "guest",
+    avatar: "",
+    email: storedUser?.email ?? "",
+    id: "current",
+    name: storedUser?.name ?? "",
+    role: storedUser?.role ?? "guest",
   };
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({
     email: displayUser.email,
     name: displayUser.name,
   });
+
+  useEffect(() => {
+    if (dialogOpen) {
+      return;
+    }
+    setForm({
+      email: displayUser.email,
+      name: displayUser.name,
+    });
+  }, [dialogOpen, displayUser.email, displayUser.name]);
 
   if (!displayUser.name) {
     return null;
@@ -89,7 +88,6 @@ export function AccountSwitcher({
       name,
       role: displayUser.role as "admin" | "tester" | "guest",
     });
-    setActiveUser((current) => (current ? { ...current, email, name } : current));
     setDialogOpen(false);
     toast.success("用户信息已更新");
   }
@@ -107,7 +105,12 @@ export function AccountSwitcher({
             </Avatar>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-max min-w-0 space-y-1 rounded-lg p-1" side="bottom" align="end" sideOffset={4}>
+        <DropdownMenuContent
+          className="w-max min-w-0 space-y-1 rounded-lg p-1"
+          side="bottom"
+          align="end"
+          sideOffset={4}
+        >
           <DropdownMenuItem className="p-0" aria-current="true">
             <div className="flex w-max max-w-64 items-center gap-2 px-1 py-1.5">
               <Avatar className="size-9 rounded-lg">

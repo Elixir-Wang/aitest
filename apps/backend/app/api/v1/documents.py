@@ -21,8 +21,16 @@ async def upload_documents(
     document_type: str = Form(default="PRD"),
     change_summary: str = Form(default=""),
     actor=Depends(current_user),
-) -> list[dict]:
-    return await document_service.upload_documents(project_id, files, name, document_type, change_summary, actor)
+) -> dict:
+    _ = document_type
+    _ = change_summary
+    return await document_service.upload_documents(
+        project_id,
+        files,
+        actor,
+        mode="new",
+        document_name=name,
+    )
 
 
 @router.get("/{document_id}/versions")

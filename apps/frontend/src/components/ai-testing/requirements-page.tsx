@@ -5,10 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { Eye, FileText } from "lucide-react";
+import { Eye, History } from "lucide-react";
 import { toast } from "sonner";
 
-import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ type RequirementRow = {
   id: string;
   name: string;
   document_type: string;
+  file_count: number;
   status: string;
   created_at: string;
   updated_at: string;
@@ -102,9 +103,13 @@ export function RequirementsPage({
   const filteredRows = useMemo(
     () =>
       rows.filter((item) =>
-        [item.name, item.document_type, item.status, item.current_version?.change_summary ?? "", item.updated_at].some(
-          (value) => value.toLowerCase().includes(searchText.trim().toLowerCase()),
-        ),
+        [
+          item.name,
+          String(item.file_count),
+          item.status,
+          item.current_version?.change_summary ?? "",
+          item.updated_at,
+        ].some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase())),
       ),
     [rows, searchText],
   );
@@ -131,16 +136,6 @@ export function RequirementsPage({
       tabs={["文档管理", "需求评审", "分析结果", "澄清问题", "版本记录"]}
       title={title}
     >
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard helper="当前文档数" icon={FileText} label="需求文档" value={String(rows.length)} />
-        <MetricCard helper="已上传即进入待评审" icon={FileText} label="模块覆盖" value="-" />
-        <MetricCard
-          helper="最新版本信息"
-          icon={FileText}
-          label="版本记录"
-          value={String(rows.reduce((count, item) => count + (item.current_version ? 1 : 0), 0))}
-        />
-      </div>
       <ShellSection>
         {error ? (
           <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
@@ -152,9 +147,9 @@ export function RequirementsPage({
           onBatchDelete={() => deleteDocuments(selectedIds)}
           onCreate={() => router.push(uploadHref)}
           onSearch={setSearchText}
-          placeholder="搜索需求名称、类型、状态或更新时间"
+          placeholder="搜索需求名称、文件数量、状态或更新时间"
           selectedCount={selectedCount}
-          title="需求文档列表"
+          title="需求列表"
         />
         <div className="overflow-hidden rounded-lg border">
           <Table>
@@ -169,7 +164,7 @@ export function RequirementsPage({
                   />
                 </TableHead>
                 <TableHead>需求名称</TableHead>
-                <TableHead>文档类型</TableHead>
+                <TableHead>文件数量</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>当前版本</TableHead>
                 <TableHead>更新时间</TableHead>
@@ -195,7 +190,7 @@ export function RequirementsPage({
                       {item.name}
                     </Link>
                   </TableCell>
-                  <TableCell>{item.document_type}</TableCell>
+                  <TableCell>{item.file_count}</TableCell>
                   <TableCell>
                     <Badge variant={item.status === "parsing" ? "outline" : "secondary"}>
                       {item.status === "parsing" ? (
@@ -209,7 +204,14 @@ export function RequirementsPage({
                   <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                   <TableCell>
                     <RowActions
-                      actions={[{ label: "查看", href: `/projects/${projectId}/requirements/${item.id}`, icon: Eye }]}
+                      actions={[
+                        { label: "概览", href: `/projects/${projectId}/requirements/${item.id}`, icon: Eye },
+                        {
+                          label: "版本记录",
+                          href: `/projects/${projectId}/requirements/${item.id}/versions`,
+                          icon: History,
+                        },
+                      ]}
                       label={`打开 ${item.name} 操作菜单`}
                     />
                   </TableCell>

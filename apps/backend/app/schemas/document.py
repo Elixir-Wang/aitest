@@ -19,7 +19,7 @@ class SourceDocumentOut(BaseModel):
     project_id: str
     name: str
     document_type: str
-    original_file_path: str
+    file_count: int
     current_version_id: str | None
     status: str
     created_by: str
@@ -30,9 +30,9 @@ class SourceDocumentOut(BaseModel):
 
 
 class SourceDocumentUploadIn(BaseModel):
-    name: str = Field(min_length=1)
-    document_type: str = Field(min_length=1)
-    change_summary: str = ""
+    mode: str = "new"
+    document_name: str = ""
+    existing_document_id: str = ""
 
 
 class SourceDocumentUpdateIn(BaseModel):

@@ -5,12 +5,11 @@ import { cookies } from "next/headers";
 import { AccountSwitcher } from "@/app/(main)/dashboard/_components/sidebar/account-switcher";
 import { AppSidebar } from "@/app/(main)/dashboard/_components/sidebar/app-sidebar";
 import { LayoutControls } from "@/app/(main)/dashboard/_components/sidebar/layout-controls";
-import { ProjectSwitcher } from "@/components/ai-testing/project-switcher";
 import { ThemeSwitcher } from "@/app/(main)/dashboard/_components/sidebar/theme-switcher";
 import { AuthGuard } from "@/components/ai-testing/auth-guard";
+import { ProjectSwitcher } from "@/components/ai-testing/project-switcher";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { users } from "@/data/users";
 import { SIDEBAR_COLLAPSIBLE_VALUES, SIDEBAR_VARIANT_VALUES } from "@/lib/preferences/layout";
 import { cn } from "@/lib/utils";
 import { getPreference } from "@/server/server-actions";
@@ -59,7 +58,7 @@ export async function WorkspaceShell({ children }: Readonly<{ children: ReactNod
               <ProjectSwitcher scope="project" />
               <LayoutControls />
               <ThemeSwitcher />
-              <AccountSwitcher users={users} />
+              <AccountSwitcher />
             </div>
           </div>
         </header>

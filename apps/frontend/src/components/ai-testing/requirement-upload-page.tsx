@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { ArrowLeft, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -13,7 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import FileUpload1 from "@/components/ui/file-upload-1";
 import { Input } from "@/components/ui/input";
-import type { ApiProject } from "@/lib/api-client";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { apiRequest, type ApiProject } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 
 type RequirementUploadPageProps = {
@@ -24,6 +26,22 @@ type RequirementUploadPageProps = {
   projects: ApiProject[];
   backHref: string;
   projectScope: "all" | "project";
+};
+
+type RequirementOption = {
+  id: string;
+  name: string;
+  file_count: number;
+};
+
+type UploadMode = "new" | "append";
+
+type UploadResponse = {
+  document: {
+    id: string;
+    project_id: string;
+    name: string;
+  };
 };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
@@ -38,29 +56,98 @@ export function RequirementUploadPage({
   projectScope,
 }: RequirementUploadPageProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const token = useAuthStore((state) => state.token);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [name, setName] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [checkingName, setCheckingName] = useState(false);
   const [projectId, setProjectId] = useState(defaultProjectId);
+  const [mode, setMode] = useState<UploadMode>("new");
+  const [requirements, setRequirements] = useState<RequirementOption[]>([]);
+  const [requirementSearch, setRequirementSearch] = useState("");
+  const [existingDocumentId, setExistingDocumentId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [uploadStates, setUploadStates] = useState<
     Record<string, { progress: number; status: "idle" | "uploading" | "completed" | "error" }>
   >({});
   const selectedProjectName = projects.find((project) => project.id === projectId)?.name ?? "";
+  const selectedRequirement = requirements.find((item) => item.id === existingDocumentId);
 
   useEffect(() => {
     setProjectId(defaultProjectId);
   }, [defaultProjectId]);
 
-  const inferredName = useMemo(() => {
-    if (name.trim()) {
-      return name.trim();
+  useEffect(() => {
+    const queryMode = searchParams.get("mode");
+    const queryDocumentId = searchParams.get("documentId");
+    if (queryMode === "append") {
+      setMode("append");
     }
-    if (files.length === 1) {
-      return files[0].name.replace(/\.[^.]+$/, "");
+    if (queryDocumentId) {
+      setExistingDocumentId(queryDocumentId);
     }
-    return "";
-  }, [files, name]);
+  }, [searchParams]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadRequirements() {
+      if (!projectId || mode !== "append") {
+        return;
+      }
+      try {
+        const data = await apiRequest<RequirementOption[]>(`/projects/${projectId}/requirements`);
+        if (!ignore) {
+          setRequirements(data);
+        }
+      } catch (requestError) {
+        if (!ignore) {
+          toast.error(requestError instanceof Error ? requestError.message : "需求列表加载失败");
+          setRequirements([]);
+        }
+      }
+    }
+
+    void loadRequirements();
+    return () => {
+      ignore = true;
+    };
+  }, [mode, projectId]);
+
+  const filteredRequirements = useMemo(() => {
+    const keyword = requirementSearch.trim().toLowerCase();
+    if (!keyword) {
+      return requirements;
+    }
+    return requirements.filter((item) => item.name.toLowerCase().includes(keyword));
+  }, [requirementSearch, requirements]);
+
+  async function checkName() {
+    const nextName = name.trim();
+    setNameError("");
+    if (mode !== "new" || !nextName || !projectId) {
+      return true;
+    }
+    setCheckingName(true);
+    try {
+      const result = await apiRequest<{ exists: boolean }>(
+        `/projects/${projectId}/requirements/check-name?name=${encodeURIComponent(nextName)}`,
+      );
+      if (result.exists) {
+        setNameError("该需求名称已存在");
+        return false;
+      }
+      return true;
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : "需求名称校验失败";
+      setNameError(message);
+      return false;
+    } finally {
+      setCheckingName(false);
+    }
+  }
 
   async function submitUpload() {
     const unsupportedFile = files.find((file) => !isSupportedRequirementFile(file));
@@ -72,90 +159,89 @@ export function RequirementUploadPage({
       toast.error("请选择至少一个需求文件");
       return;
     }
-    if (!inferredName) {
-      toast.error("请填写需求名称");
-      return;
-    }
     if (!projectId) {
       toast.error("请选择关联项目");
       return;
     }
+    if (mode === "new") {
+      if (!name.trim()) {
+        setNameError("请填写需求名称");
+        nameInputRef.current?.focus();
+        return;
+      }
+      const nameAvailable = await checkName();
+      if (!nameAvailable) {
+        nameInputRef.current?.focus();
+        return;
+      }
+    }
+    if (mode === "append" && !existingDocumentId) {
+      toast.error("请选择要追加文件的需求");
+      return;
+    }
 
     setSubmitting(true);
+    const nextUploadStates = Object.fromEntries(
+      files.map((file) => [getFileKey(file), { progress: 1, status: "uploading" as const }]),
+    );
+    setUploadStates(nextUploadStates);
     try {
-      for (const file of files) {
-        const fileKey = getFileKey(file);
-        setUploadStates((current) => ({
-          ...current,
-          [fileKey]: { progress: 1, status: "uploading" },
-        }));
-        await new Promise<void>((resolve) => {
-          window.requestAnimationFrame(() => resolve());
-        });
-        await uploadSingleFile(file, inferredName, token, (nextProgress) => {
-          setUploadStates((current) => ({
-            ...current,
-            [fileKey]: { progress: nextProgress, status: nextProgress >= 100 ? "completed" : "uploading" },
-          }));
-        });
-        setUploadStates((current) => ({
-          ...current,
-          [fileKey]: { progress: 100, status: "completed" },
-        }));
+      const result = await uploadFiles();
+      setUploadStates(
+        Object.fromEntries(files.map((file) => [getFileKey(file), { progress: 100, status: "completed" as const }])),
+      );
+      if (mode === "new") {
+        toast.success("需求文件已添加，请在来源文件列表中发起归并");
+      } else {
+        toast.success("文件已添加，请在来源文件列表中发起归并");
       }
-      toast.success("需求文件已上传并进入解析");
-      router.push(backHref);
+      router.push(`/projects/${result.document.project_id}/requirements/${result.document.id}?tab=source-files`);
       router.refresh();
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "需求上传失败");
-      if (requestError instanceof Error) {
-        const failedKey = files.find((file) => requestError.message.includes(file.name));
-        if (failedKey) {
-          setUploadStates((current) => ({
-            ...current,
-            [getFileKey(failedKey)]: { progress: currentProgress(current, failedKey), status: "error" },
-          }));
-        }
-      }
+      setUploadStates(
+        Object.fromEntries(files.map((file) => [getFileKey(file), { progress: 0, status: "error" as const }])),
+      );
     } finally {
       setSubmitting(false);
     }
   }
 
-  function uploadSingleFile(
-    file: File,
-    requirementName: string,
-    accessToken: string | null,
-    onProgress: (progress: number) => void,
-  ) {
-    return new Promise<void>((resolve, reject) => {
+  function uploadFiles() {
+    return new Promise<UploadResponse>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${apiBase}/projects/${projectId}/requirements`);
-      if (accessToken) {
-        xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
+      if (token) {
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
       }
       xhr.upload.onprogress = (event) => {
         if (!event.lengthComputable) {
           return;
         }
-        onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+        const progress = Math.min(99, Math.round((event.loaded / event.total) * 100));
+        setUploadStates(
+          Object.fromEntries(files.map((file) => [getFileKey(file), { progress, status: "uploading" as const }])),
+        );
       };
-      xhr.onloadstart = () => onProgress(1);
       xhr.onload = () => {
         const payload = tryParseJson(xhr.responseText);
         if (xhr.status >= 200 && xhr.status < 300) {
-          onProgress(100);
-          resolve();
+          resolve(payload?.data ?? payload);
           return;
         }
-        reject(new Error(`${file.name}: ${payload?.detail?.message ?? payload?.detail ?? "需求上传失败"}`));
+        reject(new Error(payload?.detail?.message ?? payload?.detail ?? "需求上传失败"));
       };
       xhr.onerror = () => reject(new Error("网络异常，需求上传失败"));
       const formData = new FormData();
-      formData.append("files", file);
-      formData.append("name", requirementName);
-      formData.append("document_type", "PRD");
-      formData.append("change_summary", "上传需求文件");
+      formData.append("mode", mode);
+      if (mode === "new") {
+        formData.append("document_name", name.trim());
+      } else {
+        formData.append("existing_document_id", existingDocumentId);
+      }
+      for (const file of files) {
+        formData.append("files", file);
+      }
       xhr.send(formData);
     });
   }
@@ -187,15 +273,60 @@ export function RequirementUploadPage({
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="requirement-name">需求名称</FieldLabel>
-            <Input
-              id="requirement-name"
-              placeholder="请输入需求名称"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-            <FieldDescription>单文件上传时不填会使用文件名。</FieldDescription>
+            <FieldLabel>上传模式</FieldLabel>
+            <RadioGroup className="grid gap-2 sm:grid-cols-2" value={mode} onValueChange={(value) => setMode(value as UploadMode)}>
+              <Label className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm">
+                <RadioGroupItem value="new" />
+                新建需求
+              </Label>
+              <Label className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm">
+                <RadioGroupItem value="append" />
+                追加到已有需求
+              </Label>
+            </RadioGroup>
           </Field>
+
+          {mode === "new" ? (
+            <Field>
+              <FieldLabel htmlFor="requirement-name">需求名称</FieldLabel>
+              <Input
+                id="requirement-name"
+                placeholder="请输入需求名称"
+                ref={nameInputRef}
+                value={name}
+                onBlur={() => void checkName()}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setNameError("");
+                }}
+              />
+              {nameError ? (
+                <div className="text-destructive text-xs">{nameError}</div>
+              ) : (
+                <FieldDescription>{checkingName ? "正在校验需求名称" : "需求名称在同一项目内不可重复。"}</FieldDescription>
+              )}
+            </Field>
+          ) : (
+            <Field>
+              <FieldLabel htmlFor="requirement-search">选择已有需求</FieldLabel>
+              <Input
+                id="requirement-search"
+                placeholder="输入关键词过滤需求"
+                value={requirementSearch}
+                onChange={(event) => setRequirementSearch(event.target.value)}
+              />
+              <Select placeholder="请选择需求" setValue={setExistingDocumentId} value={existingDocumentId}>
+                {filteredRequirements.map((item) => (
+                  <SelectOption key={item.id} value={item.id}>
+                    {item.name}
+                  </SelectOption>
+                ))}
+              </Select>
+              <FieldDescription>
+                {selectedRequirement ? `当前已有来源文件：${selectedRequirement.file_count} 个` : "下拉列表仅展示当前项目下的需求名称。"}
+              </FieldDescription>
+            </Field>
+          )}
 
           <div className="space-y-2">
             <FieldLabel>上传文件</FieldLabel>
@@ -208,7 +339,7 @@ export function RequirementUploadPage({
                 "text/plain": [".txt"],
               }}
               files={files}
-              hint="仅支持 PDF、Word（doc/docx）、TXT 文件；MD 将直接保存为 Markdown，不再解析"
+              hint="仅支持 PDF、Word（doc/docx）、TXT、MD 文件；选择完成后统一提交"
               maxFiles={10}
               uploadStates={uploadStates}
               onFilesChange={setFiles}
@@ -222,7 +353,7 @@ export function RequirementUploadPage({
             </Button>
             <Button disabled={submitting || files.length === 0 || !projectId} type="button" onClick={submitUpload}>
               {submitting ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-              {submitting ? "上传并解析中" : "上传并解析"}
+              {submitting ? "提交中" : "提交"}
             </Button>
           </div>
         </div>
@@ -237,11 +368,4 @@ function isSupportedRequirementFile(file: File) {
 
 function getFileKey(file: File) {
   return `${file.name}-${file.lastModified}-${file.size}`;
-}
-
-function currentProgress(
-  states: Record<string, { progress: number; status: "idle" | "uploading" | "completed" | "error" }>,
-  file: File,
-) {
-  return states[getFileKey(file)]?.progress ?? 0;
 }

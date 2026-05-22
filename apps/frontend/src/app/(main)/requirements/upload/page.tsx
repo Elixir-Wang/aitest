@@ -4,13 +4,17 @@ import { useEffect, useState } from "react";
 
 import { EmptyState } from "@/components/ai-testing/page-shell";
 import { RequirementUploadPage } from "@/components/ai-testing/requirement-upload-page";
-import { apiRequest, type ApiProject } from "@/lib/api-client";
+import { type ApiProject, apiRequest } from "@/lib/api-client";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
 export default function Page() {
   const currentProjectId = useProjectContextStore((state) => state.currentProjectId);
   const hydrate = useProjectContextStore((state) => state.hydrate);
   const [projects, setProjects] = useState<ApiProject[]>([]);
+  const activeProjects = projects.filter((project) => project.status !== "archived");
+  const defaultActiveProjectId = activeProjects.some((project) => project.id === currentProjectId)
+    ? (currentProjectId ?? "")
+    : (activeProjects[0]?.id ?? "");
 
   useEffect(() => {
     hydrate();
@@ -39,12 +43,12 @@ export default function Page() {
     };
   }, []);
 
-  if (projects.length === 0) {
+  if (activeProjects.length === 0) {
     return (
       <EmptyState
-        description="请先创建项目或在右上角选择一个项目后再上传需求文档。"
+        description="请先创建活跃项目或在右上角选择活跃项目后再上传需求。归档项目不能上传需求。"
         status="无可用项目"
-        title="暂无项目"
+        title="暂无可上传项目"
       />
     );
   }
@@ -53,10 +57,10 @@ export default function Page() {
     <RequirementUploadPage
       backHref="/requirements"
       breadcrumbs={["项目工作区", "需求", "上传"]}
-      defaultProjectId={currentProjectId ?? projects[0]?.id ?? ""}
+      defaultProjectId={defaultActiveProjectId}
       description="选择关联项目后上传原始需求文件，系统会保存原文档并生成 Markdown 映射。"
       projectScope="all"
-      projects={projects}
+      projects={activeProjects}
       title="上传需求"
     />
   );
