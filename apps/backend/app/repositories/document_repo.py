@@ -126,6 +126,33 @@ def update_document_name(db: Connection, document_id: str, name: str) -> None:
     )
 
 
+def update_file_mapping_markdown(db: Connection, mapping_id: str, markdown_file_path: str, conversion_summary: str) -> None:
+    db.execute(
+        """
+        UPDATE source_document_file_mappings
+        SET markdown_file_path = ?,
+            conversion_status = 'success',
+            conversion_summary = ?,
+            conversion_quality = 100
+        WHERE id = ?
+        """,
+        (markdown_file_path, conversion_summary, mapping_id),
+    )
+
+
+def mark_file_mappings_merged(db: Connection, document_id: str, version_id: str) -> None:
+    db.execute(
+        """
+        UPDATE source_document_file_mappings
+        SET version_id = ?, mapping_status = 'merged'
+        WHERE document_id = ?
+          AND conversion_status IN ('success', 'warning')
+          AND mapping_status != 'discarded'
+        """,
+        (version_id, document_id),
+    )
+
+
 def find_versions_by_document(db: Connection, document_id: str) -> list[Row]:
     return db.execute(
         "SELECT id, document_id, version_no, file_path, source_action, change_summary, diff_summary, created_by, created_at FROM source_document_versions WHERE document_id = ? ORDER BY version_no DESC",
@@ -197,3 +224,67 @@ def find_file_mapping(db: Connection, mapping_id: str) -> Row | None:
         """,
         (mapping_id,),
     ).fetchone()
+
+
+def list_conflicts(db: Connection, document_id: str, *, status: str | None = None) -> list[Row]:
+    if status:
+        return db.execute(
+            """
+            SELECT *
+            FROM source_document_merge_conflicts
+            WHERE document_id = ? AND status = ?
+            ORDER BY created_at DESC, id DESC
+            """,
+            (document_id, status),
+        ).fetchall()
+    return db.execute(
+        """
+        SELECT *
+        FROM source_document_merge_conflicts
+        WHERE document_id = ?
+        ORDER BY created_at DESC, id DESC
+        """,
+        (document_id,),
+    ).fetchall()
+
+
+def create_conflict(
+    db: Connection,
+    *,
+    conflict_id: str,
+    document_id: str,
+    title: str,
+    source_file_names: str,
+    fragment_a: str,
+    fragment_b: str,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO source_document_merge_conflicts
+          (id, document_id, title, source_file_names, fragment_a, fragment_b, status)
+        VALUES (?, ?, ?, ?, ?, ?, 'open')
+        """,
+        (conflict_id, document_id, title, source_file_names, fragment_a, fragment_b),
+    )
+
+
+def resolve_conflict(db: Connection, conflict_id: str, resolution: str, resolution_type: str) -> None:
+    db.execute(
+        """
+        UPDATE source_document_merge_conflicts
+        SET resolution = ?, resolution_type = ?, status = 'resolved', updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (resolution, resolution_type, conflict_id),
+    )
+
+
+def close_open_conflicts(db: Connection, document_id: str) -> None:
+    db.execute(
+        """
+        UPDATE source_document_merge_conflicts
+        SET status = 'resolved', updated_at = CURRENT_TIMESTAMP
+        WHERE document_id = ? AND status = 'open'
+        """,
+        (document_id,),
+    )
