@@ -98,41 +98,36 @@ export function AccountSwitcher({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
-            aria-label="打开用户菜单"
-            className="h-8 max-w-40 justify-start gap-2 px-2"
-            size="sm"
-            variant="ghost"
-          >
+          <Button aria-label="打开用户菜单" size="icon">
             <Avatar className="size-5 rounded-md after:hidden">
               <AvatarImage src={displayUser.avatar || undefined} alt={displayUser.name} />
-              <AvatarFallback className="rounded-md bg-muted text-current text-xs">
+              <AvatarFallback className="rounded-md bg-transparent text-current text-xs">
                 {getInitials(displayUser.name)}
               </AvatarFallback>
             </Avatar>
-            <span className="min-w-0 truncate text-sm">{displayUser.name}</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-fit min-w-44 space-y-1 rounded-lg" side="bottom" align="end" sideOffset={4}>
+        <DropdownMenuContent className="w-max min-w-0 space-y-1 rounded-lg p-1" side="bottom" align="end" sideOffset={4}>
           <DropdownMenuItem className="p-0" aria-current="true">
-            <div className="flex w-fit max-w-52 items-center gap-2 px-1 py-1.5">
+            <div className="flex w-max max-w-64 items-center gap-2 px-1 py-1.5">
               <Avatar className="size-9 rounded-lg">
                 <AvatarImage src={displayUser.avatar || undefined} alt={displayUser.name} />
                 <AvatarFallback>{getInitials(displayUser.name)}</AvatarFallback>
               </Avatar>
-              <div className="grid min-w-0 text-left text-sm leading-tight">
+              <div className="grid min-w-0 max-w-48 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">{displayUser.name}</span>
                 <span className="truncate text-xs">{roleLabels[displayUser.role] ?? displayUser.role}</span>
               </div>
             </div>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={openEditDialog}>
+          <DropdownMenuItem className="justify-center gap-2 text-center" onClick={openEditDialog}>
             <Pencil />
             编辑
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
+            className="justify-center gap-2 text-center"
             onClick={() => {
               logout();
               router.replace("/auth/v1/login");

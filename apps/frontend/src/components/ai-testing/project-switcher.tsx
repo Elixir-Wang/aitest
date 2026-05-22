@@ -27,7 +27,7 @@ export function ProjectSwitcher({ scope: _scope }: { scope: "all" | "project" })
     async function loadProjects() {
       try {
         const projects = await apiRequest<ApiProject[]>("/projects");
-        setProjectOptions(projects);
+        setProjectOptions(projects.filter((project) => project.status !== "archived"));
       } catch {
         setProjectOptions([]);
       }

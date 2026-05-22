@@ -83,10 +83,25 @@ def create_version(
     )
 
 
+def next_version_no(db: Connection, document_id: str) -> int:
+    row = db.execute(
+        "SELECT COALESCE(MAX(version_no), 0) + 1 AS next_version_no FROM source_document_versions WHERE document_id = ?",
+        (document_id,),
+    ).fetchone()
+    return int(row["next_version_no"])
+
+
 def update_current_version(db: Connection, document_id: str, version_id: str, status: str) -> None:
     db.execute(
         "UPDATE source_documents SET current_version_id = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         (version_id, status, document_id),
+    )
+
+
+def update_document_name(db: Connection, document_id: str, name: str) -> None:
+    db.execute(
+        "UPDATE source_documents SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (name, document_id),
     )
 
 

@@ -11,6 +11,7 @@ from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir
 from app.repositories import document_repo
+from app.schemas.document import SourceDocumentUpdateIn
 
 PARSING_STATUS = "parsing"
 READY_STATUS = "pending_review"
@@ -156,6 +157,39 @@ def get_document_detail(project_id: str, document_id: str, actor) -> dict:
             "versions": versions,
             "markdown_content": markdown_content,
         }
+
+
+def update_document(project_id: str, document_id: str, payload: SourceDocumentUpdateIn, actor) -> dict:
+    name = payload.name.strip()
+    if not name:
+        raise api_error(400, "DOCUMENT_NAME_REQUIRED", "请填写需求名称。")
+
+    with connect() as db:
+        existing = document_repo.find_by_project_and_id(db, project_id, document_id)
+        if not existing:
+            raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
+
+        version_id = f"docver-{secrets.token_hex(8)}"
+        version_no = document_repo.next_version_no(db, document_id)
+        markdown_path = project_requirement_dir(project_id, document_id) / "markdown" / f"v{version_no}.md"
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text(payload.markdown_content, encoding="utf-8")
+
+        document_repo.update_document_name(db, document_id, name)
+        document_repo.create_version(
+            db,
+            version_id=version_id,
+            document_id=document_id,
+            version_no=version_no,
+            file_path=str(markdown_path),
+            source_action="edit",
+            change_summary=payload.change_summary.strip() or "编辑需求文档",
+            diff_summary="人工编辑生成新版本。",
+            created_by=actor["id"],
+        )
+        document_repo.update_current_version(db, document_id, version_id, READY_STATUS)
+
+    return get_document_detail(project_id, document_id, actor)
 
 
 def delete_document(project_id: str, document_id: str) -> dict:

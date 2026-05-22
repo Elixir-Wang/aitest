@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from app.dependencies.auth import current_user, require_admin
+from app.schemas.document import SourceDocumentUpdateIn
 from app.services import document_service
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirements"])
@@ -35,6 +36,16 @@ def list_requirement_versions(project_id: str, document_id: str, actor=Depends(c
 @router.get("/{document_id}")
 def get_requirement(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
     return document_service.get_document_detail(project_id, document_id, actor)
+
+
+@router.put("/{document_id}")
+def update_requirement(
+    project_id: str,
+    document_id: str,
+    payload: SourceDocumentUpdateIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return document_service.update_document(project_id, document_id, payload, actor)
 
 
 @router.delete("/{document_id}")

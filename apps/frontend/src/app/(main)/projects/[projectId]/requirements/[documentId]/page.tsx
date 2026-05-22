@@ -1,15 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useParams, useRouter } from "next/navigation";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Pencil } from "lucide-react";
+import { toast } from "sonner";
 
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { PageShell, ShellSection, SoonPage } from "@/components/ai-testing/page-shell";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { apiRequest, formatDateTime } from "@/lib/api-client";
 
 type DocumentDetailResponse = {
@@ -46,35 +58,82 @@ export default function DocumentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [detail, setDetail] = useState<DocumentDetailResponse | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ name: "", change_summary: "", markdown_content: "" });
+
+  const loadDetail = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) {
+      setLoading(true);
+    }
+    setError("");
+    try {
+      const data = await apiRequest<DocumentDetailResponse>(`/projects/${projectId}/requirements/${documentId}`);
+      setDetail(data);
+      return data;
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "需求文档详情加载失败");
+      return null;
+    } finally {
+      if (!silent) {
+        setLoading(false);
+      }
+    }
+  }, [documentId, projectId]);
 
   useEffect(() => {
     let ignore = false;
 
-    async function loadDetail() {
-      setLoading(true);
-      setError("");
-      try {
-        const data = await apiRequest<DocumentDetailResponse>(`/projects/${projectId}/requirements/${documentId}`);
-        if (!ignore) {
-          setDetail(data);
-        }
-      } catch (requestError) {
-        if (!ignore) {
-          setError(requestError instanceof Error ? requestError.message : "需求文档详情加载失败");
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
+    async function loadInitialDetail() {
+      const data = await loadDetail();
+      if (ignore || !data) {
+        return;
       }
+      setDetail(data);
     }
 
-    void loadDetail();
-
+    void loadInitialDetail();
     return () => {
       ignore = true;
     };
-  }, [documentId, projectId]);
+  }, [loadDetail]);
+
+  function openEditDialog() {
+    if (!detail) {
+      return;
+    }
+    setForm({
+      name: detail.document.name,
+      change_summary: "",
+      markdown_content: detail.markdown_content,
+    });
+    setDialogOpen(true);
+  }
+
+  async function handleSave() {
+    if (!form.name.trim()) {
+      toast.error("请填写需求名称");
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await apiRequest<DocumentDetailResponse>(`/projects/${projectId}/requirements/${documentId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: form.name.trim(),
+          markdown_content: form.markdown_content,
+          change_summary: form.change_summary.trim(),
+        }),
+      });
+      setDetail(updated);
+      setDialogOpen(false);
+      toast.success("需求文档已保存");
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "需求文档保存失败");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (loading) {
     return <SoonPage description="正在加载需求文档详情。" title="需求文档详情" />;
@@ -100,10 +159,16 @@ export default function DocumentDetailPage() {
     <PageShell
       breadcrumbs={["项目", "需求", detail.document.name]}
       description="查看需求文档的详情与版本记录。"
-      onPrimaryAction={() => router.back()}
-      primaryAction="返回"
+      onPrimaryAction={openEditDialog}
+      primaryAction="编辑"
       title="需求文档详情"
     >
+      <div className="flex justify-end">
+        <Button onClick={() => router.back()} variant="outline">
+          <ArrowLeft className="size-4" />
+          返回
+        </Button>
+      </div>
       <MarkdownPreview
         className="requirement-document-preview max-h-[680px] overflow-auto"
         content={detail.markdown_content}
@@ -135,6 +200,52 @@ export default function DocumentDetailPage() {
           </Table>
         </div>
       </ShellSection>
+
+      <Dialog onOpenChange={setDialogOpen} open={dialogOpen}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>编辑需求文档</DialogTitle>
+            <DialogDescription>保存后会生成一个新的需求文档版本。</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="requirement-name">需求名称</Label>
+              <Input
+                id="requirement-name"
+                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                value={form.name}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="requirement-change-summary">变更说明</Label>
+              <Input
+                id="requirement-change-summary"
+                onChange={(event) => setForm((current) => ({ ...current, change_summary: event.target.value }))}
+                placeholder="例如：补充验收标准"
+                value={form.change_summary}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="requirement-markdown">Markdown 内容</Label>
+              <Textarea
+                className="min-h-96 font-mono text-sm"
+                id="requirement-markdown"
+                onChange={(event) => setForm((current) => ({ ...current, markdown_content: event.target.value }))}
+                value={form.markdown_content}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button disabled={saving} onClick={() => setDialogOpen(false)} type="button" variant="outline">
+              取消
+            </Button>
+            <Button disabled={saving} onClick={handleSave} type="button">
+              <Pencil className="size-4" />
+              {saving ? "保存中" : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }

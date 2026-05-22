@@ -33,3 +33,9 @@ class SourceDocumentUploadIn(BaseModel):
     name: str = Field(min_length=1)
     document_type: str = Field(min_length=1)
     change_summary: str = ""
+
+
+class SourceDocumentUpdateIn(BaseModel):
+    name: str = Field(min_length=1)
+    markdown_content: str = ""
+    change_summary: str = ""

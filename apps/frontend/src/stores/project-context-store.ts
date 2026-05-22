@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 
-import { getLocalStorageValue, removeLocalStorageValue, setLocalStorageValue } from "@/lib/local-storage.client";
+import { getLocalStorageValue, setLocalStorageValue } from "@/lib/local-storage.client";
 
 const PROJECT_SCOPE_KEY = "ai-testing.project.scope";
 const CURRENT_PROJECT_KEY = "ai-testing.project.current";
@@ -34,7 +34,7 @@ export function getProjectScopedUrl(url: string, projectId: string | null, scope
   return url.replace(":projectId", projectId);
 }
 
-export const useProjectContextStore = create<ProjectContextState>((set, get) => ({
+export const useProjectContextStore = create<ProjectContextState>((set) => ({
   scope: "all",
   currentProjectId: null,
   hasHydrated: false,
