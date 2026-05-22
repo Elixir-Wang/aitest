@@ -102,6 +102,7 @@ const conversionLabels: Record<string, string> = {
 
 const mappingLabels: Record<string, string> = {
   pending_merge: "待归并",
+  pending_review: "待评审",
   merged: "已归并",
   discarded: "已废弃",
 };
@@ -428,7 +429,7 @@ export default function DocumentDetailPage() {
                           type="button"
                           variant="link"
                         >
-                          {file.original_filename}
+                          {displayFilename(file.original_filename)}
                         </Button>
                       </TableCell>
                       <TableCell>{file.file_format.toUpperCase()}</TableCell>
@@ -493,7 +494,9 @@ export default function DocumentDetailPage() {
               </pre>
             ) : (
               <div className="rounded-lg border bg-muted/20 p-4 text-sm">
-                <div className="font-medium">{originalPreview?.title ?? selectedFile?.original_filename ?? "未选择文件"}</div>
+              <div className="font-medium">
+                {displayFilename(originalPreview?.title ?? selectedFile?.original_filename ?? "未选择文件")}
+              </div>
                 <div className="mt-2 text-muted-foreground">
                   {originalPreview
                     ? `${originalPreview.fileFormat.toUpperCase()} 暂以文件访问方式查看：${originalPreview.content || "无访问路径"}`
@@ -646,4 +649,8 @@ function SummaryMetric({ label, value }: { label: string; value: string }) {
 
 function StatusBadge({ status, statusLabels }: { status: string; statusLabels: Record<string, string> }) {
   return <Badge variant={status === "failed" ? "destructive" : "secondary"}>{statusLabels[status] ?? status}</Badge>;
+}
+
+function displayFilename(filename: string) {
+  return filename.split(/[\\/]/).filter(Boolean).pop() ?? filename;
 }
