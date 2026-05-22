@@ -152,6 +152,25 @@ def get_converted_markdown(mapping_id: str) -> dict:
         }
 
 
+def update_converted_markdown(mapping_id: str, *, markdown_content: str, change_summary: str, actor) -> dict:
+    _ = actor
+    with connect() as db:
+        row = document_repo.find_file_mapping(db, mapping_id)
+        if not row:
+            raise api_error(404, "DOCUMENT_FILE_NOT_FOUND", "来源文件不存在。")
+        markdown_path_value = row["markdown_file_path"]
+        if markdown_path_value:
+            markdown_path = Path(markdown_path_value)
+        else:
+            document_dir = project_requirement_dir(row["project_id"], row["document_id"])
+            markdown_path = document_dir / "markdown" / "conversions" / f"{mapping_id}.md"
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text(markdown_content, encoding="utf-8")
+        summary = change_summary.strip() or "人工修订标准文件。"
+        document_repo.update_file_mapping_markdown(db, mapping_id, str(markdown_path), summary)
+    return get_converted_markdown(mapping_id)
+
+
 def get_document_versions(document_id: str) -> list[dict]:
     with connect() as db:
         rows = document_repo.find_versions_by_document(db, document_id)

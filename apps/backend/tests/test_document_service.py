@@ -181,6 +181,46 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual([version["version_no"] for version in result["versions"]], [2, 1])
 
+    def test_update_converted_markdown_updates_standard_file_without_creating_version(self):
+        with isolated_document_store() as actor:
+            markdown_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "markdown" / "conversions" / "docmap-1.md"
+            markdown_path.parent.mkdir(parents=True)
+            markdown_path.write_text("# 旧标准文件", encoding="utf-8")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+                document_repo.create_file_mapping(
+                    db,
+                    mapping_id="docmap-1",
+                    document_id="doc-1",
+                    version_id=None,
+                    source_file_path="raw.md",
+                    original_filename="raw.md",
+                    file_format="md",
+                    markdown_file_path=str(markdown_path),
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                    conversion_summary="旧转换摘要",
+                    created_by="u-admin",
+                )
+
+            result = document_service.update_converted_markdown(
+                "docmap-1",
+                markdown_content="# 新标准文件",
+                change_summary="人工修订",
+                actor=actor,
+            )
+
+            self.assertEqual(result["markdown_content"], "# 新标准文件")
+            self.assertEqual(markdown_path.read_text(encoding="utf-8"), "# 新标准文件")
+            self.assertEqual(document_service.get_document_versions("doc-1"), [])
+
 
 def make_upload_file(filename: str, content: bytes) -> TestUploadFile:
     return TestUploadFile(filename, content)

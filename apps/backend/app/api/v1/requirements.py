@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
 from app.dependencies.auth import current_user, require_admin
-from app.schemas.document import SourceDocumentUpdateIn
+from app.schemas.document import SourceDocumentUpdateIn, SourceMarkdownUpdateIn
 from app.services import document_service
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirements"])
@@ -99,3 +99,17 @@ def get_requirement_original_file(mapping_id: str, actor=Depends(current_user)) 
 def get_requirement_markdown_file(mapping_id: str, actor=Depends(current_user)) -> dict:
     _ = actor
     return document_service.get_converted_markdown(mapping_id)
+
+
+@file_router.put("/{mapping_id}/markdown")
+def update_requirement_markdown_file(
+    mapping_id: str,
+    payload: SourceMarkdownUpdateIn,
+    actor=Depends(current_user),
+) -> dict:
+    return document_service.update_converted_markdown(
+        mapping_id,
+        markdown_content=payload.markdown_content,
+        change_summary=payload.change_summary,
+        actor=actor,
+    )
