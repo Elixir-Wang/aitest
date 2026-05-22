@@ -20,6 +20,19 @@ def project_actions(role: str, has_assets: bool = False) -> list[str]:
     return actions
 
 
+def environment_actions(role: str) -> list[str]:
+    return ["read", "create", "delete"] if role == "admin" else ["read"]
+
+
+def exploration_actions(role: str, status: str) -> list[str]:
+    if role != "admin":
+        return ["read"]
+    actions = ["read", "create"]
+    if status != "running":
+        actions.append("delete")
+    return actions
+
+
 def serialize_user(row: Row, actor_role: str | None = None) -> dict:
     role = actor_role or row["role"]
     return {
@@ -64,4 +77,39 @@ def serialize_project(row: Row, actor_role: str, has_assets: bool = False) -> di
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
         "available_actions": project_actions(actor_role, has_assets),
+    }
+
+
+def serialize_project_environment(row: Row, actor_role: str) -> dict:
+    return {
+        "id": row["id"],
+        "project_id": row["project_id"],
+        "project_name": row["project_name"],
+        "name": row["name"],
+        "site_url": row["site_url"],
+        "username": row["username"],
+        "password_mask": row["password_mask"],
+        "description": row["description"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "available_actions": environment_actions(actor_role),
+    }
+
+
+def serialize_exploration_run(row: Row, actor_role: str) -> dict:
+    return {
+        "id": row["id"],
+        "project_id": row["project_id"],
+        "project_name": row["project_name"],
+        "environment_id": row["environment_id"],
+        "environment_name": row["environment_name"],
+        "title": row["title"],
+        "status": row["status"],
+        "scope": row["scope"],
+        "forbidden_paths": row["forbidden_paths"],
+        "login_strategy": row["login_strategy"],
+        "description": row["description"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "available_actions": exploration_actions(actor_role, row["status"]),
     }

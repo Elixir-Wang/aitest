@@ -133,7 +133,6 @@ export function RequirementsPage({
       breadcrumbs={breadcrumbs}
       description={description}
       projectScope={projectScope}
-      tabs={["文档管理", "需求评审", "分析结果", "澄清问题", "版本记录"]}
       title={title}
     >
       <ShellSection>

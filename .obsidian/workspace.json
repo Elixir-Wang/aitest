@@ -94,8 +94,8 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "docs/00-产品文档/00-01-AI测试系统-PRD.md",
-                "collapseAll": false,
+                "file": "docs/00-产品文档/00-03-AI测试系统-需求文档分析与版本管理PRD.md",
+                "collapseAll": true,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
                 "showSearch": false,
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "00-01-AI测试系统-PRD 的反向链接列表"
+              "title": "00-03-AI测试系统-需求文档分析与版本管理PRD 的反向链接列表"
             }
           },
           {
@@ -156,21 +156,21 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "docs/00-产品文档/00-01-AI测试系统-PRD.md",
+                "file": "docs/00-产品文档/00-03-AI测试系统-需求文档分析与版本管理PRD.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "00-01-AI测试系统-PRD 的大纲"
+              "title": "00-03-AI测试系统-需求文档分析与版本管理PRD 的大纲"
             }
           }
-        ]
+        ],
+        "currentTab": 4
       }
     ],
     "direction": "horizontal",
-    "width": 300,
-    "collapsed": true
+    "width": 300
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -186,51 +186,51 @@
   },
   "active": "bb8dd245b030f7b4",
   "lastOpenFiles": [
-    "apps/frontend/src/components/ai-testing/table-loading-row.tsx",
-    "apps/frontend/src/components/ui/loader.tsx",
-    "apps/frontend/src/app/(main)/projects/[projectId]/requirements/upload/page.tsx",
-    "apps/frontend/src/app/(main)/requirements/upload/page.tsx",
-    "apps/frontend/src/components/ai-testing/requirement-upload-page.tsx",
-    "apps/frontend/src/components/ui/file-upload-1.tsx",
-    "apps/frontend/src/app/(main)/projects/[projectId]/requirements/upload",
-    "apps/frontend/src/app/(main)/requirements/upload",
-    "apps/frontend/node_modules/@ark-ui/react/README.md",
-    "apps/frontend/node_modules/@ark-ui/react/package.json",
-    "apps/frontend/node_modules/@zag-js/drawer/LICENSE",
-    "apps/frontend/node_modules/@zag-js/focus-visible/LICENSE",
-    "apps/frontend/node_modules/@zag-js/focus-visible/README.md",
-    "apps/frontend/node_modules/@zag-js/async-list/README.md",
-    "apps/frontend/node_modules/@internationalized/date/README.md",
-    "apps/frontend/node_modules/@zag-js/carousel/README.md",
-    "apps/frontend/node_modules/@zag-js/angle-slider/README.md",
-    "apps/frontend/node_modules/@zag-js/accordion/README.md",
-    "apps/frontend/node_modules/@zag-js/date-utils/README.md",
-    "apps/frontend/node_modules/@zag-js/drawer/README.md",
-    "apps/frontend/node_modules/@zag-js/drawer/src/README.md",
-    "apps/frontend/node_modules/@zag-js/collapsible/README.md",
-    "apps/frontend/node_modules/@zag-js/json-tree-utils/README.md",
-    "apps/frontend/node_modules/@zag-js/avatar/README.md",
-    "apps/frontend/node_modules/@zag-js/cascade-select/README.md",
-    "apps/frontend/node_modules/@zag-js/auto-resize/README.md",
-    "apps/frontend/node_modules/@zag-js/clipboard/README.md",
-    "apps/frontend/node_modules/@zag-js/color-utils/README.md",
-    "apps/frontend/node_modules/@zag-js/floating-panel/README.md",
-    "apps/frontend/node_modules/@zag-js/dom-query/README.md",
-    "apps/frontend/node_modules/@zag-js/core/README.md",
-    "apps/frontend/node_modules/@zag-js/image-cropper/README.md",
-    "apps/frontend/node_modules/@zag-js/i18n-utils/README.md",
-    "apps/frontend/node_modules/@zag-js/radio-group/README.md",
-    "apps/frontend/node_modules/@zag-js/navigation-menu/README.md",
-    "apps/frontend/node_modules/@zag-js/marquee/README.md",
-    "apps/frontend/node_modules/date-fns/docs/logotype.svg",
-    "apps/frontend/node_modules/date-fns/docs/logo.svg",
-    "apps/frontend/node_modules/date-fns-jalali/docs/logotype.svg",
-    "apps/frontend/node_modules/date-fns-jalali/docs/logo.svg",
-    "apps/frontend/node_modules/simple-icons/icons/zyte.svg",
-    "apps/frontend/node_modules/simple-icons/icons/zulip.svg",
-    "apps/frontend/node_modules/simple-icons/icons/zsh.svg",
-    "apps/frontend/node_modules/simple-icons/icons/zotero.svg",
-    "apps/frontend/node_modules/simple-icons/icons/zorin.svg",
-    "apps/frontend/node_modules/simple-icons/icons/zoom.svg"
+    "apps/backend/app/repositories/__pycache__/exploration_repo.cpython-314.pyc",
+    "apps/backend/app/services/__pycache__/exploration_service.cpython-314.pyc",
+    "apps/backend/app/schemas/__pycache__/exploration.cpython-314.pyc",
+    "apps/backend/app/api/v1/__pycache__/exploration.cpython-314.pyc",
+    "apps/backend/app/api/v1/exploration.py",
+    "apps/backend/app/services/exploration_service.py",
+    "apps/backend/app/repositories/exploration_repo.py",
+    "apps/backend/app/schemas/exploration.py",
+    "apps/backend/logs/agent/2026-05-23.log",
+    "apps/backend/app/repositories/__pycache__/environment_repo.cpython-314.pyc",
+    "apps/backend/app/services/__pycache__/environment_service.cpython-314.pyc",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/gauge/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/gauge/CHANGELOG.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/semver/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/opencollective-postinstall/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/npmlog/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/regenerator-runtime/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/is-url/Readme.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/is-url/History.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/fs-minipass/node_modules/minipass/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/bmp-js/test/bit8_out.bmp",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/bmp-js/test/bit8_RLE_out.bmp",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/bmp-js/test/bit8_RLE.bmp",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/bmp-js/test/bit8.bmp",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/bmp-js/test/bit4_out.bmp",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/bmp-js/test/bit4_RLE_out.bmp",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/bmp-js/test/bit4_RLE.bmp",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/bmp-js/test/bit4.bmp",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/bmp-js/test/bit32_out.bmp",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/bmp-js/test/bit32_alpha_out.bmp",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/bmp-js/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/path2d-polyfill/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/path2d-polyfill/CHANGELOG.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/make-dir/readme.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/abbrev/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/chownr/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/rimraf/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/rimraf/CHANGELOG.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/pdfjs-dist/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/pdfjs-dist/CODE_OF_CONDUCT.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/string_decoder/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/@opendocsg/pdf2md/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/are-we-there-yet/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/are-we-there-yet/LICENSE.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/aproba/README.md",
+    "apps/backend/app/agents/raw_requirement_format_converter/skills/pdf_to_markdown/node_modules/fs-minipass/README.md"
   ]
 }

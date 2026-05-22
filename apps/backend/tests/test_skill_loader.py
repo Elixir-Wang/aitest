@@ -27,8 +27,8 @@ class SkillLoaderTest(unittest.TestCase):
 
         self.assertEqual(pdf_skill.agent_id, "raw_requirement_format_converter")
         self.assertEqual(docx_skill.agent_id, "raw_requirement_format_converter")
-        self.assertIn("agents\\raw_requirement_format_converter\\skills\\pdf_to_markdown", pdf_skill.path)
-        self.assertIn("agents\\raw_requirement_format_converter\\skills\\docx_to_markdown", docx_skill.path)
+        self.assertTrue(Path(pdf_skill.path).as_posix().endswith("agents/raw_requirement_format_converter/skills/pdf_to_markdown"))
+        self.assertTrue(Path(docx_skill.path).as_posix().endswith("agents/raw_requirement_format_converter/skills/docx_to_markdown"))
 
         with self.assertRaises(KeyError):
             skill_registry.get("raw_requirement_format_converter", agent_id="raw_requirement_format_converter")

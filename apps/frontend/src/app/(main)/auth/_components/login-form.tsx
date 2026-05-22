@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { apiRequest, roleToLabel, type ApiUser } from "@/lib/api-client";
+import { type ApiUser, apiRequest, roleToLabel } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 
 const formSchema = z.object({
@@ -44,7 +44,7 @@ export function LoginForm() {
         remember: data.remember,
         user: {
           email: result.current_user.email,
-          name: result.current_user.nickname || result.current_user.username,
+          name: result.current_user.username,
           role: result.current_user.role,
         },
       });

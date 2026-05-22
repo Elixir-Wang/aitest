@@ -15,11 +15,17 @@ type RequirementFileSwitcherProps = {
   files: RequirementSwitcherFile[];
   selectedFileId: string;
   onSelect: (fileId: string) => void;
+  getFileLabel?: (filename: string) => string;
 };
 
-export function RequirementFileSwitcher({ files, selectedFileId, onSelect }: RequirementFileSwitcherProps) {
+export function RequirementFileSwitcher({
+  files,
+  selectedFileId,
+  onSelect,
+  getFileLabel = displayFilename,
+}: RequirementFileSwitcherProps) {
   const selectedFile = files.find((file) => file.id === selectedFileId) ?? files[0];
-  const selectedFilename = selectedFile ? displayFilename(selectedFile.original_filename) : "";
+  const selectedFilename = selectedFile ? getFileLabel(selectedFile.original_filename) : "";
 
   if (files.length === 0) {
     return <div className="text-muted-foreground text-sm">暂无文件</div>;
@@ -27,11 +33,7 @@ export function RequirementFileSwitcher({ files, selectedFileId, onSelect }: Req
 
   return (
     <Select onValueChange={onSelect} value={selectedFile?.id}>
-      <SelectTrigger
-        aria-label="切换文件"
-        className="h-9 w-fit min-w-0 max-w-full gap-2"
-        title={selectedFilename}
-      >
+      <SelectTrigger aria-label="切换文件" className="h-9 w-fit min-w-0 max-w-full gap-2" title={selectedFilename}>
         <SelectValue placeholder="选择文件" />
       </SelectTrigger>
       <SelectContent
@@ -42,7 +44,7 @@ export function RequirementFileSwitcher({ files, selectedFileId, onSelect }: Req
       >
         {files.map((file) => (
           <SelectItem className="whitespace-nowrap" key={file.id} value={file.id}>
-            {displayFilename(file.original_filename)}
+            {getFileLabel(file.original_filename)}
           </SelectItem>
         ))}
       </SelectContent>

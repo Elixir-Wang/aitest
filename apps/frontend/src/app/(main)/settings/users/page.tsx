@@ -65,13 +65,9 @@ export default function Page() {
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
   const filteredRows = rows.filter((user) =>
-    [
-      user.username,
-      user.email,
-      roleToLabel(user.role),
-      user.project_scope,
-      statusToLabel(user.status),
-    ].some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase())),
+    [user.username, user.email, roleToLabel(user.role), user.project_scope, statusToLabel(user.status)].some((value) =>
+      value.toLowerCase().includes(searchText.trim().toLowerCase()),
+    ),
   );
   const selectedCount = selectedIds.length;
   const allSelected = filteredRows.length > 0 && filteredRows.every((row) => selectedIds.includes(row.id));
@@ -153,7 +149,6 @@ export default function Page() {
     const payload = {
       description: form.description.trim(),
       email: form.email.trim(),
-      nickname: form.username.trim(),
       password: form.password,
       project_scope: form.project_scope.trim(),
       role: labelToRole(form.role),

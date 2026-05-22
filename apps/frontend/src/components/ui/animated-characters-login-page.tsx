@@ -306,7 +306,7 @@ function LoginPage() {
         remember,
         user: {
           email: result.current_user.email,
-          name: result.current_user.nickname || result.current_user.username,
+          name: result.current_user.username,
           role: result.current_user.role,
         },
       });

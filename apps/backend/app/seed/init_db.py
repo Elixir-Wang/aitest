@@ -143,6 +143,38 @@ def init_db() -> None:
               FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
               UNIQUE(project_id, stat_date)
             );
+
+            CREATE TABLE IF NOT EXISTS project_environments (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              site_url TEXT NOT NULL,
+              username TEXT NOT NULL DEFAULT '',
+              password_mask TEXT NOT NULL DEFAULT '',
+              description TEXT NOT NULL DEFAULT '',
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+              UNIQUE(project_id, name)
+            );
+
+            CREATE TABLE IF NOT EXISTS exploration_runs (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              environment_id TEXT NOT NULL,
+              title TEXT NOT NULL,
+              status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'waiting_human', 'partial', 'completed', 'blocked')) DEFAULT 'queued',
+              scope TEXT NOT NULL DEFAULT '',
+              forbidden_paths TEXT NOT NULL DEFAULT '',
+              login_strategy TEXT NOT NULL DEFAULT 'reuse_state',
+              description TEXT NOT NULL DEFAULT '',
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+              FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE RESTRICT
+            );
             """
         )
         _ensure_column(db, "model_providers", "description", "TEXT NOT NULL DEFAULT ''")
@@ -263,5 +295,3 @@ def _sync_seed_password(db: sqlite3.Connection, user_id: str, password: str) -> 
         "UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         (hash_secret(password), user_id),
     )
-
-

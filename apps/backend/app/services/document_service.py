@@ -579,7 +579,11 @@ async def _save_source_file(db, project_id: str, document_id: str, upload: Uploa
     original_path.write_bytes(raw_bytes)
 
     try:
-        markdown_text, conversion_summary = _convert_to_markdown(safe_filename, raw_bytes)
+        markdown_text, conversion_summary = _convert_to_markdown(
+            safe_filename,
+            raw_bytes,
+            assets_dir=markdown_path.parent / f"{mapping_id}_assets",
+        )
         markdown_path.write_text(markdown_text, encoding="utf-8")
         conversion_status = CONVERSION_SUCCESS_STATUS
         markdown_file_path: str | None = str(markdown_path)
@@ -631,8 +635,8 @@ def _serialize_document_from_db(db, document_id: str, actor_role: str) -> dict:
     return serialize_document(row, actor_role)
 
 
-def _convert_to_markdown(filename: str, raw_bytes: bytes) -> tuple[str, str]:
-    return convert_requirement_file_to_markdown(filename, raw_bytes)
+def _convert_to_markdown(filename: str, raw_bytes: bytes, *, assets_dir: Path | None = None) -> tuple[str, str]:
+    return convert_requirement_file_to_markdown(filename, raw_bytes, assets_dir=assets_dir)
 
 
 def _ensure_converted_markdown(db, row):
@@ -647,12 +651,16 @@ def _ensure_converted_markdown(db, row):
         return row
 
     try:
-        markdown_text, conversion_summary = _convert_to_markdown(row["original_filename"], source_path.read_bytes())
+        document_dir = project_requirement_dir(row["project_id"], row["document_id"])
+        markdown_path = document_dir / "markdown" / "conversions" / f"{row['id']}.md"
+        markdown_text, conversion_summary = _convert_to_markdown(
+            row["original_filename"],
+            source_path.read_bytes(),
+            assets_dir=markdown_path.parent / f"{row['id']}_assets",
+        )
     except Exception:
         return row
 
-    document_dir = project_requirement_dir(row["project_id"], row["document_id"])
-    markdown_path = document_dir / "markdown" / "conversions" / f"{row['id']}.md"
     markdown_path.parent.mkdir(parents=True, exist_ok=True)
     markdown_path.write_text(markdown_text, encoding="utf-8")
     document_repo.update_file_mapping_markdown(db, row["id"], str(markdown_path), conversion_summary)

@@ -38,6 +38,7 @@ interface PageShellProps {
   projectScope?: ProjectScope;
   tabs?: ModuleTab[];
   activeTab?: string;
+  onTabChange?: (value: string) => void;
   primaryAction?: string;
   onPrimaryAction?: () => void;
   children: ReactNode;
@@ -56,6 +57,7 @@ export function PageShell({
   breadcrumbs,
   tabs = [],
   activeTab,
+  onTabChange,
   primaryAction,
   onPrimaryAction,
   children,
@@ -69,7 +71,7 @@ export function PageShell({
         primaryAction={primaryAction}
         title={title}
       />
-      {tabs.length > 0 && <ModuleTabs activeTab={activeTab} tabs={tabs} />}
+      {tabs.length > 0 && <ModuleTabs activeTab={activeTab} onTabChange={onTabChange} tabs={tabs} />}
       {children}
     </div>
   );
@@ -100,12 +102,20 @@ export function PageHeader({
   );
 }
 
-export function ModuleTabs({ tabs, activeTab }: { tabs: ModuleTab[]; activeTab?: string }) {
+export function ModuleTabs({
+  tabs,
+  activeTab,
+  onTabChange,
+}: {
+  tabs: ModuleTab[];
+  activeTab?: string;
+  onTabChange?: (value: string) => void;
+}) {
   const firstTab = tabs[0];
   const defaultValue = activeTab ?? (typeof firstTab === "string" ? firstTab : firstTab.label);
 
   return (
-    <Tabs defaultValue={defaultValue} className="w-full">
+    <Tabs value={activeTab} defaultValue={defaultValue} onValueChange={onTabChange} className="w-full">
       <TabsList className="flex h-auto flex-wrap justify-start">
         {tabs.map((tab) => (
           <TabsTrigger

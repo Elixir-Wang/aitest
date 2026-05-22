@@ -4,7 +4,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
-import { ArrowLeft, Check, ExternalLink, FileText, GitMerge, Loader2, Pencil, Save, Trash2, Upload, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  ExternalLink,
+  FileText,
+  GitMerge,
+  Loader2,
+  Pencil,
+  Save,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
@@ -423,7 +435,9 @@ export default function DocumentDetailPage() {
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
     setUploadSubmitting(true);
     setUploadStates(
-      Object.fromEntries(uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress: 1, status: "uploading" as const }])),
+      Object.fromEntries(
+        uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress: 1, status: "uploading" as const }]),
+      ),
     );
 
     await new Promise<void>((resolve, reject) => {
@@ -787,6 +801,7 @@ export default function DocumentDetailPage() {
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <RequirementFileSwitcher
                   files={overview.files}
+                  getFileLabel={standardMarkdownFilename}
                   onSelect={setSelectedFileId}
                   selectedFileId={selectedFile?.id ?? ""}
                 />
