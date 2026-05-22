@@ -13,6 +13,13 @@ from fastapi import HTTPException
 
 
 class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
+    def test_conflict_table_exists_in_isolated_store(self):
+        with isolated_document_store():
+            with connect() as db:
+                rows = db.execute("PRAGMA table_info(source_document_merge_conflicts)").fetchall()
+
+        self.assertIn("resolution", {row["name"] for row in rows})
+
     async def test_upload_new_requirement_creates_one_document_with_multiple_pending_files(self):
         with isolated_document_store() as actor:
             files = [
@@ -250,6 +257,19 @@ class isolated_document_store:
                   conversion_quality INTEGER,
                   created_by TEXT NOT NULL,
                   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE source_document_merge_conflicts (
+                  id TEXT PRIMARY KEY,
+                  document_id TEXT NOT NULL,
+                  title TEXT NOT NULL,
+                  source_file_names TEXT NOT NULL DEFAULT '',
+                  fragment_a TEXT NOT NULL DEFAULT '',
+                  fragment_b TEXT NOT NULL DEFAULT '',
+                  resolution TEXT NOT NULL DEFAULT '',
+                  resolution_type TEXT NOT NULL DEFAULT '',
+                  status TEXT NOT NULL DEFAULT 'open',
+                  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
                 """
             )

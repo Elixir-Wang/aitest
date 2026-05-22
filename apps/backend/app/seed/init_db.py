@@ -116,6 +116,21 @@ def init_db() -> None:
               FOREIGN KEY(version_id) REFERENCES source_document_versions(id) ON DELETE SET NULL
             );
 
+            CREATE TABLE IF NOT EXISTS source_document_merge_conflicts (
+              id TEXT PRIMARY KEY,
+              document_id TEXT NOT NULL,
+              title TEXT NOT NULL,
+              source_file_names TEXT NOT NULL DEFAULT '',
+              fragment_a TEXT NOT NULL DEFAULT '',
+              fragment_b TEXT NOT NULL DEFAULT '',
+              resolution TEXT NOT NULL DEFAULT '',
+              resolution_type TEXT NOT NULL DEFAULT '',
+              status TEXT NOT NULL CHECK(status IN ('open', 'resolved')) DEFAULT 'open',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS dashboard_daily_stats (
               id TEXT PRIMARY KEY,
               project_id TEXT NOT NULL,
