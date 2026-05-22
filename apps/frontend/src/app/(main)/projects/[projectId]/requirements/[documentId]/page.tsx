@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
-import { ArrowLeft, Check, ExternalLink, FileText, GitMerge, Pencil, Save, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, ExternalLink, FileText, GitMerge, Loader2, Pencil, Save, Trash2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
@@ -17,10 +17,20 @@ import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import FileUpload1 from "@/components/ui/file-upload-1";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiBlobRequest, apiRequest, formatDateTime } from "@/lib/api-client";
+import { useAuthStore } from "@/stores/auth-store";
 
 const STANDARD_FILE_SECTION_ID = "standard-file-section";
 
@@ -144,6 +154,13 @@ export default function DocumentDetailPage() {
   const [merging, setMerging] = useState(false);
   const [conflicts, setConflicts] = useState<RequirementConflict[]>([]);
   const [conflictDrafts, setConflictDrafts] = useState<Record<string, string>>({});
+  const token = useAuthStore((state) => state.token);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadSubmitting, setUploadSubmitting] = useState(false);
+  const [uploadStates, setUploadStates] = useState<
+    Record<string, { progress: number; status: "idle" | "uploading" | "completed" | "error" }>
+  >({});
   const [fileSearchText, setFileSearchText] = useState("");
   const {
     allSelected: allFilesSelected,
@@ -386,6 +403,90 @@ export default function DocumentDetailPage() {
     }
   }
 
+  function openUploadDialog() {
+    setUploadFiles([]);
+    setUploadStates({});
+    setUploadDialogOpen(true);
+  }
+
+  async function submitUploadFiles() {
+    if (uploadFiles.length === 0) {
+      toast.error("请选择至少一个文件");
+      return;
+    }
+    const unsupported = uploadFiles.find((f) => !/\.(pdf|doc|docx|txt|md|markdown)$/i.test(f.name));
+    if (unsupported) {
+      toast.error(`仅支持 PDF、Word、TXT、MD 文件：${unsupported.name}`);
+      return;
+    }
+
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+    setUploadSubmitting(true);
+    setUploadStates(
+      Object.fromEntries(uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress: 1, status: "uploading" as const }])),
+    );
+
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${apiBase}/projects/${projectId}/requirements`);
+      if (token) {
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      }
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const progress = Math.min(99, Math.round((event.loaded / event.total) * 100));
+        setUploadStates(
+          Object.fromEntries(
+            uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress, status: "uploading" as const }]),
+          ),
+        );
+      };
+      xhr.onload = () => {
+        const payload = (() => {
+          try {
+            return JSON.parse(xhr.responseText);
+          } catch {
+            return null;
+          }
+        })();
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+          return;
+        }
+        reject(new Error(payload?.detail?.message ?? payload?.detail ?? "文件上传失败"));
+      };
+      xhr.onerror = () => reject(new Error("网络异常，文件上传失败"));
+      const formData = new FormData();
+      formData.append("mode", "append");
+      formData.append("existing_document_id", documentId);
+      for (const f of uploadFiles) {
+        formData.append("files", f);
+      }
+      xhr.send(formData);
+    })
+      .then(async () => {
+        setUploadStates(
+          Object.fromEntries(
+            uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress: 100, status: "completed" as const }]),
+          ),
+        );
+        toast.success("文件已上传，正在刷新列表");
+        setUploadDialogOpen(false);
+        await loadOverview({ silent: true });
+      })
+      .catch((err: unknown) => {
+        toast.error(err instanceof Error ? err.message : "文件上传失败");
+        setUploadStates(
+          Object.fromEntries(
+            uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress: 0, status: "error" as const }]),
+          ),
+        );
+      })
+      .finally(() => {
+        setUploadSubmitting(false);
+      });
+  }
+
   async function saveConflictResolution(conflict: RequirementConflict) {
     const resolution = conflictDrafts[conflict.id]?.trim();
     if (!resolution) {
@@ -460,9 +561,7 @@ export default function DocumentDetailPage() {
             <ListToolbar
               description={`转换成功 ${overview.stats.conversion_success} · 有警告 ${overview.stats.conversion_warning} · 失败 ${overview.stats.conversion_failed}`}
               onBatchDelete={() => deleteSourceFiles(fileSelectedIds)}
-              onCreate={() =>
-                router.push(`/projects/${projectId}/requirements/upload?mode=append&documentId=${documentId}`)
-              }
+              onCreate={openUploadDialog}
               onSearch={setFileSearchText}
               createLabel="上传文件"
               placeholder="搜索文件名、格式或状态"
@@ -574,6 +673,49 @@ export default function DocumentDetailPage() {
               </Table>
             </div>
           </ShellSection>
+
+          <Dialog onOpenChange={setUploadDialogOpen} open={uploadDialogOpen}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>上传原始文件</DialogTitle>
+                <DialogDescription>
+                  选择文件后直接追加到当前需求，支持 PDF、Word（doc/docx）、TXT、MD 格式。
+                </DialogDescription>
+              </DialogHeader>
+              <FileUpload1
+                accept={{
+                  "application/pdf": [".pdf"],
+                  "application/msword": [".doc"],
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+                  "text/markdown": [".md", ".markdown"],
+                  "text/plain": [".txt"],
+                }}
+                files={uploadFiles}
+                hint="仅支持 PDF、Word（doc/docx）、TXT、MD 文件"
+                maxFiles={10}
+                uploadStates={uploadStates}
+                onFilesChange={setUploadFiles}
+              />
+              <DialogFooter>
+                <Button
+                  disabled={uploadSubmitting}
+                  onClick={() => setUploadDialogOpen(false)}
+                  type="button"
+                  variant="outline"
+                >
+                  取消
+                </Button>
+                <Button
+                  disabled={uploadSubmitting || uploadFiles.length === 0}
+                  onClick={submitUploadFiles}
+                  type="button"
+                >
+                  {uploadSubmitting ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+                  {uploadSubmitting ? "上传中" : "上传"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="original">
