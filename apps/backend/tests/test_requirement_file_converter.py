@@ -118,6 +118,24 @@ class RequirementFileConverterTest(unittest.TestCase):
 
         self.assertIn("1. 输入账号\n1. 输入密码\n1. 点击登录", markdown)
 
+    def test_docx_list_and_paragraph_spacing_is_correct(self):
+        document = Document()
+        document.add_paragraph("前言段落")
+        document.add_paragraph("功能一", style="List Bullet")
+        document.add_paragraph("功能二", style="List Bullet")
+        document.add_paragraph("功能三", style="List Bullet")
+        document.add_paragraph("结语段落")
+        buffer = BytesIO()
+        document.save(buffer)
+
+        markdown, _ = convert_requirement_file_to_markdown("混合.docx", buffer.getvalue())
+
+        # 列表内部紧凑
+        self.assertIn("- 功能一\n- 功能二\n- 功能三", markdown)
+        # 段落与列表之间有空行
+        self.assertIn("前言段落\n\n- 功能一", markdown)
+        self.assertIn("- 功能三\n\n结语段落", markdown)
+
 
 def make_docx_bytes() -> bytes:
     document = Document()

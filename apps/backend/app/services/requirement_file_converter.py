@@ -322,22 +322,27 @@ def _escape_markdown_link_text(text: str) -> str:
     return text.replace("[", "\\[").replace("]", "\\]")
 
 
-def _is_list_block(block: str) -> bool:
-    """Return True if block is a markdown list item (possibly indented)."""
-    return bool(re.match(r"^\s*(?:[-*+]|\d+\.)\s", block))
+def _list_block_type(block: str) -> str | None:
+    """Return the list type of a markdown block, or None if not a list item."""
+    if re.match(r"^\s*[-*+]\s", block):
+        return "bullet"
+    if re.match(r"^\s*\d+\.\s", block):
+        return "ordered"
+    return None
 
 
 def _join_markdown_blocks(blocks: list[str]) -> str:
-    """Join blocks with double newlines, but keep consecutive list items tight (single newline)."""
+    """Join blocks with double newlines, but keep consecutive same-type list items tight (single newline)."""
     if not blocks:
         return ""
     groups: list[str] = []
     i = 0
     while i < len(blocks):
         block = blocks[i]
-        if _is_list_block(block):
+        block_type = _list_block_type(block)
+        if block_type is not None:
             list_items = [block]
-            while i + 1 < len(blocks) and _is_list_block(blocks[i + 1]):
+            while i + 1 < len(blocks) and _list_block_type(blocks[i + 1]) == block_type:
                 i += 1
                 list_items.append(blocks[i])
             groups.append("\n".join(list_items))
