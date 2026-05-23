@@ -8,12 +8,27 @@ import { useRouter } from "next/navigation";
 import { Eye, History } from "lucide-react";
 import { toast } from "sonner";
 
-import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
-import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
+import {
+  ListToolbar,
+  PageShell,
+  RowActions,
+  ShellSection,
+} from "@/components/ai-testing/page-shell";
+import {
+  ProcessingState,
+  TableLoadingRow,
+} from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { apiRequest, formatDateTime } from "@/lib/api-client";
 
 type RequirementRow = {
@@ -44,7 +59,9 @@ type RequirementPageProps = {
 
 const statusLabels: Record<string, string> = {
   parsing: "解析中",
+  pending_merge: "待归并",
   pending_review: "待评审",
+  versioned: "已归并",
 };
 
 export function RequirementsPage({
@@ -78,13 +95,19 @@ export function RequirementsPage({
       setLoading(true);
       setError("");
       try {
-        const data = await apiRequest<RequirementRow[]>(`/projects/${projectId}/requirements`);
+        const data = await apiRequest<RequirementRow[]>(
+          `/projects/${projectId}/requirements`,
+        );
         if (!ignore) {
           setRows(data);
         }
       } catch (requestError) {
         if (!ignore) {
-          setError(requestError instanceof Error ? requestError.message : "需求文档加载失败");
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "需求文档加载失败",
+          );
         }
       } finally {
         if (!ignore) {
@@ -109,7 +132,9 @@ export function RequirementsPage({
           item.status,
           item.current_version?.change_summary ?? "",
           item.updated_at,
-        ].some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase())),
+        ].some((value) =>
+          value.toLowerCase().includes(searchText.trim().toLowerCase()),
+        ),
       ),
     [rows, searchText],
   );
@@ -119,12 +144,22 @@ export function RequirementsPage({
       return;
     }
     try {
-      await Promise.all(ids.map((id) => apiRequest(`/projects/${projectId}/requirements/${id}`, { method: "DELETE" })));
+      await Promise.all(
+        ids.map((id) =>
+          apiRequest(`/projects/${projectId}/requirements/${id}`, {
+            method: "DELETE",
+          }),
+        ),
+      );
       setRows((current) => current.filter((row) => !ids.includes(row.id)));
       clearSelection();
       toast.success(`已删除 ${ids.length} 个需求文档`);
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "需求文档删除失败");
+      toast.error(
+        requestError instanceof Error
+          ? requestError.message
+          : "需求文档删除失败",
+      );
     }
   }
 
@@ -157,7 +192,10 @@ export function RequirementsPage({
                 <TableHead className="w-10">
                   <Checkbox
                     aria-label="选择全部需求"
-                    checked={allSelected || (partiallySelected ? "indeterminate" : false)}
+                    checked={
+                      allSelected ||
+                      (partiallySelected ? "indeterminate" : false)
+                    }
                     disabled={loading}
                     onCheckedChange={(checked) => toggleAll(Boolean(checked))}
                   />
@@ -172,12 +210,19 @@ export function RequirementsPage({
             </TableHeader>
             <TableBody>
               {filteredRows.map((item) => (
-                <TableRow data-state={selectedIds.includes(item.id) ? "selected" : undefined} key={item.id}>
+                <TableRow
+                  data-state={
+                    selectedIds.includes(item.id) ? "selected" : undefined
+                  }
+                  key={item.id}
+                >
                   <TableCell>
                     <Checkbox
                       aria-label={`选择 ${item.name}`}
                       checked={selectedIds.includes(item.id)}
-                      onCheckedChange={(checked) => toggleOne(item.id, Boolean(checked))}
+                      onCheckedChange={(checked) =>
+                        toggleOne(item.id, Boolean(checked))
+                      }
                     />
                   </TableCell>
                   <TableCell className="font-medium">
@@ -191,7 +236,11 @@ export function RequirementsPage({
                   </TableCell>
                   <TableCell>{item.file_count}</TableCell>
                   <TableCell>
-                    <Badge variant={item.status === "parsing" ? "outline" : "secondary"}>
+                    <Badge
+                      variant={
+                        item.status === "parsing" ? "outline" : "secondary"
+                      }
+                    >
                       {item.status === "parsing" ? (
                         <ProcessingState label={statusLabels[item.status]} />
                       ) : (
@@ -199,12 +248,20 @@ export function RequirementsPage({
                       )}
                     </Badge>
                   </TableCell>
-                  <TableCell>{item.current_version ? `v${item.current_version.version_no}` : "-"}</TableCell>
+                  <TableCell>
+                    {item.current_version
+                      ? `v${item.current_version.version_no}`
+                      : "-"}
+                  </TableCell>
                   <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                   <TableCell>
                     <RowActions
                       actions={[
-                        { label: "概览", href: `/projects/${projectId}/requirements/${item.id}`, icon: Eye },
+                        {
+                          label: "概览",
+                          href: `/projects/${projectId}/requirements/${item.id}`,
+                          icon: Eye,
+                        },
                         {
                           label: "版本记录",
                           href: `/projects/${projectId}/requirements/${item.id}/versions`,
@@ -216,7 +273,9 @@ export function RequirementsPage({
                   </TableCell>
                 </TableRow>
               ))}
-              {loading && filteredRows.length === 0 ? <TableLoadingRow colSpan={7} label="需求文档加载中" /> : null}
+              {loading && filteredRows.length === 0 ? (
+                <TableLoadingRow colSpan={7} label="需求文档加载中" />
+              ) : null}
             </TableBody>
           </Table>
         </div>

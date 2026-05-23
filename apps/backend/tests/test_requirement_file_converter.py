@@ -25,7 +25,7 @@ class RequirementFileConverterTest(unittest.TestCase):
     def test_text_file_is_wrapped_as_markdown(self):
         markdown, summary = convert_requirement_file_to_markdown("需求.txt", "登录需求".encode("utf-8"))
 
-        self.assertEqual(markdown, "# 需求.txt\n\n登录需求\n")
+        self.assertEqual(markdown, "登录需求\n")
         self.assertEqual(summary, "文本文件直接保存为 Markdown 转换稿。")
 
     def test_docx_extracts_headings_lists_and_tables(self):
@@ -33,7 +33,8 @@ class RequirementFileConverterTest(unittest.TestCase):
 
         markdown, summary = convert_requirement_file_to_markdown("登录需求.docx", raw_bytes)
 
-        self.assertIn("# 登录需求.docx", markdown)
+        self.assertNotIn("登录需求.docx", markdown)
+        self.assertTrue(markdown.startswith("# 一级标题"))
         self.assertIn("# 一级标题", markdown)
         self.assertIn("## 二级标题", markdown)
         self.assertIn("- 支持账号登录", markdown)
@@ -60,7 +61,8 @@ class RequirementFileConverterTest(unittest.TestCase):
         with patch("app.services.requirement_file_converter.fitz.open", return_value=FakePdfDocument()):
             markdown, summary = convert_requirement_file_to_markdown("入园办公人员统计表.pdf", b"%PDF-1.4")
 
-        self.assertIn("# 入园办公人员统计表.pdf", markdown)
+        self.assertNotIn("入园办公人员统计表.pdf", markdown)
+        self.assertTrue(markdown.startswith("第一段需求"))
         self.assertIn("第一段需求", markdown)
         self.assertIn("第二段需求", markdown)
         self.assertIn("第三段需求", markdown)

@@ -107,6 +107,7 @@ def init_db() -> None:
               original_filename TEXT NOT NULL DEFAULT '',
               file_format TEXT NOT NULL DEFAULT '',
               markdown_file_path TEXT,
+              preview_file_path TEXT,
               conversion_status TEXT NOT NULL DEFAULT 'pending',
               mapping_status TEXT NOT NULL DEFAULT 'pending_merge',
               conversion_summary TEXT NOT NULL DEFAULT '',
@@ -254,6 +255,7 @@ def _migrate_file_mappings(db: sqlite3.Connection) -> None:
               original_filename TEXT NOT NULL DEFAULT '',
               file_format TEXT NOT NULL DEFAULT '',
               markdown_file_path TEXT,
+              preview_file_path TEXT,
               conversion_status TEXT NOT NULL DEFAULT 'success',
               mapping_status TEXT NOT NULL DEFAULT 'pending_merge',
               conversion_summary TEXT NOT NULL DEFAULT '',
@@ -278,6 +280,7 @@ def _migrate_file_mappings(db: sqlite3.Connection) -> None:
 
     _ensure_column(db, "source_document_file_mappings", "original_filename", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(db, "source_document_file_mappings", "file_format", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(db, "source_document_file_mappings", "preview_file_path", "TEXT")
     _ensure_column(db, "source_document_file_mappings", "conversion_status", "TEXT NOT NULL DEFAULT 'success'")
     _ensure_column(db, "source_document_file_mappings", "conversion_quality", "INTEGER")
     _ensure_column(db, "source_document_file_mappings", "created_by", "TEXT NOT NULL DEFAULT 'system'")

@@ -2,16 +2,23 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { ChevronLeft, ChevronRight, FileText, Loader2, Minus, Plus, RotateCw } from "lucide-react";
-import DOMPurify from "dompurify";
-import mammoth from "mammoth";
-import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy, type RenderTask } from "pdfjs-dist";
+import { renderAsync } from "docx-preview";
+import { FileText, Loader2, Minus, Plus, RotateCw } from "lucide-react";
+import {
+  GlobalWorkerOptions,
+  getDocument,
+  type PDFDocumentProxy,
+  type RenderTask,
+} from "pdfjs-dist";
 import "pdfjs-dist/web/pdf_viewer.css";
 
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 
-GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
+GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.mjs",
+  import.meta.url,
+).toString();
 
 type OriginalPreview = {
   title: string;
@@ -26,7 +33,10 @@ type OriginalFilePreviewProps = {
   selectedFilename?: string;
 };
 
-export function OriginalFilePreview({ preview, selectedFilename }: OriginalFilePreviewProps) {
+export function OriginalFilePreview({
+  preview,
+  selectedFilename,
+}: OriginalFilePreviewProps) {
   if (!preview) {
     return (
       <div className="flex min-h-[360px] items-center justify-center rounded-lg border border-dashed bg-muted/20 text-muted-foreground text-sm">
@@ -45,14 +55,17 @@ export function OriginalFilePreview({ preview, selectedFilename }: OriginalFileP
 
   const fileFormat = preview.fileFormat.toLowerCase();
   if (preview.objectUrl && fileFormat === "pdf") {
-    return <PdfCanvasPreview objectUrl={preview.objectUrl} title={preview.title} />;
+    return (
+      <PdfCanvasPreview objectUrl={preview.objectUrl} title={preview.title} />
+    );
   }
-
-  if (preview.objectUrl && ["doc", "docx"].includes(fileFormat)) {
+  if (preview.objectUrl && fileFormat === "docx") {
     return <DocxPreview objectUrl={preview.objectUrl} title={preview.title} />;
   }
 
-  const fallbackTitle = preview.title.trim() ? preview.title : (selectedFilename ?? "原始文件");
+  const fallbackTitle = preview.title.trim()
+    ? preview.title
+    : (selectedFilename ?? "原始文件");
 
   return (
     <div className="flex min-h-[360px] flex-col items-center justify-center gap-3 rounded-lg border bg-muted/20 text-center text-sm">
@@ -63,22 +76,131 @@ export function OriginalFilePreview({ preview, selectedFilename }: OriginalFileP
   );
 }
 
-function PdfCanvasPreview({ objectUrl, title }: { objectUrl: string; title: string }) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const renderTaskRef = useRef<RenderTask | null>(null);
-  const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
-  const [pageNumber, setPageNumber] = useState(1);
-  const [pageCount, setPageCount] = useState(0);
-  const [scale, setScale] = useState(1);
+function DocxPreview({
+  objectUrl,
+  title,
+}: {
+  objectUrl: string;
+  title: string;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    container.replaceChildren();
+
+    fetch(objectUrl)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("DOCX 文件读取失败");
+        }
+        return response.arrayBuffer();
+      })
+      .then((buffer) =>
+        renderAsync(buffer, container, undefined, {
+          className: "docx-preview-document",
+          inWrapper: false,
+          ignoreFonts: true,
+          renderChanges: false,
+          renderComments: false,
+          trimXmlDeclaration: true,
+          useBase64URL: true,
+        }),
+      )
+      .catch(() => {
+        if (!cancelled) {
+          setError("DOCX 预览加载失败");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      container.replaceChildren();
+    };
+  }, [objectUrl]);
+
+  return (
+    <div className="overflow-hidden rounded-lg border bg-background">
+      <div className="flex items-center justify-between gap-3 border-b bg-muted/20 px-3 py-2">
+        <div className="min-w-0 font-medium text-sm">
+          {displayFilename(title)}
+        </div>
+      </div>
+      <div className="relative min-h-[680px] overflow-auto bg-muted/30 p-6">
+        {loading ? (
+          <div className="absolute inset-x-0 top-6 z-10 mx-auto flex w-fit items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm shadow-sm">
+            <Loader2 className="size-4 animate-spin" />
+            加载中
+          </div>
+        ) : null}
+        {error ? (
+          <div className="flex min-h-[620px] items-center justify-center text-muted-foreground text-sm">
+            {error}
+          </div>
+        ) : (
+          <div
+            ref={containerRef}
+            className="docx-preview mx-auto max-w-[900px] bg-white p-8 text-foreground shadow-sm ring-1 ring-border"
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PdfCanvasPreview({
+  objectUrl,
+  title,
+}: {
+  objectUrl: string;
+  title: string;
+}) {
+  const pagesRef = useRef<HTMLDivElement | null>(null);
+  const renderTasksRef = useRef<RenderTask[]>([]);
+  const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
+  const [pageCount, setPageCount] = useState(0);
+  const [scale, setScale] = useState(1);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const pagesElement = pagesRef.current;
+    if (!pagesElement) {
+      return;
+    }
+
+    const updateContainerWidth = () => {
+      setContainerWidth(Math.max(0, pagesElement.clientWidth));
+    };
+    updateContainerWidth();
+
+    const observer = new ResizeObserver(updateContainerWidth);
+    observer.observe(pagesElement);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError("");
     setPdf(null);
-    setPageNumber(1);
+    setPageCount(0);
+    pagesRef.current?.replaceChildren();
 
     const task = getDocument(objectUrl);
     task.promise
@@ -108,42 +230,71 @@ function PdfCanvasPreview({ objectUrl, title }: { objectUrl: string; title: stri
   }, [objectUrl]);
 
   useEffect(() => {
-    if (!pdf || !canvasRef.current) {
+    const pagesElement = pagesRef.current;
+    if (!pdf || !pagesElement || !containerWidth) {
       return;
     }
 
     let cancelled = false;
-    const canvas = canvasRef.current;
-    const context = canvas.getContext("2d");
-    if (!context) {
-      setError("当前浏览器不支持 PDF 画布预览");
-      return;
-    }
-
-    renderTaskRef.current?.cancel();
+    renderTasksRef.current.forEach((task) => task.cancel());
+    renderTasksRef.current = [];
+    pagesElement.replaceChildren();
     setLoading(true);
     setError("");
 
-    pdf
-      .getPage(pageNumber)
-      .then((page) => {
+    const renderPages = async () => {
+      const availableWidth = Math.max(320, containerWidth - 8);
+
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
         if (cancelled) {
           return;
         }
-        const viewport = page.getViewport({ scale: scale * window.devicePixelRatio });
-        const displayViewport = page.getViewport({ scale });
+
+        const page = await pdf.getPage(pageNumber);
+        if (cancelled) {
+          return;
+        }
+
+        const baseViewport = page.getViewport({ scale: 1 });
+        const fitScale = availableWidth / baseViewport.width;
+        const displayScale = Math.max(0.1, fitScale * scale);
+        const viewport = page.getViewport({
+          scale: displayScale * window.devicePixelRatio,
+        });
+        const displayViewport = page.getViewport({ scale: displayScale });
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        if (!context) {
+          throw new Error("当前浏览器不支持 PDF 画布预览");
+        }
+
         canvas.width = viewport.width;
         canvas.height = viewport.height;
         canvas.style.width = `${displayViewport.width}px`;
         canvas.style.height = `${displayViewport.height}px`;
+        canvas.className = "block bg-white shadow-sm ring-1 ring-border";
         context.setTransform(1, 0, 0, 1, 0, 0);
         context.clearRect(0, 0, canvas.width, canvas.height);
-        renderTaskRef.current = page.render({ canvas, canvasContext: context, viewport });
-        return renderTaskRef.current.promise;
-      })
+        pagesElement.appendChild(canvas);
+
+        const renderTask = page.render({
+          canvas,
+          canvasContext: context,
+          viewport,
+        });
+        renderTasksRef.current.push(renderTask);
+        await renderTask.promise;
+      }
+    };
+
+    renderPages()
       .catch((renderError) => {
         if (!cancelled && renderError?.name !== "RenderingCancelledException") {
-          setError("PDF 页面渲染失败");
+          setError(
+            renderError?.message === "当前浏览器不支持 PDF 画布预览"
+              ? renderError.message
+              : "PDF 页面渲染失败",
+          );
         }
       })
       .finally(() => {
@@ -154,40 +305,28 @@ function PdfCanvasPreview({ objectUrl, title }: { objectUrl: string; title: stri
 
     return () => {
       cancelled = true;
-      renderTaskRef.current?.cancel();
+      renderTasksRef.current.forEach((task) => task.cancel());
+      renderTasksRef.current = [];
     };
-  }, [pageNumber, pdf, scale]);
+  }, [containerWidth, pdf, scale]);
 
   return (
     <div className="overflow-hidden rounded-lg border bg-background">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 px-3 py-2">
-        <div className="min-w-0 font-medium text-sm">{displayFilename(title)}</div>
+        <div className="min-w-0 font-medium text-sm">
+          {displayFilename(title)}
+        </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            disabled={pageNumber <= 1 || loading}
-            onClick={() => setPageNumber((current) => Math.max(1, current - 1))}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <ChevronLeft className="size-4" />
-          </Button>
-          <div className="w-16 text-center text-sm tabular-nums">
-            {pageNumber} / {pageCount || "-"}
+          <div className="w-20 text-center text-sm tabular-nums">
+            {pageCount || "-"} 页
           </div>
           <Button
-            disabled={!pageCount || pageNumber >= pageCount || loading}
-            onClick={() => setPageNumber((current) => Math.min(pageCount, current + 1))}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <ChevronRight className="size-4" />
-          </Button>
-          <div className="mx-1 hidden h-5 w-px bg-border sm:block" />
-          <Button
             disabled={scale <= 0.7 || loading}
-            onClick={() => setScale((current) => Math.max(0.7, Number((current - 0.1).toFixed(1))))}
+            onClick={() =>
+              setScale((current) =>
+                Math.max(0.7, Number((current - 0.1).toFixed(1))),
+              )
+            }
             size="icon"
             type="button"
             variant="ghost"
@@ -206,20 +345,32 @@ function PdfCanvasPreview({ objectUrl, title }: { objectUrl: string; title: stri
           </div>
           <Button
             disabled={scale >= 1.8 || loading}
-            onClick={() => setScale((current) => Math.min(1.8, Number((current + 0.1).toFixed(1))))}
+            onClick={() =>
+              setScale((current) =>
+                Math.min(1.8, Number((current + 0.1).toFixed(1))),
+              )
+            }
             size="icon"
             type="button"
             variant="ghost"
           >
             <Plus className="size-4" />
           </Button>
-          <div className="w-12 text-right text-muted-foreground text-xs tabular-nums">{Math.round(scale * 100)}%</div>
-          <Button disabled={loading} onClick={() => setScale(1)} size="icon" type="button" variant="ghost">
+          <div className="w-20 text-right text-muted-foreground text-xs tabular-nums">
+            适宽 {Math.round(scale * 100)}%
+          </div>
+          <Button
+            disabled={loading}
+            onClick={() => setScale(1)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
             <RotateCw className="size-4" />
           </Button>
         </div>
       </div>
-      <div className="relative min-h-[680px] overflow-auto bg-muted/30 p-6">
+      <div className="relative min-h-[680px] overflow-auto bg-muted/30 px-2 py-4 sm:px-4">
         {loading ? (
           <div className="absolute inset-x-0 top-6 z-10 mx-auto flex w-fit items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm shadow-sm">
             <Loader2 className="size-4 animate-spin" />
@@ -227,72 +378,15 @@ function PdfCanvasPreview({ objectUrl, title }: { objectUrl: string; title: stri
           </div>
         ) : null}
         {error ? (
-          <div className="flex min-h-[620px] items-center justify-center text-muted-foreground text-sm">{error}</div>
+          <div className="flex min-h-[620px] items-center justify-center text-muted-foreground text-sm">
+            {error}
+          </div>
         ) : (
-          <canvas ref={canvasRef} className="mx-auto block bg-white shadow-sm ring-1 ring-border" />
+          <div
+            ref={pagesRef}
+            className="flex min-h-[620px] flex-col items-center gap-4"
+          />
         )}
-      </div>
-    </div>
-  );
-}
-
-function DocxPreview({ objectUrl, title }: { objectUrl: string; title: string }) {
-  const [html, setHtml] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError("");
-    setHtml("");
-
-    fetch(objectUrl)
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.arrayBuffer();
-      })
-      .then((arrayBuffer) => mammoth.convertToHtml({ arrayBuffer }))
-      .then((result) => {
-        if (!cancelled) {
-          setHtml(DOMPurify.sanitize(result.value));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setError("Word 文件预览加载失败");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [objectUrl]);
-
-  return (
-    <div className="overflow-hidden rounded-lg border bg-background">
-      <div className="border-b bg-muted/20 px-3 py-2 font-medium text-sm">{displayFilename(title)}</div>
-      <div className="min-h-[680px] bg-muted/30 p-6">
-        <article className="mx-auto min-h-[620px] max-w-4xl bg-white px-12 py-10 shadow-sm ring-1 ring-border">
-          {loading ? (
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
-              <Loader2 className="size-4 animate-spin" />
-              加载中
-            </div>
-          ) : error ? (
-            <div className="text-muted-foreground text-sm">{error}</div>
-          ) : (
-            <div
-              className="markdown-preview border-0 bg-transparent shadow-none"
-              dangerouslySetInnerHTML={{ __html: html || "<p>文档暂无可预览内容。</p>" }}
-            />
-          )}
-        </article>
       </div>
     </div>
   );

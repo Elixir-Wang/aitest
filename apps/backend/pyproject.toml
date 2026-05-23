@@ -1,0 +1,28 @@
+[project]
+name = "ai-testing-backend"
+version = "0.1.0"
+description = "FastAPI backend for the AI testing system."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "email-validator==2.3.0",
+    "fastapi==0.124.2",
+    "httpx==0.28.1",
+    "loguru==0.7.3",
+    "openai-agents==0.17.3",
+    "pydantic==2.12.5",
+    "pymupdf==1.26.7",
+    "python-docx==1.2.0",
+    "python-multipart==0.0.20",
+    "uvicorn[standard]==0.38.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.0.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [
+    ".",
+]

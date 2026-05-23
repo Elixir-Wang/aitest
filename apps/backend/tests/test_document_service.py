@@ -44,6 +44,29 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual({item["conversion_status"] for item in result["files"]}, {"success"})
             self.assertEqual(document_service.get_document_versions(result["document"]["id"]), [])
 
+    async def test_upload_docx_keeps_original_file_and_creates_markdown(self):
+        with isolated_document_store() as actor:
+            with patch(
+                "app.services.document_service._convert_to_markdown",
+                return_value=("# DOCX Markdown", "DOCX 转 Markdown"),
+            ) as convert_markdown:
+                result = await document_service.upload_documents(
+                    "project-1",
+                    [make_upload_file("原始需求.docx", b"docx-bytes")],
+                    actor,
+                    mode="new",
+                    document_name="原始需求",
+                )
+
+            file = result["files"][0]
+            self.assertEqual(file["conversion_status"], "success")
+            self.assertTrue(file["markdown_file_path"].endswith(".md"))
+            self.assertIsNone(file["preview_file_path"])
+            self.assertEqual(Path(file["source_file_path"]).read_bytes(), b"docx-bytes")
+            self.assertEqual(Path(file["markdown_file_path"]).read_text(encoding="utf-8"), "# DOCX Markdown")
+            convert_markdown.assert_called_once()
+            self.assertEqual(convert_markdown.call_args.args[0], "原始需求.docx")
+
     async def test_upload_append_requirement_adds_files_without_changing_current_version(self):
         with isolated_document_store() as actor:
             with connect() as db:
@@ -221,6 +244,49 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(markdown_path.read_text(encoding="utf-8"), "# 新标准文件")
             self.assertEqual(document_service.get_document_versions("doc-1"), [])
 
+    def test_delete_source_file_removes_converted_assets(self):
+        with isolated_document_store() as actor:
+            document_dir = Path(document_service.project_requirement_dir("project-1", "doc-1"))
+            source_path = document_dir / "raw" / "docmap-1-raw.docx"
+            markdown_path = document_dir / "markdown" / "conversions" / "docmap-1.md"
+            assets_dir = markdown_path.parent / "docmap-1_assets"
+            source_path.parent.mkdir(parents=True)
+            markdown_path.parent.mkdir(parents=True)
+            assets_dir.mkdir(parents=True)
+            source_path.write_bytes(b"raw")
+            markdown_path.write_text("![image-1](docmap-1_assets/image-1.png)", encoding="utf-8")
+            (assets_dir / "image-1.png").write_bytes(b"image")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+                document_repo.create_file_mapping(
+                    db,
+                    mapping_id="docmap-1",
+                    document_id="doc-1",
+                    version_id=None,
+                    source_file_path=str(source_path),
+                    original_filename="raw.docx",
+                    file_format="docx",
+                    markdown_file_path=str(markdown_path),
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                    conversion_summary="成功",
+                    created_by="u-admin",
+                )
+
+            result = document_service.delete_source_file("docmap-1", actor)
+
+            self.assertEqual(result, {"success": True})
+            self.assertFalse(source_path.exists())
+            self.assertFalse(markdown_path.exists())
+            self.assertFalse(assets_dir.exists())
+
     def test_get_document_overview_returns_file_status_summary(self):
         with isolated_document_store() as actor:
             with connect() as db:
@@ -302,6 +368,49 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             overview = document_service.get_document_overview("project-1", "doc-1", actor)
 
             self.assertEqual(overview["files"][0]["standard_file_status"], "generating")
+
+    def test_get_document_overview_retries_failed_docx_mapping_when_source_exists(self):
+        with isolated_document_store() as actor:
+            source_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "raw" / "failed.docx"
+            source_path.parent.mkdir(parents=True)
+            source_path.write_bytes(b"docx-bytes")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+                document_repo.create_file_mapping(
+                    db,
+                    mapping_id="docmap-failed",
+                    document_id="doc-1",
+                    version_id=None,
+                    source_file_path=str(source_path),
+                    original_filename="failed.docx",
+                    file_format="docx",
+                    markdown_file_path=None,
+                    conversion_status="failed",
+                    mapping_status="pending_merge",
+                    conversion_summary="旧转换失败",
+                    created_by="u-admin",
+                )
+
+            with patch("app.services.document_service.convert_requirement_file_to_markdown") as convert:
+                convert.return_value = ("# DOCX 标准文件\n", "重试转换成功")
+                overview = document_service.get_document_overview("project-1", "doc-1", actor)
+
+            self.assertEqual(overview["stats"]["conversion_success"], 1)
+            self.assertEqual(overview["stats"]["conversion_failed"], 0)
+            self.assertEqual(overview["stats"]["mergeable_files"], 1)
+            self.assertEqual(overview["files"][0]["conversion_status"], "success")
+            self.assertEqual(overview["files"][0]["standard_file_status"], "ready")
+            with connect() as db:
+                row = document_repo.find_file_mapping(db, "docmap-failed")
+            self.assertEqual(row["conversion_status"], "success")
+            self.assertTrue(Path(row["markdown_file_path"]).exists())
 
     def test_get_converted_markdown_retries_failed_pdf_mapping_when_source_exists(self):
         with isolated_document_store():
@@ -540,6 +649,7 @@ class isolated_document_store:
                   original_filename TEXT NOT NULL,
                   file_format TEXT NOT NULL,
                   markdown_file_path TEXT,
+                  preview_file_path TEXT,
                   conversion_status TEXT NOT NULL DEFAULT 'pending',
                   mapping_status TEXT NOT NULL DEFAULT 'pending_merge',
                   conversion_summary TEXT NOT NULL DEFAULT '',

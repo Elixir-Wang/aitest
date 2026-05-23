@@ -175,13 +175,14 @@ def create_file_mapping(
     conversion_summary: str,
     created_by: str,
     conversion_quality: int | None = None,
+    preview_file_path: str | None = None,
 ) -> None:
     db.execute(
         """
         INSERT INTO source_document_file_mappings
-          (id, document_id, version_id, source_file_path, original_filename, file_format, markdown_file_path,
+          (id, document_id, version_id, source_file_path, original_filename, file_format, markdown_file_path, preview_file_path,
            conversion_status, mapping_status, conversion_summary, conversion_quality, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             mapping_id,
@@ -191,6 +192,7 @@ def create_file_mapping(
             original_filename,
             file_format,
             markdown_file_path,
+            preview_file_path,
             conversion_status,
             mapping_status,
             conversion_summary,
@@ -204,8 +206,10 @@ def list_file_mappings(db: Connection, document_id: str) -> list[Row]:
     return db.execute(
         """
         SELECT m.*,
+               d.project_id AS project_id,
                v.version_no AS version_no
         FROM source_document_file_mappings m
+        JOIN source_documents d ON d.id = m.document_id
         LEFT JOIN source_document_versions v ON v.id = m.version_id
         WHERE m.document_id = ?
         ORDER BY m.created_at DESC, m.id DESC

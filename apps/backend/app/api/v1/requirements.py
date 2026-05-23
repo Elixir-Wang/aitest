@@ -140,7 +140,12 @@ def get_requirement_original_file_content(mapping_id: str, actor=Depends(current
         media_type = "text/plain; charset=utf-8"
     else:
         path = original_file["download_path"]
-        media_type = "application/pdf" if original_file["file_format"].lower() == "pdf" else "application/octet-stream"
+        file_format = original_file["file_format"].lower()
+        media_type = {
+            "pdf": "application/pdf",
+            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "doc": "application/msword",
+        }.get(file_format, "application/octet-stream")
     return FileResponse(Path(path), media_type=media_type, filename=original_file["original_filename"])
 
 

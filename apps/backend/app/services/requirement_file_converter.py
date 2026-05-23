@@ -39,7 +39,7 @@ def convert_requirement_file_to_markdown(
         converted = _convert_docx_to_markdown(filename, raw_bytes, assets_dir=assets_dir)
         return converted.markdown, converted.summary
     preview = _decode_text(raw_bytes)[:4000]
-    markdown = f"# {filename}\n\n暂不支持该文件类型的完整结构解析，已保存文本预览。\n\n```\n{preview}\n```\n"
+    markdown = f"暂不支持该文件类型的完整结构解析，已保存文本预览。\n\n```\n{preview}\n```\n"
     return markdown, "文件类型暂不支持完整解析，已生成文本预览。"
 
 
@@ -47,7 +47,7 @@ def _normalize_text_markdown(filename: str, raw_bytes: bytes) -> str:
     text = _decode_text(raw_bytes).strip()
     if filename.lower().endswith((".md", ".markdown")):
         return text + "\n"
-    return f"# {filename}\n\n{text}\n"
+    return text + "\n"
 
 
 def _convert_pdf_to_markdown(filename: str, raw_bytes: bytes) -> ConvertedRequirementFile:
@@ -71,7 +71,7 @@ def _convert_pdf_to_markdown(filename: str, raw_bytes: bytes) -> ConvertedRequir
     if not content_blocks:
         raise RuntimeError(f"无法转换 {filename}：PDF 未提取到可用文本，可能是扫描件，当前不支持 OCR。")
 
-    markdown = f"# {filename}\n\n" + "\n\n".join(content_blocks) + "\n"
+    markdown = "\n\n".join(content_blocks) + "\n"
     return ConvertedRequirementFile(markdown=markdown, summary=f"已通过 PyMuPDF PDF 转换器提取文本，页数 {document.page_count}。")
 
 
@@ -97,7 +97,7 @@ def _convert_docx_to_markdown(filename: str, raw_bytes: bytes, *, assets_dir: Pa
     if not blocks:
         raise RuntimeError(f"无法转换 {filename}：Word 文档未提取到可用文本。")
 
-    markdown = f"# {filename}\n\n" + _join_markdown_blocks(blocks) + "\n"
+    markdown = _join_markdown_blocks(blocks) + "\n"
     image_summary = f"、图片 {context.image_count} 个" if context.image_count else ""
     return ConvertedRequirementFile(markdown=markdown, summary=f"已通过 Python Word 转换器提取正文、标题、列表和表格{image_summary}。")
 

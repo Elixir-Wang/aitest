@@ -6,10 +6,15 @@ FastAPI + SQLite backend for first-version auth, user permission management, and
 
 ```bash
 cd apps/backend
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uv sync
+uv run uvicorn app.main:app --reload --port 8000
+```
+
+## Test
+
+```bash
+cd apps/backend
+uv run pytest
 ```
 
 Seed accounts:

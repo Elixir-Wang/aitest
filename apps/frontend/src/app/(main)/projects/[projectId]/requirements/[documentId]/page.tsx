@@ -7,7 +7,6 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Check,
-  ExternalLink,
   FileText,
   GitMerge,
   Loader2,
@@ -20,6 +19,7 @@ import {
 import { toast } from "sonner";
 
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
+import { OriginalFilePreview } from "@/components/ai-testing/original-file-preview";
 import { ListToolbar, PageShell, RowActions, ShellSection, SoonPage } from "@/components/ai-testing/page-shell";
 import {
   RequirementFileSwitcher,
@@ -745,44 +745,11 @@ export default function DocumentDetailPage() {
               />
             </div>
             {originalPreview?.contentType === "text" ? (
-              <pre className="max-h-[640px] overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-4 text-sm">
-                {originalPreview.content}
-              </pre>
+              <OriginalFilePreview preview={originalPreview} selectedFilename={selectedFile?.original_filename} />
             ) : originalPreview?.objectUrl ? (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3 text-sm">
-                  <div>
-                    <div className="font-medium">{displayFilename(originalPreview.title)}</div>
-                    <div className="mt-1 text-muted-foreground">
-                      {originalPreview.fileFormat.toUpperCase()} 原始文件
-                    </div>
-                  </div>
-                  <Button asChild type="button" variant="outline">
-                    <a href={originalPreview.objectUrl} rel="noreferrer" target="_blank">
-                      <ExternalLink className="size-4" />
-                      打开原始文件
-                    </a>
-                  </Button>
-                </div>
-                {originalPreview.fileFormat.toLowerCase() === "pdf" ? (
-                  <iframe
-                    className="h-[720px] w-full rounded-lg border bg-background"
-                    src={originalPreview.objectUrl}
-                    title={displayFilename(originalPreview.title)}
-                  />
-                ) : null}
-              </div>
+              <OriginalFilePreview preview={originalPreview} selectedFilename={selectedFile?.original_filename} />
             ) : (
-              <div className="rounded-lg border bg-muted/20 p-4 text-sm">
-                <div className="font-medium">
-                  {displayFilename(originalPreview?.title ?? selectedFile?.original_filename ?? "未选择文件")}
-                </div>
-                <div className="mt-2 text-muted-foreground">
-                  {originalPreview
-                    ? `${originalPreview.fileFormat.toUpperCase()} 暂以文件访问方式查看：${originalPreview.content || "无访问路径"}`
-                    : "请选择一个原始文件。"}
-                </div>
-              </div>
+              <OriginalFilePreview preview={originalPreview} selectedFilename={selectedFile?.original_filename} />
             )}
           </ShellSection>
         </TabsContent>
@@ -791,12 +758,7 @@ export default function DocumentDetailPage() {
           <ShellSection id={STANDARD_FILE_SECTION_ID}>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="font-medium text-sm">
-                  {displayFilename(
-                    standardPreview?.title ??
-                      (selectedFile ? standardMarkdownFilename(selectedFile.original_filename) : "标准文件.md"),
-                  )}
-                </h2>
+                <h2 className="font-medium text-sm">格式化的原始文件预览</h2>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <RequirementFileSwitcher

@@ -101,7 +101,8 @@ def list_document_files(project_id: str, document_id: str) -> list[dict]:
         existing = document_repo.find_by_project_and_id(db, project_id, document_id)
         if not existing:
             raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
-        return [serialize_file_mapping(row) for row in document_repo.list_file_mappings(db, document_id)]
+        rows = [_ensure_converted_markdown(db, row) for row in document_repo.list_file_mappings(db, document_id)]
+        return [serialize_file_mapping(row) for row in rows]
 
 
 def get_original_file(mapping_id: str) -> dict:
@@ -414,6 +415,7 @@ def delete_source_file(mapping_id: str, actor) -> dict:
 
         source_path = row["source_file_path"]
         markdown_path_value = row["markdown_file_path"]
+        assets_dir = _converted_assets_dir(row, markdown_path_value)
         document_repo.delete_file_mapping(db, mapping_id)
 
     if source_path:
@@ -425,6 +427,9 @@ def delete_source_file(mapping_id: str, actor) -> dict:
         md_path = Path(markdown_path_value)
         if md_path.exists():
             md_path.unlink()
+
+    if assets_dir.exists():
+        shutil.rmtree(assets_dir)
 
     return {"success": True}
 
@@ -484,6 +489,7 @@ def serialize_file_mapping(row) -> dict:
         "file_format": row["file_format"],
         "source_file_path": row["source_file_path"],
         "markdown_file_path": row["markdown_file_path"],
+        "preview_file_path": row["preview_file_path"] if "preview_file_path" in row.keys() else None,
         "conversion_status": row["conversion_status"],
         "mapping_status": row["mapping_status"],
         "conversion_summary": row["conversion_summary"],
@@ -637,6 +643,13 @@ def _serialize_document_from_db(db, document_id: str, actor_role: str) -> dict:
 
 def _convert_to_markdown(filename: str, raw_bytes: bytes, *, assets_dir: Path | None = None) -> tuple[str, str]:
     return convert_requirement_file_to_markdown(filename, raw_bytes, assets_dir=assets_dir)
+
+
+def _converted_assets_dir(row, markdown_path_value: str | None) -> Path:
+    if markdown_path_value:
+        return Path(markdown_path_value).parent / f"{row['id']}_assets"
+    document_dir = project_requirement_dir(row["project_id"], row["document_id"])
+    return document_dir / "markdown" / "conversions" / f"{row['id']}_assets"
 
 
 def _ensure_converted_markdown(db, row):
