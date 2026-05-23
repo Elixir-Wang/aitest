@@ -117,9 +117,11 @@ def _paragraph_to_markdown(element, document: Document, context: DocxConversionC
     if _is_code_block(style_name):
         return f"```\n{content}\n```"
     if _is_numbered_list(style_name):
-        return f"1. {content}"
+        indent = "  " * _list_indent_level(style_name)
+        return f"{indent}1. {content}"
     if _is_bullet_list(style_name):
-        return f"- {content}"
+        indent = "  " * _list_indent_level(style_name)
+        return f"{indent}- {content}"
     return content
 
 
@@ -154,6 +156,17 @@ def _heading_level(style_name: str) -> int | None:
     if match:
         return int(match.group(1))
     return None
+
+
+def _list_indent_level(style_name: str) -> int:
+    """Return 0-based indentation level from style name.
+
+    'List Bullet' -> 0, 'List Bullet 2' -> 1, 'List Bullet 3' -> 2.
+    """
+    match = re.search(r"\s+(\d+)$", style_name)
+    if match:
+        return max(0, int(match.group(1)) - 1)
+    return 0
 
 
 def _is_bullet_list(style_name: str) -> bool:

@@ -136,6 +136,36 @@ class RequirementFileConverterTest(unittest.TestCase):
         self.assertIn("前言段落\n\n- 功能一", markdown)
         self.assertIn("- 功能三\n\n结语段落", markdown)
 
+    def test_docx_nested_bullet_list_is_indented(self):
+        document = Document()
+        document.add_paragraph("父级项", style="List Bullet")
+        document.add_paragraph("子级项A", style="List Bullet 2")
+        document.add_paragraph("子级项B", style="List Bullet 2")
+        document.add_paragraph("另一父级", style="List Bullet")
+        buffer = BytesIO()
+        document.save(buffer)
+
+        markdown, _ = convert_requirement_file_to_markdown("嵌套.docx", buffer.getvalue())
+
+        self.assertIn("- 父级项", markdown)
+        self.assertIn("  - 子级项A", markdown)
+        self.assertIn("  - 子级项B", markdown)
+        self.assertIn("- 另一父级", markdown)
+
+    def test_docx_nested_numbered_list_is_indented(self):
+        document = Document()
+        document.add_paragraph("步骤一", style="List Number")
+        document.add_paragraph("步骤一子步骤", style="List Number 2")
+        document.add_paragraph("步骤二", style="List Number")
+        buffer = BytesIO()
+        document.save(buffer)
+
+        markdown, _ = convert_requirement_file_to_markdown("嵌套编号.docx", buffer.getvalue())
+
+        self.assertIn("1. 步骤一", markdown)
+        self.assertIn("  1. 步骤一子步骤", markdown)
+        self.assertIn("1. 步骤二", markdown)
+
 
 def make_docx_bytes() -> bytes:
     document = Document()
