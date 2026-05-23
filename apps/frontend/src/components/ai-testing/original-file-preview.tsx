@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ChevronLeft, ChevronRight, FileText, Loader2, Minus, Plus, RotateCw } from "lucide-react";
+import DOMPurify from "dompurify";
 import mammoth from "mammoth";
 import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy, type RenderTask } from "pdfjs-dist";
 import "pdfjs-dist/web/pdf_viewer.css";
@@ -247,11 +248,14 @@ function DocxPreview({ objectUrl, title }: { objectUrl: string; title: string })
     setHtml("");
 
     fetch(objectUrl)
-      .then((response) => response.arrayBuffer())
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.arrayBuffer();
+      })
       .then((arrayBuffer) => mammoth.convertToHtml({ arrayBuffer }))
       .then((result) => {
         if (!cancelled) {
-          setHtml(result.value);
+          setHtml(DOMPurify.sanitize(result.value));
         }
       })
       .catch(() => {
