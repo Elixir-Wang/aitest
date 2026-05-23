@@ -93,6 +93,31 @@ class RequirementFileConverterTest(unittest.TestCase):
         self.assertLess(markdown.index("第一行"), markdown.index("第二行"))
         self.assertLess(markdown.index("第二行"), markdown.index("第三行"))
 
+    def test_docx_adjacent_list_items_are_not_separated_by_blank_lines(self):
+        document = Document()
+        document.add_paragraph("支持账号登录", style="List Bullet")
+        document.add_paragraph("支持手机登录", style="List Bullet")
+        document.add_paragraph("支持微信登录", style="List Bullet")
+        buffer = BytesIO()
+        document.save(buffer)
+
+        markdown, _ = convert_requirement_file_to_markdown("列表.docx", buffer.getvalue())
+
+        # 三个列表项之间不应有空行（紧凑列表）
+        self.assertIn("- 支持账号登录\n- 支持手机登录\n- 支持微信登录", markdown)
+
+    def test_docx_numbered_list_items_are_not_separated_by_blank_lines(self):
+        document = Document()
+        document.add_paragraph("输入账号", style="List Number")
+        document.add_paragraph("输入密码", style="List Number")
+        document.add_paragraph("点击登录", style="List Number")
+        buffer = BytesIO()
+        document.save(buffer)
+
+        markdown, _ = convert_requirement_file_to_markdown("编号.docx", buffer.getvalue())
+
+        self.assertIn("1. 输入账号\n1. 输入密码\n1. 点击登录", markdown)
+
 
 def make_docx_bytes() -> bytes:
     document = Document()

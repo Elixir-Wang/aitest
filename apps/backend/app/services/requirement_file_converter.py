@@ -97,7 +97,7 @@ def _convert_docx_to_markdown(filename: str, raw_bytes: bytes, *, assets_dir: Pa
     if not blocks:
         raise RuntimeError(f"无法转换 {filename}：Word 文档未提取到可用文本。")
 
-    markdown = f"# {filename}\n\n" + "\n\n".join(blocks) + "\n"
+    markdown = f"# {filename}\n\n" + _join_markdown_blocks(blocks) + "\n"
     image_summary = f"、图片 {context.image_count} 个" if context.image_count else ""
     return ConvertedRequirementFile(markdown=markdown, summary=f"已通过 Python Word 转换器提取正文、标题、列表和表格{image_summary}。")
 
@@ -320,6 +320,31 @@ def _clean_markdown_inline(text: str) -> str:
 
 def _escape_markdown_link_text(text: str) -> str:
     return text.replace("[", "\\[").replace("]", "\\]")
+
+
+def _is_list_block(block: str) -> bool:
+    """Return True if block is a markdown list item (possibly indented)."""
+    return bool(re.match(r"^\s*(?:[-*+]|\d+\.)\s", block))
+
+
+def _join_markdown_blocks(blocks: list[str]) -> str:
+    """Join blocks with double newlines, but keep consecutive list items tight (single newline)."""
+    if not blocks:
+        return ""
+    groups: list[str] = []
+    i = 0
+    while i < len(blocks):
+        block = blocks[i]
+        if _is_list_block(block):
+            list_items = [block]
+            while i + 1 < len(blocks) and _is_list_block(blocks[i + 1]):
+                i += 1
+                list_items.append(blocks[i])
+            groups.append("\n".join(list_items))
+        else:
+            groups.append(block)
+        i += 1
+    return "\n\n".join(groups)
 
 
 def _decode_text(raw_bytes: bytes) -> str:
