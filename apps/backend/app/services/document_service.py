@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import secrets
 import shutil
 from pathlib import Path
@@ -8,23 +9,28 @@ from fastapi import UploadFile
 
 from app.core.db import connect
 from app.core.exceptions import api_error
-from app.core.storage import project_requirement_dir
-from app.repositories import document_repo, project_repo
+from app.core.storage import project_requirement_dir, resolve_stored_path, store_path
+from app.repositories import document_repo
 from app.schemas.document import SourceDocumentUpdateIn
-from app.services.requirement_file_converter import convert_requirement_file_to_markdown
+from app.schemas.requirement_analysis import RequirementAnalysisInput
+from app.services import (
+    document_file_service,
+    document_merge_orchestrator,
+    document_serializer,
+    requirement_analysis_service,
+    requirement_merge_artifact_service,
+)
 
 DOCUMENT_PENDING_MERGE_STATUS = "pending_merge"
 DOCUMENT_VERSIONED_STATUS = "versioned"
 CONVERSION_SUCCESS_STATUS = "success"
 CONVERSION_FAILED_STATUS = "failed"
-MAPPING_PENDING_MERGE_STATUS = "pending_merge"
-MAPPING_MERGED_STATUS = "merged"
 
 
 def list_documents(project_id: str, actor) -> list[dict]:
     with connect() as db:
         rows = document_repo.list_by_project(db, project_id)
-        return [serialize_document(row, actor["role"]) for row in rows]
+        return [document_serializer.serialize_document(row, actor["role"]) for row in rows]
 
 
 def check_document_name(project_id: str, name: str, exclude_id: str | None = None) -> dict:
@@ -44,134 +50,47 @@ async def upload_documents(
     document_name: str = "",
     existing_document_id: str = "",
 ) -> dict:
-    if not files:
-        raise api_error(400, "DOCUMENT_UPLOAD_EMPTY", "请至少上传一个需求文件。")
-    if mode not in {"new", "append"}:
-        raise api_error(400, "DOCUMENT_UPLOAD_MODE_INVALID", "上传模式不正确。")
-
-    with connect() as db:
-        _ensure_project_accepts_upload(db, project_id)
-        if mode == "new":
-            name = document_name.strip()
-            if not name:
-                raise api_error(400, "DOCUMENT_NAME_REQUIRED", "请填写需求名称。")
-            if document_repo.find_by_project_and_name(db, project_id, name):
-                raise api_error(422, "DOCUMENT_NAME_EXISTS", "该需求名称已存在。")
-            document_id = f"doc-{secrets.token_hex(8)}"
-            document_repo.create_document(
-                db,
-                document_id=document_id,
-                project_id=project_id,
-                name=name,
-                document_type="PRD",
-                status=DOCUMENT_PENDING_MERGE_STATUS,
-                created_by=actor["id"],
-            )
-        else:
-            document_id = existing_document_id.strip()
-            if not document_id:
-                raise api_error(400, "DOCUMENT_ID_REQUIRED", "请选择已有需求。")
-            existing = document_repo.find_by_project_and_id(db, project_id, document_id)
-            if not existing:
-                raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
-
-        created_files: list[dict] = []
-        for index, upload in enumerate(files, start=1):
-            created_files.append(await _save_source_file(db, project_id, document_id, upload, index, actor))
-
-        document_repo.update_document_status(db, document_id, DOCUMENT_PENDING_MERGE_STATUS)
-        return {
-            "document": _serialize_document_from_db(db, document_id, actor["role"]),
-            "files": created_files,
-        }
-
-
-async def append_document_files(project_id: str, document_id: str, files: list[UploadFile], actor) -> dict:
-    return await upload_documents(
+    return await document_file_service.upload_documents(
         project_id,
         files,
         actor,
-        mode="append",
-        existing_document_id=document_id,
+        mode=mode,
+        document_name=document_name,
+        existing_document_id=existing_document_id,
     )
 
 
+async def append_document_files(project_id: str, document_id: str, files: list[UploadFile], actor) -> dict:
+    return await document_file_service.append_document_files(project_id, document_id, files, actor)
+
+
 def list_document_files(project_id: str, document_id: str) -> list[dict]:
-    with connect() as db:
-        existing = document_repo.find_by_project_and_id(db, project_id, document_id)
-        if not existing:
-            raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
-        rows = [_ensure_converted_markdown(db, row) for row in document_repo.list_file_mappings(db, document_id)]
-        return [serialize_file_mapping(row) for row in rows]
+    return document_file_service.list_document_files(project_id, document_id)
 
 
 def get_original_file(mapping_id: str) -> dict:
-    with connect() as db:
-        row = document_repo.find_file_mapping(db, mapping_id)
-        if not row:
-            raise api_error(404, "DOCUMENT_FILE_NOT_FOUND", "来源文件不存在。")
-        path = Path(row["source_file_path"])
-        if not path.exists():
-            raise api_error(404, "DOCUMENT_FILE_MISSING", "原始文件不存在。")
-        file_format = row["file_format"].lower()
-        if file_format in {"txt", "md", "markdown"}:
-            return {
-                "id": row["id"],
-                "original_filename": row["original_filename"],
-                "file_format": row["file_format"],
-                "content_type": "text",
-                "content": path.read_text(encoding="utf-8", errors="ignore"),
-                "content_path": str(path),
-            }
-        return {
-            "id": row["id"],
-            "original_filename": row["original_filename"],
-            "file_format": row["file_format"],
-            "content_type": "download",
-            "download_path": str(path),
-        }
+    return document_file_service.get_original_file(mapping_id)
 
 
 def get_converted_markdown(mapping_id: str) -> dict:
-    with connect() as db:
-        row = document_repo.find_file_mapping(db, mapping_id)
-        if not row:
-            raise api_error(404, "DOCUMENT_FILE_NOT_FOUND", "来源文件不存在。")
-        row = _ensure_converted_markdown(db, row)
-        if row["conversion_status"] not in {CONVERSION_SUCCESS_STATUS, "warning"}:
-            raise api_error(409, "DOCUMENT_CONVERSION_NOT_READY", row["conversion_summary"] or "转换稿尚未生成。")
-        markdown_path_value = row["markdown_file_path"]
-        if not markdown_path_value:
-            raise api_error(404, "DOCUMENT_MARKDOWN_MISSING", "转换稿不存在。")
-        markdown_path = Path(markdown_path_value)
-        if not markdown_path.exists():
-            raise api_error(404, "DOCUMENT_MARKDOWN_MISSING", "转换稿不存在。")
-        return {
-            "id": row["id"],
-            "original_filename": row["original_filename"],
-            "markdown_content": markdown_path.read_text(encoding="utf-8"),
-            "conversion_status": row["conversion_status"],
-            "conversion_summary": row["conversion_summary"],
-        }
+    return document_file_service.get_converted_markdown(mapping_id)
+
+
+async def convert_source_file_mapping(mapping_id: str) -> dict:
+    return await document_file_service.convert_source_file_mapping(mapping_id)
+
+
+async def convert_pending_file_mappings(mapping_ids: list[str]) -> None:
+    await document_file_service.convert_pending_mappings(mapping_ids)
 
 
 def update_converted_markdown(mapping_id: str, *, markdown_content: str, change_summary: str, actor) -> dict:
-    _ = actor
-    with connect() as db:
-        row = document_repo.find_file_mapping(db, mapping_id)
-        if not row:
-            raise api_error(404, "DOCUMENT_FILE_NOT_FOUND", "来源文件不存在。")
-        markdown_path_value = row["markdown_file_path"]
-        if markdown_path_value:
-            markdown_path = Path(markdown_path_value)
-        else:
-            document_dir = project_requirement_dir(row["project_id"], row["document_id"])
-            markdown_path = document_dir / "markdown" / "conversions" / f"{mapping_id}.md"
-        markdown_path.parent.mkdir(parents=True, exist_ok=True)
-        markdown_path.write_text(markdown_content, encoding="utf-8")
-        summary = change_summary.strip() or "人工修订标准文件。"
-        document_repo.update_file_mapping_markdown(db, mapping_id, str(markdown_path), summary)
-    return get_converted_markdown(mapping_id)
+    return document_file_service.update_converted_markdown(
+        mapping_id,
+        markdown_content=markdown_content,
+        change_summary=change_summary,
+        actor=actor,
+    )
 
 
 def get_document_versions(document_id: str) -> list[dict]:
@@ -217,12 +136,12 @@ def get_document_detail(project_id: str, document_id: str, actor) -> dict:
         if row is None:
             raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
 
-        document = serialize_document(row, actor["role"])
+        document = document_serializer.serialize_document(row, actor["role"])
         versions = get_document_versions(document_id)
         markdown_content = ""
         current_version = document["current_version"]
         if current_version and current_version["file_path"]:
-            markdown_path = Path(current_version["file_path"])
+            markdown_path = resolve_stored_path(current_version["file_path"]) or Path(current_version["file_path"])
             if markdown_path.exists():
                 markdown_content = markdown_path.read_text(encoding="utf-8")
 
@@ -238,6 +157,7 @@ def get_document_overview(project_id: str, document_id: str, actor) -> dict:
     files = list_document_files(project_id, document_id)
     with connect() as db:
         open_conflicts = document_repo.list_conflicts(db, document_id, status="open")
+        latest_merge_run = document_repo.find_latest_merge_run(db, document_id)
 
     stats = {
         "total_files": len(files),
@@ -256,7 +176,7 @@ def get_document_overview(project_id: str, document_id: str, actor) -> dict:
     overview_files = [
         {
             **item,
-            "standard_file_status": _standard_file_status(item),
+            "standard_file_status": document_serializer.standard_file_status(item),
             "conflict_status": "open" if open_conflicts else "none",
         }
         for item in files
@@ -268,87 +188,121 @@ def get_document_overview(project_id: str, document_id: str, actor) -> dict:
         "files": overview_files,
         "has_open_conflicts": len(open_conflicts) > 0,
         "initial_markdown_content": detail["markdown_content"],
+        "artifact_tabs": requirement_merge_artifact_service.read_merge_artifact_tabs(
+            project_id,
+            document_id,
+            latest_merge_run["id"],
+        )
+        if latest_merge_run
+        else [],
     }
 
 
-def merge_document_markdown(project_id: str, document_id: str, actor) -> dict:
+async def analyze_document_requirement(project_id: str, document_id: str, actor) -> dict:
     with connect() as db:
         existing = document_repo.find_by_project_and_id(db, project_id, document_id)
         if not existing:
             raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
-        files = [
-            row
-            for row in document_repo.list_file_mappings(db, document_id)
-            if row["conversion_status"] in {CONVERSION_SUCCESS_STATUS, "warning"} and row["mapping_status"] != "discarded"
-        ]
-        if not files:
-            raise api_error(409, "DOCUMENT_MERGE_NO_FILES", "暂无可合并的标准文件。")
+        if not existing["current_version_id"]:
+            raise api_error(409, "REQUIREMENT_ANALYSIS_NO_VERSION", "请先归并生成需求工作稿后再分析。")
 
         open_conflicts = document_repo.list_conflicts(db, document_id, status="open")
         if open_conflicts:
-            return {
-                "status": "conflict",
-                "conflict_count": len(open_conflicts),
-                "conflicts": [_serialize_conflict(row) for row in open_conflicts],
-            }
+            raise api_error(409, "REQUIREMENT_ANALYSIS_CONFLICT_BLOCKED", "存在未解决的需求归并冲突，不能开始分析。")
 
-        contents = []
-        for file_row in files:
-            markdown_path_value = file_row["markdown_file_path"]
-            if not markdown_path_value:
-                continue
-            markdown_path = Path(markdown_path_value)
-            if not markdown_path.exists():
-                continue
-            contents.append((file_row["id"], file_row["original_filename"], markdown_path.read_text(encoding="utf-8")))
-        if not contents:
-            raise api_error(409, "DOCUMENT_MERGE_NO_FILES", "暂无可合并的标准文件。")
+        version = document_repo.find_version(db, existing["current_version_id"])
+        if not version:
+            raise api_error(409, "DOCUMENT_VERSION_NOT_FOUND", "当前需求版本不存在。")
 
-        resolved_conflicts = document_repo.list_conflicts(db, document_id, status="resolved")
-        detected_conflict = _detect_simple_conflict(contents, resolved_conflicts)
-        if detected_conflict:
-            conflict_id = f"conflict-{secrets.token_hex(8)}"
-            document_repo.create_conflict(db, conflict_id=conflict_id, document_id=document_id, **detected_conflict)
-            conflict_row = document_repo.list_conflicts(db, document_id, status="open")[0]
-            return {"status": "conflict", "conflict_count": 1, "conflicts": [_serialize_conflict(conflict_row)]}
+        markdown_path = resolve_stored_path(version["file_path"]) or Path(version["file_path"])
+        if not markdown_path.exists():
+            raise api_error(409, "DOCUMENT_VERSION_FILE_MISSING", "当前需求版本文件不存在。")
+        markdown_content = markdown_path.read_text(encoding="utf-8")
 
-        merged_markdown = _merge_markdown_contents(existing["name"], contents, resolved_conflicts)
-        version_id = f"docver-{secrets.token_hex(8)}"
-        version_no = document_repo.next_version_no(db, document_id)
-        markdown_path = project_requirement_dir(project_id, document_id) / "markdown" / "versions" / f"v{version_no}.md"
-        markdown_path.parent.mkdir(parents=True, exist_ok=True)
-        markdown_path.write_text(merged_markdown, encoding="utf-8")
-        document_repo.create_version(
+    analysis_input = RequirementAnalysisInput(
+        project_id=project_id,
+        document_id=document_id,
+        document_name=existing["name"],
+        version_id=version["id"],
+        version_no=version["version_no"],
+        markdown_content=markdown_content,
+    )
+    try:
+        analysis_output = await requirement_analysis_service.run_requirement_analysis(analysis_input)
+    except Exception as exc:
+        raise api_error(502, "REQUIREMENT_ANALYSIS_AGENT_FAILED", f"需求分析智能体运行失败：{exc}") from exc
+
+    analysis_id = f"reqana-{secrets.token_hex(8)}"
+    output_data = analysis_output.model_dump()
+    with connect() as db:
+        document_repo.create_requirement_analysis(
             db,
-            version_id=version_id,
+            analysis_id=analysis_id,
+            project_id=project_id,
             document_id=document_id,
-            version_no=version_no,
-            file_path=str(markdown_path),
-            source_action="merge",
-            change_summary="生成初始需求",
-            diff_summary=f"合并 {len(contents)} 个标准文件。",
+            version_id=version["id"],
+            status=analysis_output.status,
+            analysis_summary=analysis_output.analysis_summary,
+            output_json=output_data,
+            quality_result=analysis_output.quality_gate.result,
+            testability_score=analysis_output.quality_gate.testability_score,
             created_by=actor["id"],
         )
-        document_repo.mark_file_mappings_merged(db, document_id, version_id)
-        document_repo.close_open_conflicts(db, document_id)
-        document_repo.update_current_version(db, document_id, version_id, DOCUMENT_VERSIONED_STATUS)
 
     return {
-        "status": "merged",
-        "version_id": version_id,
-        "version_no": version_no,
-        "markdown_content": merged_markdown,
-        "merge_summary": f"已合并 {len(contents)} 个标准文件。",
-        "source_file_ids": [item[0] for item in contents],
+        "id": analysis_id,
+        "document_id": document_id,
+        "version_id": version["id"],
+        **output_data,
     }
 
 
-def list_document_conflicts(project_id: str, document_id: str, actor) -> list[dict]:
+def get_latest_requirement_analysis(project_id: str, document_id: str, actor) -> dict:
     _ = actor
     with connect() as db:
-        if not document_repo.find_by_project_and_id(db, project_id, document_id):
+        existing = document_repo.find_by_project_and_id(db, project_id, document_id)
+        if not existing:
             raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
-        return [_serialize_conflict(row) for row in document_repo.list_conflicts(db, document_id, status="open")]
+        row = document_repo.find_latest_requirement_analysis(db, document_id)
+        if not row:
+            return {"analysis": None}
+        output = json.loads(row["output_json"])
+        return {
+            "analysis": {
+                "id": row["id"],
+                "project_id": row["project_id"],
+                "document_id": row["document_id"],
+                "version_id": row["version_id"],
+                "status": row["status"],
+                "analysis_summary": row["analysis_summary"],
+                "quality_result": row["quality_result"],
+                "testability_score": row["testability_score"],
+                "created_by": row["created_by"],
+                "created_at": row["created_at"],
+                "output": output,
+            }
+        }
+
+
+async def merge_document_markdown(
+    project_id: str,
+    document_id: str,
+    actor,
+    *,
+    confirm_preview_id: str = "",
+    force_rebuild: bool = False,
+) -> dict:
+    return await document_merge_orchestrator.merge_document_markdown(
+        project_id,
+        document_id,
+        actor,
+        confirm_preview_id=confirm_preview_id,
+        force_rebuild=force_rebuild,
+    )
+
+
+def list_document_conflicts(project_id: str, document_id: str, actor) -> list[dict]:
+    return document_merge_orchestrator.list_document_conflicts(project_id, document_id, actor)
 
 
 def resolve_document_conflict(
@@ -360,13 +314,15 @@ def resolve_document_conflict(
     resolution_type: str,
     actor,
 ) -> dict:
-    _ = actor
-    with connect() as db:
-        if not document_repo.find_by_project_and_id(db, project_id, document_id):
-            raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
-        document_repo.resolve_conflict(db, conflict_id, resolution.strip(), resolution_type)
-        open_conflicts = document_repo.list_conflicts(db, document_id, status="open")
-        return {"success": True, "has_open_conflicts": len(open_conflicts) > 0}
+    return document_merge_orchestrator.resolve_document_conflict(
+        project_id,
+        document_id,
+        conflict_id,
+        resolution=resolution,
+        resolution_type=resolution_type,
+        actor=actor,
+    )
+
 
 
 def update_document(project_id: str, document_id: str, payload: SourceDocumentUpdateIn, actor) -> dict:
@@ -385,7 +341,7 @@ def update_document(project_id: str, document_id: str, payload: SourceDocumentUp
 
         version_id = f"docver-{secrets.token_hex(8)}"
         version_no = document_repo.next_version_no(db, document_id)
-        markdown_path = project_requirement_dir(project_id, document_id) / "markdown" / "versions" / f"v{version_no}.md"
+        markdown_path = _version_markdown_path(project_id, document_id, version_no)
         markdown_path.parent.mkdir(parents=True, exist_ok=True)
         markdown_path.write_text(payload.markdown_content, encoding="utf-8")
 
@@ -395,7 +351,7 @@ def update_document(project_id: str, document_id: str, payload: SourceDocumentUp
             version_id=version_id,
             document_id=document_id,
             version_no=version_no,
-            file_path=str(markdown_path),
+            file_path=store_path(markdown_path) or str(markdown_path),
             source_action="edit",
             change_summary=payload.change_summary.strip() or "编辑需求文档",
             diff_summary="人工编辑生成新版本。",
@@ -407,31 +363,7 @@ def update_document(project_id: str, document_id: str, payload: SourceDocumentUp
 
 
 def delete_source_file(mapping_id: str, actor) -> dict:
-    _ = actor
-    with connect() as db:
-        row = document_repo.find_file_mapping(db, mapping_id)
-        if not row:
-            raise api_error(404, "DOCUMENT_FILE_NOT_FOUND", "来源文件不存在。")
-
-        source_path = row["source_file_path"]
-        markdown_path_value = row["markdown_file_path"]
-        assets_dir = _converted_assets_dir(row, markdown_path_value)
-        document_repo.delete_file_mapping(db, mapping_id)
-
-    if source_path:
-        path = Path(source_path)
-        if path.exists():
-            path.unlink()
-
-    if markdown_path_value:
-        md_path = Path(markdown_path_value)
-        if md_path.exists():
-            md_path.unlink()
-
-    if assets_dir.exists():
-        shutil.rmtree(assets_dir)
-
-    return {"success": True}
+    return document_file_service.delete_source_file(mapping_id, actor)
 
 
 def delete_document(project_id: str, document_id: str) -> dict:
@@ -449,246 +381,8 @@ def delete_document(project_id: str, document_id: str) -> dict:
     return {"success": True}
 
 
-def serialize_document(row, actor_role: str) -> dict:
-    current_version = None
-    if row["version_id"]:
-        current_version = {
-            "id": row["version_id"],
-            "version_no": row["version_no"],
-            "file_path": row["markdown_file_path"],
-            "source_action": row["source_action"],
-            "change_summary": row["change_summary"],
-            "diff_summary": row["diff_summary"],
-            "created_by": row["version_created_by"],
-            "created_at": row["version_created_at"],
-        }
-
-    return {
-        "id": row["id"],
-        "project_id": row["project_id"],
-        "name": row["name"],
-        "document_type": row["document_type"],
-        "file_count": row["file_count"] if "file_count" in row.keys() else 0,
-        "current_version_id": row["current_version_id"],
-        "status": row["status"],
-        "created_by": row["created_by"],
-        "created_at": row["created_at"],
-        "updated_at": row["updated_at"],
-        "current_version": current_version,
-        "available_actions": ["read", "create", "update", "delete"] if actor_role == "admin" else ["read", "create"],
-    }
-
-
-def serialize_file_mapping(row) -> dict:
-    return {
-        "id": row["id"],
-        "document_id": row["document_id"],
-        "version_id": row["version_id"],
-        "version_no": row["version_no"] if "version_no" in row.keys() else None,
-        "original_filename": row["original_filename"],
-        "file_format": row["file_format"],
-        "source_file_path": row["source_file_path"],
-        "markdown_file_path": row["markdown_file_path"],
-        "preview_file_path": row["preview_file_path"] if "preview_file_path" in row.keys() else None,
-        "conversion_status": row["conversion_status"],
-        "mapping_status": row["mapping_status"],
-        "conversion_summary": row["conversion_summary"],
-        "conversion_quality": row["conversion_quality"],
-        "created_by": row["created_by"],
-        "created_at": row["created_at"],
-    }
-
-
-def _standard_file_status(row) -> str:
-    if row["conversion_status"] == CONVERSION_FAILED_STATUS:
-        return "failed"
-    if not row["markdown_file_path"]:
-        return "generating"
-    summary = row["conversion_summary"] or ""
-    if "人工修订" in summary:
-        return "edited"
-    return "ready"
-
-
-def _merge_markdown_contents(document_name: str, contents: list[tuple[str, str, str]], resolved_conflicts: list) -> str:
-    seen: set[str] = set()
-    lines = [f"# {document_name}", "", "## 合并需求"]
-    for _mapping_id, filename, markdown in contents:
-        lines.extend(["", f"### 来源：{filename}"])
-        for raw_line in markdown.splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            normalized = line.lstrip("-*0123456789.、 ").strip()
-            if normalized in seen:
-                continue
-            seen.add(normalized)
-            lines.append(f"- {normalized}")
-    resolved_lines = [row["resolution"].strip() for row in resolved_conflicts if row["resolution"].strip()]
-    if resolved_lines:
-        lines.extend(["", "## 已解决冲突"])
-        for resolution in resolved_lines:
-            if resolution not in seen:
-                seen.add(resolution)
-                lines.append(f"- {resolution}")
-    return "\n".join(lines).strip() + "\n"
-
-
-def _detect_simple_conflict(contents: list[tuple[str, str, str]], resolved_conflicts: list) -> dict | None:
-    if any(row["resolution"].strip() for row in resolved_conflicts):
-        return None
-    lock_lines = [
-        (filename, line.strip())
-        for _id, filename, markdown in contents
-        for line in markdown.splitlines()
-        if "锁定次数" in line
-    ]
-    if len({line for _filename, line in lock_lines}) > 1:
-        return {
-            "title": "锁定次数不一致",
-            "source_file_names": "、".join(filename for filename, _line in lock_lines),
-            "fragment_a": lock_lines[0][1],
-            "fragment_b": lock_lines[1][1],
-        }
-    return None
-
-
-def _serialize_conflict(row) -> dict:
-    return {
-        "id": row["id"],
-        "document_id": row["document_id"],
-        "title": row["title"],
-        "source_file_names": row["source_file_names"],
-        "fragment_a": row["fragment_a"],
-        "fragment_b": row["fragment_b"],
-        "resolution": row["resolution"],
-        "resolution_type": row["resolution_type"],
-        "status": row["status"],
-        "created_at": row["created_at"],
-        "updated_at": row["updated_at"],
-    }
-
-
-async def _save_source_file(db, project_id: str, document_id: str, upload: UploadFile, index: int, actor) -> dict:
-    raw_bytes = await upload.read()
-    if not raw_bytes:
-        raise api_error(400, "DOCUMENT_UPLOAD_EMPTY", "上传文件不能为空。")
-
-    mapping_id = f"docmap-{secrets.token_hex(8)}"
-    safe_filename = _safe_filename(upload.filename or f"requirement-{index}")
-    file_format = _file_format(safe_filename)
-    document_dir = project_requirement_dir(project_id, document_id)
-    original_path = document_dir / "raw" / f"{mapping_id}-{safe_filename}"
-    markdown_path = document_dir / "markdown" / "conversions" / f"{mapping_id}.md"
-    original_path.parent.mkdir(parents=True, exist_ok=True)
-    markdown_path.parent.mkdir(parents=True, exist_ok=True)
-    original_path.write_bytes(raw_bytes)
-
-    try:
-        markdown_text, conversion_summary = _convert_to_markdown(
-            safe_filename,
-            raw_bytes,
-            assets_dir=markdown_path.parent / f"{mapping_id}_assets",
-        )
-        markdown_path.write_text(markdown_text, encoding="utf-8")
-        conversion_status = CONVERSION_SUCCESS_STATUS
-        markdown_file_path: str | None = str(markdown_path)
-    except Exception as exc:  # pragma: no cover - parser failures depend on external converters
-        conversion_status = CONVERSION_FAILED_STATUS
-        conversion_summary = str(exc) or "文件转换失败。"
-        markdown_file_path = None
-
-    document_repo.create_file_mapping(
-        db,
-        mapping_id=mapping_id,
-        document_id=document_id,
-        version_id=None,
-        source_file_path=str(original_path),
-        original_filename=safe_filename,
-        file_format=file_format,
-        markdown_file_path=markdown_file_path,
-        conversion_status=conversion_status,
-        mapping_status=MAPPING_PENDING_MERGE_STATUS,
-        conversion_summary=conversion_summary,
-        conversion_quality=100 if conversion_status == CONVERSION_SUCCESS_STATUS else None,
-        created_by=actor["id"],
-    )
-    row = document_repo.find_file_mapping(db, mapping_id)
-    return serialize_file_mapping(row)
-
-
-def _serialize_document_from_db(db, document_id: str, actor_role: str) -> dict:
-    row = db.execute(
-        """
-        SELECT d.*,
-               COUNT(m.id) AS file_count,
-               v.id AS version_id,
-               v.version_no AS version_no,
-               v.file_path AS markdown_file_path,
-               v.source_action AS source_action,
-               v.change_summary AS change_summary,
-               v.diff_summary AS diff_summary,
-               v.created_by AS version_created_by,
-               v.created_at AS version_created_at
-        FROM source_documents d
-        LEFT JOIN source_document_versions v ON v.id = d.current_version_id
-        LEFT JOIN source_document_file_mappings m ON m.document_id = d.id
-        WHERE d.id = ?
-        GROUP BY d.id
-        """,
-        (document_id,),
-    ).fetchone()
-    return serialize_document(row, actor_role)
-
-
-def _convert_to_markdown(filename: str, raw_bytes: bytes, *, assets_dir: Path | None = None) -> tuple[str, str]:
-    return convert_requirement_file_to_markdown(filename, raw_bytes, assets_dir=assets_dir)
-
-
-def _converted_assets_dir(row, markdown_path_value: str | None) -> Path:
-    if markdown_path_value:
-        return Path(markdown_path_value).parent / f"{row['id']}_assets"
-    document_dir = project_requirement_dir(row["project_id"], row["document_id"])
-    return document_dir / "markdown" / "conversions" / f"{row['id']}_assets"
-
-
-def _ensure_converted_markdown(db, row):
-    markdown_path_value = row["markdown_file_path"]
-    if row["conversion_status"] in {CONVERSION_SUCCESS_STATUS, "warning"} and markdown_path_value:
-        markdown_path = Path(markdown_path_value)
-        if markdown_path.exists():
-            return row
-
-    source_path = Path(row["source_file_path"])
-    if not source_path.exists():
-        return row
-
-    try:
-        document_dir = project_requirement_dir(row["project_id"], row["document_id"])
-        markdown_path = document_dir / "markdown" / "conversions" / f"{row['id']}.md"
-        markdown_text, conversion_summary = _convert_to_markdown(
-            row["original_filename"],
-            source_path.read_bytes(),
-            assets_dir=markdown_path.parent / f"{row['id']}_assets",
-        )
-    except Exception:
-        return row
-
-    markdown_path.parent.mkdir(parents=True, exist_ok=True)
-    markdown_path.write_text(markdown_text, encoding="utf-8")
-    document_repo.update_file_mapping_markdown(db, row["id"], str(markdown_path), conversion_summary)
-    return document_repo.find_file_mapping(db, row["id"])
-
-
-def _safe_filename(filename: str) -> str:
-    return Path(filename).name.replace("/", "_").replace("\\", "_")
-
-
-def _file_format(filename: str) -> str:
-    suffix = Path(filename).suffix.lower().lstrip(".")
-    if suffix == "markdown":
-        return "md"
-    return suffix or "unknown"
+def _version_markdown_path(project_id: str, document_id: str, version_no: int) -> Path:
+    return project_requirement_dir(project_id, document_id) / "versions" / f"v{version_no}.md"
 
 
 def _decode_text(raw_bytes: bytes) -> str:
@@ -698,11 +392,3 @@ def _decode_text(raw_bytes: bytes) -> str:
         except UnicodeDecodeError:
             continue
     return raw_bytes.decode("utf-8", errors="ignore")
-
-
-def _ensure_project_accepts_upload(db, project_id: str) -> None:
-    project = project_repo.find_by_id(db, project_id)
-    if project is None:
-        raise api_error(404, "PROJECT_NOT_FOUND", "项目不存在。")
-    if project["status"] == "archived":
-        raise api_error(409, "PROJECT_ARCHIVED", "归档项目不能上传需求。")

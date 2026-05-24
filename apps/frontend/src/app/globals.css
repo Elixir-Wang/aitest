@@ -370,6 +370,49 @@ These serve as the fallback; there is no separate default.css file. */
     text-indent: 0;
   }
 
+  .requirement-artifact-preview h1 {
+    margin: 0 0 1rem;
+    width: auto;
+    padding-bottom: 0;
+    text-align: left;
+    font-size: 1.35rem;
+  }
+
+  .requirement-artifact-preview h1::after {
+    display: none;
+  }
+
+  .requirement-artifact-preview h1:hover {
+    color: inherit;
+    transform: none;
+  }
+
+  .requirement-artifact-preview h2 {
+    display: block;
+    width: fit-content;
+    margin: 1.25rem 0 0.7rem;
+    border-radius: 6px;
+    font-size: 1rem;
+    padding: 0.22rem 0.58rem;
+    box-shadow: none;
+  }
+
+  .requirement-artifact-preview h2:hover {
+    box-shadow: none;
+    transform: none;
+  }
+
+  .requirement-artifact-preview h3 {
+    margin: 1rem 0 0.45rem;
+    font-size: 0.95rem;
+  }
+
+  .requirement-artifact-preview p,
+  .requirement-artifact-preview li,
+  .requirement-artifact-preview table {
+    font-size: 0.9rem;
+  }
+
   .markdown-preview ul,
   .markdown-preview ol {
     margin: 0.5rem 0 1rem;
@@ -480,25 +523,146 @@ These serve as the fallback; there is no separate default.css file. */
     padding: 0;
   }
 
-  .markdown-preview table {
-    display: block;
+  .markdown-preview .markdown-mermaid-card,
+  .markdown-preview .markdown-mermaid-loading {
     width: 100%;
-    margin: 1.15rem 0;
-    overflow: auto;
-    border-spacing: 0;
-    border-collapse: separate;
+    margin: 1.25rem 0;
     border: 1px solid var(--markdown-border);
     border-radius: 8px;
-    font-size: 0.88rem;
-    line-height: 1.55;
+    background: #ffffff;
+  }
+
+  .markdown-preview .markdown-mermaid-card {
+    position: relative;
+    overflow: visible;
+    padding-top: 2.75rem;
+  }
+
+  .markdown-preview pre:has(.markdown-mermaid-card) {
+    border: 0;
+    background: transparent;
+    padding: 0;
+  }
+
+  .markdown-preview .markdown-mermaid-actions {
+    position: absolute;
+    top: 0.45rem;
+    right: 0.6rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    z-index: 1;
+  }
+
+  .markdown-preview .markdown-mermaid {
+    display: block;
+    max-height: none;
+    min-height: 180px;
+    overflow-x: auto;
+    overflow-y: visible;
+    padding: 0.25rem 1rem 1rem;
+  }
+
+  .markdown-preview .markdown-mermaid svg {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto;
+    overflow: visible;
+  }
+
+  .markdown-preview .markdown-mermaid svg .label,
+  .markdown-preview .markdown-mermaid svg .nodeLabel {
+    font-size: 14px;
+  }
+
+  .markdown-preview .markdown-mermaid svg foreignObject {
+    overflow: visible;
+  }
+
+  .markdown-preview .markdown-flowchart {
+    position: relative;
+    margin: 0 auto;
+  }
+
+  .markdown-preview .markdown-flowchart-shell {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .markdown-preview .markdown-flowchart-viewport {
+    flex: 0 0 auto;
+  }
+
+  .markdown-preview .markdown-flowchart-edges {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+  }
+
+  .markdown-preview .markdown-flowchart-edges path {
+    fill: none;
+    marker-end: url("#markdown-flowchart-arrow");
+    stroke: #667085;
+    stroke-width: 1.5px;
+  }
+
+  .markdown-preview .markdown-flowchart-edges marker path {
+    fill: #667085;
+  }
+
+  .markdown-preview .markdown-flowchart-node {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #7c8db5;
+    background: #eef2ff;
+    color: #172033;
+    font-size: 0.9rem;
+    line-height: 1.35;
+    padding: 0.5rem 0.75rem;
+    text-align: center;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .markdown-preview .markdown-mermaid-loading {
+    padding: 1rem;
+    color: var(--muted-foreground);
+    font-size: 0.9rem;
+  }
+
+  .markdown-preview .markdown-mermaid-fallback {
+    border-color: color-mix(in srgb, var(--destructive), var(--markdown-border) 70%);
+  }
+
+  .markdown-preview .markdown-table-scroll {
+    width: fit-content;
+    max-width: 100%;
+    margin: 1.15rem 0;
+    overflow: auto;
+    border: 1px solid var(--markdown-border);
+    border-radius: 8px;
     transition:
       border-color 0.25s ease,
       box-shadow 0.25s ease;
   }
 
-  .markdown-preview table:hover {
+  .markdown-preview .markdown-table-scroll:hover {
     border-color: color-mix(in srgb, var(--markdown-accent), var(--border) 35%);
     box-shadow: 0 10px 24px color-mix(in srgb, var(--primary), transparent 90%);
+  }
+
+  .markdown-preview table {
+    width: max-content;
+    border-spacing: 0;
+    border-collapse: separate;
+    font-size: 0.88rem;
+    line-height: 1.55;
   }
 
   .markdown-preview th,

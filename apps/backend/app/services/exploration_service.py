@@ -28,6 +28,15 @@ def list_visible_runs(actor) -> list[dict]:
         return [serialize_exploration_run(row, actor["role"]) for row in rows]
 
 
+def get_project_run(project_id: str, run_id: str, actor) -> dict:
+    with connect() as db:
+        existing = exploration_repo.find_by_id(db, run_id)
+        if not existing or existing["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "探索任务不存在。")
+        _ensure_project_visible(existing, actor)
+        return serialize_exploration_run(existing, actor["role"])
+
+
 def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) -> dict:
     target_project_id = payload.project_id or project_id
     if target_project_id != project_id:
@@ -57,6 +66,26 @@ def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) 
             login_strategy=payload.login_strategy,
             description=payload.description.strip(),
             created_by=actor["id"],
+        )
+        row = exploration_repo.find_by_id(db, run_id)
+        return serialize_exploration_run(row, actor["role"])
+
+
+def start_project_run(project_id: str, run_id: str, actor) -> dict:
+    with connect() as db:
+        existing = exploration_repo.find_by_id(db, run_id)
+        if not existing or existing["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "探索任务不存在。")
+        _ensure_project_visible(existing, actor)
+        if existing["status"] in {"running", "waiting_human"}:
+            raise api_error(409, "EXPLORATION_ALREADY_RUNNING", "探索任务正在执行或等待人工处理。")
+        if existing["status"] not in {"queued", "partial", "completed", "blocked"}:
+            raise api_error(409, "EXPLORATION_NOT_STARTABLE", "当前状态不能发起探索。")
+        exploration_repo.update_run_state(
+            db,
+            run_id,
+            status="queued",
+            result_summary="探索任务已提交，等待执行。",
         )
         row = exploration_repo.find_by_id(db, run_id)
         return serialize_exploration_run(row, actor["role"])

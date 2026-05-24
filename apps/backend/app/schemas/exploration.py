@@ -15,8 +15,12 @@ class ExplorationRunOut(BaseModel):
     forbidden_paths: str
     login_strategy: str
     description: str
+    artifact_root: str = ""
+    result_summary: str = ""
     created_at: str
     updated_at: str
+    started_at: str | None = None
+    finished_at: str | None = None
     available_actions: list[str]
 
 

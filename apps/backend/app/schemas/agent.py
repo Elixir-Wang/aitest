@@ -33,7 +33,6 @@ class AgentRunOut(BaseModel):
     model_provider_id: str | None = None
     provider: str | None = None
     base_url: str | None = None
-    api_key_env: str | None = None
     skill_ids: list[str] = Field(default_factory=list)
     tool_names: list[str] = Field(default_factory=list)
     raw_response_count: int = 0
@@ -53,7 +52,6 @@ class AgentModelAssignmentOut(BaseModel):
     provider: str | None = None
     model: str | None = None
     base_url: str | None = None
-    api_key_env: str | None = None
-    api_key_mask: str | None = None
+    api_key: str | None = None
     model_status: str | None = None
     updated_at: str | None = None

@@ -1,5 +1,3 @@
-# 百系产品接入官网统一认证中心总说明v1.0.docx
-
 # 百系产品接入官网统一认证中心总说明v1.0
 
 适用对象：百系产品研发团队、产品负责人 文档定位：本文档是总览 / 首读材料。本文档不替代接口契约，也不替代产品侧开发指南。正式开发接入时，请继续阅读后续专项文档。
@@ -62,8 +60,29 @@
 
 ## 五、核心链路
 
-```
-用户访问新版官网 ↓用户完成官网登录（手机号/邮箱） ↓[可选] 产品后端预注册 context_id（携带 biz_context） （有邀请码/推荐码/活动业务上下文时，建议产品后端先调用 context/register； 从官网标准入口进入且无产品侧业务上下文则可跳过此步） ↓用户点击产品入口，官网服务端调用 ticket/create 生成 login_ticket （ticket/create 由官网侧发起，产品侧通常不直接调用） ↓官网跳转至产品 sso_entry_url，携带 login_ticket + state ↓产品后端调用认证中心 /api/sso/ticket/verify ↓认证中心返回 UserInfo + account_status + return_url + biz_context ↓产品侧：查询本地映射 → 老用户绑定/新用户处理/B 端权限判断 ↓产品侧：建立本地 Session（JWT/Cookie） ↓用户进入产品，或进入产品侧准入提示页
+```mermaid
+flowchart TD
+  S1["用户访问新版官网"]
+  S2["用户完成官网登录（手机号/邮箱）"]
+  S3["[可选] 产品后端预注册 context_id（携带 biz_context） （有邀请码/推荐码/活动业务上下文时，建议产品后端先调用 context/register； 从官网标准入口进入且无产品侧业务上下文则可跳过此步）"]
+  S4["用户点击产品入口，官网服务端调用 ticket/create 生成 login_ticket （ticket/create 由官网侧发起，产品侧通常不直接调用）"]
+  S5["官网跳转至产品 sso_entry_url，携带 login_ticket + state"]
+  S6["产品后端调用认证中心 /api/sso/ticket/verify"]
+  S7["认证中心返回 UserInfo + account_status + return_url + biz_context"]
+  S8["产品侧：查询本地映射"]
+  S9["老用户绑定/新用户处理/B 端权限判断"]
+  S10["产品侧：建立本地 Session（JWT/Cookie）"]
+  S11["用户进入产品，或进入产品侧准入提示页"]
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
+  S4 --> S5
+  S5 --> S6
+  S6 --> S7
+  S7 --> S8
+  S8 --> S9
+  S9 --> S10
+  S10 --> S11
 ```
 
 ## 六、产品侧要做什么
@@ -151,8 +170,22 @@ ENTERPRISE_MEMBER：企业成员身份线索。
 
 推荐策略：
 
-```
-ticket verify → 查映射 → 有映射建 Session → 无映射查手机号匹配 → 命中自动绑定 → 无命中且允许自动创建 → 创建本地账号建 Session
+```mermaid
+flowchart TD
+  S1["ticket verify"]
+  S2["查映射"]
+  S3["有映射建 Session"]
+  S4["无映射查手机号匹配"]
+  S5["命中自动绑定"]
+  S6["无命中且允许自动创建"]
+  S7["创建本地账号建 Session"]
+  S1 --> S2
+  S2 --> S3
+  S2 --> S4
+  S4 --> S5
+  S5 --> S3
+  S4 --> S6
+  S6 --> S7
 ```
 
 ### 9.2 B 端产品
@@ -171,8 +204,17 @@ ticket verify 成功后，还需查询本地是否有账号和 B 端权限
 
 推荐策略：
 
-```
-ticket verify → 查本地账号 → 有账号有权限建 Session → 有账号无权限提示"产品未开通"或"联系管理员" → 无账号引导留资或申请试用
+```mermaid
+flowchart TD
+  S1["ticket verify"]
+  S2["查本地账号"]
+  S3["有账号有权限建 Session"]
+  S4["有账号无权限提示'产品未开通'或'联系管理员'"]
+  S5["无账号引导留资或申请试用"]
+  S1 --> S2
+  S2 --> S3
+  S2 --> S4
+  S2 --> S5
 ```
 
 ### 9.3 B+C 混合产品
@@ -189,8 +231,21 @@ ticket verify → 查本地账号 → 有账号有权限建 Session → 有账�
 
 推荐策略：
 
-```
-ticket verify → 查 biz_context（scene / user_intent）→ 判断 B/C 分流 → B 流程：查企业归属 + 权限 → 企业空间 → C 流程：查个人映射 → 个人空间
+```mermaid
+flowchart TD
+  S1["ticket verify"]
+  S2["查 biz_context（scene / user_intent）"]
+  S3["判断 B/C 分流"]
+  S4["B 流程：查企业归属 + 权限"]
+  S5["企业空间"]
+  S6["C 流程：查个人映射"]
+  S7["个人空间"]
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
+  S4 --> S5
+  S3 --> S6
+  S6 --> S7
 ```
 
 ### 9.4 INVITE_ONLY（邀请制/灰度产品）
@@ -207,8 +262,21 @@ ticket verify → 查 biz_context（scene / user_intent）→ 判断 B/C 分流 
 
 推荐策略：
 
-```
-context/register 预注册 {invite_code: "BG_INV_XXX"} → 用户登录 → ticket verify → 从 biz_context 获取 invite_code → 产品后端校验邀请码 → 有效建 Session → 无效提示"邀请码无效"
+```mermaid
+flowchart TD
+  S1["context/register 预注册 {invite_code: 'BG_INV_XXX'}"]
+  S2["用户登录"]
+  S3["ticket verify"]
+  S4["从 biz_context 获取 invite_code"]
+  S5["产品后端校验邀请码"]
+  S6["有效建 Session"]
+  S7["无效提示'邀请码无效'"]
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
+  S4 --> S5
+  S5 --> S6
+  S5 --> S7
 ```
 
 ## 十、原产品登录入口保留原则
@@ -225,8 +293,21 @@ context/register 预注册 {invite_code: "BG_INV_XXX"} → 用户登录 → tick
 
 ## 十一、接入路径选择
 
-```
-[第一步] 产品完成登记表 ↓[第二步] 认证中心侧配置 product_code、sso_entry_url、allowed_redirect_domains ↓[第三步] 认证中心侧提供联调环境 product_access_key（安全渠道交付） ↓[第四步] 产品后端实现 sso_entry_url 接收逻辑和 ticket/verify 调用 ↓[第五步] 联调验证 ↓[第六步] 通过验收清单 ↓[第七步] 生产上线（生产密钥单独分发）
+```mermaid
+flowchart TD
+  S1["[第一步] 产品完成登记表"]
+  S2["[第二步] 认证中心侧配置 product_code、sso_entry_url、allowed_redirect_domains"]
+  S3["[第三步] 认证中心侧提供联调环境 product_access_key（安全渠道交付）"]
+  S4["[第四步] 产品后端实现 sso_entry_url 接收逻辑和 ticket/verify 调用"]
+  S5["[第五步] 联调验证"]
+  S6["[第六步] 通过验收清单"]
+  S7["[第七步] 生产上线（生产密钥单独分发）"]
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
+  S4 --> S5
+  S5 --> S6
+  S6 --> S7
 ```
 
 ## 十二、联调流程
@@ -257,7 +338,20 @@ context/register 预注册 {invite_code: "BG_INV_XXX"} → 用户登录 → tick
 
 核心验收项：
 
-正向链路：context/register → login → ticket/create → ticket/verify → 建立 Session → return_url 跳转
+```mermaid
+flowchart TD
+  S1["正向链路：context/register"]
+  S2["login"]
+  S3["ticket/create"]
+  S4["ticket/verify"]
+  S5["建立 Session"]
+  S6["return_url 跳转"]
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
+  S4 --> S5
+  S5 --> S6
+```
 
 异常链路：票据重用、state 不符、nonce 重放、product_access_key 无效
 

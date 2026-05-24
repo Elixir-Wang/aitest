@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import os
 import secrets
 from typing import Any
 
-from agents import Agent, RunConfig, Runner
+from agents import Agent, RunConfig, Runner, set_tracing_disabled
 from agents.models.openai_provider import OpenAIProvider
 
 from app.agents.definitions import AgentDefinition, SkillDefinition
@@ -16,14 +15,16 @@ from app.core.logging import agent_logger
 from app.repositories import model_repo
 
 
+set_tracing_disabled(True)
+
+
 @dataclass(frozen=True)
 class AgentModelSelection:
     model: str
     model_provider_id: str | None = None
     provider: str | None = None
     base_url: str | None = None
-    api_key_env: str | None = None
-    api_key_mask: str | None = None
+    api_key: str | None = None
     model_status: str | None = None
     using_assignment: bool = False
 
@@ -37,7 +38,6 @@ class AgentRunResult:
     model_provider_id: str | None = None
     provider: str | None = None
     base_url: str | None = None
-    api_key_env: str | None = None
     skill_ids: list[str] = field(default_factory=list)
     tool_names: list[str] = field(default_factory=list)
     raw_response_count: int = 0
@@ -100,7 +100,6 @@ async def run_agent(agent_id: str, prompt: str) -> AgentRunResult:
                     "model_provider_id": model_selection.model_provider_id or "",
                     "provider": model_selection.provider or "",
                     "base_url": model_selection.base_url or "",
-                    "api_key_env": model_selection.api_key_env or "",
                 },
             ),
         )
@@ -113,7 +112,6 @@ async def run_agent(agent_id: str, prompt: str) -> AgentRunResult:
             model_provider_id=model_selection.model_provider_id,
             provider=model_selection.provider,
             base_url=model_selection.base_url,
-            api_key_env=model_selection.api_key_env,
             skill_ids=skill_ids,
             tool_names=tool_names,
             raw_response_count=len(getattr(result, "raw_responses", []) or []),
@@ -152,8 +150,7 @@ def resolve_agent_model_selection(definition: AgentDefinition) -> AgentModelSele
             model_provider_id=assignment["model_provider_id"],
             provider=assignment["provider"],
             base_url=assignment["base_url"],
-            api_key_env=assignment["api_key_env"],
-            api_key_mask=assignment["api_key_mask"],
+            api_key=assignment["api_key"],
             model_status=assignment["model_status"],
             using_assignment=True,
         )
@@ -181,25 +178,33 @@ def _tool_names(skills: list[SkillDefinition]) -> list[str]:
 
 def _build_model_provider(selection: AgentModelSelection):
     if not selection.using_assignment:
-        return None
-    if selection.provider not in {"openai", "openai-compatible"}:
+        raise ValueError("智能体未分配可用模型配置，无法运行。")
+    provider = _normalize_provider(selection.provider)
+    if provider not in {"openai", "openai-compatible"}:
         raise ValueError(f"暂不支持的模型供应商：{selection.provider}")
 
     api_key = _resolve_api_key(selection)
     return OpenAIProvider(
         api_key=api_key,
         base_url=selection.base_url or None,
-        use_responses=selection.provider == "openai",
+        use_responses=provider == "openai",
     )
 
 
+def _normalize_provider(provider: str | None) -> str:
+    normalized = (provider or "").strip().lower()
+    aliases = {
+        "deepseek": "openai-compatible",
+        "openai compatible": "openai-compatible",
+        "openai_compatible": "openai-compatible",
+    }
+    return aliases.get(normalized, normalized)
+
+
 def _resolve_api_key(selection: AgentModelSelection) -> str:
-    if selection.api_key_env:
-        api_key = os.getenv(selection.api_key_env)
-        if api_key:
-            return api_key
-        raise ValueError(f"模型配置引用的环境变量未设置：{selection.api_key_env}")
-    raise ValueError("模型配置未设置 API Key 环境变量，无法用于智能体运行。")
+    if selection.api_key:
+        return selection.api_key
+    raise ValueError("模型配置未保存 API Key，无法用于智能体运行。")
 
 
 def _extract_usage(result: object) -> dict[str, Any] | None:

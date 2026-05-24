@@ -4,7 +4,6 @@ import secrets
 
 from app.core.db import connect
 from app.core.exceptions import api_error
-from app.core.security import hash_secret
 from app.repositories import model_repo
 from app.schemas.model import ModelProviderIn
 from app.presentation.serializers import serialize_model_provider
@@ -26,9 +25,7 @@ def create_model_provider(payload: ModelProviderIn, actor) -> dict:
                 provider=payload.provider,
                 model=payload.model,
                 base_url=payload.base_url,
-                api_key_env=payload.api_key_env.strip(),
-                api_key_hash=hash_secret(payload.api_key) if payload.api_key else "",
-                api_key_mask=mask_key(payload.api_key),
+                api_key=payload.api_key,
                 description=payload.description,
                 status=payload.status,
                 created_by=actor["id"],
@@ -44,11 +41,7 @@ def update_model_provider(provider_id: str, payload: ModelProviderIn, actor) -> 
         existing = model_repo.find_provider_by_id(db, provider_id)
         if not existing:
             raise api_error(404, "NOT_FOUND", "模型配置不存在。")
-        api_key_hash = existing["api_key_hash"]
-        api_key_mask = existing["api_key_mask"]
-        if payload.api_key:
-            api_key_hash = hash_secret(payload.api_key)
-            api_key_mask = mask_key(payload.api_key)
+        api_key = payload.api_key if payload.api_key else existing["api_key"]
         try:
             model_repo.update_provider(
                 db,
@@ -56,9 +49,7 @@ def update_model_provider(provider_id: str, payload: ModelProviderIn, actor) -> 
                 provider=payload.provider,
                 model=payload.model,
                 base_url=payload.base_url,
-                api_key_env=payload.api_key_env.strip(),
-                api_key_hash=api_key_hash,
-                api_key_mask=api_key_mask,
+                api_key=api_key,
                 description=payload.description,
                 status=payload.status,
             )
@@ -72,11 +63,3 @@ def delete_model_provider(provider_id: str) -> dict:
     with connect() as db:
         model_repo.delete_provider(db, provider_id)
         return {"success": True}
-
-
-def mask_key(api_key: str) -> str:
-    if not api_key:
-        return ""
-    if len(api_key) <= 8:
-        return "****"
-    return f"{api_key[:4]}****{api_key[-4:]}"

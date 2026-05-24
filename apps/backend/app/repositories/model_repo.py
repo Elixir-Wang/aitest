@@ -18,19 +18,17 @@ def create_provider(
     provider: str,
     model: str,
     base_url: str,
-    api_key_env: str,
-    api_key_hash: str,
-    api_key_mask: str,
+    api_key: str,
     description: str,
     status: str,
     created_by: str,
 ) -> None:
     db.execute(
         """
-        INSERT INTO model_providers (id, provider, model, base_url, api_key_env, api_key_hash, api_key_mask, description, status, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO model_providers (id, provider, model, base_url, api_key, description, status, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (provider_id, provider, model, base_url, api_key_env, api_key_hash, api_key_mask, description, status, created_by),
+        (provider_id, provider, model, base_url, api_key, description, status, created_by),
     )
 
 
@@ -41,19 +39,17 @@ def update_provider(
     provider: str,
     model: str,
     base_url: str,
-    api_key_env: str,
-    api_key_hash: str,
-    api_key_mask: str,
+    api_key: str,
     description: str,
     status: str,
 ) -> None:
     db.execute(
         """
         UPDATE model_providers
-        SET provider = ?, model = ?, base_url = ?, api_key_env = ?, api_key_hash = ?, api_key_mask = ?, description = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+        SET provider = ?, model = ?, base_url = ?, api_key = ?, description = ?, status = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         """,
-        (provider, model, base_url, api_key_env, api_key_hash, api_key_mask, description, status, provider_id),
+        (provider, model, base_url, api_key, description, status, provider_id),
     )
 
 
@@ -62,9 +58,8 @@ def delete_provider(db: Connection, provider_id: str) -> None:
 
 
 def list_agent_assignments(db: Connection) -> list[Row]:
-    api_key_env_select = _api_key_env_select(db)
     return db.execute(
-        f"""
+        """
         SELECT ama.agent_id,
                ama.model_provider_id,
                ama.created_at,
@@ -72,8 +67,7 @@ def list_agent_assignments(db: Connection) -> list[Row]:
                mp.provider,
                mp.model,
                mp.base_url,
-               {api_key_env_select},
-               mp.api_key_mask,
+               mp.api_key,
                mp.status AS model_status
         FROM agent_model_assignments ama
         JOIN model_providers mp ON mp.id = ama.model_provider_id
@@ -83,9 +77,8 @@ def list_agent_assignments(db: Connection) -> list[Row]:
 
 
 def find_agent_assignment(db: Connection, agent_id: str) -> Row | None:
-    api_key_env_select = _api_key_env_select(db)
     return db.execute(
-        f"""
+        """
         SELECT ama.agent_id,
                ama.model_provider_id,
                ama.created_at,
@@ -93,8 +86,7 @@ def find_agent_assignment(db: Connection, agent_id: str) -> Row | None:
                mp.provider,
                mp.model,
                mp.base_url,
-               {api_key_env_select},
-               mp.api_key_mask,
+               mp.api_key,
                mp.status AS model_status
         FROM agent_model_assignments ama
         JOIN model_providers mp ON mp.id = ama.model_provider_id
@@ -115,10 +107,3 @@ def upsert_agent_assignment(db: Connection, *, agent_id: str, model_provider_id:
         """,
         (agent_id, model_provider_id),
     )
-
-
-def _api_key_env_select(db: Connection) -> str:
-    columns = {row["name"] for row in db.execute("PRAGMA table_info(model_providers)").fetchall()}
-    if "api_key_env" in columns:
-        return "mp.api_key_env"
-    return "'' AS api_key_env"

@@ -10,8 +10,7 @@ class ModelProviderOut(BaseModel):
     provider: str
     model: str
     base_url: str
-    api_key_env: str = ""
-    api_key_mask: str
+    api_key: str
     description: str
     status: Status
     created_by: str
@@ -25,6 +24,5 @@ class ModelProviderIn(BaseModel):
     model: str = Field(min_length=1)
     base_url: str = Field(min_length=1)
     api_key: str = ""
-    api_key_env: str = ""
     description: str = ""
     status: Status = "enabled"

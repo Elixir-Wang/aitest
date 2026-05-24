@@ -49,3 +49,9 @@ class SourceMarkdownUpdateIn(BaseModel):
 class ConflictResolutionIn(BaseModel):
     resolution: str = Field(min_length=1)
     resolution_type: str = "manual"
+
+
+class RequirementMergeRequestIn(BaseModel):
+    merge_mode: str | None = None
+    confirm_preview_id: str = ""
+    force_rebuild: bool = False

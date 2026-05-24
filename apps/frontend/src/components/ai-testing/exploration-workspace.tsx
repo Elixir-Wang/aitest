@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-
 import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { useSearchParams } from "next/navigation";
 
 import { Eye, EyeOff, Play, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -130,6 +132,8 @@ export function ExplorationWorkspace({
   projectScope,
   title,
 }: ExplorationWorkspaceProps) {
+  const searchParams = useSearchParams();
+  const createParamHandledRef = useRef(false);
   const [activeTab, setActiveTab] = useState("探索任务");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [explorationDialogOpen, setExplorationDialogOpen] = useState(false);
@@ -235,7 +239,8 @@ export function ExplorationWorkspace({
       setExplorationLoading(true);
       setError("");
       try {
-        const path = projectScope === "project" && projectId ? `/projects/${projectId}/exploration-runs` : "/exploration-runs";
+        const path =
+          projectScope === "project" && projectId ? `/projects/${projectId}/exploration-runs` : "/exploration-runs";
         const data = await apiRequest<ExplorationRun[]>(path);
         if (!ignore) {
           explorationSelection.setRows(data);
@@ -288,7 +293,11 @@ export function ExplorationWorkspace({
   const selectedProjectId = projectScope === "project" ? (projectId ?? "") : explorationForm.projectId;
   const availableEnvironments = rows.filter((environment) => environment.project_id === selectedProjectId);
   const canCreateExploration = selectedProjectId.length > 0 && explorationForm.environmentId.length > 0;
-  const environmentProjectSelectDisabled = [projectScope === "project", projectLoading, editingEnvironment !== null].some(Boolean);
+  const environmentProjectSelectDisabled = [
+    projectScope === "project",
+    projectLoading,
+    editingEnvironment !== null,
+  ].some(Boolean);
 
   function openCreateDialog() {
     setEditingEnvironment(null);
@@ -297,7 +306,7 @@ export function ExplorationWorkspace({
     setDialogOpen(true);
   }
 
-  function openCreateExplorationDialog() {
+  const openCreateExplorationDialog = useCallback(() => {
     const targetProjectId = projectId ?? projects[0]?.id ?? "";
     const firstEnvironment = rows.find((environment) => environment.project_id === targetProjectId);
     setExplorationForm({
@@ -306,7 +315,17 @@ export function ExplorationWorkspace({
       environmentId: firstEnvironment?.id ?? "",
     });
     setExplorationDialogOpen(true);
-  }
+  }, [projectId, projects, rows]);
+
+  useEffect(() => {
+    if (searchParams.get("create") !== "exploration" || createParamHandledRef.current) {
+      return;
+    }
+
+    createParamHandledRef.current = true;
+    setActiveTab("探索任务");
+    openCreateExplorationDialog();
+  }, [openCreateExplorationDialog, searchParams]);
 
   function openEditDialog(environment: ProjectEnvironment) {
     setEditingEnvironment(environment);
@@ -352,7 +371,7 @@ export function ExplorationWorkspace({
           {
             method: "PATCH",
             body: JSON.stringify(payload),
-          }
+          },
         );
         setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
         toast.success("环境已更新");
@@ -375,7 +394,9 @@ export function ExplorationWorkspace({
       setForm({ ...emptyForm, projectId: projectId ?? form.projectId });
       setDialogOpen(false);
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : editingEnvironment ? "环境更新失败" : "环境创建失败");
+      toast.error(
+        requestError instanceof Error ? requestError.message : editingEnvironment ? "环境更新失败" : "环境创建失败",
+      );
     }
   }
 
@@ -433,6 +454,10 @@ export function ExplorationWorkspace({
     }
   }
 
+  function openExplorationRun(run: ExplorationRun) {
+    window.location.href = `/projects/${run.project_id}/exploration/${run.id}`;
+  }
+
   async function deleteEnvironments(ids: string[]) {
     if (ids.length === 0) {
       return;
@@ -461,7 +486,7 @@ export function ExplorationWorkspace({
       breadcrumbs={breadcrumbs}
       description={description}
       projectScope={projectScope}
-      tabs={["探索任务", "环境配置", "探索文档", "候选需求文档", "冲突项"]}
+      tabs={["环境配置", "探索任务", "探索文档", "候选需求文档", "冲突项"]}
       title={title}
       onTabChange={setActiveTab}
     >
@@ -501,8 +526,6 @@ export function ExplorationWorkspace({
                   <TableHead>关联环境</TableHead>
                   <TableHead>任务状态</TableHead>
                   <TableHead>登录策略</TableHead>
-                  <TableHead>探索范围</TableHead>
-                  <TableHead>创建时间</TableHead>
                   <TableHead>更新时间</TableHead>
                   <TableHead className="w-16">操作</TableHead>
                 </TableRow>
@@ -525,16 +548,15 @@ export function ExplorationWorkspace({
                     <TableCell>{item.environment_name}</TableCell>
                     <TableCell>{statusLabels[item.status] ?? item.status}</TableCell>
                     <TableCell>{loginStrategyLabels[item.login_strategy] ?? item.login_strategy}</TableCell>
-                    <TableCell>
-                      <span className="block max-w-64 truncate" title={item.scope}>
-                        {item.scope || "-"}
-                      </span>
-                    </TableCell>
-                    <TableCell>{formatDateTime(item.created_at)}</TableCell>
                     <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                     <TableCell>
                       <RowActions
                         actions={[
+                          {
+                            label: "探索",
+                            icon: Play,
+                            onSelect: () => openExplorationRun(item),
+                          },
                           {
                             label: "删除",
                             icon: Trash2,
@@ -548,11 +570,11 @@ export function ExplorationWorkspace({
                   </TableRow>
                 ))}
                 {explorationLoading && filteredExplorationRows.length === 0 ? (
-                  <TableLoadingRow colSpan={10} label="探索任务加载中" />
+                  <TableLoadingRow colSpan={8} label="探索任务加载中" />
                 ) : null}
                 {!explorationLoading && filteredExplorationRows.length === 0 ? (
                   <TableRow>
-                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={10}>
+                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={8}>
                       暂无探索任务数据
                     </TableCell>
                   </TableRow>
@@ -566,85 +588,88 @@ export function ExplorationWorkspace({
       {activeTab === "环境配置" ? (
         <ShellSection>
           {error ? (
-              <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
-                {error}
-              </div>
-            ) : null}
-            <ListToolbar
-              createLabel="新建环境"
-              onBatchDelete={() => deleteEnvironments(selectedIds)}
-              onCreate={openCreateDialog}
-              onSearch={setSearchText}
-              placeholder="搜索环境名称、项目、站点、用户名或描述"
-              selectedCount={selectedCount}
-              title="环境列表"
-            />
-            <div className="overflow-hidden rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10">
-                      <Checkbox
-                        aria-label="选择全部环境"
-                        checked={allSelected || (partiallySelected ? "indeterminate" : false)}
-                        disabled={environmentLoading}
-                        onCheckedChange={(checked) => toggleAll(Boolean(checked))}
-                      />
-                    </TableHead>
-                    <TableHead>环境名称</TableHead>
-                    <TableHead>项目</TableHead>
-                    <TableHead>站点地址</TableHead>
-                    <TableHead>描述</TableHead>
-                    <TableHead>更新时间</TableHead>
-                    <TableHead className="w-16">操作</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRows.map((item) => (
-                    <TableRow data-state={selectedIds.includes(item.id) ? "selected" : undefined} key={item.id}>
-                      <TableCell>
-                        <Checkbox
-                          aria-label={`选择 ${item.name}`}
-                          checked={selectedIds.includes(item.id)}
-                          onCheckedChange={(checked) => toggleOne(item.id, Boolean(checked))}
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        <button
-                          className="hover:underline"
-                          onClick={() => openEditDialog(item)}
-                          type="button"
-                        >
-                          {item.name}
-                        </button>
-                      </TableCell>
-                      <TableCell>{item.project_name}</TableCell>
-                      <TableCell>
-                        <span className="block max-w-72 truncate" title={item.site_url}>
-                          {item.site_url}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="block max-w-64 truncate" title={item.description}>
-                          {item.description || "-"}
-                        </span>
-                      </TableCell>
-                      <TableCell>{formatDateTime(item.updated_at)}</TableCell>
-                      <TableCell>
-                        <RowActions
-                          actions={[{ label: "删除", icon: Trash2, destructive: true, onSelect: () => deleteEnvironments([item.id]) }]}
-                          label={`打开 ${item.name} 操作菜单`}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {environmentLoading && filteredRows.length === 0 ? (
-                    <TableLoadingRow colSpan={7} label="环境列表加载中" />
-                  ) : null}
-                </TableBody>
-              </Table>
+            <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
+              {error}
             </div>
-          </ShellSection>
+          ) : null}
+          <ListToolbar
+            createLabel="新建环境"
+            onBatchDelete={() => deleteEnvironments(selectedIds)}
+            onCreate={openCreateDialog}
+            onSearch={setSearchText}
+            placeholder="搜索环境名称、项目、站点、用户名或描述"
+            selectedCount={selectedCount}
+            title="环境列表"
+          />
+          <div className="overflow-hidden rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      aria-label="选择全部环境"
+                      checked={allSelected || (partiallySelected ? "indeterminate" : false)}
+                      disabled={environmentLoading}
+                      onCheckedChange={(checked) => toggleAll(Boolean(checked))}
+                    />
+                  </TableHead>
+                  <TableHead>环境名称</TableHead>
+                  <TableHead>项目</TableHead>
+                  <TableHead>站点地址</TableHead>
+                  <TableHead>描述</TableHead>
+                  <TableHead>更新时间</TableHead>
+                  <TableHead className="w-16">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredRows.map((item) => (
+                  <TableRow data-state={selectedIds.includes(item.id) ? "selected" : undefined} key={item.id}>
+                    <TableCell>
+                      <Checkbox
+                        aria-label={`选择 ${item.name}`}
+                        checked={selectedIds.includes(item.id)}
+                        onCheckedChange={(checked) => toggleOne(item.id, Boolean(checked))}
+                      />
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      <button className="hover:underline" onClick={() => openEditDialog(item)} type="button">
+                        {item.name}
+                      </button>
+                    </TableCell>
+                    <TableCell>{item.project_name}</TableCell>
+                    <TableCell>
+                      <span className="block max-w-72 truncate" title={item.site_url}>
+                        {item.site_url}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="block max-w-64 truncate" title={item.description}>
+                        {item.description || "-"}
+                      </span>
+                    </TableCell>
+                    <TableCell>{formatDateTime(item.updated_at)}</TableCell>
+                    <TableCell>
+                      <RowActions
+                        actions={[
+                          {
+                            label: "删除",
+                            icon: Trash2,
+                            destructive: true,
+                            onSelect: () => deleteEnvironments([item.id]),
+                          },
+                        ]}
+                        label={`打开 ${item.name} 操作菜单`}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {environmentLoading && filteredRows.length === 0 ? (
+                  <TableLoadingRow colSpan={7} label="环境列表加载中" />
+                ) : null}
+              </TableBody>
+            </Table>
+          </div>
+        </ShellSection>
       ) : null}
 
       {["探索文档", "候选需求文档", "冲突项"].includes(activeTab) ? (
@@ -765,18 +790,18 @@ export function ExplorationWorkspace({
             <DialogTitle>新建探索任务</DialogTitle>
             <DialogDescription>选择环境并配置探索范围、禁止路径和登录策略。</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
-            <LabeledInput
-              id="exploration-title"
-              label="任务名称"
-              onChange={(value) => setExplorationForm((current) => ({ ...current, title: value }))}
-              placeholder="后台管理系统全站探索"
-              value={explorationForm.title}
-            />
-            <div className="space-y-2">
-              <label className="font-medium text-sm" htmlFor="exploration-project">
-                项目
-              </label>
+          <FieldGroup className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="exploration-title">任务名称</FieldLabel>
+              <Input
+                id="exploration-title"
+                onChange={(event) => setExplorationForm((current) => ({ ...current, title: event.target.value }))}
+                placeholder="后台管理系统全站探索"
+                value={explorationForm.title}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="exploration-project">项目</FieldLabel>
               <Select
                 disabled={projectScope === "project" || projectLoading}
                 onValueChange={(value) => {
@@ -804,11 +829,9 @@ export function ExplorationWorkspace({
                   )}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="font-medium text-sm" htmlFor="exploration-environment">
-                环境
-              </label>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="exploration-environment">环境</FieldLabel>
               <Select
                 onValueChange={(value) => setExplorationForm((current) => ({ ...current, environmentId: value }))}
                 value={explorationForm.environmentId}
@@ -824,11 +847,9 @@ export function ExplorationWorkspace({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="font-medium text-sm" htmlFor="exploration-login-strategy">
-                登录策略
-              </label>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="exploration-login-strategy">登录策略</FieldLabel>
               <Select
                 onValueChange={(value) => setExplorationForm((current) => ({ ...current, loginStrategy: value }))}
                 value={explorationForm.loginStrategy}
@@ -844,11 +865,9 @@ export function ExplorationWorkspace({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <label className="font-medium text-sm" htmlFor="exploration-scope">
-                探索范围
-              </label>
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="exploration-scope">探索范围</FieldLabel>
               <Textarea
                 className="min-h-24"
                 id="exploration-scope"
@@ -856,11 +875,9 @@ export function ExplorationWorkspace({
                 placeholder="菜单范围、URL 白名单、核心模块标记"
                 value={explorationForm.scope}
               />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <label className="font-medium text-sm" htmlFor="exploration-forbidden-paths">
-                禁止路径
-              </label>
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="exploration-forbidden-paths">禁止路径</FieldLabel>
               <Textarea
                 className="min-h-20"
                 id="exploration-forbidden-paths"
@@ -870,11 +887,9 @@ export function ExplorationWorkspace({
                 placeholder="删除、支付、外发、批量通知等危险路径"
                 value={explorationForm.forbiddenPaths}
               />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <label className="font-medium text-sm" htmlFor="exploration-description">
-                描述
-              </label>
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="exploration-description">描述</FieldLabel>
               <Textarea
                 className="min-h-20"
                 id="exploration-description"
@@ -882,8 +897,8 @@ export function ExplorationWorkspace({
                 placeholder="本次探索目标、角色说明、验证码处理方式或人工注意事项"
                 value={explorationForm.description}
               />
-            </div>
-          </div>
+            </Field>
+          </FieldGroup>
           <DialogFooter className="-mx-6 -mb-6 px-6 py-4">
             <Button onClick={() => setExplorationDialogOpen(false)} type="button" variant="outline">
               取消

@@ -17,21 +17,57 @@ class SkillLoaderTest(unittest.TestCase):
     def test_registry_exposes_requirement_file_agents(self):
         agents = agent_registry.list()
 
-        self.assertEqual([agent.id for agent in agents], ["raw_requirement_format_converter"])
+        agent_ids = [agent.id for agent in agents]
+        self.assertIn("raw_requirement_format_converter", agent_ids)
+        self.assertIn("requirement_merge", agent_ids)
+        self.assertIn("site_exploration", agent_ids)
         self.assertEqual(agents[0].name, "原始需求格式转换智能体")
-        self.assertEqual(agents[0].skill_ids, ("pdf_to_markdown", "docx_to_markdown"))
+        self.assertEqual(agents[0].skill_ids, ("pdf_to_markdown", "docx_to_markdown", "markdown_normalize"))
+        self.assertEqual(agents[1].name, "需求归并智能体")
+        self.assertEqual(agents[1].skill_ids, ("requirement_markdown_merge",))
+        site_agent = agent_registry.get("site_exploration")
+        self.assertEqual(site_agent.name, "站点探索智能体")
+        self.assertEqual(site_agent.skill_ids, ("playwright_cli", "site_exploration"))
 
     def test_raw_requirement_format_converter_uses_only_real_conversion_skills(self):
         pdf_skill = skill_registry.get("pdf_to_markdown", agent_id="raw_requirement_format_converter")
         docx_skill = skill_registry.get("docx_to_markdown", agent_id="raw_requirement_format_converter")
+        normalize_skill = skill_registry.get("markdown_normalize", agent_id="raw_requirement_format_converter")
 
         self.assertEqual(pdf_skill.agent_id, "raw_requirement_format_converter")
         self.assertEqual(docx_skill.agent_id, "raw_requirement_format_converter")
+        self.assertEqual(normalize_skill.agent_id, "raw_requirement_format_converter")
         self.assertTrue(Path(pdf_skill.path).as_posix().endswith("agents/raw_requirement_format_converter/skills/pdf_to_markdown"))
         self.assertTrue(Path(docx_skill.path).as_posix().endswith("agents/raw_requirement_format_converter/skills/docx_to_markdown"))
+        self.assertTrue(Path(normalize_skill.path).as_posix().endswith("agents/raw_requirement_format_converter/skills/markdown_normalize"))
+        self.assertEqual([getattr(tool, "name", "") for tool in normalize_skill.tools], ["normalize_requirement_markdown_tool"])
 
         with self.assertRaises(KeyError):
             skill_registry.get("raw_requirement_format_converter", agent_id="raw_requirement_format_converter")
+
+    def test_requirement_merge_agent_uses_markdown_merge_skill(self):
+        agent = agent_registry.get("requirement_merge")
+        skill = skill_registry.get("requirement_markdown_merge", agent_id="requirement_merge")
+        built_agent = build_agent(agent, [skill])
+
+        self.assertEqual(skill.agent_id, "requirement_merge")
+        self.assertTrue(Path(skill.path).as_posix().endswith("agents/requirement_merge/skills/requirement_markdown_merge"))
+        self.assertIn("Requirement Markdown Merge", built_agent.instructions)
+        self.assertIn("Do not simply concatenate files", built_agent.instructions)
+        self.assertIn("Source Coverage Rules", built_agent.instructions)
+        self.assertEqual(built_agent.tools, [])
+
+    def test_site_exploration_agent_uses_playwright_cli_and_exploration_skills(self):
+        agent = agent_registry.get("site_exploration")
+        playwright_skill = skill_registry.get("playwright_cli", agent_id="site_exploration")
+        exploration_skill = skill_registry.get("site_exploration", agent_id="site_exploration")
+        built_agent = build_agent(agent, [playwright_skill, exploration_skill])
+
+        self.assertEqual(playwright_skill.agent_id, "site_exploration")
+        self.assertEqual(exploration_skill.agent_id, "site_exploration")
+        self.assertIn("所有真实浏览器动作必须来自 Playwright CLI", built_agent.instructions)
+        self.assertIn("模块覆盖状态", built_agent.instructions)
+        self.assertEqual(built_agent.tools, [])
 
     def test_load_skill_reads_frontmatter_body_and_python_tools(self):
         with tempfile.TemporaryDirectory() as temp_dir:

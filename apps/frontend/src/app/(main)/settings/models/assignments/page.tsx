@@ -5,15 +5,9 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { apiRequest, type ApiAgentModelAssignment, type ApiModelProvider } from "@/lib/api-client";
+import { type ApiAgentModelAssignment, type ApiModelProvider, apiRequest } from "@/lib/api-client";
 
 export default function Page() {
   const [assignments, setAssignments] = useState<ApiAgentModelAssignment[]>([]);

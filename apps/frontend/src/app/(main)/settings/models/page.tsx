@@ -21,7 +21,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { apiRequest, formatDateTime, type ApiModelProvider } from "@/lib/api-client";
+import { type ApiModelProvider, apiRequest, formatDateTime } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 
 type ModelRow = ApiModelProvider;
@@ -87,7 +87,7 @@ export default function Page() {
   function openEditDialog(model: ModelRow) {
     setEditingModel(model);
     setForm({
-      apiKey: "",
+      apiKey: model.api_key,
       baseUrl: model.base_url,
       description: model.description,
       model: model.model,
@@ -194,14 +194,18 @@ export default function Page() {
                   <TableCell className="font-medium">{item.provider}</TableCell>
                   <TableCell>{item.model}</TableCell>
                   <TableCell className="max-w-md truncate text-muted-foreground">{item.base_url}</TableCell>
-                  <TableCell>{item.api_key_mask || "未配置"}</TableCell>
+                  <TableCell className="max-w-xs truncate font-mono text-xs">{item.api_key || "未配置"}</TableCell>
                   <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                   <TableCell>
                     <RowActions
                       actions={[
                         { label: "编辑", icon: Pencil, onSelect: () => openEditDialog(item) },
                         { label: "删除", destructive: true, icon: Trash2, onSelect: () => deleteProviders([item.id]) },
-                      ].map((action) => ({ ...action, disabled: !canWrite, onSelect: canWrite ? action.onSelect : undefined }))}
+                      ].map((action) => ({
+                        ...action,
+                        disabled: !canWrite,
+                        onSelect: canWrite ? action.onSelect : undefined,
+                      }))}
                       label={`打开 ${item.provider} 操作菜单`}
                     />
                   </TableCell>
@@ -216,20 +220,35 @@ export default function Page() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingModel ? "编辑模型" : "新增模型"}</DialogTitle>
-            <DialogDescription>API Key 由后端哈希保存，列表只展示脱敏信息。</DialogDescription>
+            <DialogDescription>API Key 按原文保存并用于智能体调用。</DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="model-provider">模型提供商</FieldLabel>
-              <Input id="model-provider" onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value }))} placeholder="请输入模型提供商" value={form.provider} />
+              <Input
+                id="model-provider"
+                onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value }))}
+                placeholder="请输入模型提供商"
+                value={form.provider}
+              />
             </Field>
             <Field>
               <FieldLabel htmlFor="model-name">模型</FieldLabel>
-              <Input id="model-name" onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))} placeholder="请输入模型名称" value={form.model} />
+              <Input
+                id="model-name"
+                onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}
+                placeholder="请输入模型名称"
+                value={form.model}
+              />
             </Field>
             <Field>
               <FieldLabel htmlFor="model-base-url">Base URL</FieldLabel>
-              <Input id="model-base-url" onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="请输入 Base URL" value={form.baseUrl} />
+              <Input
+                id="model-base-url"
+                onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))}
+                placeholder="请输入 Base URL"
+                value={form.baseUrl}
+              />
             </Field>
             <Field>
               <FieldLabel htmlFor="model-description">描述</FieldLabel>
@@ -243,8 +262,22 @@ export default function Page() {
             <Field>
               <FieldLabel htmlFor="model-api-key">API Key</FieldLabel>
               <div className="relative">
-                <Input className="pr-9" id="model-api-key" onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder={editingModel ? "留空则保留原密钥" : "请输入 API Key"} type={apiKeyVisible ? "text" : "password"} value={form.apiKey} />
-                <Button aria-label={apiKeyVisible ? "隐藏 API Key" : "显示 API Key"} className="absolute top-0 right-0" onClick={() => setApiKeyVisible((value) => !value)} size="icon" type="button" variant="ghost">
+                <Input
+                  className="pr-9"
+                  id="model-api-key"
+                  onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))}
+                  placeholder="请输入 API Key"
+                  type={apiKeyVisible ? "text" : "password"}
+                  value={form.apiKey}
+                />
+                <Button
+                  aria-label={apiKeyVisible ? "隐藏 API Key" : "显示 API Key"}
+                  className="absolute top-0 right-0"
+                  onClick={() => setApiKeyVisible((value) => !value)}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
                   {apiKeyVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </Button>
               </div>
@@ -254,7 +287,11 @@ export default function Page() {
             <Button onClick={() => setDialogOpen(false)} type="button" variant="outline">
               取消
             </Button>
-            <Button disabled={!form.provider.trim() || !form.model.trim() || !form.baseUrl.trim()} onClick={submitModel} type="button">
+            <Button
+              disabled={!form.provider.trim() || !form.model.trim() || !form.baseUrl.trim()}
+              onClick={submitModel}
+              type="button"
+            >
               {editingModel ? "保存" : "新增"}
             </Button>
           </DialogFooter>

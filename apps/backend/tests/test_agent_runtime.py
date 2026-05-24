@@ -26,9 +26,9 @@ class AgentRuntimeTest(unittest.TestCase):
                 db.execute(
                     """
                     INSERT INTO model_providers
-                      (id, provider, model, base_url, api_key_env, api_key_hash, api_key_mask, description, status, created_by)
+                      (id, provider, model, base_url, api_key, description, status, created_by)
                     VALUES
-                      ('mp-1', 'openai-compatible', 'gpt-selected', 'https://api.example.com/v1', 'TEST_OPENAI_API_KEY', '', '', '', 'enabled', 'u-admin')
+                      ('mp-1', 'openai-compatible', 'gpt-selected', 'https://api.example.com/v1', 'sk-test', '', 'enabled', 'u-admin')
                     """
                 )
                 db.execute(
@@ -53,9 +53,9 @@ class AgentRuntimeTest(unittest.TestCase):
                 db.execute(
                     """
                     INSERT INTO model_providers
-                      (id, provider, model, base_url, api_key_env, api_key_hash, api_key_mask, description, status, created_by)
+                      (id, provider, model, base_url, api_key, description, status, created_by)
                     VALUES
-                      ('mp-1', 'openai-compatible', 'gpt-selected', 'https://api.example.com/v1', 'TEST_OPENAI_API_KEY', '', 'sk****1234', '', 'enabled', 'u-admin')
+                      ('mp-1', 'openai-compatible', 'gpt-selected', 'https://api.example.com/v1', 'sk-test', '', 'enabled', 'u-admin')
                     """
                 )
                 db.execute(
@@ -76,8 +76,7 @@ class AgentRuntimeTest(unittest.TestCase):
         self.assertEqual(selection.model_provider_id, "mp-1")
         self.assertEqual(selection.provider, "openai-compatible")
         self.assertEqual(selection.base_url, "https://api.example.com/v1")
-        self.assertEqual(selection.api_key_env, "TEST_OPENAI_API_KEY")
-        self.assertEqual(selection.api_key_mask, "sk****1234")
+        self.assertEqual(selection.api_key, "sk-test")
         self.assertTrue(selection.using_assignment)
 
     def test_resolve_agent_model_keeps_default_when_assignment_is_disabled(self):
@@ -86,9 +85,9 @@ class AgentRuntimeTest(unittest.TestCase):
                 db.execute(
                     """
                     INSERT INTO model_providers
-                      (id, provider, model, base_url, api_key_env, api_key_hash, api_key_mask, description, status, created_by)
+                      (id, provider, model, base_url, api_key, description, status, created_by)
                     VALUES
-                      ('mp-1', 'openai-compatible', 'gpt-disabled', 'https://api.example.com/v1', 'TEST_OPENAI_API_KEY', '', '', '', 'disabled', 'u-admin')
+                      ('mp-1', 'openai-compatible', 'gpt-disabled', 'https://api.example.com/v1', 'sk-test', '', 'disabled', 'u-admin')
                     """
                 )
                 db.execute(
@@ -107,15 +106,15 @@ class AgentRuntimeTest(unittest.TestCase):
 
         self.assertEqual(model, "gpt-default")
 
-    def test_build_model_provider_requires_configured_api_key_env(self):
+    def test_build_model_provider_requires_api_key(self):
         with isolated_model_store():
             with connect() as db:
                 db.execute(
                     """
                     INSERT INTO model_providers
-                      (id, provider, model, base_url, api_key_env, api_key_hash, api_key_mask, description, status, created_by)
+                      (id, provider, model, base_url, api_key, description, status, created_by)
                     VALUES
-                      ('mp-1', 'openai-compatible', 'gpt-selected', 'https://api.example.com/v1', 'MISSING_OPENAI_API_KEY', '', '', '', 'enabled', 'u-admin')
+                      ('mp-1', 'openai-compatible', 'gpt-selected', 'https://api.example.com/v1', '', '', 'enabled', 'u-admin')
                     """
                 )
                 db.execute(
@@ -132,9 +131,78 @@ class AgentRuntimeTest(unittest.TestCase):
                 )
             )
 
-        with patch.dict("os.environ", {}, clear=True):
-            with self.assertRaisesRegex(ValueError, "MISSING_OPENAI_API_KEY"):
-                _build_model_provider(selection)
+        with self.assertRaisesRegex(ValueError, "未保存 API Key"):
+            _build_model_provider(selection)
+
+    def test_build_model_provider_treats_deepseek_as_openai_compatible(self):
+        with isolated_model_store():
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO model_providers
+                      (id, provider, model, base_url, api_key, description, status, created_by)
+                    VALUES
+                      ('mp-1', 'DeepSeek', 'deepseek-chat', 'https://api.deepseek.com', 'sk-test', '', 'enabled', 'u-admin')
+                    """
+                )
+                db.execute(
+                    "INSERT INTO agent_model_assignments (agent_id, model_provider_id) VALUES ('requirement_merge', 'mp-1')"
+                )
+
+            selection = resolve_agent_model_selection(
+                AgentDefinition(
+                    id="requirement_merge",
+                    name="需求归并智能体",
+                    description="",
+                    instructions="",
+                    model="gpt-default",
+                )
+            )
+
+        self.assertIsNotNone(_build_model_provider(selection))
+
+    def test_build_model_provider_uses_stored_plain_api_key(self):
+        with isolated_model_store():
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO model_providers
+                      (id, provider, model, base_url, api_key, description, status, created_by)
+                    VALUES
+                      ('mp-1', 'DeepSeek', 'deepseek-chat', 'https://api.deepseek.com', 'sk-plain', '', 'enabled', 'u-admin')
+                    """
+                )
+                db.execute(
+                    "INSERT INTO agent_model_assignments (agent_id, model_provider_id) VALUES ('requirement_merge', 'mp-1')"
+                )
+
+            selection = resolve_agent_model_selection(
+                AgentDefinition(
+                    id="requirement_merge",
+                    name="需求归并智能体",
+                    description="",
+                    instructions="",
+                    model="gpt-default",
+                )
+            )
+
+        self.assertEqual(selection.api_key, "sk-plain")
+        self.assertIsNotNone(_build_model_provider(selection))
+
+    def test_build_model_provider_requires_agent_model_assignment(self):
+        with isolated_model_store():
+            selection = resolve_agent_model_selection(
+                AgentDefinition(
+                    id="raw_requirement_format_converter",
+                    name="原始需求格式转换智能体",
+                    description="",
+                    instructions="",
+                    model="gpt-default",
+                )
+            )
+
+        with self.assertRaisesRegex(ValueError, "未分配可用模型配置"):
+            _build_model_provider(selection)
 
     def test_run_agent_passes_assigned_model_provider_to_runner(self):
         captured = {}
@@ -158,23 +226,21 @@ class AgentRuntimeTest(unittest.TestCase):
                 db.execute(
                     """
                     INSERT INTO model_providers
-                      (id, provider, model, base_url, api_key_env, api_key_hash, api_key_mask, description, status, created_by)
+                      (id, provider, model, base_url, api_key, description, status, created_by)
                     VALUES
-                      ('mp-1', 'openai-compatible', 'gpt-selected', 'https://api.example.com/v1', 'TEST_OPENAI_API_KEY', '', 'sk****1234', '', 'enabled', 'u-admin')
+                      ('mp-1', 'openai-compatible', 'gpt-selected', 'https://api.example.com/v1', 'sk-test', '', 'enabled', 'u-admin')
                     """
                 )
                 db.execute(
                     "INSERT INTO agent_model_assignments (agent_id, model_provider_id) VALUES ('raw_requirement_format_converter', 'mp-1')"
                 )
 
-            with patch.dict("os.environ", {"TEST_OPENAI_API_KEY": "sk-test"}):
-                with patch("app.agents.runtime.Runner.run", fake_run):
-                    result = asyncio.run(run_agent("raw_requirement_format_converter", "转换这个需求文件"))
+            with patch("app.agents.runtime.Runner.run", fake_run):
+                result = asyncio.run(run_agent("raw_requirement_format_converter", "转换这个需求文件"))
 
         self.assertEqual(result.output, "完成")
         self.assertEqual(result.model, "gpt-selected")
         self.assertEqual(result.model_provider_id, "mp-1")
-        self.assertEqual(result.api_key_env, "TEST_OPENAI_API_KEY")
         self.assertEqual(captured["agent_model"], "gpt-selected")
         self.assertEqual(captured["run_config_model"], "gpt-selected")
         self.assertIsNotNone(captured["model_provider"])
@@ -237,9 +303,7 @@ class isolated_model_store:
                   provider TEXT NOT NULL,
                   model TEXT NOT NULL,
                   base_url TEXT NOT NULL DEFAULT '',
-                  api_key_env TEXT NOT NULL DEFAULT '',
-                  api_key_hash TEXT NOT NULL DEFAULT '',
-                  api_key_mask TEXT NOT NULL DEFAULT '',
+                  api_key TEXT NOT NULL DEFAULT '',
                   description TEXT NOT NULL DEFAULT '',
                   status TEXT NOT NULL DEFAULT 'enabled',
                   created_by TEXT NOT NULL,

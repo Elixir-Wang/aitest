@@ -7,6 +7,8 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Check,
+  Download,
+  FileSearch,
   FileText,
   GitMerge,
   Loader2,
@@ -37,6 +39,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DynamicIslandTOC } from "@/components/ui/dynamic-island-toc";
 import FileUpload1 from "@/components/ui/file-upload-1";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -45,6 +48,11 @@ import { apiBlobRequest, apiRequest, formatDateTime } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 
 const STANDARD_FILE_SECTION_ID = "standard-file-section";
+const ORIGINAL_FILE_SECTION_ID = "original-file-section";
+const INITIAL_REQUIREMENT_SECTION_ID = "initial-requirement-section";
+const FINAL_REQUIREMENT_SECTION_ID = "final-requirement-section";
+const REQUIREMENT_DOCUMENT_TOC_SELECTOR =
+  '[data-state="active"] .requirement-document-preview h1, [data-state="active"] .requirement-document-preview h2, [data-state="active"] .requirement-document-preview h3, [data-state="active"] .requirement-document-preview h4, [data-state="active"] .requirement-document-preview [data-toc], [data-state="active"] .requirement-artifact-preview h1, [data-state="active"] .requirement-artifact-preview h2, [data-state="active"] .requirement-artifact-preview h3, [data-state="active"] .requirement-artifact-preview h4, [data-state="active"] .requirement-artifact-preview [data-toc]';
 
 type RequirementConflict = {
   id: string;
@@ -88,6 +96,7 @@ type RequirementOverviewResponse = {
   files: SourceFile[];
   has_open_conflicts: boolean;
   initial_markdown_content: string;
+  artifact_tabs: MergeArtifactTab[];
 };
 
 type OriginalPreview = {
@@ -104,6 +113,89 @@ type StandardPreview = {
   conversionSummary: string;
 };
 
+type MergePreview = {
+  previewId: string;
+  markdownContent: string;
+  mergeSummary: string;
+  canConfirm: boolean;
+  qualityResult?: "passed" | "warning" | "failed";
+  artifactTabs: MergeArtifactTab[];
+};
+
+type MergeArtifactTab = {
+  key: "preview" | "mapping" | "conflicts" | "report";
+  label: string;
+  path: string;
+  content: string;
+};
+
+type RequirementAnalysisQuestion = {
+  id: string;
+  module_key: string;
+  module_name: string;
+  question: string;
+  reason: string;
+  impact: string;
+  dimension: string;
+  severity: "blocker" | "major" | "minor";
+  source_excerpt: string;
+};
+
+type RequirementAnalysisResult = {
+  id: string;
+  document_id: string;
+  version_id: string;
+  status: "completed" | "needs_clarification" | "blocked";
+  analysis_summary: string;
+  quality_result: "passed" | "warning" | "blocked";
+  testability_score: number;
+  created_by: string;
+  created_at: string;
+  output: {
+    status: "completed" | "needs_clarification" | "blocked";
+    analysis_summary: string;
+    modules: Array<{
+      module_key: string;
+      module_name: string;
+      summary: string;
+      business_objects: string[];
+      capabilities: string[];
+      rules: string[];
+      fields: string[];
+      state_flows: string[];
+      dependencies: string[];
+      risks: string[];
+    }>;
+    clarification_questions: RequirementAnalysisQuestion[];
+    coverage_audit: Array<{
+      module_key: string;
+      module_name: string;
+      source_excerpt: string;
+      analysis_status: string;
+      reason: string;
+    }>;
+    quality_gate: {
+      result: "passed" | "warning" | "blocked";
+      testability_score: number;
+      blocking_issues: string[];
+      warning_issues: string[];
+      passed_checks: string[];
+    };
+    next_actions: string[];
+  };
+};
+
+function fallbackMergeArtifactTabs(previewId: string, content: string): MergeArtifactTab[] {
+  return [
+    {
+      key: "preview",
+      label: "合并候选稿",
+      path: `previews/${previewId}.md`,
+      content,
+    },
+  ];
+}
+
 type MergeResponse =
   | {
       status: "merged";
@@ -112,11 +204,21 @@ type MergeResponse =
       markdown_content: string;
       merge_summary: string;
       source_file_ids: string[];
+      quality_result?: "passed" | "warning" | "failed";
+      artifact_tabs?: MergeArtifactTab[];
     }
   | {
-      status: "conflict";
-      conflict_count: number;
-      conflicts: RequirementConflict[];
+      status: "preview";
+      preview_id: string;
+      markdown_preview: string;
+      merge_summary: string;
+      diff_summary: string;
+      affected_modules: string[];
+      source_file_ids: string[];
+      quality_result?: "passed" | "warning" | "failed";
+      artifact_tabs?: MergeArtifactTab[];
+      conflict_count?: number;
+      conflicts?: RequirementConflict[];
     };
 
 const conversionLabels: Record<string, string> = {
@@ -163,7 +265,14 @@ export default function DocumentDetailPage() {
   const [markdownDraft, setMarkdownDraft] = useState("");
   const [editingStandard, setEditingStandard] = useState(false);
   const [savingStandard, setSavingStandard] = useState(false);
+  const [initialMarkdownDraft, setInitialMarkdownDraft] = useState("");
+  const [editingInitial, setEditingInitial] = useState(false);
+  const [savingInitial, setSavingInitial] = useState(false);
   const [merging, setMerging] = useState(false);
+  const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
+  const [mergeArtifactTab, setMergeArtifactTab] = useState("preview");
+  const [analysisResult, setAnalysisResult] = useState<RequirementAnalysisResult | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
   const [conflicts, setConflicts] = useState<RequirementConflict[]>([]);
   const [conflictDrafts, setConflictDrafts] = useState<Record<string, string>>({});
   const token = useAuthStore((state) => state.token);
@@ -201,20 +310,37 @@ export default function DocumentDetailPage() {
   );
   const canEditStandard = Boolean(standardPreview) && !standardLoading && standardError.length === 0;
   const showConflictTab = Boolean(overview?.has_open_conflicts || conflicts.length > 0);
+  const initialArtifactTabs = mergePreview?.artifactTabs?.length
+    ? mergePreview.artifactTabs
+    : (overview?.artifact_tabs ?? []);
+  const initialMarkdownContent =
+    initialArtifactTabs.find((artifact) => artifact.key === "preview")?.content ??
+    overview?.initial_markdown_content ??
+    "";
+  const hasRunningConversions = Boolean(
+    overview?.files.some((file) => ["pending", "processing"].includes(file.conversion_status)),
+  );
+
+  const updateConflicts = useCallback((nextConflicts: unknown) => {
+    const normalizedConflicts: RequirementConflict[] = Array.isArray(nextConflicts) ? nextConflicts : [];
+    setConflicts(normalizedConflicts as RequirementConflict[]);
+    setConflictDrafts(
+      Object.fromEntries(
+        normalizedConflicts.map((conflict) => [conflict.id, conflict.resolution || conflict.fragment_a]),
+      ),
+    );
+  }, []);
 
   const loadConflicts = useCallback(async () => {
     try {
       const data = await apiRequest<RequirementConflict[]>(
         `/projects/${projectId}/requirements/${documentId}/conflicts`,
       );
-      setConflicts(data);
-      setConflictDrafts(
-        Object.fromEntries(data.map((conflict) => [conflict.id, conflict.resolution || conflict.fragment_a])),
-      );
+      updateConflicts(data);
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "冲突列表加载失败");
     }
-  }, [documentId, projectId]);
+  }, [documentId, projectId, updateConflicts]);
 
   const loadOverview = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
@@ -232,8 +358,7 @@ export default function DocumentDetailPage() {
         if (data.has_open_conflicts) {
           void loadConflicts();
         } else {
-          setConflicts([]);
-          setConflictDrafts({});
+          updateConflicts([]);
         }
         return data;
       } catch (requestError) {
@@ -245,7 +370,7 @@ export default function DocumentDetailPage() {
         }
       }
     },
-    [documentId, loadConflicts, projectId, setFileRows],
+    [documentId, loadConflicts, projectId, setFileRows, updateConflicts],
   );
 
   const loadReadableOriginalPreview = useCallback(async (file: SourceFile) => {
@@ -314,7 +439,7 @@ export default function DocumentDetailPage() {
 
   useEffect(() => {
     const queryTab = searchParams.get("tab");
-    if (queryTab && ["overview", "original", "standard", "initial", "conflicts"].includes(queryTab)) {
+    if (queryTab && ["overview", "original", "standard", "initial", "final", "conflicts"].includes(queryTab)) {
       setActiveTab(queryTab);
     }
     void loadOverview();
@@ -332,6 +457,33 @@ export default function DocumentDetailPage() {
       void loadStandardPreview(selectedFile);
     }
   }, [activeTab, loadReadableOriginalPreview, loadStandardPreview, selectedFile]);
+
+  useEffect(() => {
+    if (activeTab !== "initial") {
+      setEditingInitial(false);
+      return;
+    }
+    setInitialMarkdownDraft(initialMarkdownContent);
+  }, [activeTab, initialMarkdownContent]);
+
+  useEffect(() => {
+    if (!initialArtifactTabs.length) {
+      return;
+    }
+    if (!initialArtifactTabs.some((artifact) => artifact.key === mergeArtifactTab)) {
+      setMergeArtifactTab(initialArtifactTabs[0].key);
+    }
+  }, [initialArtifactTabs, mergeArtifactTab]);
+
+  useEffect(() => {
+    if (!hasRunningConversions) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void loadOverview({ silent: true });
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [hasRunningConversions, loadOverview]);
 
   useEffect(() => {
     return () => {
@@ -375,6 +527,54 @@ export default function DocumentDetailPage() {
     }
   }
 
+  async function saveInitialRequirement() {
+    if (!overview) {
+      return;
+    }
+    setSavingInitial(true);
+    try {
+      const detail = await apiRequest<{ document?: { name?: string }; initial_markdown_content?: string }>(
+        `/projects/${projectId}/requirements/${documentId}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            name: overview.document.name,
+            markdown_content: initialMarkdownDraft,
+            change_summary: "人工编辑初始需求",
+          }),
+        },
+      );
+      const nextContent = detail.initial_markdown_content ?? initialMarkdownDraft;
+      setMergePreview(null);
+      setInitialMarkdownDraft(nextContent);
+      setEditingInitial(false);
+      toast.success("初始需求已保存为新版本");
+      await loadOverview({ silent: true });
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "初始需求保存失败");
+    } finally {
+      setSavingInitial(false);
+    }
+  }
+
+  async function runRequirementAnalysis() {
+    setAnalysisLoading(true);
+    try {
+      const result = await apiRequest<RequirementAnalysisResult>(
+        `/projects/${projectId}/requirements/${documentId}/analysis`,
+        {
+          method: "POST",
+        },
+      );
+      setAnalysisResult(result);
+      toast.success("需求分析已完成");
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "需求分析失败");
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }
+
   async function mergeRequirement() {
     setMerging(true);
     try {
@@ -382,21 +582,82 @@ export default function DocumentDetailPage() {
         method: "POST",
       });
       if (result.status === "merged") {
+        setMergePreview({
+          previewId: result.version_id,
+          markdownContent: result.markdown_content,
+          mergeSummary: result.merge_summary,
+          canConfirm: false,
+          qualityResult: result.quality_result,
+          artifactTabs:
+            result.artifact_tabs && result.artifact_tabs.length > 0
+              ? result.artifact_tabs
+              : fallbackMergeArtifactTabs(result.version_id, result.markdown_content),
+        });
+        setMergeArtifactTab("preview");
         toast.success("初始需求已生成");
         await loadOverview({ silent: true });
         setActiveTab("initial");
         return;
       }
-      setConflicts(result.conflicts);
-      setConflictDrafts(
-        Object.fromEntries(
-          result.conflicts.map((conflict) => [conflict.id, conflict.resolution || conflict.fragment_a]),
-        ),
-      );
-      await loadOverview({ silent: true });
-      setActiveTab("conflicts");
+      if (result.status === "preview") {
+        setMergePreview({
+          previewId: result.preview_id,
+          markdownContent: result.markdown_preview,
+          mergeSummary: result.merge_summary,
+          canConfirm: true,
+          qualityResult: result.quality_result,
+          artifactTabs:
+            result.artifact_tabs && result.artifact_tabs.length > 0
+              ? result.artifact_tabs
+              : fallbackMergeArtifactTabs(result.preview_id, result.markdown_preview),
+        });
+        setMergeArtifactTab("preview");
+        updateConflicts(result.conflicts ?? []);
+        toast.success("已生成归并产物，请查看质量报告后确认");
+        await loadOverview({ silent: true });
+        setActiveTab("initial");
+        return;
+      }
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "需求合并失败");
+    } finally {
+      setMerging(false);
+    }
+  }
+
+  async function confirmMergePreview() {
+    if (!mergePreview) {
+      return;
+    }
+    setMerging(true);
+    try {
+      const result = await apiRequest<MergeResponse>(`/projects/${projectId}/requirements/${documentId}/merge`, {
+        method: "POST",
+        body: JSON.stringify({ confirm_preview_id: mergePreview.previewId }),
+      });
+      if (result.status !== "merged") {
+        toast.error("归并预览确认失败，请重新发起合并");
+        return;
+      }
+      setMergePreview((current) =>
+        current
+          ? {
+              ...current,
+              previewId: result.version_id,
+              markdownContent: result.markdown_content,
+              mergeSummary: result.merge_summary,
+              canConfirm: false,
+              qualityResult: result.quality_result ?? current.qualityResult,
+              artifactTabs:
+                result.artifact_tabs && result.artifact_tabs.length > 0 ? result.artifact_tabs : current.artifactTabs,
+            }
+          : null,
+      );
+      toast.success("增量需求已写入新版本");
+      await loadOverview({ silent: true });
+      setActiveTab("initial");
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "归并预览确认失败");
     } finally {
       setMerging(false);
     }
@@ -412,6 +673,39 @@ export default function DocumentDetailPage() {
       await loadOverview({ silent: true });
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "原始文件删除失败");
+    }
+  }
+
+  function downloadOriginalPreview() {
+    if (!originalPreview) {
+      return;
+    }
+    const filename = originalPreview.title || selectedFile?.original_filename || "原始文件";
+    let href = originalPreview.objectUrl;
+    let shouldRevoke = false;
+
+    if (originalPreview.contentType === "text") {
+      const blob = new Blob([originalPreview.content], {
+        type: "text/plain;charset=utf-8",
+      });
+      href = URL.createObjectURL(blob);
+      shouldRevoke = true;
+    }
+
+    if (!href) {
+      toast.error("当前文件尚未加载完成，无法下载");
+      return;
+    }
+
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    if (shouldRevoke) {
+      URL.revokeObjectURL(href);
     }
   }
 
@@ -484,7 +778,7 @@ export default function DocumentDetailPage() {
             uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress: 100, status: "completed" as const }]),
           ),
         );
-        toast.success("文件已上传，正在刷新列表");
+        toast.success("文件已上传，正在后台生成标准文件");
         setUploadDialogOpen(false);
         await loadOverview({ silent: true });
       })
@@ -546,18 +840,45 @@ export default function DocumentDetailPage() {
     );
   }
 
+  const showRequirementToc =
+    (activeTab === "standard" && !editingStandard && Boolean(standardPreview?.markdownContent.trim())) ||
+    (activeTab === "initial" && !editingInitial && Boolean(initialMarkdownContent.trim())) ||
+    (activeTab === "final" && Boolean(overview.initial_markdown_content.trim()));
+  const requirementTocRefreshKey = [
+    activeTab,
+    selectedFile?.id ?? "",
+    mergeArtifactTab,
+    standardPreview?.markdownContent.length ?? 0,
+    initialMarkdownContent.length,
+    overview.initial_markdown_content.length,
+  ].join(":");
+  const requirementTocAnchorSelector =
+    activeTab === "standard"
+      ? `#${STANDARD_FILE_SECTION_ID} .requirement-document-preview`
+      : activeTab === "initial"
+        ? `#${INITIAL_REQUIREMENT_SECTION_ID} [data-state="active"] .requirement-document-preview, #${INITIAL_REQUIREMENT_SECTION_ID} [data-state="active"] .requirement-artifact-preview`
+        : `#${FINAL_REQUIREMENT_SECTION_ID} .requirement-document-preview`;
+
   return (
     <PageShell
       breadcrumbs={["项目", "需求", overview.document.name]}
       description="查看原始文件、标准文件、合并冲突和初始需求。"
       title="需求概览"
     >
+      {showRequirementToc ? (
+        <DynamicIslandTOC
+          anchorSelector={requirementTocAnchorSelector}
+          refreshKey={requirementTocRefreshKey}
+          selector={REQUIREMENT_DOCUMENT_TOC_SELECTOR}
+        />
+      ) : null}
       <Tabs className="space-y-4" onValueChange={setActiveTab} value={activeTab}>
         <TabsList>
           <TabsTrigger value="overview">概览</TabsTrigger>
           <TabsTrigger value="original">原始文件</TabsTrigger>
           <TabsTrigger value="standard">标准文件</TabsTrigger>
           <TabsTrigger value="initial">初始需求</TabsTrigger>
+          <TabsTrigger value="final">最终需求</TabsTrigger>
           {showConflictTab ? <TabsTrigger value="conflicts">冲突处理</TabsTrigger> : null}
         </TabsList>
 
@@ -625,11 +946,16 @@ export default function DocumentDetailPage() {
                       <TableCell>{file.file_format.toUpperCase()}</TableCell>
                       <TableCell>{formatDateTime(file.created_at)}</TableCell>
                       <TableCell>
-                        <StatusBadge status={file.conversion_status} statusLabels={conversionLabels} />
+                        <StatusBadge
+                          loading={["pending", "processing"].includes(file.conversion_status)}
+                          status={file.conversion_status}
+                          statusLabels={conversionLabels}
+                        />
                       </TableCell>
                       <TableCell>
                         <Button
                           className="h-auto px-0"
+                          disabled={!["success", "warning", "failed"].includes(file.conversion_status)}
                           onClick={() => selectFileForTab(file.id, "standard")}
                           type="button"
                           variant="link"
@@ -663,6 +989,7 @@ export default function DocumentDetailPage() {
                               label: "查看标准文件",
                               icon: FileText,
                               onSelect: () => selectFileForTab(file.id, "standard"),
+                              disabled: !["success", "warning", "failed"].includes(file.conversion_status),
                             },
                             {
                               label: "删除",
@@ -733,7 +1060,7 @@ export default function DocumentDetailPage() {
         </TabsContent>
 
         <TabsContent value="original">
-          <ShellSection>
+          <ShellSection id={ORIGINAL_FILE_SECTION_ID}>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="font-medium text-sm">原始文件预览</h2>
@@ -751,6 +1078,20 @@ export default function DocumentDetailPage() {
             ) : (
               <OriginalFilePreview preview={originalPreview} selectedFilename={selectedFile?.original_filename} />
             )}
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2 border-t pt-4">
+              <Button
+                onClick={() => document.getElementById(ORIGINAL_FILE_SECTION_ID)?.scrollIntoView()}
+                type="button"
+                variant="outline"
+              >
+                <ArrowLeft className="size-4 rotate-90" />
+                返回顶部
+              </Button>
+              <Button disabled={!originalPreview} onClick={downloadOriginalPreview} type="button" variant="outline">
+                <Download className="size-4" />
+                下载文件
+              </Button>
+            </div>
           </ShellSection>
         </TabsContent>
 
@@ -843,12 +1184,204 @@ export default function DocumentDetailPage() {
         </TabsContent>
 
         <TabsContent value="initial">
-          <MarkdownPreview
-            className="requirement-document-preview"
-            content={overview.initial_markdown_content}
-            emptyText="尚未生成初始需求，请先在标准文件中发起合并。"
-            indentParagraphs
-          />
+          <ShellSection id={INITIAL_REQUIREMENT_SECTION_ID}>
+            {mergePreview && !editingInitial ? (
+              <div className="mb-4 rounded-lg border bg-muted/20 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="font-medium text-sm">归并产物</h2>
+                    <p className="mt-1 text-muted-foreground text-xs">
+                      {mergePreview.mergeSummary || "请确认预览内容后写入版本。"}
+                    </p>
+                    {mergePreview.qualityResult ? (
+                      <div className="mt-2">
+                        <Badge variant={mergePreview.qualityResult === "failed" ? "destructive" : "secondary"}>
+                          质量结果：{mergePreview.qualityResult}
+                        </Badge>
+                      </div>
+                    ) : null}
+                  </div>
+                  {mergePreview.canConfirm ? (
+                    <Button
+                      disabled={merging || mergePreview.qualityResult === "failed"}
+                      onClick={confirmMergePreview}
+                      type="button"
+                    >
+                      <Check className="size-4" />
+                      {merging ? "确认中" : "确认写入版本"}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            {editingInitial ? (
+              <Textarea
+                className="min-h-[560px] font-mono text-sm"
+                onChange={(event) => setInitialMarkdownDraft(event.target.value)}
+                value={initialMarkdownDraft}
+              />
+            ) : initialArtifactTabs.length ? (
+              <Tabs className="space-y-4" onValueChange={setMergeArtifactTab} value={mergeArtifactTab}>
+                <TabsList>
+                  {initialArtifactTabs.map((artifact) => (
+                    <TabsTrigger key={artifact.key} value={artifact.key}>
+                      {artifact.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+                {initialArtifactTabs.map((artifact) => (
+                  <TabsContent key={artifact.key} value={artifact.key}>
+                    <MarkdownPreview
+                      className={
+                        artifact.key === "preview" ? "requirement-document-preview" : "requirement-artifact-preview"
+                      }
+                      content={artifact.content}
+                      emptyText="该归并产物暂无内容。"
+                      indentParagraphs={artifact.key === "preview"}
+                    />
+                  </TabsContent>
+                ))}
+              </Tabs>
+            ) : (
+              <MarkdownPreview
+                className="requirement-document-preview"
+                content={overview.initial_markdown_content}
+                emptyText="尚未生成初始需求，请先在标准文件中发起合并。"
+                indentParagraphs
+              />
+            )}
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2 border-t pt-4">
+              <Button
+                onClick={() => document.getElementById(INITIAL_REQUIREMENT_SECTION_ID)?.scrollIntoView()}
+                type="button"
+                variant="outline"
+              >
+                <ArrowLeft className="size-4 rotate-90" />
+                返回顶部
+              </Button>
+              {editingInitial ? (
+                <>
+                  <Button disabled={savingInitial} onClick={saveInitialRequirement} type="button">
+                    {savingInitial ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                    {savingInitial ? "保存中" : "保存"}
+                  </Button>
+                  <Button
+                    disabled={savingInitial}
+                    onClick={() => {
+                      setInitialMarkdownDraft(initialMarkdownContent);
+                      setEditingInitial(false);
+                    }}
+                    type="button"
+                    variant="outline"
+                  >
+                    <X className="size-4" />
+                    取消
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    disabled={!initialMarkdownContent.trim()}
+                    onClick={() => {
+                      setInitialMarkdownDraft(initialMarkdownContent);
+                      setEditingInitial(true);
+                    }}
+                    type="button"
+                    variant="outline"
+                  >
+                    <Pencil className="size-4" />
+                    编辑
+                  </Button>
+                  <Button
+                    disabled={!initialMarkdownContent.trim()}
+                    onClick={runRequirementAnalysis}
+                    type="button"
+                    variant="outline"
+                  >
+                    {analysisLoading ? <Loader2 className="size-4 animate-spin" /> : <FileSearch className="size-4" />}
+                    {analysisLoading ? "分析中" : "需求分析"}
+                  </Button>
+                </>
+              )}
+            </div>
+          </ShellSection>
+        </TabsContent>
+
+        <TabsContent value="final">
+          <ShellSection id={FINAL_REQUIREMENT_SECTION_ID}>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-medium text-sm">最终需求</h2>
+                <p className="mt-1 text-muted-foreground text-xs">当前已生效的需求版本内容。</p>
+              </div>
+              <Button
+                onClick={() => document.getElementById(FINAL_REQUIREMENT_SECTION_ID)?.scrollIntoView()}
+                type="button"
+                variant="outline"
+              >
+                <ArrowLeft className="size-4 rotate-90" />
+                返回顶部
+              </Button>
+            </div>
+            <MarkdownPreview
+              className="requirement-document-preview"
+              content={overview.initial_markdown_content}
+              emptyText="尚未生成最终需求，请先完成初始需求归并并确认写入版本。"
+              indentParagraphs
+            />
+            <div className="mt-6 rounded-lg border bg-muted/20 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-medium text-sm">最近一次需求分析</h3>
+                  <p className="mt-1 text-muted-foreground text-xs">
+                    {analysisResult
+                      ? `状态：${analysisResult.status} · 可测试性：${analysisResult.testability_score}`
+                      : "尚未执行需求分析。"}
+                  </p>
+                </div>
+                <Button
+                  disabled={!overview.initial_markdown_content.trim()}
+                  onClick={runRequirementAnalysis}
+                  type="button"
+                  variant="outline"
+                >
+                  {analysisLoading ? <Loader2 className="size-4 animate-spin" /> : <FileSearch className="size-4" />}
+                  {analysisLoading ? "分析中" : "重新分析"}
+                </Button>
+              </div>
+              {analysisResult ? (
+                <div className="mt-4 space-y-4">
+                  <div className="text-sm">{analysisResult.analysis_summary}</div>
+                  {analysisResult.output.clarification_questions.length ? (
+                    <div className="space-y-2">
+                      <div className="font-medium text-xs">澄清问题</div>
+                      <ul className="space-y-2 text-sm">
+                        {analysisResult.output.clarification_questions.map((question) => (
+                          <li className="rounded-md border bg-background p-3" key={question.id}>
+                            <div className="font-medium">
+                              [{question.severity}] {question.module_name}
+                            </div>
+                            <div className="mt-1">{question.question}</div>
+                            <div className="mt-1 text-muted-foreground text-xs">{question.reason}</div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {analysisResult.output.quality_gate.blocking_issues.length ? (
+                    <div className="space-y-2">
+                      <div className="font-medium text-xs">阻塞项</div>
+                      <ul className="list-disc space-y-1 pl-5 text-sm">
+                        {analysisResult.output.quality_gate.blocking_issues.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </ShellSection>
         </TabsContent>
 
         {showConflictTab ? (
@@ -910,8 +1443,21 @@ function SummaryMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StatusBadge({ status, statusLabels }: { status: string; statusLabels: Record<string, string> }) {
-  return <Badge variant={status === "failed" ? "destructive" : "secondary"}>{statusLabels[status] ?? status}</Badge>;
+function StatusBadge({
+  loading = false,
+  status,
+  statusLabels,
+}: {
+  loading?: boolean;
+  status: string;
+  statusLabels: Record<string, string>;
+}) {
+  return (
+    <Badge className="gap-1.5" variant={status === "failed" ? "destructive" : "secondary"}>
+      {loading ? <Loader2 className="size-3 animate-spin" /> : null}
+      {statusLabels[status] ?? status}
+    </Badge>
+  );
 }
 
 function StandardFileState({

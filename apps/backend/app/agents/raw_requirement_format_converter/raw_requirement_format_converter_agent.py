@@ -12,6 +12,6 @@ agent_definition = AgentDefinition(
         "你的职责是把上传的 Word、PDF、TXT、Markdown 等原始需求文件转换成结构稳定的 Markdown 标准文件。"
         "你只负责高保真格式转换、质量检查和无法识别项提示，不生成业务结论。"
     ),
-    skill_ids=("pdf_to_markdown", "docx_to_markdown"),
+    skill_ids=("pdf_to_markdown", "docx_to_markdown", "markdown_normalize"),
     sort_order=10,
 )

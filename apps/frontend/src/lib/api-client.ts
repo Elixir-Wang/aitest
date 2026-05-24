@@ -32,7 +32,7 @@ export type ApiModelProvider = {
   provider: string;
   model: string;
   base_url: string;
-  api_key_mask: string;
+  api_key: string;
   description: string;
   status: ApiStatus;
   created_by: string;
@@ -49,7 +49,7 @@ export type ApiAgentModelAssignment = {
   provider: string | null;
   model: string | null;
   base_url: string | null;
-  api_key_mask: string | null;
+  api_key: string | null;
   model_status: ApiStatus | null;
   updated_at: string | null;
 };

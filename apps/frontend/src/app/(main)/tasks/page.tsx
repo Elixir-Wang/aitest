@@ -1,35 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { AlertTriangle, CheckCircle2, Clock3, Eye, ListTodo } from "lucide-react";
+import { useRouter } from "next/navigation";
+
+import { AlertTriangle, CheckCircle2, Clock3, Eye, ListTodo, Radar } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useProjectContextStore } from "@/stores/project-context-store";
 
 const tasks: Array<{ id: string; project: string; name: string; status: string; updated: string }> = [];
 
 export default function Page() {
-  const {
-    allSelected,
-    deleteSelected,
-    partiallySelected,
-    rows,
-    selectedCount,
-    selectedIds,
-    toggleAll,
-    toggleOne,
-  } = useLocalTableSelection(tasks);
+  const router = useRouter();
+  const { currentProjectId, hydrate, scope } = useProjectContextStore();
+  const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
+    useLocalTableSelection(tasks);
   const [searchText, setSearchText] = useState("");
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
 
   const filteredRows = rows.filter((task) =>
     [task.project, task.name, task.status, task.updated].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
     ),
   );
+
+  function openExplorationTaskCreate() {
+    if (scope === "project" && currentProjectId) {
+      router.push(`/projects/${currentProjectId}/exploration?create=exploration`);
+      return;
+    }
+
+    router.push("/projects");
+  }
 
   return (
     <PageShell
@@ -47,8 +57,9 @@ export default function Page() {
       </div>
       <ShellSection>
         <ListToolbar
-          createLabel="新建任务"
+          createLabel="新建探索任务"
           onBatchDelete={deleteSelected}
+          onCreate={openExplorationTaskCreate}
           onSearch={setSearchText}
           placeholder="搜索任务种类、模块或项目"
           selectedCount={selectedCount}
@@ -95,7 +106,20 @@ export default function Page() {
                   </TableCell>
                   <TableCell>{task.updated}</TableCell>
                   <TableCell>
-                    <RowActions actions={[{ label: "查看", href: "/tasks", icon: Eye }]} label="打开操作菜单" />
+                    <RowActions
+                      actions={[
+                        { label: "查看", href: "/tasks", icon: Eye },
+                        {
+                          label: "新建探索任务",
+                          href:
+                            scope === "project" && currentProjectId
+                              ? `/projects/${currentProjectId}/exploration?create=exploration`
+                              : "/projects",
+                          icon: Radar,
+                        },
+                      ]}
+                      label="打开操作菜单"
+                    />
                   </TableCell>
                 </TableRow>
               ))}

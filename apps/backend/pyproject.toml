@@ -12,6 +12,7 @@ dependencies = [
     "openai-agents==0.17.3",
     "pydantic==2.12.5",
     "pymupdf==1.26.7",
+    "pytest>=9.0.1",
     "python-docx==1.2.0",
     "python-multipart==0.0.20",
     "uvicorn[standard]==0.38.0",

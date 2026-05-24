@@ -6,8 +6,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.core.db import connect
+from app.core.storage import resolve_stored_path
 from app.repositories import document_repo
 from app.schemas.document import SourceDocumentUpdateIn
+from app.schemas.requirement_analysis import RequirementAnalysisOutput, RequirementQualityGate
+from app.schemas.requirement_conversion import RequirementConversionOutput
+from app.schemas.requirement_merge import RequirementCoverageItem, RequirementMergeConflictOut, RequirementMergeOutput
 from app.services import document_service
 from fastapi import HTTPException
 
@@ -18,7 +22,25 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             with connect() as db:
                 rows = db.execute("PRAGMA table_info(source_document_merge_conflicts)").fetchall()
 
-        self.assertIn("resolution", {row["name"] for row in rows})
+        columns = {row["name"] for row in rows}
+        self.assertIn("resolution", columns)
+        self.assertIn("conflict_type", columns)
+        self.assertIn("agent_suggestion", columns)
+
+    def test_merge_support_tables_exist_in_isolated_store(self):
+        with isolated_document_store():
+            with connect() as db:
+                merge_run_columns = {row["name"] for row in db.execute("PRAGMA table_info(requirement_merge_runs)").fetchall()}
+                coverage_columns = {row["name"] for row in db.execute("PRAGMA table_info(requirement_source_coverage_items)").fetchall()}
+                change_log_columns = {row["name"] for row in db.execute("PRAGMA table_info(document_version_change_logs)").fetchall()}
+                analysis_columns = {row["name"] for row in db.execute("PRAGMA table_info(requirement_analyses)").fetchall()}
+
+        self.assertIn("merge_mode", merge_run_columns)
+        self.assertIn("affected_modules", merge_run_columns)
+        self.assertIn("coverage_status", coverage_columns)
+        self.assertIn("version_id", change_log_columns)
+        self.assertIn("quality_result", analysis_columns)
+        self.assertIn("testability_score", analysis_columns)
 
     async def test_upload_new_requirement_creates_one_document_with_multiple_pending_files(self):
         with isolated_document_store() as actor:
@@ -41,31 +63,118 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["document"]["status"], "pending_merge")
             self.assertEqual(len(result["files"]), 2)
             self.assertEqual({item["mapping_status"] for item in result["files"]}, {"pending_merge"})
-            self.assertEqual({item["conversion_status"] for item in result["files"]}, {"success"})
+            self.assertEqual({item["conversion_status"] for item in result["files"]}, {"pending"})
             self.assertEqual(document_service.get_document_versions(result["document"]["id"]), [])
+
+    async def test_convert_source_file_mapping_uses_format_converter_agent_result(self):
+        with isolated_document_store() as actor:
+            async def fake_agent_conversion(input_data):
+                self.assertEqual(input_data.filename, "登录需求.md")
+                self.assertEqual(input_data.candidate_markdown, "# 登录需求\n")
+                return RequirementConversionOutput(
+                    markdown_content="# 智能体标准化需求\n",
+                    conversion_summary="智能体完成标准化。",
+                    quality_score=98,
+                )
+
+            with patch(
+                "app.services.document_file_service.convert_raw_requirement_format",
+                fake_agent_conversion,
+            ):
+                result = await document_service.upload_documents(
+                    "project-1",
+                    [make_upload_file("登录需求.md", "# 登录需求".encode("utf-8"))],
+                    actor,
+                    mode="new",
+                    document_name="登录需求",
+                )
+
+                file = await document_service.convert_source_file_mapping(result["files"][0]["id"])
+
+            self.assertEqual(Path(file["markdown_file_path"]).read_text(encoding="utf-8"), "# 智能体标准化需求\n")
+            self.assertEqual(file["conversion_summary"], "智能体完成标准化。")
+
+    async def test_convert_source_file_mapping_falls_back_when_format_converter_agent_fails(self):
+        with isolated_document_store() as actor:
+            async def fake_agent_conversion(_input_data):
+                raise RuntimeError("模型未配置")
+
+            with patch(
+                "app.services.document_file_service.convert_raw_requirement_format",
+                fake_agent_conversion,
+            ):
+                result = await document_service.upload_documents(
+                    "project-1",
+                    [make_upload_file("登录需求.md", "# 登录需求".encode("utf-8"))],
+                    actor,
+                    mode="new",
+                    document_name="登录需求",
+                )
+
+                file = await document_service.convert_source_file_mapping(result["files"][0]["id"])
+
+            self.assertEqual(file["conversion_status"], "success")
+            self.assertEqual(Path(file["markdown_file_path"]).read_text(encoding="utf-8"), "# 登录需求\n")
+            self.assertIn("智能体不可用，已使用本地转换结果", file["conversion_summary"])
 
     async def test_upload_docx_keeps_original_file_and_creates_markdown(self):
         with isolated_document_store() as actor:
-            with patch(
-                "app.services.document_service._convert_to_markdown",
-                return_value=("# DOCX Markdown", "DOCX 转 Markdown"),
-            ) as convert_markdown:
-                result = await document_service.upload_documents(
-                    "project-1",
-                    [make_upload_file("原始需求.docx", b"docx-bytes")],
-                    actor,
-                    mode="new",
-                    document_name="原始需求",
-                )
+            result = await document_service.upload_documents(
+                "project-1",
+                [make_upload_file("原始需求.docx", b"docx-bytes")],
+                actor,
+                mode="new",
+                document_name="原始需求",
+            )
 
             file = result["files"][0]
-            self.assertEqual(file["conversion_status"], "success")
-            self.assertTrue(file["markdown_file_path"].endswith(".md"))
+            self.assertEqual(file["conversion_status"], "pending")
+            self.assertIsNone(file["markdown_file_path"])
+            self.assertIn("/raw/", file["source_file_path"])
             self.assertIsNone(file["preview_file_path"])
             self.assertEqual(Path(file["source_file_path"]).read_bytes(), b"docx-bytes")
-            self.assertEqual(Path(file["markdown_file_path"]).read_text(encoding="utf-8"), "# DOCX Markdown")
-            convert_markdown.assert_called_once()
-            self.assertEqual(convert_markdown.call_args.args[0], "原始需求.docx")
+            with connect() as db:
+                row = document_repo.find_file_mapping(db, file["id"])
+            self.assertFalse(Path(row["source_file_path"]).is_absolute())
+            self.assertIsNone(row["markdown_file_path"])
+
+    def test_resolves_legacy_windows_storage_path(self):
+        with isolated_document_store():
+            source_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "raw" / "legacy.docx"
+            markdown_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "markdown" / "conversions" / "legacy.md"
+            source_path.parent.mkdir(parents=True)
+            markdown_path.parent.mkdir(parents=True)
+            source_path.write_bytes(b"legacy-docx")
+            markdown_path.write_text("# Legacy Markdown", encoding="utf-8")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '旧路径需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+                document_repo.create_file_mapping(
+                    db,
+                    mapping_id="docmap-legacy",
+                    document_id="doc-1",
+                    version_id=None,
+                    source_file_path="D:\\project\\test_project\\apps\\backend\\data\\projects\\project-1\\requirements\\doc-1\\raw\\legacy.docx",
+                    original_filename="legacy.docx",
+                    file_format="docx",
+                    markdown_file_path="D:\\project\\test_project\\apps\\backend\\data\\projects\\project-1\\requirements\\doc-1\\markdown\\conversions\\legacy.md",
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                    conversion_summary="旧路径",
+                    created_by="u-admin",
+                )
+
+            original = document_service.get_original_file("docmap-legacy")
+            markdown = document_service.get_converted_markdown("docmap-legacy")
+
+            self.assertEqual(Path(original["download_path"]).read_bytes(), b"legacy-docx")
+            self.assertEqual(markdown["markdown_content"], "# Legacy Markdown")
 
     async def test_upload_append_requirement_adds_files_without_changing_current_version(self):
         with isolated_document_store() as actor:
@@ -147,7 +256,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
 
     def test_update_document_creates_new_markdown_version(self):
         with isolated_document_store() as actor:
-            markdown_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "markdown" / "versions" / "v1.md"
+            markdown_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "versions" / "v1.md"
             markdown_path.parent.mkdir(parents=True)
             markdown_path.write_text("# 旧需求", encoding="utf-8")
 
@@ -197,6 +306,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["document"]["current_version"]["version_no"], 2)
             self.assertEqual(result["document"]["current_version"]["source_action"], "edit")
             self.assertEqual(result["document"]["current_version"]["change_summary"], "补充验收标准")
+            self.assertIn("/versions/", result["document"]["current_version"]["file_path"])
             self.assertEqual(result["markdown_content"], "# 新需求")
             self.assertEqual(
                 Path(result["document"]["current_version"]["file_path"]).read_text(encoding="utf-8"),
@@ -206,7 +316,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
 
     def test_update_converted_markdown_updates_standard_file_without_creating_version(self):
         with isolated_document_store() as actor:
-            markdown_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "markdown" / "conversions" / "docmap-1.md"
+            markdown_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "standard" / "docmap-1.md"
             markdown_path.parent.mkdir(parents=True)
             markdown_path.write_text("# 旧标准文件", encoding="utf-8")
             with connect() as db:
@@ -248,7 +358,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
         with isolated_document_store() as actor:
             document_dir = Path(document_service.project_requirement_dir("project-1", "doc-1"))
             source_path = document_dir / "raw" / "docmap-1-raw.docx"
-            markdown_path = document_dir / "markdown" / "conversions" / "docmap-1.md"
+            markdown_path = document_dir / "standard" / "docmap-1.md"
             assets_dir = markdown_path.parent / "docmap-1_assets"
             source_path.parent.mkdir(parents=True)
             markdown_path.parent.mkdir(parents=True)
@@ -369,7 +479,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(overview["files"][0]["standard_file_status"], "generating")
 
-    def test_get_document_overview_retries_failed_docx_mapping_when_source_exists(self):
+    async def test_convert_source_file_mapping_retries_failed_docx_mapping_when_source_exists(self):
         with isolated_document_store() as actor:
             source_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "raw" / "failed.docx"
             source_path.parent.mkdir(parents=True)
@@ -398,10 +508,14 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                     created_by="u-admin",
                 )
 
-            with patch("app.services.document_service.convert_requirement_file_to_markdown") as convert:
-                convert.return_value = ("# DOCX 标准文件\n", "重试转换成功")
+            async def fake_convert_to_markdown(*_args, **_kwargs):
+                return "# DOCX 标准文件\n", "重试转换成功"
+
+            with patch("app.services.document_file_service.convert_to_markdown", fake_convert_to_markdown):
+                result = await document_service.convert_source_file_mapping("docmap-failed")
                 overview = document_service.get_document_overview("project-1", "doc-1", actor)
 
+            self.assertEqual(result["conversion_status"], "success")
             self.assertEqual(overview["stats"]["conversion_success"], 1)
             self.assertEqual(overview["stats"]["conversion_failed"], 0)
             self.assertEqual(overview["stats"]["mergeable_files"], 1)
@@ -410,9 +524,9 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             with connect() as db:
                 row = document_repo.find_file_mapping(db, "docmap-failed")
             self.assertEqual(row["conversion_status"], "success")
-            self.assertTrue(Path(row["markdown_file_path"]).exists())
+            self.assertTrue(resolve_stored_path(row["markdown_file_path"]).exists())
 
-    def test_get_converted_markdown_retries_failed_pdf_mapping_when_source_exists(self):
+    async def test_get_converted_markdown_does_not_retry_failed_pdf_mapping(self):
         with isolated_document_store():
             source_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "raw" / "failed.pdf"
             source_path.parent.mkdir(parents=True)
@@ -441,20 +555,103 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                     created_by="u-admin",
                 )
 
-            with patch("app.services.document_service.convert_requirement_file_to_markdown") as convert:
-                convert.return_value = ("# PDF 标准文件\n", "重试转换成功")
-                result = document_service.get_converted_markdown("docmap-failed")
+            with self.assertRaises(HTTPException) as caught:
+                document_service.get_converted_markdown("docmap-failed")
 
-            self.assertEqual(result["markdown_content"], "# PDF 标准文件\n")
-            self.assertEqual(result["conversion_status"], "success")
+            self.assertEqual(caught.exception.detail["code"], "DOCUMENT_CONVERSION_NOT_READY")
             with connect() as db:
                 row = document_repo.find_file_mapping(db, "docmap-failed")
-            self.assertEqual(row["conversion_status"], "success")
-            self.assertTrue(Path(row["markdown_file_path"]).exists())
+            self.assertEqual(row["conversion_status"], "failed")
+            self.assertIsNone(row["markdown_file_path"])
 
-    def test_merge_document_markdown_deduplicates_and_creates_initial_version(self):
+    async def test_analyze_document_requirement_persists_latest_result(self):
         with isolated_document_store() as actor:
-            base_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "markdown" / "conversions"
+            markdown_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "versions" / "v1.md"
+            markdown_path.parent.mkdir(parents=True)
+            markdown_path.write_text("# 登录需求\n\n- 支持账号登录", encoding="utf-8")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', 'docver-1', 'versioned', 'u-admin')
+                    """
+                )
+                document_repo.create_version(
+                    db,
+                    version_id="docver-1",
+                    document_id="doc-1",
+                    version_no=1,
+                    file_path=str(markdown_path),
+                    source_action="merge",
+                    change_summary="首次归并",
+                    diff_summary="首次归并，无差异。",
+                    created_by="u-admin",
+                )
+
+            with patch("app.services.requirement_analysis_service.run_requirement_analysis") as analysis_agent:
+                analysis_agent.return_value = RequirementAnalysisOutput(
+                    status="completed",
+                    analysis_summary="识别登录模块。",
+                    quality_gate=RequirementQualityGate(
+                        result="passed",
+                        testability_score=90,
+                        passed_checks=["模块识别完成"],
+                    ),
+                )
+                result = await document_service.analyze_document_requirement("project-1", "doc-1", actor)
+
+            self.assertEqual(result["status"], "completed")
+            self.assertEqual(result["analysis_summary"], "识别登录模块。")
+            latest = document_service.get_latest_requirement_analysis("project-1", "doc-1", actor)
+            self.assertEqual(latest["analysis"]["quality_result"], "passed")
+            self.assertEqual(latest["analysis"]["testability_score"], 90)
+            self.assertEqual(latest["analysis"]["output"]["quality_gate"]["result"], "passed")
+
+    async def test_analyze_document_requirement_blocks_open_conflicts(self):
+        with isolated_document_store() as actor:
+            markdown_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "versions" / "v1.md"
+            markdown_path.parent.mkdir(parents=True)
+            markdown_path.write_text("# 登录需求", encoding="utf-8")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', 'docver-1', 'versioned', 'u-admin')
+                    """
+                )
+                document_repo.create_version(
+                    db,
+                    version_id="docver-1",
+                    document_id="doc-1",
+                    version_no=1,
+                    file_path=str(markdown_path),
+                    source_action="merge",
+                    change_summary="首次归并",
+                    diff_summary="首次归并，无差异。",
+                    created_by="u-admin",
+                )
+                document_repo.create_conflict(
+                    db,
+                    conflict_id="conflict-1",
+                    document_id="doc-1",
+                    title="锁定次数冲突",
+                    source_file_names="a.md、b.md",
+                    fragment_a="5次",
+                    fragment_b="3次",
+                )
+
+            with self.assertRaises(HTTPException) as caught:
+                await document_service.analyze_document_requirement("project-1", "doc-1", actor)
+
+            self.assertEqual(caught.exception.detail["code"], "REQUIREMENT_ANALYSIS_CONFLICT_BLOCKED")
+
+    async def test_merge_document_markdown_deduplicates_and_creates_initial_version(self):
+        with isolated_document_store() as actor:
+            base_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "standard"
             base_dir.mkdir(parents=True)
             first = base_dir / "first.md"
             second = base_dir / "second.md"
@@ -485,16 +682,37 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                         created_by="u-admin",
                     )
 
-            result = document_service.merge_document_markdown("project-1", "doc-1", actor)
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
+                merge_agent.return_value = RequirementMergeOutput(
+                    status="merged",
+                    markdown_content="# 登录需求\n\n- 支持账号登录\n- 支持退出\n- 支持验证码",
+                    merge_summary="已归并 2 个标准文件。",
+                    source_file_ids=["docmap-1", "docmap-2"],
+                    coverage_items=[
+                        RequirementCoverageItem(
+                            mapping_id="docmap-1",
+                            source_excerpt="支持账号登录",
+                            target_module="登录",
+                            coverage_status="merged",
+                            reason="合入登录需求。",
+                        )
+                    ],
+                )
+                result = await document_service.merge_document_markdown("project-1", "doc-1", actor)
 
             self.assertEqual(result["status"], "merged")
+            self.assertIn("version_id", result)
+            self.assertIn("version_no", result)
+            self.assertIn("merge_summary", result)
+            self.assertIn("source_file_ids", result)
+            self.assertIn("artifact_tabs", result)
             self.assertIn("支持账号登录", result["markdown_content"])
             self.assertEqual(result["markdown_content"].count("支持账号登录"), 1)
             self.assertEqual(document_service.get_document_versions("doc-1")[0]["source_action"], "merge")
 
-    def test_merge_document_markdown_returns_conflict_without_creating_version(self):
+    async def test_merge_document_markdown_returns_conflict_without_creating_version(self):
         with isolated_document_store() as actor:
-            base_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "markdown" / "conversions"
+            base_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "standard"
             base_dir.mkdir(parents=True)
             first = base_dir / "first.md"
             second = base_dir / "second.md"
@@ -525,15 +743,44 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                         created_by="u-admin",
                     )
 
-            result = document_service.merge_document_markdown("project-1", "doc-1", actor)
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
+                merge_agent.return_value = RequirementMergeOutput(
+                    status="conflict",
+                    markdown_content="",
+                    merge_summary="发现锁定次数冲突。",
+                    source_file_ids=["docmap-1", "docmap-2"],
+                    coverage_items=[
+                        RequirementCoverageItem(
+                            mapping_id="docmap-1",
+                            source_excerpt="登录失败锁定次数：5次",
+                            coverage_status="conflict",
+                            reason="与另一来源冲突。",
+                        )
+                    ],
+                    conflicts=[
+                        RequirementMergeConflictOut(
+                            title="登录失败锁定次数不一致",
+                            source_refs=[{"mapping_id": "docmap-1", "filename": "first.md"}],
+                            fragment_a="登录失败锁定次数：5次",
+                            fragment_b="登录失败锁定次数：3次",
+                        )
+                    ],
+                )
+                result = await document_service.merge_document_markdown("project-1", "doc-1", actor)
 
-            self.assertEqual(result["status"], "conflict")
+            self.assertEqual(result["status"], "preview")
+            self.assertEqual(result["quality_result"], "failed")
             self.assertEqual(result["conflict_count"], 1)
+            self.assertIn("artifact_tabs", result)
+            self.assertIn("id", result["conflicts"][0])
+            self.assertIn("title", result["conflicts"][0])
+            self.assertIn("fragment_a", result["conflicts"][0])
+            self.assertIn("fragment_b", result["conflicts"][0])
             self.assertEqual(document_service.get_document_versions("doc-1"), [])
 
-    def test_resolved_conflict_allows_merge_to_continue(self):
+    async def test_resolved_conflict_allows_merge_to_continue(self):
         with isolated_document_store() as actor:
-            base_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "markdown" / "conversions"
+            base_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "standard"
             base_dir.mkdir(parents=True)
             first = base_dir / "first.md"
             second = base_dir / "second.md"
@@ -564,7 +811,21 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                         created_by="u-admin",
                     )
 
-            conflict_result = document_service.merge_document_markdown("project-1", "doc-1", actor)
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
+                merge_agent.return_value = RequirementMergeOutput(
+                    status="conflict",
+                    merge_summary="发现锁定次数冲突。",
+                    source_file_ids=["docmap-1", "docmap-2"],
+                    conflicts=[
+                        RequirementMergeConflictOut(
+                            title="登录失败锁定次数不一致",
+                            source_refs=[{"mapping_id": "docmap-1", "filename": "first.md"}],
+                            fragment_a="登录失败锁定次数：5次",
+                            fragment_b="登录失败锁定次数：3次",
+                        )
+                    ],
+                )
+                conflict_result = await document_service.merge_document_markdown("project-1", "doc-1", actor)
             conflict_id = conflict_result["conflicts"][0]["id"]
             document_service.resolve_document_conflict(
                 "project-1",
@@ -574,10 +835,165 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                 resolution_type="manual",
                 actor=actor,
             )
-            merge_result = document_service.merge_document_markdown("project-1", "doc-1", actor)
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
+                merge_agent.return_value = RequirementMergeOutput(
+                    status="merged",
+                    markdown_content="# 登录需求\n\n- 登录失败锁定次数：5次",
+                    merge_summary="按人工决策归并。",
+                    source_file_ids=["docmap-1", "docmap-2"],
+                    coverage_items=[
+                        RequirementCoverageItem(
+                            mapping_id="docmap-1",
+                            source_excerpt="登录失败锁定次数：5次",
+                            target_module="登录安全",
+                            coverage_status="merged",
+                            reason="按人工决策合入。",
+                        )
+                    ],
+                )
+                merge_result = await document_service.merge_document_markdown("project-1", "doc-1", actor)
 
             self.assertEqual(merge_result["status"], "merged")
             self.assertIn("登录失败锁定次数：5次", merge_result["markdown_content"])
+
+    async def test_incremental_merge_returns_preview_and_confirm_creates_version(self):
+        with isolated_document_store() as actor:
+            version_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "versions"
+            conversion_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "standard"
+            version_dir.mkdir(parents=True)
+            conversion_dir.mkdir(parents=True)
+            current = version_dir / "v1.md"
+            addition = conversion_dir / "addition.md"
+            current.write_text("# 登录需求\n\n- 支持账号登录", encoding="utf-8")
+            addition.write_text("# 登录补充\n\n- 支持验证码", encoding="utf-8")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', 'docver-1', 'pending_merge', 'u-admin')
+                    """
+                )
+                document_repo.create_version(
+                    db,
+                    version_id="docver-1",
+                    document_id="doc-1",
+                    version_no=1,
+                    file_path=str(current),
+                    source_action="merge",
+                    change_summary="首次归并",
+                    diff_summary="首次归并。",
+                    created_by="u-admin",
+                )
+                document_repo.create_file_mapping(
+                    db,
+                    mapping_id="docmap-2",
+                    document_id="doc-1",
+                    version_id=None,
+                    source_file_path="addition.md",
+                    original_filename="addition.md",
+                    file_format="md",
+                    markdown_file_path=str(addition),
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                    conversion_summary="成功",
+                    created_by="u-admin",
+                )
+
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
+                merge_agent.return_value = RequirementMergeOutput(
+                    status="preview",
+                    markdown_preview="# 登录需求\n\n- 支持账号登录\n- 支持验证码",
+                    merge_summary="生成增量预览。",
+                    source_file_ids=["docmap-2"],
+                    coverage_items=[
+                        RequirementCoverageItem(
+                            mapping_id="docmap-2",
+                            source_excerpt="支持验证码",
+                            target_module="登录",
+                            coverage_status="merged",
+                            reason="合入登录补充。",
+                        )
+                    ],
+                )
+                preview = await document_service.merge_document_markdown("project-1", "doc-1", actor)
+
+            self.assertEqual(preview["status"], "preview")
+            self.assertIn("preview_id", preview)
+            self.assertIn("artifact_tabs", preview)
+            self.assertEqual([version["version_no"] for version in document_service.get_document_versions("doc-1")], [1])
+
+            confirmed = await document_service.merge_document_markdown(
+                "project-1",
+                "doc-1",
+                actor,
+                confirm_preview_id=preview["preview_id"],
+            )
+
+            self.assertEqual(confirmed["status"], "merged")
+            self.assertEqual(confirmed["version_no"], 2)
+            self.assertIn("支持验证码", confirmed["markdown_content"])
+            self.assertEqual([version["version_no"] for version in document_service.get_document_versions("doc-1")], [2, 1])
+
+    async def test_document_overview_returns_latest_merge_artifact_tabs(self):
+        with isolated_document_store() as actor:
+            base_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "standard"
+            base_dir.mkdir(parents=True)
+            source = base_dir / "source.md"
+            source.write_text("# 登录需求\n\n- 支持账号登录", encoding="utf-8")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+                document_repo.create_file_mapping(
+                    db,
+                    mapping_id="docmap-1",
+                    document_id="doc-1",
+                    version_id=None,
+                    source_file_path="source.md",
+                    original_filename="source.md",
+                    file_format="md",
+                    markdown_file_path=str(source),
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                    conversion_summary="成功",
+                    created_by="u-admin",
+                )
+
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
+                merge_agent.return_value = RequirementMergeOutput(
+                    status="merged",
+                    markdown_content="# 登录需求\n\n- 支持账号登录",
+                    merge_summary="已归并 1 个标准文件。",
+                    source_file_ids=["docmap-1"],
+                    coverage_items=[
+                        RequirementCoverageItem(
+                            mapping_id="docmap-1",
+                            source_excerpt="支持账号登录",
+                            target_module="登录",
+                            coverage_status="merged",
+                            reason="合入登录需求。",
+                        )
+                    ],
+                )
+                await document_service.merge_document_markdown("project-1", "doc-1", actor)
+
+            overview = document_service.get_document_overview("project-1", "doc-1", actor)
+
+            self.assertEqual(
+                [tab["key"] for tab in overview["artifact_tabs"]],
+                ["preview", "mapping", "conflicts", "report"],
+            )
+            self.assertIn("支持账号登录", overview["artifact_tabs"][0]["content"])
+            self.assertIn("段落映射", overview["artifact_tabs"][1]["content"])
+            self.assertIn("明显冲突", overview["artifact_tabs"][2]["content"])
+            self.assertIn("归并质量报告", overview["artifact_tabs"][3]["content"])
 
 
 def make_upload_file(filename: str, content: bytes) -> TestUploadFile:
@@ -615,6 +1031,24 @@ class isolated_document_store:
                   name TEXT NOT NULL,
                   status TEXT NOT NULL,
                   description TEXT NOT NULL DEFAULT ''
+                );
+                CREATE TABLE model_providers (
+                  id TEXT PRIMARY KEY,
+                  provider TEXT NOT NULL,
+                  model TEXT NOT NULL,
+                  base_url TEXT NOT NULL DEFAULT '',
+                  api_key TEXT NOT NULL DEFAULT '',
+                  description TEXT NOT NULL DEFAULT '',
+                  status TEXT NOT NULL DEFAULT 'enabled',
+                  created_by TEXT NOT NULL,
+                  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE agent_model_assignments (
+                  agent_id TEXT PRIMARY KEY,
+                  model_provider_id TEXT NOT NULL,
+                  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE TABLE source_documents (
                   id TEXT PRIMARY KEY,
@@ -659,16 +1093,78 @@ class isolated_document_store:
                 );
                 CREATE TABLE source_document_merge_conflicts (
                   id TEXT PRIMARY KEY,
+                  run_id TEXT,
                   document_id TEXT NOT NULL,
+                  conflict_type TEXT NOT NULL DEFAULT 'contradiction',
+                  severity TEXT NOT NULL DEFAULT 'medium',
                   title TEXT NOT NULL,
+                  source_refs TEXT NOT NULL DEFAULT '[]',
                   source_file_names TEXT NOT NULL DEFAULT '',
                   fragment_a TEXT NOT NULL DEFAULT '',
                   fragment_b TEXT NOT NULL DEFAULT '',
+                  agent_suggestion TEXT NOT NULL DEFAULT '',
                   resolution TEXT NOT NULL DEFAULT '',
                   resolution_type TEXT NOT NULL DEFAULT '',
                   status TEXT NOT NULL DEFAULT 'open',
                   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE requirement_merge_runs (
+                  id TEXT PRIMARY KEY,
+                  project_id TEXT NOT NULL,
+                  document_id TEXT NOT NULL,
+                  base_version_id TEXT,
+                  output_version_id TEXT,
+                  merge_mode TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  input_mapping_ids TEXT NOT NULL DEFAULT '[]',
+                  resolved_conflict_ids TEXT NOT NULL DEFAULT '[]',
+                  merge_summary TEXT NOT NULL DEFAULT '',
+                  diff_summary TEXT NOT NULL DEFAULT '',
+                  affected_modules TEXT NOT NULL DEFAULT '[]',
+                  output_preview_path TEXT,
+                  created_by TEXT NOT NULL,
+                  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  finished_at TEXT
+                );
+                CREATE TABLE requirement_source_coverage_items (
+                  id TEXT PRIMARY KEY,
+                  run_id TEXT NOT NULL,
+                  document_id TEXT NOT NULL,
+                  version_id TEXT,
+                  mapping_id TEXT NOT NULL,
+                  source_heading TEXT NOT NULL DEFAULT '',
+                  source_excerpt TEXT NOT NULL DEFAULT '',
+                  target_module TEXT NOT NULL DEFAULT '',
+                  target_heading TEXT NOT NULL DEFAULT '',
+                  coverage_status TEXT NOT NULL,
+                  reason TEXT NOT NULL DEFAULT '',
+                  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE document_version_change_logs (
+                  id TEXT PRIMARY KEY,
+                  document_id TEXT NOT NULL,
+                  version_id TEXT NOT NULL,
+                  source_action TEXT NOT NULL,
+                  change_summary TEXT NOT NULL DEFAULT '',
+                  diff_summary TEXT NOT NULL DEFAULT '',
+                  affected_modules TEXT NOT NULL DEFAULT '[]',
+                  source_mapping_ids TEXT NOT NULL DEFAULT '[]',
+                  created_by TEXT NOT NULL,
+                  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE requirement_analyses (
+                  id TEXT PRIMARY KEY,
+                  project_id TEXT NOT NULL,
+                  document_id TEXT NOT NULL,
+                  version_id TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  analysis_summary TEXT NOT NULL DEFAULT '',
+                  output_json TEXT NOT NULL,
+                  quality_result TEXT NOT NULL,
+                  testability_score INTEGER NOT NULL DEFAULT 0,
+                  created_by TEXT NOT NULL,
+                  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
                 """
             )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from sqlite3 import Connection, Row
 
 
@@ -140,6 +141,26 @@ def update_file_mapping_markdown(db: Connection, mapping_id: str, markdown_file_
     )
 
 
+def update_file_mapping_conversion_status(
+    db: Connection,
+    mapping_id: str,
+    *,
+    conversion_status: str,
+    conversion_summary: str,
+    conversion_quality: int | None = None,
+) -> None:
+    db.execute(
+        """
+        UPDATE source_document_file_mappings
+        SET conversion_status = ?,
+            conversion_summary = ?,
+            conversion_quality = ?
+        WHERE id = ?
+        """,
+        (conversion_status, conversion_summary, conversion_quality, mapping_id),
+    )
+
+
 def mark_file_mappings_merged(db: Connection, document_id: str, version_id: str) -> None:
     db.execute(
         """
@@ -158,6 +179,13 @@ def find_versions_by_document(db: Connection, document_id: str) -> list[Row]:
         "SELECT id, document_id, version_no, file_path, source_action, change_summary, diff_summary, created_by, created_at FROM source_document_versions WHERE document_id = ? ORDER BY version_no DESC",
         (document_id,),
     ).fetchall()
+
+
+def find_version(db: Connection, version_id: str) -> Row | None:
+    return db.execute(
+        "SELECT id, document_id, version_no, file_path, source_action, change_summary, diff_summary, created_by, created_at FROM source_document_versions WHERE id = ?",
+        (version_id,),
+    ).fetchone()
 
 
 def create_file_mapping(
@@ -265,14 +293,32 @@ def create_conflict(
     source_file_names: str,
     fragment_a: str,
     fragment_b: str,
+    run_id: str | None = None,
+    conflict_type: str = "contradiction",
+    severity: str = "medium",
+    source_refs: list[dict] | None = None,
+    agent_suggestion: str = "",
 ) -> None:
     db.execute(
         """
         INSERT INTO source_document_merge_conflicts
-          (id, document_id, title, source_file_names, fragment_a, fragment_b, status)
-        VALUES (?, ?, ?, ?, ?, ?, 'open')
+          (id, run_id, document_id, conflict_type, severity, title, source_refs, source_file_names,
+           fragment_a, fragment_b, agent_suggestion, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')
         """,
-        (conflict_id, document_id, title, source_file_names, fragment_a, fragment_b),
+        (
+            conflict_id,
+            run_id,
+            document_id,
+            conflict_type,
+            severity,
+            title,
+            json.dumps(source_refs or [], ensure_ascii=False),
+            source_file_names,
+            fragment_a,
+            fragment_b,
+            agent_suggestion,
+        ),
     )
 
 
@@ -296,3 +342,217 @@ def close_open_conflicts(db: Connection, document_id: str) -> None:
         """,
         (document_id,),
     )
+
+
+def create_merge_run(
+    db: Connection,
+    *,
+    run_id: str,
+    project_id: str,
+    document_id: str,
+    base_version_id: str | None,
+    merge_mode: str,
+    status: str,
+    input_mapping_ids: list[str],
+    resolved_conflict_ids: list[str],
+    created_by: str,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO requirement_merge_runs
+          (id, project_id, document_id, base_version_id, merge_mode, status, input_mapping_ids,
+           resolved_conflict_ids, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            run_id,
+            project_id,
+            document_id,
+            base_version_id,
+            merge_mode,
+            status,
+            json.dumps(input_mapping_ids, ensure_ascii=False),
+            json.dumps(resolved_conflict_ids, ensure_ascii=False),
+            created_by,
+        ),
+    )
+
+
+def update_merge_run_result(
+    db: Connection,
+    *,
+    run_id: str,
+    status: str,
+    merge_summary: str,
+    diff_summary: str,
+    affected_modules: list[str],
+    output_version_id: str | None = None,
+    output_preview_path: str | None = None,
+) -> None:
+    db.execute(
+        """
+        UPDATE requirement_merge_runs
+        SET status = ?,
+            output_version_id = ?,
+            merge_summary = ?,
+            diff_summary = ?,
+            affected_modules = ?,
+            output_preview_path = ?,
+            finished_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (
+            status,
+            output_version_id,
+            merge_summary,
+            diff_summary,
+            json.dumps(affected_modules, ensure_ascii=False),
+            output_preview_path,
+            run_id,
+        ),
+    )
+
+
+def find_merge_run(db: Connection, run_id: str) -> Row | None:
+    return db.execute("SELECT * FROM requirement_merge_runs WHERE id = ?", (run_id,)).fetchone()
+
+
+def find_latest_merge_run(db: Connection, document_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT *
+        FROM requirement_merge_runs
+        WHERE document_id = ?
+          AND status IN ('merged', 'preview')
+        ORDER BY COALESCE(finished_at, created_at) DESC, created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (document_id,),
+    ).fetchone()
+
+
+def create_source_coverage_items(
+    db: Connection,
+    *,
+    run_id: str,
+    document_id: str,
+    version_id: str | None,
+    items: list[dict],
+) -> None:
+    for index, item in enumerate(items, start=1):
+        db.execute(
+            """
+            INSERT INTO requirement_source_coverage_items
+              (id, run_id, document_id, version_id, mapping_id, source_heading, source_excerpt,
+               target_module, target_heading, coverage_status, reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"{run_id}-coverage-{index}",
+                run_id,
+                document_id,
+                version_id,
+                item.get("mapping_id", ""),
+                item.get("source_heading", ""),
+                item.get("source_excerpt", ""),
+                item.get("target_module", ""),
+                item.get("target_heading", ""),
+                item.get("coverage_status", ""),
+                item.get("reason", ""),
+            ),
+        )
+
+
+def create_document_version_change_log(
+    db: Connection,
+    *,
+    log_id: str,
+    document_id: str,
+    version_id: str,
+    source_action: str,
+    change_summary: str,
+    diff_summary: str,
+    affected_modules: list[str],
+    source_mapping_ids: list[str],
+    created_by: str,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO document_version_change_logs
+          (id, document_id, version_id, source_action, change_summary, diff_summary, affected_modules,
+           source_mapping_ids, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            log_id,
+            document_id,
+            version_id,
+            source_action,
+            change_summary,
+            diff_summary,
+            json.dumps(affected_modules, ensure_ascii=False),
+            json.dumps(source_mapping_ids, ensure_ascii=False),
+            created_by,
+        ),
+    )
+
+
+def create_requirement_analysis(
+    db: Connection,
+    *,
+    analysis_id: str,
+    project_id: str,
+    document_id: str,
+    version_id: str,
+    status: str,
+    analysis_summary: str,
+    output_json: dict,
+    quality_result: str,
+    testability_score: int,
+    created_by: str,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO requirement_analyses
+          (id, project_id, document_id, version_id, status, analysis_summary, output_json,
+           quality_result, testability_score, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            analysis_id,
+            project_id,
+            document_id,
+            version_id,
+            status,
+            analysis_summary,
+            json.dumps(output_json, ensure_ascii=False),
+            quality_result,
+            testability_score,
+            created_by,
+        ),
+    )
+
+
+def find_latest_requirement_analysis(db: Connection, document_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT *
+        FROM requirement_analyses
+        WHERE document_id = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (document_id,),
+    ).fetchone()
+
+
+def list_requirement_analyses(db: Connection, document_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT *
+        FROM requirement_analyses
+        WHERE document_id = ?
+        ORDER BY created_at DESC, id DESC
+        """,
+        (document_id,),
+    ).fetchall()

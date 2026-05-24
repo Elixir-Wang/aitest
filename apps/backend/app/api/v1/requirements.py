@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from app.dependencies.auth import current_user, require_admin
-from app.schemas.document import ConflictResolutionIn, SourceDocumentUpdateIn, SourceMarkdownUpdateIn
+from app.schemas.document import ConflictResolutionIn, RequirementMergeRequestIn, SourceDocumentUpdateIn, SourceMarkdownUpdateIn
 from app.services import document_service
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirements"])
@@ -21,13 +21,14 @@ def list_requirements(project_id: str, actor=Depends(current_user)) -> list[dict
 @router.post("")
 async def upload_requirements(
     project_id: str,
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     mode: str = Form(default="new"),
     document_name: str = Form(default=""),
     existing_document_id: str = Form(default=""),
     actor=Depends(current_user),
 ) -> dict:
-    return await document_service.upload_documents(
+    result = await document_service.upload_documents(
         project_id,
         files,
         actor,
@@ -35,6 +36,8 @@ async def upload_requirements(
         document_name=document_name,
         existing_document_id=existing_document_id,
     )
+    background_tasks.add_task(document_service.convert_pending_file_mappings, [item["id"] for item in result["files"]])
+    return result
 
 
 @router.get("/check-name")
@@ -60,6 +63,16 @@ def get_requirement_overview(project_id: str, document_id: str, actor=Depends(cu
     return document_service.get_document_overview(project_id, document_id, actor)
 
 
+@router.post("/{document_id}/analysis")
+async def analyze_requirement(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
+    return await document_service.analyze_document_requirement(project_id, document_id, actor)
+
+
+@router.get("/{document_id}/analysis")
+def get_requirement_analysis(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
+    return document_service.get_latest_requirement_analysis(project_id, document_id, actor)
+
+
 @router.get("/{document_id}")
 def get_requirement(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
     return document_service.get_document_detail(project_id, document_id, actor)
@@ -75,15 +88,29 @@ def list_requirement_files(project_id: str, document_id: str, actor=Depends(curr
 async def append_requirement_files(
     project_id: str,
     document_id: str,
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     actor=Depends(current_user),
 ) -> dict:
-    return await document_service.append_document_files(project_id, document_id, files, actor)
+    result = await document_service.append_document_files(project_id, document_id, files, actor)
+    background_tasks.add_task(document_service.convert_pending_file_mappings, [item["id"] for item in result["files"]])
+    return result
 
 
 @router.post("/{document_id}/merge")
-def merge_requirement(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
-    return document_service.merge_document_markdown(project_id, document_id, actor)
+async def merge_requirement(
+    project_id: str,
+    document_id: str,
+    payload: RequirementMergeRequestIn | None = Body(default=None),
+    actor=Depends(current_user),
+) -> dict:
+    return await document_service.merge_document_markdown(
+        project_id,
+        document_id,
+        actor,
+        confirm_preview_id=payload.confirm_preview_id if payload else "",
+        force_rebuild=payload.force_rebuild if payload else False,
+    )
 
 
 @router.get("/{document_id}/conflicts")
@@ -153,6 +180,12 @@ def get_requirement_original_file_content(mapping_id: str, actor=Depends(current
 def get_requirement_markdown_file(mapping_id: str, actor=Depends(current_user)) -> dict:
     _ = actor
     return document_service.get_converted_markdown(mapping_id)
+
+
+@file_router.post("/{mapping_id}/convert")
+async def convert_requirement_file(mapping_id: str, actor=Depends(current_user)) -> dict:
+    _ = actor
+    return await document_service.convert_source_file_mapping(mapping_id)
 
 
 @file_router.delete("/{mapping_id}")

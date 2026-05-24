@@ -48,7 +48,6 @@ async def execute_agent(agent_id: str, payload: AgentRunIn, _actor) -> dict:
         "model_provider_id": result.model_provider_id,
         "provider": result.provider,
         "base_url": result.base_url,
-        "api_key_env": result.api_key_env,
         "skill_ids": result.skill_ids,
         "tool_names": result.tool_names,
         "raw_response_count": result.raw_response_count,
@@ -99,8 +98,7 @@ def _serialize_assignment(agent_id: str, row) -> dict:
         "provider": row["provider"],
         "model": row["model"],
         "base_url": row["base_url"],
-        "api_key_env": row["api_key_env"],
-        "api_key_mask": row["api_key_mask"],
+        "api_key": row["api_key"],
         "model_status": row["model_status"],
         "updated_at": row["updated_at"],
     }

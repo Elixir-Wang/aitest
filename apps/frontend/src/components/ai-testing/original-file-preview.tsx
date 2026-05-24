@@ -236,7 +236,9 @@ function PdfCanvasPreview({
     }
 
     let cancelled = false;
-    renderTasksRef.current.forEach((task) => task.cancel());
+    renderTasksRef.current.forEach((task) => {
+      task.cancel();
+    });
     renderTasksRef.current = [];
     pagesElement.replaceChildren();
     setLoading(true);
@@ -305,7 +307,9 @@ function PdfCanvasPreview({
 
     return () => {
       cancelled = true;
-      renderTasksRef.current.forEach((task) => task.cancel());
+      renderTasksRef.current.forEach((task) => {
+        task.cancel();
+      });
       renderTasksRef.current = [];
     };
   }, [containerWidth, pdf, scale]);
