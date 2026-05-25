@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import {
+  AlertTriangle,
   ArrowLeft,
   Check,
   Download,
@@ -31,6 +32,7 @@ import { StandardMarkdownEditor } from "@/components/ai-testing/standard-markdow
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { AiEditInput } from "@/components/ui/ai-input";
 import { Badge } from "@/components/ui/badge";
+import { Banner } from "@/components/ui/banner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -53,6 +55,7 @@ const STANDARD_FILE_SECTION_ID = "standard-file-section";
 const ORIGINAL_FILE_SECTION_ID = "original-file-section";
 const INITIAL_REQUIREMENT_SECTION_ID = "initial-requirement-section";
 const FINAL_REQUIREMENT_SECTION_ID = "final-requirement-section";
+const MERGED_REQUIREMENT_TAB_KEY = "requirement";
 const REQUIREMENT_DOCUMENT_TOC_SELECTOR =
   '[data-state="active"] .requirement-document-preview h1, [data-state="active"] .requirement-document-preview h2, [data-state="active"] .requirement-document-preview h3, [data-state="active"] .requirement-document-preview h4, [data-state="active"] .requirement-document-preview [data-toc], [data-state="active"] .requirement-artifact-preview h1, [data-state="active"] .requirement-artifact-preview h2, [data-state="active"] .requirement-artifact-preview h3, [data-state="active"] .requirement-artifact-preview h4, [data-state="active"] .requirement-artifact-preview [data-toc]';
 
@@ -97,6 +100,8 @@ type RequirementOverviewResponse = {
   };
   files: SourceFile[];
   has_open_conflicts: boolean;
+  merge_sync_status: "synced" | "outdated";
+  changed_standard_files: SourceFile[];
   initial_markdown_content: string;
   artifact_tabs: MergeArtifactTab[];
 };
@@ -280,7 +285,7 @@ export default function DocumentDetailPage() {
   const [savingInitial, setSavingInitial] = useState(false);
   const [merging, setMerging] = useState(false);
   const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
-  const [mergeArtifactTab, setMergeArtifactTab] = useState("preview");
+  const [mergeArtifactTab, setMergeArtifactTab] = useState(MERGED_REQUIREMENT_TAB_KEY);
   const [analysisResult, setAnalysisResult] = useState<RequirementAnalysisResult | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [conflicts, setConflicts] = useState<RequirementConflict[]>([]);
@@ -328,6 +333,15 @@ export default function DocumentDetailPage() {
   const initialArtifactTabs = mergePreview?.artifactTabs?.length
     ? mergePreview.artifactTabs
     : (overview?.artifact_tabs ?? []);
+  const visibleInitialArtifactTabs = useMemo(
+    () => initialArtifactTabs.filter((artifact) => artifact.key !== "preview"),
+    [initialArtifactTabs],
+  );
+  const changedStandardFiles = overview?.changed_standard_files ?? [];
+  const isInitialRequirementOutdated =
+    Boolean(overview?.initial_markdown_content.trim()) &&
+    overview?.merge_sync_status === "outdated" &&
+    changedStandardFiles.length > 0;
   const initialMarkdownContent =
     initialArtifactTabs.find((artifact) => artifact.key === "preview")?.content ??
     overview?.initial_markdown_content ??
@@ -454,7 +468,10 @@ export default function DocumentDetailPage() {
 
   useEffect(() => {
     const queryTab = searchParams.get("tab");
-    if (queryTab && ["overview", "original", "standard", "initial", "final", "conflicts"].includes(queryTab)) {
+    if (
+      queryTab &&
+      ["overview", "original", "standard", "initial", "clarification", "final", "conflicts"].includes(queryTab)
+    ) {
       setActiveTab(queryTab);
     }
     void loadOverview();
@@ -485,10 +502,13 @@ export default function DocumentDetailPage() {
     if (!initialArtifactTabs.length) {
       return;
     }
-    if (!initialArtifactTabs.some((artifact) => artifact.key === mergeArtifactTab)) {
-      setMergeArtifactTab(initialArtifactTabs[0].key);
+    if (
+      mergeArtifactTab !== MERGED_REQUIREMENT_TAB_KEY &&
+      !visibleInitialArtifactTabs.some((artifact) => artifact.key === mergeArtifactTab)
+    ) {
+      setMergeArtifactTab(MERGED_REQUIREMENT_TAB_KEY);
     }
-  }, [initialArtifactTabs, mergeArtifactTab]);
+  }, [initialArtifactTabs.length, mergeArtifactTab, visibleInitialArtifactTabs]);
 
   useEffect(() => {
     if (!hasRunningConversions) {
@@ -654,7 +674,7 @@ export default function DocumentDetailPage() {
               ? result.artifact_tabs
               : fallbackMergeArtifactTabs(result.version_id, result.markdown_content),
         });
-        setMergeArtifactTab("preview");
+        setMergeArtifactTab(MERGED_REQUIREMENT_TAB_KEY);
         toast.success("初始需求已生成");
         await loadOverview({ silent: true });
         setActiveTab("initial");
@@ -672,7 +692,7 @@ export default function DocumentDetailPage() {
               ? result.artifact_tabs
               : fallbackMergeArtifactTabs(result.preview_id, result.markdown_preview),
         });
-        setMergeArtifactTab("preview");
+        setMergeArtifactTab(MERGED_REQUIREMENT_TAB_KEY);
         updateConflicts(result.conflicts ?? []);
         toast.success("已生成归并产物，请查看质量报告后确认");
         await loadOverview({ silent: true });
@@ -939,6 +959,7 @@ export default function DocumentDetailPage() {
           <TabsTrigger value="original">原始文件</TabsTrigger>
           <TabsTrigger value="standard">标准文件</TabsTrigger>
           <TabsTrigger value="initial">初始需求</TabsTrigger>
+          <TabsTrigger value="clarification">需求澄清</TabsTrigger>
           <TabsTrigger value="final">最终需求</TabsTrigger>
           {showConflictTab ? <TabsTrigger value="conflicts">冲突处理</TabsTrigger> : null}
         </TabsList>
@@ -960,7 +981,7 @@ export default function DocumentDetailPage() {
               onCreate={openUploadDialog}
               onSearch={setFileSearchText}
               createLabel="上传文件"
-              placeholder="搜索文件名、格式或状态"
+              placeholder="搜索文件名或状态"
               selectedCount={fileSelectedCount}
               title="原始文件列表"
             />
@@ -976,7 +997,6 @@ export default function DocumentDetailPage() {
                       />
                     </TableHead>
                     <TableHead>文件名</TableHead>
-                    <TableHead>格式</TableHead>
                     <TableHead>上传时间</TableHead>
                     <TableHead>转换状态</TableHead>
                     <TableHead>标准文件</TableHead>
@@ -1003,7 +1023,6 @@ export default function DocumentDetailPage() {
                           {displayFilename(file.original_filename)}
                         </button>
                       </TableCell>
-                      <TableCell>{file.file_format.toUpperCase()}</TableCell>
                       <TableCell>{formatDateTime(file.created_at)}</TableCell>
                       <TableCell>
                         <StatusBadge
@@ -1056,7 +1075,7 @@ export default function DocumentDetailPage() {
                   ))}
                   {filteredFiles.length === 0 ? (
                     <TableRow>
-                      <TableCell className="py-8 text-center text-muted-foreground text-sm" colSpan={8}>
+                      <TableCell className="py-8 text-center text-muted-foreground text-sm" colSpan={7}>
                         暂无原始文件
                       </TableCell>
                     </TableRow>
@@ -1211,117 +1230,235 @@ export default function DocumentDetailPage() {
 
         <TabsContent value="initial">
           <ShellSection id={INITIAL_REQUIREMENT_SECTION_ID}>
-            <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
-              {editingInitial ? (
-                <>
-                  <Button disabled={savingInitial} onClick={saveInitialRequirement} type="button">
-                    {savingInitial ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                    {savingInitial ? "保存中" : "保存"}
-                  </Button>
-                  <Button
-                    disabled={savingInitial}
-                    onClick={() => {
-                      setInitialMarkdownDraft(initialMarkdownContent);
-                      setEditingInitial(false);
-                    }}
-                    type="button"
-                    variant="outline"
-                  >
-                    <X className="size-4" />
-                    取消
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    disabled={!initialMarkdownContent.trim()}
-                    onClick={() => {
-                      setInitialMarkdownDraft(initialMarkdownContent);
-                      setEditingInitial(true);
-                    }}
-                    type="button"
-                    variant="outline"
-                  >
-                    <Pencil className="size-4" />
-                    编辑
-                  </Button>
-                  <Button
-                    disabled={!initialMarkdownContent.trim()}
-                    onClick={runRequirementAnalysis}
-                    type="button"
-                    variant="outline"
-                  >
-                    {analysisLoading ? <Loader2 className="size-4 animate-spin" /> : <FileSearch className="size-4" />}
-                    {analysisLoading ? "分析中" : "需求分析"}
-                  </Button>
-                </>
-              )}
-            </div>
-            {mergePreview && !editingInitial ? (
-              <div className="mb-4 rounded-lg border bg-muted/20 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="font-medium text-sm">归并产物</h2>
-                    <p className="mt-1 text-muted-foreground text-xs">
-                      {mergePreview.mergeSummary || "请确认预览内容后写入版本。"}
-                    </p>
-                    {mergePreview.qualityResult ? (
-                      <div className="mt-2">
-                        <Badge variant={mergePreview.qualityResult === "failed" ? "destructive" : "secondary"}>
-                          质量结果：{mergePreview.qualityResult}
-                        </Badge>
-                      </div>
-                    ) : null}
-                  </div>
-                  {mergePreview.canConfirm ? (
-                    <Button
-                      disabled={merging || mergePreview.qualityResult === "failed"}
-                      onClick={confirmMergePreview}
-                      type="button"
-                    >
-                      <Check className="size-4" />
-                      {merging ? "确认中" : "确认写入版本"}
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-            {editingInitial ? (
-              <Textarea
-                className="min-h-[560px] font-mono text-sm"
-                onChange={(event) => setInitialMarkdownDraft(event.target.value)}
-                value={initialMarkdownDraft}
-              />
-            ) : initialArtifactTabs.length ? (
+            {initialArtifactTabs.length && !editingInitial ? (
               <Tabs className="space-y-4" onValueChange={setMergeArtifactTab} value={mergeArtifactTab}>
-                <TabsList>
-                  {initialArtifactTabs.map((artifact) => (
-                    <TabsTrigger key={artifact.key} value={artifact.key}>
-                      {artifact.label}
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <TabsList className="max-w-full overflow-x-auto">
+                    <TabsTrigger className="whitespace-nowrap" value={MERGED_REQUIREMENT_TAB_KEY}>
+                      合并需求稿
                     </TabsTrigger>
-                  ))}
-                </TabsList>
-                {initialArtifactTabs.map((artifact) => (
+                    {visibleInitialArtifactTabs.map((artifact) => (
+                      <TabsTrigger className="whitespace-nowrap" key={artifact.key} value={artifact.key}>
+                        {artifact.label}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      disabled={!initialMarkdownContent.trim()}
+                      onClick={() => {
+                        setInitialMarkdownDraft(initialMarkdownContent);
+                        setEditingInitial(true);
+                      }}
+                      type="button"
+                      variant="outline"
+                    >
+                      <Pencil className="size-4" />
+                      编辑
+                    </Button>
+                    <Button
+                      disabled={!initialMarkdownContent.trim()}
+                      onClick={runRequirementAnalysis}
+                      type="button"
+                      variant="outline"
+                    >
+                      {analysisLoading ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <FileSearch className="size-4" />
+                      )}
+                      {analysisLoading ? "分析中" : "需求分析"}
+                    </Button>
+                  </div>
+                </div>
+                {mergePreview ? (
+                  <div className="mb-4 rounded-lg border bg-muted/20 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h2 className="font-medium text-sm">归并产物</h2>
+                        <p className="mt-1 text-muted-foreground text-xs">
+                          {mergePreview.mergeSummary || "请确认预览内容后写入版本。"}
+                        </p>
+                        {mergePreview.qualityResult ? (
+                          <div className="mt-2">
+                            <Badge variant={mergePreview.qualityResult === "failed" ? "destructive" : "secondary"}>
+                              质量结果：{mergePreview.qualityResult}
+                            </Badge>
+                          </div>
+                        ) : null}
+                      </div>
+                      {mergePreview.canConfirm ? (
+                        <Button
+                          disabled={merging || mergePreview.qualityResult === "failed"}
+                          onClick={confirmMergePreview}
+                          type="button"
+                        >
+                          <Check className="size-4" />
+                          {merging ? "确认中" : "确认写入版本"}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+                <TabsContent value={MERGED_REQUIREMENT_TAB_KEY}>
+                  <MarkdownPreview
+                    className="requirement-document-preview"
+                    content={initialMarkdownContent}
+                    emptyText="尚未生成初始需求，请先在标准文件中发起合并。"
+                    indentParagraphs
+                  />
+                </TabsContent>
+                {visibleInitialArtifactTabs.map((artifact) => (
                   <TabsContent key={artifact.key} value={artifact.key}>
                     <MarkdownPreview
-                      className={
-                        artifact.key === "preview" ? "requirement-document-preview" : "requirement-artifact-preview"
-                      }
+                      className="requirement-artifact-preview"
                       content={artifact.content}
                       emptyText="该归并产物暂无内容。"
-                      indentParagraphs={artifact.key === "preview"}
                     />
                   </TabsContent>
                 ))}
               </Tabs>
             ) : (
-              <MarkdownPreview
-                className="requirement-document-preview"
-                content={overview.initial_markdown_content}
-                emptyClassName="flex items-center justify-center text-center"
-                emptyText="尚未生成初始需求，请先在标准文件中发起合并。"
-                indentParagraphs
-              />
+              <>
+                <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+                  {editingInitial ? (
+                    <>
+                      <Button disabled={savingInitial} onClick={saveInitialRequirement} type="button">
+                        {savingInitial ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                        {savingInitial ? "保存中" : "保存"}
+                      </Button>
+                      <Button
+                        disabled={savingInitial}
+                        onClick={() => {
+                          setInitialMarkdownDraft(initialMarkdownContent);
+                          setEditingInitial(false);
+                        }}
+                        type="button"
+                        variant="outline"
+                      >
+                        <X className="size-4" />
+                        取消
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        disabled={!initialMarkdownContent.trim()}
+                        onClick={() => {
+                          setInitialMarkdownDraft(initialMarkdownContent);
+                          setEditingInitial(true);
+                        }}
+                        type="button"
+                        variant="outline"
+                      >
+                        <Pencil className="size-4" />
+                        编辑
+                      </Button>
+                      <Button
+                        disabled={!initialMarkdownContent.trim()}
+                        onClick={runRequirementAnalysis}
+                        type="button"
+                        variant="outline"
+                      >
+                        {analysisLoading ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <FileSearch className="size-4" />
+                        )}
+                        {analysisLoading ? "分析中" : "需求分析"}
+                      </Button>
+                    </>
+                  )}
+                </div>
+                {editingInitial ? (
+                  <Textarea
+                    className="min-h-[560px] font-mono text-sm"
+                    onChange={(event) => setInitialMarkdownDraft(event.target.value)}
+                    value={initialMarkdownDraft}
+                  />
+                ) : (
+                  <MarkdownPreview
+                    className="requirement-document-preview"
+                    content={overview.initial_markdown_content}
+                    emptyClassName="flex items-center justify-center text-center"
+                    emptyText="尚未生成初始需求，请先在标准文件中发起合并。"
+                    indentParagraphs
+                  />
+                )}
+              </>
+            )}
+            {isInitialRequirementOutdated ? (
+              <Banner
+                action={
+                  <Button disabled={merging} onClick={mergeRequirement} size="sm" type="button">
+                    <GitMerge className="size-3.5" />
+                    {merging ? "合并中" : "重新合并"}
+                  </Button>
+                }
+                className="mt-4"
+                icon={<AlertTriangle className="size-4" />}
+                layout="complex"
+                rounded="default"
+                variant="warning"
+              >
+                <div className="min-w-0">
+                  <div className="font-medium">标准文件已变更，当前合并需求稿可能不是最新</div>
+                  <div className="mt-1 text-current/75 text-xs">
+                    {overview.files.length} 个标准文件中有 {changedStandardFiles.length} 个在当前版本生成后变更：
+                    {changedStandardFiles
+                      .slice(0, 3)
+                      .map((file) => standardMarkdownFilename(file.original_filename))
+                      .join("、")}
+                    {changedStandardFiles.length > 3 ? " 等" : ""}。建议重新合并后查看归并产物。
+                  </div>
+                </div>
+              </Banner>
+            ) : null}
+          </ShellSection>
+        </TabsContent>
+
+        <TabsContent value="clarification">
+          <ShellSection>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-medium text-sm">需求澄清</h2>
+                <p className="mt-1 text-muted-foreground text-xs">集中处理需求分析识别出的待澄清问题。</p>
+              </div>
+              <Button
+                disabled={!overview.initial_markdown_content.trim()}
+                onClick={runRequirementAnalysis}
+                type="button"
+                variant="outline"
+              >
+                {analysisLoading ? <Loader2 className="size-4 animate-spin" /> : <FileSearch className="size-4" />}
+                {analysisLoading ? "分析中" : "需求分析"}
+              </Button>
+            </div>
+            {analysisResult?.output.clarification_questions.length ? (
+              <div className="space-y-3">
+                {analysisResult.output.clarification_questions.map((question) => (
+                  <div className="rounded-lg border bg-background p-4" key={question.id}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={question.severity === "blocker" ? "destructive" : "secondary"}>
+                        {question.severity}
+                      </Badge>
+                      <span className="font-medium text-sm">{question.module_name}</span>
+                    </div>
+                    <div className="mt-3 text-sm">{question.question}</div>
+                    <div className="mt-2 text-muted-foreground text-xs">{question.reason}</div>
+                    {question.impact ? (
+                      <div className="mt-2 text-muted-foreground text-xs">影响：{question.impact}</div>
+                    ) : null}
+                    {question.source_excerpt ? (
+                      <div className="mt-3 rounded-md bg-muted/40 p-3 text-xs">{question.source_excerpt}</div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex min-h-[280px] items-center justify-center rounded-lg border bg-muted/20 text-center text-muted-foreground text-sm">
+                {analysisResult ? "暂无待澄清问题。" : "尚未执行需求分析，生成分析结果后会在这里展示澄清问题。"}
+              </div>
             )}
           </ShellSection>
         </TabsContent>
@@ -1364,22 +1501,6 @@ export default function DocumentDetailPage() {
               {analysisResult ? (
                 <div className="mt-4 space-y-4">
                   <div className="text-sm">{analysisResult.analysis_summary}</div>
-                  {analysisResult.output.clarification_questions.length ? (
-                    <div className="space-y-2">
-                      <div className="font-medium text-xs">澄清问题</div>
-                      <ul className="space-y-2 text-sm">
-                        {analysisResult.output.clarification_questions.map((question) => (
-                          <li className="rounded-md border bg-background p-3" key={question.id}>
-                            <div className="font-medium">
-                              [{question.severity}] {question.module_name}
-                            </div>
-                            <div className="mt-1">{question.question}</div>
-                            <div className="mt-1 text-muted-foreground text-xs">{question.reason}</div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
                   {analysisResult.output.quality_gate.blocking_issues.length ? (
                     <div className="space-y-2">
                       <div className="font-medium text-xs">阻塞项</div>

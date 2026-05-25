@@ -2,17 +2,19 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 
-import { ArrowLeft, FileText, Play, RefreshCw, Route, Terminal } from "lucide-react";
+import { AlertTriangle, FileText, Play, RefreshCw, Route, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { useProjectName } from "@/components/ai-testing/use-project-name";
+import { AgentPlan, type AgentPlanTask } from "@/components/ui/agent-plan";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiRequest, formatDateTime } from "@/lib/api-client";
 
 type ExplorationRun = {
@@ -36,7 +38,71 @@ type ExplorationRun = {
   available_actions: string[];
 };
 
+type ExplorationRunDetail = {
+  run: ExplorationRun;
+  modules: Array<{
+    id: string;
+    module_key: string;
+    module_name: string;
+    entry_path: string;
+    planned_page_count: number;
+    explored_page_count: number;
+    blocked_page_count: number;
+    action_count: number;
+    field_count: number;
+    state_transition_count: number;
+    completion_status: string;
+    completion_summary: string;
+    pages: Array<{
+      id: string;
+      title: string;
+      url: string;
+      entry_path: string;
+      structure_summary: string;
+    }>;
+    elements: Array<{
+      id: string;
+      page_id: string | null;
+      element_name: string;
+      element_type: string;
+      recommended_locator: string;
+      stability_note: string;
+    }>;
+    blockers: Array<{
+      id: string;
+      page_ref: string;
+      reason_type: string;
+      reason: string;
+      suggested_action: string;
+      is_blocking: boolean;
+    }>;
+  }>;
+};
+
+type ExplorationReport = {
+  run_id: string;
+  version_no: number | null;
+  title: string;
+  markdown_content: string;
+  change_summary: string;
+  created_at: string | null;
+};
+
+type ExplorationLog = {
+  run_id: string;
+  log_content: string;
+  log_path: string;
+  updated_at: string | null;
+};
+
+type ParsedLogEntry = {
+  id: string;
+  timestamp: string;
+  message: string;
+};
+
 const statusLabels: Record<string, string> = {
+  pending: "待执行",
   queued: "排队中",
   running: "探索中",
   waiting_human: "等待人工",
@@ -52,31 +118,107 @@ const loginStrategyLabels: Record<string, string> = {
   skip_login: "跳过登录",
 };
 
+const autoRefreshStatuses = new Set(["queued", "running", "waiting_human", "in-progress"]);
+const autoRefreshIntervalMs = 3000;
+
 export default function Page() {
   const params = useParams<{ projectId: string; runId: string }>();
-  const router = useRouter();
   const projectName = useProjectName(params.projectId);
   const [run, setRun] = useState<ExplorationRun | null>(null);
+  const [detail, setDetail] = useState<ExplorationRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
+  const [failureVisible, setFailureVisible] = useState(true);
+  const [activeTab, setActiveTab] = useState("探索概览");
+  const [report, setReport] = useState<ExplorationReport | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState("");
+  const [log, setLog] = useState<ExplorationLog | null>(null);
+  const [logLoading, setLogLoading] = useState(false);
+  const [logError, setLogError] = useState("");
 
-  const loadRun = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await apiRequest<ExplorationRun>(`/projects/${params.projectId}/exploration-runs/${params.runId}`);
-      setRun(data);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "探索任务加载失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [params.projectId, params.runId]);
+  const loadRun = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) {
+        setLoading(true);
+      }
+      setError("");
+      setFailureVisible(true);
+      try {
+        const data = await apiRequest<ExplorationRunDetail>(
+          `/projects/${params.projectId}/exploration-runs/${params.runId}/detail`,
+        );
+        setDetail(data);
+        setRun(data.run);
+      } catch (requestError) {
+        setError(requestError instanceof Error ? requestError.message : "探索任务加载失败");
+      } finally {
+        if (!options?.silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [params.projectId, params.runId],
+  );
 
   useEffect(() => {
     void loadRun();
   }, [loadRun]);
+
+  useEffect(() => {
+    if (!run || !autoRefreshStatuses.has(run.status)) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void loadRun({ silent: true });
+    }, autoRefreshIntervalMs);
+
+    return () => window.clearInterval(timer);
+  }, [loadRun, run]);
+
+  const loadReport = useCallback(async () => {
+    setReportLoading(true);
+    setReportError("");
+    try {
+      const data = await apiRequest<ExplorationReport>(
+        `/projects/${params.projectId}/exploration-runs/${params.runId}/report`,
+      );
+      setReport(data);
+    } catch (requestError) {
+      setReportError(requestError instanceof Error ? requestError.message : "探索报告加载失败");
+    } finally {
+      setReportLoading(false);
+    }
+  }, [params.projectId, params.runId]);
+
+  useEffect(() => {
+    if (activeTab === "探索报告") {
+      void loadReport();
+    }
+  }, [activeTab, loadReport]);
+
+  const loadLog = useCallback(async () => {
+    setLogLoading(true);
+    setLogError("");
+    try {
+      const data = await apiRequest<ExplorationLog>(
+        `/projects/${params.projectId}/exploration-runs/${params.runId}/log`,
+      );
+      setLog(data);
+    } catch (requestError) {
+      setLogError(requestError instanceof Error ? requestError.message : "探索日志加载失败");
+    } finally {
+      setLogLoading(false);
+    }
+  }, [params.projectId, params.runId]);
+
+  useEffect(() => {
+    if (activeTab === "探索日志") {
+      void loadLog();
+    }
+  }, [activeTab, loadLog]);
 
   async function startExploration() {
     if (!run) {
@@ -89,7 +231,7 @@ export default function Page() {
       });
       setRun(updated);
       toast.success("探索任务已开始");
-      window.setTimeout(() => void loadRun(), 800);
+      window.setTimeout(() => void loadRun({ silent: true }), 800);
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "探索任务启动失败");
     } finally {
@@ -97,146 +239,435 @@ export default function Page() {
     }
   }
 
-  const canStart = run ? !["running", "waiting_human"].includes(run.status) : false;
+  const canStart = run ? ["pending", "queued", "partial", "completed", "blocked"].includes(run.status) : false;
+  const startDisabled = !canStart || starting;
+  const planTasks = detail ? toPlanTasks(detail) : [];
+  const explorationDuration = run ? formatExplorationDuration(run) : "-";
+  const failureDetail = error
+    ? {
+        error,
+        projectId: params.projectId,
+        requestPath: `/projects/${params.projectId}/exploration-runs/${params.runId}/detail`,
+        runId: params.runId,
+        failedAt: formatDateTime(new Date().toISOString()),
+      }
+    : null;
 
   return (
     <PageShell
       breadcrumbs={["项目", projectName, "探索", run?.title ?? "探索任务"]}
-      description="查看探索任务运行状态、输入摘要、执行日志和产物。"
-      primaryAction={canStart ? "开始探索" : undefined}
-      onPrimaryAction={canStart ? startExploration : undefined}
-      projectScope="project"
-      activeTab="运行详情"
-      tabs={[{ label: "探索任务", href: `/projects/${params.projectId}/exploration` }, "运行详情", "日志", "产物"]}
-      title={run?.title ?? "探索任务"}
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => router.push(`/projects/${params.projectId}/exploration`)} size="sm" variant="outline">
-          <ArrowLeft className="size-4" />
-          返回列表
-        </Button>
-        <Button disabled={loading} onClick={() => void loadRun()} size="sm" variant="outline">
-          <RefreshCw className="size-4" />
-          刷新
-        </Button>
-        {canStart ? (
-          <Button disabled={starting} onClick={startExploration} size="sm">
+      description="查看探索任务运行概览、执行日志和探索报告。"
+      tabActions={
+        <>
+          <Button disabled={loading} onClick={() => void loadRun()} size="sm" variant="outline">
+            <RefreshCw className="size-4" />
+            刷新
+          </Button>
+          <Button disabled={startDisabled} onClick={startExploration} size="sm">
             <Play className="size-4" />
             开始探索
           </Button>
-        ) : null}
-      </div>
-
-      {error ? (
-        <ShellSection>
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
-            {error}
-          </div>
-        </ShellSection>
+        </>
+      }
+      projectScope="project"
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      tabs={["探索概览", "探索日志", "探索报告"]}
+      title={run?.title ?? "探索任务"}
+    >
+      {activeTab === "探索概览" && error && failureVisible ? (
+        <ExplorationFailureNotice error={error} onClose={() => setFailureVisible(false)} />
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          helper="当前探索任务状态"
-          icon={Route}
-          label="任务状态"
-          value={run ? (statusLabels[run.status] ?? run.status) : "-"}
-        />
-        <MetricCard
-          helper="用于登录和页面访问"
-          icon={Play}
-          label="登录策略"
-          value={run ? (loginStrategyLabels[run.login_strategy] ?? run.login_strategy) : "-"}
-        />
-        <MetricCard
-          helper="最近一次状态变更"
-          icon={RefreshCw}
-          label="更新时间"
-          value={run ? formatDateTime(run.updated_at) : "-"}
-        />
-        <MetricCard
-          helper="探索结果文件目录"
-          icon={FileText}
-          label="产物目录"
-          value={run?.artifact_root ? "已生成" : "-"}
-        />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-        <ShellSection>
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="font-medium text-sm">运行详情</h2>
-              <p className="text-muted-foreground text-xs">探索执行状态和输入摘要</p>
-            </div>
-            {run ? (
-              <Badge variant={run.status === "blocked" ? "destructive" : "secondary"}>
-                {statusLabels[run.status] ?? run.status}
-              </Badge>
-            ) : null}
+      {activeTab === "探索概览" ? (
+        <>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+              helper="当前探索任务状态"
+              icon={Route}
+              label="任务状态"
+              value={run ? (statusLabels[run.status] ?? run.status) : "-"}
+            />
+            <MetricCard
+              helper="用于登录和页面访问"
+              icon={Play}
+              label="登录策略"
+              value={run ? (loginStrategyLabels[run.login_strategy] ?? run.login_strategy) : "-"}
+            />
+            <MetricCard
+              helper="最近一次状态变更"
+              icon={RefreshCw}
+              label="更新时间"
+              value={run ? formatDateTime(run.updated_at) : "-"}
+            />
+            <MetricCard helper="从开始探索到结束的耗时" icon={FileText} label="探索时长" value={explorationDuration} />
           </div>
-          {loading ? (
-            <div className="py-10 text-center text-muted-foreground text-sm">探索任务加载中</div>
-          ) : run ? (
-            <div className="space-y-4 text-sm">
-              <InfoRow label="任务 ID" value={run.id} />
-              <InfoRow label="关联环境" value={run.environment_name} />
-              <InfoRow label="探索范围" value={run.scope || "-"} />
-              <InfoRow label="禁止路径" value={run.forbidden_paths || "-"} />
-              <InfoRow label="任务说明" value={run.description || "-"} />
-              <InfoRow label="执行摘要" value={run.result_summary || "尚未开始执行。"} />
-              <InfoRow label="创建时间" value={formatDateTime(run.created_at)} />
-              <InfoRow label="开始时间" value={run.started_at ? formatDateTime(run.started_at) : "-"} />
-              <InfoRow label="结束时间" value={run.finished_at ? formatDateTime(run.finished_at) : "-"} />
+
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <ShellSection className="min-w-0">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-medium text-sm">探索模块进度</h2>
+                  <p className="text-muted-foreground text-xs">展示当前模块、子页面、元素和阻塞项探索状态</p>
+                </div>
+                {run ? (
+                  <Badge variant={run.status === "blocked" ? "destructive" : "secondary"}>
+                    {statusLabels[run.status] ?? run.status}
+                  </Badge>
+                ) : null}
+              </div>
+              {loading ? (
+                <div className="py-10 text-center text-muted-foreground text-sm">探索任务加载中</div>
+              ) : run ? (
+                <AgentPlan
+                  className="max-w-full"
+                  defaultExpandedTaskIds={planTasks.map((task) => task.id)}
+                  tasks={planTasks}
+                />
+              ) : null}
+            </ShellSection>
+
+            <div className="min-w-0 space-y-4">
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle className="text-sm">输入摘要</CardTitle>
+                  <CardDescription>本次探索的环境和范围</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <InfoRow label="任务 ID" value={run?.id ?? "-"} />
+                  <InfoRow label="关联环境" value={run?.environment_name ?? "-"} />
+                  <InfoRow label="探索范围" value={run?.scope || "-"} />
+                  <InfoRow label="禁止路径" value={run?.forbidden_paths || "-"} />
+                </CardContent>
+              </Card>
+
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle className="text-sm">执行时间线</CardTitle>
+                  <CardDescription>第一版展示关键阶段</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <TimelineItem
+                    active={Boolean(run)}
+                    label="任务已创建"
+                    value={run ? formatDateTime(run.created_at) : "-"}
+                  />
+                  <TimelineItem
+                    active={Boolean(run?.started_at)}
+                    label="开始探索"
+                    value={run?.started_at ? formatDateTime(run.started_at) : "待执行"}
+                  />
+                  <TimelineItem
+                    active={Boolean(run?.finished_at)}
+                    label="探索结束"
+                    value={run?.finished_at ? formatDateTime(run.finished_at) : "等待结果"}
+                  />
+                </CardContent>
+              </Card>
             </div>
-          ) : null}
-        </ShellSection>
+          </div>
+        </>
+      ) : null}
 
-        <div className="space-y-4">
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle className="text-sm">执行时间线</CardTitle>
-              <CardDescription>第一版展示关键阶段</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <TimelineItem
-                active={Boolean(run)}
-                label="任务已创建"
-                value={run ? formatDateTime(run.created_at) : "-"}
-              />
-              <TimelineItem
-                active={Boolean(run?.started_at)}
-                label="开始探索"
-                value={run?.started_at ? formatDateTime(run.started_at) : "待执行"}
-              />
-              <TimelineItem
-                active={Boolean(run?.finished_at)}
-                label="探索结束"
-                value={run?.finished_at ? formatDateTime(run.finished_at) : "等待结果"}
-              />
-            </CardContent>
-          </Card>
+      {activeTab === "探索日志" ? (
+        <ExplorationLogPanel
+          error={logError}
+          failureDetail={failureDetail}
+          loading={logLoading}
+          log={log}
+          run={run}
+          onReload={() => void loadLog()}
+        />
+      ) : null}
 
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Terminal className="size-4" />
-                产物
-              </CardTitle>
-              <CardDescription>探索文档、JSON 和日志会写入后端文件系统</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <InfoRow label="产物根目录" value={run?.artifact_root || "-"} />
-              <Separator />
-              <p className="text-muted-foreground text-xs">
-                深度页面、日志和文档预览接口后续接入；当前先展示运行入口和产物路径。
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      {activeTab === "探索报告" ? (
+        <ExplorationReportPanel
+          error={reportError}
+          loading={reportLoading}
+          report={report}
+          onReload={() => void loadReport()}
+        />
+      ) : null}
     </PageShell>
   );
+}
+
+function ExplorationFailureNotice({ error, onClose }: { error: string; onClose: () => void }) {
+  return (
+    <div className="flex min-h-10 items-center gap-2 rounded-lg border border-destructive/35 bg-destructive/8 px-3 text-sm shadow-sm">
+      <AlertTriangle className="size-4 shrink-0 text-destructive" />
+      <div className="min-w-0 flex-1 truncate text-destructive">
+        探索任务加载失败：{error}，详细信息请查看“探索日志”。
+      </div>
+      <Button aria-label="关闭探索失败信息" onClick={onClose} size="icon-xs" type="button" variant="ghost">
+        <X className="size-4" />
+      </Button>
+    </div>
+  );
+}
+
+function ExplorationLogPanel({
+  error,
+  failureDetail,
+  loading,
+  log,
+  onReload,
+  run,
+}: {
+  error: string;
+  failureDetail: {
+    error: string;
+    projectId: string;
+    requestPath: string;
+    runId: string;
+    failedAt: string;
+  } | null;
+  loading: boolean;
+  log: ExplorationLog | null;
+  onReload: () => void;
+  run: ExplorationRun | null;
+}) {
+  const entries = parseLogEntries(log?.log_content ?? "");
+
+  return (
+    <ShellSection>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="font-medium text-sm">探索日志</h2>
+          <p className="text-muted-foreground text-xs">按时间条目展示探索任务加载、执行和失败诊断信息</p>
+        </div>
+        <Button disabled={loading} onClick={onReload} size="sm" type="button" variant="outline">
+          <RefreshCw className="size-4" />
+          刷新日志
+        </Button>
+      </div>
+
+      {failureDetail ? (
+        <div className="space-y-3 rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm">
+          <div className="flex items-center gap-2 font-medium text-destructive">
+            <AlertTriangle className="size-4" />
+            探索任务加载失败
+          </div>
+          <div className="grid gap-2">
+            <InfoRow label="失败原因" value={failureDetail.error} />
+            <InfoRow label="任务 ID" value={failureDetail.runId} />
+            <InfoRow label="项目 ID" value={failureDetail.projectId} />
+            <InfoRow label="请求接口" value={failureDetail.requestPath} />
+            <InfoRow label="失败时间" value={failureDetail.failedAt} />
+            <InfoRow label="建议操作" value="检查后端服务、网络连接和当前账号权限后点击刷新重试。" />
+          </div>
+        </div>
+      ) : loading ? (
+        <div className="py-10 text-center text-muted-foreground text-sm">探索日志加载中</div>
+      ) : error ? (
+        <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-destructive text-sm">
+          探索日志加载失败：{error}
+        </div>
+      ) : entries.length > 0 ? (
+        <div className="overflow-hidden rounded-lg border bg-background">
+          <div className="grid gap-2 border-b bg-muted/25 px-4 py-3 text-muted-foreground text-xs sm:grid-cols-[1fr_auto]">
+            <span className="truncate">{log?.log_path || "探索执行日志"}</span>
+            <span>{entries.length} 条</span>
+          </div>
+          <Table className="table-fixed">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-[190px] px-4 text-muted-foreground">时间</TableHead>
+                <TableHead className="px-4 text-muted-foreground">日志内容</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {entries.map((entry) => (
+                <TableRow key={entry.id}>
+                  <TableCell className="px-4 align-top font-mono text-muted-foreground text-xs leading-6">
+                    <time>{entry.timestamp}</time>
+                  </TableCell>
+                  <TableCell className="min-w-0 px-4 align-top">
+                    <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6">
+                      {entry.message}
+                    </pre>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ) : log?.log_content ? (
+        <div className="rounded-lg border bg-background p-4">
+          <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6">{log.log_content}</pre>
+        </div>
+      ) : (
+        <div className="rounded-lg border bg-muted/20 p-4 text-muted-foreground text-sm">
+          暂无失败日志。
+          {run?.result_summary ? `最近执行摘要：${run.result_summary}` : "任务执行后会在这里展示日志信息。"}
+        </div>
+      )}
+    </ShellSection>
+  );
+}
+
+function ExplorationReportPanel({
+  error,
+  loading,
+  report,
+  onReload,
+}: {
+  error: string;
+  loading: boolean;
+  report: ExplorationReport | null;
+  onReload: () => void;
+}) {
+  return (
+    <ShellSection>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="font-medium text-sm">探索报告</h2>
+          <p className="text-muted-foreground text-xs">展示探索任务生成的 Markdown 报告</p>
+        </div>
+        <Button disabled={loading} onClick={onReload} size="sm" type="button" variant="outline">
+          <RefreshCw className="size-4" />
+          刷新报告
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="py-10 text-center text-muted-foreground text-sm">探索报告加载中</div>
+      ) : error ? (
+        <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-destructive text-sm">
+          探索报告加载失败：{error}
+        </div>
+      ) : report?.markdown_content ? (
+        <div className="space-y-3">
+          <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-sm sm:grid-cols-3">
+            <InfoRow label="报告版本" value={report.version_no ? `v${report.version_no}` : "-"} />
+            <InfoRow label="生成时间" value={report.created_at ? formatDateTime(report.created_at) : "-"} />
+            <InfoRow label="变更摘要" value={report.change_summary || "-"} />
+          </div>
+          <MarkdownPreview
+            className="rounded-lg border bg-background p-4"
+            content={report.markdown_content}
+            emptyText="当前探索报告暂无可展示内容。"
+          />
+        </div>
+      ) : (
+        <div className="rounded-lg border bg-muted/20 p-4 text-muted-foreground text-sm">
+          暂无探索报告。探索任务完成后会在这里展示 Markdown 格式报告。
+        </div>
+      )}
+    </ShellSection>
+  );
+}
+
+function parseLogEntries(content: string): ParsedLogEntry[] {
+  const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  const entries: ParsedLogEntry[] = [];
+  const timePrefixPattern =
+    /^(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d{3,6})?)?|\d{2}:\d{2}:\d{2}(?:[.,]\d{3,6})?)(?:\s*[|:-]\s*|\s+)(.*)$/;
+
+  for (const line of lines) {
+    const matched = line.match(timePrefixPattern);
+    if (matched) {
+      entries.push({
+        id: `log-${entries.length}`,
+        timestamp: matched[1],
+        message: matched[2]?.trim() || line.trim(),
+      });
+      continue;
+    }
+
+    const lastEntry = entries.at(-1);
+    if (lastEntry) {
+      lastEntry.message = `${lastEntry.message}\n${line}`;
+    }
+  }
+
+  return entries;
+}
+
+function formatExplorationDuration(run: ExplorationRun): string {
+  if (!run.started_at) {
+    return "-";
+  }
+
+  const startedAt = new Date(run.started_at).getTime();
+  const finishedAt = run.finished_at ? new Date(run.finished_at).getTime() : Date.now();
+  if (!Number.isFinite(startedAt) || !Number.isFinite(finishedAt) || finishedAt < startedAt) {
+    return "-";
+  }
+
+  const totalSeconds = Math.floor((finishedAt - startedAt) / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
+function toPlanTasks(detail: ExplorationRunDetail): AgentPlanTask[] {
+  return detail.modules.map((module) => {
+    const pageSubtasks = module.pages.map((page) => ({
+      id: `page-${page.id}`,
+      title: page.title || page.url || page.entry_path || "未命名页面",
+      description: page.structure_summary || page.url || "页面已纳入探索结果。",
+      status: "completed" as const,
+      meta: [page.url || page.entry_path].filter(Boolean),
+    }));
+    const blockerSubtasks = module.blockers.map((blocker) => ({
+      id: `blocker-${blocker.id}`,
+      title: blocker.page_ref || blocker.reason_type || "探索阻塞项",
+      description: [blocker.reason, blocker.suggested_action].filter(Boolean).join(" 建议："),
+      status: blocker.is_blocking ? ("blocked" as const) : ("partial" as const),
+      meta: [blocker.reason_type].filter(Boolean),
+    }));
+    const elementSubtasks = module.elements.slice(0, 6).map((element) => ({
+      id: `element-${element.id}`,
+      title: element.element_name,
+      description: element.stability_note || element.recommended_locator || "已识别页面元素。",
+      status: "completed" as const,
+      meta: [element.element_type, element.recommended_locator].filter(Boolean),
+    }));
+    const pendingSubtask =
+      pageSubtasks.length + blockerSubtasks.length + elementSubtasks.length === 0
+        ? [
+            {
+              id: `pending-${module.id}`,
+              title: "等待探索产物",
+              description: "开始探索后会在这里展示模块子页面、关键元素、阻塞项和完成情况。",
+              status: normalizePlanStatus(detail.run.status),
+              meta: [module.entry_path].filter(Boolean),
+            },
+          ]
+        : [];
+
+    return {
+      id: module.id,
+      title: module.module_name,
+      description: module.completion_summary || module.entry_path,
+      status: normalizePlanStatus(module.completion_status),
+      dependencies: [
+        `${module.explored_page_count}/${module.planned_page_count || module.explored_page_count || 1} 页面`,
+        module.blocked_page_count ? `${module.blocked_page_count} 阻塞` : "",
+      ].filter(Boolean),
+      meta: [module.entry_path].filter(Boolean),
+      subtasks: [...pageSubtasks, ...blockerSubtasks, ...elementSubtasks, ...pendingSubtask],
+    };
+  });
+}
+
+function normalizePlanStatus(status: string): AgentPlanTask["status"] {
+  if (status === "running" || status === "in-progress") {
+    return "in-progress";
+  }
+  if (status === "queued") {
+    return "queued";
+  }
+  if (status === "pending") {
+    return "pending";
+  }
+  if (status === "completed" || status === "partial" || status === "blocked" || status === "failed") {
+    return status;
+  }
+  return "pending";
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {

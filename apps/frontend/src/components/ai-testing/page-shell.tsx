@@ -41,6 +41,8 @@ interface PageShellProps {
   onTabChange?: (value: string) => void;
   primaryAction?: string;
   onPrimaryAction?: () => void;
+  actions?: ReactNode;
+  tabActions?: ReactNode;
   children: ReactNode;
 }
 
@@ -60,6 +62,8 @@ export function PageShell({
   onTabChange,
   primaryAction,
   onPrimaryAction,
+  actions,
+  tabActions,
   children,
 }: PageShellProps) {
   return (
@@ -69,9 +73,12 @@ export function PageShell({
         description={description}
         onPrimaryAction={onPrimaryAction}
         primaryAction={primaryAction}
+        actions={actions}
         title={title}
       />
-      {tabs.length > 0 && <ModuleTabs activeTab={activeTab} onTabChange={onTabChange} tabs={tabs} />}
+      {tabs.length > 0 && (
+        <ModuleTabs actions={tabActions} activeTab={activeTab} onTabChange={onTabChange} tabs={tabs} />
+      )}
       {children}
     </div>
   );
@@ -81,12 +88,14 @@ export function PageHeader({
   title,
   primaryAction,
   onPrimaryAction,
+  actions,
 }: {
   title: string;
   description: string;
   breadcrumbs: string[];
   primaryAction?: string;
   onPrimaryAction?: () => void;
+  actions?: ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -96,6 +105,7 @@ export function PageHeader({
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        {actions}
         {primaryAction && <Button onClick={onPrimaryAction}>{primaryAction}</Button>}
       </div>
     </div>
@@ -106,27 +116,32 @@ export function ModuleTabs({
   tabs,
   activeTab,
   onTabChange,
+  actions,
 }: {
   tabs: ModuleTab[];
   activeTab?: string;
   onTabChange?: (value: string) => void;
+  actions?: ReactNode;
 }) {
   const firstTab = tabs[0];
   const defaultValue = activeTab ?? (typeof firstTab === "string" ? firstTab : firstTab.label);
 
   return (
-    <Tabs value={activeTab} defaultValue={defaultValue} onValueChange={onTabChange} className="w-full">
-      <TabsList className="flex h-auto flex-wrap justify-start">
-        {tabs.map((tab) => (
-          <TabsTrigger
-            key={typeof tab === "string" ? tab : tab.label}
-            value={typeof tab === "string" ? tab : tab.label}
-          >
-            {typeof tab === "string" ? tab : <Link href={tab.href}>{tab.label}</Link>}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-    </Tabs>
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <Tabs value={activeTab} defaultValue={defaultValue} onValueChange={onTabChange} className="w-auto">
+        <TabsList className="flex h-auto flex-wrap justify-start">
+          {tabs.map((tab) => (
+            <TabsTrigger
+              key={typeof tab === "string" ? tab : tab.label}
+              value={typeof tab === "string" ? tab : tab.label}
+            >
+              {typeof tab === "string" ? tab : <Link href={tab.href}>{tab.label}</Link>}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+      <div className="flex flex-wrap items-center gap-2 sm:justify-end">{actions}</div>
+    </div>
   );
 }
 

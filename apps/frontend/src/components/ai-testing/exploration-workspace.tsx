@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useSearchParams } from "next/navigation";
 
-import { Eye, EyeOff, Play, Plus, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
@@ -109,6 +109,7 @@ const emptyExplorationForm: ExplorationForm = {
 };
 
 const statusLabels: Record<string, string> = {
+  pending: "待执行",
   queued: "排队中",
   running: "探索中",
   waiting_human: "等待人工",
@@ -124,6 +125,8 @@ const loginStrategyLabels: Record<string, string> = {
   skip_login: "跳过登录",
 };
 
+const explorationTabs = ["探索列表", "探索环境"];
+
 export function ExplorationWorkspace({
   breadcrumbs,
   description,
@@ -134,11 +137,12 @@ export function ExplorationWorkspace({
 }: ExplorationWorkspaceProps) {
   const searchParams = useSearchParams();
   const createParamHandledRef = useRef(false);
-  const [activeTab, setActiveTab] = useState("探索任务");
+  const [activeTab, setActiveTab] = useState("探索列表");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [explorationDialogOpen, setExplorationDialogOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [editingEnvironment, setEditingEnvironment] = useState<ProjectEnvironment | null>(null);
+  const [editingExploration, setEditingExploration] = useState<ExplorationRun | null>(null);
   const [explorationLoading, setExplorationLoading] = useState(true);
   const [environmentLoading, setEnvironmentLoading] = useState(true);
   const [projectLoading, setProjectLoading] = useState(projectScope === "all");
@@ -293,6 +297,11 @@ export function ExplorationWorkspace({
   const selectedProjectId = projectScope === "project" ? (projectId ?? "") : explorationForm.projectId;
   const availableEnvironments = rows.filter((environment) => environment.project_id === selectedProjectId);
   const canCreateExploration = selectedProjectId.length > 0 && explorationForm.environmentId.length > 0;
+  const explorationProjectSelectDisabled = [
+    projectScope === "project",
+    projectLoading,
+    editingExploration !== null,
+  ].some(Boolean);
   const environmentProjectSelectDisabled = [
     projectScope === "project",
     projectLoading,
@@ -309,6 +318,7 @@ export function ExplorationWorkspace({
   const openCreateExplorationDialog = useCallback(() => {
     const targetProjectId = projectId ?? projects[0]?.id ?? "";
     const firstEnvironment = rows.find((environment) => environment.project_id === targetProjectId);
+    setEditingExploration(null);
     setExplorationForm({
       ...emptyExplorationForm,
       projectId: targetProjectId,
@@ -323,7 +333,7 @@ export function ExplorationWorkspace({
     }
 
     createParamHandledRef.current = true;
-    setActiveTab("探索任务");
+    setActiveTab("探索列表");
     openCreateExplorationDialog();
   }, [openCreateExplorationDialog, searchParams]);
 
@@ -339,6 +349,20 @@ export function ExplorationWorkspace({
     });
     setShowPassword(false);
     setDialogOpen(true);
+  }
+
+  function openEditExplorationDialog(run: ExplorationRun) {
+    setEditingExploration(run);
+    setExplorationForm({
+      title: run.title,
+      projectId: run.project_id,
+      environmentId: run.environment_id,
+      scope: run.scope,
+      forbiddenPaths: run.forbidden_paths,
+      loginStrategy: run.login_strategy,
+      description: run.description,
+    });
+    setExplorationDialogOpen(true);
   }
 
   async function saveEnvironment() {
@@ -400,7 +424,7 @@ export function ExplorationWorkspace({
     }
   }
 
-  async function createExplorationRun() {
+  async function saveExplorationRun() {
     const targetProjectId = projectScope === "project" ? projectId : explorationForm.projectId;
     if (!targetProjectId) {
       toast.error("请选择项目");
@@ -412,23 +436,45 @@ export function ExplorationWorkspace({
     }
 
     try {
-      const created = await apiRequest<ExplorationRun>(`/projects/${targetProjectId}/exploration-runs`, {
-        method: "POST",
-        body: JSON.stringify({
-          project_id: targetProjectId,
-          environment_id: explorationForm.environmentId,
-          title: explorationForm.title,
-          scope: explorationForm.scope,
-          forbidden_paths: explorationForm.forbiddenPaths,
-          login_strategy: explorationForm.loginStrategy,
-          description: explorationForm.description,
-        }),
-      });
-      explorationSelection.setRows((current) => [created, ...current]);
+      const payload = {
+        environment_id: explorationForm.environmentId,
+        title: explorationForm.title,
+        scope: explorationForm.scope,
+        forbidden_paths: explorationForm.forbiddenPaths,
+        login_strategy: explorationForm.loginStrategy,
+        description: explorationForm.description,
+      };
+      if (editingExploration) {
+        const updated = await apiRequest<ExplorationRun>(
+          `/projects/${editingExploration.project_id}/exploration-runs/${editingExploration.id}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(payload),
+          },
+        );
+        explorationSelection.setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+        toast.success("探索任务已更新");
+      } else {
+        const created = await apiRequest<ExplorationRun>(`/projects/${targetProjectId}/exploration-runs`, {
+          method: "POST",
+          body: JSON.stringify({
+            project_id: targetProjectId,
+            ...payload,
+          }),
+        });
+        explorationSelection.setRows((current) => [created, ...current]);
+        toast.success("探索任务已创建");
+      }
       setExplorationDialogOpen(false);
-      toast.success("探索任务已创建");
+      setEditingExploration(null);
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "探索任务创建失败");
+      toast.error(
+        requestError instanceof Error
+          ? requestError.message
+          : editingExploration
+            ? "探索任务更新失败"
+            : "探索任务创建失败",
+      );
     }
   }
 
@@ -486,11 +532,11 @@ export function ExplorationWorkspace({
       breadcrumbs={breadcrumbs}
       description={description}
       projectScope={projectScope}
-      tabs={["环境配置", "探索任务", "探索文档", "候选需求文档", "冲突项"]}
+      tabs={explorationTabs}
       title={title}
       onTabChange={setActiveTab}
     >
-      {activeTab === "探索任务" ? (
+      {activeTab === "探索列表" ? (
         <ShellSection>
           {error ? (
             <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
@@ -543,7 +589,11 @@ export function ExplorationWorkspace({
                         onCheckedChange={(checked) => explorationSelection.toggleOne(item.id, Boolean(checked))}
                       />
                     </TableCell>
-                    <TableCell className="font-medium">{item.title}</TableCell>
+                    <TableCell className="font-medium">
+                      <button className="hover:underline" onClick={() => openExplorationRun(item)} type="button">
+                        {item.title}
+                      </button>
+                    </TableCell>
                     <TableCell>{item.project_name}</TableCell>
                     <TableCell>{item.environment_name}</TableCell>
                     <TableCell>{statusLabels[item.status] ?? item.status}</TableCell>
@@ -553,9 +603,14 @@ export function ExplorationWorkspace({
                       <RowActions
                         actions={[
                           {
-                            label: "探索",
-                            icon: Play,
+                            label: "概览",
+                            icon: Eye,
                             onSelect: () => openExplorationRun(item),
+                          },
+                          {
+                            label: "编辑",
+                            icon: Pencil,
+                            onSelect: () => openEditExplorationDialog(item),
                           },
                           {
                             label: "删除",
@@ -585,7 +640,7 @@ export function ExplorationWorkspace({
         </ShellSection>
       ) : null}
 
-      {activeTab === "环境配置" ? (
+      {activeTab === "探索环境" ? (
         <ShellSection>
           {error ? (
             <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
@@ -668,14 +723,6 @@ export function ExplorationWorkspace({
                 ) : null}
               </TableBody>
             </Table>
-          </div>
-        </ShellSection>
-      ) : null}
-
-      {["探索文档", "候选需求文档", "冲突项"].includes(activeTab) ? (
-        <ShellSection>
-          <div className="rounded-lg border p-8 text-center text-muted-foreground text-sm">
-            {activeTab} 将在探索任务产生真实结果后展示。
           </div>
         </ShellSection>
       ) : null}
@@ -784,10 +831,18 @@ export function ExplorationWorkspace({
         </DialogContent>
       </Dialog>
 
-      <Dialog onOpenChange={setExplorationDialogOpen} open={explorationDialogOpen}>
+      <Dialog
+        onOpenChange={(open) => {
+          setExplorationDialogOpen(open);
+          if (!open) {
+            setEditingExploration(null);
+          }
+        }}
+        open={explorationDialogOpen}
+      >
         <DialogContent className="gap-6 p-6 sm:max-w-3xl">
           <DialogHeader className="gap-3">
-            <DialogTitle>新建探索任务</DialogTitle>
+            <DialogTitle>{editingExploration ? "编辑探索任务" : "新建探索任务"}</DialogTitle>
             <DialogDescription>选择环境并配置探索范围、禁止路径和登录策略。</DialogDescription>
           </DialogHeader>
           <FieldGroup className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
@@ -803,7 +858,7 @@ export function ExplorationWorkspace({
             <Field>
               <FieldLabel htmlFor="exploration-project">项目</FieldLabel>
               <Select
-                disabled={projectScope === "project" || projectLoading}
+                disabled={explorationProjectSelectDisabled}
                 onValueChange={(value) => {
                   const firstEnvironment = rows.find((environment) => environment.project_id === value);
                   setExplorationForm((current) => ({
@@ -903,9 +958,15 @@ export function ExplorationWorkspace({
             <Button onClick={() => setExplorationDialogOpen(false)} type="button" variant="outline">
               取消
             </Button>
-            <Button disabled={!canCreateExploration} onClick={createExplorationRun} type="button">
-              <Play className="size-4" />
-              创建任务
+            <Button disabled={!canCreateExploration} onClick={saveExplorationRun} type="button">
+              {editingExploration ? (
+                "保存"
+              ) : (
+                <>
+                  <Play className="size-4" />
+                  创建任务
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
