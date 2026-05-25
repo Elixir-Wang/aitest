@@ -66,7 +66,7 @@ def test_registry_exposes_requirement_file_agents(self):
     agents = agent_registry.list()
 
     self.assertEqual([agent.id for agent in agents], ["raw_requirement_format_converter"])
-    self.assertEqual(agents[0].name, "原始需求格式转换智能体")
+    self.assertEqual(agents[0].name, "格式转换智能体")
     self.assertEqual(agents[0].skill_ids, ("pdf_to_markdown", "docx_to_markdown"))
 ```
 

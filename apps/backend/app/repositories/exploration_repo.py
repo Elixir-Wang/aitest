@@ -46,6 +46,80 @@ def find_by_id(db: Connection, run_id: str) -> Row | None:
     return db.execute(f"{BASE_SELECT} WHERE er.id = ?", (run_id,)).fetchone()
 
 
+def list_module_coverages(db: Connection, run_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT *
+        FROM exploration_module_coverages
+        WHERE exploration_run_id = ?
+        ORDER BY created_at ASC, module_name ASC
+        """,
+        (run_id,),
+    ).fetchall()
+
+
+def list_pages(db: Connection, run_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT *
+        FROM exploration_pages
+        WHERE exploration_run_id = ?
+        ORDER BY created_at ASC, title ASC
+        """,
+        (run_id,),
+    ).fetchall()
+
+
+def list_elements(db: Connection, run_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT *
+        FROM exploration_elements
+        WHERE exploration_run_id = ?
+        ORDER BY created_at ASC, element_name ASC
+        """,
+        (run_id,),
+    ).fetchall()
+
+
+def list_blockers(db: Connection, run_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT *
+        FROM exploration_blockers
+        WHERE exploration_run_id = ?
+        ORDER BY created_at ASC, reason_type ASC
+        """,
+        (run_id,),
+    ).fetchall()
+
+
+def latest_document_version(db: Connection, run_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT *
+        FROM exploration_document_versions
+        WHERE exploration_run_id = ?
+        ORDER BY version_no DESC, created_at DESC
+        LIMIT 1
+        """,
+        (run_id,),
+    ).fetchone()
+
+
+def latest_artifact_by_type(db: Connection, run_id: str, artifact_type: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT *
+        FROM exploration_artifacts
+        WHERE exploration_run_id = ? AND artifact_type = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (run_id, artifact_type),
+    ).fetchone()
+
+
 def create(
     db: Connection,
     *,
@@ -62,8 +136,8 @@ def create(
     db.execute(
         """
         INSERT INTO exploration_runs
-          (id, project_id, environment_id, title, scope, forbidden_paths, login_strategy, description, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, description, created_by)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
         """,
         (run_id, project_id, environment_id, title, scope, forbidden_paths, login_strategy, description, created_by),
     )
@@ -71,6 +145,11 @@ def create(
 
 def delete(db: Connection, run_id: str) -> None:
     db.execute("DELETE FROM exploration_runs WHERE id = ?", (run_id,))
+
+
+def update(db: Connection, run_id: str, assignments: list[str], values: list[object]) -> None:
+    values.append(run_id)
+    db.execute(f"UPDATE exploration_runs SET {', '.join(assignments)} WHERE id = ?", values)
 
 
 def update_run_state(

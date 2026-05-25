@@ -29,7 +29,7 @@ def test_registry_exposes_requirement_file_agents(self):
     agents = agent_registry.list()
 
     self.assertEqual([agent.id for agent in agents], ["raw_requirement_format_converter"])
-    self.assertEqual(agents[0].name, "原始需求格式转换智能体")
+    self.assertEqual(agents[0].name, "格式转换智能体")
     self.assertEqual(agents[0].skill_ids, ("raw_requirement_format_converter",))
 ```
 
@@ -56,10 +56,10 @@ from app.agents.definitions import AgentDefinition
 
 agent_definition = AgentDefinition(
     id="raw_requirement_format_converter",
-    name="原始需求格式转换智能体",
+    name="格式转换智能体",
     description="负责将上传的 PDF、Word、TXT 和 Markdown 需求文件解析为 Markdown 工作稿。",
     instructions=(
-        "你是 AI 测试系统中的原始需求格式转换智能体。"
+        "你是 AI 测试系统中的格式转换智能体。"
         "你的职责是把上传的 Word、PDF、TXT、Markdown 等原始需求文件转换成结构稳定的 Markdown 标准文件。"
         "你只负责高保真格式转换、质量检查和无法识别项提示，不生成业务结论。"
     ),

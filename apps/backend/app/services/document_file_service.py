@@ -310,7 +310,7 @@ async def convert_to_markdown(filename: str, raw_bytes: bytes, *, assets_dir: Pa
     if not markdown:
         return candidate_markdown, f"{candidate_summary}（智能体未返回有效 Markdown，已使用本地转换结果。）"
 
-    summary = agent_output.conversion_summary.strip() or "已通过原始需求格式转换智能体标准化 Markdown。"
+    summary = agent_output.conversion_summary.strip() or "已通过格式转换智能体标准化 Markdown。"
     if agent_output.warnings:
         summary = f"{summary} 警告：{'；'.join(agent_output.warnings)}"
     return markdown + "\n", summary

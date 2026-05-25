@@ -40,7 +40,7 @@ class AgentRuntimeTest(unittest.TestCase):
             model = resolve_agent_model(
                 AgentDefinition(
                     id="raw_requirement_format_converter",
-                    name="原始需求格式转换智能体",
+                    name="格式转换智能体",
                     description="",
                     instructions="",
                     model="gpt-default",
@@ -67,7 +67,7 @@ class AgentRuntimeTest(unittest.TestCase):
             selection = resolve_agent_model_selection(
                 AgentDefinition(
                     id="raw_requirement_format_converter",
-                    name="原始需求格式转换智能体",
+                    name="格式转换智能体",
                     description="",
                     instructions="",
                     model="gpt-default",
@@ -99,7 +99,7 @@ class AgentRuntimeTest(unittest.TestCase):
             model = resolve_agent_model(
                 AgentDefinition(
                     id="raw_requirement_format_converter",
-                    name="原始需求格式转换智能体",
+                    name="格式转换智能体",
                     description="",
                     instructions="",
                     model="gpt-default",
@@ -126,7 +126,7 @@ class AgentRuntimeTest(unittest.TestCase):
             selection = resolve_agent_model_selection(
                 AgentDefinition(
                     id="raw_requirement_format_converter",
-                    name="原始需求格式转换智能体",
+                    name="格式转换智能体",
                     description="",
                     instructions="",
                     model="gpt-default",
@@ -196,7 +196,7 @@ class AgentRuntimeTest(unittest.TestCase):
             selection = resolve_agent_model_selection(
                 AgentDefinition(
                     id="raw_requirement_format_converter",
-                    name="原始需求格式转换智能体",
+                    name="格式转换智能体",
                     description="",
                     instructions="",
                     model="gpt-default",

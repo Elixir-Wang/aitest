@@ -133,6 +133,8 @@ def update_file_mapping_markdown(db: Connection, mapping_id: str, markdown_file_
         UPDATE source_document_file_mappings
         SET markdown_file_path = ?,
             conversion_status = 'success',
+            mapping_status = 'pending_merge',
+            version_id = NULL,
             conversion_summary = ?,
             conversion_quality = 100
         WHERE id = ?

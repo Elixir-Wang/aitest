@@ -16,13 +16,10 @@ from __future__ import annotations
 import logging
 import sys
 from contextvars import ContextVar
-from pathlib import Path
 
 from loguru import logger
 
-# ── 路径 ──────────────────────────────────────────────────────────────────────
-ROOT_DIR = Path(__file__).resolve().parents[2]
-LOGS_DIR = ROOT_DIR / "logs"
+from app.core.settings import LOGS_DIR
 
 # ── trace_id 上下文变量（async 安全） ─────────────────────────────────────────
 _trace_id_ctx: ContextVar[str] = ContextVar("trace_id", default="-")

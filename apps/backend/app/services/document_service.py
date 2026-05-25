@@ -181,12 +181,21 @@ def get_document_overview(project_id: str, document_id: str, actor) -> dict:
         }
         for item in files
     ]
+    changed_standard_files = [
+        item
+        for item in overview_files
+        if detail["document"]["current_version_id"]
+        and item["conversion_status"] in {CONVERSION_SUCCESS_STATUS, "warning"}
+        and item["mapping_status"] == DOCUMENT_PENDING_MERGE_STATUS
+    ]
 
     return {
         "document": detail["document"],
         "stats": stats,
         "files": overview_files,
         "has_open_conflicts": len(open_conflicts) > 0,
+        "merge_sync_status": "outdated" if changed_standard_files else "synced",
+        "changed_standard_files": changed_standard_files,
         "initial_markdown_content": detail["markdown_content"],
         "artifact_tabs": requirement_merge_artifact_service.read_merge_artifact_tabs(
             project_id,

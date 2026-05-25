@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path, PureWindowsPath
 
-from app.core.db import DATA_DIR
-
-PROJECT_FILE_STORAGE_ROOT = Path(os.getenv("AI_TESTING_PROJECT_FILE_STORAGE_DIR", DATA_DIR / "projects")).resolve()
+from app.core.settings import PROJECT_FILE_STORAGE_ROOT
 
 
 def project_requirement_dir(project_id: str, document_id: str) -> Path:

@@ -22,7 +22,7 @@ class SkillLoaderTest(unittest.TestCase):
         self.assertIn("document_editor", agent_ids)
         self.assertIn("requirement_merge", agent_ids)
         self.assertIn("site_exploration", agent_ids)
-        self.assertEqual(agents[0].name, "原始需求格式转换智能体")
+        self.assertEqual(agents[0].name, "格式转换智能体")
         self.assertEqual(agents[0].skill_ids, ("pdf_to_markdown", "docx_to_markdown", "markdown_normalize"))
         self.assertEqual(agents[1].name, "需求归并智能体")
         self.assertEqual(agents[1].skill_ids, ("requirement_markdown_merge",))

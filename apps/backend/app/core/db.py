@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from pathlib import Path
 from typing import Iterator
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-DATA_DIR = ROOT_DIR / "data"
-DB_PATH = DATA_DIR / "ai_testing.db"
+from app.core.settings import DATA_DIR, DB_PATH
 
 
 @contextmanager
@@ -24,4 +21,3 @@ def connect() -> Iterator[sqlite3.Connection]:
         raise
     finally:
         connection.close()
-

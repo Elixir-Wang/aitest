@@ -238,7 +238,7 @@ def init_db() -> None:
               project_id TEXT NOT NULL,
               environment_id TEXT NOT NULL,
               title TEXT NOT NULL,
-              status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'waiting_human', 'partial', 'completed', 'blocked')) DEFAULT 'queued',
+              status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'waiting_human', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
               scope TEXT NOT NULL DEFAULT '',
               forbidden_paths TEXT NOT NULL DEFAULT '',
               login_strategy TEXT NOT NULL DEFAULT 'reuse_state',
@@ -353,6 +353,7 @@ def init_db() -> None:
         _ensure_column(db, "exploration_runs", "result_summary", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "exploration_runs", "started_at", "TEXT")
         _ensure_column(db, "exploration_runs", "finished_at", "TEXT")
+        _migrate_exploration_run_statuses(db)
         _migrate_source_documents(db)
         _migrate_file_mappings(db)
         _migrate_merge_conflicts(db)
@@ -379,6 +380,51 @@ def _ensure_column(db: sqlite3.Connection, table: str, column: str, definition: 
     if column in columns:
         return
     db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
+    table = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'exploration_runs'",
+    ).fetchone()
+    if not table or "'pending'" in table["sql"]:
+        return
+
+    db.executescript(
+        """
+        PRAGMA foreign_keys=off;
+        CREATE TABLE IF NOT EXISTS exploration_runs_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          environment_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'waiting_human', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
+          scope TEXT NOT NULL DEFAULT '',
+          forbidden_paths TEXT NOT NULL DEFAULT '',
+          login_strategy TEXT NOT NULL DEFAULT 'reuse_state',
+          description TEXT NOT NULL DEFAULT '',
+          artifact_root TEXT NOT NULL DEFAULT '',
+          result_summary TEXT NOT NULL DEFAULT '',
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          started_at TEXT,
+          finished_at TEXT,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE RESTRICT
+        );
+        INSERT OR IGNORE INTO exploration_runs_new
+          (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, description,
+           artifact_root, result_summary, created_by, created_at, updated_at, started_at, finished_at)
+        SELECT id, project_id, environment_id, title,
+               CASE WHEN status = 'queued' AND started_at IS NULL THEN 'pending' ELSE status END,
+               scope, forbidden_paths, login_strategy, description, artifact_root, result_summary,
+               created_by, created_at, updated_at, started_at, finished_at
+        FROM exploration_runs;
+        DROP TABLE exploration_runs;
+        ALTER TABLE exploration_runs_new RENAME TO exploration_runs;
+        PRAGMA foreign_keys=on;
+        """
+    )
 
 
 def _migrate_source_documents(db: sqlite3.Connection) -> None:

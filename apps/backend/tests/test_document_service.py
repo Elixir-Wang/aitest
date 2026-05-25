@@ -354,6 +354,62 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(markdown_path.read_text(encoding="utf-8"), "# 新标准文件")
             self.assertEqual(document_service.get_document_versions("doc-1"), [])
 
+    def test_update_converted_markdown_marks_merged_file_pending_merge(self):
+        with isolated_document_store() as actor:
+            markdown_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "standard" / "docmap-1.md"
+            version_path = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "versions" / "v1.md"
+            markdown_path.parent.mkdir(parents=True)
+            version_path.parent.mkdir(parents=True)
+            markdown_path.write_text("# 旧标准文件", encoding="utf-8")
+            version_path.write_text("# 初始需求", encoding="utf-8")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', 'docver-1', 'versioned', 'u-admin')
+                    """
+                )
+                document_repo.create_version(
+                    db,
+                    version_id="docver-1",
+                    document_id="doc-1",
+                    version_no=1,
+                    file_path=str(version_path),
+                    source_action="merge",
+                    change_summary="初始合并",
+                    diff_summary="",
+                    created_by="u-admin",
+                )
+                document_repo.create_file_mapping(
+                    db,
+                    mapping_id="docmap-1",
+                    document_id="doc-1",
+                    version_id="docver-1",
+                    source_file_path="raw.md",
+                    original_filename="raw.md",
+                    file_format="md",
+                    markdown_file_path=str(markdown_path),
+                    conversion_status="success",
+                    mapping_status="merged",
+                    conversion_summary="旧转换摘要",
+                    created_by="u-admin",
+                )
+
+            document_service.update_converted_markdown(
+                "docmap-1",
+                markdown_content="# 新标准文件",
+                change_summary="人工修订",
+                actor=actor,
+            )
+            overview = document_service.get_document_overview("project-1", "doc-1", actor)
+
+            self.assertEqual(overview["merge_sync_status"], "outdated")
+            self.assertEqual(overview["changed_standard_files"][0]["id"], "docmap-1")
+            self.assertEqual(overview["files"][0]["mapping_status"], "pending_merge")
+            self.assertIsNone(overview["files"][0]["version_id"])
+
     def test_delete_source_file_removes_converted_assets(self):
         with isolated_document_store() as actor:
             document_dir = Path(document_service.project_requirement_dir("project-1", "doc-1"))
