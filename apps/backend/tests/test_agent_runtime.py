@@ -10,10 +10,12 @@ from app.agents.definitions import AgentDefinition
 from app.agents.runtime import (
     _build_model_provider,
     _extract_usage,
+    _supports_structured_output,
     _serialize_final_output,
     resolve_agent_model,
     resolve_agent_model_selection,
     run_agent,
+    AgentModelSelection,
 )
 from app.core.db import connect
 from pydantic import BaseModel
@@ -286,6 +288,13 @@ class AgentRuntimeTest(unittest.TestCase):
         self.assertEqual(
             _serialize_final_output(ResultModel(title="需求解析", count=2)),
             {"title": "需求解析", "count": 2},
+        )
+
+    def test_structured_output_only_enabled_for_openai_provider(self):
+        self.assertTrue(_supports_structured_output(AgentModelSelection(model="gpt-5.4-mini", provider="openai")))
+        self.assertFalse(_supports_structured_output(AgentModelSelection(model="deepseek-chat", provider="DeepSeek")))
+        self.assertFalse(
+            _supports_structured_output(AgentModelSelection(model="custom-model", provider="openai-compatible"))
         )
 
 

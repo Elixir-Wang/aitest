@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.agents.definitions import AgentDefinition
+from app.schemas.requirement_conversion import RequirementConversionOutput
 
 
 agent_definition = AgentDefinition(
@@ -14,4 +15,5 @@ agent_definition = AgentDefinition(
     ),
     skill_ids=("pdf_to_markdown", "docx_to_markdown", "markdown_normalize"),
     sort_order=10,
+    output_type=RequirementConversionOutput,
 )

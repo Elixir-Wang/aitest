@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 
 from fastapi import UploadFile
+from loguru import logger
 
 from app.core.db import connect
 from app.core.exceptions import api_error
@@ -286,17 +287,23 @@ async def convert_source_file_mapping(mapping_id: str) -> dict:
 async def convert_to_markdown(filename: str, raw_bytes: bytes, *, assets_dir: Path | None = None) -> tuple[str, str]:
     candidate_markdown, candidate_summary = convert_requirement_file_to_markdown(filename, raw_bytes, assets_dir=assets_dir)
     candidate_markdown = normalize_requirement_markdown(candidate_markdown)
+    conversion_input = RequirementConversionInput(
+        filename=filename,
+        file_format=file_format_for_filename(filename),
+        candidate_markdown=candidate_markdown,
+        candidate_summary=candidate_summary,
+    )
     try:
-        agent_output = await convert_raw_requirement_format(
-            RequirementConversionInput(
-                filename=filename,
-                file_format=file_format_for_filename(filename),
-                candidate_markdown=candidate_markdown,
-                candidate_summary=candidate_summary,
-            )
+        agent_output = await convert_raw_requirement_format(conversion_input)
+    except Exception as exc:
+        logger.warning(
+            "Requirement format agent output failed; using local conversion fallback | filename={filename} file_format={file_format} error={error_type}: {error}",
+            filename=filename,
+            file_format=conversion_input.file_format,
+            error_type=type(exc).__name__,
+            error=str(exc),
         )
-    except Exception:
-        return candidate_markdown, f"{candidate_summary}（智能体不可用，已使用本地转换结果。）"
+        return candidate_markdown, f"{candidate_summary}（智能体输出解析或运行失败，已使用本地转换结果：{type(exc).__name__}。）"
 
     markdown = normalize_requirement_markdown(agent_output.markdown_content)
     markdown = markdown.strip()

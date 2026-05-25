@@ -64,8 +64,8 @@
 flowchart TD
   S1["用户访问新版官网"]
   S2["用户完成官网登录（手机号/邮箱）"]
-  S3["[可选] 产品后端预注册 context_id（携带 biz_context） （有邀请码/推荐码/活动业务上下文时，建议产品后端先调用 context/register； 从官网标准入口进入且无产品侧业务上下文则可跳过此步）"]
-  S4["用户点击产品入口，官网服务端调用 ticket/create 生成 login_ticket （ticket/create 由官网侧发起，产品侧通常不直接调用）"]
+  S3["[可选] 产品后端预注册 context_id（携带 biz_context）"]
+  S4["用户点击产品入口，官网服务端调用 ticket/create 生成 login_ticket"]
   S5["官网跳转至产品 sso_entry_url，携带 login_ticket + state"]
   S6["产品后端调用认证中心 /api/sso/ticket/verify"]
   S7["认证中心返回 UserInfo + account_status + return_url + biz_context"]
@@ -183,7 +183,6 @@ flowchart TD
   S2 --> S3
   S2 --> S4
   S4 --> S5
-  S5 --> S3
   S4 --> S6
   S6 --> S7
 ```
@@ -236,16 +235,12 @@ flowchart TD
   S1["ticket verify"]
   S2["查 biz_context（scene / user_intent）"]
   S3["判断 B/C 分流"]
-  S4["B 流程：查企业归属 + 权限"]
-  S5["企业空间"]
-  S6["C 流程：查个人映射"]
-  S7["个人空间"]
+  S4["B 流程：查企业归属 + 权限 → 企业空间"]
+  S5["C 流程：查个人映射 → 个人空间"]
   S1 --> S2
   S2 --> S3
   S3 --> S4
-  S4 --> S5
-  S3 --> S6
-  S6 --> S7
+  S3 --> S5
 ```
 
 ### 9.4 INVITE_ONLY（邀请制/灰度产品）

@@ -21,6 +21,22 @@ const islandTransition: Transition = {
 };
 const SHOW_AFTER_SCROLL_Y = 80;
 
+function createHeadingId(text: string, index: number) {
+  return (
+    text
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/[^\p{Letter}\p{Number}_-]/gu, "") || `toc-heading-${index}`
+  );
+}
+
+function getUniqueHeadingId(baseId: string, usedIds: Map<string, number>) {
+  const count = usedIds.get(baseId) || 0;
+  usedIds.set(baseId, count + 1);
+  return count === 0 ? baseId : `${baseId}-${count + 1}`;
+}
+
 function CircleProgress({ percentage }: { percentage: number }) {
   const size = 24;
   const strokeWidth = 2.5;
@@ -79,17 +95,15 @@ export function DynamicIslandTOC({
   useEffect(() => {
     const getHeadings = () => {
       const elements = Array.from(document.querySelectorAll(selector)) as HTMLElement[];
+      const usedIds = new Map<string, number>();
 
       const validHeadings = elements
         .filter((el) => !el.hasAttribute("data-toc-ignore"))
         .map((el, index) => {
-          if (!el.id) {
-            const generatedId =
-              el.textContent
-                ?.toLowerCase()
-                .replace(/\s+/g, "-")
-                .replace(/[^\w-]/g, "") || `toc-heading-${index}`;
-            el.id = generatedId;
+          const baseId = el.id || createHeadingId(el.textContent || "", index);
+          const uniqueId = getUniqueHeadingId(baseId, usedIds);
+          if (el.id !== uniqueId) {
+            el.id = uniqueId;
           }
 
           const depthAttr = el.getAttribute("data-toc-depth");
@@ -304,7 +318,7 @@ export function DynamicIslandTOC({
 
             <div className="flex-1 overflow-y-auto overscroll-contain px-3 pb-4" data-lenis-prevent="true">
               <div className="flex flex-col gap-0.5">
-                {headings.map((h) => {
+                {headings.map((h, index) => {
                   const isActive = activeId === h.id;
                   const isHovered = hoveredId === h.id;
                   const indentLevel = Math.max(0, h.level - minLevel);
@@ -318,7 +332,7 @@ export function DynamicIslandTOC({
                         !isActive && isHovered && "bg-foreground/5 text-foreground/85",
                         !isActive && !isHovered && "bg-transparent text-foreground/45",
                       )}
-                      key={h.id}
+                      key={`${h.id}-${index}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         const yOffset = -80;

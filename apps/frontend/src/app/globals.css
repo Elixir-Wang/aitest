@@ -199,6 +199,51 @@ These serve as the fallback; there is no separate default.css file. */
     min-height: 180px;
   }
 
+  .requirement-markdown-editor {
+    outline: 2px solid color-mix(in srgb, var(--primary), transparent 82%);
+    outline-offset: 3px;
+  }
+
+  .requirement-markdown-editor-text {
+    border-radius: 6px;
+    min-height: 1.6em;
+    padding: 0.08rem 0.2rem;
+    outline: none;
+    transition:
+      background-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .requirement-markdown-editor-text:focus {
+    background: color-mix(in srgb, var(--primary), transparent 94%);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary), transparent 78%);
+  }
+
+  .requirement-markdown-editor-text:empty::before {
+    color: var(--muted-foreground);
+    content: attr(data-placeholder);
+  }
+
+  .requirement-markdown-editor-source {
+    margin: 1rem 0;
+    border-radius: 8px;
+    border: 1px dashed color-mix(in srgb, var(--border), var(--primary) 24%);
+    background: color-mix(in srgb, var(--muted), transparent 58%);
+    padding: 0.75rem;
+  }
+
+  .requirement-markdown-editor-source .markdown-preview {
+    border: 0;
+    border-radius: 6px;
+    background: var(--card);
+    box-shadow: none;
+    padding: 1rem;
+  }
+
+  .requirement-markdown-editor-empty {
+    color: var(--muted-foreground);
+  }
+
   .markdown-preview > *:first-child {
     margin-top: 0;
   }

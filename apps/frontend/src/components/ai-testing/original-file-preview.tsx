@@ -4,21 +4,14 @@ import { useEffect, useRef, useState } from "react";
 
 import { renderAsync } from "docx-preview";
 import { FileText, Loader2, Minus, Plus, RotateCw } from "lucide-react";
-import {
-  GlobalWorkerOptions,
-  getDocument,
-  type PDFDocumentProxy,
-  type RenderTask,
-} from "pdfjs-dist";
+import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy, type RenderTask } from "pdfjs-dist";
 import "pdfjs-dist/web/pdf_viewer.css";
 
+import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 
-GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.mjs",
-  import.meta.url,
-).toString();
+GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
 
 type OriginalPreview = {
   title: string;
@@ -33,10 +26,7 @@ type OriginalFilePreviewProps = {
   selectedFilename?: string;
 };
 
-export function OriginalFilePreview({
-  preview,
-  selectedFilename,
-}: OriginalFilePreviewProps) {
+export function OriginalFilePreview({ preview, selectedFilename }: OriginalFilePreviewProps) {
   if (!preview) {
     return (
       <div className="flex min-h-[360px] items-center justify-center rounded-lg border border-dashed bg-muted/20 text-muted-foreground text-sm">
@@ -46,6 +36,17 @@ export function OriginalFilePreview({
   }
 
   if (preview.contentType === "text") {
+    if (isMarkdownFormat(preview.fileFormat)) {
+      return (
+        <MarkdownPreview
+          className="requirement-document-preview"
+          content={preview.content}
+          emptyText="当前原始 Markdown 文件暂无可展示内容。"
+          indentParagraphs
+        />
+      );
+    }
+
     return (
       <pre className="min-h-[360px] whitespace-pre-wrap rounded-lg border bg-background p-5 text-sm leading-7">
         {preview.content}
@@ -55,17 +56,13 @@ export function OriginalFilePreview({
 
   const fileFormat = preview.fileFormat.toLowerCase();
   if (preview.objectUrl && fileFormat === "pdf") {
-    return (
-      <PdfCanvasPreview objectUrl={preview.objectUrl} title={preview.title} />
-    );
+    return <PdfCanvasPreview objectUrl={preview.objectUrl} />;
   }
   if (preview.objectUrl && fileFormat === "docx") {
-    return <DocxPreview objectUrl={preview.objectUrl} title={preview.title} />;
+    return <DocxPreview objectUrl={preview.objectUrl} />;
   }
 
-  const fallbackTitle = preview.title.trim()
-    ? preview.title
-    : (selectedFilename ?? "原始文件");
+  const fallbackTitle = preview.title.trim() ? preview.title : (selectedFilename ?? "原始文件");
 
   return (
     <div className="flex min-h-[360px] flex-col items-center justify-center gap-3 rounded-lg border bg-muted/20 text-center text-sm">
@@ -76,13 +73,7 @@ export function OriginalFilePreview({
   );
 }
 
-function DocxPreview({
-  objectUrl,
-  title,
-}: {
-  objectUrl: string;
-  title: string;
-}) {
+function DocxPreview({ objectUrl }: { objectUrl: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -135,11 +126,6 @@ function DocxPreview({
 
   return (
     <div className="overflow-hidden rounded-lg border bg-background">
-      <div className="flex items-center justify-between gap-3 border-b bg-muted/20 px-3 py-2">
-        <div className="min-w-0 font-medium text-sm">
-          {displayFilename(title)}
-        </div>
-      </div>
       <div className="relative min-h-[680px] overflow-auto bg-muted/30 p-6">
         {loading ? (
           <div className="absolute inset-x-0 top-6 z-10 mx-auto flex w-fit items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm shadow-sm">
@@ -148,9 +134,7 @@ function DocxPreview({
           </div>
         ) : null}
         {error ? (
-          <div className="flex min-h-[620px] items-center justify-center text-muted-foreground text-sm">
-            {error}
-          </div>
+          <div className="flex min-h-[620px] items-center justify-center text-muted-foreground text-sm">{error}</div>
         ) : (
           <div
             ref={containerRef}
@@ -162,13 +146,7 @@ function DocxPreview({
   );
 }
 
-function PdfCanvasPreview({
-  objectUrl,
-  title,
-}: {
-  objectUrl: string;
-  title: string;
-}) {
+function PdfCanvasPreview({ objectUrl }: { objectUrl: string }) {
   const pagesRef = useRef<HTMLDivElement | null>(null);
   const renderTasksRef = useRef<RenderTask[]>([]);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
@@ -292,11 +270,7 @@ function PdfCanvasPreview({
     renderPages()
       .catch((renderError) => {
         if (!cancelled && renderError?.name !== "RenderingCancelledException") {
-          setError(
-            renderError?.message === "当前浏览器不支持 PDF 画布预览"
-              ? renderError.message
-              : "PDF 页面渲染失败",
-          );
+          setError(renderError?.message === "当前浏览器不支持 PDF 画布预览" ? renderError.message : "PDF 页面渲染失败");
         }
       })
       .finally(() => {
@@ -316,21 +290,12 @@ function PdfCanvasPreview({
 
   return (
     <div className="overflow-hidden rounded-lg border bg-background">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 px-3 py-2">
-        <div className="min-w-0 font-medium text-sm">
-          {displayFilename(title)}
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-3 border-b bg-muted/20 px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="w-20 text-center text-sm tabular-nums">
-            {pageCount || "-"} 页
-          </div>
+          <div className="w-20 text-center text-sm tabular-nums">{pageCount || "-"} 页</div>
           <Button
             disabled={scale <= 0.7 || loading}
-            onClick={() =>
-              setScale((current) =>
-                Math.max(0.7, Number((current - 0.1).toFixed(1))),
-              )
-            }
+            onClick={() => setScale((current) => Math.max(0.7, Number((current - 0.1).toFixed(1))))}
             size="icon"
             type="button"
             variant="ghost"
@@ -349,11 +314,7 @@ function PdfCanvasPreview({
           </div>
           <Button
             disabled={scale >= 1.8 || loading}
-            onClick={() =>
-              setScale((current) =>
-                Math.min(1.8, Number((current + 0.1).toFixed(1))),
-              )
-            }
+            onClick={() => setScale((current) => Math.min(1.8, Number((current + 0.1).toFixed(1))))}
             size="icon"
             type="button"
             variant="ghost"
@@ -363,13 +324,7 @@ function PdfCanvasPreview({
           <div className="w-20 text-right text-muted-foreground text-xs tabular-nums">
             适宽 {Math.round(scale * 100)}%
           </div>
-          <Button
-            disabled={loading}
-            onClick={() => setScale(1)}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
+          <Button disabled={loading} onClick={() => setScale(1)} size="icon" type="button" variant="ghost">
             <RotateCw className="size-4" />
           </Button>
         </div>
@@ -382,14 +337,9 @@ function PdfCanvasPreview({
           </div>
         ) : null}
         {error ? (
-          <div className="flex min-h-[620px] items-center justify-center text-muted-foreground text-sm">
-            {error}
-          </div>
+          <div className="flex min-h-[620px] items-center justify-center text-muted-foreground text-sm">{error}</div>
         ) : (
-          <div
-            ref={pagesRef}
-            className="flex min-h-[620px] flex-col items-center gap-4"
-          />
+          <div ref={pagesRef} className="flex min-h-[620px] flex-col items-center gap-4" />
         )}
       </div>
     </div>
@@ -398,4 +348,9 @@ function PdfCanvasPreview({
 
 function displayFilename(filename: string) {
   return filename.replace(/^\d+[_-]/, "");
+}
+
+function isMarkdownFormat(fileFormat: string) {
+  const normalized = fileFormat.trim().toLowerCase();
+  return normalized === "md" || normalized === "markdown";
 }

@@ -4,6 +4,19 @@ description: '[Document Processing] Use when you need to convert PDF files to Ma
 disable-model-invocation: true
 ---
 
+## PDF 标准文件格式化强规则
+
+当候选内容来自 PDF，尤其是已经被本地转换器抽成纯文本时，最终 `markdown_content` 不能继续输出纯文本墙，必须根据内容生成可阅读的 Markdown 结构。
+
+- 首个有意义内容若像文档标题、产品需求标题、说明书标题、报告标题，必须输出为一级标题：`# 标题`。例如：`# 百融统一登录认证授权中心产品需求说明书`。
+- `1. 项目概述`、`2. 产品定位`、`一、背景`、`二、接口说明` 这类主章节必须输出为二级标题：`## 1. 项目概述`。
+- `1.1 项目背景`、`6.2 本地账号映射` 这类子章节必须输出为三级标题或更深标题：`### 1.1 项目背景`。
+- `背景`、`业务逻辑`、`处理逻辑`、`请求`、`请求体`、`响应`、`错误码`、`数据库表`、`安全说明` 等独立小节名应转为合适标题。
+- `•`、`·`、`●`、`○` 这类项目符号应转为 Markdown `-` 列表；`1、输入账号` 这类中文编号可转为有序列表。
+- 保留字段说明和业务判断原文，例如 `product_id：产品 ID`、`require_invite_code = true`、`存在 → action = CREATE_TICKET_DIRECTLY`，不要为了样式改变业务含义。
+- 只转换清晰可判断的结构；不要臆造标题、合并无关段落、从模糊对齐中强行生成表格。
+- 若候选内容已包含正确 Markdown 标题，不要降级成普通文本。
+
 > Codex compatibility note:
 >
 > - Invoke repository skills with `$skill-name` in Codex; this mirrored copy rewrites legacy Claude `/skill-name` references.
@@ -109,8 +122,22 @@ node .claude/skills/pdf-to-markdown/scripts/convert.cjs -i ./doc.pdf --mode nati
 - **Auto-Detection:** Automatically determines if PDF has native text or requires OCR
 - **Native PDFs:** Fast extraction using @opendocsg/pdf2md
 - **Tables:** Basic table structure preservation
+- **Markdown structure:** Generate readable Markdown structure from the extracted PDF content, including document title, section headings, subsection headings, bullets, numbered lists, and simple tables.
 - **Cross-Platform:** Works on Windows, macOS, Linux
 - **No System Dependencies:** Pure JavaScript implementation
+
+## Markdown Formatting Rules
+
+PDF extraction may provide mostly plain text. The agent must generate readable Markdown structure from the content while preserving business meaning:
+
+- Treat the first meaningful content line as the document title when it looks like a document name, product requirement title, specification title, or report title. Output it as `# ...`, for example `百融统一登录认证授权中心产品需求说明书`.
+- Convert clear section headings such as `一、背景`, `二、接口说明`, `1. 背景`, `1.1 请求参数` to Markdown headings.
+- Convert common standalone section labels such as `背景`, `业务逻辑`, `处理逻辑`, `请求`, `请求体`, `响应`, `错误码`, `数据库表`, `安全说明` to headings.
+- Convert bullet symbols such as `•`, `·`, `●`, `○` to Markdown `-` list items.
+- Convert Chinese numbered list markers such as `1、输入账号` to Markdown ordered list items.
+- Preserve field/value and logic expressions as text, for example `product_id：产品 ID`, `require_invite_code = true`, `存在 → action = CREATE_TICKET_DIRECTLY`.
+- Do not add headings that are not supported by the content, merge unrelated paragraphs, generate tables from ambiguous alignment, or change business meaning just to make the Markdown look richer.
+- If structure is uncertain, keep the original text and let the downstream Markdown normalizer/agent review it.
 
 ## Conversion Modes
 

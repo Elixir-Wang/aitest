@@ -19,12 +19,16 @@ class SkillLoaderTest(unittest.TestCase):
 
         agent_ids = [agent.id for agent in agents]
         self.assertIn("raw_requirement_format_converter", agent_ids)
+        self.assertIn("document_editor", agent_ids)
         self.assertIn("requirement_merge", agent_ids)
         self.assertIn("site_exploration", agent_ids)
         self.assertEqual(agents[0].name, "原始需求格式转换智能体")
         self.assertEqual(agents[0].skill_ids, ("pdf_to_markdown", "docx_to_markdown", "markdown_normalize"))
         self.assertEqual(agents[1].name, "需求归并智能体")
         self.assertEqual(agents[1].skill_ids, ("requirement_markdown_merge",))
+        document_editor = agent_registry.get("document_editor")
+        self.assertEqual(document_editor.name, "文档修改智能体")
+        self.assertEqual(document_editor.skill_ids, ("document_editing",))
         site_agent = agent_registry.get("site_exploration")
         self.assertEqual(site_agent.name, "站点探索智能体")
         self.assertEqual(site_agent.skill_ids, ("playwright_cli", "site_exploration"))
@@ -55,6 +59,17 @@ class SkillLoaderTest(unittest.TestCase):
         self.assertIn("Requirement Markdown Merge", built_agent.instructions)
         self.assertIn("Do not simply concatenate files", built_agent.instructions)
         self.assertIn("Source Coverage Rules", built_agent.instructions)
+        self.assertEqual(built_agent.tools, [])
+
+    def test_document_editor_agent_uses_document_editing_skill(self):
+        agent = agent_registry.get("document_editor")
+        skill = skill_registry.get("document_editing", agent_id="document_editor")
+        built_agent = build_agent(agent, [skill])
+
+        self.assertEqual(skill.agent_id, "document_editor")
+        self.assertTrue(Path(skill.path).as_posix().endswith("agents/document_editor/skills/document_editing"))
+        self.assertIn("Document Editing", built_agent.instructions)
+        self.assertIn("Return edited markdown only in `edited_content`", built_agent.instructions)
         self.assertEqual(built_agent.tools, [])
 
     def test_site_exploration_agent_uses_playwright_cli_and_exploration_skills(self):

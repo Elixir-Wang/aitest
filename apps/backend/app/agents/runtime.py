@@ -53,12 +53,13 @@ def build_agent(definition: AgentDefinition, skills: list[SkillDefinition] | Non
         instructions = f"{instructions}\n\n{skill_instructions}"
     tools = [tool for skill in selected_skills for tool in skill.tools]
     model_selection = resolve_agent_model_selection(definition)
+    output_type = definition.output_type if _supports_structured_output(model_selection) else None
     return Agent(
         name=definition.name,
         instructions=instructions,
         model=model_selection.model,
         tools=tools,
-        output_type=definition.output_type,
+        output_type=output_type,
     )
 
 
@@ -199,6 +200,10 @@ def _normalize_provider(provider: str | None) -> str:
         "openai_compatible": "openai-compatible",
     }
     return aliases.get(normalized, normalized)
+
+
+def _supports_structured_output(selection: AgentModelSelection) -> bool:
+    return _normalize_provider(selection.provider) == "openai"
 
 
 def _resolve_api_key(selection: AgentModelSelection) -> str:

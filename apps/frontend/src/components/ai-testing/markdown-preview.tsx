@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 type MarkdownPreviewProps = {
   className?: string;
   content: string;
+  emptyClassName?: string;
   emptyText?: string;
   indentParagraphs?: boolean;
 };
@@ -21,13 +22,14 @@ type MarkdownPreviewProps = {
 export function MarkdownPreview({
   className,
   content,
+  emptyClassName,
   emptyText = "当前版本暂无可展示内容。",
   indentParagraphs = false,
 }: MarkdownPreviewProps) {
   const markdown = content.trim();
 
   if (!markdown) {
-    return <div className={cn("markdown-preview markdown-preview-empty", className)}>{emptyText}</div>;
+    return <div className={cn("markdown-preview markdown-preview-empty", className, emptyClassName)}>{emptyText}</div>;
   }
 
   return (
@@ -262,7 +264,7 @@ function SimpleFlowchartDiagram({ chart, source }: { chart: SimpleFlowchart; sou
               <div
                 className="markdown-flowchart-node"
                 key={node.id}
-                style={{ height: node.height, left: node.x, top: node.y, width: node.width }}
+                style={{ borderRadius: 6, height: node.height, left: node.x, top: node.y, width: node.width }}
               >
                 {node.label}
               </div>
@@ -373,7 +375,7 @@ function layoutSimpleFlowchart(chart: SimpleFlowchart) {
     marginy: FLOW_PADDING,
     nodesep: 72,
     rankdir: chart.direction === "TD" ? "TB" : "LR",
-    ranksep: 120,
+    ranksep: 60,
   });
   graph.setDefaultEdgeLabel(() => ({}));
 

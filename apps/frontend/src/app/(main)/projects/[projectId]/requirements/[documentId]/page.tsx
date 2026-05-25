@@ -27,7 +27,9 @@ import {
   RequirementFileSwitcher,
   type RequirementSwitcherFile,
 } from "@/components/ai-testing/requirement-file-switcher";
+import { StandardMarkdownEditor } from "@/components/ai-testing/standard-markdown-editor";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
+import { AiEditInput } from "@/components/ui/ai-input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -111,6 +113,13 @@ type StandardPreview = {
   title: string;
   markdownContent: string;
   conversionSummary: string;
+};
+
+type DocumentEditResponse = {
+  status: "edited" | "unchanged";
+  edited_content: string;
+  change_summary: string;
+  warnings: string[];
 };
 
 type MergePreview = {
@@ -265,6 +274,7 @@ export default function DocumentDetailPage() {
   const [markdownDraft, setMarkdownDraft] = useState("");
   const [editingStandard, setEditingStandard] = useState(false);
   const [savingStandard, setSavingStandard] = useState(false);
+  const [editingStandardWithAi, setEditingStandardWithAi] = useState(false);
   const [initialMarkdownDraft, setInitialMarkdownDraft] = useState("");
   const [editingInitial, setEditingInitial] = useState(false);
   const [savingInitial, setSavingInitial] = useState(false);
@@ -309,6 +319,11 @@ export default function DocumentDetailPage() {
     [fileRows, fileSearchText],
   );
   const canEditStandard = Boolean(standardPreview) && !standardLoading && standardError.length === 0;
+  const selectedStandardGenerating = Boolean(
+    selectedFile &&
+      (selectedFile.standard_file_status === "generating" ||
+        ["pending", "processing"].includes(selectedFile.conversion_status)),
+  );
   const showConflictTab = Boolean(overview?.has_open_conflicts || conflicts.length > 0);
   const initialArtifactTabs = mergePreview?.artifactTabs?.length
     ? mergePreview.artifactTabs
@@ -411,7 +426,7 @@ export default function DocumentDetailPage() {
     setStandardError("");
     setStandardPreview(null);
     setMarkdownDraft("");
-    if (file.standard_file_status === "generating") {
+    if (file.standard_file_status === "generating" || ["pending", "processing"].includes(file.conversion_status)) {
       setStandardLoading(false);
       return;
     }
@@ -524,6 +539,52 @@ export default function DocumentDetailPage() {
       toast.error(requestError instanceof Error ? requestError.message : "标准文件保存失败");
     } finally {
       setSavingStandard(false);
+    }
+  }
+
+  async function editStandardMarkdownWithAi(instruction: string) {
+    if (!selectedFile || !standardPreview) {
+      return;
+    }
+    setEditingStandardWithAi(true);
+    try {
+      const editResult = await apiRequest<DocumentEditResponse>("/agents/document-editor/run", {
+        method: "POST",
+        body: JSON.stringify({
+          document_type: "requirement_standard_file",
+          document_title: standardMarkdownFilename(selectedFile.original_filename),
+          content: standardPreview.markdownContent,
+          instruction,
+        }),
+      });
+      const savedResult = await apiRequest<{
+        original_filename: string;
+        markdown_content: string;
+        conversion_summary: string;
+      }>(`/requirement-files/${selectedFile.id}/markdown`, {
+        method: "PUT",
+        body: JSON.stringify({
+          markdown_content: editResult.edited_content,
+          change_summary: `AI修改：${editResult.change_summary}`,
+        }),
+      });
+      setStandardPreview({
+        title: savedResult.original_filename,
+        markdownContent: savedResult.markdown_content,
+        conversionSummary: savedResult.conversion_summary,
+      });
+      setMarkdownDraft(savedResult.markdown_content);
+      setEditingStandard(false);
+      if (editResult.warnings.length > 0) {
+        toast.warning(`标准文件已保存；${editResult.warnings.join("；")}`);
+      } else {
+        toast.success(editResult.change_summary || "AI修改已保存");
+      }
+      await loadOverview({ silent: true });
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "智能修改失败");
+    } finally {
+      setEditingStandardWithAi(false);
     }
   }
 
@@ -920,7 +981,6 @@ export default function DocumentDetailPage() {
                     <TableHead>转换状态</TableHead>
                     <TableHead>标准文件</TableHead>
                     <TableHead>合并状态</TableHead>
-                    <TableHead>冲突</TableHead>
                     <TableHead className="w-16">操作</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -969,15 +1029,6 @@ export default function DocumentDetailPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {file.conflict_status === "open" ? (
-                          <Button className="h-auto px-0" onClick={() => setActiveTab("conflicts")} variant="link">
-                            待处理
-                          </Button>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">无</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
                         <RowActions
                           actions={[
                             {
@@ -1005,7 +1056,7 @@ export default function DocumentDetailPage() {
                   ))}
                   {filteredFiles.length === 0 ? (
                     <TableRow>
-                      <TableCell className="py-8 text-center text-muted-foreground text-sm" colSpan={9}>
+                      <TableCell className="py-8 text-center text-muted-foreground text-sm" colSpan={8}>
                         暂无原始文件
                       </TableCell>
                     </TableRow>
@@ -1062,52 +1113,32 @@ export default function DocumentDetailPage() {
         <TabsContent value="original">
           <ShellSection id={ORIGINAL_FILE_SECTION_ID}>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-medium text-sm">原始文件预览</h2>
-              </div>
               <RequirementFileSwitcher
                 files={overview.files}
                 onSelect={setSelectedFileId}
                 selectedFileId={selectedFile?.id ?? ""}
               />
-            </div>
-            {originalPreview?.contentType === "text" ? (
-              <OriginalFilePreview preview={originalPreview} selectedFilename={selectedFile?.original_filename} />
-            ) : originalPreview?.objectUrl ? (
-              <OriginalFilePreview preview={originalPreview} selectedFilename={selectedFile?.original_filename} />
-            ) : (
-              <OriginalFilePreview preview={originalPreview} selectedFilename={selectedFile?.original_filename} />
-            )}
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-2 border-t pt-4">
-              <Button
-                onClick={() => document.getElementById(ORIGINAL_FILE_SECTION_ID)?.scrollIntoView()}
-                type="button"
-                variant="outline"
-              >
-                <ArrowLeft className="size-4 rotate-90" />
-                返回顶部
-              </Button>
               <Button disabled={!originalPreview} onClick={downloadOriginalPreview} type="button" variant="outline">
                 <Download className="size-4" />
                 下载文件
               </Button>
             </div>
+            <OriginalFilePreview preview={originalPreview} selectedFilename={selectedFile?.original_filename} />
           </ShellSection>
         </TabsContent>
 
         <TabsContent value="standard">
           <ShellSection id={STANDARD_FILE_SECTION_ID}>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-medium text-sm">格式化的原始文件预览</h2>
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <RequirementFileSwitcher
                   files={overview.files}
                   getFileLabel={standardMarkdownFilename}
                   onSelect={setSelectedFileId}
                   selectedFileId={selectedFile?.id ?? ""}
                 />
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 {editingStandard ? (
                   <>
                     <Button disabled={savingStandard} onClick={saveStandardMarkdown} type="button">
@@ -1127,10 +1158,38 @@ export default function DocumentDetailPage() {
                       取消
                     </Button>
                   </>
-                ) : null}
+                ) : (
+                  <>
+                    <AiEditInput
+                      disabled={!canEditStandard || editingStandardWithAi}
+                      loading={editingStandardWithAi}
+                      onSubmit={editStandardMarkdownWithAi}
+                      placeholder="描述你希望如何修改当前标准文件..."
+                    />
+                    <Button
+                      disabled={!canEditStandard}
+                      onClick={() => setEditingStandard(true)}
+                      type="button"
+                      variant="outline"
+                    >
+                      <Pencil className="size-4" />
+                      修改
+                    </Button>
+                    <Button
+                      disabled={merging || overview.stats.mergeable_files === 0}
+                      onClick={mergeRequirement}
+                      type="button"
+                    >
+                      <GitMerge className="size-4" />
+                      {merging ? "合并中" : "合并全部文件"}
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
-            {standardLoading ? (
+            {selectedStandardGenerating ? (
+              <StandardFileState description="该原始文件正在转换为 Markdown 标准文件，转换完成后会在这里展示。" />
+            ) : standardLoading ? (
               <StandardFileState
                 description="系统正在生成该原始文件对应的 Markdown 标准文件，请稍后刷新。"
                 title="标准文件生成中"
@@ -1138,11 +1197,7 @@ export default function DocumentDetailPage() {
             ) : standardError ? (
               <StandardFileState description={standardError} tone="failed" title="标准文件生成失败" />
             ) : editingStandard ? (
-              <Textarea
-                className="min-h-[560px] font-mono text-sm"
-                onChange={(event) => setMarkdownDraft(event.target.value)}
-                value={markdownDraft}
-              />
+              <StandardMarkdownEditor content={markdownDraft} onChange={setMarkdownDraft} />
             ) : (
               <MarkdownPreview
                 className="requirement-document-preview"
@@ -1151,40 +1206,57 @@ export default function DocumentDetailPage() {
                 indentParagraphs
               />
             )}
-            {!editingStandard ? (
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-2 border-t pt-4">
-                <Button
-                  onClick={() => document.getElementById(STANDARD_FILE_SECTION_ID)?.scrollIntoView()}
-                  type="button"
-                  variant="outline"
-                >
-                  <ArrowLeft className="size-4 rotate-90" />
-                  返回顶部
-                </Button>
-                <Button
-                  disabled={!canEditStandard}
-                  onClick={() => setEditingStandard(true)}
-                  type="button"
-                  variant="outline"
-                >
-                  <Pencil className="size-4" />
-                  修改
-                </Button>
-                <Button
-                  disabled={merging || overview.stats.mergeable_files === 0}
-                  onClick={mergeRequirement}
-                  type="button"
-                >
-                  <GitMerge className="size-4" />
-                  {merging ? "合并中" : "合并全部文件"}
-                </Button>
-              </div>
-            ) : null}
           </ShellSection>
         </TabsContent>
 
         <TabsContent value="initial">
           <ShellSection id={INITIAL_REQUIREMENT_SECTION_ID}>
+            <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+              {editingInitial ? (
+                <>
+                  <Button disabled={savingInitial} onClick={saveInitialRequirement} type="button">
+                    {savingInitial ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                    {savingInitial ? "保存中" : "保存"}
+                  </Button>
+                  <Button
+                    disabled={savingInitial}
+                    onClick={() => {
+                      setInitialMarkdownDraft(initialMarkdownContent);
+                      setEditingInitial(false);
+                    }}
+                    type="button"
+                    variant="outline"
+                  >
+                    <X className="size-4" />
+                    取消
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    disabled={!initialMarkdownContent.trim()}
+                    onClick={() => {
+                      setInitialMarkdownDraft(initialMarkdownContent);
+                      setEditingInitial(true);
+                    }}
+                    type="button"
+                    variant="outline"
+                  >
+                    <Pencil className="size-4" />
+                    编辑
+                  </Button>
+                  <Button
+                    disabled={!initialMarkdownContent.trim()}
+                    onClick={runRequirementAnalysis}
+                    type="button"
+                    variant="outline"
+                  >
+                    {analysisLoading ? <Loader2 className="size-4 animate-spin" /> : <FileSearch className="size-4" />}
+                    {analysisLoading ? "分析中" : "需求分析"}
+                  </Button>
+                </>
+              )}
+            </div>
             {mergePreview && !editingInitial ? (
               <div className="mb-4 rounded-lg border bg-muted/20 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1246,86 +1318,26 @@ export default function DocumentDetailPage() {
               <MarkdownPreview
                 className="requirement-document-preview"
                 content={overview.initial_markdown_content}
+                emptyClassName="flex items-center justify-center text-center"
                 emptyText="尚未生成初始需求，请先在标准文件中发起合并。"
                 indentParagraphs
               />
             )}
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-2 border-t pt-4">
-              <Button
-                onClick={() => document.getElementById(INITIAL_REQUIREMENT_SECTION_ID)?.scrollIntoView()}
-                type="button"
-                variant="outline"
-              >
-                <ArrowLeft className="size-4 rotate-90" />
-                返回顶部
-              </Button>
-              {editingInitial ? (
-                <>
-                  <Button disabled={savingInitial} onClick={saveInitialRequirement} type="button">
-                    {savingInitial ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                    {savingInitial ? "保存中" : "保存"}
-                  </Button>
-                  <Button
-                    disabled={savingInitial}
-                    onClick={() => {
-                      setInitialMarkdownDraft(initialMarkdownContent);
-                      setEditingInitial(false);
-                    }}
-                    type="button"
-                    variant="outline"
-                  >
-                    <X className="size-4" />
-                    取消
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    disabled={!initialMarkdownContent.trim()}
-                    onClick={() => {
-                      setInitialMarkdownDraft(initialMarkdownContent);
-                      setEditingInitial(true);
-                    }}
-                    type="button"
-                    variant="outline"
-                  >
-                    <Pencil className="size-4" />
-                    编辑
-                  </Button>
-                  <Button
-                    disabled={!initialMarkdownContent.trim()}
-                    onClick={runRequirementAnalysis}
-                    type="button"
-                    variant="outline"
-                  >
-                    {analysisLoading ? <Loader2 className="size-4 animate-spin" /> : <FileSearch className="size-4" />}
-                    {analysisLoading ? "分析中" : "需求分析"}
-                  </Button>
-                </>
-              )}
-            </div>
           </ShellSection>
         </TabsContent>
 
         <TabsContent value="final">
           <ShellSection id={FINAL_REQUIREMENT_SECTION_ID}>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="mb-3">
               <div>
                 <h2 className="font-medium text-sm">最终需求</h2>
                 <p className="mt-1 text-muted-foreground text-xs">当前已生效的需求版本内容。</p>
               </div>
-              <Button
-                onClick={() => document.getElementById(FINAL_REQUIREMENT_SECTION_ID)?.scrollIntoView()}
-                type="button"
-                variant="outline"
-              >
-                <ArrowLeft className="size-4 rotate-90" />
-                返回顶部
-              </Button>
             </div>
             <MarkdownPreview
               className="requirement-document-preview"
               content={overview.initial_markdown_content}
+              emptyClassName="flex items-center justify-center text-center"
               emptyText="尚未生成最终需求，请先完成初始需求归并并确认写入版本。"
               indentParagraphs
             />
@@ -1466,13 +1478,21 @@ function StandardFileState({
   tone = "generating",
 }: {
   description: string;
-  title: string;
+  title?: string;
   tone?: "generating" | "failed";
 }) {
   return (
     <div className="rounded-lg border bg-muted/20 p-6 text-sm">
-      <div className={tone === "failed" ? "font-medium text-destructive" : "font-medium"}>{title}</div>
-      <div className="mt-2 text-muted-foreground">{description}</div>
+      {tone === "generating" ? (
+        <div className="flex min-h-40 items-center justify-center px-4 text-center">
+          <div className="whitespace-nowrap text-muted-foreground text-sm">{title ?? description}</div>
+        </div>
+      ) : (
+        <>
+          <div className={tone === "failed" ? "font-medium text-destructive" : "font-medium"}>{title}</div>
+          <div className="mt-2 text-muted-foreground">{description}</div>
+        </>
+      )}
     </div>
   );
 }
