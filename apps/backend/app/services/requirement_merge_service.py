@@ -167,11 +167,8 @@ async def _classify_fragments_v2(
     input_data: RequirementMergeInput,
     source_fragments: list[RequirementSourceFragment],
 ) -> list:
-    result = await run_agent(
-        REQUIREMENT_MERGE_AGENT_ID,
-        _build_v2_classification_prompt(input_data, source_fragments),
-    )
-    parsed = _parse_small_json_output(result.output, "需求归并智能体片段分类未返回合法 JSON。")
+    prompt = _build_v2_classification_prompt(input_data, source_fragments)
+    parsed = await _run_small_json_stage(prompt, "需求归并智能体片段分类未返回合法 JSON。")
     output = RequirementFragmentClassificationBatch.model_validate(parsed)
     expected_ids = {fragment.fragment_id for fragment in source_fragments}
     actual_ids = {item.fragment_id for item in output.classifications}
@@ -192,11 +189,8 @@ async def _decide_clusters_v2(
     decisions: list[RequirementClusterDecision] = []
     fragments_by_id = {fragment.fragment_id: fragment for fragment in source_fragments}
     for cluster in clusters:
-        result = await run_agent(
-            REQUIREMENT_MERGE_AGENT_ID,
-            _build_v2_cluster_decision_prompt(input_data, cluster, fragments_by_id),
-        )
-        parsed = _parse_small_json_output(result.output, "需求归并智能体语义簇决策未返回合法 JSON。")
+        prompt = _build_v2_cluster_decision_prompt(input_data, cluster, fragments_by_id)
+        parsed = await _run_small_json_stage(prompt, "需求归并智能体语义簇决策未返回合法 JSON。")
         decision = RequirementClusterDecision.model_validate(parsed)
         expected_ids = set(cluster.fragment_ids)
         actual_ids = {item.fragment_id for item in decision.fragment_decisions}
@@ -223,11 +217,8 @@ async def _merge_sections_v2(
         decision = decisions_by_cluster.get(cluster.cluster_id)
         if not decision or decision.decision in {"conflict", "discard"}:
             continue
-        result = await run_agent(
-            REQUIREMENT_MERGE_AGENT_ID,
-            _build_v2_section_merge_prompt(input_data, cluster, decision, fragments_by_id),
-        )
-        parsed = _parse_small_json_output(result.output, "需求归并智能体章节归并未返回合法 JSON。")
+        prompt = _build_v2_section_merge_prompt(input_data, cluster, decision, fragments_by_id)
+        parsed = await _run_small_json_stage(prompt, "需求归并智能体章节归并未返回合法 JSON。")
         section_output = RequirementSectionMergeOutput.model_validate(parsed)
         if section_output.section_key != cluster.cluster_id:
             raise ValueError(f"章节归并返回 section_key 与语义簇不一致：{cluster.cluster_id}。")
@@ -396,6 +387,37 @@ def _build_v2_section_merge_prompt(
         "blocks 每项 type 只能是 paragraph, bullet_list, table, source_block_ref, pending_clarification_ref。\n\n"
         f"输入：\n{json.dumps(payload, ensure_ascii=False)}"
     )
+
+
+async def _run_small_json_stage(prompt: str, error_message: str) -> Any:
+    result = await run_agent(REQUIREMENT_MERGE_AGENT_ID, prompt)
+    try:
+        return _parse_small_json_output(result.output, error_message)
+    except ValueError as first_exc:
+        repair_prompt = _build_json_repair_prompt(result.output, error_message)
+        repaired_result = await run_agent(REQUIREMENT_MERGE_AGENT_ID, repair_prompt)
+        try:
+            return _parse_small_json_output(repaired_result.output, error_message)
+        except ValueError as second_exc:
+            raw_excerpt = _raw_output_excerpt(result.output)
+            raise ValueError(f"{error_message} 原始输出摘要：{raw_excerpt}") from second_exc
+
+
+def _build_json_repair_prompt(output: Any, error_message: str) -> str:
+    return (
+        "你是需求归并智能体的 JSON 修复阶段。\n"
+        f"上一次输出解析失败：{error_message}\n"
+        "请只把上一次输出修复为一个合法 JSON 对象。\n"
+        "不要改变业务判断，不要补充新需求，不要输出 Markdown 代码块，不要解释。\n"
+        "如果上一次输出包含多余文字，只保留 JSON 对象。\n"
+        "如果字段名接近但不一致，修正为原任务要求的字段名。\n\n"
+        f"上一次输出：\n{str(output)[:12000]}"
+    )
+
+
+def _raw_output_excerpt(output: Any) -> str:
+    text = str(output).replace("\n", " ").strip()
+    return text[:300] or "空输出"
 
 
 def _parse_agent_output(output: Any) -> RequirementMergeOutput:

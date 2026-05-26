@@ -119,7 +119,14 @@ Rules:
 
 ## Legacy One-Shot Contract
 
-The old one-shot contract below is retained only for compatibility. New merge orchestration should use the V2 staged contract above.
+The old one-shot contract below is retained only for compatibility.
+
+Important:
+
+- If the prompt input contains `task`, the request is a V2 staged task.
+- For V2 staged tasks, ignore the legacy one-shot contract completely.
+- For V2 staged tasks, never return `markdown_content` or `markdown_preview`.
+- Use the legacy one-shot contract only when the prompt does not contain `task`.
 
 Your job is analysis and decision-making:
 

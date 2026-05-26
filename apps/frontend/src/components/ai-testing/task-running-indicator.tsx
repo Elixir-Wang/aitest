@@ -164,7 +164,7 @@ export function TaskRunningIndicator() {
           </span>
         </button>
       </HoverCardTrigger>
-      <HoverCardContent align="end" className="w-80 p-0" sideOffset={10}>
+      <HoverCardContent align="center" className="w-80 p-0" sideOffset={10}>
         <div className="relative overflow-hidden rounded-lg border bg-popover">
           <div className="flex items-center gap-3 border-b p-3">
             <span className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary">
