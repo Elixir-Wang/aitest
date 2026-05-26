@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from pydantic import ValidationError
@@ -81,9 +82,7 @@ def _parse_agent_output(output: Any) -> RequirementMergeOutput:
     if not isinstance(output, str):
         raise ValueError("需求归并智能体输出类型不支持。")
 
-    text = output.strip()
-    if text.startswith("```"):
-        text = _strip_code_fence(text)
+    text = _extract_json_text(output)
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -101,3 +100,21 @@ def _strip_code_fence(text: str) -> str:
     if lines and lines[-1].strip() == "```":
         lines = lines[:-1]
     return "\n".join(lines).strip()
+
+def _extract_json_text(text: str) -> str:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = _strip_code_fence(stripped)
+    if stripped.startswith("{") and stripped.endswith("}"):
+        return stripped
+
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, flags=re.DOTALL | re.IGNORECASE)
+    if fenced:
+        return fenced.group(1).strip()
+
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start != -1 and end > start:
+        return stripped[start : end + 1].strip()
+
+    return stripped

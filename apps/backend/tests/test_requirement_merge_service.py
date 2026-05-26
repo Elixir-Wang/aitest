@@ -59,6 +59,56 @@ class RequirementMergeServiceTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(output.status, "merged")
         self.assertEqual(output.source_file_ids, ["docmap-1"])
+    def test_parse_agent_output_extracts_fenced_json(self):
+        output = _parse_agent_output(
+            """
+            已完成需求归并：
+
+            ```json
+            {
+              "status": "merged",
+              "markdown_content": "# 登录需求\\n",
+              "merge_summary": "已由智能体归并 1 个文件。",
+              "source_file_ids": ["docmap-1"],
+              "coverage_items": [
+                {
+                  "mapping_id": "docmap-1",
+                  "source_excerpt": "支持账号登录",
+                  "coverage_status": "merged",
+                  "reason": "已合入。"
+                }
+              ]
+            }
+            ```
+            """
+        )
+
+        self.assertEqual(output.status, "merged")
+        self.assertEqual(output.coverage_items[0].mapping_id, "docmap-1")
+
+    def test_parse_agent_output_extracts_json_from_wrapped_text(self):
+        output = _parse_agent_output(
+            """
+            以下是归并结果：
+            {
+              "status": "merged",
+              "markdown_content": "# 登录需求\\n",
+              "merge_summary": "已由智能体归并 1 个文件。",
+              "source_file_ids": ["docmap-1"],
+              "coverage_items": [
+                {
+                  "mapping_id": "docmap-1",
+                  "source_excerpt": "支持账号登录",
+                  "coverage_status": "merged",
+                  "reason": "已合入。"
+                }
+              ]
+            }
+            请查收。
+            """
+        )
+
+        self.assertEqual(output.markdown_content, "# 登录需求\n")
 
     def test_agent_prompt_forbids_source_document_grouping_in_markdown(self):
         prompt = requirement_merge_service._build_agent_prompt(
@@ -146,3 +196,4 @@ class RequirementMergeServiceTest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
