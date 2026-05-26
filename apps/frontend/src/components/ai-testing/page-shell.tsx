@@ -84,7 +84,7 @@ export function PageShell({
   );
 }
 
-export function PageHeader({
+function PageHeader({
   title,
   primaryAction,
   onPrimaryAction,
@@ -157,18 +157,6 @@ export function MetricCard({ label, value, helper, icon: Icon }: MetricCardProps
         <Icon className="size-4" />
       </CardContent>
     </Card>
-  );
-}
-
-export function PageToolbar({ placeholder = "搜索名称、状态或负责人" }: { placeholder?: string }) {
-  return (
-    <div className="flex flex-col gap-2 rounded-xl border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
-      <Input className="sm:max-w-xs" placeholder={placeholder} />
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline">全部状态</Button>
-        <Button variant="outline">负责人</Button>
-      </div>
-    </div>
   );
 }
 

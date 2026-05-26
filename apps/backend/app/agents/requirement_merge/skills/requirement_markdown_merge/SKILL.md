@@ -11,6 +11,116 @@ enabled: true
 
 You merge multiple standardized Markdown requirement sources into one project-level requirement draft.
 
+## V2 Layered Semantic Merge Contract
+
+The backend now calls this skill in small staged tasks. In V2, do not return a full merged Markdown document in JSON. Do not return `markdown_content` or `markdown_preview`.
+
+Supported task values:
+
+- `classify_fragments`: classify every source fragment into business module, semantic key, role, and short summary.
+- `decide_cluster`: decide whether fragments in one semantic cluster are merged, duplicate, conflict, pending clarification, or discarded.
+- `merge_section`: produce local section blocks for one semantic cluster only.
+
+For every V2 task:
+
+- Return exactly one valid JSON object.
+- Do not wrap JSON in Markdown fences.
+- Do not output explanations outside JSON.
+- Do not invent requirements.
+- Keep JSON small and limited to the requested task.
+- Preserve structured evidence by using `source_block_ref` in `merge_section` when a source table, Mermaid block, code fence, HTTP example, JSON example, SQL, curl, error-code table, or field table carries requirement information.
+
+### classify_fragments Output
+
+Return:
+
+```json
+{
+  "classifications": [
+    {
+      "fragment_id": "frag-001",
+      "business_module": "SSO 票据",
+      "semantic_key": "login_ticket_validity",
+      "fragment_role": "constraint",
+      "summary": "login_ticket 有效期为 5 分钟",
+      "confidence": 0.9
+    }
+  ]
+}
+```
+
+Rules:
+
+- Return one classification for every input fragment.
+- `semantic_key` groups similar or equivalent content. Use stable snake_case English or pinyin keys where possible.
+- Keep `summary` short. It is not final merged prose.
+
+### decide_cluster Output
+
+Return:
+
+```json
+{
+  "cluster_id": "cluster-0001-login_ticket_validity",
+  "decision": "merge",
+  "canonical_meaning": "login_ticket 有效期为 5 分钟，过期后需重新登录。",
+  "fragment_decisions": [
+    {
+      "fragment_id": "frag-001",
+      "coverage_status": "merged",
+      "target_module": "SSO 票据",
+      "target_heading": "票据有效期",
+      "covered_by_fragment_id": "",
+      "related_conflict_key": "",
+      "related_clarification_key": "",
+      "reason": "作为票据有效期主规则。"
+    }
+  ],
+  "conflicts": [],
+  "clarification_items": []
+}
+```
+
+Rules:
+
+- Return one fragment decision for every input fragment in the cluster.
+- Mark equivalent content as `duplicate`.
+- Mark complementary content as `merged`.
+- Mark mutually incompatible statements as `conflict`.
+- Do not choose a winner for unresolved conflict.
+
+### merge_section Output
+
+Return:
+
+```json
+{
+  "section_key": "cluster-0001-login_ticket_validity",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "content": "login_ticket 有效期为 5 分钟，过期后产品侧必须重新发起统一登录流程。"
+    },
+    {
+      "type": "source_block_ref",
+      "fragment_id": "frag-010"
+    }
+  ],
+  "covered_fragment_ids": ["frag-001", "frag-010"]
+}
+```
+
+Rules:
+
+- Only write this one section.
+- Do not output the whole document.
+- Use `source_block_ref` for source tables, Mermaid diagrams, code fences, request/response examples, and field or error-code tables.
+- Do not mention source filenames, mapping ids, or source-document grouping.
+
+## Legacy One-Shot Contract
+
+The old one-shot contract below is retained only for compatibility. New merge orchestration should use the V2 staged contract above.
+
 Your job is analysis and decision-making:
 
 - Understand the business meaning of each source.

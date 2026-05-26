@@ -389,7 +389,7 @@ def resolve_document_conflict(
     resolution_type: str,
     actor,
 ) -> dict:
-    return document_merge_orchestrator.resolve_document_conflict(
+    result = document_merge_orchestrator.resolve_document_conflict(
         project_id,
         document_id,
         conflict_id,
@@ -397,6 +397,23 @@ def resolve_document_conflict(
         resolution_type=resolution_type,
         actor=actor,
     )
+    with connect() as db:
+        document = document_repo.find_by_project_and_id(db, project_id, document_id)
+    operation_log_service.record_change(
+        log_type="audit",
+        module="requirement",
+        action="resolve_conflict",
+        object_type="requirement_conflict",
+        object_id=conflict_id,
+        object_name=document["name"] if document else conflict_id,
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"处理需求归并冲突：{document['name'] if document else conflict_id}",
+        after={"resolution_type": resolution_type, "has_open_conflicts": result.get("has_open_conflicts")},
+    )
+    return result
 
 
 

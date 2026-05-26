@@ -67,6 +67,60 @@ class RequirementMergeAuditOutput(BaseModel):
     clarification_items: list[dict] = Field(default_factory=list)
 
 
+class RequirementFragmentClassification(BaseModel):
+    fragment_id: str
+    business_module: str
+    semantic_key: str
+    fragment_role: str
+    summary: str
+    confidence: float = 0
+
+
+class RequirementFragmentClassificationBatch(BaseModel):
+    classifications: list[RequirementFragmentClassification] = Field(default_factory=list)
+
+
+class RequirementFragmentCluster(BaseModel):
+    cluster_id: str
+    business_module: str
+    semantic_key: str
+    fragment_role: str
+    fragment_ids: list[str]
+
+
+class RequirementClusterDecisionItem(BaseModel):
+    fragment_id: str
+    coverage_status: Literal["merged", "duplicate", "conflict", "pending_clarification", "discarded"]
+    target_module: str = ""
+    target_heading: str = ""
+    covered_by_fragment_id: str = ""
+    related_conflict_key: str = ""
+    related_clarification_key: str = ""
+    reason: str
+
+
+class RequirementClusterDecision(BaseModel):
+    cluster_id: str
+    decision: Literal["merge", "duplicate", "conflict", "pending_clarification", "discard"]
+    canonical_meaning: str = ""
+    fragment_decisions: list[RequirementClusterDecisionItem] = Field(default_factory=list)
+    conflicts: list[dict] = Field(default_factory=list)
+    clarification_items: list[dict] = Field(default_factory=list)
+
+
+class RequirementSectionBlock(BaseModel):
+    type: Literal["paragraph", "bullet_list", "table", "source_block_ref", "pending_clarification_ref"]
+    content: str = ""
+    items: list[str] = Field(default_factory=list)
+    fragment_id: str = ""
+
+
+class RequirementSectionMergeOutput(BaseModel):
+    section_key: str
+    blocks: list[RequirementSectionBlock] = Field(default_factory=list)
+    covered_fragment_ids: list[str] = Field(default_factory=list)
+
+
 class RequirementMergeInput(BaseModel):
     project_id: str
     document_id: str

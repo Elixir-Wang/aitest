@@ -127,5 +127,3 @@ export function AiEditInput({
     </div>
   );
 }
-
-export default AiEditInput;

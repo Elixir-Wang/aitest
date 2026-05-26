@@ -15,9 +15,11 @@ from app.core.settings import (
 from app.core.db import connect
 from app.core.storage import PROJECT_FILE_STORAGE_ROOT, store_path
 from app.repositories import exploration_repo
+from app.services import operation_log_service
 
 
 def run_exploration(run_id: str) -> None:
+    start_event = None
     with connect() as db:
         run = exploration_repo.find_by_id(db, run_id)
         if not run:
@@ -33,9 +35,22 @@ def run_exploration(run_id: str) -> None:
             result_summary="站点探索已开始，正在调用 Playwright CLI。",
             started=True,
         )
+        start_event = (
+            run,
+            {
+                "action": "start",
+                "result": "success",
+                "summary": f"站点探索开始执行：{run['title']}",
+                "after": {"status": "running", "artifact_root": store_path(artifact_root) or ""},
+            },
+        )
+
+    if start_event:
+        _record_runner_event(start_event[0], **start_event[1])
 
     result = _execute_playwright_probe(run_id, artifact_root)
 
+    finish_event = None
     with connect() as db:
         run = exploration_repo.find_by_id(db, run_id)
         if not run:
@@ -43,8 +58,31 @@ def run_exploration(run_id: str) -> None:
         exploration_repo.clear_run_outputs(db, run_id)
         if result["status"] == "blocked":
             _persist_blocked_result(db, run, artifact_root, result)
-            return
-        _persist_completed_result(db, run, artifact_root, result)
+            finish_event = (
+                run,
+                {
+                    "action": "finish",
+                    "result": "failed",
+                    "summary": f"站点探索阻塞：{run['title']}，{result['summary']}",
+                    "after": {"status": "blocked", "result_summary": result["summary"], "log_path": result.get("log_path", "")},
+                    "artifact_path": [result.get("log_path", "")] if result.get("log_path") else [],
+                },
+            )
+        else:
+            _persist_completed_result(db, run, artifact_root, result)
+            finish_event = (
+                run,
+                {
+                    "action": "finish",
+                    "result": "success",
+                    "summary": f"站点探索执行完成：{run['title']}，{result['summary']}",
+                    "after": {"status": "completed", "result_summary": result["summary"], "log_path": result.get("log_path", "")},
+                    "artifact_path": [result.get("log_path", "")] if result.get("log_path") else [],
+                },
+            )
+
+    if finish_event:
+        _record_runner_event(finish_event[0], **finish_event[1])
 
 
 def _ensure_artifact_dirs(root: Path) -> None:
@@ -187,6 +225,33 @@ def _safe_run_context_from_db(run_id: str) -> tuple[str, str]:
         if not run:
             return "about:blank", ""
         return _safe_site_url(run) or "about:blank", str(run["forbidden_paths"] or "")
+
+
+def _record_runner_event(
+    run,
+    *,
+    action: str,
+    result: str,
+    summary: str,
+    after: dict,
+    artifact_path: list[str] | None = None,
+) -> None:
+    operation_log_service.record_task_event(
+        module="exploration",
+        action=action,
+        object_type="exploration_run",
+        object_id=run["id"],
+        object_name=run["title"],
+        project_id=run["project_id"],
+        actor_id="system",
+        actor_name="系统",
+        source="runner",
+        result=result,
+        summary=summary,
+        after=after,
+        task_id=run["id"],
+        artifact_path=artifact_path or [],
+    )
 
 
 def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:

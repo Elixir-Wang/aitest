@@ -122,6 +122,7 @@ def get_retention_policy(actor: Row) -> dict:
 def update_retention_policy(payload: OperationLogRetentionPolicyUpdate, actor: Row) -> dict:
     _require_admin(actor)
     with connect() as db:
+        before = operation_log_repo.get_retention_policy(db)
         row = operation_log_repo.update_retention_policy(
             db,
             retention_days=payload.retention_days,
@@ -129,7 +130,22 @@ def update_retention_policy(payload: OperationLogRetentionPolicyUpdate, actor: R
             protect_high_risk=payload.protect_high_risk,
             updated_by=actor["id"],
         )
-        return _serialize_policy(row)
+        result = _serialize_policy(row)
+    record_change(
+        log_type="config",
+        module="operation_log",
+        action="update_retention_policy",
+        object_type="operation_log_retention_policy",
+        object_id="default",
+        object_name="日志保留策略",
+        actor_id=actor["id"],
+        actor_name=actor_display_name(actor),
+        source="web",
+        summary="修改日志保留策略。",
+        before=_serialize_policy(before) if before else {},
+        after=result,
+    )
+    return result
 
 
 def cleanup_logs(payload: OperationLogCleanupRequest, actor: Row) -> dict:
@@ -138,7 +154,22 @@ def cleanup_logs(payload: OperationLogCleanupRequest, actor: Row) -> dict:
     with connect() as db:
         matched = operation_log_repo.count_cleanup_matches(db, filters)
         deleted = 0 if payload.dry_run else operation_log_repo.cleanup_logs(db, filters)
-    return OperationLogCleanupResult(matched_count=matched, deleted_count=deleted, dry_run=payload.dry_run).model_dump()
+    result = OperationLogCleanupResult(matched_count=matched, deleted_count=deleted, dry_run=payload.dry_run).model_dump()
+    record_change(
+        log_type="audit",
+        module="operation_log",
+        action="cleanup",
+        object_type="operation_log",
+        object_id="cleanup",
+        object_name="操作日志清理",
+        actor_id=actor["id"],
+        actor_name=actor_display_name(actor),
+        source="web",
+        summary=f"{'试算' if payload.dry_run else '清理'}操作日志：匹配 {matched} 条，删除 {deleted} 条。",
+        before={"filters": filters},
+        after=result,
+    )
+    return result
 
 
 def _record(payload: OperationLogCreate) -> str | None:

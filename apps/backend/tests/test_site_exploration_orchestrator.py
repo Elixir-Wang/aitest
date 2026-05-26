@@ -99,6 +99,13 @@ class SiteExplorationOrchestratorTest(unittest.TestCase):
                 coverage = db.execute("SELECT * FROM exploration_module_coverages WHERE exploration_run_id = 'explore-1'").fetchone()
                 page = db.execute("SELECT * FROM exploration_pages WHERE exploration_run_id = 'explore-1'").fetchone()
                 element_count = db.execute("SELECT COUNT(*) AS count FROM exploration_elements WHERE exploration_run_id = 'explore-1'").fetchone()
+                logs = db.execute(
+                    """
+                    SELECT action, result, source, task_id
+                    FROM operation_logs
+                    WHERE module = 'exploration' AND object_id = 'explore-1'
+                    """
+                ).fetchall()
 
             self.assertEqual(run["status"], "completed")
             self.assertIn("已探索 1 个页面", run["result_summary"])
@@ -110,6 +117,13 @@ class SiteExplorationOrchestratorTest(unittest.TestCase):
             self.assertIsNotNone(artifact)
             self.assertTrue(artifact["file_path"].endswith("screenshots/page-01.png"))
             self.assertTrue(screenshot_path.exists())
+            self.assertEqual(
+                {(row["action"], row["result"], row["source"], row["task_id"]) for row in logs},
+                {
+                    ("start", "success", "runner", "explore-1"),
+                    ("finish", "success", "runner", "explore-1"),
+                },
+            )
 
     def test_run_exploration_records_blocker_when_playwright_cli_is_unavailable(self):
         with isolated_exploration_store() as temp_dir:
@@ -143,6 +157,13 @@ class SiteExplorationOrchestratorTest(unittest.TestCase):
                 coverage = db.execute("SELECT * FROM exploration_module_coverages WHERE exploration_run_id = 'explore-1'").fetchone()
                 blocker = db.execute("SELECT * FROM exploration_blockers WHERE exploration_run_id = 'explore-1'").fetchone()
                 document = db.execute("SELECT * FROM exploration_document_versions WHERE exploration_run_id = 'explore-1'").fetchone()
+                finish_log = db.execute(
+                    """
+                    SELECT action, result, source, failure_reason, summary
+                    FROM operation_logs
+                    WHERE module = 'exploration' AND object_id = 'explore-1' AND action = 'finish'
+                    """
+                ).fetchone()
 
             self.assertEqual(run["status"], "blocked")
             self.assertIn("Playwright CLI", run["result_summary"])
@@ -150,6 +171,9 @@ class SiteExplorationOrchestratorTest(unittest.TestCase):
             self.assertEqual(blocker["reason_type"], "runner_unavailable")
             self.assertTrue(document["markdown_path"].endswith("documents/exploration-v1.md"))
             self.assertTrue((Path(temp_dir) / "projects" / document["markdown_path"]).exists())
+            self.assertEqual(finish_log["result"], "failed")
+            self.assertEqual(finish_log["source"], "runner")
+            self.assertIn("Playwright CLI", finish_log["summary"])
 
     def test_playwright_cli_available_uses_resolved_npx_command_path(self):
         completed = Mock(returncode=0, stdout="Version 1.60.0")

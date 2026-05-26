@@ -110,7 +110,7 @@ async def merge_document_markdown(
             source_fragments=source_fragments,
         )
         try:
-            merge_output = await requirement_merge_service.run_requirement_merge(merge_input)
+            merge_output = await requirement_merge_service.run_requirement_merge_v2(merge_input, source_fragments)
         except Exception as exc:
             failure_message = f"需求归并智能体运行失败：{exc}"
             failure_preview = requirement_merge_artifact_service.blocked_preview_markdown(

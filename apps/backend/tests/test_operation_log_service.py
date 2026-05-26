@@ -98,6 +98,11 @@ class OperationLogServiceTest(unittest.TestCase):
             self.assertEqual(result["matched_count"], 1)
             self.assertEqual(result["deleted_count"], 0)
 
+            logs = operation_log_service.list_logs(OperationLogQuery(page=1, page_size=10), admin_actor())
+            keys = {(item["module"], item["action"], item["object_type"]) for item in logs["items"]}
+            self.assertIn(("operation_log", "update_retention_policy", "operation_log_retention_policy"), keys)
+            self.assertIn(("operation_log", "cleanup", "operation_log"), keys)
+
 
 def admin_actor() -> dict:
     return {"id": "u-admin", "role": "admin", "project_scope": "全部项目"}

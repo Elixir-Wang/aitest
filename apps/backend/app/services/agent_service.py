@@ -7,6 +7,7 @@ from app.core.db import connect
 from app.core.exceptions import api_error
 from app.repositories import model_repo
 from app.schemas.agent import AgentModelAssignmentIn, AgentRunIn
+from app.services import operation_log_service
 
 
 def list_agents(_actor) -> list[dict]:
@@ -35,12 +36,12 @@ def list_skills(_actor) -> list[dict]:
     ]
 
 
-async def execute_agent(agent_id: str, payload: AgentRunIn, _actor) -> dict:
+async def execute_agent(agent_id: str, payload: AgentRunIn, actor) -> dict:
     try:
         result = await run_agent(agent_id, payload.prompt)
     except KeyError as exc:
         raise api_error(404, "AGENT_NOT_FOUND", "智能体不存在。") from exc
-    return {
+    output = {
         "run_id": result.run_id,
         "agent_id": result.agent_id,
         "output": result.output,
@@ -54,6 +55,30 @@ async def execute_agent(agent_id: str, payload: AgentRunIn, _actor) -> dict:
         "item_count": result.item_count,
         "usage": result.usage,
     }
+    operation_log_service.record_agent_run(
+        module="agent",
+        action="run",
+        object_type="agent",
+        object_id=result.agent_id,
+        object_name=result.agent_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="agent",
+        result="success",
+        summary=f"执行智能体：{result.agent_id}",
+        after={
+            "run_id": result.run_id,
+            "model": result.model,
+            "model_provider_id": result.model_provider_id,
+            "skill_ids": result.skill_ids,
+            "tool_names": result.tool_names,
+            "raw_response_count": result.raw_response_count,
+            "item_count": result.item_count,
+            "usage": result.usage,
+        },
+        task_id=result.run_id,
+    )
+    return output
 
 
 def list_model_assignments(_actor) -> list[dict]:
@@ -66,13 +91,14 @@ def list_model_assignments(_actor) -> list[dict]:
         return assignments
 
 
-def update_model_assignment(agent_id: str, payload: AgentModelAssignmentIn, _actor) -> dict:
+def update_model_assignment(agent_id: str, payload: AgentModelAssignmentIn, actor) -> dict:
     try:
         agent_registry.get(agent_id)
     except KeyError as exc:
         raise api_error(404, "AGENT_NOT_FOUND", "智能体不存在。") from exc
 
     with connect() as db:
+        existing = model_repo.find_agent_assignment(db, agent_id)
         provider = model_repo.find_provider_by_id(db, payload.model_provider_id)
         if not provider:
             raise api_error(404, "MODEL_PROVIDER_NOT_FOUND", "模型配置不存在。")
@@ -80,7 +106,24 @@ def update_model_assignment(agent_id: str, payload: AgentModelAssignmentIn, _act
             raise api_error(400, "MODEL_PROVIDER_DISABLED", "不能分配已禁用的模型配置。")
         model_repo.upsert_agent_assignment(db, agent_id=agent_id, model_provider_id=payload.model_provider_id)
         row = model_repo.find_agent_assignment(db, agent_id)
-        return _serialize_assignment(agent_id, row)
+        result = _serialize_assignment(agent_id, row)
+        before = _assignment_snapshot(existing)
+        after = _assignment_snapshot(row)
+    operation_log_service.record_change(
+        log_type="config",
+        module="agent",
+        action="assign_model",
+        object_type="agent_model_assignment",
+        object_id=agent_id,
+        object_name=result["agent_name"],
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"配置智能体模型：{result['agent_name']}",
+        before=before,
+        after=after,
+    )
+    return result
 
 
 def _serialize_assignment(agent_id: str, row) -> dict:
@@ -101,4 +144,17 @@ def _serialize_assignment(agent_id: str, row) -> dict:
         "api_key": row["api_key"],
         "model_status": row["model_status"],
         "updated_at": row["updated_at"],
+    }
+
+
+def _assignment_snapshot(row) -> dict:
+    if not row:
+        return {}
+    return {
+        "agent_id": row["agent_id"],
+        "model_provider_id": row["model_provider_id"],
+        "provider": row["provider"],
+        "model": row["model"],
+        "base_url": row["base_url"],
+        "model_status": row["model_status"],
     }

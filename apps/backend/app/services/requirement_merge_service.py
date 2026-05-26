@@ -9,12 +9,17 @@ from pydantic import ValidationError
 
 from app.agents.runtime import run_agent
 from app.schemas.requirement_merge import (
+    RequirementClusterDecision,
     RequirementCoverageItem,
+    RequirementFragmentClassificationBatch,
+    RequirementFragmentCluster,
     RequirementMergeBaseVersion,
     RequirementMergeInput,
     RequirementMergeOutput,
     RequirementMergeResolvedConflict,
     RequirementMergeSourceFile,
+    RequirementSectionMergeOutput,
+    RequirementSourceFragment,
 )
 
 REQUIREMENT_MERGE_AGENT_ID = "requirement_merge"
@@ -51,6 +56,47 @@ def build_merge_input(
 
 async def run_requirement_merge(input_data: RequirementMergeInput) -> RequirementMergeOutput:
     return await run_requirement_merge_agent(input_data)
+
+
+async def run_requirement_merge_v2(
+    input_data: RequirementMergeInput,
+    source_fragments: list[RequirementSourceFragment],
+) -> RequirementMergeOutput:
+    classifications = await _classify_fragments_v2(input_data, source_fragments)
+    clusters = _build_fragment_clusters(classifications, source_fragments)
+    cluster_decisions = await _decide_clusters_v2(input_data, clusters, source_fragments)
+    conflicts = _cluster_conflicts(cluster_decisions)
+    coverage_items = _coverage_items_from_cluster_decisions(cluster_decisions, source_fragments)
+    if conflicts:
+        return RequirementMergeOutput(
+            status="conflict",
+            markdown_content="",
+            markdown_preview="",
+            merge_summary=f"发现 {len(conflicts)} 个明显冲突，已停止生成合并稿。",
+            diff_summary="存在明显冲突，需要人工确认后重新归并。",
+            affected_modules=sorted({cluster.business_module for cluster in clusters if cluster.business_module}),
+            source_file_ids=[item.mapping_id for item in input_data.source_files],
+            coverage_items=coverage_items,
+            conflicts=conflicts,
+        )
+
+    section_outputs = await _merge_sections_v2(input_data, clusters, cluster_decisions, source_fragments)
+    markdown = _render_v2_markdown(input_data.document_name, section_outputs, source_fragments)
+    status = "preview" if input_data.merge_mode == "incremental" else "merged"
+    return RequirementMergeOutput(
+        status=status,
+        markdown_content=markdown if status == "merged" else "",
+        markdown_preview=markdown if status == "preview" else "",
+        merge_summary=(
+            f"按分层语义流水线归并 {len(input_data.source_files)} 个标准文件、"
+            f"{len(source_fragments)} 个来源片段、{len(clusters)} 个语义簇。"
+        ),
+        diff_summary="按业务模块、语义簇和局部章节完成真实归并。",
+        affected_modules=sorted({cluster.business_module for cluster in clusters if cluster.business_module}),
+        source_file_ids=[item.mapping_id for item in input_data.source_files],
+        coverage_items=coverage_items,
+        conflicts=[],
+    )
 
 
 async def run_requirement_merge_agent(input_data: RequirementMergeInput) -> RequirementMergeOutput:
@@ -117,6 +163,241 @@ def _build_agent_prompt(input_data: RequirementMergeInput) -> str:
     )
 
 
+async def _classify_fragments_v2(
+    input_data: RequirementMergeInput,
+    source_fragments: list[RequirementSourceFragment],
+) -> list:
+    result = await run_agent(
+        REQUIREMENT_MERGE_AGENT_ID,
+        _build_v2_classification_prompt(input_data, source_fragments),
+    )
+    parsed = _parse_small_json_output(result.output, "需求归并智能体片段分类未返回合法 JSON。")
+    output = RequirementFragmentClassificationBatch.model_validate(parsed)
+    expected_ids = {fragment.fragment_id for fragment in source_fragments}
+    actual_ids = {item.fragment_id for item in output.classifications}
+    missing_ids = sorted(expected_ids - actual_ids)
+    unknown_ids = sorted(actual_ids - expected_ids)
+    if missing_ids:
+        raise ValueError(f"需求归并智能体片段分类缺失：{', '.join(missing_ids)}。")
+    if unknown_ids:
+        raise ValueError(f"需求归并智能体片段分类包含未知片段：{', '.join(unknown_ids)}。")
+    return output.classifications
+
+
+async def _decide_clusters_v2(
+    input_data: RequirementMergeInput,
+    clusters: list[RequirementFragmentCluster],
+    source_fragments: list[RequirementSourceFragment],
+) -> list[RequirementClusterDecision]:
+    decisions: list[RequirementClusterDecision] = []
+    fragments_by_id = {fragment.fragment_id: fragment for fragment in source_fragments}
+    for cluster in clusters:
+        result = await run_agent(
+            REQUIREMENT_MERGE_AGENT_ID,
+            _build_v2_cluster_decision_prompt(input_data, cluster, fragments_by_id),
+        )
+        parsed = _parse_small_json_output(result.output, "需求归并智能体语义簇决策未返回合法 JSON。")
+        decision = RequirementClusterDecision.model_validate(parsed)
+        expected_ids = set(cluster.fragment_ids)
+        actual_ids = {item.fragment_id for item in decision.fragment_decisions}
+        missing_ids = sorted(expected_ids - actual_ids)
+        unknown_ids = sorted(actual_ids - expected_ids)
+        if missing_ids:
+            raise ValueError(f"语义簇 {cluster.cluster_id} 决策缺失片段：{', '.join(missing_ids)}。")
+        if unknown_ids:
+            raise ValueError(f"语义簇 {cluster.cluster_id} 决策包含未知片段：{', '.join(unknown_ids)}。")
+        decisions.append(decision)
+    return decisions
+
+
+async def _merge_sections_v2(
+    input_data: RequirementMergeInput,
+    clusters: list[RequirementFragmentCluster],
+    cluster_decisions: list[RequirementClusterDecision],
+    source_fragments: list[RequirementSourceFragment],
+) -> list[RequirementSectionMergeOutput]:
+    decisions_by_cluster = {decision.cluster_id: decision for decision in cluster_decisions}
+    fragments_by_id = {fragment.fragment_id: fragment for fragment in source_fragments}
+    section_outputs: list[RequirementSectionMergeOutput] = []
+    for cluster in clusters:
+        decision = decisions_by_cluster.get(cluster.cluster_id)
+        if not decision or decision.decision in {"conflict", "discard"}:
+            continue
+        result = await run_agent(
+            REQUIREMENT_MERGE_AGENT_ID,
+            _build_v2_section_merge_prompt(input_data, cluster, decision, fragments_by_id),
+        )
+        parsed = _parse_small_json_output(result.output, "需求归并智能体章节归并未返回合法 JSON。")
+        section_output = RequirementSectionMergeOutput.model_validate(parsed)
+        if section_output.section_key != cluster.cluster_id:
+            raise ValueError(f"章节归并返回 section_key 与语义簇不一致：{cluster.cluster_id}。")
+        section_outputs.append(section_output)
+    return section_outputs
+
+
+def _build_fragment_clusters(
+    classifications: list,
+    source_fragments: list[RequirementSourceFragment],
+) -> list[RequirementFragmentCluster]:
+    fragments_by_id = {fragment.fragment_id: fragment for fragment in source_fragments}
+    grouped: dict[tuple[str, str, str], list[str]] = {}
+    for item in classifications:
+        fragment = fragments_by_id[item.fragment_id]
+        module = item.business_module.strip() or _module_from_fragment(fragment)
+        semantic_key = _semantic_key(item.semantic_key, module, fragment)
+        role = item.fragment_role.strip() or fragment.fragment_type
+        grouped.setdefault((module, semantic_key, role), []).append(item.fragment_id)
+
+    clusters: list[RequirementFragmentCluster] = []
+    for index, ((module, semantic_key, role), fragment_ids) in enumerate(grouped.items(), start=1):
+        clusters.append(
+            RequirementFragmentCluster(
+                cluster_id=f"cluster-{index:04d}-{_slug(semantic_key)}",
+                business_module=module,
+                semantic_key=semantic_key,
+                fragment_role=role,
+                fragment_ids=fragment_ids,
+            )
+        )
+    return clusters
+
+
+def _cluster_conflicts(cluster_decisions: list[RequirementClusterDecision]) -> list:
+    conflicts = []
+    for decision in cluster_decisions:
+        conflicts.extend(decision.conflicts)
+    return [RequirementMergeConflictOut.model_validate(_normalize_v2_conflict(item)) for item in conflicts]
+
+
+def _coverage_items_from_cluster_decisions(
+    cluster_decisions: list[RequirementClusterDecision],
+    source_fragments: list[RequirementSourceFragment],
+) -> list[RequirementCoverageItem]:
+    fragments_by_id = {fragment.fragment_id: fragment for fragment in source_fragments}
+    items: list[RequirementCoverageItem] = []
+    for decision in cluster_decisions:
+        for item in decision.fragment_decisions:
+            fragment = fragments_by_id[item.fragment_id]
+            items.append(
+                RequirementCoverageItem(
+                    mapping_id=fragment.mapping_id,
+                    source_heading=" / ".join(fragment.heading_path),
+                    source_excerpt=_excerpt(fragment.text or fragment.markdown_block),
+                    target_module=item.target_module or _module_from_fragment(fragment),
+                    target_heading=item.target_heading or decision.canonical_meaning or _heading_from_fragment(fragment),
+                    coverage_status=item.coverage_status,
+                    reason=item.reason,
+                )
+            )
+    return items
+
+
+def _render_v2_markdown(
+    document_name: str,
+    section_outputs: list[RequirementSectionMergeOutput],
+    source_fragments: list[RequirementSourceFragment],
+) -> str:
+    fragments_by_id = {fragment.fragment_id: fragment for fragment in source_fragments}
+    lines = [
+        f"# {document_name}",
+        "",
+        "## 需求概述",
+        "",
+        "- 本文档由需求归并智能体按业务模块、相似语义和来源片段覆盖关系归并生成。",
+    ]
+    for section in section_outputs:
+        title = _section_title(section.section_key, source_fragments)
+        lines.extend(["", f"## {title}", ""])
+        for block in section.blocks:
+            if block.type == "paragraph" and block.content.strip():
+                lines.extend([block.content.strip(), ""])
+            elif block.type == "bullet_list":
+                for item in block.items:
+                    if item.strip():
+                        lines.append(f"- {item.strip()}")
+                lines.append("")
+            elif block.type == "table" and block.content.strip():
+                lines.extend([block.content.strip(), ""])
+            elif block.type == "source_block_ref" and block.fragment_id in fragments_by_id:
+                lines.extend([fragments_by_id[block.fragment_id].markdown_block.strip(), ""])
+            elif block.type == "pending_clarification_ref" and block.content.strip():
+                lines.extend([f"- 待澄清：{block.content.strip()}", ""])
+    return "\n".join(lines).strip() + "\n"
+
+
+def _build_v2_classification_prompt(
+    input_data: RequirementMergeInput,
+    source_fragments: list[RequirementSourceFragment],
+) -> str:
+    payload = {
+        "task": "classify_fragments",
+        "document_name": input_data.document_name,
+        "merge_mode": input_data.merge_mode,
+        "fragments": [fragment.model_dump() for fragment in source_fragments],
+    }
+    return (
+        "你是需求归并智能体。当前是 v2 分层语义归并的片段分类阶段。\n"
+        "只返回合法 JSON，不要 Markdown 代码块，不要解释文字。\n"
+        "不要输出完整合并稿，不要输出 markdown_content 或 markdown_preview。\n"
+        "必须为每个输入 fragment_id 返回一条 classifications。\n"
+        "JSON 字段：classifications。每项字段：fragment_id, business_module, semantic_key, fragment_role, summary, confidence。\n"
+        "semantic_key 用英文或拼音 snake_case 表示同一业务语义，用于把相似内容聚到一起。\n\n"
+        f"输入：\n{json.dumps(payload, ensure_ascii=False)}"
+    )
+
+
+def _build_v2_cluster_decision_prompt(
+    input_data: RequirementMergeInput,
+    cluster: RequirementFragmentCluster,
+    fragments_by_id: dict[str, RequirementSourceFragment],
+) -> str:
+    payload = {
+        "task": "decide_cluster",
+        "document_name": input_data.document_name,
+        "merge_mode": input_data.merge_mode,
+        "resolved_conflicts": [item.model_dump() for item in input_data.resolved_conflicts],
+        "cluster": cluster.model_dump(),
+        "fragments": [fragments_by_id[fragment_id].model_dump() for fragment_id in cluster.fragment_ids],
+    }
+    return (
+        "你是需求归并智能体。当前是 v2 分层语义归并的语义簇决策阶段。\n"
+        "只返回合法 JSON，不要 Markdown 代码块，不要解释文字。\n"
+        "不要输出完整合并稿，不要输出 markdown_content 或 markdown_preview。\n"
+        "判断同一语义簇内片段是互补合并、重复、冲突、待澄清还是丢弃。\n"
+        "必须为 cluster.fragment_ids 中每个 fragment_id 返回一条 fragment_decisions。\n"
+        "JSON 字段：cluster_id, decision, canonical_meaning, fragment_decisions, conflicts, clarification_items。\n\n"
+        f"输入：\n{json.dumps(payload, ensure_ascii=False)}"
+    )
+
+
+def _build_v2_section_merge_prompt(
+    input_data: RequirementMergeInput,
+    cluster: RequirementFragmentCluster,
+    decision: RequirementClusterDecision,
+    fragments_by_id: dict[str, RequirementSourceFragment],
+) -> str:
+    payload = {
+        "task": "merge_section",
+        "document_name": input_data.document_name,
+        "merge_mode": input_data.merge_mode,
+        "section_key": cluster.cluster_id,
+        "business_module": cluster.business_module,
+        "semantic_key": cluster.semantic_key,
+        "decision": decision.model_dump(),
+        "fragments": [fragments_by_id[fragment_id].model_dump() for fragment_id in cluster.fragment_ids],
+    }
+    return (
+        "你是需求归并智能体。当前是 v2 分层语义归并的局部章节表达阶段。\n"
+        "只返回合法 JSON，不要 Markdown 代码块，不要解释文字。\n"
+        "不要输出完整合并稿，不要输出 markdown_content 或 markdown_preview。\n"
+        "只能表达本 section 的内容，不得创造来源之外的需求。\n"
+        "表格、代码块、Mermaid 如承载需求信息，优先用 source_block_ref 引用来源片段。\n"
+        "JSON 字段：section_key, blocks, covered_fragment_ids。\n"
+        "blocks 每项 type 只能是 paragraph, bullet_list, table, source_block_ref, pending_clarification_ref。\n\n"
+        f"输入：\n{json.dumps(payload, ensure_ascii=False)}"
+    )
+
+
 def _parse_agent_output(output: Any) -> RequirementMergeOutput:
     if isinstance(output, RequirementMergeOutput):
         return output
@@ -145,6 +426,18 @@ def _parse_agent_output(output: Any) -> RequirementMergeOutput:
         return RequirementMergeOutput.model_validate(parsed)
     except ValidationError as exc:
         raise ValueError("需求归并智能体输出不符合归并契约。") from exc
+
+
+def _parse_small_json_output(output: Any, error_message: str) -> Any:
+    if isinstance(output, dict):
+        return output
+    if not isinstance(output, str):
+        raise ValueError("需求归并智能体输出类型不支持。")
+    text = _extract_json_text(output)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(error_message) from exc
 
 
 def _strip_code_fence(text: str) -> str:
@@ -180,6 +473,61 @@ def _repair_markdown_json_string_fields(text: str) -> str:
     for field_name in ("markdown_content", "markdown_preview"):
         repaired = _repair_json_string_field(repaired, field_name)
     return repaired
+
+
+def _semantic_key(value: str, module: str, fragment: RequirementSourceFragment) -> str:
+    raw = value.strip() or " ".join([module, *fragment.heading_path, fragment.fragment_type])
+    return _slug(raw)
+
+
+def _slug(value: str) -> str:
+    slug = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "_", value.strip()).strip("_")
+    return slug.lower()[:48] or "section"
+
+
+def _module_from_fragment(fragment: RequirementSourceFragment) -> str:
+    if fragment.heading_path:
+        return fragment.heading_path[0]
+    return {
+        "interface": "接口契约",
+        "state_flow": "状态流转",
+        "acceptance": "验收标准",
+        "constraint": "约束规则",
+        "attachment": "附件材料",
+        "non_requirement": "非需求材料",
+    }.get(fragment.fragment_type, "业务需求")
+
+
+def _heading_from_fragment(fragment: RequirementSourceFragment) -> str:
+    if fragment.heading_path:
+        return fragment.heading_path[-1]
+    return _excerpt(fragment.text or fragment.markdown_block, limit=24)
+
+
+def _section_title(section_key: str, source_fragments: list[RequirementSourceFragment]) -> str:
+    for fragment in source_fragments:
+        if section_key.endswith(_slug(" ".join(fragment.heading_path) or fragment.fragment_type)):
+            return _heading_from_fragment(fragment)
+    return section_key.replace("_", " ")
+
+
+def _excerpt(text: str, *, limit: int = 80) -> str:
+    normalized = re.sub(r"\s+", " ", text).strip()
+    return normalized[:limit]
+
+
+def _normalize_v2_conflict(conflict: dict) -> dict:
+    fragment_ids = conflict.get("fragment_ids") or []
+    source_refs = conflict.get("source_refs") or [{"fragment_id": fragment_id} for fragment_id in fragment_ids]
+    return {
+        "title": conflict.get("title") or "未命名冲突",
+        "conflict_type": conflict.get("conflict_type") or "contradiction",
+        "severity": conflict.get("severity") or "medium",
+        "source_refs": source_refs,
+        "fragment_a": conflict.get("fragment_a") or "",
+        "fragment_b": conflict.get("fragment_b") or "",
+        "agent_suggestion": conflict.get("agent_suggestion") or "需要人工确认。",
+    }
 
 
 def _complete_partial_merge_payload(payload: Any) -> Any:

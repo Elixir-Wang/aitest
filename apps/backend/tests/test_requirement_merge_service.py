@@ -16,7 +16,9 @@ from app.services.requirement_merge_service import (
     _parse_agent_output,
     normalize_merge_output,
     run_requirement_merge,
+    run_requirement_merge_v2,
 )
+from app.services.requirement_fragment_service import build_source_fragments
 from app.services import requirement_merge_service
 from app.services.requirement_merge_artifact_service import (
     evaluate_merge_quality,
@@ -500,6 +502,100 @@ flowchart TD
                         ],
                     )
                 )
+
+    async def test_run_requirement_merge_v2_uses_small_json_stages(self):
+        input_data = RequirementMergeInput(
+            project_id="project-1",
+            document_id="doc-1",
+            document_name="登录需求",
+            merge_mode="initial",
+            source_files=[
+                RequirementMergeSourceFile(
+                    mapping_id="docmap-1",
+                    original_filename="登录.md",
+                    markdown_content="# 登录\n\n- 支持账号登录\n- 支持账号登录",
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                )
+            ],
+        )
+        fragments = build_source_fragments(input_data.source_files)
+
+        async def fake_run_agent(_agent_id, prompt):
+            class Result:
+                output = {}
+
+            result = Result()
+            if '"task": "classify_fragments"' in prompt:
+                result.output = {
+                    "classifications": [
+                        {
+                            "fragment_id": fragments[0].fragment_id,
+                            "business_module": "登录",
+                            "semantic_key": "account_login",
+                            "fragment_role": "requirement",
+                            "summary": "支持账号登录",
+                            "confidence": 0.9,
+                        },
+                        {
+                            "fragment_id": fragments[1].fragment_id,
+                            "business_module": "登录",
+                            "semantic_key": "account_login",
+                            "fragment_role": "requirement",
+                            "summary": "支持账号登录",
+                            "confidence": 0.9,
+                        },
+                    ]
+                }
+            elif '"task": "decide_cluster"' in prompt:
+                result.output = {
+                    "cluster_id": "cluster-0001-account_login",
+                    "decision": "merge",
+                    "canonical_meaning": "支持账号登录。",
+                    "fragment_decisions": [
+                        {
+                            "fragment_id": fragments[0].fragment_id,
+                            "coverage_status": "merged",
+                            "target_module": "登录",
+                            "target_heading": "账号登录",
+                            "reason": "作为主规则合入。",
+                        },
+                        {
+                            "fragment_id": fragments[1].fragment_id,
+                            "coverage_status": "duplicate",
+                            "target_module": "登录",
+                            "target_heading": "账号登录",
+                            "covered_by_fragment_id": fragments[0].fragment_id,
+                            "reason": "与主规则重复。",
+                        },
+                    ],
+                    "conflicts": [],
+                    "clarification_items": [],
+                }
+            elif '"task": "merge_section"' in prompt:
+                result.output = {
+                    "section_key": "cluster-0001-account_login",
+                    "blocks": [
+                        {
+                            "type": "paragraph",
+                            "content": "系统应支持用户使用账号登录。",
+                        }
+                    ],
+                    "covered_fragment_ids": [fragments[0].fragment_id, fragments[1].fragment_id],
+                }
+            else:
+                self.fail("unexpected prompt")
+            return result
+
+        with patch("app.services.requirement_merge_service.run_agent", fake_run_agent):
+            output = await run_requirement_merge_v2(input_data, fragments)
+
+        self.assertEqual(output.status, "merged")
+        self.assertIn("系统应支持用户使用账号登录。", output.markdown_content)
+        self.assertEqual(
+            [item.coverage_status for item in output.coverage_items],
+            ["merged", "duplicate"],
+        )
 
 
 if __name__ == "__main__":
