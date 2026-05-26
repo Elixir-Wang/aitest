@@ -212,6 +212,13 @@ export default function Page() {
                 </TableRow>
               ))}
               {loading && filteredRows.length === 0 ? <TableLoadingRow colSpan={7} label="模型列表加载中" /> : null}
+              {!loading && filteredRows.length === 0 ? (
+                <TableRow>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={7}>
+                    暂无模型配置。添加模型后，可分配给需求分析、探索和测试生成等能力。
+                  </TableCell>
+                </TableRow>
+              ) : null}
             </TableBody>
           </Table>
         </div>

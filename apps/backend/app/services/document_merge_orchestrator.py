@@ -13,7 +13,7 @@ from app.schemas.requirement_merge import (
     RequirementMergeResolvedConflict,
     RequirementMergeSourceFile,
 )
-from app.services import requirement_merge_artifact_service, requirement_merge_service
+from app.services import requirement_fragment_service, requirement_merge_artifact_service, requirement_merge_service
 
 DOCUMENT_VERSIONED_STATUS = "versioned"
 CONVERSION_SUCCESS_STATUS = "success"
@@ -68,6 +68,7 @@ async def merge_document_markdown(
             )
         if not source_files:
             raise api_error(409, "DOCUMENT_MERGE_NO_FILES", "暂无可合并的标准文件。")
+        source_fragments = requirement_fragment_service.build_source_fragments(source_files)
 
         base_version = _current_merge_base_version(existing)
         resolved_conflicts = document_repo.list_conflicts(db, document_id, status="resolved")
@@ -102,10 +103,55 @@ async def merge_document_markdown(
             resolved_conflict_ids=[row["id"] for row in resolved_conflicts],
             created_by=actor["id"],
         )
+        machine_artifacts = requirement_merge_artifact_service.write_merge_machine_artifacts(
+            project_id,
+            document_id,
+            run_id,
+            source_fragments=source_fragments,
+        )
         try:
             merge_output = await requirement_merge_service.run_requirement_merge(merge_input)
         except Exception as exc:
-            raise api_error(502, "DOCUMENT_MERGE_AGENT_FAILED", f"需求归并智能体运行失败：{exc}") from exc
+            failure_message = f"需求归并智能体运行失败：{exc}"
+            failure_preview = requirement_merge_artifact_service.blocked_preview_markdown(
+                existing["name"],
+                failure_message,
+            )
+            artifact_tabs = requirement_merge_artifact_service.write_merge_artifacts(
+                project_id,
+                document_id,
+                run_id,
+                preview_markdown=failure_preview,
+                coverage_items=[],
+                conflicts=[],
+                merge_summary=failure_message,
+                diff_summary="智能体运行失败，未生成合并需求稿。",
+                affected_modules=[],
+                source_files=source_files,
+                quality_result="failed",
+                blocking_issues=[failure_message],
+            )
+            document_repo.update_merge_run_result(
+                db,
+                run_id=run_id,
+                status="failed",
+                merge_summary=failure_message,
+                diff_summary="智能体运行失败，未生成合并需求稿。",
+                affected_modules=[],
+                output_preview_path=artifact_tabs[0]["stored_path"],
+            )
+            return {
+                "status": "preview",
+                "preview_id": run_id,
+                "markdown_preview": failure_preview,
+                "merge_summary": failure_message,
+                "diff_summary": "智能体运行失败，未生成合并需求稿。",
+                "affected_modules": [],
+                "source_file_ids": [item.mapping_id for item in source_files],
+                "quality_result": "failed",
+                "artifact_tabs": requirement_merge_artifact_service.public_artifact_tabs(artifact_tabs),
+                "machine_artifacts": machine_artifacts,
+            }
         coverage_items = [item.model_dump() for item in merge_output.coverage_items]
         if merge_output.status == "conflict":
             for conflict in merge_output.conflicts:
@@ -151,6 +197,7 @@ async def merge_document_markdown(
                 "source_file_ids": merge_output.source_file_ids,
                 "conflict_count": len(conflict_rows),
                 "conflicts": [_serialize_conflict(row) for row in conflict_rows],
+                "machine_artifacts": machine_artifacts,
             }
 
         if merge_output.status == "preview":
@@ -201,6 +248,7 @@ async def merge_document_markdown(
                 "source_file_ids": merge_output.source_file_ids,
                 "quality_result": artifact_tabs[3]["quality_result"],
                 "artifact_tabs": requirement_merge_artifact_service.public_artifact_tabs(artifact_tabs),
+                "machine_artifacts": machine_artifacts,
             }
 
         merged_markdown = merge_output.markdown_content
@@ -252,6 +300,7 @@ async def merge_document_markdown(
                 "source_file_ids": merge_output.source_file_ids,
                 "quality_result": quality_result,
                 "artifact_tabs": requirement_merge_artifact_service.public_artifact_tabs(artifact_tabs),
+                "machine_artifacts": machine_artifacts,
             }
         version_id = f"docver-{secrets.token_hex(8)}"
         version_no = document_repo.next_version_no(db, document_id)
@@ -312,6 +361,7 @@ async def merge_document_markdown(
         "source_file_ids": merge_output.source_file_ids,
         "quality_result": quality_result,
         "artifact_tabs": requirement_merge_artifact_service.public_artifact_tabs(artifact_tabs),
+        "machine_artifacts": machine_artifacts,
     }
 
 

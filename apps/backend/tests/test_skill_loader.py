@@ -61,6 +61,19 @@ class SkillLoaderTest(unittest.TestCase):
         self.assertIn("Source Coverage Rules", built_agent.instructions)
         self.assertEqual(built_agent.tools, [])
 
+    def test_requirement_analysis_agent_uses_analysis_skill_and_structured_output(self):
+        agent = agent_registry.get("requirement_analysis")
+        skill = skill_registry.get("requirement_analysis", agent_id="requirement_analysis")
+        built_agent = build_agent(agent, [skill])
+
+        self.assertEqual(skill.agent_id, "requirement_analysis")
+        self.assertTrue(Path(skill.path).as_posix().endswith("agents/requirement_analysis/skills/requirement_analysis"))
+        self.assertIn("Requirement Analysis", built_agent.instructions)
+        self.assertIn("diagnose the requirement maturity", built_agent.instructions)
+        self.assertIn("Do not silently infer missing business facts", built_agent.instructions)
+        self.assertEqual(agent.output_type.__name__, "RequirementAnalysisOutput")
+        self.assertEqual(built_agent.tools, [])
+
     def test_document_editor_agent_uses_document_editing_skill(self):
         agent = agent_registry.get("document_editor")
         skill = skill_registry.get("document_editing", agent_id="document_editor")

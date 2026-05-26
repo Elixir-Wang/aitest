@@ -95,6 +95,13 @@ export default function Page() {
                   </TableCell>
                 </TableRow>
               ))}
+              {filteredRows.length === 0 ? (
+                <TableRow>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
+                    暂无报告。测试任务完成后，报告会汇总展示在这里。
+                  </TableCell>
+                </TableRow>
+              ) : null}
             </TableBody>
           </Table>
         </div>

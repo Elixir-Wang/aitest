@@ -39,7 +39,7 @@ export default function Page() {
   if (!projectId) {
     return (
       <EmptyState
-        description="请先创建项目或在右上角选择一个项目后再管理需求文档。"
+        description="新建项目后，可在需求列表中上传文档并查看分析结果和版本记录。"
         status="无可用项目"
         title="暂无项目"
       />

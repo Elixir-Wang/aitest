@@ -425,7 +425,7 @@ def find_latest_merge_run(db: Connection, document_id: str) -> Row | None:
         SELECT *
         FROM requirement_merge_runs
         WHERE document_id = ?
-          AND status IN ('merged', 'preview')
+          AND status IN ('merged', 'preview', 'failed')
         ORDER BY COALESCE(finished_at, created_at) DESC, created_at DESC, id DESC
         LIMIT 1
         """,

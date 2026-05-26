@@ -762,8 +762,13 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("merge_summary", result)
             self.assertIn("source_file_ids", result)
             self.assertIn("artifact_tabs", result)
+            self.assertIn("machine_artifacts", result)
             self.assertIn("支持账号登录", result["markdown_content"])
             self.assertEqual(result["markdown_content"].count("支持账号登录"), 1)
+            fragments_path = resolve_stored_path(result["machine_artifacts"]["fragments_path"])
+            self.assertIsNotNone(fragments_path)
+            self.assertTrue(fragments_path.exists())
+            self.assertIn("frag-1-00001", fragments_path.read_text(encoding="utf-8"))
             self.assertEqual(document_service.get_document_versions("doc-1")[0]["source_action"], "merge")
 
     async def test_merge_document_markdown_returns_preview_when_draft_drops_most_content(self):
@@ -1109,6 +1114,89 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("明显冲突", overview["artifact_tabs"][2]["content"])
             self.assertIn("归并质量报告", overview["artifact_tabs"][3]["content"])
 
+    async def test_merge_agent_failure_writes_visible_failure_artifacts(self):
+        with isolated_document_store() as actor:
+            base_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "standard"
+            base_dir.mkdir(parents=True)
+            source = base_dir / "source.md"
+            source.write_text("# 登录需求\n\n- 支持账号登录", encoding="utf-8")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+                document_repo.create_file_mapping(
+                    db,
+                    mapping_id="docmap-1",
+                    document_id="doc-1",
+                    version_id=None,
+                    source_file_path="source.md",
+                    original_filename="source.md",
+                    file_format="md",
+                    markdown_file_path=str(source),
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                    conversion_summary="成功",
+                    created_by="u-admin",
+                )
+
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
+                merge_agent.side_effect = RuntimeError("model not configured")
+                result = await document_service.merge_document_markdown("project-1", "doc-1", actor)
+
+            self.assertEqual(result["status"], "preview")
+            self.assertEqual(result["quality_result"], "failed")
+            self.assertIn("model not configured", result["merge_summary"])
+            self.assertIn("合并候选稿未生成", result["markdown_preview"])
+            self.assertEqual(document_service.get_document_versions("doc-1"), [])
+            overview = document_service.get_document_overview("project-1", "doc-1", actor)
+
+            self.assertEqual(
+                [tab["key"] for tab in overview["artifact_tabs"]],
+                ["preview", "mapping", "conflicts", "report"],
+            )
+            self.assertIn("合并候选稿未生成", overview["artifact_tabs"][0]["content"])
+            self.assertIn("model not configured", overview["artifact_tabs"][3]["content"])
+
+    async def test_merge_exception_writes_failed_operation_log(self):
+        with isolated_document_store() as actor:
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+
+            with patch("app.services.document_merge_orchestrator.merge_document_markdown") as merge_orchestrator:
+                merge_orchestrator.side_effect = HTTPException(
+                    status_code=502,
+                    detail={"code": "DOCUMENT_MERGE_AGENT_FAILED", "message": "需求归并智能体运行失败：模型超时"},
+                )
+                with self.assertRaises(HTTPException):
+                    await document_service.merge_document_markdown("project-1", "doc-1", actor)
+
+            with connect() as db:
+                row = db.execute(
+                    """
+                    SELECT module, action, result, failure_reason, summary
+                    FROM operation_logs
+                    WHERE object_id = 'doc-1'
+                    """
+                ).fetchone()
+
+            self.assertIsNotNone(row)
+            self.assertEqual(row["module"], "requirement")
+            self.assertEqual(row["action"], "merge")
+            self.assertEqual(row["result"], "failed")
+            self.assertIn("模型超时", row["failure_reason"])
+
 
 def make_upload_file(filename: str, content: bytes) -> TestUploadFile:
     return TestUploadFile(filename, content)
@@ -1278,6 +1366,30 @@ class isolated_document_store:
                   quality_result TEXT NOT NULL,
                   testability_score INTEGER NOT NULL DEFAULT 0,
                   created_by TEXT NOT NULL,
+                  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE operation_logs (
+                  id TEXT PRIMARY KEY,
+                  log_type TEXT NOT NULL,
+                  module TEXT NOT NULL,
+                  action TEXT NOT NULL,
+                  object_type TEXT NOT NULL,
+                  object_id TEXT,
+                  object_name TEXT NOT NULL DEFAULT '',
+                  project_id TEXT,
+                  actor_id TEXT NOT NULL DEFAULT 'system',
+                  actor_name TEXT NOT NULL DEFAULT '系统',
+                  source TEXT NOT NULL,
+                  result TEXT NOT NULL,
+                  failure_reason TEXT NOT NULL DEFAULT '',
+                  summary TEXT NOT NULL DEFAULT '',
+                  before_json TEXT NOT NULL DEFAULT '{}',
+                  after_json TEXT NOT NULL DEFAULT '{}',
+                  task_id TEXT,
+                  artifact_path TEXT NOT NULL DEFAULT '[]',
+                  request_id TEXT NOT NULL DEFAULT '',
+                  ip_address TEXT NOT NULL DEFAULT '',
+                  user_agent TEXT NOT NULL DEFAULT '',
                   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
                 """

@@ -21,9 +21,12 @@ def _build_agent_prompt(input_data: RequirementAnalysisInput) -> str:
     return (
         "请分析以下已经归并完成的需求 Markdown 工作稿。\n"
         "你只负责需求分析、澄清问题、覆盖审计和质量门禁。\n"
+        "你必须先判断需求成熟度，识别关键缺口和未验证假设，再生成待澄清问题。\n"
+        "当业务目标、角色、边界、规则、验收标准或约束缺失时，必须输出待澄清内容，不得自行补全。\n"
         "不得重新归并来源文件，不得生成知识库，不得生成测试用例，不得创造未确认需求。\n"
         "只返回一个 JSON 对象，不要 Markdown 代码块，不要解释文字。\n"
-        "JSON 必须符合字段：status, analysis_summary, modules, clarification_questions, "
+        "JSON 必须符合字段：status, analysis_summary, maturity_assessment, key_gaps, assumptions, "
+        "modules, clarification_questions, "
         "coverage_audit, quality_gate, next_actions。\n\n"
         f"输入：\n{json.dumps(payload, ensure_ascii=False)}"
     )

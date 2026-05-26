@@ -6,8 +6,9 @@ from pathlib import Path
 
 from app.core.db import connect
 from app.seed.init_db import init_db
-from app.schemas.exploration import ExplorationRunCreateIn
-from app.services import exploration_service
+from app.schemas.exploration import ExplorationRunCreateIn, ExplorationRunUpdateIn
+from app.schemas.environment import ProjectEnvironmentCreateIn, ProjectEnvironmentUpdateIn
+from app.services import environment_service, exploration_service
 from unittest.mock import patch
 
 
@@ -61,6 +62,81 @@ class ExplorationServiceTest(unittest.TestCase):
             self.assertEqual(started["result_summary"], "探索任务已提交，等待执行。")
             self.assertIsNotNone(started["started_at"])
             self.assertIsNone(started["finished_at"])
+
+    def test_exploration_actions_write_operation_logs(self):
+        with isolated_exploration_store():
+            seed_project_environment()
+            actor = admin_actor()
+            created = exploration_service.create_project_run(
+                "project-1",
+                ExplorationRunCreateIn(environment_id="env-1", title="后台探索"),
+                actor,
+            )
+            exploration_service.update_project_run(
+                "project-1",
+                created["id"],
+                ExplorationRunUpdateIn(scope="用户管理"),
+                actor,
+            )
+            exploration_service.start_project_run("project-1", created["id"], actor)
+            exploration_service.delete_project_run("project-1", created["id"], actor)
+
+            with connect() as db:
+                rows = db.execute(
+                    """
+                    SELECT log_type, module, action, object_type, task_id
+                    FROM operation_logs
+                    WHERE module = 'exploration' AND object_id = ?
+                    """,
+                    (created["id"],),
+                ).fetchall()
+
+            keys = {(row["log_type"], row["module"], row["action"], row["object_type"], row["task_id"]) for row in rows}
+            expected = {
+                ("task", "exploration", "create", "exploration_run", created["id"]),
+                ("task", "exploration", "update", "exploration_run", created["id"]),
+                ("task", "exploration", "run", "exploration_run", created["id"]),
+                ("task", "exploration", "delete", "exploration_run", created["id"]),
+            }
+            self.assertEqual(keys, expected)
+
+    def test_environment_actions_write_operation_logs(self):
+        with isolated_exploration_store():
+            seed_project()
+            actor = admin_actor()
+            created = environment_service.create_project_environment(
+                "project-1",
+                ProjectEnvironmentCreateIn(name="测试环境", site_url="https://example.test", password="secret-pass"),
+                actor,
+            )
+            environment_service.update_project_environment(
+                "project-1",
+                created["id"],
+                ProjectEnvironmentUpdateIn(description="回归环境"),
+                actor,
+            )
+            environment_service.delete_project_environment("project-1", created["id"], actor)
+
+            with connect() as db:
+                rows = db.execute(
+                    """
+                    SELECT log_type, module, action, object_type, after_json
+                    FROM operation_logs
+                    WHERE module = 'environment' AND object_id = ?
+                    """,
+                    (created["id"],),
+                ).fetchall()
+
+            keys = {(row["log_type"], row["module"], row["action"], row["object_type"]) for row in rows}
+            self.assertEqual(
+                keys,
+                {
+                    ("config", "environment", "create", "project_environment"),
+                    ("config", "environment", "update", "project_environment"),
+                    ("config", "environment", "delete", "project_environment"),
+                },
+            )
+            self.assertTrue(all("secret-pass" not in row["after_json"] for row in rows))
 
     def test_start_run_resets_previous_exploration_duration(self):
         with isolated_exploration_store():
@@ -144,13 +220,8 @@ class ExplorationServiceTest(unittest.TestCase):
 
 
 def seed_project_environment(login_strategy: str = "reuse_state") -> None:
+    seed_project()
     with connect() as db:
-        db.execute(
-            """
-            INSERT INTO projects (id, name, status, created_by)
-            VALUES ('project-1', '测试项目', 'active', 'u-admin')
-            """
-        )
         db.execute(
             """
             INSERT INTO project_environments (id, project_id, name, site_url, login_strategy, created_by)
@@ -160,8 +231,18 @@ def seed_project_environment(login_strategy: str = "reuse_state") -> None:
         )
 
 
+def seed_project() -> None:
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO projects (id, name, status, created_by)
+            VALUES ('project-1', '测试项目', 'active', 'u-admin')
+            """
+        )
+
+
 def admin_actor() -> dict:
-    return {"id": "u-admin", "role": "admin", "project_scope": "全部项目"}
+    return {"id": "u-admin", "role": "admin", "project_scope": "全部项目", "nickname": "平台管理员", "username": "admin"}
 
 
 class isolated_exploration_store:

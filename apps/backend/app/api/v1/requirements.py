@@ -148,8 +148,7 @@ def update_requirement(
 
 @router.delete("/{document_id}")
 def delete_requirement(project_id: str, document_id: str, actor=Depends(require_admin)) -> dict:
-    _ = actor
-    return document_service.delete_document(project_id, document_id)
+    return document_service.delete_document(project_id, document_id, actor)
 
 
 @file_router.get("/{mapping_id}/original")

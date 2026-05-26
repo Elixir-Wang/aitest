@@ -93,6 +93,13 @@ export default function Page() {
                     </TableCell>
                   </TableRow>
                 ))}
+                {filteredRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
+                      暂无自动化任务。创建任务后，可跟踪执行状态和产物。
+                    </TableCell>
+                  </TableRow>
+                ) : null}
               </TableBody>
             </Table>
           </div>

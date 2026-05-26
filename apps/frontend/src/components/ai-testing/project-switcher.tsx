@@ -6,6 +6,7 @@ import { FolderKanban } from "lucide-react";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type ApiProject, apiRequest } from "@/lib/api-client";
+import { useAuthStore } from "@/stores/auth-store";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
 const ALL_PROJECTS_VALUE = "all";
@@ -14,22 +15,38 @@ const PROJECT_LIST_CHANGED_EVENT = "ai-testing:project-list-changed";
 
 export function ProjectSwitcher({ scope: _scope }: { scope: "all" | "project" }) {
   const { currentProjectId, hydrate, scope: currentScope, selectAllProjects, selectProject } = useProjectContextStore();
+  const { hasHydrated: hasAuthHydrated, hydrate: hydrateAuth, token } = useAuthStore();
   const [projectOptions, setProjectOptions] = useState<ApiProject[]>([]);
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
+  useEffect(() => {
+    hydrateAuth();
+  }, [hydrateAuth]);
+
   const selected = currentScope === "all" ? ALL_PROJECTS_VALUE : (currentProjectId ?? ALL_PROJECTS_VALUE);
   const selectedProject = projectOptions.find((item) => item.id === selected);
 
   useEffect(() => {
+    if (!hasAuthHydrated || !token) {
+      setProjectOptions([]);
+      return;
+    }
+
+    let ignore = false;
+
     async function loadProjects() {
       try {
         const projects = await apiRequest<ApiProject[]>("/projects");
-        setProjectOptions(projects.filter((project) => project.status !== "archived"));
+        if (!ignore) {
+          setProjectOptions(projects.filter((project) => project.status !== "archived"));
+        }
       } catch {
-        setProjectOptions([]);
+        if (!ignore) {
+          setProjectOptions([]);
+        }
       }
     }
 
@@ -41,9 +58,10 @@ export function ProjectSwitcher({ scope: _scope }: { scope: "all" | "project" })
 
     window.addEventListener(PROJECT_LIST_CHANGED_EVENT, handleProjectListChanged);
     return () => {
+      ignore = true;
       window.removeEventListener(PROJECT_LIST_CHANGED_EVENT, handleProjectListChanged);
     };
-  }, []);
+  }, [hasAuthHydrated, token]);
 
   return (
     <div className="relative inline-grid max-w-72 grid-cols-[max-content] justify-items-center">

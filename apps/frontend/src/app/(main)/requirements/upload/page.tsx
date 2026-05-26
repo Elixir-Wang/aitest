@@ -46,7 +46,7 @@ export default function Page() {
   if (activeProjects.length === 0) {
     return (
       <EmptyState
-        description="请先创建活跃项目或在右上角选择活跃项目后再上传需求。归档项目不能上传需求。"
+        description="创建或启用项目后，可上传需求文件并发起格式转换、归并和分析。"
         status="无可用项目"
         title="暂无可上传项目"
       />

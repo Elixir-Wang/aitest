@@ -8,6 +8,7 @@ import { LayoutControls } from "@/app/(main)/dashboard/_components/sidebar/layou
 import { ThemeSwitcher } from "@/app/(main)/dashboard/_components/sidebar/theme-switcher";
 import { AuthGuard } from "@/components/ai-testing/auth-guard";
 import { ProjectSwitcher } from "@/components/ai-testing/project-switcher";
+import { TaskRunningIndicator } from "@/components/ai-testing/task-running-indicator";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { SIDEBAR_COLLAPSIBLE_VALUES, SIDEBAR_VARIANT_VALUES } from "@/lib/preferences/layout";
@@ -55,6 +56,7 @@ export async function WorkspaceShell({ children }: Readonly<{ children: ReactNod
               />
             </div>
             <div className="flex items-center gap-2">
+              <TaskRunningIndicator />
               <ProjectSwitcher scope="project" />
               <LayoutControls />
               <ThemeSwitcher />

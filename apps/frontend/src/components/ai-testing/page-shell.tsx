@@ -177,19 +177,25 @@ export function ListToolbar({
   description = "",
   placeholder = "搜索名称、状态或负责人",
   createLabel = "新建",
+  createDisabled = false,
+  createTitle,
   selectedCount = 0,
   onBatchDelete,
   onCreate,
   onSearch,
+  actions,
 }: {
   title: string;
   description?: string;
   placeholder?: string;
   createLabel?: string;
+  createDisabled?: boolean;
+  createTitle?: string;
   selectedCount?: number;
   onBatchDelete?: () => void;
   onCreate?: () => void;
   onSearch?: (value: string) => void;
+  actions?: ReactNode;
 }) {
   const hasSelection = selectedCount > 0;
 
@@ -220,10 +226,11 @@ export function ListToolbar({
           <Trash2 className="size-4" />
           批量删除{hasSelection ? ` (${selectedCount})` : ""}
         </Button>
-        <Button onClick={onCreate}>
+        <Button disabled={createDisabled} onClick={onCreate} title={createTitle}>
           <Plus className="size-4" />
           {createLabel}
         </Button>
+        {actions}
       </div>
     </div>
   );

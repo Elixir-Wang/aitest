@@ -16,6 +16,7 @@ from app.schemas.requirement_conversion import RequirementConversionInput
 from app.services.raw_requirement_format_converter_service import convert_raw_requirement_format
 from app.services.requirement_markdown_normalizer import normalize_requirement_markdown
 from app.services.requirement_file_converter import convert_requirement_file_to_markdown
+from app.services import operation_log_service
 
 DOCUMENT_PENDING_MERGE_STATUS = "pending_merge"
 CONVERSION_SUCCESS_STATUS = "success"
@@ -75,10 +76,30 @@ async def upload_documents(
             for row in document_repo.list_file_mappings(db, document_id)
             if row["id"] in set(created_mapping_ids)
         ]
-        return {
+        result = {
             "document": serialize_document_from_db(db, document_id, actor["role"]),
             "files": created_files,
         }
+    action = "create" if mode == "new" else "upload"
+    operation_log_service.record_change(
+        log_type="audit",
+        module="requirement",
+        action=action,
+        object_type="requirement",
+        object_id=document_id,
+        object_name=result["document"]["name"],
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"{'新建需求' if mode == 'new' else '追加需求文件'}：{result['document']['name']}，文件 {len(created_files)} 个",
+        after={
+            "document_name": result["document"]["name"],
+            "mode": mode,
+            "files": [item["original_filename"] for item in created_files],
+        },
+    )
+    return result
 
 
 async def append_document_files(project_id: str, document_id: str, files: list[UploadFile], actor) -> dict:
@@ -154,7 +175,6 @@ def get_converted_markdown(mapping_id: str) -> dict:
 
 
 def update_converted_markdown(mapping_id: str, *, markdown_content: str, change_summary: str, actor) -> dict:
-    _ = actor
     with connect() as db:
         row = document_repo.find_file_mapping(db, mapping_id)
         if not row:
@@ -168,16 +188,38 @@ def update_converted_markdown(mapping_id: str, *, markdown_content: str, change_
         markdown_path.write_text(markdown_content, encoding="utf-8")
         summary = change_summary.strip() or "人工修订标准文件。"
         document_repo.update_file_mapping_markdown(db, mapping_id, store_path(markdown_path) or str(markdown_path), summary)
-    return get_converted_markdown(mapping_id)
+        document = document_repo.find_by_project_and_id(db, row["project_id"], row["document_id"])
+    result = get_converted_markdown(mapping_id)
+    operation_log_service.record_change(
+        log_type="audit",
+        module="requirement",
+        action="update",
+        object_type="source_file",
+        object_id=mapping_id,
+        object_name=row["original_filename"],
+        project_id=row["project_id"],
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"编辑需求标准文件：{row['original_filename']}",
+        before={"original_filename": row["original_filename"], "document_name": document["name"] if document else ""},
+        after={"conversion_summary": result["conversion_summary"]},
+    )
+    return result
 
 
 def delete_source_file(mapping_id: str, actor) -> dict:
-    _ = actor
     with connect() as db:
         row = document_repo.find_file_mapping(db, mapping_id)
         if not row:
             raise api_error(404, "DOCUMENT_FILE_NOT_FOUND", "来源文件不存在。")
 
+        snapshot = {
+            "original_filename": row["original_filename"],
+            "document_id": row["document_id"],
+            "conversion_status": row["conversion_status"],
+            "mapping_status": row["mapping_status"],
+        }
         source_path = row["source_file_path"]
         markdown_path_value = row["markdown_file_path"]
         assets_dir = converted_assets_dir(row, markdown_path_value)
@@ -196,6 +238,21 @@ def delete_source_file(mapping_id: str, actor) -> dict:
     if assets_dir.exists():
         shutil.rmtree(assets_dir)
 
+    operation_log_service.record_change(
+        log_type="audit",
+        module="requirement",
+        action="delete",
+        object_type="source_file",
+        object_id=mapping_id,
+        object_name=snapshot["original_filename"],
+        project_id=row["project_id"],
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"删除需求来源文件：{snapshot['original_filename']}",
+        before=snapshot,
+        after={},
+    )
     return {"success": True}
 
 

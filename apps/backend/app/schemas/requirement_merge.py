@@ -26,6 +26,47 @@ class RequirementMergeResolvedConflict(BaseModel):
     resolution_type: str
 
 
+class RequirementSourceFragment(BaseModel):
+    fragment_id: str
+    mapping_id: str
+    source_filename: str
+    heading_path: list[str] = Field(default_factory=list)
+    fragment_type: Literal[
+        "requirement",
+        "constraint",
+        "interface",
+        "state_flow",
+        "acceptance",
+        "background",
+        "attachment",
+        "non_requirement",
+    ] = "requirement"
+    content_hash: str
+    text: str
+    markdown_block: str
+
+
+class RequirementFragmentDecision(BaseModel):
+    fragment_id: str
+    mapping_id: str
+    coverage_status: Literal["merged", "duplicate", "conflict", "pending_clarification", "discarded"]
+    target_module: str = ""
+    target_heading: str = ""
+    merged_requirement_key: str = ""
+    related_conflict_key: str = ""
+    related_clarification_key: str = ""
+    reason: str
+
+
+class RequirementMergeAuditOutput(BaseModel):
+    status: Literal["ready_for_draft", "conflict", "failed"]
+    merge_summary: str
+    affected_modules: list[str] = Field(default_factory=list)
+    fragment_decisions: list[RequirementFragmentDecision] = Field(default_factory=list)
+    conflicts: list[dict] = Field(default_factory=list)
+    clarification_items: list[dict] = Field(default_factory=list)
+
+
 class RequirementMergeInput(BaseModel):
     project_id: str
     document_id: str
@@ -66,4 +107,3 @@ class RequirementMergeOutput(BaseModel):
     source_file_ids: list[str] = Field(default_factory=list)
     coverage_items: list[RequirementCoverageItem] = Field(default_factory=list)
     conflicts: list[RequirementMergeConflictOut] = Field(default_factory=list)
-

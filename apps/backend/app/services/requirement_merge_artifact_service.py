@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
 from app.core.storage import project_requirement_dir, store_path
-from app.schemas.requirement_merge import RequirementMergeSourceFile
+from app.schemas.requirement_merge import RequirementMergeSourceFile, RequirementSourceFragment
 
 
 def evaluate_merge_quality(
@@ -94,6 +95,30 @@ def write_merge_artifacts(
 
 def public_artifact_tabs(tabs: list[dict]) -> list[dict]:
     return [{key: tab[key] for key in ("key", "label", "path", "content")} for tab in tabs]
+
+
+def write_merge_machine_artifacts(
+    project_id: str,
+    document_id: str,
+    run_id: str,
+    *,
+    source_fragments: list[RequirementSourceFragment],
+    decisions: list[dict] | None = None,
+) -> dict[str, str]:
+    document_dir = project_requirement_dir(project_id, document_id)
+    artifacts_dir = document_dir / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    fragments_path = artifacts_dir / f"{run_id}-fragments.json"
+    decisions_path = artifacts_dir / f"{run_id}-decisions.json"
+    fragments_path.write_text(
+        json.dumps([fragment.model_dump() for fragment in source_fragments], ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    decisions_path.write_text(json.dumps(decisions or [], ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "fragments_path": store_path(fragments_path) or str(fragments_path),
+        "decisions_path": store_path(decisions_path) or str(decisions_path),
+    }
 
 
 def read_merge_artifact_tabs(project_id: str, document_id: str, run_id: str) -> list[dict]:

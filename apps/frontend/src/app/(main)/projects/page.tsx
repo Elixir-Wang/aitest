@@ -253,6 +253,13 @@ export default function Page() {
                 </TableRow>
               ))}
               {loading && filteredRows.length === 0 ? <TableLoadingRow colSpan={6} label="项目列表加载中" /> : null}
+              {!loading && filteredRows.length === 0 ? (
+                <TableRow>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
+                    暂无项目。新建项目后，可在项目工作区维护需求、探索和测试资产。
+                  </TableCell>
+                </TableRow>
+              ) : null}
             </TableBody>
           </Table>
         </div>

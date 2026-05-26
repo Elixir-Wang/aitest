@@ -33,6 +33,17 @@ The user prompt contains a JSON payload with:
 
 Analyze the requirement draft by business module, not by document heading alone.
 
+Before module analysis, diagnose the requirement maturity:
+
+- `RA0`: no clear problem statement
+- `RA1`: solution-first thinking
+- `RA2`: vague or untestable needs
+- `RA3`: hidden constraints or unvalidated assumptions
+- `RA4`: unclear V1 scope or scope creep risk
+- `RA5`: validated, testable, bounded requirements
+
+Use the earliest applicable maturity level. If a draft has no clear problem statement, do not skip to field-level analysis only.
+
 For every module, identify:
 
 - business objects
@@ -44,6 +55,13 @@ For every module, identify:
 - risks
 
 When content is vague, incomplete, or not testable, do not treat it as confirmed. Generate clarification questions instead.
+
+Also produce:
+
+- `key_gaps`: concrete missing requirement information and its impact
+- `assumptions`: statements that would require human validation before design, implementation, or testing
+
+Do not silently infer missing business facts. Missing facts become clarification questions, gaps, or assumptions.
 
 ## Clarification Dimensions
 
@@ -104,6 +122,27 @@ Return a JSON object matching this shape:
 {
   "status": "needs_clarification",
   "analysis_summary": "识别 2 个模块，存在 1 个关键澄清问题。",
+  "maturity_assessment": {
+    "level": "RA2",
+    "label": "需求模糊",
+    "reason": "核心业务规则存在，但锁定阈值和验收标准缺失，无法稳定设计测试。",
+    "evidence": ["连续登录失败后需要限制继续尝试"]
+  },
+  "key_gaps": [
+    {
+      "category": "business_rule",
+      "description": "缺少登录失败锁定阈值和锁定时长。",
+      "impact": "无法设计边界值、异常路径和验收标准。",
+      "severity": "blocker"
+    }
+  ],
+  "assumptions": [
+    {
+      "description": "账号存在失败次数统计能力。",
+      "validation_needed": "确认账号域模型或认证服务是否记录连续失败次数。",
+      "risk": "如果无该能力，锁定规则需要新增数据存储和状态重置机制。"
+    }
+  ],
   "modules": [
     {
       "module_key": "login",

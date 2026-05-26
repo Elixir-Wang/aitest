@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useParams, useRouter } from "next/navigation";
 
-import { ClipboardCheck, FileText, PlaySquare } from "lucide-react";
+import { ClipboardCheck, FileText, ListChecks, PlaySquare } from "lucide-react";
 import { toast } from "sonner";
 
 import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
@@ -155,6 +155,10 @@ export default function Page() {
               </Button>
               <Button variant="outline" onClick={() => goToModule("/exploration")}>
                 进入探索
+              </Button>
+              <Button variant="outline" onClick={() => goToModule(`/projects/${projectId}/logs`)}>
+                <ListChecks className="size-4" />
+                项目日志
               </Button>
               <Button onClick={() => goToModule("/test-cases")}>进入测试用例</Button>
             </div>

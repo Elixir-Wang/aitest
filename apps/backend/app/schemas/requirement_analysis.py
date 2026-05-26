@@ -73,9 +73,44 @@ class RequirementQualityGate(BaseModel):
     passed_checks: list[str] = Field(default_factory=list)
 
 
+class RequirementMaturityAssessment(BaseModel):
+    level: Literal["RA0", "RA1", "RA2", "RA3", "RA4", "RA5"]
+    label: str
+    reason: str
+    evidence: list[str] = Field(default_factory=list)
+
+
+class RequirementGapItem(BaseModel):
+    category: Literal[
+        "problem_statement",
+        "stakeholder",
+        "scope",
+        "business_rule",
+        "acceptance_criteria",
+        "data",
+        "permission",
+        "integration",
+        "non_functional",
+        "constraint",
+        "other",
+    ]
+    description: str
+    impact: str
+    severity: Literal["blocker", "major", "minor"] = "major"
+
+
+class RequirementAssumptionItem(BaseModel):
+    description: str
+    validation_needed: str
+    risk: str
+
+
 class RequirementAnalysisOutput(BaseModel):
     status: Literal["completed", "needs_clarification", "blocked"]
     analysis_summary: str
+    maturity_assessment: RequirementMaturityAssessment | None = None
+    key_gaps: list[RequirementGapItem] = Field(default_factory=list)
+    assumptions: list[RequirementAssumptionItem] = Field(default_factory=list)
     modules: list[RequirementAnalysisModule] = Field(default_factory=list)
     clarification_questions: list[RequirementClarificationQuestion] = Field(default_factory=list)
     coverage_audit: list[RequirementCoverageAuditItem] = Field(default_factory=list)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.agents.definitions import AgentDefinition
+from app.schemas.requirement_analysis import RequirementAnalysisOutput
 
 
 agent_definition = AgentDefinition(
@@ -11,9 +12,11 @@ agent_definition = AgentDefinition(
         "你是 AI 测试系统中的需求分析智能体。"
         "你的输入只能是已经归并完成的需求工作稿版本。"
         "你负责识别模块、功能点、字段规则、状态流转、异常路径、权限差异、数据依赖、澄清问题和质量门禁。"
+        "你必须先判断需求成熟度，识别关键缺口和未验证假设，再生成待澄清内容。"
         "你不能归并来源文件，不能生成知识库，不能生成测试用例，不能创造未确认业务规则。"
         "你只返回符合 RequirementAnalysisOutput 契约的 JSON 对象。"
     ),
     skill_ids=("requirement_analysis",),
     sort_order=30,
+    output_type=RequirementAnalysisOutput,
 )

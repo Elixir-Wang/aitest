@@ -7,6 +7,7 @@ from unittest.mock import patch
 from app.schemas.requirement_analysis import (
     RequirementAnalysisInput,
     RequirementAnalysisOutput,
+    RequirementMaturityAssessment,
     RequirementQualityGate,
 )
 from app.services import requirement_analysis_service
@@ -18,6 +19,12 @@ class RequirementAnalysisServiceTest(unittest.IsolatedAsyncioTestCase):
         output = RequirementAnalysisOutput(
             status="completed",
             analysis_summary="识别 1 个模块。",
+            maturity_assessment=RequirementMaturityAssessment(
+                level="RA2",
+                label="需求模糊",
+                reason="缺少可测试规则。",
+                evidence=["支持账号登录"],
+            ),
             quality_gate=RequirementQualityGate(
                 result="passed",
                 testability_score=90,
@@ -41,6 +48,27 @@ class RequirementAnalysisServiceTest(unittest.IsolatedAsyncioTestCase):
             {
               "status": "needs_clarification",
               "analysis_summary": "识别登录模块，存在 1 个澄清问题。",
+              "maturity_assessment": {
+                "level": "RA2",
+                "label": "需求模糊",
+                "reason": "缺少提示语细节。",
+                "evidence": ["提示语不明确"]
+              },
+              "key_gaps": [
+                {
+                  "category": "acceptance_criteria",
+                  "description": "缺少提示语验收标准。",
+                  "impact": "无法判断实现是否符合预期。",
+                  "severity": "major"
+                }
+              ],
+              "assumptions": [
+                {
+                  "description": "登录失败后需要展示提示语。",
+                  "validation_needed": "确认产品是否要求统一提示文案。",
+                  "risk": "提示语不一致会影响测试断言。"
+                }
+              ],
               "modules": [],
               "clarification_questions": [],
               "coverage_audit": [],
@@ -57,6 +85,9 @@ class RequirementAnalysisServiceTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(output.status, "needs_clarification")
+        self.assertEqual(output.maturity_assessment.level, "RA2")
+        self.assertEqual(output.key_gaps[0].category, "acceptance_criteria")
+        self.assertEqual(output.assumptions[0].validation_needed, "确认产品是否要求统一提示文案。")
         self.assertEqual(output.quality_gate.testability_score, 82)
 
     def test_agent_prompt_scopes_analysis_after_merge(self):
@@ -75,6 +106,9 @@ class RequirementAnalysisServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("不得重新归并来源文件", prompt)
         self.assertIn("不得生成知识库", prompt)
         self.assertIn("不得生成测试用例", prompt)
+        self.assertIn("先判断需求成熟度", prompt)
+        self.assertIn("key_gaps", prompt)
+        self.assertIn("assumptions", prompt)
 
     async def test_run_requirement_analysis_uses_agent_output(self):
         async def fake_run_agent(agent_id, prompt):

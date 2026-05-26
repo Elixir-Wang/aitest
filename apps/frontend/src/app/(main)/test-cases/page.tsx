@@ -82,6 +82,13 @@ export default function Page() {
                   </TableCell>
                 </TableRow>
               ))}
+              {filteredRows.length === 0 ? (
+                <TableRow>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
+                    暂无测试用例。完成需求分析后，可生成或维护测试用例。
+                  </TableCell>
+                </TableRow>
+              ) : null}
             </TableBody>
           </Table>
         </div>

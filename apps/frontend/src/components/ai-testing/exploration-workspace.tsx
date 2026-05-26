@@ -27,6 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { type ApiProject, apiRequest, formatDateTime } from "@/lib/api-client";
+import { createRunningTaskId, useRunningTaskStore } from "@/stores/running-task-store";
 
 type ProjectScope = "all" | "project";
 
@@ -127,6 +128,8 @@ const loginStrategyLabels: Record<string, string> = {
 };
 
 const explorationTabs = ["探索列表", "探索环境"];
+const RUNNING_EXPLORATION_STATUSES = new Set(["queued", "running", "waiting_human"]);
+const EXPLORATION_TASK_SOURCE = "exploration-page";
 
 export function ExplorationWorkspace({
   breadcrumbs,
@@ -150,6 +153,7 @@ export function ExplorationWorkspace({
   const [error, setError] = useState("");
   const [searchText, setSearchText] = useState("");
   const [projects, setProjects] = useState<ApiProject[]>([]);
+  const replaceRunningTasksBySource = useRunningTaskStore((state) => state.replaceTasksBySource);
   const [form, setForm] = useState<EnvironmentForm>({ ...emptyForm, projectId: projectId ?? "" });
   const [explorationForm, setExplorationForm] = useState<ExplorationForm>({
     ...emptyExplorationForm,
@@ -249,6 +253,21 @@ export function ExplorationWorkspace({
         const data = await apiRequest<ExplorationRun[]>(path);
         if (!ignore) {
           explorationSelection.setRows(data);
+          replaceRunningTasksBySource(
+            EXPLORATION_TASK_SOURCE,
+            data
+              .filter((item) => RUNNING_EXPLORATION_STATUSES.has(item.status))
+              .map((item) => ({
+                id: createRunningTaskId(EXPLORATION_TASK_SOURCE, item.id),
+                projectId: item.project_id,
+                projectName: item.project_name,
+                title: item.title,
+                moduleLabel: "站点探索",
+                status: item.status,
+                statusLabel: statusLabels[item.status] ?? item.status,
+                updatedAt: item.updated_at,
+              })),
+          );
         }
       } catch (requestError) {
         if (!ignore) {
@@ -266,7 +285,7 @@ export function ExplorationWorkspace({
     return () => {
       ignore = true;
     };
-  }, [projectId, projectScope, explorationSelection.setRows]);
+  }, [projectId, projectScope, explorationSelection.setRows, replaceRunningTasksBySource]);
 
   const filteredRows = useMemo(
     () =>
@@ -632,7 +651,7 @@ export function ExplorationWorkspace({
                 {!explorationLoading && filteredExplorationRows.length === 0 ? (
                   <TableRow>
                     <TableCell className="h-24 text-center text-muted-foreground" colSpan={8}>
-                      暂无探索任务数据
+                      暂无探索任务。选择环境并创建探索任务后，系统会生成页面结构与探索报告。
                     </TableCell>
                   </TableRow>
                 ) : null}
@@ -722,6 +741,13 @@ export function ExplorationWorkspace({
                 ))}
                 {environmentLoading && filteredRows.length === 0 ? (
                   <TableLoadingRow colSpan={7} label="环境列表加载中" />
+                ) : null}
+                {!environmentLoading && filteredRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={7}>
+                      暂无环境。新增站点环境后，可用于后续页面探索任务。
+                    </TableCell>
+                  </TableRow>
                 ) : null}
               </TableBody>
             </Table>

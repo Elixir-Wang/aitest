@@ -8,6 +8,8 @@ import { useProjectContextStore } from "@/stores/project-context-store";
 export default function Page() {
   const currentProjectId = useProjectContextStore((state) => state.currentProjectId);
   const hydrate = useProjectContextStore((state) => state.hydrate);
+  const scope = useProjectContextStore((state) => state.scope);
+  const scopedProjectId = scope === "project" ? currentProjectId : null;
 
   useEffect(() => {
     hydrate();
@@ -17,8 +19,8 @@ export default function Page() {
     <ExplorationWorkspace
       breadcrumbs={["项目工作区", "探索"]}
       description="查看全部项目的探索任务、页面事实和冲突项。"
-      projectId={currentProjectId ?? undefined}
-      projectScope="all"
+      projectId={scopedProjectId ?? undefined}
+      projectScope={scope}
       title="探索"
     />
   );

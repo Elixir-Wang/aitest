@@ -7,6 +7,7 @@ from app.core.exceptions import api_error
 from app.presentation.serializers import serialize_project_environment
 from app.repositories import environment_repo, project_repo
 from app.schemas.environment import ProjectEnvironmentCreateIn, ProjectEnvironmentUpdateIn
+from app.services import operation_log_service
 
 LOGIN_STRATEGIES = {"reuse_state", "manual", "account_password", "skip_login"}
 
@@ -56,7 +57,22 @@ def create_project_environment(project_id: str, payload: ProjectEnvironmentCreat
         except Exception as exc:
             raise api_error(409, "ENVIRONMENT_CONFLICT", "同一项目下环境名称已存在。") from exc
         row = environment_repo.find_by_id(db, environment_id)
-        return serialize_project_environment(row, actor["role"])
+        result = serialize_project_environment(row, actor["role"])
+    operation_log_service.record_change(
+        log_type="config",
+        module="environment",
+        action="create",
+        object_type="project_environment",
+        object_id=environment_id,
+        object_name=result["name"],
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"新建项目环境：{result['name']}",
+        after=_environment_snapshot(result),
+    )
+    return result
 
 
 def update_project_environment(project_id: str, environment_id: str, payload: ProjectEnvironmentUpdateIn, actor) -> dict:
@@ -76,7 +92,25 @@ def update_project_environment(project_id: str, environment_id: str, payload: Pr
             except Exception as exc:
                 raise api_error(409, "ENVIRONMENT_CONFLICT", "同一项目下环境名称已存在。") from exc
         row = environment_repo.find_by_id(db, environment_id)
-        return serialize_project_environment(row, actor["role"])
+        result = serialize_project_environment(row, actor["role"])
+        before = _environment_snapshot(existing)
+        after = _environment_snapshot(result)
+    operation_log_service.record_change(
+        log_type="config",
+        module="environment",
+        action="update",
+        object_type="project_environment",
+        object_id=environment_id,
+        object_name=result["name"],
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"编辑项目环境：{result['name']}",
+        before=before,
+        after=after,
+    )
+    return result
 
 
 def delete_project_environment(project_id: str, environment_id: str, actor) -> dict:
@@ -85,8 +119,24 @@ def delete_project_environment(project_id: str, environment_id: str, actor) -> d
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "环境不存在。")
         _ensure_project_visible(existing, actor)
+        snapshot = _environment_snapshot(existing)
         environment_repo.delete(db, environment_id)
-        return {"success": True}
+    operation_log_service.record_change(
+        log_type="config",
+        module="environment",
+        action="delete",
+        object_type="project_environment",
+        object_id=environment_id,
+        object_name=snapshot["name"],
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"删除项目环境：{snapshot['name']}",
+        before=snapshot,
+        after={},
+    )
+    return {"success": True}
 
 
 def _ensure_project_visible(project, actor) -> None:
@@ -125,3 +175,14 @@ def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
         assignments.append("password_mask = ?")
         values.append(_mask_password(updates["password"]))
     return assignments, values
+
+
+def _environment_snapshot(environment) -> dict:
+    return {
+        "name": environment["name"],
+        "site_url": environment["site_url"],
+        "username": environment["username"],
+        "password_mask": environment["password_mask"],
+        "login_strategy": environment["login_strategy"],
+        "description": environment["description"],
+    }

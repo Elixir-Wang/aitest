@@ -343,6 +343,181 @@ def init_db() -> None:
               FOREIGN KEY(exploration_run_id) REFERENCES exploration_runs(id) ON DELETE CASCADE,
               UNIQUE(exploration_run_id, version_no)
             );
+
+            CREATE TABLE IF NOT EXISTS operation_logs (
+              id TEXT PRIMARY KEY,
+              log_type TEXT NOT NULL CHECK(log_type IN ('audit', 'config', 'task', 'agent')),
+              module TEXT NOT NULL,
+              action TEXT NOT NULL,
+              object_type TEXT NOT NULL,
+              object_id TEXT,
+              object_name TEXT NOT NULL DEFAULT '',
+              project_id TEXT,
+              actor_id TEXT NOT NULL DEFAULT 'system',
+              actor_name TEXT NOT NULL DEFAULT '系统',
+              source TEXT NOT NULL CHECK(source IN ('web', 'api', 'agent', 'runner', 'system')),
+              result TEXT NOT NULL CHECK(result IN ('success', 'failed', 'partial_success', 'cancelled')),
+              failure_reason TEXT NOT NULL DEFAULT '',
+              summary TEXT NOT NULL DEFAULT '',
+              before_json TEXT NOT NULL DEFAULT '{}',
+              after_json TEXT NOT NULL DEFAULT '{}',
+              task_id TEXT,
+              artifact_path TEXT NOT NULL DEFAULT '[]',
+              request_id TEXT NOT NULL DEFAULT '',
+              ip_address TEXT NOT NULL DEFAULT '',
+              user_agent TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_operation_logs_created_at ON operation_logs(created_at);
+            CREATE INDEX IF NOT EXISTS idx_operation_logs_project_id_created_at ON operation_logs(project_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_operation_logs_actor_id_created_at ON operation_logs(actor_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_operation_logs_module_action ON operation_logs(module, action);
+            CREATE INDEX IF NOT EXISTS idx_operation_logs_object ON operation_logs(object_type, object_id);
+            CREATE INDEX IF NOT EXISTS idx_operation_logs_result ON operation_logs(result);
+
+            CREATE TABLE IF NOT EXISTS operation_log_retention_policy (
+              id TEXT PRIMARY KEY,
+              retention_days INTEGER NOT NULL DEFAULT 180,
+              max_rows INTEGER NOT NULL DEFAULT 100000,
+              protect_high_risk INTEGER NOT NULL DEFAULT 1,
+              updated_by TEXT NOT NULL DEFAULT 'system',
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS knowledge_builds (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              build_no TEXT NOT NULL,
+              status TEXT NOT NULL CHECK(status IN ('building', 'blocked', 'draft', 'published')),
+              build_type TEXT NOT NULL DEFAULT 'initial',
+              source_document_version_ids TEXT NOT NULL DEFAULT '[]',
+              exploration_run_ids TEXT NOT NULL DEFAULT '[]',
+              output_dir TEXT NOT NULL DEFAULT '',
+              summary TEXT NOT NULL DEFAULT '',
+              change_summary TEXT NOT NULL DEFAULT '',
+              blockers_json TEXT NOT NULL DEFAULT '[]',
+              affected_modules_json TEXT NOT NULL DEFAULT '[]',
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              published_at TEXT,
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+              UNIQUE(project_id, build_no)
+            );
+
+            CREATE TABLE IF NOT EXISTS wiki_pages (
+              id TEXT PRIMARY KEY,
+              build_id TEXT NOT NULL,
+              title TEXT NOT NULL,
+              relative_path TEXT NOT NULL,
+              page_type TEXT NOT NULL,
+              module_key TEXT NOT NULL DEFAULT '',
+              summary TEXT NOT NULL DEFAULT '',
+              file_path TEXT NOT NULL,
+              source_refs_json TEXT NOT NULL DEFAULT '[]',
+              sort_order INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(build_id) REFERENCES knowledge_builds(id) ON DELETE CASCADE,
+              UNIQUE(build_id, relative_path)
+            );
+
+            CREATE TABLE IF NOT EXISTS knowledge_items (
+              id TEXT PRIMARY KEY,
+              build_id TEXT NOT NULL,
+              module_key TEXT NOT NULL DEFAULT '',
+              module_name TEXT NOT NULL DEFAULT '',
+              knowledge_type TEXT NOT NULL,
+              content TEXT NOT NULL,
+              source_refs_json TEXT NOT NULL DEFAULT '[]',
+              status TEXT NOT NULL DEFAULT 'confirmed',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(build_id) REFERENCES knowledge_builds(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS source_references (
+              id TEXT PRIMARY KEY,
+              build_id TEXT NOT NULL,
+              source_type TEXT NOT NULL,
+              source_id TEXT NOT NULL,
+              source_title TEXT NOT NULL DEFAULT '',
+              location TEXT NOT NULL DEFAULT '',
+              excerpt TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(build_id) REFERENCES knowledge_builds(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS wiki_lint_issues (
+              id TEXT PRIMARY KEY,
+              build_id TEXT NOT NULL,
+              severity TEXT NOT NULL,
+              title TEXT NOT NULL,
+              detail TEXT NOT NULL DEFAULT '',
+              page_id TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(build_id) REFERENCES knowledge_builds(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS global_knowledge_documents (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              knowledge_type TEXT NOT NULL,
+              scope TEXT NOT NULL DEFAULT '全部项目',
+              source_note TEXT NOT NULL DEFAULT '',
+              description TEXT NOT NULL DEFAULT '',
+              status TEXT NOT NULL CHECK(status IN ('processing', 'available', 'conversion_failed', 'archived')),
+              current_version_id TEXT,
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              archived_at TEXT,
+              UNIQUE(name, knowledge_type)
+            );
+
+            CREATE TABLE IF NOT EXISTS global_knowledge_versions (
+              id TEXT PRIMARY KEY,
+              document_id TEXT NOT NULL,
+              version_no TEXT NOT NULL,
+              markdown_content TEXT NOT NULL DEFAULT '',
+              markdown_path TEXT NOT NULL DEFAULT '',
+              change_summary TEXT NOT NULL DEFAULT '',
+              conversion_status TEXT NOT NULL CHECK(conversion_status IN ('queued', 'running', 'success', 'failed')),
+              conversion_summary TEXT NOT NULL DEFAULT '',
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(document_id) REFERENCES global_knowledge_documents(id) ON DELETE CASCADE,
+              UNIQUE(document_id, version_no)
+            );
+
+            CREATE TABLE IF NOT EXISTS global_knowledge_files (
+              id TEXT PRIMARY KEY,
+              version_id TEXT NOT NULL,
+              original_filename TEXT NOT NULL,
+              file_path TEXT NOT NULL,
+              file_type TEXT NOT NULL DEFAULT '',
+              file_size INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(version_id) REFERENCES global_knowledge_versions(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS global_knowledge_usage_logs (
+              id TEXT PRIMARY KEY,
+              global_knowledge_version_id TEXT NOT NULL,
+              usage_type TEXT NOT NULL,
+              target_project_id TEXT,
+              target_object_id TEXT NOT NULL DEFAULT '',
+              summary TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(global_knowledge_version_id) REFERENCES global_knowledge_versions(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_knowledge_builds_project ON knowledge_builds(project_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_wiki_pages_build ON wiki_pages(build_id, sort_order);
+            CREATE INDEX IF NOT EXISTS idx_knowledge_items_build ON knowledge_items(build_id, module_key);
+            CREATE INDEX IF NOT EXISTS idx_source_references_build ON source_references(build_id);
+            CREATE INDEX IF NOT EXISTS idx_global_knowledge_documents_status ON global_knowledge_documents(status, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_global_knowledge_documents_type ON global_knowledge_documents(knowledge_type, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_global_knowledge_versions_document ON global_knowledge_versions(document_id, created_at);
             """
         )
         _ensure_column(db, "model_providers", "description", "TEXT NOT NULL DEFAULT ''")
@@ -361,6 +536,7 @@ def init_db() -> None:
         _migrate_file_mappings(db)
         _migrate_merge_conflicts(db)
         _migrate_stored_paths(db)
+        _seed_operation_log_retention_policy(db)
         _seed_user(db, "u-admin", "admin", "admin@example.com", "平台管理员", "admin", "admin", "enabled", "全部项目", "平台管理员，负责用户、模型和项目权限维护。")
         _sync_seed_password(db, "u-admin", "admin")
 
@@ -383,6 +559,18 @@ def _ensure_column(db: sqlite3.Connection, table: str, column: str, definition: 
     if column in columns:
         return
     db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _seed_operation_log_retention_policy(db: sqlite3.Connection) -> None:
+    exists = db.execute("SELECT id FROM operation_log_retention_policy WHERE id = 'default'").fetchone()
+    if exists:
+        return
+    db.execute(
+        """
+        INSERT INTO operation_log_retention_policy (id, retention_days, max_rows, protect_high_risk)
+        VALUES ('default', 180, 100000, 1)
+        """
+    )
 
 
 def _backfill_environment_login_strategies(db: sqlite3.Connection) -> None:

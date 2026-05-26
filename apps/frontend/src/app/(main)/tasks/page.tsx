@@ -115,6 +115,13 @@ export default function Page() {
                   </TableCell>
                 </TableRow>
               ))}
+              {filteredRows.length === 0 ? (
+                <TableRow>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
+                    暂无任务。发起需求分析、站点探索或自动化执行后，任务进度会显示在这里。
+                  </TableCell>
+                </TableRow>
+              ) : null}
             </TableBody>
           </Table>
         </div>

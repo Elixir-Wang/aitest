@@ -8,6 +8,7 @@ from app.core.security import hash_secret
 from app.repositories import user_repo
 from app.schemas.user import UserCreateIn, UserUpdateIn
 from app.presentation.serializers import serialize_user
+from app.services import operation_log_service
 
 ROLES = {"admin", "tester", "guest"}
 STATUSES = {"enabled", "disabled"}
@@ -38,7 +39,27 @@ def create_user(payload: UserCreateIn, actor) -> dict:
         except Exception as exc:
             raise api_error(409, "USER_CONFLICT", "用户名或邮箱已存在。") from exc
         row = user_repo.find_by_id(db, user_id)
-        return serialize_user(row, actor["role"])
+        result = serialize_user(row, actor["role"])
+    operation_log_service.record_change(
+        log_type="audit",
+        module="user",
+        action="create",
+        object_type="user",
+        object_id=user_id,
+        object_name=result["username"],
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"新建用户：{result['username']}",
+        after={
+            "username": result["username"],
+            "email": result["email"],
+            "role": result["role"],
+            "status": result["status"],
+            "project_scope": result["project_scope"],
+        },
+    )
+    return result
 
 
 def update_user(user_id: str, payload: UserUpdateIn, actor) -> dict:
@@ -48,6 +69,9 @@ def update_user(user_id: str, payload: UserUpdateIn, actor) -> dict:
 
     assignments, values = _build_update_assignments(updates)
     with connect() as db:
+        existing = user_repo.find_by_id(db, user_id)
+        if not existing:
+            raise api_error(404, "NOT_FOUND", "用户不存在。")
         if assignments:
             assignments.append("updated_at = CURRENT_TIMESTAMP")
             try:
@@ -56,17 +80,50 @@ def update_user(user_id: str, payload: UserUpdateIn, actor) -> dict:
                 raise api_error(409, "USER_CONFLICT", "邮箱已存在。") from exc
 
         row = user_repo.find_by_id(db, user_id)
-        if not row:
-            raise api_error(404, "NOT_FOUND", "用户不存在。")
-        return serialize_user(row, actor["role"])
+        result = serialize_user(row, actor["role"])
+        before = _user_log_snapshot(existing)
+        after = _user_log_snapshot(row)
+    operation_log_service.record_change(
+        log_type="audit",
+        module="user",
+        action="update",
+        object_type="user",
+        object_id=user_id,
+        object_name=result["username"],
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"编辑用户：{result['username']}",
+        before=before,
+        after=after,
+    )
+    return result
 
 
 def delete_user(user_id: str, actor) -> dict:
     if user_id == actor["id"]:
         raise api_error(400, "SELF_DELETE_DENIED", "不能删除当前登录账号。")
     with connect() as db:
+        existing = user_repo.find_by_id(db, user_id)
+        if not existing:
+            raise api_error(404, "NOT_FOUND", "用户不存在。")
+        snapshot = _user_log_snapshot(existing)
         user_repo.delete(db, user_id)
-        return {"success": True}
+    operation_log_service.record_change(
+        log_type="audit",
+        module="user",
+        action="delete",
+        object_type="user",
+        object_id=user_id,
+        object_name=snapshot["username"],
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"删除用户：{snapshot['username']}",
+        before=snapshot,
+        after={},
+    )
+    return {"success": True}
 
 
 def validate_role_status(role: str, status: str) -> None:
@@ -95,3 +152,15 @@ def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
         assignments.append("password_hash = ?")
         values.append(hash_secret(updates["password"]))
     return assignments, values
+
+
+def _user_log_snapshot(row) -> dict:
+    return {
+        "username": row["username"],
+        "email": row["email"],
+        "nickname": row["nickname"],
+        "role": row["role"],
+        "status": row["status"],
+        "project_scope": row["project_scope"],
+        "description": row["description"],
+    }

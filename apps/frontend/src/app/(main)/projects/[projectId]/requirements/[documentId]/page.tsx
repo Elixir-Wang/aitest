@@ -50,6 +50,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiBlobRequest, apiRequest, formatDateTime } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
+import { createRunningTaskId, useRunningTaskStore } from "@/stores/running-task-store";
 
 const STANDARD_FILE_SECTION_ID = "standard-file-section";
 const ORIGINAL_FILE_SECTION_ID = "original-file-section";
@@ -302,6 +303,8 @@ export default function DocumentDetailPage() {
   const [conflicts, setConflicts] = useState<RequirementConflict[]>([]);
   const [conflictDrafts, setConflictDrafts] = useState<Record<string, string>>({});
   const token = useAuthStore((state) => state.token);
+  const removeRunningTask = useRunningTaskStore((state) => state.removeTask);
+  const upsertRunningTask = useRunningTaskStore((state) => state.upsertTask);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
@@ -577,7 +580,18 @@ export default function DocumentDetailPage() {
     if (!selectedFile || !standardPreview) {
       return;
     }
+    const taskId = createRunningTaskId("frontend", `ai-edit-${selectedFile.id}`);
     setEditingStandardWithAi(true);
+    upsertRunningTask({
+      id: taskId,
+      projectId,
+      projectName: projectId,
+      title: `AI 修改：${selectedFile.original_filename}`,
+      moduleLabel: "需求",
+      status: "running",
+      statusLabel: "AI 修改中",
+      updatedAt: new Date().toISOString(),
+    });
     try {
       const editResult = await apiRequest<DocumentEditResponse>("/agents/document-editor/run", {
         method: "POST",
@@ -616,6 +630,7 @@ export default function DocumentDetailPage() {
       toast.error(requestError instanceof Error ? requestError.message : "智能修改失败");
     } finally {
       setEditingStandardWithAi(false);
+      removeRunningTask(taskId);
     }
   }
 
@@ -650,7 +665,18 @@ export default function DocumentDetailPage() {
   }
 
   async function runRequirementAnalysis() {
+    const taskId = createRunningTaskId("frontend", `analysis-${documentId}`);
     setAnalysisLoading(true);
+    upsertRunningTask({
+      id: taskId,
+      projectId,
+      projectName: projectId,
+      title: overview?.document.name ? `需求分析：${overview.document.name}` : "需求分析",
+      moduleLabel: "需求",
+      status: "running",
+      statusLabel: "分析中",
+      updatedAt: new Date().toISOString(),
+    });
     try {
       const result = await apiRequest<RequirementAnalysisResult>(
         `/projects/${projectId}/requirements/${documentId}/analysis`,
@@ -664,12 +690,24 @@ export default function DocumentDetailPage() {
       toast.error(requestError instanceof Error ? requestError.message : "需求分析失败");
     } finally {
       setAnalysisLoading(false);
+      removeRunningTask(taskId);
     }
   }
 
   async function mergeRequirement() {
+    const taskId = createRunningTaskId("frontend", `merge-${documentId}`);
     setMerging(true);
     setMergeError("");
+    upsertRunningTask({
+      id: taskId,
+      projectId,
+      projectName: projectId,
+      title: overview?.document.name ? `需求合并：${overview.document.name}` : "需求合并",
+      moduleLabel: "需求",
+      status: "running",
+      statusLabel: "合并中",
+      updatedAt: new Date().toISOString(),
+    });
     try {
       const result = await apiRequest<MergeResponse>(`/projects/${projectId}/requirements/${documentId}/merge`, {
         method: "POST",
@@ -726,8 +764,13 @@ export default function DocumentDetailPage() {
       const message = requestError instanceof Error ? requestError.message : "需求合并失败";
       setMergeError(message);
       toast.error(message);
+      setMergePreview(null);
+      await loadOverview({ silent: true });
+      setMergeArtifactTab("report");
+      setActiveTab("initial");
     } finally {
       setMerging(false);
+      removeRunningTask(taskId);
     }
   }
 
@@ -735,7 +778,18 @@ export default function DocumentDetailPage() {
     if (!mergePreview) {
       return;
     }
+    const taskId = createRunningTaskId("frontend", `merge-confirm-${documentId}`);
     setMerging(true);
+    upsertRunningTask({
+      id: taskId,
+      projectId,
+      projectName: projectId,
+      title: overview?.document.name ? `确认合并：${overview.document.name}` : "确认合并",
+      moduleLabel: "需求",
+      status: "running",
+      statusLabel: "写入中",
+      updatedAt: new Date().toISOString(),
+    });
     try {
       const result = await apiRequest<MergeResponse>(`/projects/${projectId}/requirements/${documentId}/merge`, {
         method: "POST",
@@ -766,6 +820,7 @@ export default function DocumentDetailPage() {
       toast.error(requestError instanceof Error ? requestError.message : "归并预览确认失败");
     } finally {
       setMerging(false);
+      removeRunningTask(taskId);
     }
   }
 
@@ -1129,7 +1184,7 @@ export default function DocumentDetailPage() {
                   {filteredFiles.length === 0 ? (
                     <TableRow>
                       <TableCell className="py-8 text-center text-muted-foreground text-sm" colSpan={7}>
-                        暂无原始文件
+                        暂无原始文件。上传需求文件后，可发起格式转换、归并和分析。
                       </TableCell>
                     </TableRow>
                   ) : null}

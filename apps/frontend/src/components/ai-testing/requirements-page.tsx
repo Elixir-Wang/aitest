@@ -276,6 +276,13 @@ export function RequirementsPage({
               {loading && filteredRows.length === 0 ? (
                 <TableLoadingRow colSpan={7} label="需求文档加载中" />
               ) : null}
+              {!loading && filteredRows.length === 0 ? (
+                <TableRow>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={7}>
+                    暂无需求文档。上传或新建需求后，可在这里查看分析结果和版本记录。
+                  </TableCell>
+                </TableRow>
+              ) : null}
             </TableBody>
           </Table>
         </div>

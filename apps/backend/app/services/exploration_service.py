@@ -8,6 +8,7 @@ from app.core.storage import resolve_stored_path
 from app.presentation.serializers import serialize_exploration_run
 from app.repositories import environment_repo, exploration_repo, project_repo
 from app.schemas.exploration import ExplorationRunCreateIn, ExplorationRunUpdateIn
+from app.services import operation_log_service
 
 STATUSES = {"pending", "queued", "running", "waiting_human", "partial", "completed", "blocked"}
 LOGIN_STRATEGIES = {"reuse_state", "manual", "account_password", "skip_login"}
@@ -234,7 +235,23 @@ def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) 
             created_by=actor["id"],
         )
         row = exploration_repo.find_by_id(db, run_id)
-        return serialize_exploration_run(row, actor["role"])
+        result = serialize_exploration_run(row, actor["role"])
+    operation_log_service.record_task_event(
+        module="exploration",
+        action="create",
+        object_type="exploration_run",
+        object_id=run_id,
+        object_name=result["title"],
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        result="success",
+        summary=f"新建站点探索任务：{result['title']}",
+        after=_run_snapshot(result),
+        task_id=run_id,
+    )
+    return result
 
 
 def update_project_run(project_id: str, run_id: str, payload: ExplorationRunUpdateIn, actor) -> dict:
@@ -258,7 +275,26 @@ def update_project_run(project_id: str, run_id: str, payload: ExplorationRunUpda
             assignments.append("updated_at = CURRENT_TIMESTAMP")
             exploration_repo.update(db, run_id, assignments, values)
         row = exploration_repo.find_by_id(db, run_id)
-        return serialize_exploration_run(row, actor["role"])
+        result = serialize_exploration_run(row, actor["role"])
+        before = _run_snapshot(existing)
+        after = _run_snapshot(result)
+    operation_log_service.record_task_event(
+        module="exploration",
+        action="update",
+        object_type="exploration_run",
+        object_id=run_id,
+        object_name=result["title"],
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        result="success",
+        summary=f"编辑站点探索任务：{result['title']}",
+        before=before,
+        after=after,
+        task_id=run_id,
+    )
+    return result
 
 
 def start_project_run(project_id: str, run_id: str, actor) -> dict:
@@ -279,7 +315,23 @@ def start_project_run(project_id: str, run_id: str, actor) -> dict:
             started=True,
         )
         row = exploration_repo.find_by_id(db, run_id)
-        return serialize_exploration_run(row, actor["role"])
+        result = serialize_exploration_run(row, actor["role"])
+    operation_log_service.record_task_event(
+        module="exploration",
+        action="run",
+        object_type="exploration_run",
+        object_id=run_id,
+        object_name=result["title"],
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        result="success",
+        summary=f"启动站点探索任务：{result['title']}",
+        after={"status": result["status"], "result_summary": result["result_summary"]},
+        task_id=run_id,
+    )
+    return result
 
 
 def delete_project_run(project_id: str, run_id: str, actor) -> dict:
@@ -290,8 +342,25 @@ def delete_project_run(project_id: str, run_id: str, actor) -> dict:
         _ensure_project_visible(existing, actor)
         if existing["status"] == "running":
             raise api_error(409, "RUNNING_EXPLORATION", "探索任务运行中，不能删除。")
+        snapshot = _run_snapshot(existing)
         exploration_repo.delete(db, run_id)
-        return {"success": True}
+    operation_log_service.record_task_event(
+        module="exploration",
+        action="delete",
+        object_type="exploration_run",
+        object_id=run_id,
+        object_name=snapshot["title"],
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        result="success",
+        summary=f"删除站点探索任务：{snapshot['title']}",
+        before=snapshot,
+        after={},
+        task_id=run_id,
+    )
+    return {"success": True}
 
 
 def _ensure_project_visible(project, actor) -> None:
@@ -351,4 +420,17 @@ def _fallback_module(run_id: str, run, module_key: str) -> dict:
         "pages": [],
         "elements": [],
         "blockers": [],
+    }
+
+
+def _run_snapshot(run) -> dict:
+    return {
+        "title": run["title"],
+        "status": run["status"],
+        "environment_id": run["environment_id"],
+        "scope": run["scope"],
+        "forbidden_paths": run["forbidden_paths"],
+        "login_strategy": run["login_strategy"],
+        "description": run["description"],
+        "result_summary": run["result_summary"],
     }

@@ -9,6 +9,10 @@ def project_requirement_dir(project_id: str, document_id: str) -> Path:
     return PROJECT_FILE_STORAGE_ROOT / project_id / "requirements" / document_id
 
 
+def global_knowledge_version_dir(document_id: str, version_id: str) -> Path:
+    return PROJECT_FILE_STORAGE_ROOT.parent / "global-knowledge" / "documents" / document_id / "versions" / version_id
+
+
 def resolve_stored_path(path_value: str | None) -> Path | None:
     if not path_value:
         return None

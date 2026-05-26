@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 from fastapi import UploadFile
+from fastapi import HTTPException
 
 from app.core.db import connect
 from app.core.exceptions import api_error
@@ -17,6 +18,7 @@ from app.services import (
     document_file_service,
     document_merge_orchestrator,
     document_serializer,
+    operation_log_service,
     requirement_analysis_service,
     requirement_merge_artifact_service,
 )
@@ -258,12 +260,27 @@ async def analyze_document_requirement(project_id: str, document_id: str, actor)
             created_by=actor["id"],
         )
 
-    return {
+    result = {
         "id": analysis_id,
         "document_id": document_id,
         "version_id": version["id"],
         **output_data,
     }
+    operation_log_service.record_success(
+        log_type="agent",
+        module="requirement",
+        action="run",
+        object_type="requirement_analysis",
+        object_id=analysis_id,
+        object_name=existing["name"],
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="agent",
+        summary=f"执行需求分析：{existing['name']}",
+        after={"status": analysis_output.status, "quality_result": analysis_output.quality_gate.result},
+    )
+    return result
 
 
 def get_latest_requirement_analysis(project_id: str, document_id: str, actor) -> dict:
@@ -301,13 +318,62 @@ async def merge_document_markdown(
     confirm_preview_id: str = "",
     force_rebuild: bool = False,
 ) -> dict:
-    return await document_merge_orchestrator.merge_document_markdown(
-        project_id,
-        document_id,
-        actor,
-        confirm_preview_id=confirm_preview_id,
-        force_rebuild=force_rebuild,
+    with connect() as db:
+        document = document_repo.find_by_project_and_id(db, project_id, document_id)
+    action = "confirm" if confirm_preview_id else "merge"
+    try:
+        result = await document_merge_orchestrator.merge_document_markdown(
+            project_id,
+            document_id,
+            actor,
+            confirm_preview_id=confirm_preview_id,
+            force_rebuild=force_rebuild,
+        )
+    except Exception as exc:
+        failure_reason = _exception_message(exc)
+        operation_log_service.record_failure(
+            log_type="audit",
+            module="requirement",
+            action=action,
+            object_type="requirement",
+            object_id=document_id,
+            object_name=document["name"] if document else document_id,
+            project_id=project_id,
+            actor_id=actor["id"],
+            actor_name=operation_log_service.actor_display_name(actor),
+            source="web",
+            failure_reason=failure_reason,
+            summary=f"需求归并失败：{document['name'] if document else document_id}",
+            after={
+                "confirm_preview_id": confirm_preview_id,
+                "force_rebuild": force_rebuild,
+                "failure_reason": failure_reason,
+            },
+        )
+        raise
+    status = result.get("status", "")
+    operation_log_service.record_success(
+        log_type="audit",
+        module="requirement",
+        action=action,
+        object_type="requirement",
+        object_id=document_id,
+        object_name=document["name"] if document else document_id,
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"需求归并{_merge_status_label(status)}：{document['name'] if document else document_id}",
+        after={
+            "status": status,
+            "version_id": result.get("version_id"),
+            "version_no": result.get("version_no"),
+            "preview_id": result.get("preview_id"),
+            "conflict_count": result.get("conflict_count"),
+            "merge_summary": result.get("merge_summary", ""),
+        },
     )
+    return result
 
 
 def list_document_conflicts(project_id: str, document_id: str, actor) -> list[dict]:
@@ -368,25 +434,57 @@ def update_document(project_id: str, document_id: str, payload: SourceDocumentUp
         )
         document_repo.update_current_version(db, document_id, version_id, DOCUMENT_VERSIONED_STATUS)
 
-    return get_document_detail(project_id, document_id, actor)
+    result = get_document_detail(project_id, document_id, actor)
+    operation_log_service.record_change(
+        log_type="audit",
+        module="requirement",
+        action="update",
+        object_type="requirement",
+        object_id=document_id,
+        object_name=name,
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"编辑需求：{name}",
+        before={"name": existing["name"], "status": existing["status"], "current_version_id": existing["current_version_id"]},
+        after={"name": name, "version_id": version_id, "version_no": version_no},
+    )
+    return result
 
 
 def delete_source_file(mapping_id: str, actor) -> dict:
     return document_file_service.delete_source_file(mapping_id, actor)
 
 
-def delete_document(project_id: str, document_id: str) -> dict:
+def delete_document(project_id: str, document_id: str, actor) -> dict:
     with connect() as db:
         existing = document_repo.find_by_project_and_id(db, project_id, document_id)
         if not existing:
             raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
 
         document_dir = project_requirement_dir(project_id, document_id)
+        snapshot = {"name": existing["name"], "status": existing["status"], "current_version_id": existing["current_version_id"]}
         document_repo.delete_graph(db, document_id)
 
     if document_dir.exists():
         shutil.rmtree(document_dir)
 
+    operation_log_service.record_change(
+        log_type="audit",
+        module="requirement",
+        action="delete",
+        object_type="requirement",
+        object_id=document_id,
+        object_name=snapshot["name"],
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"删除需求：{snapshot['name']}",
+        before=snapshot,
+        after={},
+    )
     return {"success": True}
 
 
@@ -401,3 +499,20 @@ def _decode_text(raw_bytes: bytes) -> str:
         except UnicodeDecodeError:
             continue
     return raw_bytes.decode("utf-8", errors="ignore")
+
+
+def _merge_status_label(status: str) -> str:
+    return {
+        "conflict": "产生冲突",
+        "merged": "完成",
+        "preview": "生成预览",
+    }.get(status, "执行")
+
+
+def _exception_message(exc: Exception) -> str:
+    if isinstance(exc, HTTPException):
+        detail = exc.detail
+        if isinstance(detail, dict):
+            return str(detail.get("message") or detail.get("code") or exc.status_code)
+        return str(detail)
+    return str(exc) or type(exc).__name__

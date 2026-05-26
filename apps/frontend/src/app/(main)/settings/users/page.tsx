@@ -269,6 +269,13 @@ export default function Page() {
                 </TableRow>
               ))}
               {loading && filteredRows.length === 0 ? <TableLoadingRow colSpan={7} label="用户列表加载中" /> : null}
+              {!loading && filteredRows.length === 0 ? (
+                <TableRow>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={7}>
+                    暂无用户。添加用户后，可按角色管理系统访问权限。
+                  </TableCell>
+                </TableRow>
+              ) : null}
             </TableBody>
           </Table>
         </div>
