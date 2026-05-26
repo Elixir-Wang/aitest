@@ -3,7 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from app.core.db import connect
 from app.seed.init_db import init_db
@@ -150,6 +150,21 @@ class SiteExplorationOrchestratorTest(unittest.TestCase):
             self.assertEqual(blocker["reason_type"], "runner_unavailable")
             self.assertTrue(document["markdown_path"].endswith("documents/exploration-v1.md"))
             self.assertTrue((Path(temp_dir) / "projects" / document["markdown_path"]).exists())
+
+    def test_playwright_cli_available_uses_resolved_npx_command_path(self):
+        completed = Mock(returncode=0, stdout="Version 1.60.0")
+
+        with (
+            patch("app.services.site_exploration_orchestrator.shutil.which", return_value="D:\\nodejs\\npx.CMD"),
+            patch("app.services.site_exploration_orchestrator.PLAYWRIGHT_RUNNER_DIR") as runner_dir,
+            patch("app.services.site_exploration_orchestrator.subprocess.run", return_value=completed) as run,
+        ):
+            runner_dir.exists.return_value = True
+
+            self.assertTrue(site_exploration_orchestrator._playwright_cli_available())
+
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[0][0], "D:\\nodejs\\npx.CMD")
 
 
 class isolated_exploration_store:

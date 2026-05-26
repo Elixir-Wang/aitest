@@ -92,8 +92,22 @@ const NavItemExpanded = ({
             <SidebarMenuSub>
               {item.subItems.map((subItem) => (
                 <SidebarMenuSubItem key={subItem.title}>
-                  <SidebarMenuSubButton aria-disabled={subItem.comingSoon} isActive={isActive(subItem.url)} asChild>
-                    <Link prefetch={false} href={resolveUrl(subItem)} target={subItem.newTab ? "_blank" : undefined}>
+                  <SidebarMenuSubButton
+                    aria-disabled={subItem.comingSoon}
+                    isActive={isActive(resolveUrl(subItem))}
+                    asChild
+                  >
+                    <Link
+                      aria-disabled={subItem.comingSoon}
+                      prefetch={false}
+                      href={resolveUrl(subItem)}
+                      target={subItem.newTab ? "_blank" : undefined}
+                      onClick={(event) => {
+                        if (subItem.comingSoon) {
+                          event.preventDefault();
+                        }
+                      }}
+                    >
                       {subItem.icon && <subItem.icon />}
                       <span>{subItem.title}</span>
                       {subItem.comingSoon && <IsComingSoon />}
@@ -140,7 +154,17 @@ const NavItemCollapsed = ({
                 aria-disabled={subItem.comingSoon}
                 isActive={isActive(resolveUrl(subItem))}
               >
-                <Link prefetch={false} href={resolveUrl(subItem)} target={subItem.newTab ? "_blank" : undefined}>
+                <Link
+                  aria-disabled={subItem.comingSoon}
+                  prefetch={false}
+                  href={resolveUrl(subItem)}
+                  target={subItem.newTab ? "_blank" : undefined}
+                  onClick={(event) => {
+                    if (subItem.comingSoon) {
+                      event.preventDefault();
+                    }
+                  }}
+                >
                   {subItem.icon && <subItem.icon className="[&>svg]:text-sidebar-foreground" />}
                   <span>{subItem.title}</span>
                   {subItem.comingSoon && <IsComingSoon />}
@@ -201,55 +225,53 @@ export function NavMain({ items }: NavMainProps) {
         </SidebarGroupContent>
       </SidebarGroup>
       {items.map((group) => {
-        const visibleItems = group.items.filter((item) =>
-          hasRequiredRole(user?.role, item.requiredRole),
-        );
+        const visibleItems = group.items.filter((item) => hasRequiredRole(user?.role, item.requiredRole));
         if (visibleItems.length === 0) return null;
         return (
-        <SidebarGroup key={group.id}>
-          {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
-          <SidebarGroupContent className="flex flex-col gap-2">
-            <SidebarMenu>
-              {visibleItems.map((item) => {
-                if (state === "collapsed" && !isMobile) {
-                  // If no subItems, just render the button as a link
-                  if (!item.subItems) {
-                    const href = resolveUrl(item);
+          <SidebarGroup key={group.id}>
+            {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+            <SidebarGroupContent className="flex flex-col gap-2">
+              <SidebarMenu>
+                {visibleItems.map((item) => {
+                  if (state === "collapsed" && !isMobile) {
+                    // If no subItems, just render the button as a link
+                    if (!item.subItems) {
+                      const href = resolveUrl(item);
+                      return (
+                        <SidebarMenuItem key={item.title}>
+                          <SidebarMenuButton
+                            asChild
+                            aria-disabled={item.comingSoon}
+                            tooltip={item.title}
+                            isActive={isItemActive(href)}
+                          >
+                            <Link prefetch={false} href={href} target={item.newTab ? "_blank" : undefined}>
+                              {item.icon && <item.icon />}
+                              <span>{item.title}</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    }
+                    // Otherwise, render the dropdown as before
                     return (
-                      <SidebarMenuItem key={item.title}>
-                        <SidebarMenuButton
-                          asChild
-                          aria-disabled={item.comingSoon}
-                          tooltip={item.title}
-                          isActive={isItemActive(href)}
-                        >
-                          <Link prefetch={false} href={href} target={item.newTab ? "_blank" : undefined}>
-                            {item.icon && <item.icon />}
-                            <span>{item.title}</span>
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
+                      <NavItemCollapsed key={item.title} item={item} isActive={isItemActive} resolveUrl={resolveUrl} />
                     );
                   }
-                  // Otherwise, render the dropdown as before
+                  // Expanded view
                   return (
-                    <NavItemCollapsed key={item.title} item={item} isActive={isItemActive} resolveUrl={resolveUrl} />
+                    <NavItemExpanded
+                      key={item.title}
+                      item={item}
+                      isActive={isItemActive}
+                      isSubmenuOpen={isSubmenuOpen}
+                      resolveUrl={resolveUrl}
+                    />
                   );
-                }
-                // Expanded view
-                return (
-                  <NavItemExpanded
-                    key={item.title}
-                    item={item}
-                    isActive={isItemActive}
-                    isSubmenuOpen={isSubmenuOpen}
-                    resolveUrl={resolveUrl}
-                  />
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
         );
       })}
     </>

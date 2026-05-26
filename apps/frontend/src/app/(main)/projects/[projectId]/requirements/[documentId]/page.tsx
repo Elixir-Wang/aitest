@@ -5,13 +5,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import {
-  AlertTriangle,
   ArrowLeft,
   Check,
   Download,
   FileSearch,
   FileText,
   GitMerge,
+  Info,
   Loader2,
   Pencil,
   Save,
@@ -233,6 +233,16 @@ type MergeResponse =
       artifact_tabs?: MergeArtifactTab[];
       conflict_count?: number;
       conflicts?: RequirementConflict[];
+    }
+  | {
+      status: "conflict";
+      run_id: string;
+      merge_summary: string;
+      diff_summary: string;
+      affected_modules: string[];
+      source_file_ids: string[];
+      conflict_count: number;
+      conflicts: RequirementConflict[];
     };
 
 const conversionLabels: Record<string, string> = {
@@ -284,6 +294,7 @@ export default function DocumentDetailPage() {
   const [editingInitial, setEditingInitial] = useState(false);
   const [savingInitial, setSavingInitial] = useState(false);
   const [merging, setMerging] = useState(false);
+  const [mergeError, setMergeError] = useState("");
   const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
   const [mergeArtifactTab, setMergeArtifactTab] = useState(MERGED_REQUIREMENT_TAB_KEY);
   const [analysisResult, setAnalysisResult] = useState<RequirementAnalysisResult | null>(null);
@@ -658,11 +669,13 @@ export default function DocumentDetailPage() {
 
   async function mergeRequirement() {
     setMerging(true);
+    setMergeError("");
     try {
       const result = await apiRequest<MergeResponse>(`/projects/${projectId}/requirements/${documentId}/merge`, {
         method: "POST",
       });
       if (result.status === "merged") {
+        setMergeError("");
         setMergePreview({
           previewId: result.version_id,
           markdownContent: result.markdown_content,
@@ -681,6 +694,7 @@ export default function DocumentDetailPage() {
         return;
       }
       if (result.status === "preview") {
+        setMergeError("");
         setMergePreview({
           previewId: result.preview_id,
           markdownContent: result.markdown_preview,
@@ -699,8 +713,19 @@ export default function DocumentDetailPage() {
         setActiveTab("initial");
         return;
       }
+      if (result.status === "conflict") {
+        setMergeError("");
+        setMergePreview(null);
+        updateConflicts(result.conflicts ?? []);
+        toast.warning(`发现 ${result.conflict_count} 个明显冲突，请先处理后再生成合并需求稿`);
+        await loadOverview({ silent: true });
+        setActiveTab("conflicts");
+        return;
+      }
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "需求合并失败");
+      const message = requestError instanceof Error ? requestError.message : "需求合并失败";
+      setMergeError(message);
+      toast.error(message);
     } finally {
       setMerging(false);
     }
@@ -939,6 +964,34 @@ export default function DocumentDetailPage() {
       : activeTab === "initial"
         ? `#${INITIAL_REQUIREMENT_SECTION_ID} [data-state="active"] .requirement-document-preview, #${INITIAL_REQUIREMENT_SECTION_ID} [data-state="active"] .requirement-artifact-preview`
         : `#${FINAL_REQUIREMENT_SECTION_ID} .requirement-document-preview`;
+  const outdatedMergeBanner = isInitialRequirementOutdated ? (
+    <Banner
+      action={
+        <Button disabled={merging} onClick={mergeRequirement} size="sm" type="button">
+          {merging ? <Loader2 className="size-3.5 animate-spin" /> : <GitMerge className="size-3.5" />}
+          {merging ? "合并中" : "重新合并"}
+        </Button>
+      }
+      className="mb-4 border-sky-200 bg-sky-50 text-sky-950 dark:border-sky-800/70 dark:bg-sky-950/30 dark:text-sky-100"
+      icon={<Info className="size-4" />}
+      layout="complex"
+      rounded="default"
+      variant="default"
+    >
+      <div className="min-w-0">
+        <div className="font-medium">标准文件已变更，当前合并需求稿可能不是最新</div>
+        <div className="mt-1 text-current/75 text-xs">
+          {overview.files.length} 个标准文件中有 {changedStandardFiles.length} 个在当前版本生成后变更：
+          {changedStandardFiles
+            .slice(0, 3)
+            .map((file) => standardMarkdownFilename(file.original_filename))
+            .join("、")}
+          {changedStandardFiles.length > 3 ? " 等" : ""}。建议重新合并后查看归并产物。
+        </div>
+        {mergeError ? <div className="mt-2 text-destructive text-xs">合并失败：{mergeError}</div> : null}
+      </div>
+    </Banner>
+  ) : null;
 
   return (
     <PageShell
@@ -1230,15 +1283,16 @@ export default function DocumentDetailPage() {
 
         <TabsContent value="initial">
           <ShellSection id={INITIAL_REQUIREMENT_SECTION_ID}>
+            {outdatedMergeBanner}
             {initialArtifactTabs.length && !editingInitial ? (
               <Tabs className="space-y-4" onValueChange={setMergeArtifactTab} value={mergeArtifactTab}>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                  <TabsList className="max-w-full overflow-x-auto">
-                    <TabsTrigger className="whitespace-nowrap" value={MERGED_REQUIREMENT_TAB_KEY}>
+                  <TabsList className="h-auto min-h-10 max-w-full overflow-x-auto overflow-y-hidden">
+                    <TabsTrigger className="h-8 whitespace-nowrap" value={MERGED_REQUIREMENT_TAB_KEY}>
                       合并需求稿
                     </TabsTrigger>
                     {visibleInitialArtifactTabs.map((artifact) => (
-                      <TabsTrigger className="whitespace-nowrap" key={artifact.key} value={artifact.key}>
+                      <TabsTrigger className="h-8 whitespace-nowrap" key={artifact.key} value={artifact.key}>
                         {artifact.label}
                       </TabsTrigger>
                     ))}
@@ -1387,33 +1441,6 @@ export default function DocumentDetailPage() {
                 )}
               </>
             )}
-            {isInitialRequirementOutdated ? (
-              <Banner
-                action={
-                  <Button disabled={merging} onClick={mergeRequirement} size="sm" type="button">
-                    <GitMerge className="size-3.5" />
-                    {merging ? "合并中" : "重新合并"}
-                  </Button>
-                }
-                className="mt-4"
-                icon={<AlertTriangle className="size-4" />}
-                layout="complex"
-                rounded="default"
-                variant="warning"
-              >
-                <div className="min-w-0">
-                  <div className="font-medium">标准文件已变更，当前合并需求稿可能不是最新</div>
-                  <div className="mt-1 text-current/75 text-xs">
-                    {overview.files.length} 个标准文件中有 {changedStandardFiles.length} 个在当前版本生成后变更：
-                    {changedStandardFiles
-                      .slice(0, 3)
-                      .map((file) => standardMarkdownFilename(file.original_filename))
-                      .join("、")}
-                    {changedStandardFiles.length > 3 ? " 等" : ""}。建议重新合并后查看归并产物。
-                  </div>
-                </div>
-              </Banner>
-            ) : null}
           </ShellSection>
         </TabsContent>
 

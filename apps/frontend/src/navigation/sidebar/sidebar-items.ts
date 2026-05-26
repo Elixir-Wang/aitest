@@ -71,21 +71,18 @@ export const sidebarItems: NavGroup[] = [
       },
       {
         title: "需求",
-        url: "/projects/:projectId/requirements",
+        url: "/requirements",
         icon: FileText,
-        projectScoped: true,
       },
       {
         title: "探索",
-        url: "/projects/:projectId/exploration",
+        url: "/exploration",
         icon: FileSearch,
-        projectScoped: true,
       },
       {
         title: "知识库",
-        url: "/projects/:projectId/knowledge",
+        url: "/knowledge",
         icon: DatabaseZap,
-        projectScoped: true,
       },
     ],
   },
@@ -95,15 +92,21 @@ export const sidebarItems: NavGroup[] = [
     items: [
       {
         title: "测试用例",
-        url: "/projects/:projectId/test-cases",
+        url: "/test-cases",
         icon: ClipboardCheck,
+      },
+      {
+        title: "测试计划",
+        url: "/projects/:projectId/test-plans",
+        icon: ClipboardList,
+        comingSoon: true,
+        disabled: true,
         projectScoped: true,
       },
       {
         title: "UI 自动化",
-        url: "/projects/:projectId/automation/ui",
+        url: "/automation/ui",
         icon: PlaySquare,
-        projectScoped: true,
       },
       {
         title: "接口自动化",

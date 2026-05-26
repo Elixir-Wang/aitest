@@ -30,6 +30,22 @@ class ExplorationServiceTest(unittest.TestCase):
             self.assertEqual(run["status"], "pending")
             self.assertEqual(run["result_summary"], "")
 
+    def test_create_run_uses_environment_login_strategy(self):
+        with isolated_exploration_store():
+            seed_project_environment(login_strategy="account_password")
+
+            run = exploration_service.create_project_run(
+                "project-1",
+                ExplorationRunCreateIn(
+                    environment_id="env-1",
+                    title="后台探索",
+                    login_strategy="skip_login",
+                ),
+                admin_actor(),
+            )
+
+            self.assertEqual(run["login_strategy"], "account_password")
+
     def test_start_run_marks_task_as_submitted(self):
         with isolated_exploration_store():
             seed_project_environment()
@@ -43,6 +59,29 @@ class ExplorationServiceTest(unittest.TestCase):
 
             self.assertEqual(started["status"], "queued")
             self.assertEqual(started["result_summary"], "探索任务已提交，等待执行。")
+            self.assertIsNotNone(started["started_at"])
+            self.assertIsNone(started["finished_at"])
+
+    def test_start_run_resets_previous_exploration_duration(self):
+        with isolated_exploration_store():
+            seed_project_environment()
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO exploration_runs
+                      (id, project_id, environment_id, title, status, scope, forbidden_paths,
+                       login_strategy, result_summary, created_by, started_at, finished_at)
+                    VALUES
+                      ('explore-1', 'project-1', 'env-1', '后台探索', 'completed', '用户管理', '',
+                       'reuse_state', '已完成', 'u-admin', '2026-05-26 01:00:00', '2026-05-26 01:05:00')
+                    """
+                )
+
+            started = exploration_service.start_project_run("project-1", "explore-1", admin_actor())
+
+            self.assertEqual(started["status"], "queued")
+            self.assertNotEqual(started["started_at"], "2026-05-26 01:00:00")
+            self.assertIsNone(started["finished_at"])
 
     def test_get_project_run_report_reads_latest_markdown_document(self):
         with isolated_exploration_store() as root:
@@ -104,7 +143,7 @@ class ExplorationServiceTest(unittest.TestCase):
             self.assertIn("开始探索", log["log_content"])
 
 
-def seed_project_environment() -> None:
+def seed_project_environment(login_strategy: str = "reuse_state") -> None:
     with connect() as db:
         db.execute(
             """
@@ -114,9 +153,10 @@ def seed_project_environment() -> None:
         )
         db.execute(
             """
-            INSERT INTO project_environments (id, project_id, name, site_url, created_by)
-            VALUES ('env-1', 'project-1', '测试环境', 'https://example.test', 'u-admin')
-            """
+            INSERT INTO project_environments (id, project_id, name, site_url, login_strategy, created_by)
+            VALUES ('env-1', 'project-1', '测试环境', 'https://example.test', ?, 'u-admin')
+            """,
+            (login_strategy,),
         )
 
 

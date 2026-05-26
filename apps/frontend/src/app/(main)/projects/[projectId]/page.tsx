@@ -8,6 +8,7 @@ import { ClipboardCheck, FileText, PlaySquare } from "lucide-react";
 import { toast } from "sonner";
 
 import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,7 +20,6 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Textarea } from "@/components/ui/textarea";
 import { type ApiProject, apiRequest } from "@/lib/api-client";
 import { useProjectContextStore } from "@/stores/project-context-store";
@@ -83,9 +83,9 @@ export default function Page() {
     };
   }, [loadProject]);
 
-  function goToModule(modulePath: string) {
+  function goToModule(path: string) {
     selectProject(projectId);
-    router.push(`/projects/${projectId}/${modulePath}`);
+    router.push(path);
   }
 
   function openEditDialog() {
@@ -150,13 +150,13 @@ export default function Page() {
           <ShellSection>
             <h2 className="mb-3 font-medium text-sm">可用操作</h2>
             <div className="flex flex-col gap-2">
-              <Button variant="outline" onClick={() => goToModule("requirements")}>
+              <Button variant="outline" onClick={() => goToModule("/requirements")}>
                 进入需求
               </Button>
-              <Button variant="outline" onClick={() => goToModule("exploration")}>
+              <Button variant="outline" onClick={() => goToModule("/exploration")}>
                 进入探索
               </Button>
-              <Button onClick={() => goToModule("test-cases")}>进入测试用例</Button>
+              <Button onClick={() => goToModule("/test-cases")}>进入测试用例</Button>
             </div>
           </ShellSection>
         </div>

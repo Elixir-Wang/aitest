@@ -17,7 +17,7 @@ const tasks: Array<{ id: string; project: string; name: string; status: string; 
 
 export default function Page() {
   const router = useRouter();
-  const { currentProjectId, hydrate, scope } = useProjectContextStore();
+  const hydrate = useProjectContextStore((state) => state.hydrate);
   const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
     useLocalTableSelection(tasks);
   const [searchText, setSearchText] = useState("");
@@ -33,12 +33,7 @@ export default function Page() {
   );
 
   function openExplorationTaskCreate() {
-    if (scope === "project" && currentProjectId) {
-      router.push(`/projects/${currentProjectId}/exploration?create=exploration`);
-      return;
-    }
-
-    router.push("/projects");
+    router.push("/exploration?create=exploration");
   }
 
   return (
@@ -111,10 +106,7 @@ export default function Page() {
                         { label: "查看", href: "/tasks", icon: Eye },
                         {
                           label: "新建探索任务",
-                          href:
-                            scope === "project" && currentProjectId
-                              ? `/projects/${currentProjectId}/exploration?create=exploration`
-                              : "/projects",
+                          href: "/exploration?create=exploration",
                           icon: Radar,
                         },
                       ]}

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useParams } from "next/navigation";
 
-import { AlertTriangle, FileText, Play, RefreshCw, Route, X } from "lucide-react";
+import { AlertTriangle, FileText, Pencil, Play, RefreshCw, Route, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
@@ -14,8 +14,20 @@ import { AgentPlan, type AgentPlanTask } from "@/components/ui/agent-plan";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { apiRequest, formatDateTime } from "@/lib/api-client";
+import { Textarea } from "@/components/ui/textarea";
+import { apiRequest } from "@/lib/api-client";
 
 type ExplorationRun = {
   id: string;
@@ -95,6 +107,20 @@ type ExplorationLog = {
   updated_at: string | null;
 };
 
+type ProjectEnvironment = {
+  id: string;
+  project_id: string;
+  name: string;
+};
+
+type ExplorationForm = {
+  title: string;
+  environmentId: string;
+  scope: string;
+  forbiddenPaths: string;
+  description: string;
+};
+
 type ParsedLogEntry = {
   id: string;
   timestamp: string;
@@ -111,15 +137,15 @@ const statusLabels: Record<string, string> = {
   blocked: "阻塞",
 };
 
-const loginStrategyLabels: Record<string, string> = {
-  reuse_state: "复用登录态",
-  manual: "手动登录保存状态",
-  account_password: "账号密码",
-  skip_login: "跳过登录",
-};
-
 const autoRefreshStatuses = new Set(["queued", "running", "waiting_human", "in-progress"]);
 const autoRefreshIntervalMs = 3000;
+const emptyExplorationForm: ExplorationForm = {
+  title: "",
+  environmentId: "",
+  scope: "",
+  forbiddenPaths: "",
+  description: "",
+};
 
 export default function Page() {
   const params = useParams<{ projectId: string; runId: string }>();
@@ -137,6 +163,11 @@ export default function Page() {
   const [log, setLog] = useState<ExplorationLog | null>(null);
   const [logLoading, setLogLoading] = useState(false);
   const [logError, setLogError] = useState("");
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [environments, setEnvironments] = useState<ProjectEnvironment[]>([]);
+  const [environmentLoading, setEnvironmentLoading] = useState(false);
+  const [explorationForm, setExplorationForm] = useState<ExplorationForm>(emptyExplorationForm);
 
   const loadRun = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -239,8 +270,72 @@ export default function Page() {
     }
   }
 
+  async function loadEnvironments() {
+    setEnvironmentLoading(true);
+    try {
+      const data = await apiRequest<ProjectEnvironment[]>(`/projects/${params.projectId}/environments`);
+      setEnvironments(data);
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "环境列表加载失败");
+    } finally {
+      setEnvironmentLoading(false);
+    }
+  }
+
+  function openEditDialog() {
+    if (!run) {
+      return;
+    }
+    setExplorationForm({
+      title: run.title,
+      environmentId: run.environment_id,
+      scope: run.scope,
+      forbiddenPaths: run.forbidden_paths,
+      description: run.description,
+    });
+    setEditDialogOpen(true);
+    if (environments.length === 0) {
+      void loadEnvironments();
+    }
+  }
+
+  async function saveExplorationRun() {
+    if (!run) {
+      return;
+    }
+    if (!explorationForm.title.trim() || !explorationForm.environmentId) {
+      toast.error("请填写任务名称并选择环境");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updated = await apiRequest<ExplorationRun>(`/projects/${run.project_id}/exploration-runs/${run.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          environment_id: explorationForm.environmentId,
+          title: explorationForm.title,
+          scope: explorationForm.scope,
+          forbidden_paths: explorationForm.forbiddenPaths,
+          description: explorationForm.description,
+        }),
+      });
+      setRun(updated);
+      setDetail((current) => (current ? { ...current, run: updated } : current));
+      setEditDialogOpen(false);
+      toast.success("探索任务已更新");
+      void loadRun({ silent: true });
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "探索任务更新失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const canStart = run ? ["pending", "queued", "partial", "completed", "blocked"].includes(run.status) : false;
+  const canEdit = run ? !["running", "waiting_human"].includes(run.status) : false;
   const startDisabled = !canStart || starting;
+  const saveDisabled = !explorationForm.title.trim() || !explorationForm.environmentId || saving;
   const planTasks = detail ? toPlanTasks(detail) : [];
   const explorationDuration = run ? formatExplorationDuration(run) : "-";
   const failureDetail = error
@@ -249,7 +344,7 @@ export default function Page() {
         projectId: params.projectId,
         requestPath: `/projects/${params.projectId}/exploration-runs/${params.runId}/detail`,
         runId: params.runId,
-        failedAt: formatDateTime(new Date().toISOString()),
+        failedAt: formatBeijingDateTime(new Date().toISOString()),
       }
     : null;
 
@@ -262,6 +357,10 @@ export default function Page() {
           <Button disabled={loading} onClick={() => void loadRun()} size="sm" variant="outline">
             <RefreshCw className="size-4" />
             刷新
+          </Button>
+          <Button disabled={!canEdit} onClick={openEditDialog} size="sm" variant="outline">
+            <Pencil className="size-4" />
+            编辑
           </Button>
           <Button disabled={startDisabled} onClick={startExploration} size="sm">
             <Play className="size-4" />
@@ -289,16 +388,16 @@ export default function Page() {
               value={run ? (statusLabels[run.status] ?? run.status) : "-"}
             />
             <MetricCard
-              helper="用于登录和页面访问"
+              helper="用于页面访问和探索执行"
               icon={Play}
-              label="登录策略"
-              value={run ? (loginStrategyLabels[run.login_strategy] ?? run.login_strategy) : "-"}
+              label="测试环境"
+              value={run?.environment_name ?? "-"}
             />
             <MetricCard
               helper="最近一次状态变更"
               icon={RefreshCw}
               label="更新时间"
-              value={run ? formatDateTime(run.updated_at) : "-"}
+              value={run ? formatBeijingDateTime(run.updated_at) : "-"}
             />
             <MetricCard helper="从开始探索到结束的耗时" icon={FileText} label="探索时长" value={explorationDuration} />
           </div>
@@ -334,7 +433,6 @@ export default function Page() {
                   <CardDescription>本次探索的环境和范围</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
-                  <InfoRow label="任务 ID" value={run?.id ?? "-"} />
                   <InfoRow label="关联环境" value={run?.environment_name ?? "-"} />
                   <InfoRow label="探索范围" value={run?.scope || "-"} />
                   <InfoRow label="禁止路径" value={run?.forbidden_paths || "-"} />
@@ -344,23 +442,23 @@ export default function Page() {
               <Card size="sm">
                 <CardHeader>
                   <CardTitle className="text-sm">执行时间线</CardTitle>
-                  <CardDescription>第一版展示关键阶段</CardDescription>
+                  <CardDescription>按北京时间展示关键阶段</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   <TimelineItem
                     active={Boolean(run)}
-                    label="任务已创建"
-                    value={run ? formatDateTime(run.created_at) : "-"}
+                    label="创建任务"
+                    value={run ? formatBeijingDateTime(run.created_at) : "-"}
                   />
                   <TimelineItem
                     active={Boolean(run?.started_at)}
                     label="开始探索"
-                    value={run?.started_at ? formatDateTime(run.started_at) : "待执行"}
+                    value={run?.started_at ? formatBeijingDateTime(run.started_at) : "待执行"}
                   />
                   <TimelineItem
                     active={Boolean(run?.finished_at)}
-                    label="探索结束"
-                    value={run?.finished_at ? formatDateTime(run.finished_at) : "等待结果"}
+                    label="完成探索"
+                    value={run?.finished_at ? formatBeijingDateTime(run.finished_at) : "等待结果"}
                   />
                 </CardContent>
               </Card>
@@ -388,6 +486,85 @@ export default function Page() {
           onReload={() => void loadReport()}
         />
       ) : null}
+
+      <Dialog onOpenChange={setEditDialogOpen} open={editDialogOpen}>
+        <DialogContent className="gap-6 p-6 sm:max-w-3xl">
+          <DialogHeader className="gap-3">
+            <DialogTitle>编辑探索任务</DialogTitle>
+            <DialogDescription>调整任务名称、关联环境、探索范围、禁止路径和任务说明。</DialogDescription>
+          </DialogHeader>
+          <FieldGroup className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="exploration-title">任务名称</FieldLabel>
+              <Input
+                id="exploration-title"
+                onChange={(event) => setExplorationForm((current) => ({ ...current, title: event.target.value }))}
+                placeholder="后台管理系统全站探索"
+                value={explorationForm.title}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="exploration-environment">环境</FieldLabel>
+              <Select
+                disabled={environmentLoading}
+                onValueChange={(value) => setExplorationForm((current) => ({ ...current, environmentId: value }))}
+                value={explorationForm.environmentId}
+              >
+                <SelectTrigger className="w-full" id="exploration-environment">
+                  <SelectValue placeholder={environmentLoading ? "环境加载中" : "选择环境"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {environments.map((environment) => (
+                    <SelectItem key={environment.id} value={environment.id}>
+                      {environment.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="exploration-scope">探索范围</FieldLabel>
+              <Textarea
+                className="min-h-24"
+                id="exploration-scope"
+                onChange={(event) => setExplorationForm((current) => ({ ...current, scope: event.target.value }))}
+                placeholder="菜单范围、URL 白名单、核心模块标记"
+                value={explorationForm.scope}
+              />
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="exploration-forbidden-paths">禁止路径</FieldLabel>
+              <Textarea
+                className="min-h-20"
+                id="exploration-forbidden-paths"
+                onChange={(event) =>
+                  setExplorationForm((current) => ({ ...current, forbiddenPaths: event.target.value }))
+                }
+                placeholder="删除、支付、外发、批量通知等危险路径"
+                value={explorationForm.forbiddenPaths}
+              />
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="exploration-description">描述</FieldLabel>
+              <Textarea
+                className="min-h-20"
+                id="exploration-description"
+                onChange={(event) => setExplorationForm((current) => ({ ...current, description: event.target.value }))}
+                placeholder="本次探索目标、角色说明、验证码处理方式或人工注意事项"
+                value={explorationForm.description}
+              />
+            </Field>
+          </FieldGroup>
+          <DialogFooter className="-mx-6 -mb-6 px-6 py-4">
+            <Button onClick={() => setEditDialogOpen(false)} type="button" variant="outline">
+              取消
+            </Button>
+            <Button disabled={saveDisabled} onClick={saveExplorationRun} type="button">
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }
@@ -450,7 +627,6 @@ function ExplorationLogPanel({
           </div>
           <div className="grid gap-2">
             <InfoRow label="失败原因" value={failureDetail.error} />
-            <InfoRow label="任务 ID" value={failureDetail.runId} />
             <InfoRow label="项目 ID" value={failureDetail.projectId} />
             <InfoRow label="请求接口" value={failureDetail.requestPath} />
             <InfoRow label="失败时间" value={failureDetail.failedAt} />
@@ -540,7 +716,7 @@ function ExplorationReportPanel({
         <div className="space-y-3">
           <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-sm sm:grid-cols-3">
             <InfoRow label="报告版本" value={report.version_no ? `v${report.version_no}` : "-"} />
-            <InfoRow label="生成时间" value={report.created_at ? formatDateTime(report.created_at) : "-"} />
+            <InfoRow label="生成时间" value={report.created_at ? formatBeijingDateTime(report.created_at) : "-"} />
             <InfoRow label="变更摘要" value={report.change_summary || "-"} />
           </div>
           <MarkdownPreview
@@ -589,8 +765,8 @@ function formatExplorationDuration(run: ExplorationRun): string {
     return "-";
   }
 
-  const startedAt = new Date(run.started_at).getTime();
-  const finishedAt = run.finished_at ? new Date(run.finished_at).getTime() : Date.now();
+  const startedAt = parseApiTimestamp(run.started_at);
+  const finishedAt = run.finished_at ? parseApiTimestamp(run.finished_at) : Date.now();
   if (!Number.isFinite(startedAt) || !Number.isFinite(finishedAt) || finishedAt < startedAt) {
     return "-";
   }
@@ -601,6 +777,33 @@ function formatExplorationDuration(run: ExplorationRun): string {
   const seconds = totalSeconds % 60;
 
   return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
+function formatBeijingDateTime(value: string | null): string {
+  const timestamp = parseApiTimestamp(value);
+  if (!Number.isFinite(timestamp)) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(timestamp));
+}
+
+function parseApiTimestamp(value: string | null): number {
+  if (!value) {
+    return Number.NaN;
+  }
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
+  const hasTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(normalized);
+  return new Date(hasTimeZone ? normalized : `${normalized}Z`).getTime();
 }
 
 function toPlanTasks(detail: ExplorationRunDetail): AgentPlanTask[] {

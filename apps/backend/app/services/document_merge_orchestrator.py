@@ -109,7 +109,9 @@ async def merge_document_markdown(
         coverage_items = [item.model_dump() for item in merge_output.coverage_items]
         if merge_output.status == "conflict":
             for conflict in merge_output.conflicts:
-                source_file_names = "、".join(ref.get("filename", "") for ref in conflict.source_refs if ref.get("filename"))
+                source_file_names = "、".join(
+                    Path(str(ref.get("filename", ""))).stem for ref in conflict.source_refs if ref.get("filename")
+                )
                 document_repo.create_conflict(
                     db,
                     conflict_id=f"conflict-{secrets.token_hex(8)}",
@@ -127,42 +129,38 @@ async def merge_document_markdown(
             document_repo.update_merge_run_result(
                 db,
                 run_id=run_id,
-                status="preview",
+                status="conflict",
                 merge_summary=merge_output.merge_summary,
                 diff_summary=merge_output.diff_summary,
                 affected_modules=merge_output.affected_modules,
-                output_preview_path=store_path(requirement_merge_artifact_service.merge_preview_path(project_id, document_id, run_id)) or str(requirement_merge_artifact_service.merge_preview_path(project_id, document_id, run_id)),
             )
             conflict_rows = document_repo.list_conflicts(db, document_id, status="open")
-            artifact_tabs = requirement_merge_artifact_service.write_merge_artifacts(
-                project_id,
-                document_id,
-                run_id,
-                preview_markdown=merge_output.markdown_preview or requirement_merge_artifact_service.blocked_preview_markdown(existing["name"], "存在明显冲突，暂未生成完整合并候选稿。"),
-                coverage_items=coverage_items,
-                conflicts=[_serialize_conflict(row) for row in conflict_rows],
-                merge_summary=merge_output.merge_summary,
-                diff_summary=merge_output.diff_summary,
-                affected_modules=merge_output.affected_modules,
-                source_files=source_files,
-                quality_result="failed",
-                blocking_issues=["存在未解决的明显冲突，不能写入正式版本。"],
+            document_repo.create_source_coverage_items(
+                db,
+                run_id=run_id,
+                document_id=document_id,
+                version_id=None,
+                items=coverage_items,
             )
             return {
-                "status": "preview",
-                "preview_id": run_id,
-                "markdown_preview": artifact_tabs[0]["content"],
+                "status": "conflict",
+                "run_id": run_id,
                 "merge_summary": merge_output.merge_summary,
                 "diff_summary": merge_output.diff_summary,
                 "affected_modules": merge_output.affected_modules,
                 "source_file_ids": merge_output.source_file_ids,
-                "quality_result": "failed",
-                "artifact_tabs": requirement_merge_artifact_service.public_artifact_tabs(artifact_tabs),
                 "conflict_count": len(conflict_rows),
                 "conflicts": [_serialize_conflict(row) for row in conflict_rows],
             }
 
         if merge_output.status == "preview":
+            quality_result, blocking_issues = requirement_merge_artifact_service.evaluate_merge_quality(
+                coverage_items,
+                [],
+                merge_output.markdown_preview,
+                source_files,
+                merge_output.merge_summary,
+            )
             artifact_tabs = requirement_merge_artifact_service.write_merge_artifacts(
                 project_id,
                 document_id,
@@ -174,13 +172,8 @@ async def merge_document_markdown(
                 diff_summary=merge_output.diff_summary,
                 affected_modules=merge_output.affected_modules,
                 source_files=source_files,
-                quality_result=requirement_merge_artifact_service.merge_quality_result(
-                    coverage_items,
-                    [],
-                    merge_output.markdown_preview,
-                    source_files,
-                    merge_output.merge_summary,
-                ),
+                quality_result=quality_result,
+                blocking_issues=blocking_issues,
             )
             document_repo.create_source_coverage_items(
                 db,
@@ -211,7 +204,13 @@ async def merge_document_markdown(
             }
 
         merged_markdown = merge_output.markdown_content
-        quality_result = requirement_merge_artifact_service.merge_quality_result(coverage_items, [], merged_markdown, source_files, merge_output.merge_summary)
+        quality_result, blocking_issues = requirement_merge_artifact_service.evaluate_merge_quality(
+            coverage_items,
+            [],
+            merged_markdown,
+            source_files,
+            merge_output.merge_summary,
+        )
         artifact_tabs = requirement_merge_artifact_service.write_merge_artifacts(
             project_id,
             document_id,
@@ -224,6 +223,7 @@ async def merge_document_markdown(
             affected_modules=merge_output.affected_modules,
             source_files=source_files,
             quality_result=quality_result,
+            blocking_issues=blocking_issues,
         )
         if quality_result == "failed":
             document_repo.create_source_coverage_items(

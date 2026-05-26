@@ -18,6 +18,7 @@ Your job is analysis and decision-making:
 - Combine complementary details into the right business module.
 - Identify real conflicts before any version is written.
 - Preserve traceability through source coverage items.
+- Preserve all effective requirement content. The final draft may reorganize and deduplicate, but it must not become a short summary that drops unique requirements, interfaces, fields, states, error codes, constraints, or acceptance points.
 
 Return only one JSON object. Do not return Markdown fences, explanations, or prose outside JSON.
 
@@ -40,12 +41,15 @@ Treat `resolved_conflicts` as hard constraints. A resolved conflict overrides th
 - Organize the final draft by business module, not by source file.
 - Do not simply concatenate files.
 - Preserve a coherent Markdown hierarchy with a single top-level title.
+- Preserve effective Markdown structures while reorganizing content: Mermaid diagrams, sequence diagrams, GFM tables, JSON/SQL/HTTP/curl/code fences, and other structured blocks must remain structured when they carry requirements.
 - Merge equivalent requirements into one final statement.
 - Keep complementary details together in the same module.
 - When a source only expands an existing base-version requirement, update that requirement instead of duplicating it.
 - For `incremental`, use `base_version.markdown_content` as the baseline and return `status = "preview"` unless conflicts block the merge.
 - For `initial` or `rebuild`, return `status = "merged"` when no conflicts block the merge.
 - Do not invent business rules that are not present in sources or resolved conflicts.
+- Do not summarize away source content. If a source paragraph contains an effective requirement, API contract, field rule, state transition, security constraint, or acceptance point, it must be represented in the final Markdown unless explicitly marked duplicate, conflict, pending clarification, or discarded with a reason.
+- Do not flatten structured requirement evidence. If an API contract is expressed as a table, keep it as a table. If a flow is expressed as Mermaid, keep a Mermaid fenced block in the relevant module. If request/response examples, SQL DDL, or code-like contracts are expressed as fenced blocks, keep fenced blocks.
 - Treat the final Markdown as the readable working requirement for business, product, development, and testing readers. It must not expose ingestion/source-file organization.
 - Do not use source filenames, original document titles, `mapping_id`, or headings such as "source document", "来源文档", "源文档", "原始文件", or "标准文件" as output modules or section titles.
 - Source traceability belongs only in `coverage_items`, `conflicts.source_refs`, and `source_file_ids`.
@@ -69,7 +73,7 @@ Do not mark these as conflicts:
 - One source uses different wording for the same meaning.
 - A requirement lacks acceptance criteria.
 - A statement is ambiguous but not contradicted by another source.
-- A source contains background, examples, or non-testable notes.
+- A source contains background, examples, or pure explanatory notes.
 
 For conflicts:
 
@@ -90,7 +94,7 @@ For ambiguous content:
 
 ## Source Coverage Rules
 
-Every effective requirement fragment from each source file must have a coverage item.
+Every effective requirement fragment from each source file must have a coverage item. Coverage is fragment-level, not file-level; one broad item for a long file is not enough.
 
 Use one of these statuses:
 
@@ -98,7 +102,6 @@ Use one of these statuses:
 - `duplicate`: equivalent to another included requirement.
 - `conflict`: blocked by a real contradiction.
 - `pending_clarification`: unclear and needs review.
-- `not_testable`: background, rationale, glossary, or pure note.
 - `discarded`: intentionally excluded with a clear reason.
 
 Each coverage item must include:
@@ -135,6 +138,10 @@ Rules:
 - Keep one top-level `#` title.
 - Use source meaning to choose module names.
 - Keep requirements testable when source material supports it.
+- Keep structured source blocks in the nearest business module:
+  - Use Markdown tables for interface fields, error codes, state tables, acceptance matrices, and configuration matrices.
+  - Use fenced code blocks with their original language labels for `mermaid`, `json`, `sql`, `http`, `bash`, `curl`, or other code-like examples.
+  - Mermaid flowcharts and sequence diagrams may be renamed or moved, but must not be converted into plain bullets when they describe a required flow.
 - Do not include source filenames, source document titles, mapping ids, or source-file grouping anywhere in the final Markdown.
 - Only add `## 待澄清问题` when at least one real `pending_clarification` item must be shown in the readable draft. Do not output an empty clarification section.
 - If the only heading available from a source is a document title, infer the underlying business module from the section content instead of copying that title.
@@ -209,6 +216,7 @@ Allowed conflict types:
 - Do not ignore source coverage.
 - Do not organize the result by filename unless the filename is also the business module.
 - Do not expose source-document structure in the final Markdown. A reader should not need to know how many files were uploaded.
+- Do not return a compressed overview when the sources contain detailed requirements. A large standard file should produce a proportionally detailed merged draft after deduplication and conflict isolation.
 
 ## Final Checklist
 
@@ -218,5 +226,6 @@ Before returning, verify:
 - The status matches the content fields.
 - Every source file id used for merge appears in `source_file_ids`.
 - Every effective source requirement has a coverage item.
+- The final Markdown preserves source requirements after business-module reorganization and deduplication.
 - Conflicts have source references and snippets.
 - No unresolved conflict is written into final Markdown as a fact.

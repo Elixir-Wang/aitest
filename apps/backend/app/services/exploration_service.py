@@ -210,9 +210,6 @@ def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) 
     target_project_id = payload.project_id or project_id
     if target_project_id != project_id:
         raise api_error(400, "PROJECT_MISMATCH", "探索任务所属项目与当前项目不一致。")
-    if payload.login_strategy not in LOGIN_STRATEGIES:
-        raise api_error(400, "INVALID_LOGIN_STRATEGY", "登录策略不合法。")
-
     run_id = f"explore-{secrets.token_hex(8)}"
     with connect() as db:
         project = project_repo.find_by_id(db, project_id)
@@ -232,7 +229,7 @@ def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) 
             title=payload.title.strip(),
             scope=payload.scope.strip(),
             forbidden_paths=payload.forbidden_paths.strip(),
-            login_strategy=payload.login_strategy,
+            login_strategy=environment["login_strategy"],
             description=payload.description.strip(),
             created_by=actor["id"],
         )
@@ -242,8 +239,7 @@ def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) 
 
 def update_project_run(project_id: str, run_id: str, payload: ExplorationRunUpdateIn, actor) -> dict:
     updates = payload.model_dump(exclude_unset=True)
-    if updates.get("login_strategy") and updates["login_strategy"] not in LOGIN_STRATEGIES:
-        raise api_error(400, "INVALID_LOGIN_STRATEGY", "登录策略不合法。")
+    updates.pop("login_strategy", None)
 
     with connect() as db:
         existing = exploration_repo.find_by_id(db, run_id)
@@ -280,6 +276,7 @@ def start_project_run(project_id: str, run_id: str, actor) -> dict:
             run_id,
             status="queued",
             result_summary="探索任务已提交，等待执行。",
+            started=True,
         )
         row = exploration_repo.find_by_id(db, run_id)
         return serialize_exploration_run(row, actor["role"])

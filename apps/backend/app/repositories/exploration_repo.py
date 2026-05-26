@@ -4,7 +4,8 @@ from sqlite3 import Connection, Row
 
 
 BASE_SELECT = """
-SELECT er.*, p.name AS project_name, pe.name AS environment_name, pe.site_url AS environment_site_url
+SELECT er.*, p.name AS project_name, pe.name AS environment_name, pe.site_url AS environment_site_url,
+       pe.login_strategy AS environment_login_strategy
 FROM exploration_runs er
 JOIN projects p ON p.id = er.project_id
 JOIN project_environments pe ON pe.id = er.environment_id
@@ -171,7 +172,8 @@ def update_run_state(
         assignments.append("result_summary = ?")
         values.append(result_summary)
     if started:
-        assignments.append("started_at = COALESCE(started_at, CURRENT_TIMESTAMP)")
+        assignments.append("started_at = CURRENT_TIMESTAMP")
+        assignments.append("finished_at = NULL")
     if finished:
         assignments.append("finished_at = CURRENT_TIMESTAMP")
     values.append(run_id)

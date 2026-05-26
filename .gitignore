@@ -8,6 +8,7 @@
 *.swo
 
 # Obsidian local state
+.obsidian/
 .obsidian/workspace.json
 
 # Dependencies

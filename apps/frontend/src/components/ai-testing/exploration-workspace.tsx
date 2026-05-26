@@ -38,6 +38,7 @@ type ProjectEnvironment = {
   site_url: string;
   username: string;
   password_mask: string;
+  login_strategy: string;
   description: string;
   created_at: string;
   updated_at: string;
@@ -76,6 +77,7 @@ type EnvironmentForm = {
   siteUrl: string;
   username: string;
   password: string;
+  loginStrategy: string;
   description: string;
 };
 
@@ -85,7 +87,6 @@ type ExplorationForm = {
   environmentId: string;
   scope: string;
   forbiddenPaths: string;
-  loginStrategy: string;
   description: string;
 };
 
@@ -95,6 +96,7 @@ const emptyForm: EnvironmentForm = {
   siteUrl: "",
   username: "",
   password: "",
+  loginStrategy: "reuse_state",
   description: "",
 };
 
@@ -104,7 +106,6 @@ const emptyExplorationForm: ExplorationForm = {
   environmentId: "",
   scope: "",
   forbiddenPaths: "",
-  loginStrategy: "reuse_state",
   description: "",
 };
 
@@ -345,6 +346,7 @@ export function ExplorationWorkspace({
       siteUrl: environment.site_url,
       username: environment.username,
       password: "",
+      loginStrategy: environment.login_strategy,
       description: environment.description,
     });
     setShowPassword(false);
@@ -359,7 +361,6 @@ export function ExplorationWorkspace({
       environmentId: run.environment_id,
       scope: run.scope,
       forbiddenPaths: run.forbidden_paths,
-      loginStrategy: run.login_strategy,
       description: run.description,
     });
     setExplorationDialogOpen(true);
@@ -383,6 +384,7 @@ export function ExplorationWorkspace({
           name: form.name,
           site_url: form.siteUrl,
           username: form.username,
+          login_strategy: form.loginStrategy,
           description: form.description,
         };
         // 只有填写了密码才更新密码
@@ -409,6 +411,7 @@ export function ExplorationWorkspace({
             site_url: form.siteUrl,
             username: form.username,
             password: form.password,
+            login_strategy: form.loginStrategy,
             description: form.description,
           }),
         });
@@ -441,7 +444,6 @@ export function ExplorationWorkspace({
         title: explorationForm.title,
         scope: explorationForm.scope,
         forbidden_paths: explorationForm.forbiddenPaths,
-        login_strategy: explorationForm.loginStrategy,
         description: explorationForm.description,
       };
       if (editingExploration) {
@@ -731,7 +733,7 @@ export function ExplorationWorkspace({
         <DialogContent className="gap-6 p-6 sm:max-w-3xl">
           <DialogHeader className="gap-3">
             <DialogTitle>{editingEnvironment ? "编辑环境" : "新建环境"}</DialogTitle>
-            <DialogDescription>填写环境名称、所属项目、站点地址和登录信息，用于后续探索任务。</DialogDescription>
+            <DialogDescription>填写环境名称、所属项目、站点地址、登录信息和登录策略，用于后续探索任务。</DialogDescription>
           </DialogHeader>
           <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
             <LabeledInput
@@ -780,6 +782,26 @@ export function ExplorationWorkspace({
               placeholder="tester"
               value={form.username}
             />
+            <div className="space-y-2">
+              <label className="font-medium text-sm" htmlFor="environment-login-strategy">
+                登录策略
+              </label>
+              <Select
+                onValueChange={(value) => setForm((current) => ({ ...current, loginStrategy: value }))}
+                value={form.loginStrategy}
+              >
+                <SelectTrigger className="w-full" id="environment-login-strategy">
+                  <SelectValue placeholder="选择登录策略" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(loginStrategyLabels).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <LabeledInput
               id="environment-password"
               label={editingEnvironment ? "密码（留空表示不修改）" : "密码"}
@@ -843,7 +865,7 @@ export function ExplorationWorkspace({
         <DialogContent className="gap-6 p-6 sm:max-w-3xl">
           <DialogHeader className="gap-3">
             <DialogTitle>{editingExploration ? "编辑探索任务" : "新建探索任务"}</DialogTitle>
-            <DialogDescription>选择环境并配置探索范围、禁止路径和登录策略。</DialogDescription>
+            <DialogDescription>选择环境并配置探索范围、禁止路径和任务说明。</DialogDescription>
           </DialogHeader>
           <FieldGroup className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
             <Field>
@@ -898,24 +920,6 @@ export function ExplorationWorkspace({
                   {availableEnvironments.map((environment) => (
                     <SelectItem key={environment.id} value={environment.id}>
                       {environment.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="exploration-login-strategy">登录策略</FieldLabel>
-              <Select
-                onValueChange={(value) => setExplorationForm((current) => ({ ...current, loginStrategy: value }))}
-                value={explorationForm.loginStrategy}
-              >
-                <SelectTrigger className="w-full" id="exploration-login-strategy">
-                  <SelectValue placeholder="选择登录策略" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(loginStrategyLabels).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
                     </SelectItem>
                   ))}
                 </SelectContent>

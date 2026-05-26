@@ -8,6 +8,8 @@ from app.presentation.serializers import serialize_project_environment
 from app.repositories import environment_repo, project_repo
 from app.schemas.environment import ProjectEnvironmentCreateIn, ProjectEnvironmentUpdateIn
 
+LOGIN_STRATEGIES = {"reuse_state", "manual", "account_password", "skip_login"}
+
 
 def list_project_environments(project_id: str, actor) -> list[dict]:
     with connect() as db:
@@ -29,6 +31,8 @@ def create_project_environment(project_id: str, payload: ProjectEnvironmentCreat
     target_project_id = payload.project_id or project_id
     if target_project_id != project_id:
         raise api_error(400, "PROJECT_MISMATCH", "环境所属项目与当前项目不一致。")
+    if payload.login_strategy not in LOGIN_STRATEGIES:
+        raise api_error(400, "INVALID_LOGIN_STRATEGY", "登录策略不合法。")
 
     environment_id = f"env-{secrets.token_hex(8)}"
     with connect() as db:
@@ -45,6 +49,7 @@ def create_project_environment(project_id: str, payload: ProjectEnvironmentCreat
                 site_url=payload.site_url.strip(),
                 username=payload.username.strip(),
                 password_mask=_mask_password(payload.password),
+                login_strategy=payload.login_strategy,
                 description=payload.description.strip(),
                 created_by=actor["id"],
             )
@@ -56,6 +61,8 @@ def create_project_environment(project_id: str, payload: ProjectEnvironmentCreat
 
 def update_project_environment(project_id: str, environment_id: str, payload: ProjectEnvironmentUpdateIn, actor) -> dict:
     updates = payload.model_dump(exclude_unset=True)
+    if updates.get("login_strategy") and updates["login_strategy"] not in LOGIN_STRATEGIES:
+        raise api_error(400, "INVALID_LOGIN_STRATEGY", "登录策略不合法。")
     assignments, values = _build_update_assignments(updates)
     with connect() as db:
         existing = environment_repo.find_by_id(db, environment_id)
@@ -104,6 +111,7 @@ def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
         "name": "name",
         "site_url": "site_url",
         "username": "username",
+        "login_strategy": "login_strategy",
         "description": "description",
     }
     assignments = []

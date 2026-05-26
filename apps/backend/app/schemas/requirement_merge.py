@@ -42,7 +42,7 @@ class RequirementCoverageItem(BaseModel):
     source_excerpt: str
     target_module: str = ""
     target_heading: str = ""
-    coverage_status: Literal["merged", "duplicate", "conflict", "pending_clarification", "not_testable", "discarded"]
+    coverage_status: Literal["merged", "duplicate", "conflict", "pending_clarification", "discarded"]
     reason: str
 
 

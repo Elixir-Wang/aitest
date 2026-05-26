@@ -225,6 +225,7 @@ def init_db() -> None:
               site_url TEXT NOT NULL,
               username TEXT NOT NULL DEFAULT '',
               password_mask TEXT NOT NULL DEFAULT '',
+              login_strategy TEXT NOT NULL DEFAULT 'reuse_state',
               description TEXT NOT NULL DEFAULT '',
               created_by TEXT NOT NULL,
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -349,10 +350,12 @@ def init_db() -> None:
         _ensure_column(db, "projects", "code", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "projects", "default_site_url", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "projects", "created_by", "TEXT NOT NULL DEFAULT 'system'")
+        _ensure_column(db, "project_environments", "login_strategy", "TEXT NOT NULL DEFAULT 'reuse_state'")
         _ensure_column(db, "exploration_runs", "artifact_root", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "exploration_runs", "result_summary", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "exploration_runs", "started_at", "TEXT")
         _ensure_column(db, "exploration_runs", "finished_at", "TEXT")
+        _backfill_environment_login_strategies(db)
         _migrate_exploration_run_statuses(db)
         _migrate_source_documents(db)
         _migrate_file_mappings(db)
@@ -380,6 +383,27 @@ def _ensure_column(db: sqlite3.Connection, table: str, column: str, definition: 
     if column in columns:
         return
     db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _backfill_environment_login_strategies(db: sqlite3.Connection) -> None:
+    db.execute(
+        """
+        UPDATE project_environments
+        SET login_strategy = COALESCE(
+          (
+            SELECT er.login_strategy
+            FROM exploration_runs er
+            WHERE er.environment_id = project_environments.id
+              AND er.login_strategy != ''
+            ORDER BY er.updated_at DESC, er.created_at DESC
+            LIMIT 1
+          ),
+          login_strategy,
+          'reuse_state'
+        )
+        WHERE login_strategy = '' OR login_strategy IS NULL OR login_strategy = 'reuse_state'
+        """
+    )
 
 
 def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:

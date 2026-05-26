@@ -766,6 +766,63 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["markdown_content"].count("支持账号登录"), 1)
             self.assertEqual(document_service.get_document_versions("doc-1")[0]["source_action"], "merge")
 
+    async def test_merge_document_markdown_returns_preview_when_draft_drops_most_content(self):
+        with isolated_document_store() as actor:
+            base_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "standard"
+            base_dir.mkdir(parents=True)
+            source = base_dir / "long.md"
+            source.write_text(
+                "# 长需求\n\n"
+                + "\n".join(f"- 支持独有业务规则 {index:02d}，需要在合并稿中保留。" for index in range(1, 31)),
+                encoding="utf-8",
+            )
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '长需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+                document_repo.create_file_mapping(
+                    db,
+                    mapping_id="docmap-1",
+                    document_id="doc-1",
+                    version_id=None,
+                    source_file_path="long.md",
+                    original_filename="long.md",
+                    file_format="md",
+                    markdown_file_path=str(source),
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                    conversion_summary="成功",
+                    created_by="u-admin",
+                )
+
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
+                merge_agent.return_value = RequirementMergeOutput(
+                    status="merged",
+                    markdown_content="# 长需求\n\n## 需求概述\n\n- 支持主要业务规则。",
+                    merge_summary="已归并 1 个标准文件。",
+                    source_file_ids=["docmap-1"],
+                    coverage_items=[
+                        RequirementCoverageItem(
+                            mapping_id="docmap-1",
+                            source_excerpt="支持独有业务规则",
+                            target_module="需求概述",
+                            coverage_status="merged",
+                            reason="智能体声称已合入。",
+                        )
+                    ],
+                )
+                result = await document_service.merge_document_markdown("project-1", "doc-1", actor)
+
+            self.assertEqual(result["status"], "preview")
+            self.assertEqual(result["quality_result"], "failed")
+            self.assertIn("疑似只生成摘要", result["artifact_tabs"][3]["content"])
+            self.assertEqual(document_service.get_document_versions("doc-1"), [])
+
     async def test_merge_document_markdown_returns_conflict_without_creating_version(self):
         with isolated_document_store() as actor:
             base_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "standard"
@@ -824,14 +881,15 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                 )
                 result = await document_service.merge_document_markdown("project-1", "doc-1", actor)
 
-            self.assertEqual(result["status"], "preview")
-            self.assertEqual(result["quality_result"], "failed")
+            self.assertEqual(result["status"], "conflict")
             self.assertEqual(result["conflict_count"], 1)
-            self.assertIn("artifact_tabs", result)
+            self.assertNotIn("artifact_tabs", result)
+            self.assertNotIn("markdown_preview", result)
             self.assertIn("id", result["conflicts"][0])
             self.assertIn("title", result["conflicts"][0])
             self.assertIn("fragment_a", result["conflicts"][0])
             self.assertIn("fragment_b", result["conflicts"][0])
+            self.assertEqual(result["conflicts"][0]["source_file_names"], "first")
             self.assertEqual(document_service.get_document_versions("doc-1"), [])
 
     async def test_resolved_conflict_allows_merge_to_continue(self):

@@ -83,7 +83,7 @@ def _execute_playwright_probe(run_id: str, artifact_root: Path) -> dict:
 
 
 def _playwright_cli_available() -> bool:
-    if not shutil.which("npx"):
+    if not _npx_command_path():
         return False
     if not PLAYWRIGHT_RUNNER_DIR.exists():
         return False
@@ -102,7 +102,11 @@ def _playwright_cli_available() -> bool:
 
 
 def _playwright_command(*args: str) -> list[str]:
-    return ["npx", "--no-install", PLAYWRIGHT_CLI_COMMAND, *args]
+    return [_npx_command_path() or "npx", "--no-install", PLAYWRIGHT_CLI_COMMAND, *args]
+
+
+def _npx_command_path() -> str | None:
+    return shutil.which("npx")
 
 
 def _capture_entry_screenshot(page_url: str, screenshot_path: Path) -> dict:

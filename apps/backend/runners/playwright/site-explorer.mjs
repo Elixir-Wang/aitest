@@ -9,8 +9,8 @@ if (!startUrl || !artifactRoot) {
   process.exit(2);
 }
 
-const maxPages = Number(process.env.AI_TESTING_EXPLORATION_MAX_PAGES || "8");
-const maxActions = Number(process.env.AI_TESTING_EXPLORATION_MAX_ACTIONS || "20");
+const maxPages = Number(process.env.AI_TESTING_EXPLORATION_MAX_PAGES || "50");
+const maxActions = Number(process.env.AI_TESTING_EXPLORATION_MAX_ACTIONS || "1000");
 const navigationTimeout = Number(process.env.AI_TESTING_EXPLORATION_NAV_TIMEOUT_MS || "10000");
 
 const dirs = {
@@ -35,9 +35,11 @@ const page = await context.newPage();
 page.setDefaultTimeout(navigationTimeout);
 page.setDefaultNavigationTimeout(navigationTimeout);
 
+const interactiveSelector = "a,button,input,textarea,select,[role='button'],[role='link'],[role='tab'],[role='menuitem']";
 const start = new URL(startUrl);
 const visited = new Set();
 const queued = [start.href];
+const capturedSurfaces = new Set();
 const pages = [];
 const elements = [];
 const blockers = [];
@@ -68,70 +70,7 @@ try {
       continue;
     }
 
-    const pageIndex = pages.length + 1;
-    const slug = `page-${String(pageIndex).padStart(2, "0")}`;
-    const screenshotFile = path.join(dirs.screenshots, `${slug}.png`);
-    const snapshotFile = path.join(dirs.snapshots, `${slug}.html`);
-    await page.screenshot({ path: screenshotFile, fullPage: true }).catch(() => {});
-    await fs.writeFile(snapshotFile, await page.content(), "utf-8");
-
-    const facts = await page.evaluate(() => {
-      const visible = (el) => {
-        const style = window.getComputedStyle(el);
-        const rect = el.getBoundingClientRect();
-        return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-      };
-      const labelOf = (el) => {
-        const aria = el.getAttribute("aria-label");
-        const title = el.getAttribute("title");
-        const placeholder = el.getAttribute("placeholder");
-        const text = el.innerText || el.textContent;
-        const value = el.getAttribute("value");
-        return (aria || title || placeholder || text || value || el.name || el.id || el.tagName).trim().replace(/\s+/g, " ").slice(0, 120);
-      };
-      const cssPath = (el) => {
-        if (el.id) return `#${CSS.escape(el.id)}`;
-        const testId = el.getAttribute("data-testid") || el.getAttribute("data-test");
-        if (testId) return `[data-testid="${CSS.escape(testId)}"]`;
-        const name = el.getAttribute("name");
-        if (name) return `${el.tagName.toLowerCase()}[name="${CSS.escape(name)}"]`;
-        return el.tagName.toLowerCase();
-      };
-      const elementFacts = Array.from(document.querySelectorAll("a,button,input,textarea,select,[role='button'],[role='link']"))
-        .filter(visible)
-        .slice(0, 80)
-        .map((el, index) => ({
-          index,
-          name: labelOf(el),
-          type: el.tagName.toLowerCase() === "a" ? "link" : el.tagName.toLowerCase(),
-          inputType: el.getAttribute("type") || "",
-          locator: cssPath(el),
-          href: el.href || "",
-        }));
-      const headings = Array.from(document.querySelectorAll("h1,h2,h3"))
-        .filter(visible)
-        .map((el) => (el.innerText || el.textContent || "").trim().replace(/\s+/g, " "))
-        .filter(Boolean)
-        .slice(0, 8);
-      return {
-        title: document.title || location.pathname || location.href,
-        url: location.href,
-        headings,
-        elements: elementFacts,
-      };
-    });
-
-    pages.push({
-      title: facts.title,
-      url: facts.url,
-      entry_path: targetUrl,
-      structure_summary: summarizeStructure(facts),
-      screenshot_path: relativeArtifact(screenshotFile),
-      snapshot_path: relativeArtifact(snapshotFile),
-    });
-    for (const element of facts.elements) {
-      elements.push({ ...element, page_url: facts.url });
-    }
+    const facts = await captureSurface(targetUrl);
 
     for (const element of facts.elements) {
       if (queued.length + visited.size >= maxPages || actionCount >= maxActions) {
@@ -172,14 +111,17 @@ try {
       }
       const beforeUrl = page.url();
       try {
-        const locator = page.locator("a,button,input,textarea,select,[role='button'],[role='link']").nth(element.index);
+        const locator = page.locator(interactiveSelector).nth(element.index);
         await locator.click({ timeout: 2000 });
         actionCount += 1;
         await page.waitForLoadState("domcontentloaded", { timeout: navigationTimeout }).catch(() => {});
+        await page.waitForTimeout(300);
         const afterUrl = page.url();
         const href = sameOriginHref(afterUrl, start);
         if (href && normalizeUrl(href) !== normalizeUrl(beforeUrl) && !visited.has(normalizeUrl(href)) && !queued.includes(href)) {
           queued.push(href);
+        } else if (normalizeUrl(afterUrl) === normalizeUrl(beforeUrl) && pages.length < maxPages) {
+          await captureSurface(`${facts.url}#interaction-${actionCount}`, element.name || element.locator);
         }
       } catch (error) {
         blockers.push({
@@ -209,6 +151,91 @@ try {
   }));
 } finally {
   await browser.close();
+}
+
+async function captureSurface(entryPath, actionLabel = "") {
+  const facts = await collectFacts();
+  const signature = surfaceSignature(facts);
+  if (capturedSurfaces.has(signature)) {
+    return facts;
+  }
+  capturedSurfaces.add(signature);
+
+  const pageIndex = pages.length + 1;
+  const slug = `page-${String(pageIndex).padStart(2, "0")}`;
+  const screenshotFile = path.join(dirs.screenshots, `${slug}.png`);
+  const snapshotFile = path.join(dirs.snapshots, `${slug}.html`);
+  await page.screenshot({ path: screenshotFile, fullPage: true }).catch(() => {});
+  await fs.writeFile(snapshotFile, await page.content(), "utf-8");
+
+  const surfaceTitle = actionLabel ? `${facts.title} / ${actionLabel}` : facts.title;
+  const surfaceUrl = actionLabel ? `${facts.url}#surface-${pageIndex}` : facts.url;
+  pages.push({
+    title: surfaceTitle,
+    url: surfaceUrl,
+    entry_path: entryPath,
+    structure_summary: summarizeStructure(facts),
+    screenshot_path: relativeArtifact(screenshotFile),
+    snapshot_path: relativeArtifact(snapshotFile),
+  });
+  for (const element of facts.elements) {
+    elements.push({ ...element, page_url: surfaceUrl });
+  }
+  return facts;
+}
+
+async function collectFacts() {
+  return page.evaluate(() => {
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+    };
+    const labelOf = (el) => {
+      const aria = el.getAttribute("aria-label");
+      const title = el.getAttribute("title");
+      const placeholder = el.getAttribute("placeholder");
+      const text = el.innerText || el.textContent;
+      const value = el.getAttribute("value");
+      return (aria || title || placeholder || text || value || el.name || el.id || el.tagName).trim().replace(/\s+/g, " ").slice(0, 120);
+    };
+    const cssPath = (el) => {
+      if (el.id) return `#${CSS.escape(el.id)}`;
+      const testId = el.getAttribute("data-testid") || el.getAttribute("data-test");
+      if (testId) return `[data-testid="${CSS.escape(testId)}"]`;
+      const name = el.getAttribute("name");
+      if (name) return `${el.tagName.toLowerCase()}[name="${CSS.escape(name)}"]`;
+      return el.tagName.toLowerCase();
+    };
+    const elementFacts = Array.from(document.querySelectorAll("a,button,input,textarea,select,[role='button'],[role='link'],[role='tab'],[role='menuitem']"))
+      .filter(visible)
+      .slice(0, 120)
+      .map((el, index) => ({
+        index,
+        name: labelOf(el),
+        type: el.tagName.toLowerCase() === "a" ? "link" : el.tagName.toLowerCase(),
+        inputType: el.getAttribute("type") || "",
+        locator: cssPath(el),
+        href: el.href || "",
+      }));
+    const headings = Array.from(document.querySelectorAll("h1,h2,h3,[role='dialog'],[role='alertdialog'],.modal,.drawer,.popover"))
+      .filter(visible)
+      .map((el) => (el.innerText || el.textContent || "").trim().replace(/\s+/g, " "))
+      .filter(Boolean)
+      .slice(0, 12);
+    return {
+      title: document.title || location.pathname || location.href,
+      url: location.href,
+      headings,
+      elements: elementFacts,
+    };
+  });
+}
+
+function surfaceSignature(facts) {
+  const headingText = facts.headings.join("|").slice(0, 300);
+  const elementText = facts.elements.map((item) => `${item.type}:${item.name}`).join("|").slice(0, 800);
+  return `${normalizeUrl(facts.url)}::${headingText}::${elementText}`;
 }
 
 function normalizeUrl(value) {
