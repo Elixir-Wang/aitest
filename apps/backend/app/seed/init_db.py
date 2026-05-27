@@ -239,7 +239,7 @@ def init_db() -> None:
               project_id TEXT NOT NULL,
               environment_id TEXT NOT NULL,
               title TEXT NOT NULL,
-              status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'waiting_human', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
+              status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'waiting_human', 'stopping', 'cancelled', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
               scope TEXT NOT NULL DEFAULT '',
               forbidden_paths TEXT NOT NULL DEFAULT '',
               login_strategy TEXT NOT NULL DEFAULT 'reuse_state',
@@ -598,7 +598,7 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
     table = db.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'exploration_runs'",
     ).fetchone()
-    if not table or "'pending'" in table["sql"]:
+    if not table or "'stopping'" in table["sql"]:
         return
 
     db.executescript(
@@ -609,7 +609,7 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
           project_id TEXT NOT NULL,
           environment_id TEXT NOT NULL,
           title TEXT NOT NULL,
-          status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'waiting_human', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
+          status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'waiting_human', 'stopping', 'cancelled', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
           scope TEXT NOT NULL DEFAULT '',
           forbidden_paths TEXT NOT NULL DEFAULT '',
           login_strategy TEXT NOT NULL DEFAULT 'reuse_state',

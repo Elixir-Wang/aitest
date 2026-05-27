@@ -63,6 +63,51 @@ class ExplorationServiceTest(unittest.TestCase):
             self.assertIsNotNone(started["started_at"])
             self.assertIsNone(started["finished_at"])
 
+    def test_start_full_site_run_seeds_exploration_plan_modules(self):
+        with isolated_exploration_store():
+            seed_project_environment()
+            created = exploration_service.create_project_run(
+                "project-1",
+                ExplorationRunCreateIn(
+                    environment_id="env-1",
+                    title="免登录页面测试",
+                    scope="探索全部站点所有内容。从环境站点 URL 作为入口，遍历同域名下全部文档页面和页面内超链接。范围包含：文档正文链接、目录导航链接、侧边栏链接、上一篇/下一篇链接、面包屑链接。",
+                ),
+                admin_actor(),
+            )
+
+            exploration_service.start_project_run("project-1", created["id"], admin_actor())
+
+            detail = exploration_service.get_project_run_detail("project-1", created["id"], admin_actor())
+            modules = detail["modules"]
+
+            self.assertGreaterEqual(len(modules), 6)
+            self.assertTrue(all(module["completion_status"] == "pending" for module in modules))
+            self.assertIn("文档正文链接", {module["module_name"] for module in modules})
+            self.assertIn("目录导航链接", {module["module_name"] for module in modules})
+
+    def test_running_full_site_run_detail_synthesizes_plan_when_outputs_are_missing(self):
+        with isolated_exploration_store():
+            seed_project_environment()
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO exploration_runs
+                      (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, created_by)
+                    VALUES
+                      ('explore-1', 'project-1', 'env-1', '免登录页面测试', 'running',
+                       '探索全部站点所有内容。范围包含：文档正文链接、目录导航链接、侧边栏链接、上一篇/下一篇链接、面包屑链接。',
+                       '', 'reuse_state', 'u-admin')
+                    """
+                )
+
+            detail = exploration_service.get_project_run_detail("project-1", "explore-1", admin_actor())
+
+            modules = detail["modules"]
+            self.assertGreaterEqual(len(modules), 6)
+            self.assertTrue(all(module["completion_status"] == "pending" for module in modules))
+            self.assertIn("侧边栏链接", {module["module_name"] for module in modules})
+
     def test_exploration_actions_write_operation_logs(self):
         with isolated_exploration_store():
             seed_project_environment()
@@ -78,7 +123,12 @@ class ExplorationServiceTest(unittest.TestCase):
                 ExplorationRunUpdateIn(scope="用户管理"),
                 actor,
             )
-            exploration_service.start_project_run("project-1", created["id"], actor)
+            started = exploration_service.start_project_run("project-1", created["id"], actor)
+            with connect() as db:
+                db.execute(
+                    "UPDATE exploration_runs SET status = 'blocked', result_summary = '模拟执行结束' WHERE id = ?",
+                    (started["id"],),
+                )
             exploration_service.delete_project_run("project-1", created["id"], actor)
 
             with connect() as db:
@@ -158,6 +208,34 @@ class ExplorationServiceTest(unittest.TestCase):
             self.assertEqual(started["status"], "queued")
             self.assertNotEqual(started["started_at"], "2026-05-26 01:00:00")
             self.assertIsNone(started["finished_at"])
+
+    def test_stop_run_marks_running_task_as_stopping_and_logs_request(self):
+        with isolated_exploration_store():
+            seed_project_environment()
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO exploration_runs
+                      (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, created_by)
+                    VALUES
+                      ('explore-1', 'project-1', 'env-1', '后台探索', 'running', '用户管理', '', 'reuse_state', 'u-admin')
+                    """
+                )
+
+            stopped = exploration_service.stop_project_run("project-1", "explore-1", admin_actor())
+
+            self.assertEqual(stopped["status"], "stopping")
+            self.assertIn("停止", stopped["result_summary"])
+            with connect() as db:
+                log = db.execute(
+                    """
+                    SELECT action, result, summary
+                    FROM operation_logs
+                    WHERE module = 'exploration' AND object_id = 'explore-1' AND action = 'cancel'
+                    """
+                ).fetchone()
+            self.assertEqual(log["result"], "success")
+            self.assertIn("停止", log["summary"])
 
     def test_get_project_run_report_reads_latest_markdown_document(self):
         with isolated_exploration_store() as root:

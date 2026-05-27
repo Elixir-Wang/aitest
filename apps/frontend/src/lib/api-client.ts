@@ -168,7 +168,14 @@ export type ApiKnowledgeBuildDetail = {
   build: ApiKnowledgeBuild;
   pages: ApiWikiPage[];
   lint_issues: Array<{ id: string; severity: string; title: string; detail: string; page_id: string }>;
-  source_refs: Array<{ id: string; source_type: string; source_id: string; source_title: string; location: string; excerpt: string }>;
+  source_refs: Array<{
+    id: string;
+    source_type: string;
+    source_id: string;
+    source_title: string;
+    location: string;
+    excerpt: string;
+  }>;
 };
 
 export type ApiGlobalKnowledgeDocument = {
@@ -233,7 +240,14 @@ export type ApiGlobalKnowledgeDetail = {
   current_version: ApiGlobalKnowledgeVersion | null;
   files: ApiGlobalKnowledgeFile[];
   versions: ApiGlobalKnowledgeVersion[];
-  usage_logs: Array<{ id: string; usage_type: string; target_project_id: string | null; target_object_id: string; summary: string; created_at: string }>;
+  usage_logs: Array<{
+    id: string;
+    usage_type: string;
+    target_project_id: string | null;
+    target_object_id: string;
+    summary: string;
+    created_at: string;
+  }>;
   available_actions: ApiAvailableAction[];
 };
 
@@ -337,54 +351,104 @@ export function labelToStatus(label: string): ApiStatus {
 }
 
 export function formatDateTime(value: string | null) {
-  if (!value) {
+  const timestamp = parseApiTimestamp(value);
+  if (!Number.isFinite(timestamp)) {
     return "-";
   }
-  return value.replace("T", " ").slice(0, 19);
+
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  })
+    .formatToParts(new Date(timestamp))
+    .reduce<Record<string, string>>((result, part) => {
+      result[part.type] = part.value;
+      return result;
+    }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+export function parseApiTimestamp(value: string | null) {
+  if (!value) {
+    return Number.NaN;
+  }
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
+  const hasTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(normalized);
+  return new Date(hasTimeZone ? normalized : `${normalized}Z`).getTime();
 }
 
 export function operationLogActionToLabel(action: string) {
   return (
-    {
-      archive: "归档",
-      cancel: "取消",
-      confirm: "确认",
-      create: "新增",
-      delete: "删除",
-      export: "导出",
-      login: "登录",
-      logout: "登出",
-      merge: "归并",
-      restore: "恢复",
-      retry: "重试",
-      run: "执行",
-      update: "编辑",
-      upload: "上传",
-    } as Record<string, string>
-  )[action] ?? action;
+    (
+      {
+        archive: "归档",
+        cancel: "取消",
+        confirm: "确认",
+        create: "新增",
+        create_global_knowledge_version: "新增知识版本",
+        delete: "删除",
+        export: "导出",
+        finish: "完成",
+        generate: "生成",
+        login: "登录",
+        logout: "登出",
+        merge: "归并",
+        publish: "发布",
+        restore: "恢复",
+        resolve_conflict: "处理冲突",
+        retry: "重试",
+        run: "执行",
+        assign_model: "分配模型",
+        archive_global_knowledge: "归档全局知识",
+        cleanup: "清理",
+        start: "开始",
+        update: "编辑",
+        update_global_knowledge: "编辑全局知识",
+        update_retention_policy: "更新保留策略",
+        upload: "上传",
+        upload_global_knowledge: "上传全局知识",
+      } as Record<string, string>
+    )[action] ?? action
+  );
 }
 
 export function operationLogResultToLabel(result: string) {
   return (
-    {
-      cancelled: "已取消",
-      failed: "失败",
-      partial_success: "部分成功",
-      success: "成功",
-    } as Record<string, string>
-  )[result] ?? result;
+    (
+      {
+        cancelled: "已取消",
+        failed: "失败",
+        partial_success: "部分成功",
+        success: "成功",
+      } as Record<string, string>
+    )[result] ?? result
+  );
 }
 
 export function operationLogModuleToLabel(module: string) {
   return (
-    {
-      agent: "Agent",
-      auth: "登录认证",
-      model: "模型配置",
-      project: "项目",
-      requirement: "需求",
-      system_setting: "系统设置",
-      task: "任务",
-    } as Record<string, string>
-  )[module] ?? module;
+    (
+      {
+        agent: "智能体",
+        auth: "登录认证",
+        environment: "环境",
+        exploration: "站点探索",
+        knowledge: "知识库",
+        model: "模型配置",
+        operation_log: "系统日志",
+        project: "项目",
+        requirement: "需求",
+        system_setting: "系统设置",
+        task: "任务",
+        user: "用户",
+      } as Record<string, string>
+    )[module] ?? module
+  );
 }

@@ -5,6 +5,7 @@ import shutil
 import subprocess
 from pathlib import Path
 import secrets
+import time
 
 from app.core.settings import (
     PLAYWRIGHT_BROWSER_CHANNEL,
@@ -15,7 +16,7 @@ from app.core.settings import (
 from app.core.db import connect
 from app.core.storage import PROJECT_FILE_STORAGE_ROOT, store_path
 from app.repositories import exploration_repo
-from app.services import operation_log_service
+from app.services import exploration_service, operation_log_service
 
 
 def run_exploration(run_id: str) -> None:
@@ -24,9 +25,15 @@ def run_exploration(run_id: str) -> None:
         run = exploration_repo.find_by_id(db, run_id)
         if not run:
             return
+        if run["status"] in {"stopping", "cancelled"}:
+            _mark_cancelled(db, run, "用户已停止探索，任务未继续执行。")
+            return
+        if run["status"] != "queued":
+            return
         artifact_root = PROJECT_FILE_STORAGE_ROOT / run["project_id"] / "exploration" / run_id
         _ensure_artifact_dirs(artifact_root)
         exploration_repo.clear_run_outputs(db, run_id)
+        exploration_service.seed_planned_modules_for_run(db, run)
         exploration_repo.update_run_state(
             db,
             run_id,
@@ -55,31 +62,57 @@ def run_exploration(run_id: str) -> None:
         run = exploration_repo.find_by_id(db, run_id)
         if not run:
             return
-        exploration_repo.clear_run_outputs(db, run_id)
-        if result["status"] == "blocked":
-            _persist_blocked_result(db, run, artifact_root, result)
+        if run["status"] == "stopping":
+            _mark_cancelled(db, run, "用户已停止探索，已保留停止前生成的日志和产物。")
             finish_event = (
                 run,
                 {
                     "action": "finish",
-                    "result": "failed",
-                    "summary": f"站点探索阻塞：{run['title']}，{result['summary']}",
-                    "after": {"status": "blocked", "result_summary": result["summary"], "log_path": result.get("log_path", "")},
+                    "result": "cancelled",
+                    "summary": f"站点探索已停止：{run['title']}",
+                    "after": {"status": "cancelled", "result_summary": "用户已停止探索，已保留停止前生成的日志和产物。"},
                     "artifact_path": [result.get("log_path", "")] if result.get("log_path") else [],
                 },
             )
         else:
-            _persist_completed_result(db, run, artifact_root, result)
-            finish_event = (
-                run,
-                {
-                    "action": "finish",
-                    "result": "success",
-                    "summary": f"站点探索执行完成：{run['title']}，{result['summary']}",
-                    "after": {"status": "completed", "result_summary": result["summary"], "log_path": result.get("log_path", "")},
-                    "artifact_path": [result.get("log_path", "")] if result.get("log_path") else [],
-                },
-            )
+            exploration_repo.clear_run_outputs(db, run_id)
+            if result["status"] == "cancelled":
+                _mark_cancelled(db, run, result["summary"])
+                finish_event = (
+                    run,
+                    {
+                        "action": "finish",
+                        "result": "cancelled",
+                        "summary": f"站点探索已停止：{run['title']}，{result['summary']}",
+                        "after": {"status": "cancelled", "result_summary": result["summary"], "log_path": result.get("log_path", "")},
+                        "artifact_path": [result.get("log_path", "")] if result.get("log_path") else [],
+                    },
+                )
+            elif result["status"] == "blocked":
+                _persist_blocked_result(db, run, artifact_root, result)
+                finish_event = (
+                    run,
+                    {
+                        "action": "finish",
+                        "result": "failed",
+                        "summary": f"站点探索阻塞：{run['title']}，{result['summary']}",
+                        "failure_reason": result.get("failure_detail", result["summary"]),
+                        "after": {"status": "blocked", "result_summary": result["summary"], "log_path": result.get("log_path", "")},
+                        "artifact_path": [result.get("log_path", "")] if result.get("log_path") else [],
+                    },
+                )
+            else:
+                _persist_completed_result(db, run, artifact_root, result)
+                finish_event = (
+                    run,
+                    {
+                        "action": "finish",
+                        "result": "success",
+                        "summary": f"站点探索执行完成：{run['title']}，{result['summary']}",
+                        "after": {"status": "completed", "result_summary": result["summary"], "log_path": result.get("log_path", "")},
+                        "artifact_path": [result.get("log_path", "")] if result.get("log_path") else [],
+                    },
+                )
 
     if finish_event:
         _record_runner_event(finish_event[0], **finish_event[1])
@@ -107,11 +140,17 @@ def _execute_playwright_probe(run_id: str, artifact_root: Path) -> dict:
     exploration_result = _run_site_explorer(page_url, artifact_root, forbidden_paths)
     if exploration_result["status"] == "blocked":
         log_path.write_text(exploration_result["log"], encoding="utf-8")
+        failure_detail = _failure_detail_from_log(exploration_result["log"])
+        summary = _summary_with_failure_detail(exploration_result["summary"], failure_detail)
         return {
             "status": "blocked",
-            "summary": exploration_result["summary"],
+            "summary": summary,
             "reason_type": "browser_smoke_failed",
-            "suggested_action": "检查 Playwright 浏览器安装、浏览器 channel 配置、网络连通性和目标站点可访问性后重试。",
+            "failure_detail": failure_detail,
+            "suggested_action": _suggested_action_with_failure_detail(
+                "检查 Playwright 浏览器安装、浏览器 channel 配置、网络连通性和目标站点可访问性后重试。",
+                failure_detail,
+            ),
             "log_path": store_path(log_path) or "",
         }
 
@@ -179,44 +218,71 @@ def _capture_entry_screenshot(page_url: str, screenshot_path: Path) -> dict:
 def _run_site_explorer(page_url: str, artifact_root: Path, forbidden_paths: str = "") -> dict:
     script_path = PLAYWRIGHT_RUNNER_DIR / "site-explorer.mjs"
     command = ["node", str(script_path), page_url, str(artifact_root), PLAYWRIGHT_BROWSER_CHANNEL, forbidden_paths]
+    timeout_seconds = max(PLAYWRIGHT_CLI_TIMEOUT_SECONDS, 30)
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             command,
-            check=False,
-            capture_output=True,
             cwd=PLAYWRIGHT_RUNNER_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=max(PLAYWRIGHT_CLI_TIMEOUT_SECONDS, 30),
         )
+        started_at = time.monotonic()
+        while process.poll() is None:
+            if _run_cancel_requested(artifact_root):
+                process.terminate()
+                try:
+                    stdout, stderr = process.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    stdout, stderr = process.communicate()
+                return {
+                    "status": "cancelled",
+                    "summary": "用户已停止探索。",
+                    "log": "\n".join(["Playwright site exploration cancelled by user.", stdout, stderr]).strip() + "\n",
+                }
+            if time.monotonic() - started_at > timeout_seconds:
+                process.kill()
+                stdout, stderr = process.communicate()
+                raise subprocess.TimeoutExpired(command, timeout_seconds, output=stdout, stderr=stderr)
+            time.sleep(1)
+        stdout, stderr = process.communicate()
     except (OSError, subprocess.TimeoutExpired) as error:
         return {
             "status": "blocked",
             "summary": "Playwright 探索脚本执行失败。",
             "log": f"Playwright site exploration failed: {error}\n",
         }
-    if completed.returncode != 0:
+    if process.returncode != 0:
         return {
             "status": "blocked",
             "summary": "Playwright 探索脚本执行失败。",
-            "log": "\n".join([completed.stdout, completed.stderr]).strip() + "\n",
+            "log": "\n".join([stdout, stderr]).strip() + "\n",
         }
     try:
-        payload = json.loads(completed.stdout.strip().splitlines()[-1])
+        payload = json.loads(stdout.strip().splitlines()[-1])
     except (IndexError, json.JSONDecodeError) as error:
         return {
             "status": "blocked",
             "summary": "Playwright 探索脚本未返回有效结构化结果。",
-            "log": f"{completed.stdout}\n{completed.stderr}\nJSON parse error: {error}\n",
+            "log": f"{stdout}\n{stderr}\nJSON parse error: {error}\n",
         }
     payload["log"] = "\n".join(
         [
             "Playwright site exploration completed.",
             f"url={page_url}",
-            completed.stderr.strip(),
-            completed.stdout.strip(),
+            stderr.strip(),
+            stdout.strip(),
         ]
     ).strip() + "\n"
     return payload
+
+
+def _run_cancel_requested(artifact_root: Path) -> bool:
+    run_id = artifact_root.name
+    with connect() as db:
+        run = exploration_repo.find_by_id(db, run_id)
+        return bool(run and run["status"] == "stopping")
 
 
 def _safe_run_context_from_db(run_id: str) -> tuple[str, str]:
@@ -235,6 +301,7 @@ def _record_runner_event(
     summary: str,
     after: dict,
     artifact_path: list[str] | None = None,
+    failure_reason: str = "",
 ) -> None:
     operation_log_service.record_task_event(
         module="exploration",
@@ -247,11 +314,43 @@ def _record_runner_event(
         actor_name="系统",
         source="runner",
         result=result,
+        failure_reason=failure_reason,
         summary=summary,
         after=after,
         task_id=run["id"],
         artifact_path=artifact_path or [],
     )
+
+
+def _mark_cancelled(db, run, summary: str) -> None:
+    exploration_repo.update_run_state(
+        db,
+        run["id"],
+        status="cancelled",
+        result_summary=summary,
+        finished=True,
+    )
+
+
+def _failure_detail_from_log(log: str) -> str:
+    for raw_line in log.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        return line[:500]
+    return ""
+
+
+def _summary_with_failure_detail(summary: str, failure_detail: str) -> str:
+    if not failure_detail or failure_detail in summary:
+        return summary
+    return f"{summary} 真实原因：{failure_detail}"
+
+
+def _suggested_action_with_failure_detail(suggested_action: str, failure_detail: str) -> str:
+    if not failure_detail:
+        return suggested_action
+    return f"{suggested_action} 真实失败原因：{failure_detail}"
 
 
 def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:
@@ -331,6 +430,7 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> Non
     output_path = artifact_root / "outputs" / "result.json"
     page_url = _safe_site_url(run)
     pages = _result_pages(result)
+    result_status, coverage_gap_blocker = _completion_status_with_coverage_gate(run, result, pages)
     page_id_by_url: dict[str, str] = {}
     payload_pages = []
     for page in pages:
@@ -364,14 +464,17 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> Non
     screenshot_path = payload_pages[0]["screenshot_path"] if payload_pages else None
     markdown = _render_markdown(
         run=run,
-        status=result["status"],
+        status=result_status,
         summary=result["summary"],
-        module_status="partial" if result["status"] == "partial" else "completed",
+        module_status="partial" if result_status == "partial" else "completed",
         page_url=page_url,
         blocker="",
         pages=payload_pages,
         elements=payload_elements,
     )
+    result_blockers = list(result.get("blockers", []))
+    if coverage_gap_blocker:
+        result_blockers.append(coverage_gap_blocker)
     payload_blockers = [
         {
             "module_key": module_key,
@@ -381,16 +484,16 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> Non
             "evidence_path": result["log_path"],
             "suggested_action": blocker.get("suggested_action") or "人工确认后重新探索。",
         }
-        for blocker in result.get("blockers", [])
+        for blocker in result_blockers
     ]
     payload = {
-        "status": result["status"],
+        "status": result_status,
         "summary": result["summary"],
         "modules": [
             {
                 "module_key": module_key,
                 "module_name": _module_name(run),
-                "completion_status": "partial" if result["status"] == "partial" else "completed",
+                "completion_status": "partial" if result_status == "partial" else "completed",
             }
         ],
         "pages": payload_pages,
@@ -411,13 +514,13 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> Non
         module_key=module_key,
         module_name=_module_name(run),
         entry_path=run["scope"] or page_url,
-        planned_page_count=max(len(payload_pages), 1),
+        planned_page_count=0 if result_status == "partial" and coverage_gap_blocker else max(len(payload_pages), 1),
         explored_page_count=len(payload_pages),
-        blocked_page_count=0,
+        blocked_page_count=1 if coverage_gap_blocker else 0,
         action_count=int(result.get("action_count") or 0),
         field_count=int(result.get("field_count") or 0),
         state_transition_count=int(result.get("state_transition_count") or 0),
-        completion_status="partial" if result["status"] == "partial" else "completed",
+        completion_status="partial" if result_status == "partial" else "completed",
         completion_summary=result["summary"],
     )
     for page in payload_pages:
@@ -465,10 +568,41 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> Non
     exploration_repo.update_run_state(
         db,
         run["id"],
-        status=result["status"],
+        status=result_status,
         result_summary=result["summary"],
         finished=True,
     )
+
+
+def _completion_status_with_coverage_gate(run, result: dict, pages: list[dict]) -> tuple[str, dict | None]:
+    status = str(result.get("status") or "completed")
+    if status != "completed" or not _is_full_site_scope(run):
+        return status, None
+    if len(pages) != 1:
+        return status, None
+
+    discovery = result.get("discovery") if isinstance(result.get("discovery"), dict) else {}
+    discovered_link_count = int(discovery.get("discovered_link_count") or 0)
+    same_origin_link_count = int(discovery.get("same_origin_link_count") or 0)
+    action_count = int(result.get("action_count") or 0)
+    state_transition_count = int(result.get("state_transition_count") or 0)
+    has_existing_blocker = bool(result.get("blockers"))
+    if has_existing_blocker or discovered_link_count > 0 or same_origin_link_count > 0 or action_count > 0 or state_transition_count > 0:
+        return status, None
+
+    reason = str(discovery.get("reason_if_stopped") or "探索范围要求覆盖全部站点，但本次仅覆盖入口页，未发现可继续递归探索的页面入口。")
+    return "partial", {
+        "page_ref": pages[0].get("url") or _safe_site_url(run),
+        "reason_type": "coverage_gap",
+        "reason": f"仅覆盖入口页：{reason}",
+        "suggested_action": "补充目录解析、搜索探测、站点地图或人工入口清单后重新探索。",
+    }
+
+
+def _is_full_site_scope(run) -> bool:
+    scope = str(run["scope"] or "").lower()
+    full_site_terms = ("全部站点", "全部内容", "所有内容", "所有页面", "全站", "遍历")
+    return any(term in scope for term in full_site_terms)
 
 
 def _persist_common_artifacts(

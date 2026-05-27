@@ -43,6 +43,16 @@ const capturedSurfaces = new Set();
 const pages = [];
 const elements = [];
 const blockers = [];
+const discovery = {
+  queued_count: 1,
+  visited_count: 0,
+  discovered_link_count: 0,
+  skipped_link_count: 0,
+  clickable_count: 0,
+  input_count: 0,
+  same_origin_link_count: 0,
+  reason_if_stopped: "",
+};
 let actionCount = 0;
 const forbiddenTerms = forbiddenInput
   .split(/[\n,，;；]+/)
@@ -56,6 +66,7 @@ try {
       continue;
     }
     visited.add(normalizeUrl(targetUrl));
+    discovery.visited_count = visited.size;
 
     try {
       await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
@@ -71,6 +82,8 @@ try {
     }
 
     const facts = await captureSurface(targetUrl);
+    discovery.clickable_count += facts.elements.filter((element) => element.type !== "input" || ["button", "submit"].includes(element.inputType)).length;
+    discovery.input_count += facts.elements.filter((element) => ["input", "textarea", "select"].includes(element.type)).length;
 
     for (const element of facts.elements) {
       if (queued.length + visited.size >= maxPages || actionCount >= maxActions) {
@@ -78,8 +91,10 @@ try {
       }
       const href = sameOriginHref(element.href, start);
       if (!href || visited.has(normalizeUrl(href)) || queued.includes(href)) {
+        if (element.href) discovery.skipped_link_count += 1;
         continue;
       }
+      discovery.same_origin_link_count += 1;
       if (isForbidden(`${element.name} ${href}`)) {
         blockers.push({
           page_ref: facts.url,
@@ -90,6 +105,8 @@ try {
         continue;
       }
       queued.push(href);
+      discovery.discovered_link_count += 1;
+      discovery.queued_count = Math.max(discovery.queued_count, queued.length + visited.size);
       actionCount += 1;
     }
 
@@ -120,6 +137,8 @@ try {
         const href = sameOriginHref(afterUrl, start);
         if (href && normalizeUrl(href) !== normalizeUrl(beforeUrl) && !visited.has(normalizeUrl(href)) && !queued.includes(href)) {
           queued.push(href);
+          discovery.discovered_link_count += 1;
+          discovery.queued_count = Math.max(discovery.queued_count, queued.length + visited.size);
         } else if (normalizeUrl(afterUrl) === normalizeUrl(beforeUrl) && pages.length < maxPages) {
           await captureSurface(`${facts.url}#interaction-${actionCount}`, element.name || element.locator);
         }
@@ -138,6 +157,16 @@ try {
     }
   }
 
+  if (queued.length === 0) {
+    discovery.reason_if_stopped = discovery.discovered_link_count === 0
+      ? "入口页未发现同源可访问链接，无法继续递归探索。"
+      : "已处理发现的同源入口，探索队列为空。";
+  } else if (pages.length >= maxPages) {
+    discovery.reason_if_stopped = `达到最大页面数限制 ${maxPages}。`;
+  } else if (actionCount >= maxActions) {
+    discovery.reason_if_stopped = `达到最大操作数限制 ${maxActions}。`;
+  }
+
   const summary = `已探索 ${pages.length} 个页面，识别 ${elements.length} 个可交互元素，记录 ${blockers.length} 个阻塞项。`;
   console.log(JSON.stringify({
     status: pages.length > 0 ? (blockers.length > 0 ? "partial" : "completed") : "blocked",
@@ -148,6 +177,7 @@ try {
     action_count: actionCount,
     field_count: elements.filter((item) => ["input", "textarea", "select"].includes(item.type)).length,
     state_transition_count: Math.max(0, pages.length - 1),
+    discovery,
   }));
 } finally {
   await browser.close();

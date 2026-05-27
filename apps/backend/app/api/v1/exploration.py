@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+import threading
+
+from fastapi import APIRouter, Depends
 
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.exploration import (
@@ -70,12 +72,25 @@ def update_project_run(
 def start_project_run(
     project_id: str,
     run_id: str,
-    background_tasks: BackgroundTasks,
     actor=Depends(require_admin),
 ) -> dict:
     run = exploration_service.start_project_run(project_id, run_id, actor)
-    background_tasks.add_task(site_exploration_orchestrator.run_exploration, run_id)
+    _dispatch_exploration_run(run_id)
     return run
+
+
+def _dispatch_exploration_run(run_id: str) -> None:
+    thread = threading.Thread(
+        target=site_exploration_orchestrator.run_exploration,
+        args=(run_id,),
+        daemon=True,
+    )
+    thread.start()
+
+
+@router.post("/{project_id}/exploration-runs/{run_id}/stop", response_model=ExplorationRunOut)
+def stop_project_run(project_id: str, run_id: str, actor=Depends(require_admin)) -> dict:
+    return exploration_service.stop_project_run(project_id, run_id, actor)
 
 
 @router.delete("/{project_id}/exploration-runs/{run_id}")

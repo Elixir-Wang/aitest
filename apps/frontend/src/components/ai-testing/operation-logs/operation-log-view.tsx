@@ -7,14 +7,9 @@ import { Eye, RefreshCw, Search } from "lucide-react";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
+import { ListPagination } from "@/components/ui/list-pagination";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -33,13 +28,55 @@ type OperationLogViewProps = {
   showProjectFilter?: boolean;
 };
 
-const modules = ["", "project", "requirement", "system_setting", "model", "task", "auth", "agent"];
-const actions = ["", "create", "update", "delete", "merge", "confirm", "cancel", "run", "retry", "export", "login", "logout"];
+const modules = [
+  "",
+  "project",
+  "requirement",
+  "environment",
+  "exploration",
+  "knowledge",
+  "operation_log",
+  "system_setting",
+  "model",
+  "task",
+  "auth",
+  "agent",
+  "user",
+];
+const actions = [
+  "",
+  "create",
+  "update",
+  "delete",
+  "merge",
+  "confirm",
+  "cancel",
+  "run",
+  "start",
+  "finish",
+  "generate",
+  "publish",
+  "retry",
+  "export",
+  "login",
+  "logout",
+  "upload",
+  "upload_global_knowledge",
+  "update_global_knowledge",
+  "create_global_knowledge_version",
+  "archive_global_knowledge",
+  "assign_model",
+  "resolve_conflict",
+  "update_retention_policy",
+  "cleanup",
+];
 const results = ["", "success", "failed", "partial_success", "cancelled"];
 
 export function OperationLogView({ endpoint, showProjectFilter = false }: OperationLogViewProps) {
   const [logs, setLogs] = useState<ApiOperationLogListItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [keyword, setKeyword] = useState("");
@@ -50,7 +87,7 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
   const [detail, setDetail] = useState<ApiOperationLogDetail | null>(null);
 
   const query = useMemo(() => {
-    const params = new URLSearchParams({ page: "1", page_size: "50" });
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
     if (keyword.trim()) {
       params.set("keyword", keyword.trim());
     }
@@ -64,7 +101,7 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
       params.set("result", result);
     }
     return params.toString();
-  }, [action, keyword, module, result]);
+  }, [action, keyword, module, page, pageSize, result]);
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -73,6 +110,7 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
       const data = await apiRequest<ApiOperationLogList>(`${endpoint}?${query}`);
       setLogs(data.items);
       setTotal(data.total);
+      setPage(data.page);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "日志加载失败");
     } finally {
@@ -95,28 +133,61 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
 
   return (
     <div className="space-y-4">
-      {error ? <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">{error}</div> : null}
+      {error ? (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
+          {error}
+        </div>
+      ) : null}
       <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
           <div className="relative sm:w-72">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-8" onChange={(event) => setKeyword(event.target.value)} placeholder="搜索对象、摘要或失败原因" value={keyword} />
+            <Input
+              className="pl-8"
+              onChange={(event) => {
+                setKeyword(event.target.value);
+                setPage(1);
+              }}
+              placeholder="搜索对象、摘要或失败原因"
+              value={keyword}
+            />
           </div>
-          <NativeSelect aria-label="模块" onChange={(event) => setModule(event.target.value)} value={module}>
+          <NativeSelect
+            aria-label="模块"
+            onChange={(event) => {
+              setModule(event.target.value);
+              setPage(1);
+            }}
+            value={module}
+          >
             {modules.map((item) => (
               <NativeSelectOption key={item || "all"} value={item}>
                 {item ? operationLogModuleToLabel(item) : "全部模块"}
               </NativeSelectOption>
             ))}
           </NativeSelect>
-          <NativeSelect aria-label="动作" onChange={(event) => setAction(event.target.value)} value={action}>
+          <NativeSelect
+            aria-label="动作"
+            onChange={(event) => {
+              setAction(event.target.value);
+              setPage(1);
+            }}
+            value={action}
+          >
             {actions.map((item) => (
               <NativeSelectOption key={item || "all"} value={item}>
                 {item ? operationLogActionToLabel(item) : "全部动作"}
               </NativeSelectOption>
             ))}
           </NativeSelect>
-          <NativeSelect aria-label="结果" onChange={(event) => setResult(event.target.value)} value={result}>
+          <NativeSelect
+            aria-label="结果"
+            onChange={(event) => {
+              setResult(event.target.value);
+              setPage(1);
+            }}
+            value={result}
+          >
             {results.map((item) => (
               <NativeSelectOption key={item || "all"} value={item}>
                 {item ? operationLogResultToLabel(item) : "全部结果"}
@@ -146,7 +217,9 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
           <TableBody>
             {logs.map((row) => (
               <TableRow key={row.id}>
-                <TableCell className="truncate text-muted-foreground text-xs">{formatDateTime(row.created_at)}</TableCell>
+                <TableCell className="truncate text-muted-foreground text-xs">
+                  {formatDateTime(row.created_at)}
+                </TableCell>
                 <TableCell>{operationLogModuleToLabel(row.module)}</TableCell>
                 <TableCell>{operationLogActionToLabel(row.action)}</TableCell>
                 <TableCell className="truncate" title={row.object_name || row.object_id || ""}>
@@ -154,7 +227,9 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
                 </TableCell>
                 <TableCell className="truncate">{row.actor_name}</TableCell>
                 <TableCell>
-                  <Badge variant={row.result === "failed" ? "destructive" : "outline"}>{operationLogResultToLabel(row.result)}</Badge>
+                  <Badge variant={row.result === "failed" ? "destructive" : "outline"}>
+                    {operationLogResultToLabel(row.result)}
+                  </Badge>
                 </TableCell>
                 <TableCell className="truncate" title={row.summary || row.failure_reason}>
                   {row.summary || row.failure_reason || "-"}
@@ -177,12 +252,26 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
           </TableBody>
         </Table>
       </div>
-      <div className="text-muted-foreground text-sm">共 {total} 条日志</div>
+      <ListPagination
+        currentPage={page}
+        itemName="条日志"
+        onPageChange={setPage}
+        onPageSizeChange={(nextPageSize) => {
+          setPageSize(nextPageSize);
+          setPage(1);
+        }}
+        pageSize={pageSize}
+        total={total}
+      />
       <Drawer direction="right" open={Boolean(selectedId)} onOpenChange={(open) => !open && setSelectedId(null)}>
         <DrawerContent className="sm:max-w-xl">
           <DrawerHeader>
             <DrawerTitle>日志详情</DrawerTitle>
-            <DrawerDescription>{detail ? `${operationLogModuleToLabel(detail.module)} / ${operationLogActionToLabel(detail.action)}` : "加载中"}</DrawerDescription>
+            <DrawerDescription>
+              {detail
+                ? `${operationLogModuleToLabel(detail.module)} / ${operationLogActionToLabel(detail.action)}`
+                : "加载中"}
+            </DrawerDescription>
           </DrawerHeader>
           <div className="space-y-4 overflow-auto px-4 pb-4">
             {detail ? (

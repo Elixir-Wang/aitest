@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+import re
 
 from app.core.db import connect
 from app.core.exceptions import api_error
@@ -10,7 +11,7 @@ from app.repositories import environment_repo, exploration_repo, project_repo
 from app.schemas.exploration import ExplorationRunCreateIn, ExplorationRunUpdateIn
 from app.services import operation_log_service
 
-STATUSES = {"pending", "queued", "running", "waiting_human", "partial", "completed", "blocked"}
+STATUSES = {"pending", "queued", "running", "waiting_human", "stopping", "cancelled", "partial", "completed", "blocked"}
 LOGIN_STRATEGIES = {"reuse_state", "manual", "account_password", "skip_login"}
 
 
@@ -74,23 +75,7 @@ def get_project_run_detail(project_id: str, run_id: str, actor) -> dict:
 
         fallback_key = "current"
         if not module_by_key:
-            module_by_key[fallback_key] = {
-                "id": f"{run_id}-current",
-                "module_key": fallback_key,
-                "module_name": existing["title"],
-                "entry_path": existing["scope"] or existing["environment_name"],
-                "planned_page_count": 1,
-                "explored_page_count": 0,
-                "blocked_page_count": 0,
-                "action_count": 0,
-                "field_count": 0,
-                "state_transition_count": 0,
-                "completion_status": _status_to_completion(existing["status"]),
-                "completion_summary": existing["result_summary"] or "等待探索执行。",
-                "pages": [],
-                "elements": [],
-                "blockers": [],
-            }
+            module_by_key.update(_planned_or_fallback_modules(run_id, existing, fallback_key))
 
         for page in pages:
             target = module_by_key.setdefault(page["module_key"] or fallback_key, _fallback_module(run_id, existing, page["module_key"] or fallback_key))
@@ -263,7 +248,7 @@ def update_project_run(project_id: str, run_id: str, payload: ExplorationRunUpda
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "探索任务不存在。")
         _ensure_project_visible(existing, actor)
-        if existing["status"] in {"running", "waiting_human"}:
+        if existing["status"] in {"queued", "running", "waiting_human", "stopping"}:
             raise api_error(409, "RUNNING_EXPLORATION", "探索任务执行中，不能修改。")
         if "environment_id" in updates:
             environment = environment_repo.find_by_id(db, updates["environment_id"])
@@ -303,9 +288,9 @@ def start_project_run(project_id: str, run_id: str, actor) -> dict:
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "探索任务不存在。")
         _ensure_project_visible(existing, actor)
-        if existing["status"] in {"running", "waiting_human"}:
+        if existing["status"] in {"queued", "running", "waiting_human", "stopping"}:
             raise api_error(409, "EXPLORATION_ALREADY_RUNNING", "探索任务正在执行或等待人工处理。")
-        if existing["status"] not in {"pending", "queued", "partial", "completed", "blocked"}:
+        if existing["status"] not in {"pending", "partial", "completed", "blocked", "cancelled"}:
             raise api_error(409, "EXPLORATION_NOT_STARTABLE", "当前状态不能发起探索。")
         exploration_repo.update_run_state(
             db,
@@ -314,6 +299,8 @@ def start_project_run(project_id: str, run_id: str, actor) -> dict:
             result_summary="探索任务已提交，等待执行。",
             started=True,
         )
+        exploration_repo.clear_run_outputs(db, run_id)
+        _seed_planned_modules(db, existing)
         row = exploration_repo.find_by_id(db, run_id)
         result = serialize_exploration_run(row, actor["role"])
     operation_log_service.record_task_event(
@@ -334,13 +321,50 @@ def start_project_run(project_id: str, run_id: str, actor) -> dict:
     return result
 
 
+def stop_project_run(project_id: str, run_id: str, actor) -> dict:
+    with connect() as db:
+        existing = exploration_repo.find_by_id(db, run_id)
+        if not existing or existing["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "探索任务不存在。")
+        _ensure_project_visible(existing, actor)
+        if existing["status"] not in {"queued", "running", "waiting_human"}:
+            raise api_error(409, "EXPLORATION_NOT_RUNNING", "只有排队中或探索中的任务可以停止。")
+        exploration_repo.update_run_state(
+            db,
+            run_id,
+            status="stopping",
+            result_summary="用户已请求停止探索，正在终止浏览器探索进程。",
+        )
+        row = exploration_repo.find_by_id(db, run_id)
+        result = serialize_exploration_run(row, actor["role"])
+        before = _run_snapshot(existing)
+        after = _run_snapshot(result)
+    operation_log_service.record_task_event(
+        module="exploration",
+        action="cancel",
+        object_type="exploration_run",
+        object_id=run_id,
+        object_name=result["title"],
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        result="success",
+        summary=f"请求停止站点探索任务：{result['title']}",
+        before=before,
+        after=after,
+        task_id=run_id,
+    )
+    return result
+
+
 def delete_project_run(project_id: str, run_id: str, actor) -> dict:
     with connect() as db:
         existing = exploration_repo.find_by_id(db, run_id)
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "探索任务不存在。")
         _ensure_project_visible(existing, actor)
-        if existing["status"] == "running":
+        if existing["status"] in {"queued", "running", "waiting_human", "stopping"}:
             raise api_error(409, "RUNNING_EXPLORATION", "探索任务运行中，不能删除。")
         snapshot = _run_snapshot(existing)
         exploration_repo.delete(db, run_id)
@@ -377,8 +401,10 @@ def _status_to_completion(status: str) -> str:
         return "completed"
     if status == "blocked":
         return "blocked"
-    if status in {"running", "waiting_human"}:
+    if status in {"queued", "running", "waiting_human", "stopping"}:
         return "in-progress"
+    if status == "cancelled":
+        return "blocked"
     if status == "partial":
         return "partial"
     return "pending"
@@ -421,6 +447,123 @@ def _fallback_module(run_id: str, run, module_key: str) -> dict:
         "elements": [],
         "blockers": [],
     }
+
+
+def _planned_or_fallback_modules(run_id: str, run, fallback_key: str) -> dict[str, dict]:
+    if run["status"] in {"queued", "running", "waiting_human", "stopping"}:
+        modules = {}
+        for index, name in enumerate(_planned_module_names(run), start=1):
+            module_key = f"planned-{index:02d}"
+            modules[module_key] = {
+                "id": f"{run_id}-{module_key}",
+                "module_key": module_key,
+                "module_name": name,
+                "entry_path": run["scope"] or run["environment_name"],
+                "planned_page_count": 1,
+                "explored_page_count": 0,
+                "blocked_page_count": 0,
+                "action_count": 0,
+                "field_count": 0,
+                "state_transition_count": 0,
+                "completion_status": "pending",
+                "completion_summary": run["result_summary"] or "等待探索执行。",
+                "pages": [],
+                "elements": [],
+                "blockers": [],
+            }
+        return modules
+    return {
+        fallback_key: {
+            "id": f"{run_id}-current",
+            "module_key": fallback_key,
+            "module_name": run["title"],
+            "entry_path": run["scope"] or run["environment_name"],
+            "planned_page_count": 1,
+            "explored_page_count": 0,
+            "blocked_page_count": 0,
+            "action_count": 0,
+            "field_count": 0,
+            "state_transition_count": 0,
+            "completion_status": _status_to_completion(run["status"]),
+            "completion_summary": run["result_summary"] or "等待探索执行。",
+            "pages": [],
+            "elements": [],
+            "blockers": [],
+        }
+    }
+
+
+def seed_planned_modules_for_run(db, run) -> None:
+    _seed_planned_modules(db, run)
+
+
+def _seed_planned_modules(db, run) -> None:
+    for index, name in enumerate(_planned_module_names(run), start=1):
+        exploration_repo.create_module_coverage(
+            db,
+            coverage_id=f"expcov-plan-{secrets.token_hex(8)}",
+            exploration_run_id=run["id"],
+            module_key=f"planned-{index:02d}",
+            module_name=name,
+            entry_path=run["scope"] or run["environment_name"],
+            planned_page_count=1,
+            explored_page_count=0,
+            blocked_page_count=0,
+            action_count=0,
+            field_count=0,
+            state_transition_count=0,
+            completion_status="pending",
+            completion_summary="已纳入本次探索计划，等待 Playwright 采集页面事实。",
+        )
+
+
+def _planned_module_names(run) -> list[str]:
+    scope = str(run["scope"] or "").strip()
+    names = _scope_named_items(scope)
+    if names:
+        return names
+    if _is_full_site_scope(scope):
+        return [
+            "入口页",
+            "目录导航链接",
+            "文档正文链接",
+            "侧边栏链接",
+            "上一篇/下一篇链接",
+            "面包屑链接",
+            "页面内按钮与输入框",
+            "登录/权限拦截页",
+            "异常状态页",
+            "外链与禁止路径",
+        ]
+    return [scope.splitlines()[0][:80] if scope else "站点入口"]
+
+
+def _scope_named_items(scope: str) -> list[str]:
+    match = re.search(r"范围包含[：:](.+)", scope, flags=re.S)
+    if not match:
+        return []
+    items = []
+    for raw_item in re.split(r"[、,，;；。\n]+", match.group(1)):
+        item = raw_item.strip()
+        if item and len(item) <= 40:
+            items.append(item)
+    return _unique_preserve_order(["入口页", *items])
+
+
+def _is_full_site_scope(scope: str) -> bool:
+    full_site_terms = ("全部站点", "全部内容", "所有内容", "所有页面", "全站", "遍历")
+    return any(term in scope for term in full_site_terms)
+
+
+def _unique_preserve_order(items: list[str]) -> list[str]:
+    seen = set()
+    unique = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        unique.append(item)
+    return unique
 
 
 def _run_snapshot(run) -> dict:

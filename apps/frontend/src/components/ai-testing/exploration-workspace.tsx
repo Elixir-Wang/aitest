@@ -1,16 +1,16 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useSearchParams } from "next/navigation";
 
-import { Eye, EyeOff, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Pencil, Play, Plus, Square, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
+import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { type ApiProject, apiRequest, formatDateTime } from "@/lib/api-client";
@@ -115,6 +114,8 @@ const statusLabels: Record<string, string> = {
   queued: "排队中",
   running: "探索中",
   waiting_human: "等待人工",
+  stopping: "正在停止",
+  cancelled: "已停止",
   partial: "部分完成",
   completed: "已完成",
   blocked: "阻塞",
@@ -128,7 +129,8 @@ const loginStrategyLabels: Record<string, string> = {
 };
 
 const explorationTabs = ["探索列表", "探索环境"];
-const RUNNING_EXPLORATION_STATUSES = new Set(["queued", "running", "waiting_human"]);
+const RUNNING_EXPLORATION_STATUSES = new Set(["queued", "running", "waiting_human", "stopping"]);
+const STOPPABLE_EXPLORATION_STATUSES = new Set(["queued", "running", "waiting_human"]);
 const EXPLORATION_TASK_SOURCE = "exploration-page";
 
 export function ExplorationWorkspace({
@@ -147,6 +149,8 @@ export function ExplorationWorkspace({
   const [showPassword, setShowPassword] = useState(false);
   const [editingEnvironment, setEditingEnvironment] = useState<ProjectEnvironment | null>(null);
   const [editingExploration, setEditingExploration] = useState<ExplorationRun | null>(null);
+  const [stoppingExploration, setStoppingExploration] = useState<ExplorationRun | null>(null);
+  const [stoppingExplorationId, setStoppingExplorationId] = useState("");
   const [explorationLoading, setExplorationLoading] = useState(true);
   const [environmentLoading, setEnvironmentLoading] = useState(true);
   const [projectLoading, setProjectLoading] = useState(projectScope === "all");
@@ -181,17 +185,14 @@ export function ExplorationWorkspace({
     let ignore = false;
 
     async function loadProjects() {
-      if (projectScope === "project") {
-        setProjectLoading(false);
-        return;
-      }
-
       setProjectLoading(true);
       try {
         const data = await apiRequest<ApiProject[]>("/projects");
         if (!ignore) {
           setProjects(data);
-          setForm((current) => ({ ...current, projectId: current.projectId || data[0]?.id || "" }));
+          if (projectScope === "all") {
+            setForm((current) => ({ ...current, projectId: current.projectId || data[0]?.id || "" }));
+          }
         }
       } catch (requestError) {
         if (!ignore) {
@@ -313,6 +314,15 @@ export function ExplorationWorkspace({
     [explorationSelection.rows, searchText],
   );
 
+  const scopedProjectName =
+    (projectName.trim() ? projectName : undefined) ??
+    projects.find((project) => project.id === projectId)?.name ??
+    rows.find((environment) => environment.project_id === projectId)?.project_name ??
+    explorationSelection.rows.find((run) => run.project_id === projectId)?.project_name ??
+    projectId ??
+    "";
+  const environmentProjectValue = projectScope === "project" ? (projectId ?? "") : form.projectId;
+  const explorationProjectValue = projectScope === "project" ? (projectId ?? "") : explorationForm.projectId;
   const canCreateEnvironment = projectScope === "project" || form.projectId.length > 0;
   const selectedProjectId = projectScope === "project" ? (projectId ?? "") : explorationForm.projectId;
   const availableEnvironments = rows.filter((environment) => environment.project_id === selectedProjectId);
@@ -330,7 +340,7 @@ export function ExplorationWorkspace({
 
   function openCreateDialog() {
     setEditingEnvironment(null);
-    setForm({ ...emptyForm, projectId: projectId ?? "" });
+    setForm({ ...emptyForm, projectId: projectId ?? projects[0]?.id ?? "" });
     setShowPassword(false);
     setDialogOpen(true);
   }
@@ -521,6 +531,22 @@ export function ExplorationWorkspace({
     }
   }
 
+  async function stopExplorationRun(run: ExplorationRun) {
+    setStoppingExplorationId(run.id);
+    try {
+      const updated = await apiRequest<ExplorationRun>(`/projects/${run.project_id}/exploration-runs/${run.id}/stop`, {
+        method: "POST",
+      });
+      explorationSelection.setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+      toast.success("探索任务已停止");
+      setStoppingExploration(null);
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "探索任务停止失败");
+    } finally {
+      setStoppingExplorationId("");
+    }
+  }
+
   function openExplorationRun(run: ExplorationRun) {
     window.location.href = `/projects/${run.project_id}/exploration/${run.id}`;
   }
@@ -617,7 +643,24 @@ export function ExplorationWorkspace({
                     </TableCell>
                     <TableCell>{item.project_name}</TableCell>
                     <TableCell>{item.environment_name}</TableCell>
-                    <TableCell>{statusLabels[item.status] ?? item.status}</TableCell>
+                    <TableCell>
+                      <div className="flex min-w-36 items-center gap-2">
+                        <span>{statusLabels[item.status] ?? item.status}</span>
+                        {STOPPABLE_EXPLORATION_STATUSES.has(item.status) ? (
+                          <Button
+                            className="h-7 px-2 text-xs"
+                            disabled={stoppingExplorationId === item.id}
+                            onClick={() => setStoppingExploration(item)}
+                            size="sm"
+                            type="button"
+                            variant="destructive"
+                          >
+                            <Square className="size-3.5" />
+                            停止
+                          </Button>
+                        ) : null}
+                      </div>
+                    </TableCell>
                     <TableCell>{loginStrategyLabels[item.login_strategy] ?? item.login_strategy}</TableCell>
                     <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                     <TableCell>
@@ -633,6 +676,16 @@ export function ExplorationWorkspace({
                             icon: Pencil,
                             onSelect: () => openEditExplorationDialog(item),
                           },
+                          ...(STOPPABLE_EXPLORATION_STATUSES.has(item.status)
+                            ? [
+                                {
+                                  label: "停止探索",
+                                  icon: Square,
+                                  destructive: true,
+                                  onSelect: () => setStoppingExploration(item),
+                                },
+                              ]
+                            : []),
                           {
                             label: "删除",
                             icon: Trash2,
@@ -759,81 +812,86 @@ export function ExplorationWorkspace({
         <DialogContent className="gap-6 p-6 sm:max-w-3xl">
           <DialogHeader className="gap-3">
             <DialogTitle>{editingEnvironment ? "编辑环境" : "新建环境"}</DialogTitle>
-            <DialogDescription>填写环境名称、所属项目、站点地址、登录信息和登录策略，用于后续探索任务。</DialogDescription>
+            <DialogDescription>
+              填写环境名称、所属项目、站点地址、登录信息和登录策略，用于后续探索任务。
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
-            <LabeledInput
-              id="environment-name"
-              label="环境名称"
-              onChange={(value) => setForm((current) => ({ ...current, name: value }))}
-              placeholder="测试环境"
-              value={form.name}
-            />
-            <div className="space-y-2">
-              <label className="font-medium text-sm" htmlFor="environment-project">
-                项目
-              </label>
+          <FieldGroup className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="environment-name">环境名称</FieldLabel>
+              <Input
+                id="environment-name"
+                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                placeholder="测试环境"
+                value={form.name}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="environment-project">项目</FieldLabel>
               <Select
                 disabled={environmentProjectSelectDisabled}
-                onValueChange={(value) => setForm((current) => ({ ...current, projectId: value }))}
-                value={projectScope === "project" ? projectId : form.projectId}
+                id="environment-project"
+                placeholder={projectScope === "project" ? scopedProjectName : "选择项目"}
+                setValue={(value) => setForm((current) => ({ ...current, projectId: value }))}
+                value={environmentProjectValue}
               >
-                <SelectTrigger className="w-full" id="environment-project">
-                  <SelectValue placeholder={projectScope === "project" ? projectName : "选择项目"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {projectScope === "project" && projectId ? (
-                    <SelectItem value={projectId}>{projectName}</SelectItem>
-                  ) : (
-                    projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
+                {projectScope === "project" && projectId ? (
+                  <SelectOption value={projectId}>{scopedProjectName}</SelectOption>
+                ) : (
+                  projects.map((project) => (
+                    <SelectOption key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectOption>
+                  ))
+                )}
               </Select>
-            </div>
-            <LabeledInput
-              id="environment-site-url"
-              label="站点地址"
-              onChange={(value) => setForm((current) => ({ ...current, siteUrl: value }))}
-              placeholder="https://test.example.com"
-              value={form.siteUrl}
-            />
-            <LabeledInput
-              id="environment-username"
-              label="用户名"
-              onChange={(value) => setForm((current) => ({ ...current, username: value }))}
-              placeholder="tester"
-              value={form.username}
-            />
-            <div className="space-y-2">
-              <label className="font-medium text-sm" htmlFor="environment-login-strategy">
-                登录策略
-              </label>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="environment-site-url">站点地址</FieldLabel>
+              <Input
+                id="environment-site-url"
+                onChange={(event) => setForm((current) => ({ ...current, siteUrl: event.target.value }))}
+                placeholder="https://test.example.com"
+                value={form.siteUrl}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="environment-username">用户名</FieldLabel>
+              <Input
+                id="environment-username"
+                onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
+                placeholder="tester"
+                value={form.username}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="environment-login-strategy">登录策略</FieldLabel>
               <Select
-                onValueChange={(value) => setForm((current) => ({ ...current, loginStrategy: value }))}
+                id="environment-login-strategy"
+                placeholder="选择登录策略"
+                setValue={(value) => setForm((current) => ({ ...current, loginStrategy: value }))}
                 value={form.loginStrategy}
               >
-                <SelectTrigger className="w-full" id="environment-login-strategy">
-                  <SelectValue placeholder="选择登录策略" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(loginStrategyLabels).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
+                {Object.entries(loginStrategyLabels).map(([value, label]) => (
+                  <SelectOption key={value} value={value}>
+                    {label}
+                  </SelectOption>
+                ))}
               </Select>
-            </div>
-            <LabeledInput
-              id="environment-password"
-              label={editingEnvironment ? "密码（留空表示不修改）" : "密码"}
-              onChange={(value) => setForm((current) => ({ ...current, password: value }))}
-              placeholder={editingEnvironment ? "留空表示不修改密码" : "请输入密码"}
-              trailing={
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="environment-password">
+                {editingEnvironment ? "密码（留空表示不修改）" : "密码"}
+              </FieldLabel>
+              <div className="relative">
+                <Input
+                  className="pr-10"
+                  id="environment-password"
+                  onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                  placeholder={editingEnvironment ? "留空表示不修改密码" : "请输入密码"}
+                  type={showPassword ? "text" : "password"}
+                  value={form.password}
+                />
                 <Button
                   aria-label={showPassword ? "隐藏密码" : "显示密码"}
                   className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2"
@@ -844,23 +902,19 @@ export function ExplorationWorkspace({
                 >
                   {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </Button>
-              }
-              type={showPassword ? "text" : "password"}
-              value={form.password}
-            />
-            <div className="space-y-2 sm:col-span-2">
-              <label className="font-medium text-sm" htmlFor="environment-description">
-                描述
-              </label>
+              </div>
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="environment-description">描述</FieldLabel>
               <Textarea
-                className="min-h-28"
+                className="min-h-20"
                 id="environment-description"
                 onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                 placeholder="账号权限、验证码处理方式、探索范围或注意事项"
                 value={form.description}
               />
-            </div>
-          </div>
+            </Field>
+          </FieldGroup>
           <DialogFooter className="-mx-6 -mb-6 px-6 py-4">
             <Button onClick={() => setDialogOpen(false)} type="button" variant="outline">
               取消
@@ -874,6 +928,29 @@ export function ExplorationWorkspace({
                   创建环境
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog onOpenChange={(open) => !open && setStoppingExploration(null)} open={Boolean(stoppingExploration)}>
+        <DialogContent className="gap-5 p-6 sm:max-w-md">
+          <DialogHeader className="gap-3">
+            <DialogTitle>停止探索任务</DialogTitle>
+            <DialogDescription>停止后将终止当前浏览器探索进程，已生成的截图、日志和页面事实会保留。</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="-mx-6 -mb-6 px-6 py-4">
+            <Button onClick={() => setStoppingExploration(null)} type="button" variant="outline">
+              继续探索
+            </Button>
+            <Button
+              disabled={!stoppingExploration || stoppingExplorationId === stoppingExploration.id}
+              onClick={() => stoppingExploration && stopExplorationRun(stoppingExploration)}
+              type="button"
+              variant="destructive"
+            >
+              <Square className="size-4" />
+              停止探索
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -907,7 +984,9 @@ export function ExplorationWorkspace({
               <FieldLabel htmlFor="exploration-project">项目</FieldLabel>
               <Select
                 disabled={explorationProjectSelectDisabled}
-                onValueChange={(value) => {
+                id="exploration-project"
+                placeholder={projectScope === "project" ? scopedProjectName : "选择项目"}
+                setValue={(value) => {
                   const firstEnvironment = rows.find((environment) => environment.project_id === value);
                   setExplorationForm((current) => ({
                     ...current,
@@ -915,40 +994,32 @@ export function ExplorationWorkspace({
                     environmentId: firstEnvironment?.id ?? "",
                   }));
                 }}
-                value={projectScope === "project" ? projectId : explorationForm.projectId}
+                value={explorationProjectValue}
               >
-                <SelectTrigger className="w-full" id="exploration-project">
-                  <SelectValue placeholder={projectScope === "project" ? projectName : "选择项目"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {projectScope === "project" && projectId ? (
-                    <SelectItem value={projectId}>{projectName}</SelectItem>
-                  ) : (
-                    projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
+                {projectScope === "project" && projectId ? (
+                  <SelectOption value={projectId}>{scopedProjectName}</SelectOption>
+                ) : (
+                  projects.map((project) => (
+                    <SelectOption key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectOption>
+                  ))
+                )}
               </Select>
             </Field>
             <Field>
               <FieldLabel htmlFor="exploration-environment">环境</FieldLabel>
               <Select
-                onValueChange={(value) => setExplorationForm((current) => ({ ...current, environmentId: value }))}
+                id="exploration-environment"
+                placeholder="选择环境"
+                setValue={(value) => setExplorationForm((current) => ({ ...current, environmentId: value }))}
                 value={explorationForm.environmentId}
               >
-                <SelectTrigger className="w-full" id="exploration-environment">
-                  <SelectValue placeholder="选择环境" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableEnvironments.map((environment) => (
-                    <SelectItem key={environment.id} value={environment.id}>
-                      {environment.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
+                {availableEnvironments.map((environment) => (
+                  <SelectOption key={environment.id} value={environment.id}>
+                    {environment.name}
+                  </SelectOption>
+                ))}
               </Select>
             </Field>
             <Field className="sm:col-span-2">
@@ -1002,44 +1073,5 @@ export function ExplorationWorkspace({
         </DialogContent>
       </Dialog>
     </PageShell>
-  );
-}
-
-function LabeledInput({
-  id,
-  label,
-  onChange,
-  placeholder,
-  trailing,
-  type = "text",
-  value,
-}: {
-  id: string;
-  label: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  trailing?: ReactNode;
-  type?: string;
-  value: string;
-}) {
-  const hasTrailing = trailing !== undefined && trailing !== null;
-
-  return (
-    <div className="space-y-2">
-      <label className="font-medium text-sm" htmlFor={id}>
-        {label}
-      </label>
-      <div className="relative">
-        <Input
-          className={hasTrailing ? "pr-10" : undefined}
-          id={id}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-          type={type}
-          value={value}
-        />
-        {trailing}
-      </div>
-    </div>
   );
 }

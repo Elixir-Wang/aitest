@@ -41,7 +41,11 @@ export function ProjectSwitcher({ scope: _scope }: { scope: "all" | "project" })
       try {
         const projects = await apiRequest<ApiProject[]>("/projects");
         if (!ignore) {
-          setProjectOptions(projects.filter((project) => project.status !== "archived"));
+          const activeProjects = projects.filter((project) => project.status !== "archived");
+          setProjectOptions(activeProjects);
+          if (currentScope === "project" && currentProjectId && !activeProjects.some((project) => project.id === currentProjectId)) {
+            selectAllProjects();
+          }
         }
       } catch {
         if (!ignore) {
@@ -61,7 +65,7 @@ export function ProjectSwitcher({ scope: _scope }: { scope: "all" | "project" })
       ignore = true;
       window.removeEventListener(PROJECT_LIST_CHANGED_EVENT, handleProjectListChanged);
     };
-  }, [hasAuthHydrated, token]);
+  }, [currentProjectId, currentScope, hasAuthHydrated, selectAllProjects, token]);
 
   return (
     <div className="relative inline-grid max-w-72 grid-cols-[max-content] justify-items-center">

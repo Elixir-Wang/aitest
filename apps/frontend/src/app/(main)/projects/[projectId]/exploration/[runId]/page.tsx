@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useParams } from "next/navigation";
 
-import { AlertTriangle, FileText, Pencil, Play, RefreshCw, Route, X } from "lucide-react";
+import { AlertTriangle, FileText, Pencil, Play, RefreshCw, Route, Square, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
@@ -27,7 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { apiRequest } from "@/lib/api-client";
+import { apiRequest, formatDateTime, parseApiTimestamp } from "@/lib/api-client";
 
 type ExplorationRun = {
   id: string;
@@ -132,12 +132,15 @@ const statusLabels: Record<string, string> = {
   queued: "排队中",
   running: "探索中",
   waiting_human: "等待人工",
+  stopping: "正在停止",
+  cancelled: "已停止",
   partial: "部分完成",
   completed: "已完成",
   blocked: "阻塞",
 };
 
-const autoRefreshStatuses = new Set(["queued", "running", "waiting_human", "in-progress"]);
+const autoRefreshStatuses = new Set(["queued", "running", "waiting_human", "stopping", "in-progress"]);
+const stoppableStatuses = new Set(["queued", "running", "waiting_human"]);
 const autoRefreshIntervalMs = 3000;
 const emptyExplorationForm: ExplorationForm = {
   title: "",
@@ -154,6 +157,7 @@ export default function Page() {
   const [detail, setDetail] = useState<ExplorationRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
   const [failureVisible, setFailureVisible] = useState(true);
   const [activeTab, setActiveTab] = useState("探索概览");
@@ -164,6 +168,7 @@ export default function Page() {
   const [logLoading, setLogLoading] = useState(false);
   const [logError, setLogError] = useState("");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [stopDialogOpen, setStopDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [environments, setEnvironments] = useState<ProjectEnvironment[]>([]);
   const [environmentLoading, setEnvironmentLoading] = useState(false);
@@ -270,6 +275,27 @@ export default function Page() {
     }
   }
 
+  async function stopExploration() {
+    if (!run) {
+      return;
+    }
+    setStopping(true);
+    try {
+      const updated = await apiRequest<ExplorationRun>(`/projects/${run.project_id}/exploration-runs/${run.id}/stop`, {
+        method: "POST",
+      });
+      setRun(updated);
+      setDetail((current) => (current ? { ...current, run: updated } : current));
+      setStopDialogOpen(false);
+      toast.success("探索任务已停止");
+      window.setTimeout(() => void loadRun({ silent: true }), 800);
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "探索任务停止失败");
+    } finally {
+      setStopping(false);
+    }
+  }
+
   async function loadEnvironments() {
     setEnvironmentLoading(true);
     try {
@@ -332,8 +358,9 @@ export default function Page() {
     }
   }
 
-  const canStart = run ? ["pending", "queued", "partial", "completed", "blocked"].includes(run.status) : false;
-  const canEdit = run ? !["running", "waiting_human"].includes(run.status) : false;
+  const canStart = run ? ["pending", "partial", "completed", "blocked", "cancelled"].includes(run.status) : false;
+  const canStop = run ? stoppableStatuses.has(run.status) : false;
+  const canEdit = run ? !["queued", "running", "waiting_human", "stopping"].includes(run.status) : false;
   const startDisabled = !canStart || starting;
   const saveDisabled = !explorationForm.title.trim() || !explorationForm.environmentId || saving;
   const planTasks = detail ? toPlanTasks(detail) : [];
@@ -344,7 +371,7 @@ export default function Page() {
         projectId: params.projectId,
         requestPath: `/projects/${params.projectId}/exploration-runs/${params.runId}/detail`,
         runId: params.runId,
-        failedAt: formatBeijingDateTime(new Date().toISOString()),
+        failedAt: formatDateTime(new Date().toISOString()),
       }
     : null;
 
@@ -361,6 +388,15 @@ export default function Page() {
           <Button disabled={!canEdit} onClick={openEditDialog} size="sm" variant="outline">
             <Pencil className="size-4" />
             编辑
+          </Button>
+          <Button
+            disabled={!canStop || stopping}
+            onClick={() => setStopDialogOpen(true)}
+            size="sm"
+            variant="destructive"
+          >
+            <Square className="size-4" />
+            停止探索
           </Button>
           <Button disabled={startDisabled} onClick={startExploration} size="sm">
             <Play className="size-4" />
@@ -397,7 +433,7 @@ export default function Page() {
               helper="最近一次状态变更"
               icon={RefreshCw}
               label="更新时间"
-              value={run ? formatBeijingDateTime(run.updated_at) : "-"}
+              value={run ? formatDateTime(run.updated_at) : "-"}
             />
             <MetricCard helper="从开始探索到结束的耗时" icon={FileText} label="探索时长" value={explorationDuration} />
           </div>
@@ -410,9 +446,23 @@ export default function Page() {
                   <p className="text-muted-foreground text-xs">展示当前模块、子页面、元素和阻塞项探索状态</p>
                 </div>
                 {run ? (
-                  <Badge variant={run.status === "blocked" ? "destructive" : "secondary"}>
-                    {statusLabels[run.status] ?? run.status}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={run.status === "blocked" ? "destructive" : "secondary"}>
+                      {statusLabels[run.status] ?? run.status}
+                    </Badge>
+                    {canStop ? (
+                      <Button
+                        disabled={stopping}
+                        onClick={() => setStopDialogOpen(true)}
+                        size="sm"
+                        type="button"
+                        variant="destructive"
+                      >
+                        <Square className="size-3.5" />
+                        停止
+                      </Button>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
               {loading ? (
@@ -448,17 +498,17 @@ export default function Page() {
                   <TimelineItem
                     active={Boolean(run)}
                     label="创建任务"
-                    value={run ? formatBeijingDateTime(run.created_at) : "-"}
+                    value={run ? formatDateTime(run.created_at) : "-"}
                   />
                   <TimelineItem
                     active={Boolean(run?.started_at)}
                     label="开始探索"
-                    value={run?.started_at ? formatBeijingDateTime(run.started_at) : "待执行"}
+                    value={run?.started_at ? formatDateTime(run.started_at) : "待执行"}
                   />
                   <TimelineItem
                     active={Boolean(run?.finished_at)}
                     label="完成探索"
-                    value={run?.finished_at ? formatBeijingDateTime(run.finished_at) : "等待结果"}
+                    value={run?.finished_at ? formatDateTime(run.finished_at) : "等待结果"}
                   />
                 </CardContent>
               </Card>
@@ -561,6 +611,24 @@ export default function Page() {
             </Button>
             <Button disabled={saveDisabled} onClick={saveExplorationRun} type="button">
               保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog onOpenChange={setStopDialogOpen} open={stopDialogOpen}>
+        <DialogContent className="gap-5 p-6 sm:max-w-md">
+          <DialogHeader className="gap-3">
+            <DialogTitle>停止探索任务</DialogTitle>
+            <DialogDescription>停止后将终止当前浏览器探索进程，已生成的截图、日志和页面事实会保留。</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="-mx-6 -mb-6 px-6 py-4">
+            <Button onClick={() => setStopDialogOpen(false)} type="button" variant="outline">
+              继续探索
+            </Button>
+            <Button disabled={stopping} onClick={stopExploration} type="button" variant="destructive">
+              <Square className="size-4" />
+              停止探索
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -716,7 +784,7 @@ function ExplorationReportPanel({
         <div className="space-y-3">
           <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-sm sm:grid-cols-3">
             <InfoRow label="报告版本" value={report.version_no ? `v${report.version_no}` : "-"} />
-            <InfoRow label="生成时间" value={report.created_at ? formatBeijingDateTime(report.created_at) : "-"} />
+            <InfoRow label="生成时间" value={report.created_at ? formatDateTime(report.created_at) : "-"} />
             <InfoRow label="变更摘要" value={report.change_summary || "-"} />
           </div>
           <MarkdownPreview
@@ -779,33 +847,6 @@ function formatExplorationDuration(run: ExplorationRun): string {
   return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
 }
 
-function formatBeijingDateTime(value: string | null): string {
-  const timestamp = parseApiTimestamp(value);
-  if (!Number.isFinite(timestamp)) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(new Date(timestamp));
-}
-
-function parseApiTimestamp(value: string | null): number {
-  if (!value) {
-    return Number.NaN;
-  }
-  const normalized = value.includes("T") ? value : value.replace(" ", "T");
-  const hasTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(normalized);
-  return new Date(hasTimeZone ? normalized : `${normalized}Z`).getTime();
-}
-
 function toPlanTasks(detail: ExplorationRunDetail): AgentPlanTask[] {
   return detail.modules.map((module) => {
     const pageSubtasks = module.pages.map((page) => ({
@@ -848,13 +889,23 @@ function toPlanTasks(detail: ExplorationRunDetail): AgentPlanTask[] {
       description: module.completion_summary || module.entry_path,
       status: normalizePlanStatus(module.completion_status),
       dependencies: [
-        `${module.explored_page_count}/${module.planned_page_count || module.explored_page_count || 1} 页面`,
+        formatModulePageProgress(module),
         module.blocked_page_count ? `${module.blocked_page_count} 阻塞` : "",
       ].filter(Boolean),
       meta: [module.entry_path].filter(Boolean),
       subtasks: [...pageSubtasks, ...blockerSubtasks, ...elementSubtasks, ...pendingSubtask],
     };
   });
+}
+
+function formatModulePageProgress(module: ExplorationRunDetail["modules"][number]): string {
+  if (module.planned_page_count > 0 && module.completion_status === "completed") {
+    return `${module.explored_page_count}/${module.planned_page_count} 页面`;
+  }
+  if (module.planned_page_count > 0) {
+    return `已探索 ${module.explored_page_count}/${module.planned_page_count} 页`;
+  }
+  return `已探索 ${module.explored_page_count} 页`;
 }
 
 function normalizePlanStatus(status: string): AgentPlanTask["status"] {

@@ -28,7 +28,9 @@ def exploration_actions(role: str, status: str) -> list[str]:
     if role != "admin":
         return ["read"]
     actions = ["read", "create"]
-    if status != "running":
+    if status in {"queued", "running", "waiting_human"}:
+        actions.append("cancel")
+    if status not in {"queued", "running", "waiting_human", "stopping"}:
         actions.append("delete")
     return actions
 
