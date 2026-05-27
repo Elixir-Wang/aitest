@@ -1219,6 +1219,20 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             )
             self.assertIn("合并候选稿未生成", overview["artifact_tabs"][0]["content"])
             self.assertIn("model not configured", overview["artifact_tabs"][3]["content"])
+            with connect() as db:
+                row = db.execute(
+                    """
+                    SELECT result, failure_reason, summary, after_json
+                    FROM operation_logs
+                    WHERE object_id = 'doc-1' AND action = 'merge'
+                    """
+                ).fetchone()
+
+            self.assertIsNotNone(row)
+            self.assertEqual(row["result"], "failed")
+            self.assertIn("model not configured", row["failure_reason"])
+            self.assertIn("需求归并失败", row["summary"])
+            self.assertIn('"quality_result": "failed"', row["after_json"])
 
     async def test_merge_exception_writes_failed_operation_log(self):
         with isolated_document_store() as actor:

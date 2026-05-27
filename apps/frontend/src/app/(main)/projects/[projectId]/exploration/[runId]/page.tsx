@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { useProjectName } from "@/components/ai-testing/use-project-name";
-import { AgentPlan, type AgentPlanTask } from "@/components/ui/agent-plan";
+import { AgentPlan, type AgentPlanSubtask, type AgentPlanTask } from "@/components/ui/agent-plan";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -133,7 +133,7 @@ const statusLabels: Record<string, string> = {
   running: "探索中",
   waiting_human: "等待人工",
   stopping: "正在停止",
-  cancelled: "已停止",
+  cancelled: "已中止",
   partial: "部分完成",
   completed: "已完成",
   blocked: "阻塞",
@@ -362,8 +362,12 @@ export default function Page() {
   const canStop = run ? stoppableStatuses.has(run.status) : false;
   const canEdit = run ? !["queued", "running", "waiting_human", "stopping"].includes(run.status) : false;
   const startDisabled = !canStart || starting;
+  const startLabel = run?.status === "cancelled" ? "重新开始探索" : "开始探索";
   const saveDisabled = !explorationForm.title.trim() || !explorationForm.environmentId || saving;
   const planTasks = detail ? toPlanTasks(detail) : [];
+  const hasNoExplorationArtifacts = detail ? detail.modules.every((module) => hasNoModuleArtifacts(module)) : false;
+  const shouldShowNoArtifactNotice =
+    Boolean(run && hasNoExplorationArtifacts && (run.status === "cancelled" || run.status === "blocked"));
   const explorationDuration = run ? formatExplorationDuration(run) : "-";
   const failureDetail = error
     ? {
@@ -389,18 +393,15 @@ export default function Page() {
             <Pencil className="size-4" />
             编辑
           </Button>
-          <Button
-            disabled={!canStop || stopping}
-            onClick={() => setStopDialogOpen(true)}
-            size="sm"
-            variant="destructive"
-          >
-            <Square className="size-4" />
-            停止探索
-          </Button>
+          {canStop ? (
+            <Button disabled={stopping} onClick={() => setStopDialogOpen(true)} size="sm" variant="destructive">
+              <Square className="size-4" />
+              停止探索
+            </Button>
+          ) : null}
           <Button disabled={startDisabled} onClick={startExploration} size="sm">
             <Play className="size-4" />
-            开始探索
+            {startLabel}
           </Button>
         </>
       }
@@ -468,11 +469,22 @@ export default function Page() {
               {loading ? (
                 <div className="py-10 text-center text-muted-foreground text-sm">探索任务加载中</div>
               ) : run ? (
-                <AgentPlan
-                  className="max-w-full"
-                  defaultExpandedTaskIds={planTasks.map((task) => task.id)}
-                  tasks={planTasks}
-                />
+                <div className="space-y-3">
+                  {shouldShowNoArtifactNotice ? (
+                    <NoArtifactNotice
+                      disabled={startDisabled}
+                      loading={starting}
+                      run={run}
+                      onOpenLog={() => setActiveTab("探索日志")}
+                      onRestart={startExploration}
+                    />
+                  ) : null}
+                  <AgentPlan
+                    className="max-w-full"
+                    defaultExpandedTaskIds={planTasks.map((task) => task.id)}
+                    tasks={planTasks}
+                  />
+                </div>
               ) : null}
             </ShellSection>
 
@@ -647,6 +659,46 @@ function ExplorationFailureNotice({ error, onClose }: { error: string; onClose: 
       <Button aria-label="关闭探索失败信息" onClick={onClose} size="icon-xs" type="button" variant="ghost">
         <X className="size-4" />
       </Button>
+    </div>
+  );
+}
+
+function NoArtifactNotice({
+  disabled,
+  loading,
+  onOpenLog,
+  onRestart,
+  run,
+}: {
+  disabled: boolean;
+  loading: boolean;
+  onOpenLog: () => void;
+  onRestart: () => void;
+  run: ExplorationRun;
+}) {
+  const isCancelled = run.status === "cancelled";
+  const title = isCancelled ? "本次探索已中止，未生成探索产物" : "本次探索被阻塞，未生成探索产物";
+  const description = isCancelled
+    ? "用户已停止探索；此前任务已无运行中的浏览器探索进程，已生成的日志会继续保留。"
+    : run.result_summary || "当前探索需要人工处理后才能继续，请查看日志确认阻塞原因和证据。";
+
+  return (
+    <div className="rounded-lg border bg-muted/20 p-4 text-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          <div className="font-medium">{title}</div>
+          <p className="text-muted-foreground">{description}</p>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <Button onClick={onOpenLog} size="sm" type="button" variant="outline">
+            查看日志
+          </Button>
+          <Button disabled={disabled} onClick={onRestart} size="sm" type="button">
+            <Play className="size-4" />
+            {loading ? "启动中" : "重新开始"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -870,24 +922,15 @@ function toPlanTasks(detail: ExplorationRunDetail): AgentPlanTask[] {
       status: "completed" as const,
       meta: [element.element_type, element.recommended_locator].filter(Boolean),
     }));
+    const emptyArtifactSubtask = buildEmptyArtifactSubtask(detail.run, module);
     const pendingSubtask =
-      pageSubtasks.length + blockerSubtasks.length + elementSubtasks.length === 0
-        ? [
-            {
-              id: `pending-${module.id}`,
-              title: "等待探索产物",
-              description: "开始探索后会在这里展示模块子页面、关键元素、阻塞项和完成情况。",
-              status: normalizePlanStatus(detail.run.status),
-              meta: [module.entry_path].filter(Boolean),
-            },
-          ]
-        : [];
+      pageSubtasks.length + blockerSubtasks.length + elementSubtasks.length === 0 ? [emptyArtifactSubtask] : [];
 
     return {
       id: module.id,
       title: module.module_name,
       description: module.completion_summary || module.entry_path,
-      status: normalizePlanStatus(module.completion_status),
+      status: getModulePlanStatus(detail.run.status, module.completion_status),
       dependencies: [
         formatModulePageProgress(module),
         module.blocked_page_count ? `${module.blocked_page_count} 阻塞` : "",
@@ -896,6 +939,68 @@ function toPlanTasks(detail: ExplorationRunDetail): AgentPlanTask[] {
       subtasks: [...pageSubtasks, ...blockerSubtasks, ...elementSubtasks, ...pendingSubtask],
     };
   });
+}
+
+function hasNoModuleArtifacts(module: ExplorationRunDetail["modules"][number]): boolean {
+  return module.pages.length === 0 && module.elements.length === 0 && module.blockers.length === 0;
+}
+
+function buildEmptyArtifactSubtask(
+  run: ExplorationRun,
+  module: ExplorationRunDetail["modules"][number],
+): AgentPlanSubtask {
+  const moduleName = module.module_name || "当前模块";
+  const scope = module.entry_path || run.scope || run.environment_name;
+  if (run.status === "queued") {
+    return {
+      id: `pending-${module.id}`,
+      title: `${moduleName}：等待 Runner 接收`,
+      description: `任务已提交，Runner 接收后会从该范围采集页面、链接、元素和阻塞证据：${scope}`,
+      status: "queued",
+      meta: [scope].filter(Boolean),
+    };
+  }
+  if (run.status === "running" || run.status === "stopping") {
+    return {
+      id: `pending-${module.id}`,
+      title: `${moduleName}：正在采集证据`,
+      description: `Playwright CLI 正在按该模块范围探索；采集到页面、关键元素或阻塞项后会替换这里的占位信息：${scope}`,
+      status: "in-progress",
+      meta: [scope].filter(Boolean),
+    };
+  }
+  if (run.status === "waiting_human") {
+    return {
+      id: `pending-${module.id}`,
+      title: `${moduleName}：等待人工处理`,
+      description: module.completion_summary || run.result_summary || "当前探索需要人工处理后才能继续。",
+      status: "blocked",
+      meta: [scope].filter(Boolean),
+    };
+  }
+  if (run.status === "blocked" || run.status === "cancelled") {
+    const isCancelled = run.status === "cancelled";
+    return {
+      id: `pending-${module.id}`,
+      title: isCancelled ? `${moduleName}：已中止，未生成探索产物` : `${moduleName}：未生成探索产物`,
+      description:
+        module.completion_summary ||
+        run.result_summary ||
+        (isCancelled
+          ? "用户已停止探索；此前任务已无运行中的浏览器探索进程，日志会继续保留。"
+          : "本次探索未生成该模块的页面、元素或阻塞明细。"),
+      status: normalizePlanStatus(run.status),
+      meta: [scope].filter(Boolean),
+    };
+  }
+
+  return {
+    id: `pending-${module.id}`,
+    title: `${moduleName}：等待探索产物`,
+    description: `开始探索后会在这里展示该模块的子页面、关键元素、阻塞项和完成情况：${scope}`,
+    status: normalizePlanStatus(module.completion_status),
+    meta: [scope].filter(Boolean),
+  };
 }
 
 function formatModulePageProgress(module: ExplorationRunDetail["modules"][number]): string {
@@ -908,8 +1013,18 @@ function formatModulePageProgress(module: ExplorationRunDetail["modules"][number
   return `已探索 ${module.explored_page_count} 页`;
 }
 
+function getModulePlanStatus(runStatus: string, moduleStatus: string): AgentPlanTask["status"] {
+  if (moduleStatus === "pending" && (runStatus === "queued" || runStatus === "running" || runStatus === "stopping")) {
+    return normalizePlanStatus(runStatus);
+  }
+  return normalizePlanStatus(moduleStatus);
+}
+
 function normalizePlanStatus(status: string): AgentPlanTask["status"] {
   if (status === "running" || status === "in-progress") {
+    return "in-progress";
+  }
+  if (status === "stopping") {
     return "in-progress";
   }
   if (status === "queued") {
@@ -917,6 +1032,12 @@ function normalizePlanStatus(status: string): AgentPlanTask["status"] {
   }
   if (status === "pending") {
     return "pending";
+  }
+  if (status === "waiting_human") {
+    return "blocked";
+  }
+  if (status === "cancelled") {
+    return "cancelled";
   }
   if (status === "completed" || status === "partial" || status === "blocked" || status === "failed") {
     return status;

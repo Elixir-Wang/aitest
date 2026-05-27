@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import traceback
 from pathlib import Path
 import secrets
 import time
@@ -20,6 +21,13 @@ from app.services import exploration_service, operation_log_service
 
 
 def run_exploration(run_id: str) -> None:
+    try:
+        _run_exploration(run_id)
+    except Exception as error:
+        _mark_run_failed_after_unhandled_error(run_id, error)
+
+
+def _run_exploration(run_id: str) -> None:
     start_event = None
     with connect() as db:
         run = exploration_repo.find_by_id(db, run_id)
@@ -116,6 +124,56 @@ def run_exploration(run_id: str) -> None:
 
     if finish_event:
         _record_runner_event(finish_event[0], **finish_event[1])
+
+
+def _mark_run_failed_after_unhandled_error(run_id: str, error: Exception) -> None:
+    error_detail = f"{type(error).__name__}: {error}"
+    summary = f"探索执行异常中断：{error_detail[:500]}"
+    try:
+        with connect() as db:
+            run = exploration_repo.find_by_id(db, run_id)
+            if not run or run["status"] not in {"queued", "running", "stopping", "waiting_human"}:
+                return
+            artifact_root = PROJECT_FILE_STORAGE_ROOT / run["project_id"] / "exploration" / run_id
+            _ensure_artifact_dirs(artifact_root)
+            log_path = artifact_root / "logs" / "run.log"
+            log_path.write_text(
+                "\n".join(
+                    [
+                        "Unhandled site exploration error.",
+                        error_detail,
+                        traceback.format_exc(),
+                    ]
+                ).strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            exploration_repo.update_run_state(
+                db,
+                run_id,
+                status="blocked",
+                artifact_root=store_path(artifact_root) or run["artifact_root"],
+                result_summary=summary,
+                finished=True,
+            )
+            failure_event = (
+                run,
+                {
+                    "action": "finish",
+                    "result": "failed",
+                    "summary": f"站点探索异常中断：{run['title']}，{summary}",
+                    "failure_reason": summary,
+                    "after": {
+                        "status": "blocked",
+                        "result_summary": summary,
+                        "log_path": store_path(log_path) or "",
+                    },
+                    "artifact_path": [store_path(log_path) or ""],
+                },
+            )
+    except Exception:
+        return
+    _record_runner_event(failure_event[0], **failure_event[1])
 
 
 def _ensure_artifact_dirs(root: Path) -> None:

@@ -8,7 +8,16 @@ import { CheckCircle2, Circle, CircleAlert, CircleDotDashed, CircleX } from "luc
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-export type AgentPlanStatus = "pending" | "queued" | "in-progress" | "running" | "completed" | "partial" | "blocked" | "failed";
+export type AgentPlanStatus =
+  | "pending"
+  | "queued"
+  | "in-progress"
+  | "running"
+  | "completed"
+  | "partial"
+  | "blocked"
+  | "cancelled"
+  | "failed";
 
 export type AgentPlanSubtask = {
   id: string;
@@ -44,6 +53,7 @@ const statusLabels: Record<AgentPlanStatus, string> = {
   completed: "已完成",
   partial: "部分完成",
   blocked: "阻塞",
+  cancelled: "已中止",
   failed: "失败",
 };
 
@@ -55,6 +65,7 @@ const statusStyles: Record<AgentPlanStatus, string> = {
   completed: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300",
   partial: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
   blocked: "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300",
+  cancelled: "bg-muted text-muted-foreground",
   failed: "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300",
 };
 
@@ -88,7 +99,7 @@ function StatusIcon({ status, subtask = false }: { status: AgentPlanStatus | str
       </motion.span>
     );
   }
-  if (normalized === "partial") {
+  if (normalized === "partial" || normalized === "cancelled") {
     return <CircleAlert className={cn(className, "text-amber-500")} />;
   }
   if (normalized === "blocked" || normalized === "failed") {

@@ -327,34 +327,45 @@ def stop_project_run(project_id: str, run_id: str, actor) -> dict:
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "探索任务不存在。")
         _ensure_project_visible(existing, actor)
-        if existing["status"] not in {"queued", "running", "waiting_human"}:
-            raise api_error(409, "EXPLORATION_NOT_RUNNING", "只有排队中或探索中的任务可以停止。")
-        exploration_repo.update_run_state(
-            db,
-            run_id,
-            status="stopping",
-            result_summary="用户已请求停止探索，正在终止浏览器探索进程。",
-        )
-        row = exploration_repo.find_by_id(db, run_id)
-        result = serialize_exploration_run(row, actor["role"])
         before = _run_snapshot(existing)
-        after = _run_snapshot(result)
-    operation_log_service.record_task_event(
-        module="exploration",
-        action="cancel",
-        object_type="exploration_run",
-        object_id=run_id,
-        object_name=result["title"],
-        project_id=project_id,
-        actor_id=actor["id"],
-        actor_name=operation_log_service.actor_display_name(actor),
-        source="web",
-        result="success",
-        summary=f"请求停止站点探索任务：{result['title']}",
-        before=before,
-        after=after,
-        task_id=run_id,
-    )
+        if existing["status"] in {"completed", "partial", "blocked", "cancelled"}:
+            result = serialize_exploration_run(existing, actor["role"])
+            after = _run_snapshot(result)
+            should_log = False
+        elif existing["status"] == "stopping":
+            result = serialize_exploration_run(existing, actor["role"])
+            after = _run_snapshot(result)
+            should_log = False
+        elif existing["status"] in {"queued", "running", "waiting_human"}:
+            exploration_repo.update_run_state(
+                db,
+                run_id,
+                status="stopping",
+                result_summary="用户已请求停止探索，正在终止浏览器探索进程。",
+            )
+            row = exploration_repo.find_by_id(db, run_id)
+            result = serialize_exploration_run(row, actor["role"])
+            after = _run_snapshot(result)
+            should_log = True
+        else:
+            raise api_error(409, "EXPLORATION_NOT_RUNNING", "只有排队中或探索中的任务可以停止。")
+    if should_log:
+        operation_log_service.record_task_event(
+            module="exploration",
+            action="cancel",
+            object_type="exploration_run",
+            object_id=run_id,
+            object_name=result["title"],
+            project_id=project_id,
+            actor_id=actor["id"],
+            actor_name=operation_log_service.actor_display_name(actor),
+            source="web",
+            result="success",
+            summary=f"请求停止站点探索任务：{result['title']}",
+            before=before,
+            after=after,
+            task_id=run_id,
+        )
     return result
 
 

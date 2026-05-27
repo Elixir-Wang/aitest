@@ -10,7 +10,9 @@ from pydantic import ValidationError
 from app.agents.runtime import run_agent
 from app.schemas.requirement_merge import (
     RequirementClusterDecision,
+    RequirementClusterDecisionRaw,
     RequirementCoverageItem,
+    RequirementFragmentClassification,
     RequirementFragmentClassificationBatch,
     RequirementFragmentCluster,
     RequirementMergeBaseVersion,
@@ -23,6 +25,8 @@ from app.schemas.requirement_merge import (
 )
 
 REQUIREMENT_MERGE_AGENT_ID = "requirement_merge"
+FRAGMENT_CLASSIFICATION_BATCH_SIZE = 40
+FRAGMENT_CLASSIFICATION_REPAIR_ATTEMPTS = 2
 
 
 def detect_merge_mode(current_version_id: str | None, *, force_rebuild: bool = False) -> str:
@@ -167,18 +171,50 @@ async def _classify_fragments_v2(
     input_data: RequirementMergeInput,
     source_fragments: list[RequirementSourceFragment],
 ) -> list:
+    classifications_by_id: dict[str, RequirementFragmentClassification] = {}
+    unknown_ids: set[str] = set()
+
+    for batch in _fragment_batches(source_fragments, FRAGMENT_CLASSIFICATION_BATCH_SIZE):
+        batch_output, batch_unknown_ids = await _classify_fragment_batch_v2(input_data, batch)
+        classifications_by_id.update({item.fragment_id: item for item in batch_output})
+        unknown_ids.update(batch_unknown_ids)
+
+        for _ in range(FRAGMENT_CLASSIFICATION_REPAIR_ATTEMPTS):
+            missing_batch = [fragment for fragment in batch if fragment.fragment_id not in classifications_by_id]
+            if not missing_batch:
+                break
+            repair_output, repair_unknown_ids = await _classify_fragment_batch_v2(input_data, missing_batch)
+            classifications_by_id.update({item.fragment_id: item for item in repair_output})
+            unknown_ids.update(repair_unknown_ids)
+
+    expected_ids = {fragment.fragment_id for fragment in source_fragments}
+    actual_ids = set(classifications_by_id)
+    missing_ids = sorted(expected_ids - actual_ids)
+    if missing_ids:
+        raise ValueError(f"需求归并智能体片段分类缺失：{', '.join(missing_ids)}。")
+    if unknown_ids:
+        raise ValueError(f"需求归并智能体片段分类包含未知片段：{', '.join(sorted(unknown_ids))}。")
+    return [classifications_by_id[fragment.fragment_id] for fragment in source_fragments]
+
+
+async def _classify_fragment_batch_v2(
+    input_data: RequirementMergeInput,
+    source_fragments: list[RequirementSourceFragment],
+) -> tuple[list[RequirementFragmentClassification], set[str]]:
     prompt = _build_v2_classification_prompt(input_data, source_fragments)
     parsed = await _run_small_json_stage(prompt, "需求归并智能体片段分类未返回合法 JSON。")
     output = RequirementFragmentClassificationBatch.model_validate(parsed)
     expected_ids = {fragment.fragment_id for fragment in source_fragments}
-    actual_ids = {item.fragment_id for item in output.classifications}
-    missing_ids = sorted(expected_ids - actual_ids)
-    unknown_ids = sorted(actual_ids - expected_ids)
-    if missing_ids:
-        raise ValueError(f"需求归并智能体片段分类缺失：{', '.join(missing_ids)}。")
-    if unknown_ids:
-        raise ValueError(f"需求归并智能体片段分类包含未知片段：{', '.join(unknown_ids)}。")
-    return output.classifications
+    classifications = [item for item in output.classifications if item.fragment_id in expected_ids]
+    unknown_ids = {item.fragment_id for item in output.classifications if item.fragment_id not in expected_ids}
+    return classifications, unknown_ids
+
+
+def _fragment_batches(
+    source_fragments: list[RequirementSourceFragment],
+    batch_size: int,
+) -> list[list[RequirementSourceFragment]]:
+    return [source_fragments[index : index + batch_size] for index in range(0, len(source_fragments), batch_size)]
 
 
 async def _decide_clusters_v2(
@@ -191,7 +227,8 @@ async def _decide_clusters_v2(
     for cluster in clusters:
         prompt = _build_v2_cluster_decision_prompt(input_data, cluster, fragments_by_id)
         parsed = await _run_small_json_stage(prompt, "需求归并智能体语义簇决策未返回合法 JSON。")
-        decision = RequirementClusterDecision.model_validate(parsed)
+        raw_decision = RequirementClusterDecisionRaw.model_validate(parsed)
+        decision = _canonicalize_cluster_decision_payload(raw_decision)
         expected_ids = set(cluster.fragment_ids)
         actual_ids = {item.fragment_id for item in decision.fragment_decisions}
         missing_ids = sorted(expected_ids - actual_ids)
@@ -202,6 +239,103 @@ async def _decide_clusters_v2(
             raise ValueError(f"语义簇 {cluster.cluster_id} 决策包含未知片段：{', '.join(unknown_ids)}。")
         decisions.append(decision)
     return decisions
+
+
+def _canonicalize_cluster_decision_payload(raw_decision: RequirementClusterDecisionRaw) -> RequirementClusterDecision:
+    invalid_statuses: list[str] = []
+    fragment_decisions = [
+        {
+            **item.model_dump(),
+            "coverage_status": _normalize_fragment_coverage_status(item.coverage_status, invalid_statuses),
+        }
+        for item in raw_decision.fragment_decisions
+    ]
+    if invalid_statuses:
+        raise ValueError(f"语义簇决策包含无法归一化的片段状态：{', '.join(sorted(set(invalid_statuses)))}。")
+    payload = raw_decision.model_dump()
+    payload["decision"] = _normalize_cluster_decision(raw_decision.decision, fragment_decisions)
+    payload["fragment_decisions"] = fragment_decisions
+    return RequirementClusterDecision.model_validate(payload)
+
+
+def _normalize_fragment_coverage_status(raw_value: Any, invalid_statuses: list[str]) -> str:
+    normalized = _normalize_merge_status(raw_value, target="coverage_status")
+    if normalized in {"merged", "duplicate", "conflict", "pending_clarification", "discarded"}:
+        return normalized
+    invalid_statuses.append(str(raw_value or ""))
+    return normalized
+
+
+def _normalize_cluster_decision(raw_value: Any, fragment_decisions: list) -> str:
+    normalized = _normalize_merge_status(raw_value, target="cluster_decision")
+    if normalized:
+        return normalized
+
+    statuses = {
+        str(item.get("coverage_status") or "")
+        for item in fragment_decisions
+        if isinstance(item, dict) and item.get("coverage_status")
+    }
+    if "conflict" in statuses:
+        return "conflict"
+    if "pending_clarification" in statuses:
+        return "pending_clarification"
+    if statuses and statuses <= {"duplicate", "discarded"}:
+        return "duplicate" if "duplicate" in statuses else "discard"
+    return "merge"
+
+
+def _normalize_merge_status(raw_value: Any, *, target: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(raw_value or "").strip().lower()).strip("_")
+    aliases = {
+        "merge": "merge",
+        "merged": "merged",
+        "merging": "merge",
+        "mergeable": "merge",
+        "include": "merged",
+        "included": "merged",
+        "cover": "merged",
+        "covered": "merged",
+        "keep": "merged",
+        "kept": "merged",
+        "deduplicate": "duplicate",
+        "deduplicated": "duplicate",
+        "duplicate": "duplicate",
+        "duplicated": "duplicate",
+        "conflict": "conflict",
+        "conflicted": "conflict",
+        "contradiction": "conflict",
+        "pending": "pending_clarification",
+        "clarification": "pending_clarification",
+        "clarify": "pending_clarification",
+        "needs_clarification": "pending_clarification",
+        "pending_clarification": "pending_clarification",
+        "discard": "discarded",
+        "discarded": "discarded",
+        "drop": "discarded",
+        "dropped": "discarded",
+        "exclude": "discarded",
+        "excluded": "discarded",
+        "ignore": "discarded",
+        "ignored": "discarded",
+        "not_requirement": "discarded",
+        "non_requirement": "discarded",
+        "not_testable": "discarded",
+    }
+    canonical = aliases.get(normalized, normalized)
+    if target == "cluster_decision":
+        if canonical == "merged":
+            return "merge"
+        if canonical == "discarded":
+            return "discard"
+        if canonical in {"merge", "duplicate", "conflict", "pending_clarification", "discard"}:
+            return canonical
+        return ""
+    if canonical == "merge":
+        return "merged"
+    if canonical in {"merged", "duplicate", "conflict", "pending_clarification", "discarded"}:
+        return canonical
+    return str(raw_value or "")
 
 
 async def _merge_sections_v2(

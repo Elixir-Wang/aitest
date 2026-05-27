@@ -352,27 +352,47 @@ async def merge_document_markdown(
         )
         raise
     status = result.get("status", "")
-    operation_log_service.record_success(
-        log_type="audit",
-        module="requirement",
-        action=action,
-        object_type="requirement",
-        object_id=document_id,
-        object_name=document["name"] if document else document_id,
-        project_id=project_id,
-        actor_id=actor["id"],
-        actor_name=operation_log_service.actor_display_name(actor),
-        source="web",
-        summary=f"需求归并{_merge_status_label(status)}：{document['name'] if document else document_id}",
-        after={
-            "status": status,
-            "version_id": result.get("version_id"),
-            "version_no": result.get("version_no"),
-            "preview_id": result.get("preview_id"),
-            "conflict_count": result.get("conflict_count"),
-            "merge_summary": result.get("merge_summary", ""),
-        },
-    )
+    log_after = {
+        "status": status,
+        "version_id": result.get("version_id"),
+        "version_no": result.get("version_no"),
+        "preview_id": result.get("preview_id"),
+        "conflict_count": result.get("conflict_count"),
+        "merge_summary": result.get("merge_summary", ""),
+        "quality_result": result.get("quality_result", ""),
+    }
+    if _is_failed_merge_result(result):
+        failure_reason = str(result.get("merge_summary") or result.get("diff_summary") or "需求归并失败。")
+        operation_log_service.record_failure(
+            log_type="audit",
+            module="requirement",
+            action=action,
+            object_type="requirement",
+            object_id=document_id,
+            object_name=document["name"] if document else document_id,
+            project_id=project_id,
+            actor_id=actor["id"],
+            actor_name=operation_log_service.actor_display_name(actor),
+            source="web",
+            failure_reason=failure_reason,
+            summary=f"需求归并失败：{document['name'] if document else document_id}",
+            after=log_after,
+        )
+    else:
+        operation_log_service.record_success(
+            log_type="audit",
+            module="requirement",
+            action=action,
+            object_type="requirement",
+            object_id=document_id,
+            object_name=document["name"] if document else document_id,
+            project_id=project_id,
+            actor_id=actor["id"],
+            actor_name=operation_log_service.actor_display_name(actor),
+            source="web",
+            summary=f"需求归并{_merge_status_label(status)}：{document['name'] if document else document_id}",
+            after=log_after,
+        )
     return result
 
 
@@ -524,6 +544,10 @@ def _merge_status_label(status: str) -> str:
         "merged": "完成",
         "preview": "生成预览",
     }.get(status, "执行")
+
+
+def _is_failed_merge_result(result: dict) -> bool:
+    return result.get("status") == "failed" or result.get("quality_result") == "failed"
 
 
 def _exception_message(exc: Exception) -> str:

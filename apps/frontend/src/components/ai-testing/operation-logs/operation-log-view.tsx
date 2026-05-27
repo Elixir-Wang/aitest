@@ -2,15 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { Eye, RefreshCw, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, RefreshCw, Search } from "lucide-react";
 
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Button as PaginationButton } from "@/components/ui/button-1";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
-import { ListPagination } from "@/components/ui/list-pagination";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   type ApiOperationLogDetail,
@@ -72,6 +73,24 @@ const actions = [
 ];
 const results = ["", "success", "failed", "partial_success", "cancelled"];
 
+type PageItem = number | "ellipsis-start" | "ellipsis-end";
+
+function getVisiblePages(currentPage: number, pageCount: number): PageItem[] {
+  if (pageCount <= 7) {
+    return Array.from({ length: pageCount }, (_, index) => index + 1);
+  }
+
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, "ellipsis-end", pageCount];
+  }
+
+  if (currentPage >= pageCount - 3) {
+    return [1, "ellipsis-start", pageCount - 4, pageCount - 3, pageCount - 2, pageCount - 1, pageCount];
+  }
+
+  return [1, "ellipsis-start", currentPage - 1, currentPage, currentPage + 1, "ellipsis-end", pageCount];
+}
+
 export function OperationLogView({ endpoint, showProjectFilter = false }: OperationLogViewProps) {
   const [logs, setLogs] = useState<ApiOperationLogListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -85,6 +104,9 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
   const [result, setResult] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ApiOperationLogDetail | null>(null);
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(page, 1), pageCount);
+  const visiblePages = getVisiblePages(safePage, pageCount);
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
@@ -129,6 +151,10 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "日志详情加载失败");
     }
+  }
+
+  function goToPage(nextPage: number) {
+    setPage(Math.min(Math.max(nextPage, 1), pageCount));
   }
 
   return (
@@ -207,10 +233,9 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
               <TableHead className="w-[15%]">时间</TableHead>
               <TableHead className="w-[10%]">模块</TableHead>
               <TableHead className="w-[9%]">动作</TableHead>
-              <TableHead className={showProjectFilter ? "w-[18%]" : "w-[22%]"}>对象</TableHead>
-              <TableHead className="w-[12%]">操作人</TableHead>
+              <TableHead className={showProjectFilter ? "w-[22%]" : "w-[26%]"}>对象</TableHead>
               <TableHead className="w-[10%]">结果</TableHead>
-              <TableHead className="w-[20%]">摘要</TableHead>
+              <TableHead className="w-[28%]">摘要</TableHead>
               <TableHead className="w-[6%]">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -225,7 +250,6 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
                 <TableCell className="truncate" title={row.object_name || row.object_id || ""}>
                   {row.object_name || row.object_id || "-"}
                 </TableCell>
-                <TableCell className="truncate">{row.actor_name}</TableCell>
                 <TableCell>
                   <Badge variant={row.result === "failed" ? "destructive" : "outline"}>
                     {operationLogResultToLabel(row.result)}
@@ -241,10 +265,10 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
                 </TableCell>
               </TableRow>
             ))}
-            {loading ? <TableLoadingRow colSpan={8} /> : null}
+            {loading ? <TableLoadingRow colSpan={7} /> : null}
             {!loading && logs.length === 0 ? (
               <TableRow>
-                <TableCell className="h-24 text-center text-muted-foreground" colSpan={8}>
+                <TableCell className="h-24 text-center text-muted-foreground" colSpan={7}>
                   暂无操作日志。执行创建、编辑、删除或任务操作后，记录会显示在这里。
                 </TableCell>
               </TableRow>
@@ -252,17 +276,73 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
           </TableBody>
         </Table>
       </div>
-      <ListPagination
-        currentPage={page}
-        itemName="条日志"
-        onPageChange={setPage}
-        onPageSizeChange={(nextPageSize) => {
-          setPageSize(nextPageSize);
-          setPage(1);
-        }}
-        pageSize={pageSize}
-        total={total}
-      />
+      <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-end">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Pagination className="mx-0 w-auto justify-start sm:justify-end">
+            <PaginationContent>
+              <PaginationItem className="mr-2 text-muted-foreground">共 {total} 条数据</PaginationItem>
+              <PaginationItem>
+                <PaginationButton
+                  disabled={safePage <= 1}
+                  onClick={() => goToPage(safePage - 1)}
+                  type="button"
+                  variant="ghost"
+                >
+                  <ChevronLeft className="rtl:rotate-180" /> 上一页
+                </PaginationButton>
+              </PaginationItem>
+              {visiblePages.map((item) =>
+                typeof item === "number" ? (
+                  <PaginationItem key={item}>
+                    <PaginationButton
+                      aria-current={item === safePage ? "page" : undefined}
+                      mode="icon"
+                      onClick={() => goToPage(item)}
+                      selected={item === safePage}
+                      type="button"
+                      variant={item === safePage ? "outline" : "ghost"}
+                    >
+                      {item}
+                    </PaginationButton>
+                  </PaginationItem>
+                ) : (
+                  <PaginationItem key={item}>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                ),
+              )}
+              <PaginationItem>
+                <PaginationButton
+                  disabled={safePage >= pageCount}
+                  onClick={() => goToPage(safePage + 1)}
+                  type="button"
+                  variant="ghost"
+                >
+                  下一页 <ChevronRight className="rtl:rotate-180" />
+                </PaginationButton>
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+          <label className="flex items-center gap-1 text-muted-foreground">
+            <span>每页</span>
+            <select
+              aria-label="每页显示条数"
+              className="h-8 rounded-md border border-input bg-background px-2 text-foreground text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(1);
+              }}
+              value={pageSize}
+            >
+              {[10, 15, 20, 50, 100].map((option) => (
+                <option key={option} value={option}>
+                  {option} 条
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
       <Drawer direction="right" open={Boolean(selectedId)} onOpenChange={(open) => !open && setSelectedId(null)}>
         <DrawerContent className="sm:max-w-xl">
           <DrawerHeader>

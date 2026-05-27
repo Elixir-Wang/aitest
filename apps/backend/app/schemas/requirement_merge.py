@@ -108,6 +108,26 @@ class RequirementClusterDecision(BaseModel):
     clarification_items: list[dict] = Field(default_factory=list)
 
 
+class RequirementClusterDecisionItemRaw(BaseModel):
+    fragment_id: str = ""
+    coverage_status: str = ""
+    target_module: str = ""
+    target_heading: str = ""
+    covered_by_fragment_id: str = ""
+    related_conflict_key: str = ""
+    related_clarification_key: str = ""
+    reason: str = ""
+
+
+class RequirementClusterDecisionRaw(BaseModel):
+    cluster_id: str = ""
+    decision: str = ""
+    canonical_meaning: str = ""
+    fragment_decisions: list[RequirementClusterDecisionItemRaw] = Field(default_factory=list)
+    conflicts: list[dict] = Field(default_factory=list)
+    clarification_items: list[dict] = Field(default_factory=list)
+
+
 class RequirementSectionBlock(BaseModel):
     type: Literal["paragraph", "bullet_list", "table", "source_block_ref", "pending_clarification_ref"]
     content: str = ""

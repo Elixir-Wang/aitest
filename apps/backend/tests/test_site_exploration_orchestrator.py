@@ -228,6 +228,58 @@ class SiteExplorationOrchestratorTest(unittest.TestCase):
             self.assertIn("Command timed out after 30 seconds", blocker["suggested_action"])
             self.assertIn("Command timed out after 30 seconds", finish_log["failure_reason"])
 
+    def test_run_exploration_marks_running_task_blocked_after_unhandled_error(self):
+        with isolated_exploration_store() as temp_dir:
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO projects (id, name, status, created_by)
+                    VALUES ('project-1', '测试项目', 'active', 'u-admin')
+                    """
+                )
+                db.execute(
+                    """
+                    INSERT INTO project_environments (id, project_id, name, site_url, created_by)
+                    VALUES ('env-1', 'project-1', '测试环境', 'https://example.test', 'u-admin')
+                    """
+                )
+                db.execute(
+                    """
+                    INSERT INTO exploration_runs
+                      (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, created_by)
+                    VALUES
+                      ('explore-1', 'project-1', 'env-1', '后台探索', 'queued', '用户管理', '', 'reuse_state', 'u-admin')
+                    """
+                )
+
+            with (
+                patch("app.services.site_exploration_orchestrator._playwright_cli_available", return_value=True),
+                patch(
+                    "app.services.site_exploration_orchestrator._run_site_explorer",
+                    side_effect=RuntimeError("browser crashed"),
+                ),
+            ):
+                site_exploration_orchestrator.run_exploration("explore-1")
+
+            with connect() as db:
+                run = db.execute("SELECT * FROM exploration_runs WHERE id = 'explore-1'").fetchone()
+                finish_log = db.execute(
+                    """
+                    SELECT result, failure_reason
+                    FROM operation_logs
+                    WHERE module = 'exploration' AND object_id = 'explore-1' AND action = 'finish'
+                    """
+                ).fetchone()
+
+            log_path = Path(temp_dir) / "projects" / "project-1" / "exploration" / "explore-1" / "logs" / "run.log"
+            self.assertEqual(run["status"], "blocked")
+            self.assertIsNotNone(run["finished_at"])
+            self.assertIn("browser crashed", run["result_summary"])
+            self.assertTrue(log_path.exists())
+            self.assertIn("browser crashed", log_path.read_text(encoding="utf-8"))
+            self.assertEqual(finish_log["result"], "failed")
+            self.assertIn("browser crashed", finish_log["failure_reason"])
+
     def test_run_exploration_does_not_overwrite_stopping_run(self):
         with isolated_exploration_store():
             with connect() as db:

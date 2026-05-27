@@ -237,6 +237,33 @@ class ExplorationServiceTest(unittest.TestCase):
             self.assertEqual(log["result"], "success")
             self.assertIn("停止", log["summary"])
 
+    def test_stop_run_returns_terminal_task_without_error(self):
+        with isolated_exploration_store():
+            seed_project_environment()
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO exploration_runs
+                      (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, result_summary, created_by)
+                    VALUES
+                      ('explore-1', 'project-1', 'env-1', '后台探索', 'blocked', '用户管理', '', 'reuse_state', '执行异常中断', 'u-admin')
+                    """
+                )
+
+            stopped = exploration_service.stop_project_run("project-1", "explore-1", admin_actor())
+
+            self.assertEqual(stopped["status"], "blocked")
+            self.assertEqual(stopped["result_summary"], "执行异常中断")
+            with connect() as db:
+                log_count = db.execute(
+                    """
+                    SELECT COUNT(*) AS count
+                    FROM operation_logs
+                    WHERE module = 'exploration' AND object_id = 'explore-1' AND action = 'cancel'
+                    """
+                ).fetchone()
+            self.assertEqual(log_count["count"], 0)
+
     def test_get_project_run_report_reads_latest_markdown_document(self):
         with isolated_exploration_store() as root:
             seed_project_environment()

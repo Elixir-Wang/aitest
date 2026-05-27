@@ -36,6 +36,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -73,6 +74,7 @@ These serve as the fallback; there is no separate default.css file. */
   --accent: #e7f1fb;
   --accent-foreground: #255982;
   --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(1 0 0);
   --border: #dce7f3;
   --input: #dce7f3;
   --ring: #8cb8dc;

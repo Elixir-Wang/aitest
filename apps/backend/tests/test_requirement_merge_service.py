@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import re
 import unittest
 from pydantic import ValidationError
 from unittest.mock import patch
 
 from app.schemas.requirement_merge import (
+    RequirementClusterDecisionRaw,
     RequirementCoverageItem,
     RequirementMergeConflictOut,
     RequirementMergeInput,
@@ -12,6 +14,7 @@ from app.schemas.requirement_merge import (
     RequirementMergeSourceFile,
 )
 from app.services.requirement_merge_service import (
+    _canonicalize_cluster_decision_payload,
     _complete_source_file_coverage,
     _parse_agent_output,
     normalize_merge_output,
@@ -231,6 +234,53 @@ class RequirementMergeServiceTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(output.source_file_ids, ["docmap-1"])
         self.assertEqual({item.mapping_id for item in output.coverage_items}, {"docmap-1", "docmap-2"})
+
+    def test_canonicalize_cluster_decision_payload_normalizes_raw_statuses(self):
+        raw_decision = RequirementClusterDecisionRaw(
+            cluster_id="cluster-1",
+            decision="deduplicate",
+            canonical_meaning="支持账号登录。",
+            fragment_decisions=[
+                {
+                    "fragment_id": "frag-1",
+                    "coverage_status": "included",
+                    "target_module": "登录",
+                    "target_heading": "账号登录",
+                    "reason": "合入。",
+                },
+                {
+                    "fragment_id": "frag-2",
+                    "coverage_status": "deduplicated",
+                    "target_module": "登录",
+                    "target_heading": "账号登录",
+                    "reason": "重复。",
+                },
+            ],
+        )
+
+        decision = _canonicalize_cluster_decision_payload(raw_decision)
+
+        self.assertEqual(decision.decision, "duplicate")
+        self.assertEqual(
+            [item.coverage_status for item in decision.fragment_decisions],
+            ["merged", "duplicate"],
+        )
+
+    def test_canonicalize_cluster_decision_payload_rejects_unknown_fragment_status(self):
+        raw_decision = RequirementClusterDecisionRaw(
+            cluster_id="cluster-1",
+            decision="merge",
+            fragment_decisions=[
+                {
+                    "fragment_id": "frag-1",
+                    "coverage_status": "mystery_status",
+                    "reason": "无法识别。",
+                }
+            ],
+        )
+
+        with self.assertRaisesRegex(ValueError, "无法归一化"):
+            _canonicalize_cluster_decision_payload(raw_decision)
 
     def test_agent_prompt_forbids_source_document_grouping_in_markdown(self):
         prompt = requirement_merge_service._build_agent_prompt(
@@ -670,6 +720,247 @@ flowchart TD
         self.assertEqual(calls["classification"], 1)
         self.assertEqual(output.status, "merged")
         self.assertIn("系统应支持账号登录。", output.markdown_content)
+
+    async def test_run_requirement_merge_v2_retries_missing_classifications(self):
+        input_data = RequirementMergeInput(
+            project_id="project-1",
+            document_id="doc-1",
+            document_name="登录需求",
+            merge_mode="initial",
+            source_files=[
+                RequirementMergeSourceFile(
+                    mapping_id="docmap-1",
+                    original_filename="登录.md",
+                    markdown_content="# 登录\n\n- 支持账号登录\n- 支持短信登录\n- 支持邮箱登录",
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                )
+            ],
+        )
+        fragments = build_source_fragments(input_data.source_files)
+        classification_calls = {"count": 0}
+
+        def classification(fragment):
+            return {
+                "fragment_id": fragment.fragment_id,
+                "business_module": "登录",
+                "semantic_key": fragment.fragment_id,
+                "fragment_role": "requirement",
+                "summary": fragment.text,
+                "confidence": 0.9,
+            }
+
+        async def fake_run_agent(_agent_id, prompt):
+            class Result:
+                output = {}
+
+            result = Result()
+            if '"task": "classify_fragments"' in prompt:
+                classification_calls["count"] += 1
+                if classification_calls["count"] == 1:
+                    result.output = {"classifications": [classification(fragments[0])]}
+                else:
+                    result.output = {"classifications": [classification(fragment) for fragment in fragments[1:]]}
+            elif '"task": "decide_cluster"' in prompt:
+                fragment = next(fragment for fragment in fragments if fragment.fragment_id in prompt)
+                cluster_id = re.search(r'"cluster_id": "([^"]+)"', prompt).group(1)
+                result.output = {
+                    "cluster_id": cluster_id,
+                    "decision": "merge",
+                    "canonical_meaning": fragment.text,
+                    "fragment_decisions": [
+                        {
+                            "fragment_id": fragment.fragment_id,
+                            "coverage_status": "merged",
+                            "target_module": "登录",
+                            "target_heading": "登录方式",
+                            "reason": "合入登录方式需求。",
+                        }
+                    ],
+                    "conflicts": [],
+                    "clarification_items": [],
+                }
+            elif '"task": "merge_section"' in prompt:
+                section_key = re.search(r'"section_key": "([^"]+)"', prompt).group(1)
+                fragment = next(fragment for fragment in fragments if fragment.fragment_id in prompt)
+                result.output = {
+                    "section_key": section_key,
+                    "blocks": [{"type": "paragraph", "content": fragment.text}],
+                    "covered_fragment_ids": [fragment.fragment_id],
+                }
+            else:
+                self.fail("unexpected prompt")
+            return result
+
+        with patch("app.services.requirement_merge_service.run_agent", fake_run_agent):
+            output = await run_requirement_merge_v2(input_data, fragments)
+
+        self.assertEqual(classification_calls["count"], 2)
+        self.assertEqual(output.status, "merged")
+        self.assertEqual(len(output.coverage_items), 3)
+        self.assertIn("支持邮箱登录", output.markdown_content)
+
+    async def test_run_requirement_merge_v2_normalizes_model_decision_statuses(self):
+        input_data = RequirementMergeInput(
+            project_id="project-1",
+            document_id="doc-1",
+            document_name="登录需求",
+            merge_mode="initial",
+            source_files=[
+                RequirementMergeSourceFile(
+                    mapping_id="docmap-1",
+                    original_filename="登录.md",
+                    markdown_content="# 登录\n\n- 支持账号登录\n- 支持账号登录",
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                )
+            ],
+        )
+        fragments = build_source_fragments(input_data.source_files)
+
+        async def fake_run_agent(_agent_id, prompt):
+            class Result:
+                output = {}
+
+            result = Result()
+            if '"task": "classify_fragments"' in prompt:
+                result.output = {
+                    "classifications": [
+                        {
+                            "fragment_id": fragments[0].fragment_id,
+                            "business_module": "登录",
+                            "semantic_key": "account_login",
+                            "fragment_role": "requirement",
+                            "summary": "支持账号登录",
+                            "confidence": 0.9,
+                        },
+                        {
+                            "fragment_id": fragments[1].fragment_id,
+                            "business_module": "登录",
+                            "semantic_key": "account_login",
+                            "fragment_role": "requirement",
+                            "summary": "支持账号登录",
+                            "confidence": 0.9,
+                        }
+                    ]
+                }
+            elif '"task": "decide_cluster"' in prompt:
+                cluster_id = re.search(r'"cluster_id": "([^"]+)"', prompt).group(1)
+                result.output = {
+                    "cluster_id": cluster_id,
+                    "decision": "deduplicate",
+                    "canonical_meaning": "支持账号登录。",
+                    "fragment_decisions": [
+                        {
+                            "fragment_id": fragments[0].fragment_id,
+                            "coverage_status": "included",
+                            "target_module": "登录",
+                            "target_heading": "账号登录",
+                            "reason": "合入账号登录需求。",
+                        },
+                        {
+                            "fragment_id": fragments[1].fragment_id,
+                            "coverage_status": "deduplicated",
+                            "target_module": "登录",
+                            "target_heading": "账号登录",
+                            "covered_by_fragment_id": fragments[0].fragment_id,
+                            "reason": "与账号登录需求重复。",
+                        }
+                    ],
+                    "conflicts": [],
+                    "clarification_items": [],
+                }
+            elif '"task": "merge_section"' in prompt:
+                section_key = re.search(r'"section_key": "([^"]+)"', prompt).group(1)
+                result.output = {
+                    "section_key": section_key,
+                    "blocks": [{"type": "paragraph", "content": "系统应支持账号登录。"}],
+                    "covered_fragment_ids": [fragments[0].fragment_id],
+                }
+            else:
+                self.fail("unexpected prompt")
+            return result
+
+        with patch("app.services.requirement_merge_service.run_agent", fake_run_agent):
+            output = await run_requirement_merge_v2(input_data, fragments)
+
+        self.assertEqual(output.status, "merged")
+        self.assertEqual(
+            [item.coverage_status for item in output.coverage_items],
+            ["merged", "duplicate"],
+        )
+        self.assertIn("系统应支持账号登录。", output.markdown_content)
+
+    async def test_run_requirement_merge_v2_derives_unknown_cluster_decision_from_fragment_statuses(self):
+        input_data = RequirementMergeInput(
+            project_id="project-1",
+            document_id="doc-1",
+            document_name="登录需求",
+            merge_mode="initial",
+            source_files=[
+                RequirementMergeSourceFile(
+                    mapping_id="docmap-1",
+                    original_filename="登录.md",
+                    markdown_content="# 登录\n\n- 支持账号登录",
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                )
+            ],
+        )
+        fragments = build_source_fragments(input_data.source_files)
+
+        async def fake_run_agent(_agent_id, prompt):
+            class Result:
+                output = {}
+
+            result = Result()
+            if '"task": "classify_fragments"' in prompt:
+                result.output = {
+                    "classifications": [
+                        {
+                            "fragment_id": fragments[0].fragment_id,
+                            "business_module": "登录",
+                            "semantic_key": "account_login",
+                            "fragment_role": "requirement",
+                            "summary": "支持账号登录",
+                            "confidence": 0.9,
+                        }
+                    ]
+                }
+            elif '"task": "decide_cluster"' in prompt:
+                cluster_id = re.search(r'"cluster_id": "([^"]+)"', prompt).group(1)
+                result.output = {
+                    "cluster_id": cluster_id,
+                    "decision": "already_handled",
+                    "canonical_meaning": "支持账号登录。",
+                    "fragment_decisions": [
+                        {
+                            "fragment_id": fragments[0].fragment_id,
+                            "coverage_status": "covered",
+                            "target_module": "登录",
+                            "target_heading": "账号登录",
+                            "reason": "合入账号登录需求。",
+                        }
+                    ],
+                    "conflicts": [],
+                    "clarification_items": [],
+                }
+            elif '"task": "merge_section"' in prompt:
+                section_key = re.search(r'"section_key": "([^"]+)"', prompt).group(1)
+                result.output = {
+                    "section_key": section_key,
+                    "blocks": [{"type": "paragraph", "content": "系统应支持账号登录。"}],
+                    "covered_fragment_ids": [fragments[0].fragment_id],
+                }
+            else:
+                self.fail("unexpected prompt")
+            return result
+
+        with patch("app.services.requirement_merge_service.run_agent", fake_run_agent):
+            output = await run_requirement_merge_v2(input_data, fragments)
+
+        self.assertEqual(output.status, "merged")
+        self.assertEqual(output.coverage_items[0].coverage_status, "merged")
 
 
 if __name__ == "__main__":
