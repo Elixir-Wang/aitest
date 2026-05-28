@@ -46,6 +46,26 @@ class RequirementSourceFragment(BaseModel):
     markdown_block: str
 
 
+class RequirementSourceBlock(BaseModel):
+    block_id: str
+    source_code: str
+    sequence: int
+    mapping_id: str
+    source_file: str
+    source_file_hash: str
+    original_heading: str
+    heading_level: int
+    heading_path: list[str] = Field(default_factory=list)
+    markdown: str
+    plain_text: str
+    sub_headings: list[str] = Field(default_factory=list)
+    content_types: list[str] = Field(default_factory=list)
+    anchors: list[str] = Field(default_factory=list)
+    must_preserve_original: bool = False
+    token_estimate: int = 0
+    content_hash: str
+
+
 class RequirementFragmentDecision(BaseModel):
     fragment_id: str
     mapping_id: str
@@ -68,12 +88,24 @@ class RequirementMergeAuditOutput(BaseModel):
 
 
 class RequirementFragmentClassification(BaseModel):
-    fragment_id: str
+    fragment_id: str = ""
+    block_id: str = ""
     business_module: str
     semantic_key: str
-    fragment_role: str
+    fragment_role: str = ""
+    block_role: str = ""
     summary: str
     confidence: float = 0
+
+    def model_post_init(self, __context) -> None:
+        if not self.fragment_id and self.block_id:
+            self.fragment_id = self.block_id
+        if not self.block_id and self.fragment_id:
+            self.block_id = self.fragment_id
+        if not self.fragment_role and self.block_role:
+            self.fragment_role = self.block_role
+        if not self.block_role and self.fragment_role:
+            self.block_role = self.fragment_role
 
 
 class RequirementFragmentClassificationBatch(BaseModel):
@@ -153,6 +185,7 @@ class RequirementMergeInput(BaseModel):
 
 class RequirementCoverageItem(BaseModel):
     mapping_id: str
+    source_block_id: str = ""
     source_heading: str = ""
     source_excerpt: str
     target_module: str = ""

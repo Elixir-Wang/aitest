@@ -738,7 +738,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                         created_by="u-admin",
                     )
 
-            with patch("app.services.requirement_merge_service.run_requirement_merge_v2") as merge_agent:
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
                 merge_agent.return_value = RequirementMergeOutput(
                     status="merged",
                     markdown_content="# 登录需求\n\n- 支持账号登录\n- 支持退出\n- 支持验证码",
@@ -765,10 +765,14 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("machine_artifacts", result)
             self.assertIn("支持账号登录", result["markdown_content"])
             self.assertEqual(result["markdown_content"].count("支持账号登录"), 1)
-            fragments_path = resolve_stored_path(result["machine_artifacts"]["fragments_path"])
-            self.assertIsNotNone(fragments_path)
-            self.assertTrue(fragments_path.exists())
-            self.assertIn("frag-1-00001", fragments_path.read_text(encoding="utf-8"))
+            source_blocks_path = resolve_stored_path(result["machine_artifacts"]["source_blocks_path"])
+            self.assertIsNotNone(source_blocks_path)
+            self.assertTrue(source_blocks_path.exists())
+            self.assertIn('"block_id": "A-01"', source_blocks_path.read_text(encoding="utf-8"))
+            called_fragments = merge_agent.call_args.args[1]
+            self.assertEqual([fragment.fragment_id for fragment in called_fragments], ["A-01", "B-01"])
+            self.assertIn("支持账号登录", called_fragments[0].markdown_block)
+            self.assertIn("支持验证码", called_fragments[1].markdown_block)
             self.assertEqual(document_service.get_document_versions("doc-1")[0]["source_action"], "merge")
 
     async def test_merge_document_markdown_returns_preview_when_draft_drops_most_content(self):
@@ -805,7 +809,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                     created_by="u-admin",
                 )
 
-            with patch("app.services.requirement_merge_service.run_requirement_merge_v2") as merge_agent:
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
                 merge_agent.return_value = RequirementMergeOutput(
                     status="merged",
                     markdown_content="# 长需求\n\n## 需求概述\n\n- 支持主要业务规则。",
@@ -825,7 +829,8 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(result["status"], "preview")
             self.assertEqual(result["quality_result"], "failed")
-            self.assertIn("疑似只生成摘要", result["artifact_tabs"][3]["content"])
+            self.assertEqual([tab["key"] for tab in result["artifact_tabs"]], ["merged", "mapping", "conflicts"])
+            self.assertIn("疑似只生成摘要", result["artifact_tabs"][2]["content"])
             self.assertEqual(document_service.get_document_versions("doc-1"), [])
 
     async def test_merge_document_markdown_returns_conflict_without_creating_version(self):
@@ -861,7 +866,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                         created_by="u-admin",
                     )
 
-            with patch("app.services.requirement_merge_service.run_requirement_merge_v2") as merge_agent:
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
                 merge_agent.return_value = RequirementMergeOutput(
                     status="conflict",
                     markdown_content="",
@@ -930,7 +935,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                         created_by="u-admin",
                     )
 
-            with patch("app.services.requirement_merge_service.run_requirement_merge_v2") as merge_agent:
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
                 merge_agent.return_value = RequirementMergeOutput(
                     status="conflict",
                     merge_summary="发现锁定次数冲突。",
@@ -963,7 +968,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                     """,
                     (conflict_id,),
                 ).fetchone()
-            with patch("app.services.requirement_merge_service.run_requirement_merge_v2") as merge_agent:
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
                 merge_agent.return_value = RequirementMergeOutput(
                     status="merged",
                     markdown_content="# 登录需求\n\n- 登录失败锁定次数：5次",
@@ -1078,7 +1083,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                     created_by="u-admin",
                 )
 
-            with patch("app.services.requirement_merge_service.run_requirement_merge_v2") as merge_agent:
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
                 merge_agent.return_value = RequirementMergeOutput(
                     status="preview",
                     markdown_preview="# 登录需求\n\n- 支持账号登录\n- 支持验证码",
@@ -1143,7 +1148,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                     created_by="u-admin",
                 )
 
-            with patch("app.services.requirement_merge_service.run_requirement_merge_v2") as merge_agent:
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
                 merge_agent.return_value = RequirementMergeOutput(
                     status="merged",
                     markdown_content="# 登录需求\n\n- 支持账号登录",
@@ -1165,12 +1170,11 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(
                 [tab["key"] for tab in overview["artifact_tabs"]],
-                ["preview", "mapping", "conflicts", "report"],
+                ["merged", "mapping", "conflicts"],
             )
             self.assertIn("支持账号登录", overview["artifact_tabs"][0]["content"])
             self.assertIn("段落映射", overview["artifact_tabs"][1]["content"])
             self.assertIn("明显冲突", overview["artifact_tabs"][2]["content"])
-            self.assertIn("归并质量报告", overview["artifact_tabs"][3]["content"])
 
     async def test_merge_agent_failure_writes_visible_failure_artifacts(self):
         with isolated_document_store() as actor:
@@ -1202,7 +1206,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                     created_by="u-admin",
                 )
 
-            with patch("app.services.requirement_merge_service.run_requirement_merge_v2") as merge_agent:
+            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
                 merge_agent.side_effect = RuntimeError("model not configured")
                 result = await document_service.merge_document_markdown("project-1", "doc-1", actor)
 
@@ -1215,10 +1219,10 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(
                 [tab["key"] for tab in overview["artifact_tabs"]],
-                ["preview", "mapping", "conflicts", "report"],
+                ["merged", "mapping", "conflicts"],
             )
             self.assertIn("合并候选稿未生成", overview["artifact_tabs"][0]["content"])
-            self.assertIn("model not configured", overview["artifact_tabs"][3]["content"])
+            self.assertIn("model not configured", overview["artifact_tabs"][2]["content"])
             with connect() as db:
                 row = db.execute(
                     """

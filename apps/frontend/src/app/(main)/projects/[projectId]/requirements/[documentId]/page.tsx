@@ -138,7 +138,7 @@ type MergePreview = {
 };
 
 type MergeArtifactTab = {
-  key: "preview" | "mapping" | "conflicts" | "report";
+  key: "merged" | "mapping" | "conflicts";
   label: string;
   path: string;
   content: string;
@@ -203,10 +203,22 @@ type RequirementAnalysisResult = {
 function fallbackMergeArtifactTabs(previewId: string, content: string): MergeArtifactTab[] {
   return [
     {
-      key: "preview",
-      label: "合并候选稿",
+      key: "merged",
+      label: "合并后的文档",
       path: `previews/${previewId}.md`,
       content,
+    },
+    {
+      key: "mapping",
+      label: "段落映射",
+      path: `mappings/${previewId}.md`,
+      content: "# 段落映射\n\n暂无段落映射产物。",
+    },
+    {
+      key: "conflicts",
+      label: "明显冲突",
+      path: `conflicts/${previewId}.md`,
+      content: "# 明显冲突\n\n暂无明显冲突产物。",
     },
   ];
 }
@@ -348,7 +360,7 @@ export default function DocumentDetailPage() {
     ? mergePreview.artifactTabs
     : (overview?.artifact_tabs ?? []);
   const visibleInitialArtifactTabs = useMemo(
-    () => initialArtifactTabs.filter((artifact) => artifact.key !== "preview"),
+    () => initialArtifactTabs.filter((artifact) => artifact.key !== MERGED_REQUIREMENT_TAB_KEY),
     [initialArtifactTabs],
   );
   const changedStandardFiles = overview?.changed_standard_files ?? [];
@@ -357,7 +369,7 @@ export default function DocumentDetailPage() {
     overview?.merge_sync_status === "outdated" &&
     changedStandardFiles.length > 0;
   const initialMarkdownContent =
-    initialArtifactTabs.find((artifact) => artifact.key === "preview")?.content ??
+    initialArtifactTabs.find((artifact) => artifact.key === MERGED_REQUIREMENT_TAB_KEY)?.content ??
     overview?.initial_markdown_content ??
     "";
   const hasRunningConversions = Boolean(
@@ -746,7 +758,7 @@ export default function DocumentDetailPage() {
         });
         setMergeArtifactTab(MERGED_REQUIREMENT_TAB_KEY);
         updateConflicts(result.conflicts ?? []);
-        toast.success("已生成归并产物，请查看质量报告后确认");
+        toast.success("已生成合并后的文档、段落映射和明显冲突产物");
         await loadOverview({ silent: true });
         setActiveTab("initial");
         return;
@@ -766,7 +778,7 @@ export default function DocumentDetailPage() {
       toast.error(message);
       setMergePreview(null);
       await loadOverview({ silent: true });
-      setMergeArtifactTab("report");
+      setMergeArtifactTab(MERGED_REQUIREMENT_TAB_KEY);
       setActiveTab("initial");
     } finally {
       setMerging(false);

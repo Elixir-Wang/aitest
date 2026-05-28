@@ -11,6 +11,7 @@ import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/a
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -121,17 +122,34 @@ const statusLabels: Record<string, string> = {
   blocked: "阻塞",
 };
 
+const statusBadgeClassNames: Record<string, string> = {
+  pending: "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  queued: "border-sky-500/35 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+  running: "border-primary/35 bg-primary/10 text-primary",
+  waiting_human: "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  stopping: "border-muted-foreground/25 bg-muted text-muted-foreground",
+  cancelled: "border-muted-foreground/25 bg-muted text-muted-foreground",
+  partial: "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  completed: "border-green-600/35 bg-green-500/10 text-green-700 dark:text-green-300",
+  blocked: "border-destructive/35 bg-destructive/10 text-destructive",
+};
+
 const loginStrategyLabels: Record<string, string> = {
   reuse_state: "复用登录态",
   manual: "手动登录保存状态",
   account_password: "账号密码",
-  skip_login: "跳过登录",
+  skip_login: "无需登录",
 };
 
 const explorationTabs = ["探索列表", "探索环境"];
 const RUNNING_EXPLORATION_STATUSES = new Set(["queued", "running", "waiting_human", "stopping"]);
 const STOPPABLE_EXPLORATION_STATUSES = new Set(["queued", "running", "waiting_human"]);
 const EXPLORATION_TASK_SOURCE = "exploration-page";
+const explorationPlaceholders = {
+  scope: "填写本次要探索的页面范围，例如全站、指定菜单、指定 URL 或核心模块。",
+  forbiddenPaths: "填写禁止进入或点击的路径/动作，例如删除、支付、外发、批量通知、退出登录。",
+  goal: "填写本次探索要验证的目标，例如遍历元素和链接，检查 401/403、登录跳转和异常页。",
+};
 
 export function ExplorationWorkspace({
   breadcrumbs,
@@ -382,6 +400,15 @@ export function ExplorationWorkspace({
     setDialogOpen(true);
   }
 
+  function handleEnvironmentDialogOpenChange(open: boolean) {
+    setDialogOpen(open);
+    if (!open) {
+      setEditingEnvironment(null);
+      setShowPassword(false);
+      setForm({ ...emptyForm, projectId: projectId ?? form.projectId });
+    }
+  }
+
   function openEditExplorationDialog(run: ExplorationRun) {
     setEditingExploration(run);
     setExplorationForm({
@@ -447,8 +474,7 @@ export function ExplorationWorkspace({
         setRows((current) => [created, ...current]);
         toast.success("环境已创建");
       }
-      setForm({ ...emptyForm, projectId: projectId ?? form.projectId });
-      setDialogOpen(false);
+      handleEnvironmentDialogOpenChange(false);
     } catch (requestError) {
       toast.error(
         requestError instanceof Error ? requestError.message : editingEnvironment ? "环境更新失败" : "环境创建失败",
@@ -644,11 +670,13 @@ export function ExplorationWorkspace({
                     <TableCell>{item.project_name}</TableCell>
                     <TableCell>{item.environment_name}</TableCell>
                     <TableCell>
-                      <div className="flex min-w-36 items-center gap-2">
-                        <span>{statusLabels[item.status] ?? item.status}</span>
+                      <div className="flex items-center gap-1.5">
+                        <Badge className={statusBadgeClassNames[item.status]} variant="outline">
+                          {statusLabels[item.status] ?? item.status}
+                        </Badge>
                         {STOPPABLE_EXPLORATION_STATUSES.has(item.status) ? (
                           <Button
-                            className="h-7 px-2 text-xs"
+                            className="h-6 px-2 text-xs"
                             disabled={stoppingExplorationId === item.id}
                             onClick={() => setStoppingExploration(item)}
                             size="sm"
@@ -808,7 +836,7 @@ export function ExplorationWorkspace({
         </ShellSection>
       ) : null}
 
-      <Dialog onOpenChange={setDialogOpen} open={dialogOpen}>
+      <Dialog onOpenChange={handleEnvironmentDialogOpenChange} open={dialogOpen}>
         <DialogContent className="gap-6 p-6 sm:max-w-3xl">
           <DialogHeader className="gap-3">
             <DialogTitle>{editingEnvironment ? "编辑环境" : "新建环境"}</DialogTitle>
@@ -968,7 +996,7 @@ export function ExplorationWorkspace({
         <DialogContent className="gap-6 p-6 sm:max-w-3xl">
           <DialogHeader className="gap-3">
             <DialogTitle>{editingExploration ? "编辑探索任务" : "新建探索任务"}</DialogTitle>
-            <DialogDescription>选择环境并配置探索范围、禁止路径和任务说明。</DialogDescription>
+            <DialogDescription>选择环境并配置探索范围、探索目标和禁止路径。</DialogDescription>
           </DialogHeader>
           <FieldGroup className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
             <Field>
@@ -1028,7 +1056,7 @@ export function ExplorationWorkspace({
                 className="min-h-24"
                 id="exploration-scope"
                 onChange={(event) => setExplorationForm((current) => ({ ...current, scope: event.target.value }))}
-                placeholder="菜单范围、URL 白名单、核心模块标记"
+                placeholder={explorationPlaceholders.scope}
                 value={explorationForm.scope}
               />
             </Field>
@@ -1040,17 +1068,17 @@ export function ExplorationWorkspace({
                 onChange={(event) =>
                   setExplorationForm((current) => ({ ...current, forbiddenPaths: event.target.value }))
                 }
-                placeholder="删除、支付、外发、批量通知等危险路径"
+                placeholder={explorationPlaceholders.forbiddenPaths}
                 value={explorationForm.forbiddenPaths}
               />
             </Field>
             <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="exploration-description">描述</FieldLabel>
+              <FieldLabel htmlFor="exploration-description">探索目标</FieldLabel>
               <Textarea
                 className="min-h-20"
                 id="exploration-description"
                 onChange={(event) => setExplorationForm((current) => ({ ...current, description: event.target.value }))}
-                placeholder="本次探索目标、角色说明、验证码处理方式或人工注意事项"
+                placeholder={explorationPlaceholders.goal}
                 value={explorationForm.description}
               />
             </Field>

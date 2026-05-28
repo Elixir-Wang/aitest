@@ -52,6 +52,31 @@ def find_by_id(db: Connection, environment_id: str) -> Row | None:
     ).fetchone()
 
 
+def find_by_project_and_name(
+    db: Connection,
+    project_id: str,
+    name: str,
+    exclude_id: str | None = None,
+) -> Row | None:
+    if exclude_id:
+        return db.execute(
+            """
+            SELECT *
+            FROM project_environments
+            WHERE project_id = ? AND name = ? AND id != ?
+            """,
+            (project_id, name, exclude_id),
+        ).fetchone()
+    return db.execute(
+        """
+        SELECT *
+        FROM project_environments
+        WHERE project_id = ? AND name = ?
+        """,
+        (project_id, name),
+    ).fetchone()
+
+
 def create(
     db: Connection,
     *,

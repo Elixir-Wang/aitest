@@ -13,7 +13,12 @@ from app.schemas.requirement_merge import (
     RequirementMergeResolvedConflict,
     RequirementMergeSourceFile,
 )
-from app.services import requirement_fragment_service, requirement_merge_artifact_service, requirement_merge_service
+from app.services import (
+    requirement_fragment_service,
+    requirement_merge_artifact_service,
+    requirement_merge_service,
+    requirement_source_block_service,
+)
 
 DOCUMENT_VERSIONED_STATUS = "versioned"
 CONVERSION_SUCCESS_STATUS = "success"
@@ -38,6 +43,7 @@ async def merge_document_markdown(
             for row in document_repo.list_file_mappings(db, document_id)
             if row["conversion_status"] in {CONVERSION_SUCCESS_STATUS, "warning"} and row["mapping_status"] != "discarded"
         ]
+        files = sorted(files, key=lambda row: (row["created_at"], row["id"]))
         if not files:
             raise api_error(409, "DOCUMENT_MERGE_NO_FILES", "暂无可合并的标准文件。")
 
@@ -68,7 +74,9 @@ async def merge_document_markdown(
             )
         if not source_files:
             raise api_error(409, "DOCUMENT_MERGE_NO_FILES", "暂无可合并的标准文件。")
-        source_fragments = requirement_fragment_service.build_source_fragments(source_files)
+        source_blocks = requirement_source_block_service.build_source_blocks(source_files)
+        source_fragments = requirement_source_block_service.source_blocks_to_fragments(source_blocks)
+        legacy_source_fragments = requirement_fragment_service.build_source_fragments(source_files)
 
         base_version = _current_merge_base_version(existing)
         resolved_conflicts = document_repo.list_conflicts(db, document_id, status="resolved")
@@ -107,10 +115,11 @@ async def merge_document_markdown(
             project_id,
             document_id,
             run_id,
-            source_fragments=source_fragments,
+            source_fragments=legacy_source_fragments,
+            source_blocks=source_blocks,
         )
         try:
-            merge_output = await requirement_merge_service.run_requirement_merge_v2(merge_input, source_fragments)
+            merge_output = await requirement_merge_service.run_requirement_merge(merge_input, source_fragments)
         except Exception as exc:
             failure_message = f"需求归并智能体运行失败：{exc}"
             failure_preview = requirement_merge_artifact_service.blocked_preview_markdown(
@@ -128,6 +137,7 @@ async def merge_document_markdown(
                 diff_summary="智能体运行失败，未生成合并需求稿。",
                 affected_modules=[],
                 source_files=source_files,
+                source_blocks=source_blocks,
                 quality_result="failed",
                 blocking_issues=[failure_message],
             )
@@ -219,6 +229,7 @@ async def merge_document_markdown(
                 diff_summary=merge_output.diff_summary,
                 affected_modules=merge_output.affected_modules,
                 source_files=source_files,
+                source_blocks=source_blocks,
                 quality_result=quality_result,
                 blocking_issues=blocking_issues,
             )
@@ -246,7 +257,7 @@ async def merge_document_markdown(
                 "diff_summary": merge_output.diff_summary,
                 "affected_modules": merge_output.affected_modules,
                 "source_file_ids": merge_output.source_file_ids,
-                "quality_result": artifact_tabs[3]["quality_result"],
+                "quality_result": quality_result,
                 "artifact_tabs": requirement_merge_artifact_service.public_artifact_tabs(artifact_tabs),
                 "machine_artifacts": machine_artifacts,
             }
@@ -270,6 +281,7 @@ async def merge_document_markdown(
             diff_summary=merge_output.diff_summary,
             affected_modules=merge_output.affected_modules,
             source_files=source_files,
+            source_blocks=source_blocks,
             quality_result=quality_result,
             blocking_issues=blocking_issues,
         )

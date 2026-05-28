@@ -85,6 +85,15 @@ def update_project_environment(project_id: str, environment_id: str, payload: Pr
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "环境不存在。")
         _ensure_project_visible(existing, actor)
+        if "name" in updates:
+            duplicate = environment_repo.find_by_project_and_name(
+                db,
+                project_id,
+                updates["name"].strip(),
+                exclude_id=environment_id,
+            )
+            if duplicate:
+                raise api_error(409, "ENVIRONMENT_CONFLICT", "同一项目下环境名称已存在。")
         if assignments:
             assignments.append("updated_at = CURRENT_TIMESTAMP")
             try:

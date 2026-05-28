@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+import tempfile
 import unittest
+from pathlib import Path
 from pydantic import ValidationError
 from unittest.mock import patch
 
@@ -19,11 +21,16 @@ from app.services.requirement_merge_service import (
     _parse_agent_output,
     normalize_merge_output,
     run_requirement_merge,
-    run_requirement_merge_v2,
+    run_requirement_merge_agent,
 )
 from app.services.requirement_fragment_service import build_source_fragments
+from app.services.requirement_source_block_service import build_source_blocks
 from app.services import requirement_merge_service
 from app.services.requirement_merge_artifact_service import (
+    public_artifact_tabs,
+    read_merge_artifact_tabs,
+    write_merge_machine_artifacts,
+    write_merge_artifacts,
     evaluate_merge_quality,
     markdown_structure_retention_issue,
     merge_retention_issue,
@@ -31,6 +38,190 @@ from app.services.requirement_merge_artifact_service import (
 
 
 class RequirementMergeServiceTest(unittest.IsolatedAsyncioTestCase):
+    def _artifact_store(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        root = Path(temp_dir.name)
+        patches = [
+            patch(
+                "app.services.requirement_merge_artifact_service.project_requirement_dir",
+                lambda project_id, document_id: root / project_id / "requirements" / document_id,
+            ),
+            patch("app.services.requirement_merge_artifact_service.store_path", lambda path: str(path)),
+        ]
+        for item in patches:
+            item.start()
+            self.addCleanup(item.stop)
+        self.addCleanup(temp_dir.cleanup)
+        return root
+
+    def test_source_blocks_keep_section_context_and_structures_together(self):
+        source = RequirementMergeSourceFile(
+            mapping_id="docmap-api",
+            original_filename="接口契约.md",
+            markdown_content="""# 总标题
+
+## login_ticket 生成接口
+
+产品后端调用认证中心创建登录票据。
+
+请求地址：
+
+POST /api/sso/ticket/create
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| product_code | string | 产品编码 |
+
+```json
+{"code": "SUCCESS"}
+```
+
+## 查询产品进入状态接口
+
+进入产品前需要查询状态。
+
+```mermaid
+flowchart TD
+  A["查询"] --> B["判断 action"]
+```
+""",
+            conversion_status="success",
+            mapping_status="pending_merge",
+        )
+
+        blocks = build_source_blocks([source])
+
+        self.assertEqual([block.block_id for block in blocks], ["A-01", "A-02"])
+        self.assertEqual(blocks[0].source_code, "A")
+        self.assertEqual(blocks[0].original_heading, "login_ticket 生成接口")
+        self.assertIn("产品后端调用认证中心", blocks[0].markdown)
+        self.assertIn("| product_code | string | 产品编码 |", blocks[0].markdown)
+        self.assertIn("```json", blocks[0].markdown)
+        self.assertIn("```mermaid", blocks[1].markdown)
+        self.assertIn("state_flow", blocks[1].content_types)
+
+    def test_source_blocks_split_oversized_second_level_by_complete_third_level_units(self):
+        markdown = """# 总标题
+
+## 接口契约
+
+### login_ticket 生成接口
+
+请求地址：
+
+POST /api/sso/ticket/create
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| product_code | string | 产品编码 |
+
+### ticket 校验接口
+
+请求地址：
+
+POST /api/sso/ticket/verify
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| login_ticket | string | 一次性票据 |
+"""
+        source = RequirementMergeSourceFile(
+            mapping_id="docmap-api",
+            original_filename="接口契约.md",
+            markdown_content=markdown,
+            conversion_status="success",
+            mapping_status="pending_merge",
+        )
+
+        blocks = build_source_blocks([source], max_chars=120)
+
+        self.assertEqual([block.block_id for block in blocks], ["A-01", "A-02"])
+        self.assertEqual(blocks[0].heading_path, ["接口契约", "login_ticket 生成接口"])
+        self.assertEqual(blocks[1].heading_path, ["接口契约", "ticket 校验接口"])
+        self.assertIn("| product_code |", blocks[0].markdown)
+        self.assertIn("| login_ticket |", blocks[1].markdown)
+
+    def test_merge_artifacts_expose_only_three_user_documents(self):
+        self._artifact_store()
+        source_files = [
+            RequirementMergeSourceFile(
+                mapping_id="docmap-1",
+                original_filename="接口契约.md",
+                markdown_content="## 接口\n\n支持 ticket 校验。",
+                conversion_status="success",
+                mapping_status="pending_merge",
+            )
+        ]
+        source_blocks = build_source_blocks(source_files)
+
+        tabs = write_merge_artifacts(
+            "project-artifact-test",
+            "doc-artifact-test",
+            "mergerun-three-docs",
+            preview_markdown="# 合并后的文档\n\n## 接口契约\n\n支持 ticket 校验。",
+            coverage_items=[
+                {
+                    "source_block_id": "A-01",
+                    "mapping_id": "docmap-1",
+                    "source_heading": "接口",
+                    "source_excerpt": "支持 ticket 校验。",
+                    "coverage_status": "merged",
+                    "target_module": "接口契约",
+                    "target_heading": "ticket 校验",
+                    "reason": "已合并。",
+                }
+            ],
+            conflicts=[],
+            merge_summary="已生成合并后的文档。",
+            diff_summary="无明显冲突。",
+            affected_modules=["接口契约"],
+            source_files=source_files,
+            source_blocks=source_blocks,
+            quality_result="passed",
+            blocking_issues=[],
+        )
+
+        self.assertEqual([tab["key"] for tab in tabs], ["merged", "mapping", "conflicts"])
+        self.assertEqual([tab["label"] for tab in tabs], ["合并后的文档", "段落映射", "明显冲突"])
+        self.assertNotIn("report", {tab["key"] for tab in tabs})
+        self.assertEqual([tab["key"] for tab in public_artifact_tabs(tabs)], ["merged", "mapping", "conflicts"])
+
+        saved_tabs = read_merge_artifact_tabs("project-artifact-test", "doc-artifact-test", "mergerun-three-docs")
+        self.assertEqual([tab["key"] for tab in saved_tabs], ["merged", "mapping", "conflicts"])
+        mapping_markdown = saved_tabs[1]["content"]
+        self.assertIn("## 来源文档", mapping_markdown)
+        self.assertIn("| A | 接口契约.md |", mapping_markdown)
+        self.assertIn("## 来源块清单", mapping_markdown)
+        self.assertIn("| A-01 | A | 接口 |", mapping_markdown)
+        self.assertIn("## 来源块覆盖表", mapping_markdown)
+        self.assertIn("| A-01 | 接口契约.md | 接口 | 接口契约 / ticket 校验 | 合并 | 是 | 已合并。 |", mapping_markdown)
+        self.assertIn("## 未覆盖来源块清单", mapping_markdown)
+        self.assertIn("无", mapping_markdown)
+        self.assertIn("## 高保真内容保留清单", mapping_markdown)
+
+    def test_machine_artifacts_include_source_blocks_as_primary_traceability_unit(self):
+        self._artifact_store()
+        source = RequirementMergeSourceFile(
+            mapping_id="docmap-1",
+            original_filename="接口契约.md",
+            markdown_content="## 接口\n\n支持 ticket 校验。",
+            conversion_status="success",
+            mapping_status="pending_merge",
+        )
+        source_blocks = build_source_blocks([source])
+
+        paths = write_merge_machine_artifacts(
+            "project-artifact-test",
+            "doc-artifact-test",
+            "mergerun-source-blocks",
+            source_fragments=[],
+            source_blocks=source_blocks,
+            decisions=[],
+        )
+
+        self.assertIn("source_blocks_path", paths)
+        self.assertIn("source-blocks.json", paths["source_blocks_path"])
+
     def test_merge_output_accepts_coverage_items(self):
         output = RequirementMergeOutput(
             status="merged",
@@ -304,12 +495,13 @@ class RequirementMergeServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("禁止展示源文件名", prompt)
         self.assertIn("源文件追溯只能放在 coverage_items", prompt)
         self.assertIn("不得污染正式需求正文", prompt)
-        self.assertIn("coverage_items 必须覆盖每个有效需求片段", prompt)
-        self.assertIn("覆盖每个有效需求片段", prompt)
+        self.assertIn("coverage_items 必须覆盖每个有效来源块", prompt)
+        self.assertIn("覆盖每个有效来源块", prompt)
         self.assertIn("不得摘要化导致需求", prompt)
         self.assertIn("source_excerpt 必须简短", prompt)
         self.assertIn("重复去重 N 处", prompt)
-        self.assertIn("没有明显冲突时，才可以生成合并需求稿和质量报告", prompt)
+        self.assertIn("没有明显冲突时，才可以生成合并后的文档", prompt)
+        self.assertIn("不要求生成质量报告文档", prompt)
         self.assertIn("纯说明性内容标 discarded", prompt)
         self.assertIn("Mermaid 流程图", prompt)
         self.assertIn("不得改写成普通段落或项目符号", prompt)
@@ -508,7 +700,7 @@ flowchart TD
             return Result()
 
         with patch("app.services.requirement_merge_service.run_agent", fake_run_agent):
-            output = await run_requirement_merge(
+            output = await run_requirement_merge_agent(
                 RequirementMergeInput(
                     project_id="project-1",
                     document_id="doc-1",
@@ -535,7 +727,7 @@ flowchart TD
 
         with patch("app.services.requirement_merge_service.run_agent", fake_run_agent):
             with self.assertRaisesRegex(RuntimeError, "model not configured"):
-                await run_requirement_merge(
+                await run_requirement_merge_agent(
                     RequirementMergeInput(
                         project_id="project-1",
                         document_id="doc-1",
@@ -553,7 +745,7 @@ flowchart TD
                     )
                 )
 
-    async def test_run_requirement_merge_v2_uses_small_json_stages(self):
+    async def test_run_requirement_merge_uses_small_json_stages(self):
         input_data = RequirementMergeInput(
             project_id="project-1",
             document_id="doc-1",
@@ -576,22 +768,25 @@ flowchart TD
                 output = {}
 
             result = Result()
-            if '"task": "classify_fragments"' in prompt:
+            self.assertNotIn("classify_fragments", prompt)
+            if '"task": "classify_source_blocks"' in prompt:
+                self.assertIn('"source_blocks"', prompt)
+                self.assertNotIn('"fragments"', prompt)
                 result.output = {
                     "classifications": [
                         {
-                            "fragment_id": fragments[0].fragment_id,
+                            "block_id": fragments[0].fragment_id,
                             "business_module": "登录",
                             "semantic_key": "account_login",
-                            "fragment_role": "requirement",
+                            "block_role": "requirement",
                             "summary": "支持账号登录",
                             "confidence": 0.9,
                         },
                         {
-                            "fragment_id": fragments[1].fragment_id,
+                            "block_id": fragments[1].fragment_id,
                             "business_module": "登录",
                             "semantic_key": "account_login",
-                            "fragment_role": "requirement",
+                            "block_role": "requirement",
                             "summary": "支持账号登录",
                             "confidence": 0.9,
                         },
@@ -638,7 +833,7 @@ flowchart TD
             return result
 
         with patch("app.services.requirement_merge_service.run_agent", fake_run_agent):
-            output = await run_requirement_merge_v2(input_data, fragments)
+            output = await run_requirement_merge(input_data, fragments)
 
         self.assertEqual(output.status, "merged")
         self.assertIn("系统应支持用户使用账号登录。", output.markdown_content)
@@ -646,8 +841,9 @@ flowchart TD
             [item.coverage_status for item in output.coverage_items],
             ["merged", "duplicate"],
         )
+        self.assertEqual([item.source_block_id for item in output.coverage_items], [fragments[0].fragment_id, fragments[1].fragment_id])
 
-    async def test_run_requirement_merge_v2_repairs_non_json_stage_output(self):
+    async def test_run_requirement_merge_repairs_non_json_stage_output(self):
         input_data = RequirementMergeInput(
             project_id="project-1",
             document_id="doc-1",
@@ -671,7 +867,7 @@ flowchart TD
                 output = {}
 
             result = Result()
-            if '"task": "classify_fragments"' in prompt:
+            if '"task": "classify_source_blocks"' in prompt:
                 calls["classification"] += 1
                 result.output = "我来分析一下：这个片段属于登录需求。"
             elif "JSON 修复阶段" in prompt:
@@ -715,13 +911,113 @@ flowchart TD
             return result
 
         with patch("app.services.requirement_merge_service.run_agent", fake_run_agent):
-            output = await run_requirement_merge_v2(input_data, fragments)
+            output = await run_requirement_merge(input_data, fragments)
 
         self.assertEqual(calls["classification"], 1)
         self.assertEqual(output.status, "merged")
         self.assertIn("系统应支持账号登录。", output.markdown_content)
 
-    async def test_run_requirement_merge_v2_retries_missing_classifications(self):
+    async def test_run_requirement_merge_falls_back_when_classification_json_remains_invalid(self):
+        input_data = RequirementMergeInput(
+            project_id="project-1",
+            document_id="doc-1",
+            document_name="登录需求",
+            merge_mode="initial",
+            source_files=[
+                RequirementMergeSourceFile(
+                    mapping_id="docmap-1",
+                    original_filename="登录.md",
+                    markdown_content="# 登录\n\n- 支持账号登录",
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                )
+            ],
+        )
+        fragments = build_source_fragments(input_data.source_files)
+
+        async def fake_run_agent(_agent_id, _prompt):
+            class Result:
+                output = "我无法返回 JSON。"
+
+            return Result()
+
+        with patch("app.services.requirement_merge_service.run_agent", fake_run_agent):
+            output = await run_requirement_merge(input_data, fragments)
+
+        self.assertEqual(output.status, "preview")
+        self.assertIn("本地确定性候选稿", output.markdown_preview)
+        self.assertIn("支持账号登录", output.markdown_preview)
+        self.assertEqual(output.coverage_items[0].coverage_status, "pending_clarification")
+        self.assertIn("片段分类未返回合法 JSON", output.merge_summary)
+
+    async def test_run_requirement_merge_falls_back_when_section_json_remains_invalid(self):
+        input_data = RequirementMergeInput(
+            project_id="project-1",
+            document_id="doc-1",
+            document_name="登录需求",
+            merge_mode="initial",
+            source_files=[
+                RequirementMergeSourceFile(
+                    mapping_id="docmap-1",
+                    original_filename="登录.md",
+                    markdown_content="# 登录\n\n- 支持账号登录",
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                )
+            ],
+        )
+        fragments = build_source_fragments(input_data.source_files)
+
+        async def fake_run_agent(_agent_id, prompt):
+            class Result:
+                output = {}
+
+            result = Result()
+            if '"task": "classify_source_blocks"' in prompt:
+                result.output = {
+                    "classifications": [
+                        {
+                            "fragment_id": fragments[0].fragment_id,
+                            "business_module": "登录",
+                            "semantic_key": "account_login",
+                            "fragment_role": "requirement",
+                            "summary": "支持账号登录",
+                            "confidence": 0.9,
+                        }
+                    ]
+                }
+            elif '"task": "decide_cluster"' in prompt:
+                cluster_id = re.search(r'"cluster_id": "([^"]+)"', prompt).group(1)
+                result.output = {
+                    "cluster_id": cluster_id,
+                    "decision": "merge",
+                    "canonical_meaning": "支持账号登录。",
+                    "fragment_decisions": [
+                        {
+                            "fragment_id": fragments[0].fragment_id,
+                            "coverage_status": "merged",
+                            "target_module": "登录",
+                            "target_heading": "账号登录",
+                            "reason": "合入账号登录需求。",
+                        }
+                    ],
+                    "conflicts": [],
+                    "clarification_items": [],
+                }
+            elif '"task": "merge_section"' in prompt or "JSON 修复阶段" in prompt:
+                result.output = "章节内容如下：支持账号登录。"
+            else:
+                self.fail("unexpected prompt")
+            return result
+
+        with patch("app.services.requirement_merge_service.run_agent", fake_run_agent):
+            output = await run_requirement_merge(input_data, fragments)
+
+        self.assertEqual(output.status, "preview")
+        self.assertIn("支持账号登录", output.markdown_preview)
+        self.assertIn("章节归并未返回合法 JSON", output.merge_summary)
+
+    async def test_run_requirement_merge_retries_missing_classifications(self):
         input_data = RequirementMergeInput(
             project_id="project-1",
             document_id="doc-1",
@@ -755,7 +1051,7 @@ flowchart TD
                 output = {}
 
             result = Result()
-            if '"task": "classify_fragments"' in prompt:
+            if '"task": "classify_source_blocks"' in prompt:
                 classification_calls["count"] += 1
                 if classification_calls["count"] == 1:
                     result.output = {"classifications": [classification(fragments[0])]}
@@ -793,14 +1089,14 @@ flowchart TD
             return result
 
         with patch("app.services.requirement_merge_service.run_agent", fake_run_agent):
-            output = await run_requirement_merge_v2(input_data, fragments)
+            output = await run_requirement_merge(input_data, fragments)
 
         self.assertEqual(classification_calls["count"], 2)
         self.assertEqual(output.status, "merged")
         self.assertEqual(len(output.coverage_items), 3)
         self.assertIn("支持邮箱登录", output.markdown_content)
 
-    async def test_run_requirement_merge_v2_normalizes_model_decision_statuses(self):
+    async def test_run_requirement_merge_normalizes_model_decision_statuses(self):
         input_data = RequirementMergeInput(
             project_id="project-1",
             document_id="doc-1",
@@ -823,7 +1119,7 @@ flowchart TD
                 output = {}
 
             result = Result()
-            if '"task": "classify_fragments"' in prompt:
+            if '"task": "classify_source_blocks"' in prompt:
                 result.output = {
                     "classifications": [
                         {
@@ -882,7 +1178,7 @@ flowchart TD
             return result
 
         with patch("app.services.requirement_merge_service.run_agent", fake_run_agent):
-            output = await run_requirement_merge_v2(input_data, fragments)
+            output = await run_requirement_merge(input_data, fragments)
 
         self.assertEqual(output.status, "merged")
         self.assertEqual(
@@ -891,7 +1187,7 @@ flowchart TD
         )
         self.assertIn("系统应支持账号登录。", output.markdown_content)
 
-    async def test_run_requirement_merge_v2_derives_unknown_cluster_decision_from_fragment_statuses(self):
+    async def test_run_requirement_merge_derives_unknown_cluster_decision_from_fragment_statuses(self):
         input_data = RequirementMergeInput(
             project_id="project-1",
             document_id="doc-1",
@@ -914,7 +1210,7 @@ flowchart TD
                 output = {}
 
             result = Result()
-            if '"task": "classify_fragments"' in prompt:
+            if '"task": "classify_source_blocks"' in prompt:
                 result.output = {
                     "classifications": [
                         {
@@ -957,7 +1253,7 @@ flowchart TD
             return result
 
         with patch("app.services.requirement_merge_service.run_agent", fake_run_agent):
-            output = await run_requirement_merge_v2(input_data, fragments)
+            output = await run_requirement_merge(input_data, fragments)
 
         self.assertEqual(output.status, "merged")
         self.assertEqual(output.coverage_items[0].coverage_status, "merged")

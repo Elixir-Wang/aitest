@@ -11,7 +11,6 @@ import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { useProjectName } from "@/components/ai-testing/use-project-name";
 import { AgentPlan, type AgentPlanSubtask, type AgentPlanTask } from "@/components/ui/agent-plan";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -142,6 +141,11 @@ const statusLabels: Record<string, string> = {
 const autoRefreshStatuses = new Set(["queued", "running", "waiting_human", "stopping", "in-progress"]);
 const stoppableStatuses = new Set(["queued", "running", "waiting_human"]);
 const autoRefreshIntervalMs = 3000;
+const explorationPlaceholders = {
+  scope: "填写本次要探索的页面范围，例如全站、指定菜单、指定 URL 或核心模块。",
+  forbiddenPaths: "填写禁止进入或点击的路径/动作，例如删除、支付、外发、批量通知、退出登录。",
+  goal: "填写本次探索要验证的目标，例如遍历元素和链接，检查 401/403、登录跳转和异常页。",
+};
 const emptyExplorationForm: ExplorationForm = {
   title: "",
   environmentId: "",
@@ -366,8 +370,9 @@ export default function Page() {
   const saveDisabled = !explorationForm.title.trim() || !explorationForm.environmentId || saving;
   const planTasks = detail ? toPlanTasks(detail) : [];
   const hasNoExplorationArtifacts = detail ? detail.modules.every((module) => hasNoModuleArtifacts(module)) : false;
-  const shouldShowNoArtifactNotice =
-    Boolean(run && hasNoExplorationArtifacts && (run.status === "cancelled" || run.status === "blocked"));
+  const shouldShowNoArtifactNotice = Boolean(
+    run && hasNoExplorationArtifacts && (run.status === "cancelled" || run.status === "blocked"),
+  );
   const explorationDuration = run ? formatExplorationDuration(run) : "-";
   const failureDetail = error
     ? {
@@ -446,24 +451,17 @@ export default function Page() {
                   <h2 className="font-medium text-sm">探索模块进度</h2>
                   <p className="text-muted-foreground text-xs">展示当前模块、子页面、元素和阻塞项探索状态</p>
                 </div>
-                {run ? (
-                  <div className="flex items-center gap-2">
-                    <Badge variant={run.status === "blocked" ? "destructive" : "secondary"}>
-                      {statusLabels[run.status] ?? run.status}
-                    </Badge>
-                    {canStop ? (
-                      <Button
-                        disabled={stopping}
-                        onClick={() => setStopDialogOpen(true)}
-                        size="sm"
-                        type="button"
-                        variant="destructive"
-                      >
-                        <Square className="size-3.5" />
-                        停止
-                      </Button>
-                    ) : null}
-                  </div>
+                {canStop ? (
+                  <Button
+                    disabled={stopping}
+                    onClick={() => setStopDialogOpen(true)}
+                    size="sm"
+                    type="button"
+                    variant="destructive"
+                  >
+                    <Square className="size-3.5" />
+                    停止
+                  </Button>
                 ) : null}
               </div>
               {loading ? (
@@ -471,13 +469,7 @@ export default function Page() {
               ) : run ? (
                 <div className="space-y-3">
                   {shouldShowNoArtifactNotice ? (
-                    <NoArtifactNotice
-                      disabled={startDisabled}
-                      loading={starting}
-                      run={run}
-                      onOpenLog={() => setActiveTab("探索日志")}
-                      onRestart={startExploration}
-                    />
+                    <NoArtifactNotice run={run} onOpenLog={() => setActiveTab("探索日志")} />
                   ) : null}
                   <AgentPlan
                     className="max-w-full"
@@ -488,19 +480,7 @@ export default function Page() {
               ) : null}
             </ShellSection>
 
-            <div className="min-w-0 space-y-4">
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle className="text-sm">输入摘要</CardTitle>
-                  <CardDescription>本次探索的环境和范围</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  <InfoRow label="关联环境" value={run?.environment_name ?? "-"} />
-                  <InfoRow label="探索范围" value={run?.scope || "-"} />
-                  <InfoRow label="禁止路径" value={run?.forbidden_paths || "-"} />
-                </CardContent>
-              </Card>
-
+            <div className="min-w-0">
               <Card size="sm">
                 <CardHeader>
                   <CardTitle className="text-sm">执行时间线</CardTitle>
@@ -519,7 +499,7 @@ export default function Page() {
                   />
                   <TimelineItem
                     active={Boolean(run?.finished_at)}
-                    label="完成探索"
+                    label={run?.status === "cancelled" ? "中止探索" : "完成探索"}
                     value={run?.finished_at ? formatDateTime(run.finished_at) : "等待结果"}
                   />
                 </CardContent>
@@ -553,7 +533,7 @@ export default function Page() {
         <DialogContent className="gap-6 p-6 sm:max-w-3xl">
           <DialogHeader className="gap-3">
             <DialogTitle>编辑探索任务</DialogTitle>
-            <DialogDescription>调整任务名称、关联环境、探索范围、禁止路径和任务说明。</DialogDescription>
+            <DialogDescription>调整任务名称、关联环境、探索范围、探索目标和禁止路径。</DialogDescription>
           </DialogHeader>
           <FieldGroup className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
             <Field>
@@ -590,7 +570,7 @@ export default function Page() {
                 className="min-h-24"
                 id="exploration-scope"
                 onChange={(event) => setExplorationForm((current) => ({ ...current, scope: event.target.value }))}
-                placeholder="菜单范围、URL 白名单、核心模块标记"
+                placeholder={explorationPlaceholders.scope}
                 value={explorationForm.scope}
               />
             </Field>
@@ -602,17 +582,17 @@ export default function Page() {
                 onChange={(event) =>
                   setExplorationForm((current) => ({ ...current, forbiddenPaths: event.target.value }))
                 }
-                placeholder="删除、支付、外发、批量通知等危险路径"
+                placeholder={explorationPlaceholders.forbiddenPaths}
                 value={explorationForm.forbiddenPaths}
               />
             </Field>
             <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="exploration-description">描述</FieldLabel>
+              <FieldLabel htmlFor="exploration-description">探索目标</FieldLabel>
               <Textarea
                 className="min-h-20"
                 id="exploration-description"
                 onChange={(event) => setExplorationForm((current) => ({ ...current, description: event.target.value }))}
-                placeholder="本次探索目标、角色说明、验证码处理方式或人工注意事项"
+                placeholder={explorationPlaceholders.goal}
                 value={explorationForm.description}
               />
             </Field>
@@ -663,23 +643,13 @@ function ExplorationFailureNotice({ error, onClose }: { error: string; onClose: 
   );
 }
 
-function NoArtifactNotice({
-  disabled,
-  loading,
-  onOpenLog,
-  onRestart,
-  run,
-}: {
-  disabled: boolean;
-  loading: boolean;
-  onOpenLog: () => void;
-  onRestart: () => void;
-  run: ExplorationRun;
-}) {
+function NoArtifactNotice({ onOpenLog, run }: { onOpenLog: () => void; run: ExplorationRun }) {
   const isCancelled = run.status === "cancelled";
   const title = isCancelled ? "本次探索已中止，未生成探索产物" : "本次探索被阻塞，未生成探索产物";
+  const stopReason =
+    run.result_summary || "用户已停止探索；此前任务已无运行中的浏览器探索进程，已生成的日志会继续保留。";
   const description = isCancelled
-    ? "用户已停止探索；此前任务已无运行中的浏览器探索进程，已生成的日志会继续保留。"
+    ? "此前任务已无运行中的浏览器探索进程，已生成的日志会继续保留；如需重新执行，请使用页面右上角的重新开始探索。"
     : run.result_summary || "当前探索需要人工处理后才能继续，请查看日志确认阻塞原因和证据。";
 
   return (
@@ -687,15 +657,17 @@ function NoArtifactNotice({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
           <div className="font-medium">{title}</div>
+          {isCancelled ? (
+            <div className="text-foreground">
+              <span className="text-muted-foreground">中止原因：</span>
+              {stopReason}
+            </div>
+          ) : null}
           <p className="text-muted-foreground">{description}</p>
         </div>
         <div className="flex shrink-0 gap-2">
           <Button onClick={onOpenLog} size="sm" type="button" variant="outline">
             查看日志
-          </Button>
-          <Button disabled={disabled} onClick={onRestart} size="sm" type="button">
-            <Play className="size-4" />
-            {loading ? "启动中" : "重新开始"}
           </Button>
         </div>
       </div>
@@ -901,6 +873,7 @@ function formatExplorationDuration(run: ExplorationRun): string {
 
 function toPlanTasks(detail: ExplorationRunDetail): AgentPlanTask[] {
   return detail.modules.map((module) => {
+    const moduleIntent = describeModuleCoverageIntent(module.module_name);
     const pageSubtasks = module.pages.map((page) => ({
       id: `page-${page.id}`,
       title: page.title || page.url || page.entry_path || "未命名页面",
@@ -929,7 +902,7 @@ function toPlanTasks(detail: ExplorationRunDetail): AgentPlanTask[] {
     return {
       id: module.id,
       title: module.module_name,
-      description: module.completion_summary || module.entry_path,
+      description: describeModuleSummary(detail.run, module, moduleIntent),
       status: getModulePlanStatus(detail.run.status, module.completion_status),
       dependencies: [
         formatModulePageProgress(module),
@@ -950,32 +923,34 @@ function buildEmptyArtifactSubtask(
   module: ExplorationRunDetail["modules"][number],
 ): AgentPlanSubtask {
   const moduleName = module.module_name || "当前模块";
-  const scope = module.entry_path || run.scope || run.environment_name;
+  const moduleIntent = describeModuleCoverageIntent(moduleName);
+  const meta = buildModuleMeta(run, module);
   if (run.status === "queued") {
     return {
       id: `pending-${module.id}`,
       title: `${moduleName}：等待 Runner 接收`,
-      description: `任务已提交，Runner 接收后会从该范围采集页面、链接、元素和阻塞证据：${scope}`,
+      description: `${moduleIntent} 任务已提交，等待 Runner 接收后开始采集证据。`,
       status: "queued",
-      meta: [scope].filter(Boolean),
+      meta,
     };
   }
   if (run.status === "running" || run.status === "stopping") {
     return {
       id: `pending-${module.id}`,
       title: `${moduleName}：正在采集证据`,
-      description: `Playwright CLI 正在按该模块范围探索；采集到页面、关键元素或阻塞项后会替换这里的占位信息：${scope}`,
+      description: `${moduleIntent} 采集到页面、关键元素或阻塞项后，这里会替换为真实页面事实。`,
       status: "in-progress",
-      meta: [scope].filter(Boolean),
+      meta,
     };
   }
   if (run.status === "waiting_human") {
     return {
       id: `pending-${module.id}`,
       title: `${moduleName}：等待人工处理`,
-      description: module.completion_summary || run.result_summary || "当前探索需要人工处理后才能继续。",
+      description:
+        module.completion_summary || run.result_summary || `${moduleIntent} 当前探索需要人工处理后才能继续。`,
       status: "blocked",
-      meta: [scope].filter(Boolean),
+      meta,
     };
   }
   if (run.status === "blocked" || run.status === "cancelled") {
@@ -990,17 +965,77 @@ function buildEmptyArtifactSubtask(
           ? "用户已停止探索；此前任务已无运行中的浏览器探索进程，日志会继续保留。"
           : "本次探索未生成该模块的页面、元素或阻塞明细。"),
       status: normalizePlanStatus(run.status),
-      meta: [scope].filter(Boolean),
+      meta,
     };
   }
 
   return {
     id: `pending-${module.id}`,
     title: `${moduleName}：等待探索产物`,
-    description: `开始探索后会在这里展示该模块的子页面、关键元素、阻塞项和完成情况：${scope}`,
+    description: `${moduleIntent} 开始探索后会在这里展示该模块的子页面、关键元素、阻塞项和完成情况。`,
     status: normalizePlanStatus(module.completion_status),
-    meta: [scope].filter(Boolean),
+    meta,
   };
+}
+
+function describeModuleSummary(
+  run: ExplorationRun,
+  module: ExplorationRunDetail["modules"][number],
+  moduleIntent: string,
+): string {
+  if (module.pages.length || module.elements.length || module.blockers.length) {
+    return module.completion_summary || moduleIntent;
+  }
+  if (run.status === "queued") {
+    return "已纳入探索计划，等待 Runner 接收。";
+  }
+  if (run.status === "running" || run.status === "stopping") {
+    return moduleIntent;
+  }
+  return module.completion_summary || run.result_summary || moduleIntent;
+}
+
+function describeModuleCoverageIntent(moduleName: string): string {
+  const normalizedName = moduleName.trim();
+  if (normalizedName.includes("入口")) {
+    return "从站点入口确认首屏标题、登录状态、权限拦截和可继续进入的同源链接。";
+  }
+  if (normalizedName.includes("目录") || normalizedName.includes("导航")) {
+    return "采集目录、菜单和导航入口，记录目标标题、URL、类型和可访问性。";
+  }
+  if (normalizedName.includes("正文")) {
+    return "遍历正文区域里的文档链接，确认目标地址是否可打开、是否跳转登录或权限页。";
+  }
+  if (normalizedName.includes("侧边栏")) {
+    return "检查侧边栏锚点和分组链接，记录点击响应、目标页面和右侧锚点数量。";
+  }
+  if (normalizedName.includes("上一篇") || normalizedName.includes("下一篇")) {
+    return "检查上一篇、下一篇等前后文链接，确认目标页面是否存在以及跳转后标题是否正确。";
+  }
+  if (normalizedName.includes("面包屑")) {
+    return "检查面包屑层级链接，验证是否能回到目录、上级页面或站点入口。";
+  }
+  if (normalizedName.includes("按钮") || normalizedName.includes("输入框")) {
+    return "统计页面内按钮、输入框、选择框和可点击控件，记录可访问名称和交互风险。";
+  }
+  if (normalizedName.includes("登录") || normalizedName.includes("权限")) {
+    return "识别登录页、无权限页、401/403 页面和真实权限拦截文案，避免把拦截误判为业务页。";
+  }
+  if (normalizedName.includes("异常")) {
+    return "记录 404、500、空白页、加载失败等异常状态，并保留复现入口和证据。";
+  }
+  if (normalizedName.includes("外链") || normalizedName.includes("禁止")) {
+    return "识别外链和禁止路径，只记录目标地址与跳过原因，不执行危险或越界操作。";
+  }
+  return "采集该范围内的页面、链接、元素、跳转状态和阻塞证据。";
+}
+
+function buildModuleMeta(run: ExplorationRun, module: ExplorationRunDetail["modules"][number]): string[] {
+  const entryPath = module.entry_path?.trim();
+  if (!entryPath || entryPath === run.scope?.trim()) {
+    return [];
+  }
+  return [entryPath.length > 60 ? `${entryPath.slice(0, 57)}...` : entryPath];
 }
 
 function formatModulePageProgress(module: ExplorationRunDetail["modules"][number]): string {

@@ -188,6 +188,42 @@ class ExplorationServiceTest(unittest.TestCase):
             )
             self.assertTrue(all("secret-pass" not in row["after_json"] for row in rows))
 
+    def test_update_environment_allows_unchanged_name_in_same_project(self):
+        with isolated_exploration_store():
+            seed_project_environment()
+
+            updated = environment_service.update_project_environment(
+                "project-1",
+                "env-1",
+                ProjectEnvironmentUpdateIn(name="测试环境", login_strategy="skip_login"),
+                admin_actor(),
+            )
+
+            self.assertEqual(updated["name"], "测试环境")
+            self.assertEqual(updated["login_strategy"], "skip_login")
+
+    def test_update_environment_rejects_duplicate_name_in_same_project(self):
+        with isolated_exploration_store():
+            seed_project_environment()
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO project_environments (id, project_id, name, site_url, login_strategy, created_by)
+                    VALUES ('env-2', 'project-1', '备用环境', 'https://backup.example.test', 'reuse_state', 'u-admin')
+                    """
+                )
+
+            with self.assertRaises(Exception) as context:
+                environment_service.update_project_environment(
+                    "project-1",
+                    "env-2",
+                    ProjectEnvironmentUpdateIn(name="测试环境"),
+                    admin_actor(),
+                )
+
+            self.assertEqual(context.exception.status_code, 409)
+            self.assertEqual(context.exception.detail["code"], "ENVIRONMENT_CONFLICT")
+
     def test_start_run_resets_previous_exploration_duration(self):
         with isolated_exploration_store():
             seed_project_environment()
