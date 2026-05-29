@@ -58,6 +58,9 @@ type ExplorationRun = {
   forbidden_paths: string;
   login_strategy: string;
   description: string;
+  max_pages: number;
+  max_actions: number;
+  timeout_minutes: number;
   created_at: string;
   updated_at: string;
   available_actions: string[];
@@ -89,6 +92,9 @@ type ExplorationForm = {
   scope: string;
   forbiddenPaths: string;
   description: string;
+  maxPages: string;
+  maxActions: string;
+  timeoutMinutes: string;
 };
 
 const emptyForm: EnvironmentForm = {
@@ -108,6 +114,9 @@ const emptyExplorationForm: ExplorationForm = {
   scope: "",
   forbiddenPaths: "",
   description: "",
+  maxPages: "50",
+  maxActions: "1000",
+  timeoutMinutes: "120",
 };
 
 const statusLabels: Record<string, string> = {
@@ -150,6 +159,11 @@ const explorationPlaceholders = {
   forbiddenPaths: "填写禁止进入或点击的路径/动作，例如删除、支付、外发、批量通知、退出登录。",
   goal: "填写本次探索要验证的目标，例如遍历元素和链接，检查 401/403、登录跳转和异常页。",
 };
+
+function parsePositiveInteger(value: string): number | null {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
 
 export function ExplorationWorkspace({
   breadcrumbs,
@@ -309,7 +323,7 @@ export function ExplorationWorkspace({
   const filteredRows = useMemo(
     () =>
       rows.filter((item) =>
-        [item.name, item.project_name, item.site_url, item.username, item.description, item.updated_at].some((value) =>
+        [item.name, item.project_name, item.site_url, item.username, item.updated_at].some((value) =>
           value.toLowerCase().includes(searchText.trim().toLowerCase()),
         ),
       ),
@@ -418,6 +432,9 @@ export function ExplorationWorkspace({
       scope: run.scope,
       forbiddenPaths: run.forbidden_paths,
       description: run.description,
+      maxPages: String(run.max_pages ?? 50),
+      maxActions: String(run.max_actions ?? 1000),
+      timeoutMinutes: String(run.timeout_minutes ?? 120),
     });
     setExplorationDialogOpen(true);
   }
@@ -492,6 +509,13 @@ export function ExplorationWorkspace({
       toast.error("请填写任务名称并选择环境");
       return;
     }
+    const maxPages = parsePositiveInteger(explorationForm.maxPages);
+    const maxActions = parsePositiveInteger(explorationForm.maxActions);
+    const timeoutMinutes = parsePositiveInteger(explorationForm.timeoutMinutes);
+    if (!maxPages || !maxActions || !timeoutMinutes) {
+      toast.error("请填写大于 0 的执行边界");
+      return;
+    }
 
     try {
       const payload = {
@@ -500,6 +524,9 @@ export function ExplorationWorkspace({
         scope: explorationForm.scope,
         forbidden_paths: explorationForm.forbiddenPaths,
         description: explorationForm.description,
+        max_pages: maxPages,
+        max_actions: maxActions,
+        timeout_minutes: timeoutMinutes,
       };
       if (editingExploration) {
         const updated = await apiRequest<ExplorationRun>(
@@ -670,24 +697,9 @@ export function ExplorationWorkspace({
                     <TableCell>{item.project_name}</TableCell>
                     <TableCell>{item.environment_name}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <Badge className={statusBadgeClassNames[item.status]} variant="outline">
-                          {statusLabels[item.status] ?? item.status}
-                        </Badge>
-                        {STOPPABLE_EXPLORATION_STATUSES.has(item.status) ? (
-                          <Button
-                            className="h-6 px-2 text-xs"
-                            disabled={stoppingExplorationId === item.id}
-                            onClick={() => setStoppingExploration(item)}
-                            size="sm"
-                            type="button"
-                            variant="destructive"
-                          >
-                            <Square className="size-3.5" />
-                            停止
-                          </Button>
-                        ) : null}
-                      </div>
+                      <Badge className={statusBadgeClassNames[item.status]} variant="outline">
+                        {statusLabels[item.status] ?? item.status}
+                      </Badge>
                     </TableCell>
                     <TableCell>{loginStrategyLabels[item.login_strategy] ?? item.login_strategy}</TableCell>
                     <TableCell>{formatDateTime(item.updated_at)}</TableCell>
@@ -754,7 +766,7 @@ export function ExplorationWorkspace({
             onBatchDelete={() => deleteEnvironments(selectedIds)}
             onCreate={openCreateDialog}
             onSearch={setSearchText}
-            placeholder="搜索环境名称、项目、站点、用户名或描述"
+            placeholder="搜索环境名称、项目、站点或用户名"
             selectedCount={selectedCount}
             title="环境列表"
           />
@@ -773,7 +785,6 @@ export function ExplorationWorkspace({
                   <TableHead>环境名称</TableHead>
                   <TableHead>项目</TableHead>
                   <TableHead>站点地址</TableHead>
-                  <TableHead>描述</TableHead>
                   <TableHead>更新时间</TableHead>
                   <TableHead className="w-16">操作</TableHead>
                 </TableRow>
@@ -799,11 +810,6 @@ export function ExplorationWorkspace({
                         {item.site_url}
                       </span>
                     </TableCell>
-                    <TableCell>
-                      <span className="block max-w-64 truncate" title={item.description}>
-                        {item.description || "-"}
-                      </span>
-                    </TableCell>
                     <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                     <TableCell>
                       <RowActions
@@ -821,11 +827,11 @@ export function ExplorationWorkspace({
                   </TableRow>
                 ))}
                 {environmentLoading && filteredRows.length === 0 ? (
-                  <TableLoadingRow colSpan={7} label="环境列表加载中" />
+                  <TableLoadingRow colSpan={6} label="环境列表加载中" />
                 ) : null}
                 {!environmentLoading && filteredRows.length === 0 ? (
                   <TableRow>
-                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={7}>
+                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
                       暂无环境。新增站点环境后，可用于后续页面探索任务。
                     </TableCell>
                   </TableRow>
@@ -837,14 +843,14 @@ export function ExplorationWorkspace({
       ) : null}
 
       <Dialog onOpenChange={handleEnvironmentDialogOpenChange} open={dialogOpen}>
-        <DialogContent className="gap-6 p-6 sm:max-w-3xl">
-          <DialogHeader className="gap-3">
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="shrink-0 gap-3 px-6 pt-6">
             <DialogTitle>{editingEnvironment ? "编辑环境" : "新建环境"}</DialogTitle>
             <DialogDescription>
               填写环境名称、所属项目、站点地址、登录信息和登录策略，用于后续探索任务。
             </DialogDescription>
           </DialogHeader>
-          <FieldGroup className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+          <FieldGroup className="grid min-h-0 gap-x-6 gap-y-5 overflow-y-auto px-6 py-5 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="environment-name">环境名称</FieldLabel>
               <Input
@@ -943,7 +949,7 @@ export function ExplorationWorkspace({
               />
             </Field>
           </FieldGroup>
-          <DialogFooter className="-mx-6 -mb-6 px-6 py-4">
+          <DialogFooter className="m-0 shrink-0 px-6 py-4">
             <Button onClick={() => setDialogOpen(false)} type="button" variant="outline">
               取消
             </Button>
@@ -993,12 +999,12 @@ export function ExplorationWorkspace({
         }}
         open={explorationDialogOpen}
       >
-        <DialogContent className="gap-6 p-6 sm:max-w-3xl">
-          <DialogHeader className="gap-3">
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="shrink-0 gap-3 px-6 pt-6">
             <DialogTitle>{editingExploration ? "编辑探索任务" : "新建探索任务"}</DialogTitle>
             <DialogDescription>选择环境并配置探索范围、探索目标和禁止路径。</DialogDescription>
           </DialogHeader>
-          <FieldGroup className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+          <FieldGroup className="grid min-h-0 gap-x-6 gap-y-5 overflow-y-auto px-6 py-5 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="exploration-title">任务名称</FieldLabel>
               <Input
@@ -1082,8 +1088,55 @@ export function ExplorationWorkspace({
                 value={explorationForm.description}
               />
             </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel>执行边界</FieldLabel>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="grid gap-1.5 text-sm" htmlFor="exploration-max-pages">
+                  <span className="text-muted-foreground text-xs">页面上限</span>
+                  <Input
+                    id="exploration-max-pages"
+                    inputMode="numeric"
+                    min={1}
+                    onChange={(event) =>
+                      setExplorationForm((current) => ({ ...current, maxPages: event.target.value }))
+                    }
+                    placeholder="50"
+                    type="number"
+                    value={explorationForm.maxPages}
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm" htmlFor="exploration-max-actions">
+                  <span className="text-muted-foreground text-xs">操作上限</span>
+                  <Input
+                    id="exploration-max-actions"
+                    inputMode="numeric"
+                    min={1}
+                    onChange={(event) =>
+                      setExplorationForm((current) => ({ ...current, maxActions: event.target.value }))
+                    }
+                    placeholder="1000"
+                    type="number"
+                    value={explorationForm.maxActions}
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm" htmlFor="exploration-timeout-minutes">
+                  <span className="text-muted-foreground text-xs">超时时间（分钟）</span>
+                  <Input
+                    id="exploration-timeout-minutes"
+                    inputMode="numeric"
+                    min={1}
+                    onChange={(event) =>
+                      setExplorationForm((current) => ({ ...current, timeoutMinutes: event.target.value }))
+                    }
+                    placeholder="120"
+                    type="number"
+                    value={explorationForm.timeoutMinutes}
+                  />
+                </label>
+              </div>
+            </Field>
           </FieldGroup>
-          <DialogFooter className="-mx-6 -mb-6 px-6 py-4">
+          <DialogFooter className="m-0 shrink-0 px-6 py-4">
             <Button onClick={() => setExplorationDialogOpen(false)} type="button" variant="outline">
               取消
             </Button>

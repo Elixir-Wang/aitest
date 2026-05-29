@@ -138,7 +138,7 @@ type MergePreview = {
 };
 
 type MergeArtifactTab = {
-  key: "merged" | "mapping" | "conflicts";
+  key: "quality" | "confirmations" | "merged" | "mapping" | "conflicts";
   label: string;
   path: string;
   content: string;
@@ -200,27 +200,43 @@ type RequirementAnalysisResult = {
   };
 };
 
-function fallbackMergeArtifactTabs(previewId: string, content: string): MergeArtifactTab[] {
+function fallbackMergeArtifactTabs(previewId: string): MergeArtifactTab[] {
   return [
     {
-      key: "merged",
-      label: "合并后的文档",
-      path: `previews/${previewId}.md`,
-      content,
+      key: "quality",
+      label: "质量检测",
+      path: `quality/${previewId}.md`,
+      content: "# 质量检测\n\n暂无质量检测产物。",
     },
     {
-      key: "mapping",
-      label: "段落映射",
-      path: `mappings/${previewId}.md`,
-      content: "# 段落映射\n\n暂无段落映射产物。",
-    },
-    {
-      key: "conflicts",
-      label: "明显冲突",
-      path: `conflicts/${previewId}.md`,
-      content: "# 明显冲突\n\n暂无明显冲突产物。",
+      key: "confirmations",
+      label: "待确认项",
+      path: `confirmations/${previewId}.md`,
+      content: "# 待确认项\n\n本次未发现需要人工确认的差异。",
     },
   ];
+}
+
+function normalizeMergeArtifactTabs(tabs: MergeArtifactTab[] | undefined): MergeArtifactTab[] {
+  const normalized = (tabs ?? [])
+    .map((artifact) => {
+      if (artifact.key === "mapping") {
+        return { ...artifact, key: "quality" as const, label: "质量检测" };
+      }
+      if (artifact.key === "conflicts") {
+        return { ...artifact, key: "confirmations" as const, label: "待确认项" };
+      }
+      return artifact;
+    })
+    .filter((artifact) => artifact.key === "quality" || artifact.key === "confirmations");
+  const seen = new Set<string>();
+  return normalized.filter((artifact) => {
+    if (seen.has(artifact.key)) {
+      return false;
+    }
+    seen.add(artifact.key);
+    return true;
+  });
 }
 
 type MergeResponse =
@@ -356,22 +372,19 @@ export default function DocumentDetailPage() {
         ["pending", "processing"].includes(selectedFile.conversion_status)),
   );
   const showConflictTab = Boolean(overview?.has_open_conflicts || conflicts.length > 0);
-  const initialArtifactTabs = mergePreview?.artifactTabs?.length
+  const rawInitialArtifactTabs = mergePreview?.artifactTabs?.length
     ? mergePreview.artifactTabs
     : (overview?.artifact_tabs ?? []);
-  const visibleInitialArtifactTabs = useMemo(
-    () => initialArtifactTabs.filter((artifact) => artifact.key !== MERGED_REQUIREMENT_TAB_KEY),
-    [initialArtifactTabs],
+  const initialArtifactTabs = useMemo(
+    () => normalizeMergeArtifactTabs(rawInitialArtifactTabs),
+    [rawInitialArtifactTabs],
   );
   const changedStandardFiles = overview?.changed_standard_files ?? [];
   const isInitialRequirementOutdated =
     Boolean(overview?.initial_markdown_content.trim()) &&
     overview?.merge_sync_status === "outdated" &&
     changedStandardFiles.length > 0;
-  const initialMarkdownContent =
-    initialArtifactTabs.find((artifact) => artifact.key === MERGED_REQUIREMENT_TAB_KEY)?.content ??
-    overview?.initial_markdown_content ??
-    "";
+  const initialMarkdownContent = mergePreview?.markdownContent ?? overview?.initial_markdown_content ?? "";
   const hasRunningConversions = Boolean(
     overview?.files.some((file) => ["pending", "processing"].includes(file.conversion_status)),
   );
@@ -530,11 +543,11 @@ export default function DocumentDetailPage() {
     }
     if (
       mergeArtifactTab !== MERGED_REQUIREMENT_TAB_KEY &&
-      !visibleInitialArtifactTabs.some((artifact) => artifact.key === mergeArtifactTab)
+      !initialArtifactTabs.some((artifact) => artifact.key === mergeArtifactTab)
     ) {
       setMergeArtifactTab(MERGED_REQUIREMENT_TAB_KEY);
     }
-  }, [initialArtifactTabs.length, mergeArtifactTab, visibleInitialArtifactTabs]);
+  }, [initialArtifactTabs, mergeArtifactTab]);
 
   useEffect(() => {
     if (!hasRunningConversions) {
@@ -734,8 +747,8 @@ export default function DocumentDetailPage() {
           qualityResult: result.quality_result,
           artifactTabs:
             result.artifact_tabs && result.artifact_tabs.length > 0
-              ? result.artifact_tabs
-              : fallbackMergeArtifactTabs(result.version_id, result.markdown_content),
+              ? normalizeMergeArtifactTabs(result.artifact_tabs)
+              : fallbackMergeArtifactTabs(result.version_id),
         });
         setMergeArtifactTab(MERGED_REQUIREMENT_TAB_KEY);
         toast.success("初始需求已生成");
@@ -753,12 +766,12 @@ export default function DocumentDetailPage() {
           qualityResult: result.quality_result,
           artifactTabs:
             result.artifact_tabs && result.artifact_tabs.length > 0
-              ? result.artifact_tabs
-              : fallbackMergeArtifactTabs(result.preview_id, result.markdown_preview),
+              ? normalizeMergeArtifactTabs(result.artifact_tabs)
+              : fallbackMergeArtifactTabs(result.preview_id),
         });
         setMergeArtifactTab(MERGED_REQUIREMENT_TAB_KEY);
         updateConflicts(result.conflicts ?? []);
-        toast.success("已生成合并后的文档、段落映射和明显冲突产物");
+        toast.success("已生成合并需求稿、质量检测和待确认项");
         await loadOverview({ silent: true });
         setActiveTab("initial");
         return;
@@ -767,7 +780,7 @@ export default function DocumentDetailPage() {
         setMergeError("");
         setMergePreview(null);
         updateConflicts(result.conflicts ?? []);
-        toast.warning(`发现 ${result.conflict_count} 个明显冲突，请先处理后再生成合并需求稿`);
+        toast.warning(`发现 ${result.conflict_count} 个待确认项，请先处理后再生成合并需求稿`);
         await loadOverview({ silent: true });
         setActiveTab("conflicts");
         return;
@@ -821,7 +834,9 @@ export default function DocumentDetailPage() {
               canConfirm: false,
               qualityResult: result.quality_result ?? current.qualityResult,
               artifactTabs:
-                result.artifact_tabs && result.artifact_tabs.length > 0 ? result.artifact_tabs : current.artifactTabs,
+                result.artifact_tabs && result.artifact_tabs.length > 0
+                  ? normalizeMergeArtifactTabs(result.artifact_tabs)
+                  : current.artifactTabs,
             }
           : null,
       );
@@ -1358,7 +1373,7 @@ export default function DocumentDetailPage() {
                     <TabsTrigger className="h-8 whitespace-nowrap" value={MERGED_REQUIREMENT_TAB_KEY}>
                       合并需求稿
                     </TabsTrigger>
-                    {visibleInitialArtifactTabs.map((artifact) => (
+                    {initialArtifactTabs.map((artifact) => (
                       <TabsTrigger className="h-8 whitespace-nowrap" key={artifact.key} value={artifact.key}>
                         {artifact.label}
                       </TabsTrigger>
@@ -1396,7 +1411,7 @@ export default function DocumentDetailPage() {
                   <div className="mb-4 rounded-lg border bg-muted/20 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <h2 className="font-medium text-sm">归并产物</h2>
+                        <h2 className="font-medium text-sm">质量检测摘要</h2>
                         <p className="mt-1 text-muted-foreground text-xs">
                           {mergePreview.mergeSummary || "请确认预览内容后写入版本。"}
                         </p>
@@ -1429,7 +1444,7 @@ export default function DocumentDetailPage() {
                     indentParagraphs
                   />
                 </TabsContent>
-                {visibleInitialArtifactTabs.map((artifact) => (
+                {initialArtifactTabs.map((artifact) => (
                   <TabsContent key={artifact.key} value={artifact.key}>
                     <MarkdownPreview
                       className="requirement-artifact-preview"

@@ -9,7 +9,7 @@ from app.core.storage import resolve_stored_path
 from app.presentation.serializers import serialize_exploration_run
 from app.repositories import environment_repo, exploration_repo, project_repo
 from app.schemas.exploration import ExplorationRunCreateIn, ExplorationRunUpdateIn
-from app.services import operation_log_service
+from app.services import exploration_artifact_service, operation_log_service
 
 STATUSES = {"pending", "queued", "running", "waiting_human", "stopping", "cancelled", "partial", "completed", "blocked"}
 LOGIN_STRATEGIES = {"reuse_state", "manual", "account_password", "skip_login"}
@@ -48,9 +48,7 @@ def get_project_run_detail(project_id: str, run_id: str, actor) -> dict:
         _ensure_project_visible(existing, actor)
 
         modules = [dict(row) for row in exploration_repo.list_module_coverages(db, run_id)]
-        pages = [dict(row) for row in exploration_repo.list_pages(db, run_id)]
-        elements = [dict(row) for row in exploration_repo.list_elements(db, run_id)]
-        blockers = [dict(row) for row in exploration_repo.list_blockers(db, run_id)]
+        pages, elements, blockers = _load_run_artifacts(existing)
 
         module_by_key = {
             module["module_key"]: {
@@ -87,9 +85,11 @@ def get_project_run_detail(project_id: str, run_id: str, actor) -> dict:
                     "url": page["url"],
                     "entry_path": page["entry_path"],
                     "structure_summary": page["structure_summary"],
-                    "screenshot_path": page["screenshot_path"],
-                    "snapshot_path": page["snapshot_path"],
-                    "trace_path": page["trace_path"],
+                    "yaml_path": page.get("yaml_path", ""),
+                    "page_type": page.get("page_type", "unknown"),
+                    "status": page.get("status", "explored"),
+                    "blocker_reason": page.get("blocker_reason", ""),
+                    "recent_event": page.get("recent_event", ""),
                 }
             )
 
@@ -144,28 +144,15 @@ def get_project_run_report(project_id: str, run_id: str, actor) -> dict:
             raise api_error(404, "NOT_FOUND", "探索任务不存在。")
         _ensure_project_visible(existing, actor)
 
-        version = exploration_repo.latest_document_version(db, run_id)
-        if not version:
-            return {
-                "run_id": run_id,
-                "version_no": None,
-                "title": "探索报告",
-                "markdown_content": "",
-                "change_summary": "",
-                "created_at": None,
-            }
-
-        markdown_path = resolve_stored_path(version["markdown_path"])
-        if not markdown_path or not markdown_path.exists():
-            raise api_error(404, "REPORT_NOT_FOUND", "探索报告文件不存在。")
-
+        artifacts = _load_run_artifact_bundle(existing)
+        has_summary = bool(artifacts["summary"])
         return {
             "run_id": run_id,
-            "version_no": version["version_no"],
-            "title": f"探索报告 v{version['version_no']}",
-            "markdown_content": markdown_path.read_text(encoding="utf-8"),
-            "change_summary": version["change_summary"],
-            "created_at": version["created_at"],
+            "version_no": 1 if has_summary else None,
+            "title": "探索报告 v1" if has_summary else "探索报告",
+            "markdown_content": artifacts["summary"].get("markdown_content", ""),
+            "change_summary": artifacts["summary"].get("summary", ""),
+            "created_at": existing["created_at"] if has_summary else None,
         }
 
 
@@ -176,18 +163,11 @@ def get_project_run_log(project_id: str, run_id: str, actor) -> dict:
             raise api_error(404, "NOT_FOUND", "探索任务不存在。")
         _ensure_project_visible(existing, actor)
 
-        artifact = exploration_repo.latest_artifact_by_type(db, run_id, "log")
-        log_path_value = artifact["file_path"] if artifact else ""
-        log_path = resolve_stored_path(log_path_value)
-        if (not log_path or not log_path.exists()) and existing["artifact_root"]:
-            artifact_root = resolve_stored_path(existing["artifact_root"])
-            log_path = artifact_root / "logs" / "run.log" if artifact_root else None
-            log_path_value = f"{existing['artifact_root'].rstrip('/')}/logs/run.log"
-
+        artifacts = _load_run_artifact_bundle(existing)
         return {
             "run_id": run_id,
-            "log_content": log_path.read_text(encoding="utf-8") if log_path and log_path.exists() else "",
-            "log_path": log_path_value,
+            "log_content": artifacts["log_content"],
+            "log_path": artifacts["log_path"],
             "updated_at": existing["updated_at"],
         }
 
@@ -207,6 +187,11 @@ def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) 
         if not environment or environment["project_id"] != project_id:
             raise api_error(400, "INVALID_ENVIRONMENT", "请选择当前项目下的环境。")
 
+        _validate_execution_limits(
+            max_pages=payload.max_pages,
+            max_actions=payload.max_actions,
+            timeout_minutes=payload.timeout_minutes,
+        )
         exploration_repo.create(
             db,
             run_id=run_id,
@@ -217,6 +202,9 @@ def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) 
             forbidden_paths=payload.forbidden_paths.strip(),
             login_strategy=environment["login_strategy"],
             description=payload.description.strip(),
+            max_pages=payload.max_pages,
+            max_actions=payload.max_actions,
+            timeout_minutes=payload.timeout_minutes,
             created_by=actor["id"],
         )
         row = exploration_repo.find_by_id(db, run_id)
@@ -254,6 +242,11 @@ def update_project_run(project_id: str, run_id: str, payload: ExplorationRunUpda
             environment = environment_repo.find_by_id(db, updates["environment_id"])
             if not environment or environment["project_id"] != project_id:
                 raise api_error(400, "INVALID_ENVIRONMENT", "请选择当前项目下的环境。")
+        _validate_execution_limits(
+            max_pages=updates.get("max_pages"),
+            max_actions=updates.get("max_actions"),
+            timeout_minutes=updates.get("timeout_minutes"),
+        )
 
         assignments, values = _build_update_assignments(updates)
         if assignments:
@@ -429,6 +422,9 @@ def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
         "forbidden_paths": "forbidden_paths",
         "login_strategy": "login_strategy",
         "description": "description",
+        "max_pages": "max_pages",
+        "max_actions": "max_actions",
+        "timeout_minutes": "timeout_minutes",
     }
     assignments = []
     values = []
@@ -561,6 +557,16 @@ def _scope_named_items(scope: str) -> list[str]:
     return _unique_preserve_order(["入口页", *items])
 
 
+def _validate_execution_limits(*, max_pages: int | None, max_actions: int | None, timeout_minutes: int | None) -> None:
+    values = {
+        "max_pages": max_pages,
+        "max_actions": max_actions,
+        "timeout_minutes": timeout_minutes,
+    }
+    if any(value is not None and value < 1 for value in values.values()):
+        raise api_error(400, "INVALID_EXPLORATION_LIMIT", "探索执行边界必须大于 0。")
+
+
 def _is_full_site_scope(scope: str) -> bool:
     full_site_terms = ("全部站点", "全部内容", "所有内容", "所有页面", "全站", "遍历")
     return any(term in scope for term in full_site_terms)
@@ -586,5 +592,92 @@ def _run_snapshot(run) -> dict:
         "forbidden_paths": run["forbidden_paths"],
         "login_strategy": run["login_strategy"],
         "description": run["description"],
+        "max_pages": run["max_pages"],
+        "max_actions": run["max_actions"],
+        "timeout_minutes": run["timeout_minutes"],
         "result_summary": run["result_summary"],
     }
+
+
+def _load_run_artifacts(run) -> tuple[list[dict], list[dict], list[dict]]:
+    bundle = _load_run_artifact_bundle(run)
+    pages = []
+    elements = []
+    blockers = []
+    for page_item in bundle["pages"]:
+        content = page_item.get("content", {})
+        page = content.get("page", {})
+        pages.append(
+            {
+                "id": page.get("id") or page_item.get("file_path", ""),
+                "module_key": page.get("module", "site-entry"),
+                "title": page.get("title", ""),
+                "url": page.get("url", ""),
+                "entry_path": page.get("normalized_url") or page.get("entry_path", ""),
+                "structure_summary": page.get("title", ""),
+                "yaml_path": page_item.get("file_path", ""),
+                "page_type": page.get("page_type", "unknown"),
+                "status": page.get("status", "explored"),
+                "blocker_reason": "",
+                "recent_event": "",
+            }
+        )
+        for element in content.get("accessibility_tree", []):
+            if not isinstance(element, dict):
+                continue
+            elements.append(
+                {
+                    "id": f"{page.get('id') or page_item.get('file_path', '')}:{element.get('role', '')}:{element.get('name', '')}",
+                    "page_id": page.get("id") or page_item.get("file_path", ""),
+                    "module_key": page.get("module", "site-entry"),
+                    "element_name": element.get("name", ""),
+                    "element_type": element.get("role", ""),
+                    "recommended_locator": element.get("locator_hint", ""),
+                    "fallback_locator": element.get("href", ""),
+                    "stability_note": "来自页面 YAML 产物。",
+                    "source_ref": page.get("url", ""),
+                }
+            )
+        for blocker in content.get("relations", {}).get("outgoing_edges", []):
+            if not isinstance(blocker, dict):
+                continue
+            blockers.append(
+                {
+                    "id": f"{page.get('id') or page_item.get('file_path', '')}:{blocker.get('type', '')}",
+                    "module_key": page.get("module", "site-entry"),
+                    "page_ref": page.get("url", ""),
+                    "reason_type": blocker.get("type", ""),
+                    "reason": blocker.get("action", ""),
+                    "evidence_path": bundle["log_path"],
+                    "impact_scope": "站点探索",
+                    "suggested_action": blocker.get("action", ""),
+                    "is_blocking": False,
+                }
+            )
+    for blocker in bundle["blockers"].get("blockers", []):
+        page_ref = blocker.get("page_ref", "")
+        if any(existing["page_ref"] == page_ref and existing["reason_type"] == blocker.get("reason_type", "") for existing in blockers):
+            continue
+        blockers.append(
+            {
+                "id": f"{page_ref}:{blocker.get('reason_type', '')}",
+                "module_key": blocker.get("module_key", "site-entry"),
+                "page_ref": page_ref,
+                "reason_type": blocker.get("reason_type", ""),
+                "reason": blocker.get("reason", ""),
+                "evidence_path": blocker.get("evidence_path") or bundle["log_path"],
+                "impact_scope": "站点探索",
+                "suggested_action": blocker.get("suggested_action", ""),
+                "is_blocking": True,
+            }
+        )
+    return pages, elements, blockers
+
+
+def _load_run_artifact_bundle(run) -> dict:
+    artifact_root = resolve_stored_path(run["artifact_root"])
+    if not artifact_root:
+        return {"run": {}, "summary": {}, "graph": {}, "blockers": {}, "pages": [], "log_content": "", "log_path": ""}
+    bundle = exploration_artifact_service.load_exploration_run_artifacts(artifact_root)
+    bundle["log_path"] = f"{run['artifact_root'].rstrip('/')}/logs/run.log"
+    return bundle

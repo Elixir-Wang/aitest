@@ -47,6 +47,80 @@ class ExplorationServiceTest(unittest.TestCase):
 
             self.assertEqual(run["login_strategy"], "account_password")
 
+    def test_create_run_uses_default_execution_limits(self):
+        with isolated_exploration_store():
+            seed_project_environment()
+
+            run = exploration_service.create_project_run(
+                "project-1",
+                ExplorationRunCreateIn(environment_id="env-1", title="后台探索"),
+                admin_actor(),
+            )
+
+            self.assertEqual(run["max_pages"], 50)
+            self.assertEqual(run["max_actions"], 1000)
+            self.assertEqual(run["timeout_minutes"], 120)
+
+    def test_create_run_persists_custom_execution_limits(self):
+        with isolated_exploration_store():
+            seed_project_environment()
+
+            run = exploration_service.create_project_run(
+                "project-1",
+                ExplorationRunCreateIn(
+                    environment_id="env-1",
+                    title="后台探索",
+                    max_pages=25,
+                    max_actions=300,
+                    timeout_minutes=45,
+                ),
+                admin_actor(),
+            )
+
+            self.assertEqual(run["max_pages"], 25)
+            self.assertEqual(run["max_actions"], 300)
+            self.assertEqual(run["timeout_minutes"], 45)
+
+    def test_update_run_persists_execution_limits(self):
+        with isolated_exploration_store():
+            seed_project_environment()
+            created = exploration_service.create_project_run(
+                "project-1",
+                ExplorationRunCreateIn(environment_id="env-1", title="后台探索"),
+                admin_actor(),
+            )
+
+            updated = exploration_service.update_project_run(
+                "project-1",
+                created["id"],
+                ExplorationRunUpdateIn(max_pages=80, max_actions=1500, timeout_minutes=180),
+                admin_actor(),
+            )
+
+            self.assertEqual(updated["max_pages"], 80)
+            self.assertEqual(updated["max_actions"], 1500)
+            self.assertEqual(updated["timeout_minutes"], 180)
+
+    def test_create_run_rejects_invalid_execution_limits(self):
+        with isolated_exploration_store():
+            seed_project_environment()
+
+            with self.assertRaises(Exception) as context:
+                exploration_service.create_project_run(
+                    "project-1",
+                    ExplorationRunCreateIn(
+                        environment_id="env-1",
+                        title="后台探索",
+                        max_pages=0,
+                        max_actions=1000,
+                        timeout_minutes=120,
+                    ),
+                    admin_actor(),
+                )
+
+            self.assertEqual(context.exception.status_code, 400)
+            self.assertEqual(context.exception.detail["code"], "INVALID_EXPLORATION_LIMIT")
+
     def test_start_run_marks_task_as_submitted(self):
         with isolated_exploration_store():
             seed_project_environment()
@@ -300,37 +374,33 @@ class ExplorationServiceTest(unittest.TestCase):
                 ).fetchone()
             self.assertEqual(log_count["count"], 0)
 
-    def test_get_project_run_report_reads_latest_markdown_document(self):
+    def test_get_project_run_report_reads_summary_yaml(self):
         with isolated_exploration_store() as root:
             seed_project_environment()
-            report_path = root / "projects" / "project-1" / "exploration" / "explore-1" / "documents" / "exploration-v2.md"
+            report_path = root / "projects" / "project-1" / "exploration" / "explore-1" / "summary.yaml"
             report_path.parent.mkdir(parents=True, exist_ok=True)
-            report_path.write_text("# 探索报告\n\n- 已完成", encoding="utf-8")
+            report_path.write_text(
+                "run_id: explore-1\ntitle: 探索报告 v1\nstatus: completed\nsummary: 更新报告\nmarkdown_content: '# 探索报告\\n\\n- 已完成'\n",
+                encoding="utf-8",
+            )
             with connect() as db:
                 db.execute(
                     """
                     INSERT INTO exploration_runs
-                      (id, project_id, environment_id, title, scope, forbidden_paths, login_strategy, created_by)
+                      (id, project_id, environment_id, title, scope, forbidden_paths, login_strategy, artifact_root, created_by)
                     VALUES
-                      ('explore-1', 'project-1', 'env-1', '后台探索', '用户管理', '删除', 'reuse_state', 'u-admin')
-                    """
-                )
-                db.execute(
-                    """
-                    INSERT INTO exploration_document_versions
-                      (id, exploration_run_id, version_no, markdown_path, change_summary, created_by)
-                    VALUES
-                      ('expdocv-1', 'explore-1', 2, 'project-1/exploration/explore-1/documents/exploration-v2.md', '更新报告', 'system')
+                      ('explore-1', 'project-1', 'env-1', '后台探索', '用户管理', '删除', 'reuse_state',
+                       'project-1/exploration/explore-1', 'u-admin')
                     """
                 )
 
             report = exploration_service.get_project_run_report("project-1", "explore-1", admin_actor())
 
-            self.assertEqual(report["version_no"], 2)
+            self.assertEqual(report["version_no"], 1)
             self.assertEqual(report["change_summary"], "更新报告")
             self.assertIn("# 探索报告", report["markdown_content"])
 
-    def test_get_project_run_log_reads_log_artifact(self):
+    def test_get_project_run_log_reads_yaml_artifact_log(self):
         with isolated_exploration_store() as root:
             seed_project_environment()
             log_path = root / "projects" / "project-1" / "exploration" / "explore-1" / "logs" / "run.log"
@@ -340,17 +410,10 @@ class ExplorationServiceTest(unittest.TestCase):
                 db.execute(
                     """
                     INSERT INTO exploration_runs
-                      (id, project_id, environment_id, title, scope, forbidden_paths, login_strategy, created_by)
+                      (id, project_id, environment_id, title, scope, forbidden_paths, login_strategy, artifact_root, created_by)
                     VALUES
-                      ('explore-1', 'project-1', 'env-1', '后台探索', '用户管理', '删除', 'reuse_state', 'u-admin')
-                    """
-                )
-                db.execute(
-                    """
-                    INSERT INTO exploration_artifacts
-                      (id, exploration_run_id, artifact_type, file_path, title, summary)
-                    VALUES
-                      ('expart-1', 'explore-1', 'log', 'project-1/exploration/explore-1/logs/run.log', '探索执行日志', '日志')
+                      ('explore-1', 'project-1', 'env-1', '后台探索', '用户管理', '删除', 'reuse_state',
+                       'project-1/exploration/explore-1', 'u-admin')
                     """
                 )
 

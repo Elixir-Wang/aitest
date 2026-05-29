@@ -9,12 +9,16 @@ class ExplorationRunOut(BaseModel):
     project_name: str
     environment_id: str
     environment_name: str
+    environment_site_url: str = ""
     title: str
     status: str
     scope: str
     forbidden_paths: str
     login_strategy: str
     description: str
+    max_pages: int = 50
+    max_actions: int = 1000
+    timeout_minutes: int = 120
     artifact_root: str = ""
     result_summary: str = ""
     created_at: str
@@ -32,6 +36,9 @@ class ExplorationRunCreateIn(BaseModel):
     forbidden_paths: str = ""
     login_strategy: str = "reuse_state"
     description: str = ""
+    max_pages: int = 50
+    max_actions: int = 1000
+    timeout_minutes: int = 120
 
 
 class ExplorationRunUpdateIn(BaseModel):
@@ -41,6 +48,9 @@ class ExplorationRunUpdateIn(BaseModel):
     forbidden_paths: str | None = None
     login_strategy: str | None = None
     description: str | None = None
+    max_pages: int | None = None
+    max_actions: int | None = None
+    timeout_minutes: int | None = None
 
 
 class ExplorationPageOut(BaseModel):
@@ -50,9 +60,11 @@ class ExplorationPageOut(BaseModel):
     url: str
     entry_path: str
     structure_summary: str
-    screenshot_path: str = ""
-    snapshot_path: str = ""
-    trace_path: str = ""
+    yaml_path: str = ""
+    page_type: str = "unknown"
+    status: str = "explored"
+    blocker_reason: str = ""
+    recent_event: str = ""
 
 
 class ExplorationElementOut(BaseModel):

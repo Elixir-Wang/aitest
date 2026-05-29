@@ -17,7 +17,7 @@ from app.core.settings import (
 from app.core.db import connect
 from app.core.storage import PROJECT_FILE_STORAGE_ROOT, store_path
 from app.repositories import exploration_repo
-from app.services import exploration_service, operation_log_service
+from app.services import exploration_artifact_service, exploration_service, operation_log_service
 
 
 def run_exploration(run_id: str) -> None:
@@ -177,7 +177,7 @@ def _mark_run_failed_after_unhandled_error(run_id: str, error: Exception) -> Non
 
 
 def _ensure_artifact_dirs(root: Path) -> None:
-    for name in ("storage", "traces", "screenshots", "snapshots", "videos", "documents", "outputs", "logs"):
+    for name in ("pages", "logs"):
         (root / name).mkdir(parents=True, exist_ok=True)
 
 
@@ -192,6 +192,7 @@ def _execute_playwright_probe(run_id: str, artifact_root: Path) -> dict:
             "reason_type": "runner_unavailable",
             "suggested_action": "在后端运行环境安装 Playwright，并执行 npx playwright install 后重试。",
             "log_path": store_path(log_path) or "",
+            "log": f"{message}\n",
         }
 
     page_url, forbidden_paths = _safe_run_context_from_db(run_id)
@@ -210,6 +211,7 @@ def _execute_playwright_probe(run_id: str, artifact_root: Path) -> dict:
                 failure_detail,
             ),
             "log_path": store_path(log_path) or "",
+            "log": exploration_result["log"],
         }
 
     log_path.write_text(exploration_result["log"], encoding="utf-8")
@@ -242,35 +244,6 @@ def _playwright_command(*args: str) -> list[str]:
 
 def _npx_command_path() -> str | None:
     return shutil.which("npx")
-
-
-def _capture_entry_screenshot(page_url: str, screenshot_path: Path) -> dict:
-    command = _playwright_command("screenshot")
-    if PLAYWRIGHT_BROWSER_CHANNEL:
-        command.extend(["--channel", PLAYWRIGHT_BROWSER_CHANNEL])
-    command.extend([page_url, str(screenshot_path)])
-    try:
-        completed = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            cwd=PLAYWRIGHT_RUNNER_DIR,
-            text=True,
-            timeout=PLAYWRIGHT_CLI_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        return {
-            "status": "blocked",
-            "summary": "Playwright CLI 启动浏览器访问站点失败。",
-            "log": f"Playwright smoke test failed: {error}\n",
-        }
-    if completed.returncode != 0:
-        return {
-            "status": "blocked",
-            "summary": "Playwright CLI 启动浏览器访问站点失败。",
-            "log": "\n".join([completed.stdout, completed.stderr]).strip() + "\n",
-        }
-    return {"status": "completed", "summary": "站点入口截图生成成功。", "log": completed.stdout}
 
 
 def _run_site_explorer(page_url: str, artifact_root: Path, forbidden_paths: str = "") -> dict:
@@ -413,8 +386,6 @@ def _suggested_action_with_failure_detail(suggested_action: str, failure_detail:
 
 def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:
     module_key = _module_key(run)
-    markdown_path = artifact_root / "documents" / "exploration-v1.md"
-    output_path = artifact_root / "outputs" / "result.json"
     markdown = _render_markdown(
         run=run,
         status="blocked",
@@ -423,13 +394,13 @@ def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:
         page_url="",
         blocker=result["summary"],
     )
-    payload = {
-        "status": "blocked",
-        "summary": result["summary"],
-        "modules": [{"module_key": module_key, "module_name": _module_name(run), "completion_status": "blocked"}],
-        "pages": [],
-        "elements": [],
-        "blockers": [
+    artifacts = exploration_artifact_service.write_exploration_artifacts(
+        artifact_root,
+        run=run,
+        summary={"status": "blocked", "summary": result["summary"], "markdown_content": markdown},
+        pages=[],
+        elements=[],
+        blockers=[
             {
                 "module_key": module_key,
                 "page_ref": run["environment_name"],
@@ -439,10 +410,8 @@ def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:
                 "suggested_action": result["suggested_action"],
             }
         ],
-        "artifacts": [{"artifact_type": "log", "file_path": result["log_path"]}],
-    }
-    markdown_path.write_text(markdown, encoding="utf-8")
-    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        log_content=result["log"],
+    )
 
     exploration_repo.create_module_coverage(
         db,
@@ -472,7 +441,7 @@ def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:
         impact_scope="站点探索、候选需求、知识库、用例、自动化",
         suggested_action=result["suggested_action"],
     )
-    _persist_common_artifacts(db, run["id"], markdown_path, output_path, result["log_path"])
+    _persist_common_artifacts(db, run["id"], artifacts, result["log_path"])
     exploration_repo.update_run_state(
         db,
         run["id"],
@@ -484,8 +453,6 @@ def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:
 
 def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> None:
     module_key = _module_key(run)
-    markdown_path = artifact_root / "documents" / "exploration-v1.md"
-    output_path = artifact_root / "outputs" / "result.json"
     page_url = _safe_site_url(run)
     pages = _result_pages(result)
     result_status, coverage_gap_blocker = _completion_status_with_coverage_gate(run, result, pages)
@@ -502,8 +469,6 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> Non
                 "url": page["url"],
                 "entry_path": page["entry_path"],
                 "structure_summary": page["structure_summary"],
-                "screenshot_path": _stored_artifact_path(artifact_root, page.get("screenshot_path", "")),
-                "snapshot_path": _stored_artifact_path(artifact_root, page.get("snapshot_path", "")),
             }
         )
     payload_elements = [
@@ -519,7 +484,6 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> Non
         }
         for element in result.get("elements", [])
     ]
-    screenshot_path = payload_pages[0]["screenshot_path"] if payload_pages else None
     markdown = _render_markdown(
         run=run,
         status=result_status,
@@ -544,26 +508,15 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> Non
         }
         for blocker in result_blockers
     ]
-    payload = {
-        "status": result_status,
-        "summary": result["summary"],
-        "modules": [
-            {
-                "module_key": module_key,
-                "module_name": _module_name(run),
-                "completion_status": "partial" if result_status == "partial" else "completed",
-            }
-        ],
-        "pages": payload_pages,
-        "elements": payload_elements,
-        "blockers": payload_blockers,
-        "artifacts": [
-            {"artifact_type": "log", "file_path": result["log_path"]},
-            {"artifact_type": "screenshot", "file_path": screenshot_path or ""},
-        ],
-    }
-    markdown_path.write_text(markdown, encoding="utf-8")
-    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    artifacts = exploration_artifact_service.write_exploration_artifacts(
+        artifact_root,
+        run=run,
+        summary={"status": result_status, "summary": result["summary"], "markdown_content": markdown},
+        pages=payload_pages,
+        elements=payload_elements,
+        blockers=payload_blockers,
+        log_content=result["log"],
+    )
 
     exploration_repo.create_module_coverage(
         db,
@@ -591,8 +544,6 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> Non
             url=page["url"],
             entry_path=page["entry_path"],
             structure_summary=page["structure_summary"],
-            screenshot_path=page["screenshot_path"],
-            snapshot_path=page["snapshot_path"],
         )
     for element in payload_elements:
         exploration_repo.create_element(
@@ -622,7 +573,7 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> Non
             suggested_action=blocker["suggested_action"],
             is_blocking=False,
         )
-    _persist_common_artifacts(db, run["id"], markdown_path, output_path, result["log_path"], screenshot_path)
+    _persist_common_artifacts(db, run["id"], artifacts, result["log_path"])
     exploration_repo.update_run_state(
         db,
         run["id"],
@@ -663,26 +614,12 @@ def _is_full_site_scope(run) -> bool:
     return any(term in scope for term in full_site_terms)
 
 
-def _persist_common_artifacts(
-    db,
-    run_id: str,
-    markdown_path: Path,
-    output_path: Path,
-    log_path: str,
-    screenshot_path: str | None = None,
-) -> None:
-    exploration_repo.create_document_version(
-        db,
-        version_id=_id("expdocv"),
-        exploration_run_id=run_id,
-        version_no=1,
-        markdown_path=store_path(markdown_path) or "",
-        change_summary="创建第一版探索文档。",
-        created_by="system",
-    )
+def _persist_common_artifacts(db, run_id: str, artifacts: dict[str, str], log_path: str) -> None:
     for artifact_type, path_value, title in (
-        ("document", store_path(markdown_path) or "", "探索文档 v1"),
-        ("json", store_path(output_path) or "", "探索结构化结果"),
+        ("yaml", artifacts.get("run_path", ""), "探索运行配置"),
+        ("yaml", artifacts.get("summary_path", ""), "探索概览摘要"),
+        ("yaml", artifacts.get("graph_path", ""), "探索页面关系"),
+        ("yaml", artifacts.get("blockers_path", ""), "探索阻塞清单"),
         ("log", log_path, "探索执行日志"),
     ):
         exploration_repo.create_artifact(
@@ -693,16 +630,6 @@ def _persist_common_artifacts(
             file_path=path_value,
             title=title,
             summary="站点探索第一版产物。",
-        )
-    if screenshot_path:
-        exploration_repo.create_artifact(
-            db,
-            artifact_id=_id("expart"),
-            exploration_run_id=run_id,
-            artifact_type="screenshot",
-            file_path=screenshot_path,
-            title="入口页截图",
-            summary="Playwright 访问站点入口后生成的截图。",
         )
 
 
@@ -727,8 +654,6 @@ def _render_markdown(
                     "",
                     f"- URL：{page['url']}",
                     f"- 结构摘要：{page['structure_summary']}",
-                    f"- 截图：{page['screenshot_path'] or '-'}",
-                    f"- 快照：{page['snapshot_path'] or '-'}",
                     "",
                 ]
             )
@@ -792,18 +717,10 @@ def _result_pages(result: dict) -> list[dict]:
             "url": str(page.get("url") or ""),
             "entry_path": str(page.get("entry_path") or page.get("url") or ""),
             "structure_summary": str(page.get("structure_summary") or "未生成页面结构摘要。"),
-            "screenshot_path": str(page.get("screenshot_path") or ""),
-            "snapshot_path": str(page.get("snapshot_path") or ""),
         }
         for page in pages
         if page.get("url")
     ]
-
-
-def _stored_artifact_path(artifact_root: Path, relative_path: str) -> str:
-    if not relative_path:
-        return ""
-    return store_path(artifact_root / relative_path) or ""
 
 
 def _id(prefix: str) -> str:

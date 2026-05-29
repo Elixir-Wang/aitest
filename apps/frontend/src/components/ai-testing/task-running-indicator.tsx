@@ -152,7 +152,7 @@ export function TaskRunningIndicator() {
         <button
           aria-label="查看执行中任务"
           className={cn(
-            "relative inline-flex h-9 items-center gap-2 overflow-hidden rounded-lg border px-3 font-medium text-sm transition-colors",
+            "relative inline-flex h-8 items-center gap-2 overflow-hidden rounded-lg border px-2.5 font-medium text-sm transition-colors",
             "border-primary/20 bg-primary/10 text-primary hover:bg-primary/15",
           )}
           type="button"
@@ -182,9 +182,6 @@ export function TaskRunningIndicator() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="truncate font-medium text-sm">{task.title}</div>
-                      <div className="mt-1 truncate text-muted-foreground text-xs">
-                        {task.moduleLabel} / {task.projectName}
-                      </div>
                     </div>
                     <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-primary text-xs">
                       {getTaskStatusLabel(task)}

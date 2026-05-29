@@ -141,7 +141,7 @@ POST /api/sso/ticket/verify
         self.assertIn("| product_code |", blocks[0].markdown)
         self.assertIn("| login_ticket |", blocks[1].markdown)
 
-    def test_merge_artifacts_expose_only_three_user_documents(self):
+    def test_merge_artifacts_expose_quality_and_confirmation_documents(self):
         self._artifact_store()
         source_files = [
             RequirementMergeSourceFile(
@@ -181,23 +181,29 @@ POST /api/sso/ticket/verify
             blocking_issues=[],
         )
 
-        self.assertEqual([tab["key"] for tab in tabs], ["merged", "mapping", "conflicts"])
-        self.assertEqual([tab["label"] for tab in tabs], ["合并后的文档", "段落映射", "明显冲突"])
-        self.assertNotIn("report", {tab["key"] for tab in tabs})
-        self.assertEqual([tab["key"] for tab in public_artifact_tabs(tabs)], ["merged", "mapping", "conflicts"])
+        self.assertEqual([tab["key"] for tab in tabs], ["merged", "quality", "confirmations"])
+        self.assertEqual([tab["label"] for tab in tabs], ["合并后的文档", "质量检测", "待确认项"])
+        self.assertEqual([tab["key"] for tab in public_artifact_tabs(tabs)], ["quality", "confirmations"])
 
         saved_tabs = read_merge_artifact_tabs("project-artifact-test", "doc-artifact-test", "mergerun-three-docs")
-        self.assertEqual([tab["key"] for tab in saved_tabs], ["merged", "mapping", "conflicts"])
-        mapping_markdown = saved_tabs[1]["content"]
-        self.assertIn("## 来源文档", mapping_markdown)
-        self.assertIn("| A | 接口契约.md |", mapping_markdown)
-        self.assertIn("## 来源块清单", mapping_markdown)
-        self.assertIn("| A-01 | A | 接口 |", mapping_markdown)
-        self.assertIn("## 来源块覆盖表", mapping_markdown)
-        self.assertIn("| A-01 | 接口契约.md | 接口 | 接口契约 / ticket 校验 | 合并 | 是 | 已合并。 |", mapping_markdown)
-        self.assertIn("## 未覆盖来源块清单", mapping_markdown)
-        self.assertIn("无", mapping_markdown)
-        self.assertIn("## 高保真内容保留清单", mapping_markdown)
+        self.assertEqual([tab["key"] for tab in saved_tabs], ["quality", "confirmations"])
+        quality_markdown = saved_tabs[0]["content"]
+        self.assertIn("# 质量检测", quality_markdown)
+        self.assertIn("## 检测结论", quality_markdown)
+        self.assertIn("| 合并质量 | 通过 |", quality_markdown)
+        self.assertIn("## 来源覆盖", quality_markdown)
+        self.assertIn("| 来源文件数 | 1 |", quality_markdown)
+        self.assertIn("| 来源块总数 | 1 |", quality_markdown)
+        self.assertIn("## 内容保留", quality_markdown)
+        self.assertIn("## 合并完整性", quality_markdown)
+        self.assertIn("## 来源追溯摘要", quality_markdown)
+        self.assertIn("接口：已合入「接口契约 / ticket 校验」", quality_markdown)
+        self.assertNotIn("docmap-1", quality_markdown)
+        self.assertNotIn("mapping_id", quality_markdown)
+        self.assertNotIn("fragment", quality_markdown)
+        confirmation_markdown = saved_tabs[1]["content"]
+        self.assertIn("# 待确认项", confirmation_markdown)
+        self.assertIn("本次未发现需要人工确认的差异。", confirmation_markdown)
 
     def test_machine_artifacts_include_source_blocks_as_primary_traceability_unit(self):
         self._artifact_store()

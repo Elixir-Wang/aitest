@@ -829,8 +829,8 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(result["status"], "preview")
             self.assertEqual(result["quality_result"], "failed")
-            self.assertEqual([tab["key"] for tab in result["artifact_tabs"]], ["merged", "mapping", "conflicts"])
-            self.assertIn("疑似只生成摘要", result["artifact_tabs"][2]["content"])
+            self.assertEqual([tab["key"] for tab in result["artifact_tabs"]], ["quality", "confirmations"])
+            self.assertIn("疑似只生成摘要", result["artifact_tabs"][0]["content"])
             self.assertEqual(document_service.get_document_versions("doc-1"), [])
 
     async def test_merge_document_markdown_returns_conflict_without_creating_version(self):
@@ -1170,11 +1170,11 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(
                 [tab["key"] for tab in overview["artifact_tabs"]],
-                ["merged", "mapping", "conflicts"],
+                ["quality", "confirmations"],
             )
+            self.assertIn("质量检测", overview["artifact_tabs"][0]["content"])
             self.assertIn("支持账号登录", overview["artifact_tabs"][0]["content"])
-            self.assertIn("段落映射", overview["artifact_tabs"][1]["content"])
-            self.assertIn("明显冲突", overview["artifact_tabs"][2]["content"])
+            self.assertIn("待确认项", overview["artifact_tabs"][1]["content"])
 
     async def test_merge_agent_failure_writes_visible_failure_artifacts(self):
         with isolated_document_store() as actor:
@@ -1219,10 +1219,10 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(
                 [tab["key"] for tab in overview["artifact_tabs"]],
-                ["merged", "mapping", "conflicts"],
+                ["quality", "confirmations"],
             )
-            self.assertIn("合并候选稿未生成", overview["artifact_tabs"][0]["content"])
-            self.assertIn("model not configured", overview["artifact_tabs"][2]["content"])
+            self.assertIn("无法证明所有来源内容已被处理", overview["artifact_tabs"][0]["content"])
+            self.assertIn("model not configured", overview["artifact_tabs"][0]["content"])
             with connect() as db:
                 row = db.execute(
                     """

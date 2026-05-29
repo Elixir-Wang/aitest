@@ -244,6 +244,9 @@ def init_db() -> None:
               forbidden_paths TEXT NOT NULL DEFAULT '',
               login_strategy TEXT NOT NULL DEFAULT 'reuse_state',
               description TEXT NOT NULL DEFAULT '',
+              max_pages INTEGER NOT NULL DEFAULT 50,
+              max_actions INTEGER NOT NULL DEFAULT 1000,
+              timeout_minutes INTEGER NOT NULL DEFAULT 120,
               artifact_root TEXT NOT NULL DEFAULT '',
               result_summary TEXT NOT NULL DEFAULT '',
               created_by TEXT NOT NULL,
@@ -530,6 +533,9 @@ def init_db() -> None:
         _ensure_column(db, "exploration_runs", "result_summary", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "exploration_runs", "started_at", "TEXT")
         _ensure_column(db, "exploration_runs", "finished_at", "TEXT")
+        _ensure_column(db, "exploration_runs", "max_pages", "INTEGER NOT NULL DEFAULT 50")
+        _ensure_column(db, "exploration_runs", "max_actions", "INTEGER NOT NULL DEFAULT 1000")
+        _ensure_column(db, "exploration_runs", "timeout_minutes", "INTEGER NOT NULL DEFAULT 120")
         _backfill_environment_login_strategies(db)
         _migrate_exploration_run_statuses(db)
         _migrate_source_documents(db)
@@ -614,6 +620,9 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
           forbidden_paths TEXT NOT NULL DEFAULT '',
           login_strategy TEXT NOT NULL DEFAULT 'reuse_state',
           description TEXT NOT NULL DEFAULT '',
+          max_pages INTEGER NOT NULL DEFAULT 50,
+          max_actions INTEGER NOT NULL DEFAULT 1000,
+          timeout_minutes INTEGER NOT NULL DEFAULT 120,
           artifact_root TEXT NOT NULL DEFAULT '',
           result_summary TEXT NOT NULL DEFAULT '',
           created_by TEXT NOT NULL,
@@ -626,11 +635,12 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
         );
         INSERT OR IGNORE INTO exploration_runs_new
           (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, description,
-           artifact_root, result_summary, created_by, created_at, updated_at, started_at, finished_at)
+           max_pages, max_actions, timeout_minutes, artifact_root, result_summary, created_by, created_at, updated_at,
+           started_at, finished_at)
         SELECT id, project_id, environment_id, title,
                CASE WHEN status = 'queued' AND started_at IS NULL THEN 'pending' ELSE status END,
-               scope, forbidden_paths, login_strategy, description, artifact_root, result_summary,
-               created_by, created_at, updated_at, started_at, finished_at
+               scope, forbidden_paths, login_strategy, description, max_pages, max_actions, timeout_minutes,
+               artifact_root, result_summary, created_by, created_at, updated_at, started_at, finished_at
         FROM exploration_runs;
         DROP TABLE exploration_runs;
         ALTER TABLE exploration_runs_new RENAME TO exploration_runs;

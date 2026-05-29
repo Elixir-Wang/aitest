@@ -36,13 +36,7 @@ class SiteExplorationOrchestratorTest(unittest.TestCase):
                 )
 
             artifact_root = Path(temp_dir) / "projects" / "project-1" / "exploration" / "explore-1"
-            screenshot_path = artifact_root / "screenshots" / "page-01.png"
-
             def fake_run_site_explorer(_page_url: str, target_root: Path, _forbidden_paths: str = "") -> dict:
-                (target_root / "screenshots").mkdir(parents=True, exist_ok=True)
-                (target_root / "snapshots").mkdir(parents=True, exist_ok=True)
-                (target_root / "screenshots" / "page-01.png").write_bytes(b"fake png")
-                (target_root / "snapshots" / "page-01.html").write_text("<button>新增用户</button>", encoding="utf-8")
                 return {
                     "status": "completed",
                     "summary": "已探索 1 个页面，识别 2 个可交互元素，记录 0 个阻塞项。",
@@ -53,8 +47,6 @@ class SiteExplorationOrchestratorTest(unittest.TestCase):
                             "url": "https://example.test/users",
                             "entry_path": "https://example.test",
                             "structure_summary": "标题：用户管理。可交互元素：button 1、input 1。",
-                            "screenshot_path": "screenshots/page-01.png",
-                            "snapshot_path": "snapshots/page-01.html",
                         }
                     ],
                     "elements": [
@@ -93,7 +85,7 @@ class SiteExplorationOrchestratorTest(unittest.TestCase):
                 artifact = db.execute(
                     """
                     SELECT * FROM exploration_artifacts
-                    WHERE exploration_run_id = 'explore-1' AND artifact_type = 'screenshot'
+                    WHERE exploration_run_id = 'explore-1' AND artifact_type = 'yaml' AND file_path LIKE '%summary.yaml'
                     """
                 ).fetchone()
                 coverage = db.execute("SELECT * FROM exploration_module_coverages WHERE exploration_run_id = 'explore-1'").fetchone()
@@ -115,8 +107,14 @@ class SiteExplorationOrchestratorTest(unittest.TestCase):
             self.assertEqual(page["title"], "用户管理")
             self.assertEqual(element_count["count"], 2)
             self.assertIsNotNone(artifact)
-            self.assertTrue(artifact["file_path"].endswith("screenshots/page-01.png"))
-            self.assertTrue(screenshot_path.exists())
+            self.assertTrue(artifact["file_path"].endswith("summary.yaml"))
+            self.assertTrue((artifact_root / "run.yaml").exists())
+            self.assertTrue((artifact_root / "summary.yaml").exists())
+            self.assertTrue((artifact_root / "graph.yaml").exists())
+            self.assertTrue((artifact_root / "blockers.yaml").exists())
+            self.assertTrue((artifact_root / "pages" / "page-001-用户管理.yaml").exists())
+            self.assertFalse((artifact_root / "screenshots").exists())
+            self.assertFalse((artifact_root / "snapshots").exists())
             self.assertEqual(
                 {(row["action"], row["result"], row["source"], row["task_id"]) for row in logs},
                 {
@@ -156,7 +154,12 @@ class SiteExplorationOrchestratorTest(unittest.TestCase):
                 run = db.execute("SELECT * FROM exploration_runs WHERE id = 'explore-1'").fetchone()
                 coverage = db.execute("SELECT * FROM exploration_module_coverages WHERE exploration_run_id = 'explore-1'").fetchone()
                 blocker = db.execute("SELECT * FROM exploration_blockers WHERE exploration_run_id = 'explore-1'").fetchone()
-                document = db.execute("SELECT * FROM exploration_document_versions WHERE exploration_run_id = 'explore-1'").fetchone()
+                summary_artifact = db.execute(
+                    """
+                    SELECT * FROM exploration_artifacts
+                    WHERE exploration_run_id = 'explore-1' AND artifact_type = 'yaml' AND file_path LIKE '%summary.yaml'
+                    """
+                ).fetchone()
                 finish_log = db.execute(
                     """
                     SELECT action, result, source, failure_reason, summary
@@ -169,8 +172,8 @@ class SiteExplorationOrchestratorTest(unittest.TestCase):
             self.assertIn("Playwright CLI", run["result_summary"])
             self.assertEqual(coverage["completion_status"], "blocked")
             self.assertEqual(blocker["reason_type"], "runner_unavailable")
-            self.assertTrue(document["markdown_path"].endswith("documents/exploration-v1.md"))
-            self.assertTrue((Path(temp_dir) / "projects" / document["markdown_path"]).exists())
+            self.assertTrue(summary_artifact["file_path"].endswith("summary.yaml"))
+            self.assertTrue((Path(temp_dir) / "projects" / summary_artifact["file_path"]).exists())
             self.assertEqual(finish_log["result"], "failed")
             self.assertEqual(finish_log["source"], "runner")
             self.assertIn("Playwright CLI", finish_log["summary"])
@@ -404,10 +407,6 @@ class SiteExplorationOrchestratorTest(unittest.TestCase):
                 )
 
             def fake_run_site_explorer(_page_url: str, target_root: Path, _forbidden_paths: str = "") -> dict:
-                (target_root / "screenshots").mkdir(parents=True, exist_ok=True)
-                (target_root / "snapshots").mkdir(parents=True, exist_ok=True)
-                (target_root / "screenshots" / "page-01.png").write_bytes(b"fake png")
-                (target_root / "snapshots" / "page-01.html").write_text("<input placeholder='通过关键词搜索目录'>", encoding="utf-8")
                 return {
                     "status": "completed",
                     "summary": "已探索 1 个页面，识别 1 个可交互元素，记录 0 个阻塞项。",
@@ -418,8 +417,6 @@ class SiteExplorationOrchestratorTest(unittest.TestCase):
                             "url": "https://example.test/document/manual/87",
                             "entry_path": "https://example.test/document/",
                             "structure_summary": "可交互元素：input 1。",
-                            "screenshot_path": "screenshots/page-01.png",
-                            "snapshot_path": "snapshots/page-01.html",
                         }
                     ],
                     "elements": [

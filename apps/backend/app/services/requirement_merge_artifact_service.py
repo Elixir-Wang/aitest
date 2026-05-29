@@ -57,11 +57,23 @@ def write_merge_artifacts(
     blocking_issues: list[str] | None = None,
 ) -> list[dict]:
     mapping_markdown = build_mapping_markdown(coverage_items, source_files, source_blocks or [])
-    conflicts_markdown = build_conflicts_markdown(conflicts, blocking_issues)
+    quality_markdown = build_quality_markdown(
+        coverage_items=coverage_items,
+        source_files=source_files,
+        source_blocks=source_blocks or [],
+        preview_markdown=preview_markdown,
+        quality_result=quality_result,
+        blocking_issues=blocking_issues or [],
+        merge_summary=merge_summary,
+    )
+    confirmations_markdown = build_confirmation_markdown(conflicts)
+    mapping_path = merge_mapping_path(project_id, document_id, run_id)
+    mapping_path.parent.mkdir(parents=True, exist_ok=True)
+    mapping_path.write_text(mapping_markdown, encoding="utf-8")
     artifacts = [
         ("merged", "合并后的文档", merge_merged_path(project_id, document_id, run_id), preview_markdown, quality_result),
-        ("mapping", "段落映射", merge_mapping_path(project_id, document_id, run_id), mapping_markdown, quality_result),
-        ("conflicts", "明显冲突", merge_conflicts_path(project_id, document_id, run_id), conflicts_markdown, quality_result),
+        ("quality", "质量检测", merge_quality_path(project_id, document_id, run_id), quality_markdown, quality_result),
+        ("confirmations", "待确认项", merge_confirmations_path(project_id, document_id, run_id), confirmations_markdown, quality_result),
     ]
     tabs = []
     document_dir = project_requirement_dir(project_id, document_id)
@@ -82,7 +94,8 @@ def write_merge_artifacts(
 
 
 def public_artifact_tabs(tabs: list[dict]) -> list[dict]:
-    return [{key: tab[key] for key in ("key", "label", "path", "content")} for tab in tabs]
+    public_keys = {"quality", "confirmations"}
+    return [{key: tab[key] for key in ("key", "label", "path", "content")} for tab in tabs if tab["key"] in public_keys]
 
 
 def write_merge_machine_artifacts(
@@ -118,13 +131,29 @@ def write_merge_machine_artifacts(
 
 def read_merge_artifact_tabs(project_id: str, document_id: str, run_id: str) -> list[dict]:
     artifacts = [
-        ("merged", "合并后的文档", merge_merged_path(project_id, document_id, run_id)),
-        ("mapping", "段落映射", merge_mapping_path(project_id, document_id, run_id)),
-        ("conflicts", "明显冲突", merge_conflicts_path(project_id, document_id, run_id)),
+        ("quality", "质量检测", merge_quality_path(project_id, document_id, run_id)),
+        ("confirmations", "待确认项", merge_confirmations_path(project_id, document_id, run_id)),
     ]
     tabs = []
     document_dir = project_requirement_dir(project_id, document_id)
     for key, label, path in artifacts:
+        if not path.exists():
+            continue
+        tabs.append(
+            {
+                "key": key,
+                "label": label,
+                "path": str(path.relative_to(document_dir)),
+                "content": path.read_text(encoding="utf-8"),
+            }
+        )
+    if tabs:
+        return tabs
+    legacy_artifacts = [
+        ("quality", "质量检测", merge_mapping_path(project_id, document_id, run_id)),
+        ("confirmations", "待确认项", merge_conflicts_path(project_id, document_id, run_id)),
+    ]
+    for key, label, path in legacy_artifacts:
         if not path.exists():
             continue
         tabs.append(
@@ -358,6 +387,257 @@ def build_mapping_markdown(
     return "\n".join(rows) + "\n"
 
 
+def build_quality_markdown(
+    *,
+    coverage_items: list[dict],
+    source_files: list[RequirementMergeSourceFile],
+    source_blocks: list[RequirementSourceBlock],
+    preview_markdown: str,
+    quality_result: str,
+    blocking_issues: list[str],
+    merge_summary: str,
+) -> str:
+    counts = coverage_counts(coverage_items)
+    source_unit_count = len(_meaningful_text_units("\n".join(item.markdown_content for item in source_files)))
+    draft_unit_count = len(_meaningful_text_units(preview_markdown))
+    retention_ratio = draft_unit_count / source_unit_count if source_unit_count else 1
+    source_metrics = markdown_structure_metrics("\n".join(item.markdown_content for item in source_files))
+    draft_metrics = markdown_structure_metrics(preview_markdown)
+    coverage_by_block_id = {
+        str(item.get("source_block_id") or item.get("block_id") or ""): item
+        for item in coverage_items
+        if item.get("source_block_id") or item.get("block_id")
+    }
+    rows = [
+        "# 质量检测",
+        "",
+        "## 检测结论",
+        "",
+        "| 指标 | 结果 |",
+        "| --- | --- |",
+        f"| 合并质量 | {_quality_result_label(quality_result)} |",
+        f"| 是否可确认写入版本 | {'否' if quality_result == 'failed' else '是'} |",
+        f"| 质量摘要 | {md_cell(merge_summary or '已完成合并质量检测。')} |",
+        "",
+        "### 阻断原因",
+        "",
+    ]
+    issue_lines = [f"- {_quality_issue_label(issue)}" for issue in blocking_issues]
+    if not coverage_items:
+        issue_lines.append("- 无法证明所有来源内容已被处理。")
+    if _missing_coverage_count(coverage_items, source_blocks):
+        issue_lines.append("- 存在来源内容未进入合并稿。")
+    rows.extend(_dedupe_lines(issue_lines) or ["无"])
+    rows.extend(
+        [
+            "",
+            "## 来源覆盖",
+            "",
+            "| 指标 | 数量 |",
+            "| --- | ---: |",
+            f"| 来源文件数 | {len(source_files)} |",
+            f"| 来源块总数 | {len(source_blocks) or len(coverage_items)} |",
+            f"| 已合入 | {counts.get('merged', 0)} |",
+            f"| 重复引用 | {counts.get('duplicate', 0)} |",
+            f"| 进入待确认项 | {counts.get('conflict', 0) + counts.get('pending_clarification', 0)} |",
+            f"| 未覆盖 | {_missing_coverage_count(coverage_items, source_blocks)} |",
+            "",
+            "### 未覆盖来源内容",
+            "",
+        ]
+    )
+    uncovered_lines = _uncovered_source_lines(coverage_items, source_blocks)
+    rows.extend(uncovered_lines or ["无"])
+    rows.extend(
+        [
+            "",
+            "## 内容保留",
+            "",
+            "| 检查项 | 来源 | 合并稿 | 结果 |",
+            "| --- | ---: | ---: | --- |",
+            _structure_metric_row("Markdown 表格", source_metrics["table_rows"], draft_metrics["table_rows"], minimum=8, threshold=0.35),
+            _structure_metric_row("Mermaid 流程图", source_metrics["mermaid_blocks"], draft_metrics["mermaid_blocks"], minimum=1, threshold=0.5),
+            _structure_metric_row("代码块 / JSON 示例", source_metrics["fenced_blocks"], draft_metrics["fenced_blocks"], minimum=3, threshold=0.5),
+            f"| 高保真来源块 | {len([block for block in source_blocks if block.must_preserve_original])} | - | {_preserve_summary(coverage_items, source_blocks)} |",
+            "",
+            "## 合并完整性",
+            "",
+            "| 指标 | 数值 |",
+            "| --- | ---: |",
+            f"| 来源有效内容 | {source_unit_count} |",
+            f"| 合并稿有效内容 | {draft_unit_count} |",
+            f"| 内容保留比例 | {retention_ratio:.0%} |",
+            "",
+            _retention_summary(source_unit_count, draft_unit_count, retention_ratio),
+            "",
+            "## 来源追溯摘要",
+            "",
+        ]
+    )
+    trace_lines = _source_trace_lines(coverage_items, source_blocks)
+    rows.extend(trace_lines or ["无可展示的来源追溯摘要。"])
+    return "\n".join(rows) + "\n"
+
+
+def build_confirmation_markdown(conflicts: list[dict]) -> str:
+    rows = ["# 待确认项", ""]
+    if not conflicts:
+        rows.append("本次未发现需要人工确认的差异。")
+        return "\n".join(rows) + "\n"
+    rows.extend(["## 待确认项统计", "", f"- 待确认项数量：{len(conflicts)}"])
+    for index, conflict in enumerate(conflicts, start=1):
+        rows.extend(
+            [
+                "",
+                f"## C{index:03d} {conflict.get('title', '未命名待确认项')}",
+                "",
+                f"- 问题类型：{conflict.get('conflict_type', '口径不一致')}",
+                f"- 严重级别：{conflict.get('severity', 'medium')}",
+                f"- 涉及来源：{conflict.get('source_file_names', '') or '未提供来源文件名'}",
+                "",
+                "### 差异摘录",
+                "",
+                str(conflict.get("fragment_a", "")),
+                "",
+                str(conflict.get("fragment_b", "")),
+                "",
+                "### 需要确认的问题",
+                "",
+                str(conflict.get("agent_suggestion", "")) or "需要业务或测试人员确认采用哪一版口径。",
+                "",
+                "### 当前状态",
+                "",
+                str(conflict.get("status", "open")),
+            ]
+        )
+    return "\n".join(rows) + "\n"
+
+
+def _quality_result_label(result: str) -> str:
+    return {"passed": "通过", "warning": "警告", "failed": "未通过"}.get(result, result)
+
+
+def _quality_issue_label(issue: str) -> str:
+    replacements = {
+        "智能体未返回段落映射，无法证明来源内容已完整处理。": "无法证明所有来源内容已被处理。",
+        "段落映射存在未覆盖来源内容。": "存在来源内容未进入合并稿。",
+    }
+    for old, new in replacements.items():
+        issue = issue.replace(old, new)
+    return issue
+
+
+def _missing_coverage_count(coverage_items: list[dict], source_blocks: list[RequirementSourceBlock]) -> int:
+    explicit_missing = sum(1 for item in coverage_items if item.get("coverage_status") == "missing")
+    if not source_blocks:
+        return explicit_missing
+    covered_block_ids = {
+        str(item.get("source_block_id") or item.get("block_id") or "")
+        for item in coverage_items
+        if item.get("source_block_id") or item.get("block_id")
+    }
+    implicit_missing = sum(1 for block in source_blocks if block.block_id not in covered_block_ids and not _coverage_item_for_block(coverage_items, block))
+    return explicit_missing + implicit_missing
+
+
+def _uncovered_source_lines(coverage_items: list[dict], source_blocks: list[RequirementSourceBlock]) -> list[str]:
+    lines = [
+        f"- {md_cell(str(item.get('source_heading') or item.get('source_excerpt') or '未命名来源内容'))}：未进入合并稿。"
+        for item in coverage_items
+        if item.get("coverage_status") == "missing"
+    ]
+    covered_block_ids = {
+        str(item.get("source_block_id") or item.get("block_id") or "")
+        for item in coverage_items
+        if item.get("source_block_id") or item.get("block_id")
+    }
+    for block in source_blocks:
+        if block.block_id in covered_block_ids or _coverage_item_for_block(coverage_items, block):
+            continue
+        lines.append(f"- {md_cell(block.original_heading)}：未进入合并稿。")
+    return lines
+
+
+def _structure_metric_row(label: str, source_count: int, draft_count: int, *, minimum: int, threshold: float) -> str:
+    if source_count < minimum:
+        result = "无明显风险"
+    else:
+        ratio = draft_count / source_count if source_count else 1
+        result = "通过" if ratio >= threshold else "保留不足"
+    return f"| {label} | {source_count} | {draft_count} | {result} |"
+
+
+def _preserve_summary(coverage_items: list[dict], source_blocks: list[RequirementSourceBlock]) -> str:
+    preserve_blocks = [block for block in source_blocks if block.must_preserve_original]
+    if not preserve_blocks:
+        return "无高保真来源块"
+    failed = []
+    for block in preserve_blocks:
+        item = _coverage_item_for_block(coverage_items, block) or {}
+        if _preserve_status(item, block) == "否":
+            failed.append(block.original_heading)
+    return "通过" if not failed else f"保留不足：{'、'.join(failed)}"
+
+
+def _retention_summary(source_unit_count: int, draft_unit_count: int, ratio: float) -> str:
+    if source_unit_count < 20:
+        return "来源内容较少，未触发摘要化比例门禁。"
+    if ratio < 0.35:
+        return "合并稿疑似只生成摘要，不能确认写入版本。"
+    return "未发现明显摘要化。"
+
+
+def _source_trace_lines(coverage_items: list[dict], source_blocks: list[RequirementSourceBlock]) -> list[str]:
+    if source_blocks:
+        lines = []
+        for block in source_blocks:
+            item = _coverage_item_for_block(coverage_items, block) or {}
+            status = str(item.get("coverage_status", "missing"))
+            target = " / ".join(filter(None, [item.get("target_module", ""), item.get("target_heading", "")]))
+            excerpt = _trace_excerpt(item, block)
+            lines.append(f"- {md_cell(block.original_heading)}：{_trace_status_text(status, target)}{excerpt}")
+        return lines
+    return [
+        f"- {md_cell(str(item.get('source_heading') or item.get('source_excerpt') or '未命名来源内容'))}："
+        f"{_trace_status_text(str(item.get('coverage_status', 'missing')), ' / '.join(filter(None, [item.get('target_module', ''), item.get('target_heading', '')])))}"
+        f"{_trace_excerpt(item, None)}"
+        for item in coverage_items
+    ]
+
+
+def _trace_status_text(status: str, target: str) -> str:
+    if status == "merged":
+        return f"已合入「{md_cell(target or '合并稿')}」"
+    if status == "duplicate":
+        return f"已通过重复引用覆盖「{md_cell(target or '合并稿')}」"
+    if status in {"conflict", "pending_clarification"}:
+        return "进入「待确认项」"
+    if status == "discarded":
+        return "已放入附录或不纳入正文"
+    return "未覆盖，需要重新合并或人工补充"
+
+
+def _trace_excerpt(item: dict, block: RequirementSourceBlock | None) -> str:
+    excerpt = str(item.get("source_excerpt") or "")
+    if not excerpt and block is not None:
+        excerpt = block.plain_text
+    excerpt = md_cell(excerpt)
+    if not excerpt:
+        return ""
+    return f"（{excerpt[:80]}）"
+
+
+def _dedupe_lines(lines: list[str]) -> list[str]:
+    result = []
+    seen = set()
+    for line in lines:
+        if line in seen:
+            continue
+        seen.add(line)
+        result.append(line)
+    return result
+
+
 def _coverage_item_for_block(coverage_items: list[dict], block: RequirementSourceBlock) -> dict | None:
     candidates = [item for item in coverage_items if item.get("mapping_id") == block.mapping_id]
     for item in candidates:
@@ -518,3 +798,11 @@ def merge_mapping_path(project_id: str, document_id: str, run_id: str) -> Path:
 
 def merge_conflicts_path(project_id: str, document_id: str, run_id: str) -> Path:
     return project_requirement_dir(project_id, document_id) / "conflicts" / f"{run_id}.md"
+
+
+def merge_quality_path(project_id: str, document_id: str, run_id: str) -> Path:
+    return project_requirement_dir(project_id, document_id) / "quality" / f"{run_id}.md"
+
+
+def merge_confirmations_path(project_id: str, document_id: str, run_id: str) -> Path:
+    return project_requirement_dir(project_id, document_id) / "confirmations" / f"{run_id}.md"

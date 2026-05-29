@@ -132,15 +132,32 @@ def create(
     forbidden_paths: str,
     login_strategy: str,
     description: str,
+    max_pages: int,
+    max_actions: int,
+    timeout_minutes: int,
     created_by: str,
 ) -> None:
     db.execute(
         """
         INSERT INTO exploration_runs
-          (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, description, created_by)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+          (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, description,
+           max_pages, max_actions, timeout_minutes, created_by)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (run_id, project_id, environment_id, title, scope, forbidden_paths, login_strategy, description, created_by),
+        (
+            run_id,
+            project_id,
+            environment_id,
+            title,
+            scope,
+            forbidden_paths,
+            login_strategy,
+            description,
+            max_pages,
+            max_actions,
+            timeout_minutes,
+            created_by,
+        ),
     )
 
 

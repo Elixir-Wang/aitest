@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 import { useParams } from "next/navigation";
 
@@ -10,7 +10,6 @@ import { toast } from "sonner";
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { useProjectName } from "@/components/ai-testing/use-project-name";
-import { AgentPlan, type AgentPlanSubtask, type AgentPlanTask } from "@/components/ui/agent-plan";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -34,12 +33,16 @@ type ExplorationRun = {
   project_name: string;
   environment_id: string;
   environment_name: string;
+  environment_site_url: string;
   title: string;
   status: string;
   scope: string;
   forbidden_paths: string;
   login_strategy: string;
   description: string;
+  max_pages: number;
+  max_actions: number;
+  timeout_minutes: number;
   artifact_root: string;
   result_summary: string;
   created_at: string;
@@ -69,6 +72,11 @@ type ExplorationRunDetail = {
       title: string;
       url: string;
       entry_path: string;
+      yaml_path?: string | null;
+      page_type?: string | null;
+      status?: string | null;
+      blocker_reason?: string | null;
+      recent_event?: string | null;
       structure_summary: string;
     }>;
     elements: Array<{
@@ -118,6 +126,9 @@ type ExplorationForm = {
   scope: string;
   forbiddenPaths: string;
   description: string;
+  maxPages: string;
+  maxActions: string;
+  timeoutMinutes: string;
 };
 
 type ParsedLogEntry = {
@@ -138,6 +149,13 @@ const statusLabels: Record<string, string> = {
   blocked: "阻塞",
 };
 
+const loginStrategyLabels: Record<string, string> = {
+  reuse_state: "复用登录态",
+  manual: "手动登录保存状态",
+  account_password: "账号密码",
+  skip_login: "无需登录",
+};
+
 const autoRefreshStatuses = new Set(["queued", "running", "waiting_human", "stopping", "in-progress"]);
 const stoppableStatuses = new Set(["queued", "running", "waiting_human"]);
 const autoRefreshIntervalMs = 3000;
@@ -152,7 +170,15 @@ const emptyExplorationForm: ExplorationForm = {
   scope: "",
   forbiddenPaths: "",
   description: "",
+  maxPages: "50",
+  maxActions: "1000",
+  timeoutMinutes: "120",
 };
+
+function parsePositiveInteger(value: string): number | null {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
 
 export default function Page() {
   const params = useParams<{ projectId: string; runId: string }>();
@@ -322,6 +348,9 @@ export default function Page() {
       scope: run.scope,
       forbiddenPaths: run.forbidden_paths,
       description: run.description,
+      maxPages: String(run.max_pages ?? 50),
+      maxActions: String(run.max_actions ?? 1000),
+      timeoutMinutes: String(run.timeout_minutes ?? 120),
     });
     setEditDialogOpen(true);
     if (environments.length === 0) {
@@ -337,6 +366,13 @@ export default function Page() {
       toast.error("请填写任务名称并选择环境");
       return;
     }
+    const maxPages = parsePositiveInteger(explorationForm.maxPages);
+    const maxActions = parsePositiveInteger(explorationForm.maxActions);
+    const timeoutMinutes = parsePositiveInteger(explorationForm.timeoutMinutes);
+    if (!maxPages || !maxActions || !timeoutMinutes) {
+      toast.error("请填写大于 0 的执行边界");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -348,6 +384,9 @@ export default function Page() {
           scope: explorationForm.scope,
           forbidden_paths: explorationForm.forbiddenPaths,
           description: explorationForm.description,
+          max_pages: maxPages,
+          max_actions: maxActions,
+          timeout_minutes: timeoutMinutes,
         }),
       });
       setRun(updated);
@@ -368,7 +407,6 @@ export default function Page() {
   const startDisabled = !canStart || starting;
   const startLabel = run?.status === "cancelled" ? "重新开始探索" : "开始探索";
   const saveDisabled = !explorationForm.title.trim() || !explorationForm.environmentId || saving;
-  const planTasks = detail ? toPlanTasks(detail) : [];
   const hasNoExplorationArtifacts = detail ? detail.modules.every((module) => hasNoModuleArtifacts(module)) : false;
   const shouldShowNoArtifactNotice = Boolean(
     run && hasNoExplorationArtifacts && (run.status === "cancelled" || run.status === "blocked"),
@@ -413,12 +451,14 @@ export default function Page() {
       projectScope="project"
       activeTab={activeTab}
       onTabChange={setActiveTab}
-      tabs={["探索概览", "探索日志", "探索报告"]}
+      tabs={["探索计划", "探索概览", "探索日志", "探索报告"]}
       title={run?.title ?? "探索任务"}
     >
       {activeTab === "探索概览" && error && failureVisible ? (
         <ExplorationFailureNotice error={error} onClose={() => setFailureVisible(false)} />
       ) : null}
+
+      {activeTab === "探索计划" ? <ExplorationTaskPanel run={run} /> : null}
 
       {activeTab === "探索概览" ? (
         <>
@@ -449,7 +489,7 @@ export default function Page() {
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="font-medium text-sm">探索模块进度</h2>
-                  <p className="text-muted-foreground text-xs">展示当前模块、子页面、元素和阻塞项探索状态</p>
+                  <p className="text-muted-foreground text-xs">展示模块、页面进度、最近页面和阻塞说明</p>
                 </div>
                 {canStop ? (
                   <Button
@@ -471,11 +511,7 @@ export default function Page() {
                   {shouldShowNoArtifactNotice ? (
                     <NoArtifactNotice run={run} onOpenLog={() => setActiveTab("探索日志")} />
                   ) : null}
-                  <AgentPlan
-                    className="max-w-full"
-                    defaultExpandedTaskIds={planTasks.map((task) => task.id)}
-                    tasks={planTasks}
-                  />
+                  <ModuleProgressList detail={detail} run={run} />
                 </div>
               ) : null}
             </ShellSection>
@@ -530,12 +566,12 @@ export default function Page() {
       ) : null}
 
       <Dialog onOpenChange={setEditDialogOpen} open={editDialogOpen}>
-        <DialogContent className="gap-6 p-6 sm:max-w-3xl">
-          <DialogHeader className="gap-3">
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="shrink-0 gap-3 px-6 pt-6">
             <DialogTitle>编辑探索任务</DialogTitle>
             <DialogDescription>调整任务名称、关联环境、探索范围、探索目标和禁止路径。</DialogDescription>
           </DialogHeader>
-          <FieldGroup className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+          <FieldGroup className="grid min-h-0 gap-x-6 gap-y-5 overflow-y-auto px-6 py-5 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="exploration-title">任务名称</FieldLabel>
               <Input
@@ -596,8 +632,55 @@ export default function Page() {
                 value={explorationForm.description}
               />
             </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel>执行边界</FieldLabel>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="grid gap-1.5 text-sm" htmlFor="exploration-edit-max-pages">
+                  <span className="text-muted-foreground text-xs">页面上限</span>
+                  <Input
+                    id="exploration-edit-max-pages"
+                    inputMode="numeric"
+                    min={1}
+                    onChange={(event) =>
+                      setExplorationForm((current) => ({ ...current, maxPages: event.target.value }))
+                    }
+                    placeholder="50"
+                    type="number"
+                    value={explorationForm.maxPages}
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm" htmlFor="exploration-edit-max-actions">
+                  <span className="text-muted-foreground text-xs">操作上限</span>
+                  <Input
+                    id="exploration-edit-max-actions"
+                    inputMode="numeric"
+                    min={1}
+                    onChange={(event) =>
+                      setExplorationForm((current) => ({ ...current, maxActions: event.target.value }))
+                    }
+                    placeholder="1000"
+                    type="number"
+                    value={explorationForm.maxActions}
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm" htmlFor="exploration-edit-timeout-minutes">
+                  <span className="text-muted-foreground text-xs">超时时间（分钟）</span>
+                  <Input
+                    id="exploration-edit-timeout-minutes"
+                    inputMode="numeric"
+                    min={1}
+                    onChange={(event) =>
+                      setExplorationForm((current) => ({ ...current, timeoutMinutes: event.target.value }))
+                    }
+                    placeholder="120"
+                    type="number"
+                    value={explorationForm.timeoutMinutes}
+                  />
+                </label>
+              </div>
+            </Field>
           </FieldGroup>
-          <DialogFooter className="-mx-6 -mb-6 px-6 py-4">
+          <DialogFooter className="m-0 shrink-0 px-6 py-4">
             <Button onClick={() => setEditDialogOpen(false)} type="button" variant="outline">
               取消
             </Button>
@@ -626,6 +709,49 @@ export default function Page() {
         </DialogContent>
       </Dialog>
     </PageShell>
+  );
+}
+
+function ExplorationTaskPanel({ run }: { run: ExplorationRun | null }) {
+  const loginStrategy = run ? (loginStrategyLabels[run.login_strategy] ?? run.login_strategy) : "-";
+
+  return (
+    <div className="space-y-4">
+      <TaskSection title="环境">
+        <div className="grid gap-3 md:grid-cols-2">
+          <InfoRow label="所属项目" value={displayValue(run?.project_name)} />
+          <InfoRow label="测试环境" value={displayValue(run?.environment_name)} />
+          <InfoRow label="登录策略" value={loginStrategy} />
+          <InfoRow label="站点地址" value={displayValue(run?.environment_site_url)} />
+        </div>
+      </TaskSection>
+
+      <TaskSection title="探索">
+        <InfoRow label="任务名称" value={displayValue(run?.title)} />
+        <InfoRow label="探索范围" value={displayValue(run?.scope)} />
+        <InfoRow label="禁止路径" value={displayValue(run?.forbidden_paths)} />
+        <InfoRow label="探索目标" value={displayValue(run?.description)} />
+      </TaskSection>
+
+      <TaskSection title="执行边界">
+        <div className="grid gap-3 md:grid-cols-3">
+          <InfoRow label="页面上限" value={run ? `${run.max_pages ?? 50} 页` : "-"} />
+          <InfoRow label="操作上限" value={run ? `${run.max_actions ?? 1000} 次` : "-"} />
+          <InfoRow label="超时时间" value={run ? `${run.timeout_minutes ?? 120} 分钟` : "-"} />
+        </div>
+      </TaskSection>
+    </div>
+  );
+}
+
+function TaskSection({ children, title }: { children: ReactNode; title: string }) {
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle className="text-sm">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">{children}</CardContent>
+    </Card>
   );
 }
 
@@ -871,213 +997,156 @@ function formatExplorationDuration(run: ExplorationRun): string {
   return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
 }
 
-function toPlanTasks(detail: ExplorationRunDetail): AgentPlanTask[] {
-  return detail.modules.map((module) => {
-    const moduleIntent = describeModuleCoverageIntent(module.module_name);
-    const pageSubtasks = module.pages.map((page) => ({
-      id: `page-${page.id}`,
-      title: page.title || page.url || page.entry_path || "未命名页面",
-      description: page.structure_summary || page.url || "页面已纳入探索结果。",
-      status: "completed" as const,
-      meta: [page.url || page.entry_path].filter(Boolean),
-    }));
-    const blockerSubtasks = module.blockers.map((blocker) => ({
-      id: `blocker-${blocker.id}`,
-      title: blocker.page_ref || blocker.reason_type || "探索阻塞项",
-      description: [blocker.reason, blocker.suggested_action].filter(Boolean).join(" 建议："),
-      status: blocker.is_blocking ? ("blocked" as const) : ("partial" as const),
-      meta: [blocker.reason_type].filter(Boolean),
-    }));
-    const elementSubtasks = module.elements.slice(0, 6).map((element) => ({
-      id: `element-${element.id}`,
-      title: element.element_name,
-      description: element.stability_note || element.recommended_locator || "已识别页面元素。",
-      status: "completed" as const,
-      meta: [element.element_type, element.recommended_locator].filter(Boolean),
-    }));
-    const emptyArtifactSubtask = buildEmptyArtifactSubtask(detail.run, module);
-    const pendingSubtask =
-      pageSubtasks.length + blockerSubtasks.length + elementSubtasks.length === 0 ? [emptyArtifactSubtask] : [];
-
-    return {
-      id: module.id,
-      title: module.module_name,
-      description: describeModuleSummary(detail.run, module, moduleIntent),
-      status: getModulePlanStatus(detail.run.status, module.completion_status),
-      dependencies: [
-        formatModulePageProgress(module),
-        module.blocked_page_count ? `${module.blocked_page_count} 阻塞` : "",
-      ].filter(Boolean),
-      meta: [module.entry_path].filter(Boolean),
-      subtasks: [...pageSubtasks, ...blockerSubtasks, ...elementSubtasks, ...pendingSubtask],
-    };
-  });
-}
-
 function hasNoModuleArtifacts(module: ExplorationRunDetail["modules"][number]): boolean {
   return module.pages.length === 0 && module.elements.length === 0 && module.blockers.length === 0;
 }
 
-function buildEmptyArtifactSubtask(
-  run: ExplorationRun,
-  module: ExplorationRunDetail["modules"][number],
-): AgentPlanSubtask {
-  const moduleName = module.module_name || "当前模块";
-  const moduleIntent = describeModuleCoverageIntent(moduleName);
-  const meta = buildModuleMeta(run, module);
-  if (run.status === "queued") {
-    return {
-      id: `pending-${module.id}`,
-      title: `${moduleName}：等待 Runner 接收`,
-      description: `${moduleIntent} 任务已提交，等待 Runner 接收后开始采集证据。`,
-      status: "queued",
-      meta,
-    };
-  }
-  if (run.status === "running" || run.status === "stopping") {
-    return {
-      id: `pending-${module.id}`,
-      title: `${moduleName}：正在采集证据`,
-      description: `${moduleIntent} 采集到页面、关键元素或阻塞项后，这里会替换为真实页面事实。`,
-      status: "in-progress",
-      meta,
-    };
-  }
-  if (run.status === "waiting_human") {
-    return {
-      id: `pending-${module.id}`,
-      title: `${moduleName}：等待人工处理`,
-      description:
-        module.completion_summary || run.result_summary || `${moduleIntent} 当前探索需要人工处理后才能继续。`,
-      status: "blocked",
-      meta,
-    };
-  }
-  if (run.status === "blocked" || run.status === "cancelled") {
-    const isCancelled = run.status === "cancelled";
-    return {
-      id: `pending-${module.id}`,
-      title: isCancelled ? `${moduleName}：已中止，未生成探索产物` : `${moduleName}：未生成探索产物`,
-      description:
-        module.completion_summary ||
-        run.result_summary ||
-        (isCancelled
-          ? "用户已停止探索；此前任务已无运行中的浏览器探索进程，日志会继续保留。"
-          : "本次探索未生成该模块的页面、元素或阻塞明细。"),
-      status: normalizePlanStatus(run.status),
-      meta,
-    };
+function ModuleProgressList({ detail, run }: { detail: ExplorationRunDetail | null; run: ExplorationRun | null }) {
+  if (!run) {
+    return null;
   }
 
-  return {
-    id: `pending-${module.id}`,
-    title: `${moduleName}：等待探索产物`,
-    description: `${moduleIntent} 开始探索后会在这里展示该模块的子页面、关键元素、阻塞项和完成情况。`,
-    status: normalizePlanStatus(module.completion_status),
-    meta,
-  };
+  if (!detail) {
+    return <div className="py-10 text-center text-muted-foreground text-sm">探索模块进度加载中</div>;
+  }
+
+  if (detail.modules.length === 0) {
+    return (
+      <div className="rounded-lg border bg-muted/20 p-4 text-muted-foreground text-sm">
+        暂无模块进度。探索任务执行后会在这里展示模块、页面和阻塞信息。
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {detail.modules.map((module) => {
+        const pages = module.pages ?? [];
+        const progressLabel = formatModuleProgress(module);
+        const progressPercent = formatProgressPercent(module);
+        const recentPage = getRecentPage(module);
+        const moduleStatusLabel = displayModuleStatus(module.completion_status);
+
+        return (
+          <details key={module.id} className="group rounded-lg border bg-background">
+            <summary className="flex cursor-pointer list-none items-start gap-3 p-4">
+              <div className="min-w-0 flex-1 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="min-w-0 font-medium text-sm">{module.module_name || "未命名模块"}</div>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground text-xs">
+                    {moduleStatusLabel}
+                  </span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <InfoRow label="页面进度" value={progressLabel} />
+                  <InfoRow label="最近页面" value={recentPage} />
+                  <InfoRow
+                    label="阻塞说明"
+                    value={displayValue(module.completion_summary || getModuleBlockerSummary(module))}
+                  />
+                  <InfoRow label="进度百分比" value={progressPercent} />
+                </div>
+              </div>
+              <div className="shrink-0 pt-0.5 text-muted-foreground text-xs group-open:rotate-180">⌄</div>
+            </summary>
+            <div className="border-t px-4 py-3">
+              <div className="mb-3 grid gap-2 text-sm sm:grid-cols-2">
+                <InfoRow label="模块名称" value={displayValue(module.module_name)} />
+                <InfoRow label="状态" value={moduleStatusLabel} />
+                <InfoRow label="页面进度" value={progressLabel} />
+                <InfoRow label="最近页面" value={recentPage} />
+                <InfoRow
+                  label="阻塞说明"
+                  value={displayValue(module.completion_summary || getModuleBlockerSummary(module))}
+                />
+                <InfoRow label="进度百分比" value={progressPercent} />
+              </div>
+              <div className="space-y-2">
+                <div className="font-medium text-muted-foreground text-xs">页面详情</div>
+                {pages.length > 0 ? (
+                  <div className="overflow-hidden rounded-md border">
+                    <Table className="table-fixed">
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="w-[190px] px-3 text-muted-foreground">页面标题</TableHead>
+                          <TableHead className="w-[140px] px-3 text-muted-foreground">页面类型</TableHead>
+                          <TableHead className="w-[120px] px-3 text-muted-foreground">状态</TableHead>
+                          <TableHead className="px-3 text-muted-foreground">URL</TableHead>
+                          <TableHead className="px-3 text-muted-foreground">阻塞说明</TableHead>
+                          <TableHead className="px-3 text-muted-foreground">最近事件</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pages.map((page) => (
+                          <TableRow key={page.id}>
+                            <TableCell className="px-3 align-top font-medium">{displayValue(page.title)}</TableCell>
+                            <TableCell className="px-3 align-top text-muted-foreground">
+                              {displayValue(page.page_type ?? page.yaml_path)}
+                            </TableCell>
+                            <TableCell className="px-3 align-top">{displayValue(page.status)}</TableCell>
+                            <TableCell className="px-3 align-top text-muted-foreground">
+                              {displayValue(page.url || page.entry_path || page.yaml_path)}
+                            </TableCell>
+                            <TableCell className="px-3 align-top text-muted-foreground">
+                              {displayValue(page.blocker_reason)}
+                            </TableCell>
+                            <TableCell className="px-3 align-top text-muted-foreground">
+                              {displayValue(page.recent_event)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="rounded-md border bg-muted/20 p-3 text-muted-foreground text-sm">暂无页面详情。</div>
+                )}
+              </div>
+            </div>
+          </details>
+        );
+      })}
+    </div>
+  );
 }
 
-function describeModuleSummary(
-  run: ExplorationRun,
-  module: ExplorationRunDetail["modules"][number],
-  moduleIntent: string,
-): string {
-  if (module.pages.length || module.elements.length || module.blockers.length) {
-    return module.completion_summary || moduleIntent;
+function formatModuleProgress(module: ExplorationRunDetail["modules"][number]): string {
+  const explored = module.explored_page_count ?? 0;
+  const planned = module.planned_page_count ?? 0;
+  if (planned > 0) {
+    return `${explored}/${planned} 页`;
   }
-  if (run.status === "queued") {
-    return "已纳入探索计划，等待 Runner 接收。";
-  }
-  if (run.status === "running" || run.status === "stopping") {
-    return moduleIntent;
-  }
-  return module.completion_summary || run.result_summary || moduleIntent;
+  return `${explored} 页`;
 }
 
-function describeModuleCoverageIntent(moduleName: string): string {
-  const normalizedName = moduleName.trim();
-  if (normalizedName.includes("入口")) {
-    return "从站点入口确认首屏标题、登录状态、权限拦截和可继续进入的同源链接。";
+function formatProgressPercent(module: ExplorationRunDetail["modules"][number]): string {
+  const explored = module.explored_page_count ?? 0;
+  const planned = module.planned_page_count ?? 0;
+  if (planned <= 0) {
+    return explored > 0 ? "100%" : "-";
   }
-  if (normalizedName.includes("目录") || normalizedName.includes("导航")) {
-    return "采集目录、菜单和导航入口，记录目标标题、URL、类型和可访问性。";
-  }
-  if (normalizedName.includes("正文")) {
-    return "遍历正文区域里的文档链接，确认目标地址是否可打开、是否跳转登录或权限页。";
-  }
-  if (normalizedName.includes("侧边栏")) {
-    return "检查侧边栏锚点和分组链接，记录点击响应、目标页面和右侧锚点数量。";
-  }
-  if (normalizedName.includes("上一篇") || normalizedName.includes("下一篇")) {
-    return "检查上一篇、下一篇等前后文链接，确认目标页面是否存在以及跳转后标题是否正确。";
-  }
-  if (normalizedName.includes("面包屑")) {
-    return "检查面包屑层级链接，验证是否能回到目录、上级页面或站点入口。";
-  }
-  if (normalizedName.includes("按钮") || normalizedName.includes("输入框")) {
-    return "统计页面内按钮、输入框、选择框和可点击控件，记录可访问名称和交互风险。";
-  }
-  if (normalizedName.includes("登录") || normalizedName.includes("权限")) {
-    return "识别登录页、无权限页、401/403 页面和真实权限拦截文案，避免把拦截误判为业务页。";
-  }
-  if (normalizedName.includes("异常")) {
-    return "记录 404、500、空白页、加载失败等异常状态，并保留复现入口和证据。";
-  }
-  if (normalizedName.includes("外链") || normalizedName.includes("禁止")) {
-    return "识别外链和禁止路径，只记录目标地址与跳过原因，不执行危险或越界操作。";
-  }
-  return "采集该范围内的页面、链接、元素、跳转状态和阻塞证据。";
+  return `${Math.min(100, Math.round((explored / planned) * 100))}%`;
 }
 
-function buildModuleMeta(run: ExplorationRun, module: ExplorationRunDetail["modules"][number]): string[] {
-  const entryPath = module.entry_path?.trim();
-  if (!entryPath || entryPath === run.scope?.trim()) {
-    return [];
-  }
-  return [entryPath.length > 60 ? `${entryPath.slice(0, 57)}...` : entryPath];
+function getRecentPage(module: ExplorationRunDetail["modules"][number]): string {
+  const lastPage = module.pages.at(-1);
+  return displayValue(lastPage?.title || lastPage?.url || lastPage?.entry_path || lastPage?.yaml_path);
 }
 
-function formatModulePageProgress(module: ExplorationRunDetail["modules"][number]): string {
-  if (module.planned_page_count > 0 && module.completion_status === "completed") {
-    return `${module.explored_page_count}/${module.planned_page_count} 页面`;
+function getModuleBlockerSummary(module: ExplorationRunDetail["modules"][number]): string {
+  const pageBlocker = module.pages.find((page) => page.blocker_reason?.trim());
+  if (pageBlocker?.blocker_reason) {
+    return pageBlocker.blocker_reason;
   }
-  if (module.planned_page_count > 0) {
-    return `已探索 ${module.explored_page_count}/${module.planned_page_count} 页`;
+  const blocker = module.blockers.find((item) => item.reason?.trim());
+  if (blocker?.reason) {
+    return blocker.reason;
   }
-  return `已探索 ${module.explored_page_count} 页`;
+  return module.blocked_page_count > 0 ? `${module.blocked_page_count} 个页面阻塞` : "-";
 }
 
-function getModulePlanStatus(runStatus: string, moduleStatus: string): AgentPlanTask["status"] {
-  if (moduleStatus === "pending" && (runStatus === "queued" || runStatus === "running" || runStatus === "stopping")) {
-    return normalizePlanStatus(runStatus);
-  }
-  return normalizePlanStatus(moduleStatus);
-}
-
-function normalizePlanStatus(status: string): AgentPlanTask["status"] {
-  if (status === "running" || status === "in-progress") {
-    return "in-progress";
-  }
-  if (status === "stopping") {
-    return "in-progress";
-  }
-  if (status === "queued") {
-    return "queued";
-  }
-  if (status === "pending") {
-    return "pending";
-  }
-  if (status === "waiting_human") {
-    return "blocked";
-  }
-  if (status === "cancelled") {
-    return "cancelled";
-  }
-  if (status === "completed" || status === "partial" || status === "blocked" || status === "failed") {
-    return status;
-  }
-  return "pending";
+function displayModuleStatus(status: string): string {
+  return statusLabels[status] ?? (status || "-");
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -1087,6 +1156,10 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <div className="min-w-0 break-words font-medium">{value}</div>
     </div>
   );
+}
+
+function displayValue(value: string | null | undefined): string {
+  return value?.trim() || "-";
 }
 
 function TimelineItem({ active, label, value }: { active: boolean; label: string; value: string }) {
