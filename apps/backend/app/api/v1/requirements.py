@@ -108,8 +108,7 @@ async def merge_requirement(
         project_id,
         document_id,
         actor,
-        confirm_preview_id=payload.confirm_preview_id if payload else "",
-        force_rebuild=payload.force_rebuild if payload else False,
+        force_rebuild=bool(payload and (payload.force_rebuild or payload.merge_mode == "rebuild")),
     )
 
 

@@ -1,0 +1,1 @@
+"{\n  \"assignments\": [\n    {\n      \"source_node_id\": \"D-24-01\",\n      \"target_section_id\": \"sec-08-01\",\n      \"assignment_type\": \"primary\",\n      \"reason\": \"标题匹配\"\n    },\n    {\n      \"source_node_id\": \"D-24-02\",\n      \"target_section_id\": \"sec-08-01\",\n      \"assignment_type\": \"primary\",\n      \"reason\": \"父子章节匹配\"\n    }\n  ]\n}"

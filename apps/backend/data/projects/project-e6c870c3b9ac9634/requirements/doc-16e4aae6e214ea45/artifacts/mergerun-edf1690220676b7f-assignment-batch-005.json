@@ -1,0 +1,26 @@
+[
+  {
+    "source_node_id": "D-01-01",
+    "target_section_id": "sec-01-01",
+    "assignment_type": "primary",
+    "reason": "标题匹配"
+  },
+  {
+    "source_node_id": "D-01-02",
+    "target_section_id": "sec-01-02",
+    "assignment_type": "primary",
+    "reason": "标题匹配"
+  },
+  {
+    "source_node_id": "D-01-02-01",
+    "target_section_id": "sec-01-02",
+    "assignment_type": "primary",
+    "reason": "父子章节匹配"
+  },
+  {
+    "source_node_id": "D-01-02-02",
+    "target_section_id": "sec-01-02",
+    "assignment_type": "primary",
+    "reason": "父子章节匹配"
+  }
+]

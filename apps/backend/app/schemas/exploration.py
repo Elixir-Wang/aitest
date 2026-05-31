@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ExplorationRunOut(BaseModel):
@@ -15,7 +15,8 @@ class ExplorationRunOut(BaseModel):
     scope: str
     forbidden_paths: str
     login_strategy: str
-    description: str
+    goal: str
+    notes: str = ""
     max_pages: int = 50
     max_actions: int = 1000
     timeout_minutes: int = 120
@@ -29,28 +30,45 @@ class ExplorationRunOut(BaseModel):
 
 
 class ExplorationRunCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     project_id: str | None = None
     environment_id: str = Field(min_length=1)
     title: str = Field(min_length=1)
     scope: str = ""
     forbidden_paths: str = ""
     login_strategy: str = "reuse_state"
-    description: str = ""
+    goal: str = ""
+    notes: str = ""
     max_pages: int = 50
     max_actions: int = 1000
     timeout_minutes: int = 120
 
 
 class ExplorationRunUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     environment_id: str | None = Field(default=None, min_length=1)
     title: str | None = Field(default=None, min_length=1)
     scope: str | None = None
     forbidden_paths: str | None = None
     login_strategy: str | None = None
-    description: str | None = None
+    goal: str | None = None
+    notes: str | None = None
     max_pages: int | None = None
     max_actions: int | None = None
     timeout_minutes: int | None = None
+
+
+class ExplorationStepOut(BaseModel):
+    id: str
+    type: str
+    title: str
+    detail: str = ""
+    status: str = "completed"
+    occurred_at: str | None = None
+    artifact_path: str = ""
+    source: str = ""
 
 
 class ExplorationPageOut(BaseModel):
@@ -61,10 +79,10 @@ class ExplorationPageOut(BaseModel):
     entry_path: str
     structure_summary: str
     yaml_path: str = ""
-    page_type: str = "unknown"
-    status: str = "explored"
+    status: str = "completed"
     blocker_reason: str = ""
     recent_event: str = ""
+    steps: list[ExplorationStepOut] = []
 
 
 class ExplorationElementOut(BaseModel):
@@ -104,6 +122,11 @@ class ExplorationModuleOut(BaseModel):
     state_transition_count: int
     completion_status: str
     completion_summary: str
+    recent_page_title: str = ""
+    recent_page_url: str = ""
+    blocker_summary: str = "无"
+    progress_percent: int = 0
+    page_progress_text: str = ""
     pages: list[ExplorationPageOut]
     elements: list[ExplorationElementOut]
     blockers: list[ExplorationBlockerOut]
@@ -112,6 +135,7 @@ class ExplorationModuleOut(BaseModel):
 class ExplorationRunDetailOut(BaseModel):
     run: ExplorationRunOut
     modules: list[ExplorationModuleOut]
+    goal_validation: dict = Field(default_factory=dict)
 
 
 class ExplorationReportOut(BaseModel):
@@ -123,8 +147,32 @@ class ExplorationReportOut(BaseModel):
     created_at: str | None = None
 
 
+class ExplorationLogItemOut(BaseModel):
+    id: str
+    timestamp: str = ""
+    event: str = "raw"
+    event_label: str = "原始日志"
+    category: str = "raw"
+    level: str = "info"
+    page_id: str = ""
+    page_title: str = ""
+    url: str = ""
+    action_name: str = ""
+    result: str = ""
+    source_label: str = ""
+    target_label: str = ""
+    artifact_path: str = ""
+    summary: str = ""
+    raw: str = ""
+    payload: dict = Field(default_factory=dict)
+
+
 class ExplorationLogOut(BaseModel):
     run_id: str
     log_content: str = ""
     log_path: str = ""
     updated_at: str | None = None
+    items: list[ExplorationLogItemOut] = []
+    total: int = 0
+    page: int = 1
+    page_size: int = 10

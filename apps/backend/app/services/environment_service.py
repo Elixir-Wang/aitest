@@ -166,6 +166,9 @@ def _mask_password(password: str) -> str:
 
 
 def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
+    if updates.get("login_strategy") == "skip_login":
+        updates = {**updates, "username": "", "password": ""}
+
     field_map = {
         "name": "name",
         "site_url": "site_url",
@@ -180,7 +183,7 @@ def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
             assignments.append(f"{column} = ?")
             value = updates[key]
             values.append(value.strip() if isinstance(value, str) else value)
-    if updates.get("password"):
+    if "password" in updates:
         assignments.append("password_mask = ?")
         values.append(_mask_password(updates["password"]))
     return assignments, values

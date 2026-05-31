@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Upgrade the current deterministic requirement Markdown merge into the 需求归并智能体 workflow, with structured Agent contracts, merge runs, conflict handling, source coverage, incremental preview, and version change logs.
+**Goal:** Upgrade the current deterministic requirement Markdown merge into the 需求归并智能体 workflow, with structured Agent contracts, merge runs, conflict handling, source coverage, quality-blocked investigation drafts, and version change logs.
+
+> Current rule: successful incremental and full merges write directly to the final requirement version. Preview artifacts are only for conflict, failure, or quality-blocked investigation. The older `confirm_preview_id` flow is obsolete and must not be reintroduced.
 
 **Architecture:** Keep existing requirement upload and conversion boundaries. `document_service` remains the API-facing orchestrator, while new merge-specific schema/service modules own merge inputs, outputs, fallback logic, persistence, and Agent integration. Existing `/merge` and `/conflicts` routes stay compatible.
 
@@ -469,7 +471,6 @@ Add schema:
 ```python
 class RequirementMergeRequestIn(BaseModel):
     merge_mode: str | None = None
-    confirm_preview_id: str = ""
     force_rebuild: bool = False
 ```
 
@@ -480,23 +481,21 @@ def merge_requirement(..., payload: RequirementMergeRequestIn | None = None, ...
     ...
 ```
 
-- [ ] **Step 2: Return preview for incremental merge**
+- [ ] **Step 2: Write successful incremental merge directly**
 
 When current version exists and pending source files exist:
 
-- First `/merge` call returns `status = preview`.
-- Save preview Markdown to merge run `output_preview_path`.
+- `/merge` returns `status = merged` when quality passes.
+- Write merged Markdown as a new `SourceDocumentVersion`.
+- Save quality/confirmation artifacts for audit.
+
+- [ ] **Step 3: Return preview only for blocked investigation**
+
+When merge has conflicts, fails, or fails quality gates:
+
+- Return `status = preview` or `status = conflict`.
+- Save investigation Markdown to merge run `output_preview_path`.
 - Do not create a new version.
-
-- [ ] **Step 3: Confirm preview**
-
-When `/merge` receives `confirm_preview_id`:
-
-- Load merge run.
-- Write preview Markdown as new `SourceDocumentVersion`.
-- Mark pending files merged.
-- Create change log and coverage items.
-- Return `status = merged`.
 
 - [ ] **Step 4: Add tests**
 
@@ -600,7 +599,7 @@ When merge returns `preview`:
 - Show merge summary.
 - Show affected modules.
 - Show Markdown preview.
-- Provide confirm button that calls `/merge` with `confirm_preview_id`.
+- Do not provide a confirm-preview button; successful merges are already written to the final requirement version.
 
 - [ ] **Step 3: Show source coverage**
 

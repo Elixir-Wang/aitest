@@ -34,6 +34,11 @@ async def wrap_api_response(request: Request, call_next):
         response.headers["x-trace-id"] = trace_id
         return response
 
+    content_type = response.headers.get("content-type", "")
+    if "text/event-stream" in content_type:
+        response.headers["x-trace-id"] = trace_id
+        return response
+
     body = b""
     async for chunk in response.body_iterator:
         body += chunk
@@ -62,7 +67,6 @@ async def wrap_api_response(request: Request, call_next):
         method=method, path=path, query=query, status=status, elapsed=elapsed_ms,
     )
 
-    content_type = response.headers.get("content-type", "")
     if "application/json" not in content_type:
         from starlette.responses import Response as StarletteResponse
 

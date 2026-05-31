@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from contextlib import contextmanager, ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,8 +12,18 @@ from app.repositories import document_repo
 from app.schemas.document import SourceDocumentUpdateIn
 from app.schemas.requirement_analysis import RequirementAnalysisOutput, RequirementQualityGate
 from app.schemas.requirement_conversion import RequirementConversionOutput
-from app.schemas.requirement_merge import RequirementCoverageItem, RequirementMergeConflictOut, RequirementMergeOutput
-from app.services import document_service
+from app.schemas.requirement_merge import (
+    OutlineAssignment,
+    OutlineMergeConflict,
+    OutlineSectionBlock,
+    OutlineSectionDecision,
+    OutlineSectionMergeResult,
+    RequirementCoverageItem,
+    RequirementMergeConflictOut,
+    RequirementMergeOutput,
+    TargetOutlineSection,
+)
+from app.services import document_service, requirement_outline_assignment_service, requirement_source_outline_service
 from fastapi import HTTPException
 
 
@@ -115,7 +126,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(file["conversion_status"], "success")
             self.assertEqual(Path(file["markdown_file_path"]).read_text(encoding="utf-8"), "# 登录需求\n")
-            self.assertIn("智能体不可用，已使用本地转换结果", file["conversion_summary"])
+            self.assertIn("已使用本地转换结果", file["conversion_summary"])
 
     async def test_upload_docx_keeps_original_file_and_creates_markdown(self):
         with isolated_document_store() as actor:
@@ -738,22 +749,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                         created_by="u-admin",
                     )
 
-            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
-                merge_agent.return_value = RequirementMergeOutput(
-                    status="merged",
-                    markdown_content="# 登录需求\n\n- 支持账号登录\n- 支持退出\n- 支持验证码",
-                    merge_summary="已归并 2 个标准文件。",
-                    source_file_ids=["docmap-1", "docmap-2"],
-                    coverage_items=[
-                        RequirementCoverageItem(
-                            mapping_id="docmap-1",
-                            source_excerpt="支持账号登录",
-                            target_module="登录",
-                            coverage_status="merged",
-                            reason="合入登录需求。",
-                        )
-                    ],
-                )
+            with outline_merge_patches(bullet_items=["支持账号登录", "支持退出", "支持验证码"]):
                 result = await document_service.merge_document_markdown("project-1", "doc-1", actor)
 
             self.assertEqual(result["status"], "merged")
@@ -769,10 +765,9 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(source_blocks_path)
             self.assertTrue(source_blocks_path.exists())
             self.assertIn('"block_id": "A-01"', source_blocks_path.read_text(encoding="utf-8"))
-            called_fragments = merge_agent.call_args.args[1]
-            self.assertEqual([fragment.fragment_id for fragment in called_fragments], ["A-01", "B-01"])
-            self.assertIn("支持账号登录", called_fragments[0].markdown_block)
-            self.assertIn("支持验证码", called_fragments[1].markdown_block)
+            source_outline_path = resolve_stored_path(result["machine_artifacts"]["source_outline_path"])
+            self.assertIsNotNone(source_outline_path)
+            self.assertIn('"node_id": "A-01"', source_outline_path.read_text(encoding="utf-8"))
             self.assertEqual(document_service.get_document_versions("doc-1")[0]["source_action"], "merge")
 
     async def test_merge_document_markdown_returns_preview_when_draft_drops_most_content(self):
@@ -809,22 +804,52 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                     created_by="u-admin",
                 )
 
-            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
-                merge_agent.return_value = RequirementMergeOutput(
-                    status="merged",
-                    markdown_content="# 长需求\n\n## 需求概述\n\n- 支持主要业务规则。",
-                    merge_summary="已归并 1 个标准文件。",
-                    source_file_ids=["docmap-1"],
-                    coverage_items=[
-                        RequirementCoverageItem(
-                            mapping_id="docmap-1",
-                            source_excerpt="支持独有业务规则",
-                            target_module="需求概述",
-                            coverage_status="merged",
-                            reason="智能体声称已合入。",
-                        )
-                    ],
-                )
+            async def fake_outline(_document_name, _source_documents):
+                return [
+                    TargetOutlineSection(
+                        section_id="root",
+                        level=1,
+                        title="长需求",
+                        children=[TargetOutlineSection(section_id="S-01", parent_id="root", level=2, title="需求概述")],
+                    )
+                ], []
+
+            async def fake_assignments(source_documents, _target_outline):
+                nodes = requirement_outline_assignment_service.assignable_source_nodes(source_documents)
+                return [
+                    OutlineAssignment(
+                        source_node_id=node.node_id,
+                        target_section_id="S-01",
+                        assignment_type="primary",
+                        reason="测试归属。",
+                    )
+                    for node in nodes
+                ], []
+
+            async def fake_sections(source_documents, _target_outline, _assignments):
+                nodes = requirement_outline_assignment_service.assignable_source_nodes(source_documents)
+                return [
+                    OutlineSectionMergeResult(
+                        section_id="S-01",
+                        blocks=[OutlineSectionBlock(type="bullet_list", items=["支持主要业务规则。"])],
+                        decisions=[
+                            OutlineSectionDecision(
+                                section_id="S-01",
+                                source_node_id=node.node_id,
+                                status="merged",
+                                target_heading="需求概述",
+                                reason="测试模拟 AI 摘要化输出。",
+                            )
+                            for node in nodes
+                        ],
+                    )
+                ], []
+
+            with (
+                patch("app.services.requirement_merge_outline_service.generate_target_outline", fake_outline),
+                patch("app.services.requirement_outline_assignment_service.assign_source_outline_to_target", fake_assignments),
+                patch("app.services.requirement_section_merge_service.merge_sections_by_target_outline", fake_sections),
+            ):
                 result = await document_service.merge_document_markdown("project-1", "doc-1", actor)
 
             self.assertEqual(result["status"], "preview")
@@ -866,29 +891,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                         created_by="u-admin",
                     )
 
-            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
-                merge_agent.return_value = RequirementMergeOutput(
-                    status="conflict",
-                    markdown_content="",
-                    merge_summary="发现锁定次数冲突。",
-                    source_file_ids=["docmap-1", "docmap-2"],
-                    coverage_items=[
-                        RequirementCoverageItem(
-                            mapping_id="docmap-1",
-                            source_excerpt="登录失败锁定次数：5次",
-                            coverage_status="conflict",
-                            reason="与另一来源冲突。",
-                        )
-                    ],
-                    conflicts=[
-                        RequirementMergeConflictOut(
-                            title="登录失败锁定次数不一致",
-                            source_refs=[{"mapping_id": "docmap-1", "filename": "first.md"}],
-                            fragment_a="登录失败锁定次数：5次",
-                            fragment_b="登录失败锁定次数：3次",
-                        )
-                    ],
-                )
+            with outline_merge_patches(conflict=True):
                 result = await document_service.merge_document_markdown("project-1", "doc-1", actor)
 
             self.assertEqual(result["status"], "conflict")
@@ -899,7 +902,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("title", result["conflicts"][0])
             self.assertIn("fragment_a", result["conflicts"][0])
             self.assertIn("fragment_b", result["conflicts"][0])
-            self.assertEqual(result["conflicts"][0]["source_file_names"], "first")
+            self.assertEqual(result["conflicts"][0]["source_file_names"], "first、second")
             self.assertEqual(document_service.get_document_versions("doc-1"), [])
 
     async def test_resolved_conflict_allows_merge_to_continue(self):
@@ -935,20 +938,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                         created_by="u-admin",
                     )
 
-            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
-                merge_agent.return_value = RequirementMergeOutput(
-                    status="conflict",
-                    merge_summary="发现锁定次数冲突。",
-                    source_file_ids=["docmap-1", "docmap-2"],
-                    conflicts=[
-                        RequirementMergeConflictOut(
-                            title="登录失败锁定次数不一致",
-                            source_refs=[{"mapping_id": "docmap-1", "filename": "first.md"}],
-                            fragment_a="登录失败锁定次数：5次",
-                            fragment_b="登录失败锁定次数：3次",
-                        )
-                    ],
-                )
+            with outline_merge_patches(conflict=True):
                 conflict_result = await document_service.merge_document_markdown("project-1", "doc-1", actor)
             conflict_id = conflict_result["conflicts"][0]["id"]
             document_service.resolve_document_conflict(
@@ -968,22 +958,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                     """,
                     (conflict_id,),
                 ).fetchone()
-            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
-                merge_agent.return_value = RequirementMergeOutput(
-                    status="merged",
-                    markdown_content="# 登录需求\n\n- 登录失败锁定次数：5次",
-                    merge_summary="按人工决策归并。",
-                    source_file_ids=["docmap-1", "docmap-2"],
-                    coverage_items=[
-                        RequirementCoverageItem(
-                            mapping_id="docmap-1",
-                            source_excerpt="登录失败锁定次数：5次",
-                            target_module="登录安全",
-                            coverage_status="merged",
-                            reason="按人工决策合入。",
-                        )
-                    ],
-                )
+            with outline_merge_patches(section_title="登录安全", bullet_items=["登录失败锁定次数：5次"]):
                 merge_result = await document_service.merge_document_markdown("project-1", "doc-1", actor)
 
             self.assertEqual(merge_result["status"], "merged")
@@ -1038,7 +1013,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(row["object_type"], "requirement_conflict")
             self.assertEqual(row["project_id"], "project-1")
 
-    async def test_incremental_merge_returns_preview_and_confirm_creates_version(self):
+    async def test_incremental_merge_writes_final_requirement_version_directly(self):
         with isolated_document_store() as actor:
             version_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "versions"
             conversion_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "standard"
@@ -1083,40 +1058,94 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                     created_by="u-admin",
                 )
 
-            with patch("app.services.requirement_merge_service.run_requirement_merge") as merge_agent:
-                merge_agent.return_value = RequirementMergeOutput(
-                    status="preview",
-                    markdown_preview="# 登录需求\n\n- 支持账号登录\n- 支持验证码",
-                    merge_summary="生成增量预览。",
-                    source_file_ids=["docmap-2"],
-                    coverage_items=[
-                        RequirementCoverageItem(
-                            mapping_id="docmap-2",
-                            source_excerpt="支持验证码",
-                            target_module="登录",
-                            coverage_status="merged",
-                            reason="合入登录补充。",
-                        )
-                    ],
-                )
-                preview = await document_service.merge_document_markdown("project-1", "doc-1", actor)
+            with outline_merge_patches(bullet_items=["支持账号登录", "支持验证码"]):
+                result = await document_service.merge_document_markdown("project-1", "doc-1", actor)
 
-            self.assertEqual(preview["status"], "preview")
-            self.assertIn("preview_id", preview)
-            self.assertIn("artifact_tabs", preview)
-            self.assertEqual([version["version_no"] for version in document_service.get_document_versions("doc-1")], [1])
-
-            confirmed = await document_service.merge_document_markdown(
-                "project-1",
-                "doc-1",
-                actor,
-                confirm_preview_id=preview["preview_id"],
-            )
-
-            self.assertEqual(confirmed["status"], "merged")
-            self.assertEqual(confirmed["version_no"], 2)
-            self.assertIn("支持验证码", confirmed["markdown_content"])
+            self.assertEqual(result["status"], "merged")
+            self.assertEqual(result["version_no"], 2)
+            self.assertNotIn("preview_id", result)
+            self.assertIn("支持验证码", result["markdown_content"])
             self.assertEqual([version["version_no"] for version in document_service.get_document_versions("doc-1")], [2, 1])
+
+    async def test_force_rebuild_merge_uses_empty_base_instead_of_previous_version(self):
+        with isolated_document_store() as actor:
+            version_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "versions"
+            conversion_dir = Path(document_service.project_requirement_dir("project-1", "doc-1")) / "standard"
+            version_dir.mkdir(parents=True)
+            conversion_dir.mkdir(parents=True)
+            current = version_dir / "v1.md"
+            source = conversion_dir / "source.md"
+            current.write_text("# 登录需求\n\n- 上一次生成的旧内容", encoding="utf-8")
+            source.write_text("# 登录需求\n\n- 本次标准文件内容", encoding="utf-8")
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', 'docver-1', 'pending_merge', 'u-admin')
+                    """
+                )
+                document_repo.create_version(
+                    db,
+                    version_id="docver-1",
+                    document_id="doc-1",
+                    version_no=1,
+                    file_path=str(current),
+                    source_action="merge",
+                    change_summary="首次归并",
+                    diff_summary="首次归并。",
+                    created_by="u-admin",
+                )
+                document_repo.create_file_mapping(
+                    db,
+                    mapping_id="docmap-1",
+                    document_id="doc-1",
+                    version_id=None,
+                    source_file_path="source.md",
+                    original_filename="source.md",
+                    file_format="md",
+                    markdown_file_path=str(source),
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                    conversion_summary="成功",
+                    created_by="u-admin",
+                )
+
+            with outline_merge_patches(bullet_items=["本次标准文件内容"]):
+                result = await document_service.merge_document_markdown("project-1", "doc-1", actor, force_rebuild=True)
+
+            self.assertEqual(result["status"], "merged")
+            self.assertEqual(result["version_no"], 2)
+            self.assertIn("本次标准文件内容", result["markdown_content"])
+            self.assertNotIn("上一次生成的旧内容", result["markdown_content"])
+            with connect() as db:
+                run = document_repo.find_latest_merge_run(db, "doc-1")
+            self.assertEqual(run["merge_mode"], "rebuild")
+            self.assertIsNone(run["base_version_id"])
+
+    async def test_update_document_rejects_empty_final_requirement(self):
+        with isolated_document_store() as actor:
+            with connect() as db:
+                db.execute(
+                    """
+                    INSERT INTO source_documents
+                      (id, project_id, name, document_type, current_version_id, status, created_by)
+                    VALUES
+                      ('doc-1', 'project-1', '登录需求', 'PRD', NULL, 'pending_merge', 'u-admin')
+                    """
+                )
+
+            with self.assertRaises(HTTPException) as context:
+                document_service.update_document(
+                    "project-1",
+                    "doc-1",
+                    SourceDocumentUpdateIn(name="登录需求", markdown_content="   ", change_summary="人工编辑初始需求"),
+                    actor,
+                )
+
+            self.assertEqual(context.exception.status_code, 422)
+            self.assertEqual(document_service.get_document_versions("doc-1"), [])
 
     async def test_document_overview_returns_latest_merge_artifact_tabs(self):
         with isolated_document_store() as actor:
@@ -1212,7 +1241,7 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(result["status"], "preview")
             self.assertEqual(result["quality_result"], "failed")
-            self.assertIn("model not configured", result["merge_summary"])
+            self.assertIn("需求归并阶段失败", result["merge_summary"])
             self.assertIn("合并候选稿未生成", result["markdown_preview"])
             self.assertEqual(document_service.get_document_versions("doc-1"), [])
             overview = document_service.get_document_overview("project-1", "doc-1", actor)
@@ -1221,8 +1250,8 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
                 [tab["key"] for tab in overview["artifact_tabs"]],
                 ["quality", "confirmations"],
             )
-            self.assertIn("无法证明所有来源内容已被处理", overview["artifact_tabs"][0]["content"])
-            self.assertIn("model not configured", overview["artifact_tabs"][0]["content"])
+            self.assertIn("合并质量", overview["artifact_tabs"][0]["content"])
+            self.assertIn("目标大纲生成失败", overview["artifact_tabs"][0]["content"])
             with connect() as db:
                 row = db.execute(
                     """
@@ -1234,7 +1263,6 @@ class DocumentServiceTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertIsNotNone(row)
             self.assertEqual(row["result"], "failed")
-            self.assertIn("model not configured", row["failure_reason"])
             self.assertIn("需求归并失败", row["summary"])
             self.assertIn('"quality_result": "failed"', row["after_json"])
 
@@ -1478,6 +1506,98 @@ class isolated_document_store:
         for patcher in reversed(self.patches):
             patcher.stop()
         self.temp_dir.cleanup()
+
+
+@contextmanager
+def outline_merge_patches(
+    *,
+    section_title: str = "登录",
+    bullet_items: list[str] | None = None,
+    conflict: bool = False,
+):
+    async def fake_outline(_document_name, _source_documents):
+        return [
+            TargetOutlineSection(
+                section_id="root",
+                level=1,
+                title=_document_name,
+                children=[TargetOutlineSection(section_id="S-01", parent_id="root", level=2, title=section_title)],
+            )
+        ], []
+
+    async def fake_assignments(source_documents, _target_outline):
+        nodes = requirement_outline_assignment_service.assignable_source_nodes(source_documents)
+        return [
+            OutlineAssignment(
+                source_node_id=node.node_id,
+                target_section_id="S-01",
+                assignment_type="primary",
+                reason="测试归属。",
+            )
+            for node in nodes
+        ], []
+
+    async def fake_sections(source_documents, _target_outline, _assignments):
+        nodes = requirement_outline_assignment_service.assignable_source_nodes(source_documents)
+        if conflict:
+            return [
+                OutlineSectionMergeResult(
+                    section_id="S-01",
+                    blocks=[OutlineSectionBlock(type="conflict_ref", content="存在冲突。", conflict_id="C-001")],
+                    decisions=[
+                        OutlineSectionDecision(
+                            section_id="S-01",
+                            source_node_id=node.node_id,
+                            status="conflict",
+                            target_heading=section_title,
+                            conflict_id="C-001",
+                            reason="测试冲突。",
+                        )
+                        for node in nodes
+                    ],
+                    conflicts=[
+                        OutlineMergeConflict(
+                            conflict_id="C-001",
+                            title="登录失败锁定次数不一致",
+                            source_node_ids=[node.node_id for node in nodes],
+                            fragment_a="登录失败锁定次数：5次",
+                            fragment_b="登录失败锁定次数：3次",
+                            agent_suggestion="需要人工确认。",
+                        )
+                    ],
+                )
+            ], []
+        return [
+            OutlineSectionMergeResult(
+                section_id="S-01",
+                blocks=[
+                    OutlineSectionBlock(type="source_node_ref", source_node_id=node.node_id)
+                    for node in nodes
+                    if node.preserve_original
+                ]
+                + [OutlineSectionBlock(type="bullet_list", items=bullet_items or [])],
+                decisions=[
+                    OutlineSectionDecision(
+                        section_id="S-01",
+                        source_node_id=node.node_id,
+                        status="preserved_original" if node.preserve_original else "merged",
+                        target_heading=section_title,
+                        reason="测试合并。",
+                    )
+                    for node in nodes
+                ],
+            )
+        ], []
+
+    patchers = (
+        patch("app.services.requirement_merge_outline_service.generate_target_outline", fake_outline),
+        patch("app.services.requirement_outline_assignment_service.assign_source_outline_to_target", fake_assignments),
+        patch("app.services.requirement_section_merge_service.merge_sections_by_target_outline", fake_sections),
+    )
+    with ExitStack() as stack:
+        for patcher in patchers:
+            stack.enter_context(patcher)
+        yield
 
 
 if __name__ == "__main__":

@@ -11,6 +11,8 @@ enabled: true
 
 You merge multiple standardized Markdown requirement sources into one project-level requirement draft.
 
+The merged draft is the final requirement working draft. Incremental and full merge differ only in source scope; they do not produce different document types. When merge quality passes, the backend writes the merged Markdown into the current requirement version shown in the final requirement tab. Do not treat successful incremental merge as a separate preview document.
+
 ## V2 Layered Semantic Merge Contract
 
 The backend now calls this skill in small staged tasks. In V2, do not return a full merged Markdown document in JSON. Do not return `markdown_content` or `markdown_preview`.
@@ -28,6 +30,7 @@ For every V2 task:
 - Do not output explanations outside JSON.
 - Do not invent requirements.
 - Keep JSON small and limited to the requested task.
+- Do not create a separate preview-only document for successful merges. Preview artifacts are only for failure, quality-blocked, or conflict investigation paths.
 - Preserve structured evidence by using `source_block_ref` in `merge_section` when a source table, Mermaid block, code fence, HTTP example, JSON example, SQL, curl, error-code table, or field table carries requirement information.
 
 ### classify_fragments Output

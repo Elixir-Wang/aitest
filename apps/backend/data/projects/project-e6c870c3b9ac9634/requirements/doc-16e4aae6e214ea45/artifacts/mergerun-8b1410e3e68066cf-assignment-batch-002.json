@@ -1,0 +1,110 @@
+[
+  {
+    "source_node_id": "B-01-01",
+    "target_section_id": "S3-001-01",
+    "assignment_type": "primary",
+    "reason": "旧标题为'一、背景'，内容类型包含security和background，应归入'项目概述>背景与目标'。"
+  },
+  {
+    "source_node_id": "B-01-02",
+    "target_section_id": "S3-007-01",
+    "assignment_type": "primary",
+    "reason": "旧标题及heading_path指示为接口一，应归入'接口契约>查询产品进入状态接口'。"
+  },
+  {
+    "source_node_id": "B-01-02-01",
+    "target_section_id": "S3-007-01",
+    "assignment_type": "primary",
+    "reason": "旧标题为'请求'，是接口一的子节点，preserve_original=true，应归属父接口章节。"
+  },
+  {
+    "source_node_id": "B-01-02-02",
+    "target_section_id": "S3-007-01",
+    "assignment_type": "primary",
+    "reason": "旧标题为'业务逻辑'，是接口一的子节点，应归属父接口章节。"
+  },
+  {
+    "source_node_id": "B-01-02-03",
+    "target_section_id": "S3-007-01",
+    "assignment_type": "primary",
+    "reason": "旧标题为'成功响应：需要弹邀请码'，是接口一的子节点且preserve_original=true，应归属父接口章节。"
+  },
+  {
+    "source_node_id": "B-01-02-04",
+    "target_section_id": "S3-007-01",
+    "assignment_type": "primary",
+    "reason": "旧标题为'成功响应：不需要弹邀请码'，是接口一的子节点且preserve_original=true，应归属父接口章节。"
+  },
+  {
+    "source_node_id": "B-01-02-05",
+    "target_section_id": "S3-007-01",
+    "assignment_type": "primary",
+    "reason": "旧标题为'错误码'，是接口一的子节点且preserve_original=true，应归属父接口章节。"
+  },
+  {
+    "source_node_id": "B-01-03",
+    "target_section_id": "S3-007-02",
+    "assignment_type": "primary",
+    "reason": "旧标题及heading_path指示为接口二，应归入'接口契约>确认产品首次接入接口'。"
+  },
+  {
+    "source_node_id": "B-01-03-01",
+    "target_section_id": "S3-007-02",
+    "assignment_type": "primary",
+    "reason": "旧标题为'请求'，是接口二的子节点，应归属父接口章节。"
+  },
+  {
+    "source_node_id": "B-01-03-02",
+    "target_section_id": "S3-007-02",
+    "assignment_type": "primary",
+    "reason": "旧标题为'请求体'，是接口二的子节点且preserve_original=true，应归属父接口章节。"
+  },
+  {
+    "source_node_id": "B-01-03-03",
+    "target_section_id": "S3-007-02",
+    "assignment_type": "primary",
+    "reason": "旧标题为'鉴权逻辑'，是接口二的子节点，应归属父接口章节。"
+  },
+  {
+    "source_node_id": "B-01-03-04",
+    "target_section_id": "S3-007-02",
+    "assignment_type": "primary",
+    "reason": "旧标题为'业务逻辑'，是接口二的子节点，应归属父接口章节。"
+  },
+  {
+    "source_node_id": "B-01-03-05",
+    "target_section_id": "S3-007-02",
+    "assignment_type": "primary",
+    "reason": "旧标题为'成功响应'，是接口二的子节点且preserve_original=true，应归属父接口章节。"
+  },
+  {
+    "source_node_id": "B-01-03-06",
+    "target_section_id": "S3-007-02",
+    "assignment_type": "primary",
+    "reason": "旧标题为'错误码'，是接口二的子节点且preserve_original=true，应归属父接口章节。"
+  },
+  {
+    "source_node_id": "B-01-04",
+    "target_section_id": "S3-007-10",
+    "assignment_type": "primary",
+    "reason": "旧标题为'四、数据库表'，preserve_original=true，且target_sections中明确S3-007-10为'数据库表'，应归入该章节。"
+  },
+  {
+    "source_node_id": "B-01-05",
+    "target_section_id": "S3-006-04",
+    "assignment_type": "primary",
+    "reason": "旧标题为'五、前端推荐流程'，target_sections中S3-006-04为'推荐流程 (前端/后端)'，内容匹配。"
+  },
+  {
+    "source_node_id": "B-01-06",
+    "target_section_id": "S3-006-04",
+    "assignment_type": "primary",
+    "reason": "旧标题为'六、百工后端推荐流程'，应归入'核心业务流程>推荐流程 (前端/后端)'。"
+  },
+  {
+    "source_node_id": "B-01-07",
+    "target_section_id": "S3-009-04",
+    "assignment_type": "primary",
+    "reason": "旧标题为'七、安全说明'，内容类型含security，应归入'安全要求>其他安全规范'。"
+  }
+]

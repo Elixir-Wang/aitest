@@ -1,0 +1,364 @@
+[
+  {
+    "section_id": "root",
+    "parent_id": "",
+    "level": 1,
+    "title": "亦庄登录sso",
+    "reason": "系统固定的需求文档根节点。",
+    "children": [
+      {
+        "section_id": "sec-01",
+        "parent_id": "root",
+        "level": 2,
+        "title": "项目概述与范围",
+        "reason": "归并来源A的'阅读建议'、'背景'、'首期目标'、'接入范围'、'不接入范围'，来源B的'背景'，来源C的'项目概述'、'产品定位'、'建设原则'、'非建设范围'，来源D的'文档目标'、'总体接入原则'，统一为项目概述与边界。",
+        "children": [
+          {
+            "section_id": "sec-01-01",
+            "parent_id": "sec-01",
+            "level": 3,
+            "title": "项目背景与目标",
+            "reason": "归并来源A的'阅读建议'、'背景'、'首期目标'，来源B的'背景'，来源C的'项目背景'、'项目目标'，来源D的'文档目标'。",
+            "children": []
+          },
+          {
+            "section_id": "sec-01-02",
+            "parent_id": "sec-01",
+            "level": 3,
+            "title": "产品定位与职责边界",
+            "reason": "归并来源C的'产品定位'、'核心职责'、'职责边界'，来源D的'总体接入原则'下'官网统一认证中心负责'及'各产品继续负责'。",
+            "children": []
+          },
+          {
+            "section_id": "sec-01-03",
+            "parent_id": "sec-01",
+            "level": 3,
+            "title": "建设原则与接入范围",
+            "reason": "归并来源C的'建设原则'、'统一认证产品自治'、'渐进式推进'，来源A的'接入范围'、'不接入范围'，来源C的'非建设范围'。",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-02",
+        "parent_id": "root",
+        "level": 2,
+        "title": "用户模型与接入模式",
+        "reason": "归并来源A的'产品接入模式分类'及其子标题C端、B端、B+C混合、INVITE_ONLY，来源C的'用户模型'及其子标题，来源D的'产品接入模式分类'、'接入模式准入原则'，统一为用户与接入模型。",
+        "children": [
+          {
+            "section_id": "sec-02-01",
+            "parent_id": "sec-02",
+            "level": 3,
+            "title": "用户身份模型",
+            "reason": "归并来源C的'用户模型'下'C端用户'、'B端用户'、'B+C混合身份用户'，来源A的'产品接入模式分类'中用户维度描述。",
+            "children": []
+          },
+          {
+            "section_id": "sec-02-02",
+            "parent_id": "sec-02",
+            "level": 3,
+            "title": "产品接入模式与准入原则",
+            "reason": "归并来源A的'产品接入模式分类'子标题及来源D的'不同模式的准入原则'，体现C端、B端、B+C混合、INVITE_ONLY四种模式的准入规则。",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-03",
+        "parent_id": "root",
+        "level": 2,
+        "title": "核心机制设计",
+        "reason": "归并来源C的'核心机制设计'及其子标题'Unified UID'、'本地账号映射'、'首次绑定机制'，来源D的'产品本地账号映射要求'、'邀请码/推荐码处理规则'，统一为统一身份与账号映射。",
+        "children": [
+          {
+            "section_id": "sec-03-01",
+            "parent_id": "sec-03",
+            "level": 3,
+            "title": "Unified UID 与身份绑定",
+            "reason": "归并来源C的'Unified UID'，来源D的'第三方身份绑定接口'相关说明及'身份匹配优先级'。",
+            "children": []
+          },
+          {
+            "section_id": "sec-03-02",
+            "parent_id": "sec-03",
+            "level": 3,
+            "title": "本地账号映射要求",
+            "reason": "归并来源C的'本地账号映射'，来源D的'产品本地账号映射要求'全部子标题。",
+            "children": []
+          },
+          {
+            "section_id": "sec-03-03",
+            "parent_id": "sec-03",
+            "level": 3,
+            "title": "邀请码/推荐码处理规则",
+            "reason": "归并来源D的'邀请码/推荐码处理规则'全部子标题，来源A'INVITE_ONLY'模式。",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-04",
+        "parent_id": "root",
+        "level": 2,
+        "title": "核心业务流程与接口契约",
+        "reason": "归并来源A的'核心链路'，来源B的全部接口说明及流程，来源C的'核心业务流程'（官网登录、官网进入产品、产品直接访问），来源D的主要接口契约（上下文预注册、login_ticket生成、跳转产品入口、login_ticket校验、UserInfo结构、biz_context等），归并为流程与接口规范。",
+        "children": [
+          {
+            "section_id": "sec-04-01",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "标准链路与前端流程",
+            "reason": "归并来源A的'核心链路'，来源B的'前端推荐流程'、'百工后端推荐流程'，来源C的'官网登录'、'官网进入产品'、'产品直接访问'，来源D的'标准链路'。",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-02",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "接口一：上下文预注册接口",
+            "reason": "归并来源D的'接口一：上下文预注册接口'全部子标题。",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-03",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "接口二：login_ticket 生成接口",
+            "reason": "归并来源D的'login_ticket生成接口'全部子标题及'票据绑定规则'。",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-04",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "接口三：官网跳转产品入口",
+            "reason": "归并来源D的'官网跳转产品入口'全部子标题。",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-05",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "接口四：login_ticket 校验接口",
+            "reason": "归并来源D的'login_ticket校验接口'全部子标题。",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-06",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "UserInfo 用户信息结构",
+            "reason": "归并来源D的'UserInfo用户信息结构'全部子标题。",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-07",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "biz_context 业务上下文",
+            "reason": "归并来源D的'biz_context业务上下文'全部子标题。",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-08",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "查询产品进入状态接口",
+            "reason": "归并来源B的'查询产品进入状态接口'全部子标题。",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-09",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "确认产品首次接入接口",
+            "reason": "归并来源B的'确认产品首次接入接口'全部子标题。",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-10",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "第三方身份绑定接口（二期/按需）",
+            "reason": "归并来源D的'第三方身份绑定接口'全部子标题。",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-11",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "登出回调接口（可选/二期）",
+            "reason": "归并来源D的'登出回调接口'全部子标题。",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-05",
+        "parent_id": "root",
+        "level": 2,
+        "title": "产品侧接入要求与处理建议",
+        "reason": "归并来源A的'产品侧要做什么'、'原产品登录入口保留原则'、'接入路径选择'，来源C的'产品接入要求'，来源D的'B端产品处理建议'、'B+C产品处理建议'，以及来源A的'认证中心提供什么'、'认证中心不做什么'。",
+        "children": [
+          {
+            "section_id": "sec-05-01",
+            "parent_id": "sec-05",
+            "level": 3,
+            "title": "产品侧职责与认证中心能力边界",
+            "reason": "归并来源A的'认证中心提供什么'、'认证中心不做什么'，来源D'官网统一认证中心负责'、'各产品继续负责'。",
+            "children": []
+          },
+          {
+            "section_id": "sec-05-02",
+            "parent_id": "sec-05",
+            "level": 3,
+            "title": "原产品登录入口保留原则",
+            "reason": "归并来源A的'原产品登录入口保留原则'。",
+            "children": []
+          },
+          {
+            "section_id": "sec-05-03",
+            "parent_id": "sec-05",
+            "level": 3,
+            "title": "B端产品处理建议",
+            "reason": "归并来源D的'B端产品处理建议'全部子标题。",
+            "children": []
+          },
+          {
+            "section_id": "sec-05-04",
+            "parent_id": "sec-05",
+            "level": 3,
+            "title": "B+C 产品处理建议",
+            "reason": "归并来源D的'B+C产品处理建议'全部子标题。",
+            "children": []
+          },
+          {
+            "section_id": "sec-05-05",
+            "parent_id": "sec-05",
+            "level": 3,
+            "title": "登录体验与登出机制",
+            "reason": "归并来源C的'登录体验要求'、'登出机制'及其子标题'本地登出'、'全局登出'，来源D的'登出回调接口'。",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-06",
+        "parent_id": "root",
+        "level": 2,
+        "title": "安全规范",
+        "reason": "归并来源A的'安全要求'，来源B的'安全说明'，来源C的'安全规范'及其子标题（redirect_uri、state、Token安全、client_secret、HTTPS、日志安全），来源D的'安全要求'（login_ticket安全、biz_context安全、密钥安全），以及来源D的'产品侧准入错误建议'中安全相关项。",
+        "children": [
+          {
+            "section_id": "sec-06-01",
+            "parent_id": "sec-06",
+            "level": 3,
+            "title": "通用安全要求",
+            "reason": "归并来源A的'安全要求'，来源B的'安全说明'，来源C的'安全规范'下redirect_uri、state、Token安全、client_secret、HTTPS、日志安全。",
+            "children": []
+          },
+          {
+            "section_id": "sec-06-02",
+            "parent_id": "sec-06",
+            "level": 3,
+            "title": "票据与业务上下文安全",
+            "reason": "归并来源D的'login_ticket安全要求'、'biz_context安全要求'。",
+            "children": []
+          },
+          {
+            "section_id": "sec-06-03",
+            "parent_id": "sec-06",
+            "level": 3,
+            "title": "密钥安全要求",
+            "reason": "归并来源D的'密钥安全要求'。",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-07",
+        "parent_id": "root",
+        "level": 2,
+        "title": "数据库与错误码规范",
+        "reason": "归并来源B的'数据库表'，来源D的'错误码规范'（认证中心错误码、产品侧准入错误建议），以及来源D的'接口'相关错误码子标题。",
+        "children": [
+          {
+            "section_id": "sec-07-01",
+            "parent_id": "sec-07",
+            "level": 3,
+            "title": "数据库表定义",
+            "reason": "归并来源B的'数据库表'。",
+            "children": []
+          },
+          {
+            "section_id": "sec-07-02",
+            "parent_id": "sec-07",
+            "level": 3,
+            "title": "错误码规范",
+            "reason": "归并来源D的'错误码规范'全部子标题及来源B各接口下的错误码子标题。",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-08",
+        "parent_id": "root",
+        "level": 2,
+        "title": "联调流程与验收标准",
+        "reason": "归并来源A的'联调流程'、'验收标准'，来源C的'验收标准'及其子标题，来源D的'联调流程'、'验收标准'，统一为联调与验收。",
+        "children": [
+          {
+            "section_id": "sec-08-01",
+            "parent_id": "sec-08",
+            "level": 3,
+            "title": "联调流程",
+            "reason": "归并来源A的'联调流程'，来源D的'联调前置条件'、'联调步骤'。",
+            "children": []
+          },
+          {
+            "section_id": "sec-08-02",
+            "parent_id": "sec-08",
+            "level": 3,
+            "title": "验收标准",
+            "reason": "归并来源A的'验收标准'，来源C的'功能验收'、'安全验收'，来源D的'通用验收'、'C端产品验收'、'B端产品验收'。",
+            "children": []
+          },
+          {
+            "section_id": "sec-08-03",
+            "parent_id": "sec-08",
+            "level": 3,
+            "title": "已自测验证的能力",
+            "reason": "归并来源A的'当前统一认证中心已自测验证的能力'。",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-09",
+        "parent_id": "root",
+        "level": 2,
+        "title": "标准输出能力与保留项",
+        "reason": "归并来源C的'标准输出能力'，来源D中提及的标准接入原则项，以及来源A中'核心链路'下的流程性输出。",
+        "children": [
+          {
+            "section_id": "sec-09-01",
+            "parent_id": "sec-09",
+            "level": 3,
+            "title": "标准输出能力明细",
+            "reason": "归并来源C的'标准输出能力'。",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-10",
+        "parent_id": "root",
+        "level": 2,
+        "title": "总体架构与核心设计概览",
+        "reason": "归并来源C的'总体架构'，来源A的'核心链路'中架构性描述，来源B的'前端推荐流程'、'百工后端推荐流程'的整体架构视角。",
+        "children": []
+      }
+    ]
+  }
+]

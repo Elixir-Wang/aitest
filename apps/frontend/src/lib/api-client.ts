@@ -2,7 +2,7 @@
 
 import { useAuthStore } from "@/stores/auth-store";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
 type ApiEnvelope<T> = {
   data: T;
@@ -277,6 +277,21 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   }
 
   return (payload as ApiEnvelope<T>).data;
+}
+
+export function apiAuthHeaders(): Headers {
+  let { hasHydrated, token } = useAuthStore.getState();
+
+  if (!hasHydrated) {
+    useAuthStore.getState().hydrate();
+    ({ token } = useAuthStore.getState());
+  }
+
+  const headers = new Headers();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return headers;
 }
 
 export async function apiBlobRequest(path: string, options: RequestInit = {}): Promise<Blob> {

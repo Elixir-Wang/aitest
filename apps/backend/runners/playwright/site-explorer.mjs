@@ -10,6 +10,7 @@ if (!startUrl || !artifactRoot) {
 const maxPages = Number(process.env.AI_TESTING_EXPLORATION_MAX_PAGES || "50");
 const maxActions = Number(process.env.AI_TESTING_EXPLORATION_MAX_ACTIONS || "1000");
 const navigationTimeout = Number(process.env.AI_TESTING_EXPLORATION_NAV_TIMEOUT_MS || "10000");
+const runTimeout = Number(process.env.AI_TESTING_EXPLORATION_TIMEOUT_MS || "7200000");
 
 const browser = await chromium.launch({
   channel: channel || undefined,
@@ -37,14 +38,39 @@ const forbiddenTerms = forbiddenInput
   .map((item) => item.trim().toLowerCase())
   .filter(Boolean);
 let actionCount = 0;
+const startedAt = Date.now();
 
 try {
+  logEvent("run_started", { url: start.href, max_pages: maxPages, max_actions: maxActions, timeout_ms: runTimeout });
+  emitProgress("run_progress", { recent_event: "Playwright 探索已启动。", url: start.href });
   while (queued.length > 0 && pages.length < maxPages && actionCount < maxActions) {
+    if (Date.now() - startedAt > runTimeout) {
+      blockers.push({
+        id: makeId("blocker", blockers.length + 1),
+        type: "run_timeout",
+        page: queued[0] || start.href,
+        reason: `探索超过超时时间 ${runTimeout}ms，已停止继续访问。`,
+        severity: "blocking",
+        suggested_action: "缩小探索范围或提高超时时间后重新探索。",
+      });
+      logEvent("blocked", { type: "run_timeout", page: queued[0] || start.href });
+      break;
+    }
     const targetUrl = queued.shift();
     if (!targetUrl || visited.has(normalizeUrl(targetUrl))) {
       continue;
     }
     visited.add(normalizeUrl(targetUrl));
+    const nextPageId = makeId("page", pages.length + 1);
+    emitProgress("page_discovered", {
+      module_key: "site-entry",
+      page_id: nextPageId,
+      title: targetUrl,
+      url: targetUrl,
+      entry_path: targetUrl,
+      status: "running",
+      recent_event: `准备访问 ${targetUrl}`,
+    });
 
     try {
       await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
@@ -58,35 +84,75 @@ try {
         severity: "blocking",
         suggested_action: "检查页面路由、网络连通性、登录状态或证书配置后重试。",
       });
-      logLines.push(`BLOCKED navigation_failed ${targetUrl}`);
+      logEvent("blocked", { type: "navigation_failed", page: targetUrl, reason: String(error?.message || error) });
+      emitProgress("page_blocked", {
+        module_key: "site-entry",
+        page_id: nextPageId,
+        title: targetUrl,
+        url: targetUrl,
+        entry_path: targetUrl,
+        status: "blocked",
+        blocker_reason: String(error?.message || error),
+        recent_event: "页面访问失败",
+        steps: [
+          makeStep("step-001", "visit", "进入页面", `访问 ${targetUrl}`, "failed"),
+          makeStep("step-002", "blocked", "页面阻塞", String(error?.message || error), "blocked"),
+        ],
+      });
       continue;
     }
 
     const facts = await collectAccessibilityFacts(page);
-    const pageId = makeId("page", pages.length + 1);
+    const pageId = nextPageId;
     const pageDoc = buildPageDoc(pageId, facts, targetUrl, blockers);
+    addPageStep(pageDoc, "visit", "进入页面", `访问 ${targetUrl}`);
+    emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
+    addPageStep(pageDoc, "snapshot", "采集页面结构", `采集 ${facts.accessibility_tree.length} 个无障碍节点、${facts.links.length} 个链接。`);
+    emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
+    if (facts.actions.length > 0) {
+      addPageStep(pageDoc, "element_discovered", "识别可操作元素", `识别 ${facts.actions.length} 个可操作元素。`);
+      emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
+    }
+    emitProgress("page_updated", {
+      module_key: "site-entry",
+      page_id: pageId,
+      title: pageDoc.page.title,
+      url: pageDoc.page.url,
+      entry_path: pageDoc.page.normalized_url,
+      structure_summary: pageDoc.page.structure_summary,
+      status: "running",
+      recent_event: "页面结构采集完成",
+      steps: pageDoc.steps,
+    });
     pages.push(pageDoc);
     graphNodes.push({
       id: pageId,
       title: pageDoc.page.title,
       url: pageDoc.page.url,
-      type: pageDoc.page.page_type,
       module: pageDoc.page.module,
     });
-    logLines.push(`PAGE ${pageId} ${pageDoc.page.url}`);
+    logEvent("page_captured", {
+      page_id: pageId,
+      url: pageDoc.page.url,
+      title: pageDoc.page.title,
+      artifact_path: `pages/${pageId}-${slugify(pageDoc.page.title || pageDoc.page.url)}.yaml`,
+    });
 
     for (const link of facts.links) {
       const href = sameOriginHref(link.href, start);
       if (!href) {
         graphEdges.push({
           id: makeId("edge", graphEdges.length + 1),
-          from: pageId,
-          to: link.href,
+          source: pageId,
+          target: link.href,
           type: "external_link",
           action: `发现外链 ${link.name || link.href}`,
           element: link,
           result: { url_changed: false, visited: false, skipped: true },
         });
+        logEvent("edge_created", { edge_id: graphEdges.at(-1).id, source: pageId, target: link.href, type: "external_link" });
+        addPageStep(pageDoc, "skipped", "记录外链", `发现外链 ${link.name || link.href}，已记录但不访问。`);
+        emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
         continue;
       }
       if (visited.has(normalizeUrl(href)) || queued.some((item) => normalizeUrl(item) === normalizeUrl(href))) {
@@ -102,19 +168,24 @@ try {
           severity: "warning",
           suggested_action: "如需覆盖该功能，请在安全测试环境中调整禁止路径后重新探索。",
         });
-        logLines.push(`SKIPPED forbidden_path ${link.name || href}`);
+        logEvent("skipped", { type: "forbidden_path", page_id: pageId, action: link.name || href });
+        addPageStep(pageDoc, "skipped", "跳过禁止路径", `命中禁止路径，已跳过：${link.name || href}`);
+        emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
         continue;
       }
       queued.push(href);
       graphEdges.push({
         id: makeId("edge", graphEdges.length + 1),
-        from: pageId,
-        to: href,
+        source: pageId,
+        target: normalizeUrl(href),
         type: "navigation",
         action: `访问 ${link.name || href}`,
         element: link,
         result: { url_changed: true, target_page_detected: true },
       });
+      logEvent("edge_created", { edge_id: graphEdges.at(-1).id, source: pageId, target: normalizeUrl(href), type: "navigation" });
+      addPageStep(pageDoc, "edge_created", "记录页面关系", `发现同域链接 ${link.name || href}`);
+      emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
       actionCount += 1;
     }
 
@@ -135,35 +206,74 @@ try {
           severity: "warning",
           suggested_action: "如需覆盖该功能，请在安全测试环境中调整禁止路径后重新探索。",
         });
-        logLines.push(`SKIPPED forbidden_path ${action.name || action.locator_hint}`);
+        logEvent("skipped", { type: "forbidden_path", page_id: pageId, action: action.name || action.locator_hint });
+        addPageStep(pageDoc, "skipped", "跳过禁止动作", `命中禁止动作，已跳过：${action.name || action.locator_hint}`);
+        emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
         continue;
+      }
+      let clickValidation = null;
+      if (action.action_type === "click" && action.role === "button") {
+        clickValidation = await validateSafeButtonClick(page, action, pageDoc.page.url);
+        const storedAction = pageDoc.actions.find((item) => item.id === action.id || (item.name === action.name && item.locator_hint === action.locator_hint));
+        if (storedAction) {
+          storedAction.validation = clickValidation;
+        }
+        if (clickValidation.status === "passed" || clickValidation.status === "failed") {
+          addPageStep(
+            pageDoc,
+            "goal_validation",
+            "验证按钮跳转",
+            `${action.name || action.locator_hint || "按钮"}：${clickValidation.reason}`,
+            clickValidation.status === "failed" ? "failed" : "completed",
+          );
+          emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
+        }
       }
       graphEdges.push({
         id: makeId("edge", graphEdges.length + 1),
-        from: pageId,
-        to: pageId,
-        type: action.action_type === "fill" ? "submit" : "state_change",
+        source: pageId,
+        target: pageId,
+        type: edgeTypeForAction(action),
         action: action.name || action.locator_hint || "action",
         element: action,
-        result: { url_changed: false, target_page_detected: false },
+        result: clickValidation || { url_changed: false, target_page_detected: false },
       });
+      logEvent("edge_created", { edge_id: graphEdges.at(-1).id, source: pageId, target: pageId, type: graphEdges.at(-1).type });
+      addPageStep(pageDoc, "action_observed", "识别动作", `发现 ${action.name || action.locator_hint || "action"}`);
+      emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
       actionCount += 1;
     }
+    addPageStep(pageDoc, "artifact_written", "写入页面事实", `写入 pages/${pageId}-${slugify(pageDoc.page.title || pageDoc.page.url)}.yaml`);
+    emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
+    addPageStep(pageDoc, pageDoc.page.status === "blocked" ? "blocked" : "completed", pageDoc.page.status === "blocked" ? "页面阻塞" : "页面探索完成", pageDoc.page.status === "blocked" ? pageDoc.quality.blockers.join("；") : pageDoc.page.structure_summary);
+    emitProgress(pageDoc.page.status === "blocked" ? "page_blocked" : "page_completed", {
+      module_key: "site-entry",
+      page_id: pageId,
+      title: pageDoc.page.title,
+      url: pageDoc.page.url,
+      entry_path: pageDoc.page.normalized_url,
+      structure_summary: pageDoc.page.structure_summary,
+      status: pageDoc.page.status === "blocked" ? "blocked" : "completed",
+      recent_event: pageDoc.steps.at(-1)?.detail || pageDoc.steps.at(-1)?.title || "",
+      steps: pageDoc.steps,
+    });
   }
 
   const summary = `已探索 ${pages.length} 个页面，识别 ${factsCount(pages)} 个可交互元素，记录 ${blockers.length} 个阻塞项。`;
-  console.log(
-    JSON.stringify({
-      status: pages.length > 0 ? (blockers.length > 0 ? "partial" : "completed") : "blocked",
+  const finalStatus = pages.length > 0 ? (blockers.length > 0 ? "partial" : "completed") : "blocked";
+  logEvent("run_completed", { status: finalStatus, page_count: pages.length, action_count: actionCount });
+  emitResult({
+      status: finalStatus,
       summary,
-      pages,
+      structured_pages: pages,
       graph: {
         nodes: graphNodes,
         edges: graphEdges,
         paths: [],
       },
       blockers,
-      log_lines: logLines.length > 0 ? logLines : ["INFO run_completed"],
+      log_lines: logLines.length > 0 ? logLines : [JSON.stringify({ event: "run_completed" })],
+      log: `${logLines.join("\n")}\n`,
       action_count: actionCount,
       field_count: pages.reduce((count, item) => count + (item.actions || []).filter((action) => action.action_type === "fill").length, 0),
       state_transition_count: Math.max(0, pages.length - 1),
@@ -177,16 +287,26 @@ try {
         same_origin_link_count: graphEdges.filter((edge) => edge.type === "navigation").length,
         reason_if_stopped: queued.length === 0 ? "已处理发现的入口，探索队列为空。" : "",
       },
-    }),
-  );
+    });
 } finally {
   await browser.close();
 }
 
 async function collectAccessibilityFacts(browserPage) {
-  const snapshot = await browserPage.accessibility.snapshot({ interestingOnly: false }).catch(() => null);
+  const snapshot = await browserPage.accessibility?.snapshot?.({ interestingOnly: false }).catch(() => null) || null;
   const accessibilityNodes = flattenAccessibility(snapshot).slice(0, 300);
   const domFacts = await collectDomFacts(browserPage);
+  const domAccessibilityNodes = domFacts.actions.map((action, index) => ({
+    id: makeId("node", index + 1),
+    role: action.role || action.action_type || "generic",
+    name: action.name || "",
+    disabled: action.enabled === false,
+    locator_hint: action.locator_hint || "",
+    enabled: action.enabled !== false,
+    visible: action.visible !== false,
+    source: action.source || "dom_fallback",
+  }));
+  const pageNodes = accessibilityNodes.length > 0 ? accessibilityNodes : domAccessibilityNodes;
   const actions = accessibilityNodes
     .filter((node) => ["button", "link", "textbox", "combobox", "checkbox", "radio", "tab", "menuitem"].includes(node.role))
     .map((node, index) => ({
@@ -200,18 +320,21 @@ async function collectAccessibilityFacts(browserPage) {
     }));
 
   return {
-    title: documentTitleFromNodes(accessibilityNodes) || domFacts.title,
+    title: documentTitleFromNodes(pageNodes) || domFacts.title,
     url: browserPage.url(),
-    accessibility_tree: accessibilityNodes.map((node) => ({
+    accessibility_tree: pageNodes.map((node) => ({
+      id: node.id,
       role: node.role,
       name: node.name || "",
-      locator_hint: locatorHint(node.role, node.name),
-      enabled: !node.disabled,
-      visible: true,
+      locator_hint: node.locator_hint || locatorHint(node.role, node.name),
+      enabled: node.enabled ?? !node.disabled,
+      visible: node.visible ?? true,
       source: node.source || "accessibility",
     })),
     actions: actions.length > 0 ? actions : domFacts.actions,
     links: domFacts.links,
+    forms: domFacts.forms,
+    tables: domFacts.tables,
   };
 }
 
@@ -246,10 +369,28 @@ async function collectDomFacts(browserPage) {
           source: "dom_fallback",
         };
       });
+    const forms = Array.from(document.querySelectorAll("form")).slice(0, 20).map((form, index) => ({
+      id: `form-${String(index + 1).padStart(3, "0")}`,
+      name: labelOf(form),
+      fields: Array.from(form.querySelectorAll("input,textarea,select")).slice(0, 80).map((field) => ({
+        name: labelOf(field),
+        input_type: field.getAttribute("type") || field.tagName.toLowerCase(),
+        required: Boolean(field.required || field.getAttribute("aria-required") === "true"),
+        locator_hint: field.id ? `locator('#${field.id}')` : "",
+      })),
+    }));
+    const tables = Array.from(document.querySelectorAll("table")).slice(0, 20).map((table, index) => ({
+      id: `table-${String(index + 1).padStart(3, "0")}`,
+      name: labelOf(table),
+      columns: Array.from(table.querySelectorAll("th")).slice(0, 40).map((th) => labelOf(th)).filter(Boolean),
+      row_count: table.querySelectorAll("tbody tr").length,
+    }));
     return {
       title: document.title || location.pathname || location.href,
       actions: elements.filter((item) => item.role !== "link" || !item.href),
       links: elements.filter((item) => item.href),
+      forms,
+      tables,
     };
   });
 }
@@ -257,6 +398,7 @@ async function collectDomFacts(browserPage) {
 function flattenAccessibility(node, output = []) {
   if (!node) return output;
   output.push({
+    id: makeId("node", output.length + 1),
     role: node.role || "generic",
     name: node.name || "",
     disabled: Boolean(node.disabled),
@@ -279,8 +421,7 @@ function documentTitleFromNodes(nodes) {
 }
 
 function buildPageDoc(pageId, facts, entryPath, blockers) {
-  const moduleName = "未分组模块";
-  const pageType = detectPageType(facts.title, facts.url, facts.accessibility_tree);
+  const moduleName = inferModuleName(facts.title, facts.url);
   const blocker = blockers.find((item) => item.page === facts.url || item.page === entryPath);
   return {
     page: {
@@ -289,11 +430,12 @@ function buildPageDoc(pageId, facts, entryPath, blockers) {
       url: facts.url,
       normalized_url: normalizeUrl(facts.url),
       module: moduleName,
-      page_type: pageType,
       depth: 0,
       status: blocker ? "blocked" : "explored",
+      structure_summary: summarizeFacts(facts),
     },
-    accessibility_tree: facts.accessibility_tree,
+    accessibility_tree: treeFromFlatNodes(facts.accessibility_tree),
+    steps: [],
     actions: facts.actions.map((action, index) => ({
       id: makeId("action", index + 1),
       role: action.role,
@@ -302,7 +444,10 @@ function buildPageDoc(pageId, facts, entryPath, blockers) {
       action_type: action.action_type,
       enabled: action.enabled,
       visible: action.visible,
+      locator_confidence: action.locator_hint ? "medium" : "low",
     })),
+    forms: facts.forms,
+    tables: facts.tables,
     relations: {
       incoming_edges: [],
       outgoing_edges: [],
@@ -315,6 +460,60 @@ function buildPageDoc(pageId, facts, entryPath, blockers) {
   };
 }
 
+function addPageStep(pageDoc, type, title, detail = "", status = "completed") {
+  pageDoc.steps.push(makeStep(makeId("step", pageDoc.steps.length + 1), type, title, detail, status));
+}
+
+function makeStep(id, type, title, detail = "", status = "completed") {
+  return {
+    id,
+    type,
+    title,
+    detail,
+    status,
+    occurred_at: new Date().toISOString(),
+    source: "runner",
+  };
+}
+
+function logEvent(event, payload = {}) {
+  logLines.push(JSON.stringify({ ts: new Date().toISOString(), event, ...payload }));
+}
+
+function emitProgress(type, payload = {}) {
+  console.log(JSON.stringify({ kind: "progress", type, payload }));
+}
+
+function emitResult(payload) {
+  console.log(JSON.stringify({ kind: "result", payload }));
+}
+
+function edgeTypeForAction(action) {
+  if (action.role === "tab") return "tab_switch";
+  if (action.role === "textbox" || action.action_type === "fill") return "filter";
+  if (/弹窗|新增|新建|详情|编辑|设置|modal|dialog|add|create|edit|detail/i.test(action.name || "")) return "open_modal";
+  return "state_change";
+}
+
+function treeFromFlatNodes(nodes) {
+  return (nodes || []).slice(0, 300).map((node, index) => ({
+    id: node.id || makeId("node", index + 1),
+    role: node.role,
+    name: node.name || "",
+    locator_hint: node.locator_hint || locatorHint(node.role, node.name),
+    fallback_locator: node.fallback_locator || "",
+    locator_confidence: node.name ? "medium" : "low",
+    enabled: node.enabled,
+    visible: node.visible,
+    source: node.source || "accessibility",
+    children: [],
+  }));
+}
+
+function summarizeFacts(facts) {
+  return `标题：${facts.title || "-"}。可交互元素：${facts.actions.length}。链接：${facts.links.length}。表单：${facts.forms.length}。表格：${facts.tables.length}。`;
+}
+
 function factsCount(pages) {
   return pages.reduce((count, pageDoc) => count + (pageDoc.actions?.length || 0), 0);
 }
@@ -323,14 +522,86 @@ function canInteract(action) {
   return ["button", "textbox", "combobox", "checkbox", "radio", "menuitem", "tab"].includes(action.role || action.action_type);
 }
 
-function detectPageType(title, url, tree) {
-  const titleText = `${title || ""} ${url || ""} ${JSON.stringify(tree || [])}`;
-  if (/(列表|list)/i.test(titleText)) return "list";
-  if (/(详情|detail)/i.test(titleText)) return "detail";
-  if (/(编辑|新建|create|edit|form)/i.test(titleText)) return "form";
-  if (/(设置|setting)/i.test(titleText)) return "settings";
-  if (/(首页|dashboard|home)/i.test(titleText)) return "dashboard";
-  return "unknown";
+async function validateSafeButtonClick(browserPage, action, beforeUrl) {
+  const name = String(action.name || "").trim();
+  if (!name || name.toUpperCase() === "BUTTON") {
+    return {
+      status: "unverified",
+      result: "unverified",
+      reason: "按钮名称不可识别，未执行点击验证。",
+      before_url: beforeUrl,
+      after_url: "",
+    };
+  }
+  if (isUnsafeButtonName(name)) {
+    return {
+      status: "skipped",
+      result: "skipped",
+      reason: "按钮疑似会修改业务数据，跳过真实点击验证。",
+      before_url: beforeUrl,
+      after_url: "",
+    };
+  }
+  const beforeTitle = await browserPage.title().catch(() => "");
+  const beforePageUrl = browserPage.url();
+  try {
+    const locator = browserPage.getByRole("button", { name }).first();
+    const count = await locator.count().catch(() => 0);
+    if (count < 1) {
+      return {
+        status: "unverified",
+        result: "unverified",
+        reason: "未能通过按钮名称重新定位按钮。",
+        before_url: beforePageUrl,
+        after_url: "",
+        before_title: beforeTitle,
+      };
+    }
+    await Promise.race([
+      locator.click({ timeout: 3000 }),
+      browserPage.waitForLoadState("domcontentloaded", { timeout: 3000 }).catch(() => {}),
+    ]);
+    await browserPage.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
+    const afterUrl = browserPage.url();
+    const afterTitle = await browserPage.title().catch(() => "");
+    const bodyText = await browserPage.locator("body").innerText({ timeout: 2000 }).catch(() => "");
+    const loginDetected = looksLikeLogin(`${afterUrl} ${afterTitle} ${bodyText.slice(0, 1000)}`);
+    const validation = {
+      status: loginDetected ? "failed" : "passed",
+      result: loginDetected ? "failed" : "passed",
+      reason: loginDetected ? "点击后页面命中登录/鉴权特征。" : "点击后页面未命中登录页特征。",
+      before_url: beforePageUrl,
+      after_url: afterUrl,
+      before_title: beforeTitle,
+      after_title: afterTitle,
+      url_changed: normalizeUrl(beforePageUrl) !== normalizeUrl(afterUrl),
+      login_detected: loginDetected,
+    };
+    if (normalizeUrl(browserPage.url()) !== normalizeUrl(beforePageUrl)) {
+      await browserPage.goto(beforePageUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
+      await browserPage.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
+    }
+    return validation;
+  } catch (error) {
+    await browserPage.goto(beforePageUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
+    await browserPage.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
+    return {
+      status: "unverified",
+      result: "unverified",
+      reason: `按钮点击验证失败：${String(error?.message || error).slice(0, 200)}`,
+      before_url: beforePageUrl,
+      after_url: browserPage.url(),
+      before_title: beforeTitle,
+    };
+  }
+}
+
+function isUnsafeButtonName(name) {
+  return /删除|移除|提交|支付|付款|确认|确定|发布|保存|创建|新增|修改|编辑|上传|发送|delete|remove|submit|pay|confirm|save|create|add|edit|upload|send/i.test(name || "");
+}
+
+function looksLikeLogin(value) {
+  return /login|signin|sign-in|auth|passport|account\/login|user\/login|登录|登陆|验证码|401|403/i.test(value || "");
 }
 
 function sameOriginHref(href, start) {
@@ -365,4 +636,25 @@ function isForbidden(value) {
 
 function makeId(prefix, index) {
   return `${prefix}-${String(index).padStart(3, "0")}`;
+}
+
+function inferModuleName(title, url) {
+  const text = String(title || "").trim();
+  if (text && text.length <= 40) return text;
+  try {
+    const parsed = new URL(url);
+    const first = parsed.pathname.split("/").filter(Boolean)[0];
+    return first || "入口页";
+  } catch {
+    return "未分组模块";
+  }
+}
+
+function slugify(value) {
+  return String(value || "page")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-zA-Z0-9\u4e00-\u9fff]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "page";
 }

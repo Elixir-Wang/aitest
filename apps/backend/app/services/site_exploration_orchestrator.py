@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import queue
 import shutil
 import subprocess
+import threading
 import traceback
 from pathlib import Path
 import secrets
@@ -17,7 +19,13 @@ from app.core.settings import (
 from app.core.db import connect
 from app.core.storage import PROJECT_FILE_STORAGE_ROOT, store_path
 from app.repositories import exploration_repo
-from app.services import exploration_artifact_service, exploration_service, operation_log_service
+from app.services import (
+    exploration_artifact_service,
+    exploration_event_bus,
+    exploration_goal_validation_service,
+    exploration_service,
+    operation_log_service,
+)
 
 
 def run_exploration(run_id: str) -> None:
@@ -50,6 +58,13 @@ def _run_exploration(run_id: str) -> None:
             result_summary="站点探索已开始，正在调用 Playwright CLI。",
             started=True,
         )
+        exploration_repo.update_module_coverages_status(
+            db,
+            run_id,
+            from_status="pending",
+            to_status="running",
+            completion_summary="站点探索已开始，正在调用 Playwright CLI。",
+        )
         start_event = (
             run,
             {
@@ -59,6 +74,13 @@ def _run_exploration(run_id: str) -> None:
                 "after": {"status": "running", "artifact_root": store_path(artifact_root) or ""},
             },
         )
+        _publish_run_event(
+            "run_started",
+            run,
+            {"status": "running", "artifact_root": store_path(artifact_root) or ""},
+        )
+        for module in exploration_repo.list_module_coverages(db, run_id):
+            _publish_module_event("module_discovered", run_id, module)
 
     if start_event:
         _record_runner_event(start_event[0], **start_event[1])
@@ -72,6 +94,8 @@ def _run_exploration(run_id: str) -> None:
             return
         if run["status"] == "stopping":
             _mark_cancelled(db, run, "用户已停止探索，已保留停止前生成的日志和产物。")
+            _publish_run_event("run_cancelled", run, {"status": "cancelled", "result_summary": "用户已停止探索，已保留停止前生成的日志和产物。"})
+            exploration_event_bus.close(run_id)
             finish_event = (
                 run,
                 {
@@ -86,6 +110,8 @@ def _run_exploration(run_id: str) -> None:
             exploration_repo.clear_run_outputs(db, run_id)
             if result["status"] == "cancelled":
                 _mark_cancelled(db, run, result["summary"])
+                _publish_run_event("run_cancelled", run, {"status": "cancelled", "result_summary": result["summary"]})
+                exploration_event_bus.close(run_id)
                 finish_event = (
                     run,
                     {
@@ -110,14 +136,14 @@ def _run_exploration(run_id: str) -> None:
                     },
                 )
             else:
-                _persist_completed_result(db, run, artifact_root, result)
+                persisted_status, persisted_summary = _persist_completed_result(db, run, artifact_root, result)
                 finish_event = (
                     run,
                     {
                         "action": "finish",
-                        "result": "success",
-                        "summary": f"站点探索执行完成：{run['title']}，{result['summary']}",
-                        "after": {"status": "completed", "result_summary": result["summary"], "log_path": result.get("log_path", "")},
+                        "result": "success" if persisted_status == "completed" else "partial_success",
+                        "summary": f"站点探索执行完成：{run['title']}，{persisted_summary}",
+                        "after": {"status": persisted_status, "result_summary": persisted_summary, "log_path": result.get("log_path", "")},
                         "artifact_path": [result.get("log_path", "")] if result.get("log_path") else [],
                     },
                 )
@@ -171,6 +197,8 @@ def _mark_run_failed_after_unhandled_error(run_id: str, error: Exception) -> Non
                     "artifact_path": [store_path(log_path) or ""],
                 },
             )
+            _publish_run_event("run_failed", run, {"status": "blocked", "result_summary": summary})
+            exploration_event_bus.close(run_id)
     except Exception:
         return
     _record_runner_event(failure_event[0], **failure_event[1])
@@ -250,6 +278,7 @@ def _run_site_explorer(page_url: str, artifact_root: Path, forbidden_paths: str 
     script_path = PLAYWRIGHT_RUNNER_DIR / "site-explorer.mjs"
     command = ["node", str(script_path), page_url, str(artifact_root), PLAYWRIGHT_BROWSER_CHANNEL, forbidden_paths]
     timeout_seconds = max(PLAYWRIGHT_CLI_TIMEOUT_SECONDS, 30)
+    env = _runner_env_from_db(artifact_root.name)
     try:
         process = subprocess.Popen(
             command,
@@ -257,27 +286,44 @@ def _run_site_explorer(page_url: str, artifact_root: Path, forbidden_paths: str 
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=env,
         )
+        stdout_queue: queue.Queue[str | None] = queue.Queue()
+        stdout_lines: list[str] = []
+        result_payload: dict | None = None
+        reader = threading.Thread(target=_enqueue_output_lines, args=(process.stdout, stdout_queue), daemon=True)
+        reader.start()
         started_at = time.monotonic()
         while process.poll() is None:
+            result_payload = _drain_runner_stdout(artifact_root.name, stdout_queue, stdout_lines, result_payload)
             if _run_cancel_requested(artifact_root):
                 process.terminate()
                 try:
-                    stdout, stderr = process.communicate(timeout=5)
+                    process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill()
-                    stdout, stderr = process.communicate()
+                    process.wait()
+                reader.join(timeout=1)
+                stderr = process.stderr.read() if process.stderr else ""
+                result_payload = _drain_runner_stdout(artifact_root.name, stdout_queue, stdout_lines, result_payload)
                 return {
                     "status": "cancelled",
                     "summary": "用户已停止探索。",
-                    "log": "\n".join(["Playwright site exploration cancelled by user.", stdout, stderr]).strip() + "\n",
+                    "log": "\n".join(["Playwright site exploration cancelled by user.", "\n".join(stdout_lines), stderr]).strip() + "\n",
                 }
             if time.monotonic() - started_at > timeout_seconds:
                 process.kill()
-                stdout, stderr = process.communicate()
-                raise subprocess.TimeoutExpired(command, timeout_seconds, output=stdout, stderr=stderr)
-            time.sleep(1)
-        stdout, stderr = process.communicate()
+                process.wait()
+                reader.join(timeout=1)
+                stderr = process.stderr.read() if process.stderr else ""
+                result_payload = _drain_runner_stdout(artifact_root.name, stdout_queue, stdout_lines, result_payload)
+                raise subprocess.TimeoutExpired(command, timeout_seconds, output="\n".join(stdout_lines), stderr=stderr)
+            time.sleep(0.2)
+        process.wait()
+        reader.join(timeout=1)
+        stderr = process.stderr.read() if process.stderr else ""
+        result_payload = _drain_runner_stdout(artifact_root.name, stdout_queue, stdout_lines, result_payload)
+        stdout = "\n".join(stdout_lines)
     except (OSError, subprocess.TimeoutExpired) as error:
         return {
             "status": "blocked",
@@ -291,22 +337,94 @@ def _run_site_explorer(page_url: str, artifact_root: Path, forbidden_paths: str 
             "log": "\n".join([stdout, stderr]).strip() + "\n",
         }
     try:
-        payload = json.loads(stdout.strip().splitlines()[-1])
-    except (IndexError, json.JSONDecodeError) as error:
+        payload = result_payload or _parse_legacy_runner_result(stdout)
+    except (IndexError, json.JSONDecodeError, ValueError) as error:
         return {
             "status": "blocked",
             "summary": "Playwright 探索脚本未返回有效结构化结果。",
             "log": f"{stdout}\n{stderr}\nJSON parse error: {error}\n",
         }
+    payload_log = str(payload.get("log") or "")
     payload["log"] = "\n".join(
-        [
-            "Playwright site exploration completed.",
-            f"url={page_url}",
+        item
+        for item in [
+            payload_log.strip(),
             stderr.strip(),
-            stdout.strip(),
+            "" if payload_log.strip() else stdout.strip(),
         ]
+        if item
     ).strip() + "\n"
     return payload
+
+
+def _enqueue_output_lines(stream, output_queue: queue.Queue[str | None]) -> None:
+    if stream is None:
+        output_queue.put(None)
+        return
+    try:
+        for line in stream:
+            output_queue.put(line)
+    finally:
+        output_queue.put(None)
+
+
+def _drain_runner_stdout(
+    run_id: str,
+    output_queue: queue.Queue[str | None],
+    stdout_lines: list[str],
+    result_payload: dict | None,
+) -> dict | None:
+    while True:
+        try:
+            line = output_queue.get_nowait()
+        except queue.Empty:
+            return result_payload
+        if line is None:
+            return result_payload
+        stripped = line.strip()
+        if not stripped:
+            continue
+        stdout_lines.append(stripped)
+        try:
+            event = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        if event.get("kind") == "progress":
+            event_type = str(event.get("type") or "")
+            payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+            if event_type:
+                exploration_event_bus.publish(run_id, event_type, payload)
+        elif event.get("kind") == "result":
+            payload = event.get("payload")
+            if isinstance(payload, dict):
+                result_payload = payload
+    return result_payload
+
+
+def _parse_legacy_runner_result(stdout: str) -> dict:
+    payload = json.loads(stdout.strip().splitlines()[-1])
+    if isinstance(payload, dict) and payload.get("kind") == "result" and isinstance(payload.get("payload"), dict):
+        return payload["payload"]
+    if not isinstance(payload, dict):
+        raise ValueError("runner result must be a JSON object")
+    return payload
+
+
+def _runner_env_from_db(run_id: str) -> dict:
+    import os
+
+    env = os.environ.copy()
+    with connect() as db:
+        run = exploration_repo.find_by_id(db, run_id)
+        if not run:
+            return env
+        env["AI_TESTING_EXPLORATION_MAX_PAGES"] = str(run["max_pages"] if "max_pages" in run.keys() else 50)
+        env["AI_TESTING_EXPLORATION_MAX_ACTIONS"] = str(run["max_actions"] if "max_actions" in run.keys() else 1000)
+        timeout_minutes = int(run["timeout_minutes"] if "timeout_minutes" in run.keys() else 120)
+        env["AI_TESTING_EXPLORATION_TIMEOUT_MS"] = str(max(timeout_minutes, 1) * 60 * 1000)
+    return env
 
 
 def _run_cancel_requested(artifact_root: Path) -> bool:
@@ -350,6 +468,94 @@ def _record_runner_event(
         after=after,
         task_id=run["id"],
         artifact_path=artifact_path or [],
+    )
+
+
+def _publish_run_event(event_type: str, run, payload: dict | None = None) -> None:
+    base_payload = {
+        "id": run["id"],
+        "project_id": run["project_id"],
+        "title": run["title"],
+    }
+    if payload:
+        base_payload.update(payload)
+    exploration_event_bus.publish(run["id"], event_type, base_payload)
+
+
+def _publish_module_event(event_type: str, run_id: str, module) -> None:
+    explored = int(module["explored_page_count"] or 0)
+    planned = max(int(module["planned_page_count"] or 0), explored, 1)
+    blocker_count = int(module["blocked_page_count"] or 0)
+    progress_percent = min(100, round((explored / planned) * 100))
+    exploration_event_bus.publish(
+        run_id,
+        event_type,
+        {
+            "module_id": module["id"],
+            "module_key": module["module_key"],
+            "module_name": module["module_name"],
+            "entry_path": module["entry_path"],
+            "planned_page_count": module["planned_page_count"],
+            "explored_page_count": module["explored_page_count"],
+            "blocked_page_count": module["blocked_page_count"],
+            "action_count": module["action_count"],
+            "field_count": module["field_count"],
+            "state_transition_count": module["state_transition_count"],
+            "completion_status": module["completion_status"],
+            "completion_summary": module["completion_summary"],
+            "recent_page_title": "",
+            "recent_page_url": "",
+            "blocker_summary": "无" if blocker_count == 0 else f"{blocker_count} 个页面阻塞",
+            "progress_percent": progress_percent,
+            "page_progress_text": f"{explored}/{planned} 页面",
+        },
+    )
+
+
+def _publish_page_event(event_type: str, run_id: str, page: dict) -> None:
+    exploration_event_bus.publish(
+        run_id,
+        event_type,
+        {
+            "module_key": page.get("module_key", ""),
+            "page_id": page.get("id", ""),
+            "title": page.get("title", ""),
+            "url": page.get("url", ""),
+            "entry_path": page.get("entry_path", ""),
+            "structure_summary": page.get("structure_summary", ""),
+            "status": page.get("status", "completed"),
+            "yaml_path": page.get("yaml_path", ""),
+            "recent_event": page.get("recent_event", ""),
+            "blocker_reason": page.get("blocker_reason", ""),
+            "steps": page.get("steps", []),
+        },
+    )
+
+
+def _publish_step_event(run_id: str, module_key: str, page_id: str, step: dict) -> None:
+    exploration_event_bus.publish(
+        run_id,
+        "step_recorded",
+        {
+            "module_key": module_key,
+            "page_id": page_id,
+            "step": step,
+        },
+    )
+
+
+def _publish_blocker_event(run_id: str, blocker: dict) -> None:
+    exploration_event_bus.publish(
+        run_id,
+        "blocker_detected",
+        {
+            "module_key": blocker.get("module_key", ""),
+            "page_ref": blocker.get("page_ref", ""),
+            "reason_type": blocker.get("reason_type", ""),
+            "reason": blocker.get("reason", ""),
+            "evidence_path": blocker.get("evidence_path", ""),
+            "suggested_action": blocker.get("suggested_action", ""),
+        },
     )
 
 
@@ -398,8 +604,8 @@ def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:
         artifact_root,
         run=run,
         summary={"status": "blocked", "summary": result["summary"], "markdown_content": markdown},
-        pages=[],
-        elements=[],
+        page_artifacts=[],
+        graph={"nodes": [], "edges": [], "paths": []},
         blockers=[
             {
                 "module_key": module_key,
@@ -429,6 +635,8 @@ def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:
         completion_status="blocked",
         completion_summary=result["summary"],
     )
+    for module in exploration_repo.list_module_coverages(db, run["id"]):
+        _publish_module_event("module_updated", run["id"], module)
     exploration_repo.create_blocker(
         db,
         blocker_id=_id("expblk"),
@@ -441,6 +649,17 @@ def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:
         impact_scope="站点探索、候选需求、知识库、用例、自动化",
         suggested_action=result["suggested_action"],
     )
+    _publish_blocker_event(
+        run["id"],
+        {
+            "module_key": module_key,
+            "page_ref": run["environment_name"],
+            "reason_type": result["reason_type"],
+            "reason": result["summary"],
+            "evidence_path": result["log_path"],
+            "suggested_action": result["suggested_action"],
+        },
+    )
     _persist_common_artifacts(db, run["id"], artifacts, result["log_path"])
     exploration_repo.update_run_state(
         db,
@@ -449,145 +668,255 @@ def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:
         result_summary=result["summary"],
         finished=True,
     )
+    _publish_run_event("run_failed", run, {"status": "blocked", "result_summary": result["summary"]})
+    exploration_event_bus.close(run["id"])
 
 
-def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> None:
-    module_key = _module_key(run)
+def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> tuple[str, str]:
     page_url = _safe_site_url(run)
-    pages = _result_pages(result)
-    result_status, coverage_gap_blocker = _completion_status_with_coverage_gate(run, result, pages)
-    page_id_by_url: dict[str, str] = {}
-    payload_pages = []
-    for page in pages:
-        page_id = _id("exppage")
-        page_id_by_url[page["url"]] = page_id
-        payload_pages.append(
-            {
-                "id": page_id,
-                "module_key": module_key,
-                "title": page["title"],
-                "url": page["url"],
-                "entry_path": page["entry_path"],
-                "structure_summary": page["structure_summary"],
-            }
-        )
-    payload_elements = [
-        {
-            "module_key": module_key,
-            "page_id": page_id_by_url.get(element.get("page_url", "")),
-            "element_name": element.get("name") or element.get("locator") or "未命名元素",
-            "element_type": element.get("type") or "element",
-            "recommended_locator": element.get("locator") or "",
-            "fallback_locator": element.get("href") or "",
-            "stability_note": "由 Playwright 真实页面探索抽取，仍需在生成自动化脚本前按目标环境复验稳定性。",
-            "source_ref": element.get("page_url") or page_url,
-        }
-        for element in result.get("elements", [])
-    ]
+    page_artifacts = _result_page_artifacts(result)
+    result_status, coverage_gap_blocker = _completion_status_with_coverage_gate(run, result, page_artifacts)
+    goal_validation = exploration_goal_validation_service.validate_goal(run["goal"], page_artifacts, _result_graph(result))
+    result_status = exploration_goal_validation_service.terminal_status_for_goal_validation(result_status, goal_validation)
+    goal_summary = _goal_validation_status_summary(goal_validation)
+    result_summary = result["summary"] if not goal_summary else f"{result['summary']} {goal_summary}"
+    module_coverages = _build_module_coverages(run, result, page_artifacts, result_status, coverage_gap_blocker, page_url)
     markdown = _render_markdown(
         run=run,
         status=result_status,
-        summary=result["summary"],
-        module_status="partial" if result_status == "partial" else "completed",
+        summary=result_summary,
+        module_status="partial" if result_status in {"partial", "waiting_human"} else "completed",
         page_url=page_url,
         blocker="",
-        pages=payload_pages,
-        elements=payload_elements,
+        pages=[page for module in module_coverages for page in module["pages"]],
+        elements=[element for module in module_coverages for element in module["elements"]],
     )
-    result_blockers = list(result.get("blockers", []))
-    if coverage_gap_blocker:
-        result_blockers.append(coverage_gap_blocker)
-    payload_blockers = [
-        {
-            "module_key": module_key,
-            "page_ref": blocker.get("page_ref") or page_url,
-            "reason_type": blocker.get("reason_type") or "exploration_gap",
-            "reason": blocker.get("reason") or "探索过程中存在未覆盖项。",
-            "evidence_path": result["log_path"],
-            "suggested_action": blocker.get("suggested_action") or "人工确认后重新探索。",
-        }
-        for blocker in result_blockers
-    ]
+    payload_blockers = []
+    for module in module_coverages:
+        for blocker in module["blockers"]:
+            payload_blockers.append(
+                {
+                    "module_key": module["module_key"],
+                    "page_ref": blocker.get("page_ref") or page_url,
+                    "reason_type": blocker.get("reason_type") or "exploration_gap",
+                    "reason": blocker.get("reason") or "探索过程中存在未覆盖项。",
+                    "evidence_path": result["log_path"],
+                    "suggested_action": blocker.get("suggested_action") or "人工确认后重新探索。",
+                }
+            )
     artifacts = exploration_artifact_service.write_exploration_artifacts(
         artifact_root,
         run=run,
-        summary={"status": result_status, "summary": result["summary"], "markdown_content": markdown},
-        pages=payload_pages,
-        elements=payload_elements,
+        summary={"status": result_status, "summary": result_summary, "markdown_content": markdown},
+        page_artifacts=page_artifacts,
+        graph=_result_graph(result),
         blockers=payload_blockers,
         log_content=result["log"],
+        goal_validation=goal_validation,
     )
 
-    exploration_repo.create_module_coverage(
-        db,
-        coverage_id=_id("expcov"),
-        exploration_run_id=run["id"],
-        module_key=module_key,
-        module_name=_module_name(run),
-        entry_path=run["scope"] or page_url,
-        planned_page_count=0 if result_status == "partial" and coverage_gap_blocker else max(len(payload_pages), 1),
-        explored_page_count=len(payload_pages),
-        blocked_page_count=1 if coverage_gap_blocker else 0,
-        action_count=int(result.get("action_count") or 0),
-        field_count=int(result.get("field_count") or 0),
-        state_transition_count=int(result.get("state_transition_count") or 0),
-        completion_status="partial" if result_status == "partial" else "completed",
-        completion_summary=result["summary"],
-    )
-    for page in payload_pages:
-        exploration_repo.create_page(
+    for module in module_coverages:
+        exploration_repo.create_module_coverage(
             db,
-            page_id=page["id"],
+            coverage_id=_id("expcov"),
             exploration_run_id=run["id"],
-            module_key=module_key,
-            title=page["title"],
-            url=page["url"],
-            entry_path=page["entry_path"],
-            structure_summary=page["structure_summary"],
+            module_key=module["module_key"],
+            module_name=module["module_name"],
+            entry_path=module["entry_path"],
+            planned_page_count=module["planned_page_count"],
+            explored_page_count=module["explored_page_count"],
+            blocked_page_count=module["blocked_page_count"],
+            action_count=module["action_count"],
+            field_count=module["field_count"],
+            state_transition_count=module["state_transition_count"],
+            completion_status=module["completion_status"],
+            completion_summary=module["completion_summary"],
         )
-    for element in payload_elements:
-        exploration_repo.create_element(
-            db,
-            element_id=_id("expelem"),
-            exploration_run_id=run["id"],
-            page_id=element["page_id"],
-            module_key=module_key,
-            element_name=element["element_name"],
-            element_type=element["element_type"],
-            recommended_locator=element["recommended_locator"],
-            fallback_locator=element["fallback_locator"],
-            stability_note=element["stability_note"],
-            source_ref=element["source_ref"],
-        )
-    for blocker in payload_blockers:
-        exploration_repo.create_blocker(
-            db,
-            blocker_id=_id("expblk"),
-            exploration_run_id=run["id"],
-            module_key=module_key,
-            page_ref=blocker["page_ref"],
-            reason_type=blocker["reason_type"],
-            reason=blocker["reason"],
-            evidence_path=blocker["evidence_path"],
-            impact_scope="站点探索覆盖完整性",
-            suggested_action=blocker["suggested_action"],
-            is_blocking=False,
-        )
+    for module in exploration_repo.list_module_coverages(db, run["id"]):
+        _publish_module_event("module_updated", run["id"], module)
+    for module in module_coverages:
+        for page in module["pages"]:
+            _publish_page_event("page_completed", run["id"], {**page, "status": "completed"})
+            for step in page.get("steps", []):
+                _publish_step_event(run["id"], module["module_key"], page["id"], step)
+    for module in module_coverages:
+        for blocker in module["blockers"]:
+            _publish_blocker_event(run["id"], blocker)
     _persist_common_artifacts(db, run["id"], artifacts, result["log_path"])
     exploration_repo.update_run_state(
         db,
         run["id"],
         status=result_status,
-        result_summary=result["summary"],
+        result_summary=result_summary,
         finished=True,
     )
+    terminal_event = "run_completed" if result_status == "completed" else "run_failed"
+    _publish_run_event(terminal_event, run, {"status": result_status, "result_summary": result_summary})
+    exploration_event_bus.close(run["id"])
+    return result_status, result_summary
 
 
-def _completion_status_with_coverage_gate(run, result: dict, pages: list[dict]) -> tuple[str, dict | None]:
+def _goal_validation_status_summary(goal_validation: dict) -> str:
+    status = str(goal_validation.get("status") or "")
+    if status in {"", "skipped", "passed"}:
+        return ""
+    summary = str(goal_validation.get("summary") or "").strip()
+    return summary or "目标验证未完全通过。"
+
+
+def _build_module_coverages(
+    run,
+    result: dict,
+    page_artifacts: list[dict],
+    result_status: str,
+    coverage_gap_blocker: dict | None,
+    page_url: str,
+) -> list[dict]:
+    module_groups: dict[str, dict] = {}
+    for page_artifact in page_artifacts:
+        page = page_artifact["page"]
+        module_key = str(page.get("module") or "unclassified")
+        module = module_groups.setdefault(
+            module_key,
+            {
+                "module_key": module_key,
+                "module_name": str(page.get("module") or _module_name(run)),
+                "entry_path": str(page.get("normalized_url") or page.get("url") or page_url),
+                "pages": [],
+                "elements": [],
+                "blockers": [],
+                "observed_action_count": 0,
+            },
+        )
+        module["pages"].append(_page_index_payload(page_artifact, module_key))
+        module["elements"].extend(_elements_from_page_artifacts([page_artifact], module_key, page_url))
+        module["observed_action_count"] += len(page_artifact.get("actions", [])) if isinstance(page_artifact.get("actions"), list) else 0
+
+    if not module_groups:
+        module_groups["unclassified"] = {
+            "module_key": "unclassified",
+            "module_name": "未分组模块",
+            "entry_path": run["scope"] or page_url,
+            "pages": [],
+            "elements": [],
+            "blockers": [],
+            "observed_action_count": 0,
+        }
+
+    for blocker in _module_blockers_from_result(result, coverage_gap_blocker, module_groups, page_url):
+        module_groups[blocker["module_key"]]["blockers"].append(blocker)
+
+    module_count = len(module_groups)
+    for module in module_groups.values():
+        pages = module["pages"]
+        blockers = module["blockers"]
+        explored_page_count = len(pages)
+        planned_page_count = max(explored_page_count, 1)
+        blocked_page_count = len(blockers)
+        has_blocking = any(True for blocker in blockers if blocker.get("reason_type") or blocker.get("is_blocking"))
+        progress_percent = min(100, round((explored_page_count / max(planned_page_count, explored_page_count, 1)) * 100))
+        recent_page = pages[-1] if pages else None
+        blocker_summary = blockers[0]["reason"] if blockers else "无"
+        if result_status in {"partial", "waiting_human"} and coverage_gap_blocker and pages:
+            completion_status = "partial"
+        elif result_status == "waiting_human":
+            completion_status = "waiting_human"
+        elif has_blocking:
+            completion_status = "blocked"
+        else:
+            completion_status = "completed"
+        module["planned_page_count"] = planned_page_count
+        module["explored_page_count"] = explored_page_count
+        module["blocked_page_count"] = blocked_page_count
+        module["action_count"] = int(result.get("action_count") or 0) if module_count == 1 else int(module["observed_action_count"])
+        module["field_count"] = (
+            int(result.get("field_count") or 0)
+            if module_count == 1
+            else sum(1 for element in module["elements"] if element["element_type"] in {"textbox", "combobox", "checkbox", "radio"})
+        )
+        module["state_transition_count"] = int(result.get("state_transition_count") or 0)
+        module["completion_status"] = completion_status
+        module["completion_summary"] = _build_module_summary(
+            explored_page_count=explored_page_count,
+            planned_page_count=planned_page_count,
+            recent_page=recent_page,
+            blocker_summary=blocker_summary,
+            completion_status=completion_status,
+            result_status=result_status,
+        )
+        module["recent_page_title"] = recent_page["title"] if recent_page else ""
+        module["recent_page_url"] = recent_page["url"] if recent_page else ""
+        module["blocker_summary"] = blocker_summary
+        module["progress_percent"] = progress_percent
+    return list(module_groups.values())
+
+
+def _module_blockers_from_result(
+    result: dict,
+    coverage_gap_blocker: dict | None,
+    module_groups: dict[str, dict],
+    page_url: str,
+) -> list[dict]:
+    page_module_by_ref = {}
+    for module_key, module in module_groups.items():
+        for page in module["pages"]:
+            page_module_by_ref[page["id"]] = module_key
+            page_module_by_ref[page["url"]] = module_key
+            page_module_by_ref[page["entry_path"]] = module_key
+
+    raw_blockers = list(result.get("blockers", [])) if isinstance(result.get("blockers"), list) else []
+    if coverage_gap_blocker:
+        raw_blockers.append(coverage_gap_blocker)
+
+    normalized = []
+    fallback_key = next(iter(module_groups.keys()), "unclassified")
+    for blocker in raw_blockers:
+        if not isinstance(blocker, dict):
+            continue
+        page_ref = str(blocker.get("page_ref") or blocker.get("page") or blocker.get("url") or page_url)
+        module_key = str(blocker.get("module_key") or page_module_by_ref.get(page_ref) or fallback_key)
+        if module_key not in module_groups:
+            module_key = fallback_key
+        normalized.append(
+            {
+                "module_key": module_key,
+                "page_ref": page_ref,
+                "reason_type": str(blocker.get("reason_type") or blocker.get("type") or "exploration_gap"),
+                "reason": str(blocker.get("reason") or "探索过程中存在未覆盖项。"),
+                "evidence_path": str(blocker.get("evidence_path") or result.get("log_path") or ""),
+                "suggested_action": str(blocker.get("suggested_action") or "人工确认后重新探索。"),
+                "is_blocking": bool(blocker.get("is_blocking", True)),
+            }
+        )
+    return normalized
+
+
+def _build_module_summary(
+    *,
+    explored_page_count: int,
+    planned_page_count: int,
+    recent_page: dict | None,
+    blocker_summary: str,
+    completion_status: str,
+    result_status: str,
+) -> str:
+    recent_text = f"最近页面：{recent_page['title']}" if recent_page else "最近页面：无"
+    if completion_status == "blocked":
+        return f"已覆盖 {explored_page_count}/{planned_page_count} 个页面，{recent_text}，阻塞：{blocker_summary}。"
+    if completion_status == "partial":
+        return f"已覆盖 {explored_page_count}/{planned_page_count} 个页面，{recent_text}，部分完成：{blocker_summary}。"
+    if completion_status == "waiting_human":
+        return f"已覆盖 {explored_page_count}/{planned_page_count} 个页面，{recent_text}，目标未完成，等待人工确认。"
+    if result_status == "running":
+        return f"已覆盖 {explored_page_count}/{planned_page_count} 个页面，{recent_text}，探索中。"
+    return f"已覆盖 {explored_page_count}/{planned_page_count} 个页面，{recent_text}，无阻塞。"
+
+
+def _completion_status_with_coverage_gate(run, result: dict, page_artifacts: list[dict]) -> tuple[str, dict | None]:
     status = str(result.get("status") or "completed")
     if status != "completed" or not _is_full_site_scope(run):
         return status, None
-    if len(pages) != 1:
+    if len(page_artifacts) != 1:
         return status, None
 
     discovery = result.get("discovery") if isinstance(result.get("discovery"), dict) else {}
@@ -601,7 +930,7 @@ def _completion_status_with_coverage_gate(run, result: dict, pages: list[dict]) 
 
     reason = str(discovery.get("reason_if_stopped") or "探索范围要求覆盖全部站点，但本次仅覆盖入口页，未发现可继续递归探索的页面入口。")
     return "partial", {
-        "page_ref": pages[0].get("url") or _safe_site_url(run),
+        "page_ref": page_artifacts[0].get("page", {}).get("url") or _safe_site_url(run),
         "reason_type": "coverage_gap",
         "reason": f"仅覆盖入口页：{reason}",
         "suggested_action": "补充目录解析、搜索探测、站点地图或人工入口清单后重新探索。",
@@ -677,6 +1006,7 @@ def _render_markdown(
             f"- 项目：{run['project_name']}",
             f"- 环境：{run['environment_name']}",
             f"- 站点：{page_url or '-'}",
+            f"- 探索目标：{run['goal'] or '-'}",
             f"- 说明：{summary}",
             "",
             "## 模块覆盖矩阵",
@@ -709,18 +1039,116 @@ def _safe_site_url(run) -> str:
     return str(run["environment_site_url"] if "environment_site_url" in run.keys() else "")
 
 
-def _result_pages(result: dict) -> list[dict]:
-    pages = result.get("pages") or []
-    return [
-        {
-            "title": str(page.get("title") or page.get("url") or "未命名页面"),
-            "url": str(page.get("url") or ""),
-            "entry_path": str(page.get("entry_path") or page.get("url") or ""),
-            "structure_summary": str(page.get("structure_summary") or "未生成页面结构摘要。"),
-        }
-        for page in pages
-        if page.get("url")
-    ]
+def _result_page_artifacts(result: dict) -> list[dict]:
+    pages = result.get("structured_pages")
+    if not isinstance(pages, list):
+        raise ValueError("Playwright runner must return structured_pages")
+    artifacts = []
+    for index, page_artifact in enumerate(pages, start=1):
+        if not isinstance(page_artifact, dict) or not isinstance(page_artifact.get("page"), dict):
+            raise ValueError("structured_pages must contain page artifacts")
+        page = dict(page_artifact["page"])
+        if not page.get("url"):
+            raise ValueError("structured page artifact missing page.url")
+        page["id"] = str(page.get("id") or f"page-{index:03d}")
+        page["title"] = str(page.get("title") or page["url"])
+        page["normalized_url"] = str(page.get("normalized_url") or page["url"])
+        page["module"] = str(page.get("module") or "未分组模块")
+        page["depth"] = int(page.get("depth") or 0)
+        page["status"] = str(page.get("status") or "explored")
+        page["structure_summary"] = str(page.get("structure_summary") or "已生成结构化页面事实。")
+        normalized = dict(page_artifact)
+        normalized["page"] = page
+        normalized.setdefault("accessibility_tree", [])
+        normalized.setdefault("actions", [])
+        normalized.setdefault("forms", [])
+        normalized.setdefault("tables", [])
+        normalized.setdefault("relations", {"incoming_edges": [], "outgoing_edges": []})
+        normalized.setdefault("quality", {"confidence": "observed", "needs_confirmation": False, "blockers": []})
+        artifacts.append(normalized)
+    return artifacts
+
+
+def _result_graph(result: dict) -> dict:
+    graph = result.get("graph")
+    if not isinstance(graph, dict):
+        raise ValueError("Playwright runner must return graph")
+    return graph
+
+
+def _elements_from_page_artifacts(page_artifacts: list[dict], module_key: str, page_url: str) -> list[dict]:
+    elements = []
+    for page_artifact in page_artifacts:
+        page_meta = page_artifact["page"]
+        current_page_id = page_meta["id"]
+        for node in _flatten_yaml_nodes(page_artifact.get("accessibility_tree", [])):
+            if not isinstance(node, dict):
+                continue
+            role = str(node.get("role") or "")
+            name = str(node.get("name") or "")
+            locator = str(node.get("locator_hint") or "")
+            href = str(node.get("href") or node.get("fallback_locator") or "")
+            if not role and not name and not locator:
+                continue
+            elements.append(
+                {
+                    "module_key": module_key,
+                    "page_id": current_page_id,
+                    "element_name": name or locator or "未命名元素",
+                    "element_type": role or "element",
+                    "recommended_locator": locator,
+                    "fallback_locator": href,
+                    "stability_note": f"来自页面 YAML 产物，定位置信度：{node.get('locator_confidence') or 'unknown'}。",
+                    "source_ref": page_meta.get("url") or page_url,
+                }
+            )
+    return elements
+
+
+def _page_index_payload(page_artifact: dict, module_key: str) -> dict:
+    page = page_artifact["page"]
+    return {
+        "id": page["id"],
+        "module_key": module_key,
+        "title": page["title"],
+        "url": page["url"],
+        "entry_path": page["normalized_url"],
+        "structure_summary": page["structure_summary"],
+        "status": page.get("status", "explored"),
+        "steps": _normalize_steps(page_artifact.get("steps", [])),
+    }
+
+
+def _normalize_steps(raw_steps) -> list[dict]:
+    if not isinstance(raw_steps, list):
+        return []
+    steps = []
+    for index, raw_step in enumerate(raw_steps, start=1):
+        if not isinstance(raw_step, dict):
+            continue
+        steps.append(
+            {
+                "id": str(raw_step.get("id") or f"step-{index:03d}"),
+                "type": str(raw_step.get("type") or "event"),
+                "title": str(raw_step.get("title") or raw_step.get("detail") or "探索步骤"),
+                "detail": str(raw_step.get("detail") or ""),
+                "status": str(raw_step.get("status") or "completed"),
+                "occurred_at": raw_step.get("occurred_at") if raw_step.get("occurred_at") else None,
+                "artifact_path": str(raw_step.get("artifact_path") or ""),
+                "source": str(raw_step.get("source") or ""),
+            }
+        )
+    return steps
+
+
+def _flatten_yaml_nodes(nodes: list[dict]) -> list[dict]:
+    flattened = []
+    for node in nodes if isinstance(nodes, list) else []:
+        if not isinstance(node, dict):
+            continue
+        flattened.append(node)
+        flattened.extend(_flatten_yaml_nodes(node.get("children", [])))
+    return flattened
 
 
 def _id(prefix: str) -> str:

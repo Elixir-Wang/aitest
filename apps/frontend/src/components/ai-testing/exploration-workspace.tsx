@@ -57,7 +57,8 @@ type ExplorationRun = {
   scope: string;
   forbidden_paths: string;
   login_strategy: string;
-  description: string;
+  goal: string;
+  notes: string;
   max_pages: number;
   max_actions: number;
   timeout_minutes: number;
@@ -91,7 +92,8 @@ type ExplorationForm = {
   environmentId: string;
   scope: string;
   forbiddenPaths: string;
-  description: string;
+  goal: string;
+  notes: string;
   maxPages: string;
   maxActions: string;
   timeoutMinutes: string;
@@ -103,7 +105,7 @@ const emptyForm: EnvironmentForm = {
   siteUrl: "",
   username: "",
   password: "",
-  loginStrategy: "reuse_state",
+  loginStrategy: "skip_login",
   description: "",
 };
 
@@ -113,7 +115,8 @@ const emptyExplorationForm: ExplorationForm = {
   environmentId: "",
   scope: "",
   forbiddenPaths: "",
-  description: "",
+  goal: "",
+  notes: "",
   maxPages: "50",
   maxActions: "1000",
   timeoutMinutes: "120",
@@ -147,8 +150,10 @@ const loginStrategyLabels: Record<string, string> = {
   reuse_state: "复用登录态",
   manual: "手动登录保存状态",
   account_password: "账号密码",
-  skip_login: "无需登录",
+  skip_login: "无需密码",
 };
+
+const environmentLoginStrategyOptions = ["skip_login", "account_password"];
 
 const explorationTabs = ["探索列表", "探索环境"];
 const RUNNING_EXPLORATION_STATUSES = new Set(["queued", "running", "waiting_human", "stopping"]);
@@ -339,7 +344,8 @@ export function ExplorationWorkspace({
           item.environment_name,
           statusLabels[item.status] ?? item.status,
           item.scope,
-          item.description,
+          item.goal,
+          item.notes,
           item.updated_at,
         ].some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase())),
       ),
@@ -355,7 +361,11 @@ export function ExplorationWorkspace({
     "";
   const environmentProjectValue = projectScope === "project" ? (projectId ?? "") : form.projectId;
   const explorationProjectValue = projectScope === "project" ? (projectId ?? "") : explorationForm.projectId;
-  const canCreateEnvironment = projectScope === "project" || form.projectId.length > 0;
+  const canCreateEnvironment =
+    form.name.trim().length > 0 &&
+    form.siteUrl.trim().length > 0 &&
+    (projectScope === "project" || form.projectId.length > 0);
+  const showLoginCredentials = form.loginStrategy !== "skip_login";
   const selectedProjectId = projectScope === "project" ? (projectId ?? "") : explorationForm.projectId;
   const availableEnvironments = rows.filter((environment) => environment.project_id === selectedProjectId);
   const canCreateExploration = selectedProjectId.length > 0 && explorationForm.environmentId.length > 0;
@@ -431,7 +441,8 @@ export function ExplorationWorkspace({
       environmentId: run.environment_id,
       scope: run.scope,
       forbiddenPaths: run.forbidden_paths,
-      description: run.description,
+      goal: run.goal,
+      notes: run.notes,
       maxPages: String(run.max_pages ?? 50),
       maxActions: String(run.max_actions ?? 1000),
       timeoutMinutes: String(run.timeout_minutes ?? 120),
@@ -456,12 +467,12 @@ export function ExplorationWorkspace({
         const payload: Record<string, string> = {
           name: form.name,
           site_url: form.siteUrl,
-          username: form.username,
+          username: showLoginCredentials ? form.username : "",
           login_strategy: form.loginStrategy,
           description: form.description,
         };
         // 只有填写了密码才更新密码
-        if (form.password) {
+        if (showLoginCredentials && form.password) {
           payload.password = form.password;
         }
 
@@ -482,8 +493,8 @@ export function ExplorationWorkspace({
             project_id: targetProjectId,
             name: form.name,
             site_url: form.siteUrl,
-            username: form.username,
-            password: form.password,
+            username: showLoginCredentials ? form.username : "",
+            password: showLoginCredentials ? form.password : "",
             login_strategy: form.loginStrategy,
             description: form.description,
           }),
@@ -523,7 +534,8 @@ export function ExplorationWorkspace({
         title: explorationForm.title,
         scope: explorationForm.scope,
         forbidden_paths: explorationForm.forbiddenPaths,
-        description: explorationForm.description,
+        goal: explorationForm.goal,
+        notes: explorationForm.notes,
         max_pages: maxPages,
         max_actions: maxActions,
         timeout_minutes: timeoutMinutes,
@@ -843,26 +855,29 @@ export function ExplorationWorkspace({
       ) : null}
 
       <Dialog onOpenChange={handleEnvironmentDialogOpenChange} open={dialogOpen}>
-        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <DialogContent className="gap-0 p-0 sm:max-w-3xl">
           <DialogHeader className="shrink-0 gap-3 px-6 pt-6">
             <DialogTitle>{editingEnvironment ? "编辑环境" : "新建环境"}</DialogTitle>
             <DialogDescription>
               填写环境名称、所属项目、站点地址、登录信息和登录策略，用于后续探索任务。
             </DialogDescription>
           </DialogHeader>
-          <FieldGroup className="grid min-h-0 gap-x-6 gap-y-5 overflow-y-auto px-6 py-5 sm:grid-cols-2">
+          <FieldGroup className="grid gap-x-6 gap-y-5 px-6 py-5 sm:grid-cols-2">
             <Field>
-              <FieldLabel htmlFor="environment-name">环境名称</FieldLabel>
+              <FieldLabel htmlFor="environment-name">环境名称 *</FieldLabel>
               <Input
+                aria-required="true"
                 id="environment-name"
                 onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                 placeholder="测试环境"
+                required
                 value={form.name}
               />
             </Field>
             <Field>
-              <FieldLabel htmlFor="environment-project">项目</FieldLabel>
+              <FieldLabel htmlFor="environment-project">项目 *</FieldLabel>
               <Select
+                aria-required="true"
                 disabled={environmentProjectSelectDisabled}
                 id="environment-project"
                 placeholder={projectScope === "project" ? scopedProjectName : "选择项目"}
@@ -881,21 +896,14 @@ export function ExplorationWorkspace({
               </Select>
             </Field>
             <Field>
-              <FieldLabel htmlFor="environment-site-url">站点地址</FieldLabel>
+              <FieldLabel htmlFor="environment-site-url">站点地址 *</FieldLabel>
               <Input
+                aria-required="true"
                 id="environment-site-url"
                 onChange={(event) => setForm((current) => ({ ...current, siteUrl: event.target.value }))}
                 placeholder="https://test.example.com"
+                required
                 value={form.siteUrl}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="environment-username">用户名</FieldLabel>
-              <Input
-                id="environment-username"
-                onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
-                placeholder="tester"
-                value={form.username}
               />
             </Field>
             <Field>
@@ -903,41 +911,61 @@ export function ExplorationWorkspace({
               <Select
                 id="environment-login-strategy"
                 placeholder="选择登录策略"
-                setValue={(value) => setForm((current) => ({ ...current, loginStrategy: value }))}
+                setValue={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    loginStrategy: value,
+                    password: value === "skip_login" ? "" : current.password,
+                    username: value === "skip_login" ? "" : current.username,
+                  }))
+                }
                 value={form.loginStrategy}
               >
-                {Object.entries(loginStrategyLabels).map(([value, label]) => (
+                {environmentLoginStrategyOptions.map((value) => (
                   <SelectOption key={value} value={value}>
-                    {label}
+                    {loginStrategyLabels[value]}
                   </SelectOption>
                 ))}
               </Select>
             </Field>
-            <Field>
-              <FieldLabel htmlFor="environment-password">
-                {editingEnvironment ? "密码（留空表示不修改）" : "密码"}
-              </FieldLabel>
-              <div className="relative">
-                <Input
-                  className="pr-10"
-                  id="environment-password"
-                  onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-                  placeholder={editingEnvironment ? "留空表示不修改密码" : "请输入密码"}
-                  type={showPassword ? "text" : "password"}
-                  value={form.password}
-                />
-                <Button
-                  aria-label={showPassword ? "隐藏密码" : "显示密码"}
-                  className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2"
-                  onClick={() => setShowPassword((current) => !current)}
-                  size="icon"
-                  type="button"
-                  variant="ghost"
-                >
-                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                </Button>
-              </div>
-            </Field>
+            {showLoginCredentials ? (
+              <>
+                <Field>
+                  <FieldLabel htmlFor="environment-username">用户名</FieldLabel>
+                  <Input
+                    id="environment-username"
+                    onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
+                    placeholder="tester"
+                    value={form.username}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="environment-password">
+                    {editingEnvironment ? "密码（留空表示不修改）" : "密码"}
+                  </FieldLabel>
+                  <div className="relative">
+                    <Input
+                      className="pr-10"
+                      id="environment-password"
+                      onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                      placeholder={editingEnvironment ? "留空表示不修改密码" : "请输入密码"}
+                      type={showPassword ? "text" : "password"}
+                      value={form.password}
+                    />
+                    <Button
+                      aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                      className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2"
+                      onClick={() => setShowPassword((current) => !current)}
+                      size="icon"
+                      type="button"
+                      variant="ghost"
+                    >
+                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </Button>
+                  </div>
+                </Field>
+              </>
+            ) : null}
             <Field className="sm:col-span-2">
               <FieldLabel htmlFor="environment-description">描述</FieldLabel>
               <Textarea
@@ -1079,13 +1107,23 @@ export function ExplorationWorkspace({
               />
             </Field>
             <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="exploration-description">探索目标</FieldLabel>
+              <FieldLabel htmlFor="exploration-goal">探索目标</FieldLabel>
               <Textarea
                 className="min-h-20"
-                id="exploration-description"
-                onChange={(event) => setExplorationForm((current) => ({ ...current, description: event.target.value }))}
+                id="exploration-goal"
+                onChange={(event) => setExplorationForm((current) => ({ ...current, goal: event.target.value }))}
                 placeholder={explorationPlaceholders.goal}
-                value={explorationForm.description}
+                value={explorationForm.goal}
+              />
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="exploration-notes">备注</FieldLabel>
+              <Textarea
+                className="min-h-16"
+                id="exploration-notes"
+                onChange={(event) => setExplorationForm((current) => ({ ...current, notes: event.target.value }))}
+                placeholder="补充说明，不参与探索目标判定"
+                value={explorationForm.notes}
               />
             </Field>
             <Field className="sm:col-span-2">

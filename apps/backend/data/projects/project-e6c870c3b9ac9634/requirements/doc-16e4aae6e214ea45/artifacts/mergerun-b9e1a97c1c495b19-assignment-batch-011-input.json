@@ -1,0 +1,16 @@
+{
+  "batch_index": 11,
+  "batch_count": 23,
+  "source_node_count": 8,
+  "source_node_ids": [
+    "D-09-01",
+    "D-09-02",
+    "D-09-03",
+    "D-09-04",
+    "D-09-05",
+    "D-09-06",
+    "D-09-07",
+    "D-09-08"
+  ],
+  "assignable_target_section_count": 55
+}

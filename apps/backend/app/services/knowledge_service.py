@@ -20,7 +20,7 @@ from app.schemas.knowledge import (
     WikiLintIssueOutput,
     WikiPageOutput,
 )
-from app.services import knowledge_builder_service, operation_log_service
+from app.services import exploration_service, knowledge_builder_service, operation_log_service
 
 READY_EXPLORATION_STATUSES = {"completed", "partial"}
 
@@ -174,23 +174,18 @@ def _collect_build_input(project_id: str) -> tuple[KnowledgeBuildInput, list[str
             if run["status"] not in READY_EXPLORATION_STATUSES:
                 continue
             exploration_run_ids.append(run["id"])
-            modules = [
-                {
-                    **dict(module),
-                    "pages": [dict(page) for page in exploration_repo.list_pages(db, run["id"]) if page["module_key"] == module["module_key"]],
-                    "elements": [
-                        dict(element)
-                        for element in exploration_repo.list_elements(db, run["id"])
-                        if element["module_key"] == module["module_key"]
-                    ],
-                    "blockers": [
-                        dict(blocker)
-                        for blocker in exploration_repo.list_blockers(db, run["id"])
-                        if blocker["module_key"] == module["module_key"]
-                    ],
-                }
-                for module in exploration_repo.list_module_coverages(db, run["id"])
-            ]
+            artifact_pages, artifact_elements, artifact_blockers = exploration_service._load_run_artifacts(run)
+            modules = []
+            for module in exploration_repo.list_module_coverages(db, run["id"]):
+                module_dict = dict(module)
+                module_dict["pages"] = [page for page in artifact_pages if page["module_key"] == module["module_key"]]
+                module_dict["elements"] = [
+                    element for element in artifact_elements if element["module_key"] == module["module_key"]
+                ]
+                module_dict["blockers"] = [
+                    blocker for blocker in artifact_blockers if blocker["module_key"] == module["module_key"]
+                ]
+                modules.append(module_dict)
             explorations.append(
                 KnowledgeExplorationInput(
                     exploration_run_id=run["id"],

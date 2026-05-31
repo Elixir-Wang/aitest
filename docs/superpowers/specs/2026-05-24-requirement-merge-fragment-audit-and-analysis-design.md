@@ -354,9 +354,9 @@ clarifications/{merge_run_id}.md
 
 按钮规则：
 
-- `quality_result = failed`：禁用“确认写入版本”，允许重新归并。
-- `quality_result = warning`：允许进入需求分析，写版本需要人工确认。
-- `quality_result = passed`：允许进入需求分析，也允许人工确认写版本。
+- `quality_result = failed`：禁止写入最终需求版本，允许重新归并。
+- `quality_result = warning`：允许写入最终需求版本和进入需求分析，但质量检测必须提示人工复核风险。
+- `quality_result = passed`：允许写入最终需求版本和进入需求分析。
 - 有 `open` 澄清问题时，建议按钮文案显示“仍有待澄清”。
 
 ## 数据模型建议

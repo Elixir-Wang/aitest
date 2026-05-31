@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import json
 import secrets
+import shutil
 import re
+from datetime import datetime, timezone
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from app.core.db import connect
 from app.core.exceptions import api_error
@@ -13,6 +18,39 @@ from app.services import exploration_artifact_service, operation_log_service
 
 STATUSES = {"pending", "queued", "running", "waiting_human", "stopping", "cancelled", "partial", "completed", "blocked"}
 LOGIN_STRATEGIES = {"reuse_state", "manual", "account_password", "skip_login"}
+AGENT_PLAN_DISPLAY_STATUSES = {
+    "pending",
+    "queued",
+    "running",
+    "in-progress",
+    "stopping",
+    "completed",
+    "partial",
+    "blocked",
+    "waiting_human",
+    "failed",
+    "cancelled",
+}
+
+LOG_EVENT_LABELS = {
+    "run_started": "探索开始",
+    "login_started": "登录开始",
+    "login_completed": "登录完成",
+    "page_discovered": "发现页面",
+    "page_visited": "访问页面",
+    "page_captured": "采集页面",
+    "accessibility_captured": "生成无障碍树",
+    "action_detected": "发现动作",
+    "action_executed": "执行动作",
+    "edge_created": "记录关系",
+    "artifact_written": "写入产物",
+    "blocked": "探索阻塞",
+    "skipped": "跳过",
+    "safety_blocked": "安全拦截",
+    "error": "错误",
+    "run_completed": "探索完成",
+    "raw": "原始日志",
+}
 
 
 def list_project_runs(project_id: str, actor) -> list[dict]:
@@ -70,6 +108,7 @@ def get_project_run_detail(project_id: str, run_id: str, actor) -> dict:
             }
             for module in modules
         }
+        persisted_module_keys = set(module_by_key)
 
         fallback_key = "current"
         if not module_by_key:
@@ -86,10 +125,10 @@ def get_project_run_detail(project_id: str, run_id: str, actor) -> dict:
                     "entry_path": page["entry_path"],
                     "structure_summary": page["structure_summary"],
                     "yaml_path": page.get("yaml_path", ""),
-                    "page_type": page.get("page_type", "unknown"),
-                    "status": page.get("status", "explored"),
+                    "status": _normalize_page_display_status(page.get("status")),
                     "blocker_reason": page.get("blocker_reason", ""),
                     "recent_event": page.get("recent_event", ""),
+                    "steps": page.get("steps", []),
                 }
             )
 
@@ -131,9 +170,15 @@ def get_project_run_detail(project_id: str, run_id: str, actor) -> dict:
                 }
             )
 
+        for module in module_by_key.values():
+            if module["module_key"] not in persisted_module_keys and (module["pages"] or module["blockers"]):
+                module["completion_status"] = _module_status_from_artifacts(module, existing["status"])
+            _enrich_module_progress(module)
+
         return {
             "run": serialize_exploration_run(existing, actor["role"]),
             "modules": list(module_by_key.values()),
+            "goal_validation": _goal_validation_from_bundle(existing, _load_run_artifact_bundle(existing)),
         }
 
 
@@ -146,17 +191,30 @@ def get_project_run_report(project_id: str, run_id: str, actor) -> dict:
 
         artifacts = _load_run_artifact_bundle(existing)
         has_summary = bool(artifacts["summary"])
+        markdown_content = exploration_artifact_service.build_exploration_report_markdown(artifacts) if has_summary else ""
         return {
             "run_id": run_id,
             "version_no": 1 if has_summary else None,
             "title": "探索报告 v1" if has_summary else "探索报告",
-            "markdown_content": artifacts["summary"].get("markdown_content", ""),
+            "markdown_content": markdown_content,
             "change_summary": artifacts["summary"].get("summary", ""),
             "created_at": existing["created_at"] if has_summary else None,
         }
 
 
-def get_project_run_log(project_id: str, run_id: str, actor) -> dict:
+def get_project_run_log(
+    project_id: str,
+    run_id: str,
+    actor,
+    *,
+    page: int = 1,
+    page_size: int = 10,
+    keyword: str = "",
+    type_filter: str = "",
+    level: str = "",
+    page_ref: str = "",
+    include_raw_content: bool = False,
+) -> dict:
     with connect() as db:
         existing = exploration_repo.find_by_id(db, run_id)
         if not existing or existing["project_id"] != project_id:
@@ -164,12 +222,312 @@ def get_project_run_log(project_id: str, run_id: str, actor) -> dict:
         _ensure_project_visible(existing, actor)
 
         artifacts = _load_run_artifact_bundle(existing)
+        entries = parse_exploration_log_entries(artifacts["log_content"])
+        filtered_entries = filter_exploration_log_entries(
+            entries,
+            keyword=keyword,
+            type_filter=type_filter,
+            level=level,
+            page_ref=page_ref,
+        )
+        paged_entries, safe_page, safe_page_size = paginate_exploration_log_entries(filtered_entries, page, page_size)
         return {
             "run_id": run_id,
-            "log_content": artifacts["log_content"],
+            "log_content": artifacts["log_content"] if include_raw_content else "",
             "log_path": artifacts["log_path"],
             "updated_at": existing["updated_at"],
+            "items": paged_entries,
+            "total": len(filtered_entries),
+            "page": safe_page,
+            "page_size": safe_page_size,
         }
+
+
+def parse_exploration_log_entries(log_content: str) -> list[dict]:
+    entries: list[dict] = []
+    lines = [line for line in log_content.splitlines() if line.strip()]
+    for index, line in enumerate(lines, start=1):
+        entry = _parse_json_log_line(line, index)
+        entries.append(entry or _raw_log_entry(line, index))
+    return _enrich_log_page_labels(entries)
+
+
+def _enrich_log_page_labels(entries: list[dict]) -> list[dict]:
+    page_labels: dict[str, str] = {}
+    page_urls: dict[str, str] = {}
+    for entry in entries:
+        page_id = _string_value(entry.get("page_id"))
+        if not page_id:
+            continue
+        page_title = _string_value(entry.get("page_title"))
+        url = _string_value(entry.get("url"))
+        if page_title:
+            page_labels[page_id] = page_title
+        elif url:
+            page_labels.setdefault(page_id, url)
+        if url:
+            page_urls[page_id] = url
+
+    for entry in entries:
+        payload = entry.get("payload") if isinstance(entry.get("payload"), dict) else {}
+        source = _string_value(payload.get("source"))
+        target = _string_value(payload.get("target"))
+        if source:
+            entry["source_label"] = page_labels.get(source) or page_urls.get(source) or source
+            if not entry.get("page_title") and source in page_labels:
+                entry["page_title"] = page_labels[source]
+            if not entry.get("url") and source in page_urls:
+                entry["url"] = page_urls[source]
+        if target:
+            entry["target_label"] = page_labels.get(target) or page_urls.get(target) or target
+        if entry.get("event") == "edge_created":
+            entry["summary"] = _build_edge_log_summary(entry, payload)
+    return entries
+
+
+def _build_edge_log_summary(entry: dict, payload: dict) -> str:
+    edge_id = _first_string(payload, ("edge_id",))
+    relation_type = _first_string(payload, ("type",))
+    source_label = _string_value(entry.get("source_label")) or _first_string(payload, ("source",)) or "-"
+    target_label = _string_value(entry.get("target_label")) or _first_string(payload, ("target",)) or "-"
+    relation_label = {
+        "navigation": "同域链接",
+        "external_link": "外部链接",
+        "form_submit": "表单动作",
+        "button_click": "页面动作",
+    }.get(relation_type, relation_type or "页面关系")
+    prefix = f"{edge_id} " if edge_id else ""
+    return f"{prefix}{relation_label}：{source_label} -> {target_label}"
+
+
+def filter_exploration_log_entries(
+    entries: list[dict],
+    *,
+    keyword: str = "",
+    type_filter: str = "",
+    level: str = "",
+    page_ref: str = "",
+) -> list[dict]:
+    keyword_normalized = keyword.strip().lower()
+    type_normalized = type_filter.strip().lower()
+    level_normalized = level.strip().lower()
+    page_ref_normalized = page_ref.strip().lower()
+
+    def matches(entry: dict) -> bool:
+        if keyword_normalized:
+            haystack = "\n".join(
+                str(entry.get(key, ""))
+                for key in (
+                    "summary",
+                    "raw",
+                    "url",
+                    "page_title",
+                    "page_id",
+                    "action_name",
+                    "result",
+                    "source_label",
+                    "target_label",
+                    "artifact_path",
+                )
+            ).lower()
+            if keyword_normalized not in haystack:
+                return False
+        if type_normalized and type_normalized not in {str(entry.get("event", "")).lower(), str(entry.get("category", "")).lower()}:
+            return False
+        if level_normalized and level_normalized != str(entry.get("level", "")).lower():
+            return False
+        if page_ref_normalized:
+            page_haystack = "\n".join(str(entry.get(key, "")) for key in ("page_id", "page_title", "url")).lower()
+            if page_ref_normalized not in page_haystack:
+                return False
+        return True
+
+    return [entry for entry in entries if matches(entry)]
+
+
+def paginate_exploration_log_entries(entries: list[dict], page: int, page_size: int) -> tuple[list[dict], int, int]:
+    safe_page = max(1, int(page or 1))
+    safe_page_size = min(max(1, int(page_size or 10)), 100)
+    start = (safe_page - 1) * safe_page_size
+    return entries[start : start + safe_page_size], safe_page, safe_page_size
+
+
+def _enrich_module_progress(module: dict) -> None:
+    pages = module.get("pages") if isinstance(module.get("pages"), list) else []
+    blockers = module.get("blockers") if isinstance(module.get("blockers"), list) else []
+    explored = int(module.get("explored_page_count") or len(pages) or 0)
+    planned = int(module.get("planned_page_count") or max(explored, len(pages), 1))
+    blocked = int(module.get("blocked_page_count") or len(blockers) or 0)
+    recent_page = pages[-1] if pages else {}
+    blocker_summary = "无"
+    if blockers:
+        blocker_summary = str(blockers[0].get("reason") or blockers[0].get("reason_type") or "存在阻塞项")
+    progress_percent = min(100, round((explored / max(planned, explored, 1)) * 100))
+    module["planned_page_count"] = planned
+    module["explored_page_count"] = explored
+    module["blocked_page_count"] = blocked
+    module["recent_page_title"] = str(recent_page.get("title") or "")
+    module["recent_page_url"] = str(recent_page.get("url") or "")
+    module["blocker_summary"] = blocker_summary
+    module["progress_percent"] = progress_percent
+    module["page_progress_text"] = f"{explored}/{planned} 页面"
+    if not module.get("completion_summary") or _looks_like_run_summary(str(module.get("completion_summary"))):
+        module["completion_summary"] = _module_progress_summary(module)
+
+
+def _module_status_from_artifacts(module: dict, run_status: str) -> str:
+    blockers = module.get("blockers") if isinstance(module.get("blockers"), list) else []
+    pages = module.get("pages") if isinstance(module.get("pages"), list) else []
+    if any(blocker.get("is_blocking") for blocker in blockers):
+        return "blocked"
+    if blockers:
+        return "partial"
+    if pages:
+        return "partial" if run_status == "partial" else "completed"
+    return _status_to_completion(run_status)
+
+
+def _looks_like_run_summary(value: str) -> bool:
+    return "已探索" in value and "可交互元素" in value and "阻塞项" in value
+
+
+def _module_progress_summary(module: dict) -> str:
+    recent = module.get("recent_page_title") or "无"
+    blocker = module.get("blocker_summary") or "无"
+    if blocker != "无":
+        return f"页面进度 {module['page_progress_text']}，最近页面：{recent}，阻塞：{blocker}。"
+    return f"页面进度 {module['page_progress_text']}，最近页面：{recent}，无阻塞。"
+
+
+def _parse_json_log_line(line: str, index: int) -> dict | None:
+    try:
+        payload = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    event = _string_value(payload.get("event")) or "raw"
+    return {
+        "id": f"log-{index:06d}",
+        "timestamp": _format_log_timestamp(_first_string(payload, ("ts", "time", "timestamp"))),
+        "event": event,
+        "event_label": LOG_EVENT_LABELS.get(event, event),
+        "category": _infer_log_category(event),
+        "level": _infer_log_level(event, payload),
+        "page_id": _first_string(payload, ("page_id", "page", "source")),
+        "page_title": _first_string(payload, ("page_title", "title")),
+        "url": _first_string(payload, ("url", "target")),
+        "action_name": _first_string(payload, ("action", "name", "locator_hint")),
+        "result": _first_string(payload, ("status", "reason", "type", "target", "edge_id")),
+        "source_label": "",
+        "target_label": "",
+        "artifact_path": _first_string(payload, ("artifact_path", "evidence_path", "file_path", "log_path")),
+        "summary": _build_log_summary(event, payload),
+        "raw": line,
+        "payload": payload,
+    }
+
+
+def _raw_log_entry(line: str, index: int) -> dict:
+    level = "error" if re.search(r"error|traceback|typeerror|exception|failed|失败", line, re.IGNORECASE) else "info"
+    return {
+        "id": f"log-{index:06d}",
+        "timestamp": "",
+        "event": "raw",
+        "event_label": LOG_EVENT_LABELS["raw"],
+        "category": "error" if level == "error" else "raw",
+        "level": level,
+        "page_id": "",
+        "page_title": "",
+        "url": "",
+        "action_name": "",
+        "result": "",
+        "source_label": "",
+        "target_label": "",
+        "artifact_path": "",
+        "summary": line.strip(),
+        "raw": line,
+        "payload": {},
+    }
+
+
+def _infer_log_category(event: str) -> str:
+    if event == "blocked":
+        return "blocked"
+    if event == "safety_blocked":
+        return "safety"
+    if event == "error":
+        return "error"
+    if "page" in event or event == "accessibility_captured":
+        return "page"
+    if "action" in event or "edge" in event:
+        return "action"
+    if "artifact" in event:
+        return "artifact"
+    if "run" in event or "login" in event or event == "skipped":
+        return "run"
+    return "raw"
+
+
+def _infer_log_level(event: str, payload: dict) -> str:
+    explicit = _string_value(payload.get("level")).lower()
+    if explicit in {"info", "warning", "error"}:
+        return explicit
+    if event == "error" or _string_value(payload.get("status")) == "failed":
+        return "error"
+    if event in {"blocked", "safety_blocked", "skipped"}:
+        return "warning"
+    return "info"
+
+
+def _build_log_summary(event: str, payload: dict) -> str:
+    if event == "run_started":
+        return f"开始探索 {_first_string(payload, ('url',)) or '目标站点'}"
+    if event == "run_completed":
+        return f"探索完成，状态 {_first_string(payload, ('status',)) or 'completed'}"
+    if event in {"page_captured", "page_visited", "page_discovered"}:
+        return f"采集页面 {_first_string(payload, ('title', 'page_id', 'url')) or '-'}"
+    if event == "edge_created":
+        return f"记录关系 {_first_string(payload, ('edge_id',))}：{_first_string(payload, ('source',)) or '-'} -> {_first_string(payload, ('target',)) or '-'}"
+    if event == "action_executed":
+        return f"执行动作 {_first_string(payload, ('action', 'name', 'locator_hint')) or '-'}"
+    if event in {"blocked", "safety_blocked", "skipped"}:
+        return _first_string(payload, ("reason", "action", "page_id", "page")) or LOG_EVENT_LABELS.get(event, event)
+    if event == "artifact_written":
+        return f"写入产物 {_first_string(payload, ('artifact_path', 'file_path')) or '-'}"
+    if event == "error":
+        return _first_string(payload, ("message", "reason", "error")) or "探索执行错误"
+    return _first_string(payload, ("summary", "recent_event", "message", "url", "page_id")) or LOG_EVENT_LABELS.get(event, event)
+
+
+def _first_string(payload: dict, keys: tuple[str, ...]) -> str:
+    for key in keys:
+        value = _string_value(payload.get(key))
+        if value:
+            return value
+    return ""
+
+
+def _string_value(value) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    return ""
+
+
+def _format_log_timestamp(value: str) -> str:
+    if not value:
+        return ""
+    normalized = value.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return value
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) -> dict:
@@ -201,7 +559,8 @@ def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) 
             scope=payload.scope.strip(),
             forbidden_paths=payload.forbidden_paths.strip(),
             login_strategy=environment["login_strategy"],
-            description=payload.description.strip(),
+            goal=payload.goal.strip(),
+            notes=payload.notes.strip(),
             max_pages=payload.max_pages,
             max_actions=payload.max_actions,
             timeout_minutes=payload.timeout_minutes,
@@ -285,6 +644,7 @@ def start_project_run(project_id: str, run_id: str, actor) -> dict:
             raise api_error(409, "EXPLORATION_ALREADY_RUNNING", "探索任务正在执行或等待人工处理。")
         if existing["status"] not in {"pending", "partial", "completed", "blocked", "cancelled"}:
             raise api_error(409, "EXPLORATION_NOT_STARTABLE", "当前状态不能发起探索。")
+        _remove_run_artifact_directory(existing)
         exploration_repo.update_run_state(
             db,
             run_id,
@@ -312,6 +672,12 @@ def start_project_run(project_id: str, run_id: str, actor) -> dict:
         task_id=run_id,
     )
     return result
+
+
+def _remove_run_artifact_directory(run) -> None:
+    artifact_root = resolve_stored_path(run["artifact_root"])
+    if artifact_root and artifact_root.exists():
+        shutil.rmtree(artifact_root)
 
 
 def stop_project_run(project_id: str, run_id: str, actor) -> dict:
@@ -371,7 +737,10 @@ def delete_project_run(project_id: str, run_id: str, actor) -> dict:
         if existing["status"] in {"queued", "running", "waiting_human", "stopping"}:
             raise api_error(409, "RUNNING_EXPLORATION", "探索任务运行中，不能删除。")
         snapshot = _run_snapshot(existing)
+        artifact_root = _resolve_run_artifact_root(existing)
         exploration_repo.delete(db, run_id)
+    if artifact_root and artifact_root.exists():
+        shutil.rmtree(artifact_root)
     operation_log_service.record_task_event(
         module="exploration",
         action="delete",
@@ -389,6 +758,24 @@ def delete_project_run(project_id: str, run_id: str, actor) -> dict:
         task_id=run_id,
     )
     return {"success": True}
+
+
+def _resolve_run_artifact_root(run) -> Path | None:
+    artifact_root = resolve_stored_path(run["artifact_root"])
+    if artifact_root is None:
+        artifact_root = resolve_stored_path(f"{run['project_id']}/exploration/{run['id']}")
+    project_root = resolve_stored_path(run["project_id"])
+    if artifact_root is None:
+        return None
+    if project_root is None:
+        return None
+    if artifact_root.name != run["id"] or artifact_root.parent.name != "exploration":
+        return None
+    try:
+        artifact_root.resolve().relative_to(project_root.resolve())
+    except ValueError:
+        return None
+    return artifact_root
 
 
 def _ensure_project_visible(project, actor) -> None:
@@ -414,6 +801,15 @@ def _status_to_completion(status: str) -> str:
     return "pending"
 
 
+def _normalize_page_display_status(status: str | None) -> str:
+    normalized = str(status or "").strip()
+    if normalized == "explored":
+        return "completed"
+    if normalized in AGENT_PLAN_DISPLAY_STATUSES:
+        return normalized
+    return "pending"
+
+
 def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
     field_map = {
         "environment_id": "environment_id",
@@ -421,7 +817,8 @@ def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
         "scope": "scope",
         "forbidden_paths": "forbidden_paths",
         "login_strategy": "login_strategy",
-        "description": "description",
+        "goal": "goal",
+        "notes": "notes",
         "max_pages": "max_pages",
         "max_actions": "max_actions",
         "timeout_minutes": "timeout_minutes",
@@ -459,6 +856,7 @@ def _fallback_module(run_id: str, run, module_key: str) -> dict:
 def _planned_or_fallback_modules(run_id: str, run, fallback_key: str) -> dict[str, dict]:
     if run["status"] in {"queued", "running", "waiting_human", "stopping"}:
         modules = {}
+        completion_status = _planned_module_status(run["status"])
         for index, name in enumerate(_planned_module_names(run), start=1):
             module_key = f"planned-{index:02d}"
             modules[module_key] = {
@@ -472,7 +870,7 @@ def _planned_or_fallback_modules(run_id: str, run, fallback_key: str) -> dict[st
                 "action_count": 0,
                 "field_count": 0,
                 "state_transition_count": 0,
-                "completion_status": "pending",
+                "completion_status": completion_status,
                 "completion_summary": run["result_summary"] or "等待探索执行。",
                 "pages": [],
                 "elements": [],
@@ -498,6 +896,12 @@ def _planned_or_fallback_modules(run_id: str, run, fallback_key: str) -> dict[st
             "blockers": [],
         }
     }
+
+
+def _planned_module_status(run_status: str) -> str:
+    if run_status in {"running", "waiting_human", "stopping"}:
+        return run_status
+    return "pending"
 
 
 def seed_planned_modules_for_run(db, run) -> None:
@@ -591,7 +995,8 @@ def _run_snapshot(run) -> dict:
         "scope": run["scope"],
         "forbidden_paths": run["forbidden_paths"],
         "login_strategy": run["login_strategy"],
-        "description": run["description"],
+        "goal": run["goal"],
+        "notes": run["notes"],
         "max_pages": run["max_pages"],
         "max_actions": run["max_actions"],
         "timeout_minutes": run["timeout_minutes"],
@@ -616,10 +1021,10 @@ def _load_run_artifacts(run) -> tuple[list[dict], list[dict], list[dict]]:
                 "entry_path": page.get("normalized_url") or page.get("entry_path", ""),
                 "structure_summary": page.get("title", ""),
                 "yaml_path": page_item.get("file_path", ""),
-                "page_type": page.get("page_type", "unknown"),
-                "status": page.get("status", "explored"),
+                "status": _normalize_page_display_status(page.get("status")),
                 "blocker_reason": "",
                 "recent_event": "",
+                "steps": _normalize_steps(content.get("steps", [])),
             }
         )
         for element in content.get("accessibility_tree", []):
@@ -674,10 +1079,53 @@ def _load_run_artifacts(run) -> tuple[list[dict], list[dict], list[dict]]:
     return pages, elements, blockers
 
 
+def _normalize_steps(raw_steps) -> list[dict]:
+    if not isinstance(raw_steps, list):
+        return []
+    steps = []
+    for index, raw_step in enumerate(raw_steps, start=1):
+        if not isinstance(raw_step, dict):
+            continue
+        step_id = str(raw_step.get("id") or f"step-{index:03d}")
+        title = str(raw_step.get("title") or raw_step.get("detail") or raw_step.get("type") or "探索步骤")
+        steps.append(
+            {
+                "id": step_id,
+                "type": str(raw_step.get("type") or "event"),
+                "title": title,
+                "detail": str(raw_step.get("detail") or ""),
+                "status": str(raw_step.get("status") or "completed"),
+                "occurred_at": raw_step.get("occurred_at") if raw_step.get("occurred_at") else None,
+                "artifact_path": str(raw_step.get("artifact_path") or ""),
+                "source": str(raw_step.get("source") or ""),
+            }
+        )
+    return steps
+
+
 def _load_run_artifact_bundle(run) -> dict:
     artifact_root = resolve_stored_path(run["artifact_root"])
     if not artifact_root:
-        return {"run": {}, "summary": {}, "graph": {}, "blockers": {}, "pages": [], "log_content": "", "log_path": ""}
+        return {"run": {}, "summary": {}, "graph": {}, "blockers": {}, "goal_validation": {}, "pages": [], "log_content": "", "log_path": ""}
     bundle = exploration_artifact_service.load_exploration_run_artifacts(artifact_root)
     bundle["log_path"] = f"{run['artifact_root'].rstrip('/')}/logs/run.log"
+    if not bundle.get("goal_validation"):
+        bundle["goal_validation"] = _goal_validation_from_bundle(run, bundle)
     return bundle
+
+
+def _goal_validation_from_bundle(run, bundle: dict) -> dict:
+    existing = bundle.get("goal_validation") if isinstance(bundle.get("goal_validation"), dict) else {}
+    if existing:
+        return existing
+    summary = bundle.get("summary") if isinstance(bundle.get("summary"), dict) else {}
+    summary_validation = summary.get("goal_validation") if isinstance(summary.get("goal_validation"), dict) else {}
+    if summary_validation:
+        return summary_validation
+    if isinstance(run, dict):
+        goal = str(run.get("goal") or summary.get("goal", "") or "")
+    else:
+        goal = str(run["goal"] if "goal" in run.keys() else summary.get("goal", "") or "")
+    if goal:
+        return {"goal": goal, "status": "pending", "summary": "目标验证尚未执行。", "stats": {}, "items": []}
+    return {"goal": "", "status": "skipped", "summary": "未设置探索目标。", "stats": {}, "items": []}

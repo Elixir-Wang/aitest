@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class RequirementMergeSourceFile(BaseModel):
@@ -64,6 +64,116 @@ class RequirementSourceBlock(BaseModel):
     must_preserve_original: bool = False
     token_estimate: int = 0
     content_hash: str
+
+
+class SourceOutlineNode(BaseModel):
+    node_id: str
+    document_code: str
+    mapping_id: str
+    source_file: str
+    level: int
+    title: str
+    heading_path: list[str] = Field(default_factory=list)
+    content_markdown: str
+    plain_text: str
+    sub_headings: list[str] = Field(default_factory=list)
+    content_types: list[str] = Field(default_factory=list)
+    anchors: list[str] = Field(default_factory=list)
+    preserve_original: bool = False
+    content_hash: str
+    children: list["SourceOutlineNode"] = Field(default_factory=list)
+
+
+class SourceOutlineDocument(BaseModel):
+    document_code: str
+    mapping_id: str
+    source_file: str
+    source_file_hash: str
+    nodes: list[SourceOutlineNode] = Field(default_factory=list)
+
+
+class TargetOutlineSection(BaseModel):
+    section_id: str
+    parent_id: str = ""
+    level: int
+    title: str
+    reason: str = ""
+    source_node_ids: list[str] = Field(default_factory=list)
+    children: list["TargetOutlineSection"] = Field(default_factory=list)
+
+
+class OutlineAssignment(BaseModel):
+    source_node_id: str
+    target_section_id: str = ""
+    assignment_type: Literal[
+        "primary",
+        "reference",
+        "appendix",
+        "discarded_non_requirement",
+        "pending_clarification",
+    ]
+    reason: str
+
+
+class OutlineSectionBlock(BaseModel):
+    type: Literal[
+        "paragraph",
+        "bullet_list",
+        "table",
+        "source_node_ref",
+        "pending_clarification_ref",
+        "conflict_ref",
+    ]
+    content: str = ""
+    items: list[str] = Field(default_factory=list)
+    source_node_id: str = ""
+    conflict_id: str = ""
+
+
+class OutlineSectionDecision(BaseModel):
+    section_id: str
+    source_node_id: str
+    status: Literal[
+        "merged",
+        "duplicate",
+        "preserved_original",
+        "merged_and_preserved",
+        "conflict",
+        "pending_clarification",
+        "discarded",
+    ]
+    target_heading: str = ""
+    covered_by_source_node_id: str = ""
+    conflict_id: str = ""
+    reason: str
+
+
+class OutlineMergeConflict(BaseModel):
+    conflict_id: str
+    title: str
+    conflict_type: str = "contradiction"
+    severity: str = "medium"
+    source_node_ids: list[str] = Field(default_factory=list)
+    fragment_a: str = ""
+    fragment_b: str = ""
+    agent_suggestion: str = ""
+
+
+class OutlineSectionMergeResult(BaseModel):
+    section_id: str
+    blocks: list[OutlineSectionBlock] = Field(default_factory=list)
+    decisions: list[OutlineSectionDecision] = Field(default_factory=list)
+    conflicts: list[OutlineMergeConflict] = Field(default_factory=list)
+
+
+class OutlineMergeArtifacts(BaseModel):
+    source_documents: list[SourceOutlineDocument] = Field(default_factory=list)
+    target_outline: list[TargetOutlineSection] = Field(default_factory=list)
+    assignments: list[OutlineAssignment] = Field(default_factory=list)
+    section_results: list[OutlineSectionMergeResult] = Field(default_factory=list)
+    quality_result: Literal["passed", "warning", "failed", "blocked"] = "failed"
+    quality_issues: list[str] = Field(default_factory=list)
+    stage_errors: list[str] = Field(default_factory=list)
 
 
 class RequirementFragmentDecision(BaseModel):
@@ -150,6 +260,21 @@ class RequirementClusterDecisionItemRaw(BaseModel):
     related_clarification_key: str = ""
     reason: str = ""
 
+    @field_validator(
+        "fragment_id",
+        "coverage_status",
+        "target_module",
+        "target_heading",
+        "covered_by_fragment_id",
+        "related_conflict_key",
+        "related_clarification_key",
+        "reason",
+        mode="before",
+    )
+    @classmethod
+    def _none_to_empty_string(cls, value):
+        return "" if value is None else value
+
 
 class RequirementClusterDecisionRaw(BaseModel):
     cluster_id: str = ""
@@ -171,6 +296,19 @@ class RequirementSectionMergeOutput(BaseModel):
     section_key: str
     blocks: list[RequirementSectionBlock] = Field(default_factory=list)
     covered_fragment_ids: list[str] = Field(default_factory=list)
+
+
+class RequirementSectionBlockRaw(BaseModel):
+    type: str = ""
+    content: Any = ""
+    items: Any = Field(default_factory=list)
+    fragment_id: Any = ""
+
+
+class RequirementSectionMergeOutputRaw(BaseModel):
+    section_key: str = ""
+    blocks: list[RequirementSectionBlockRaw] = Field(default_factory=list)
+    covered_fragment_ids: list[Any] = Field(default_factory=list)
 
 
 class RequirementMergeInput(BaseModel):

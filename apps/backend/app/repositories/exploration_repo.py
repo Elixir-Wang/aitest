@@ -131,7 +131,8 @@ def create(
     scope: str,
     forbidden_paths: str,
     login_strategy: str,
-    description: str,
+    goal: str,
+    notes: str,
     max_pages: int,
     max_actions: int,
     timeout_minutes: int,
@@ -140,9 +141,9 @@ def create(
     db.execute(
         """
         INSERT INTO exploration_runs
-          (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, description,
+          (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, goal, notes,
            max_pages, max_actions, timeout_minutes, created_by)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run_id,
@@ -152,7 +153,8 @@ def create(
             scope,
             forbidden_paths,
             login_strategy,
-            description,
+            goal,
+            notes,
             max_pages,
             max_actions,
             timeout_minutes,
@@ -248,6 +250,30 @@ def create_module_coverage(
             completion_status,
             completion_summary,
         ),
+    )
+
+
+def update_module_coverages_status(
+    db: Connection,
+    run_id: str,
+    *,
+    from_status: str,
+    to_status: str,
+    completion_summary: str | None = None,
+) -> None:
+    assignments = ["completion_status = ?"]
+    values: list[object] = [to_status]
+    if completion_summary is not None:
+        assignments.append("completion_summary = ?")
+        values.append(completion_summary)
+    values.extend([run_id, from_status])
+    db.execute(
+        f"""
+        UPDATE exploration_module_coverages
+        SET {', '.join(assignments)}
+        WHERE exploration_run_id = ? AND completion_status = ?
+        """,
+        values,
     )
 
 

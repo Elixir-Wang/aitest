@@ -243,7 +243,8 @@ def init_db() -> None:
               scope TEXT NOT NULL DEFAULT '',
               forbidden_paths TEXT NOT NULL DEFAULT '',
               login_strategy TEXT NOT NULL DEFAULT 'reuse_state',
-              description TEXT NOT NULL DEFAULT '',
+              goal TEXT NOT NULL DEFAULT '',
+              notes TEXT NOT NULL DEFAULT '',
               max_pages INTEGER NOT NULL DEFAULT 50,
               max_actions INTEGER NOT NULL DEFAULT 1000,
               timeout_minutes INTEGER NOT NULL DEFAULT 120,
@@ -604,12 +605,26 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
     table = db.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'exploration_runs'",
     ).fetchone()
-    if not table or "'stopping'" in table["sql"]:
+    if not table:
         return
+    columns = {row["name"] for row in db.execute("PRAGMA table_info(exploration_runs)").fetchall()}
+    if "'stopping'" in table["sql"] and "goal" in columns and "notes" in columns and "description" not in columns:
+        return
+    source_count = db.execute("SELECT COUNT(*) AS count FROM exploration_runs").fetchone()["count"]
+    goal_expr = "goal" if "goal" in columns else "description"
+    notes_expr = "notes" if "notes" in columns else "''"
+    max_pages_expr = "max_pages" if "max_pages" in columns else "50"
+    max_actions_expr = "max_actions" if "max_actions" in columns else "1000"
+    timeout_minutes_expr = "timeout_minutes" if "timeout_minutes" in columns else "120"
+    artifact_root_expr = "artifact_root" if "artifact_root" in columns else "''"
+    result_summary_expr = "result_summary" if "result_summary" in columns else "''"
+    started_at_expr = "started_at" if "started_at" in columns else "NULL"
+    finished_at_expr = "finished_at" if "finished_at" in columns else "NULL"
 
+    db.execute("PRAGMA foreign_keys=off")
     db.executescript(
         """
-        PRAGMA foreign_keys=off;
+        DROP TABLE IF EXISTS exploration_runs_new;
         CREATE TABLE IF NOT EXISTS exploration_runs_new (
           id TEXT PRIMARY KEY,
           project_id TEXT NOT NULL,
@@ -619,7 +634,8 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
           scope TEXT NOT NULL DEFAULT '',
           forbidden_paths TEXT NOT NULL DEFAULT '',
           login_strategy TEXT NOT NULL DEFAULT 'reuse_state',
-          description TEXT NOT NULL DEFAULT '',
+          goal TEXT NOT NULL DEFAULT '',
+          notes TEXT NOT NULL DEFAULT '',
           max_pages INTEGER NOT NULL DEFAULT 50,
           max_actions INTEGER NOT NULL DEFAULT 1000,
           timeout_minutes INTEGER NOT NULL DEFAULT 120,
@@ -633,20 +649,35 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
           FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
           FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE RESTRICT
         );
+        """
+    )
+    db.execute(
+        f"""
         INSERT OR IGNORE INTO exploration_runs_new
-          (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, description,
+          (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, goal, notes,
            max_pages, max_actions, timeout_minutes, artifact_root, result_summary, created_by, created_at, updated_at,
            started_at, finished_at)
         SELECT id, project_id, environment_id, title,
-               CASE WHEN status = 'queued' AND started_at IS NULL THEN 'pending' ELSE status END,
-               scope, forbidden_paths, login_strategy, description, max_pages, max_actions, timeout_minutes,
-               artifact_root, result_summary, created_by, created_at, updated_at, started_at, finished_at
-        FROM exploration_runs;
-        DROP TABLE exploration_runs;
-        ALTER TABLE exploration_runs_new RENAME TO exploration_runs;
-        PRAGMA foreign_keys=on;
+               CASE WHEN status = 'queued' AND {started_at_expr} IS NULL THEN 'pending' ELSE status END,
+               scope, forbidden_paths, login_strategy, {goal_expr}, {notes_expr},
+               {max_pages_expr}, {max_actions_expr}, {timeout_minutes_expr}, {artifact_root_expr}, {result_summary_expr},
+               created_by, created_at, updated_at, {started_at_expr}, {finished_at_expr}
+        FROM exploration_runs
         """
     )
+    migrated_count = db.execute("SELECT COUNT(*) AS count FROM exploration_runs_new").fetchone()["count"]
+    if migrated_count != source_count:
+        db.execute("DROP TABLE IF EXISTS exploration_runs_new")
+        db.execute("PRAGMA foreign_keys=on")
+        raise RuntimeError(f"探索任务迁移行数不一致：原表 {source_count} 行，新表 {migrated_count} 行。")
+
+    db.executescript(
+        """
+        DROP TABLE exploration_runs;
+        ALTER TABLE exploration_runs_new RENAME TO exploration_runs;
+        """
+    )
+    db.execute("PRAGMA foreign_keys=on")
 
 
 def _migrate_source_documents(db: sqlite3.Connection) -> None:

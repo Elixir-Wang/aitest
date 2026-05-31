@@ -315,18 +315,15 @@ async def merge_document_markdown(
     document_id: str,
     actor,
     *,
-    confirm_preview_id: str = "",
     force_rebuild: bool = False,
 ) -> dict:
     with connect() as db:
         document = document_repo.find_by_project_and_id(db, project_id, document_id)
-    action = "confirm" if confirm_preview_id else "merge"
     try:
         result = await document_merge_orchestrator.merge_document_markdown(
             project_id,
             document_id,
             actor,
-            confirm_preview_id=confirm_preview_id,
             force_rebuild=force_rebuild,
         )
     except Exception as exc:
@@ -334,7 +331,7 @@ async def merge_document_markdown(
         operation_log_service.record_failure(
             log_type="audit",
             module="requirement",
-            action=action,
+            action="merge",
             object_type="requirement",
             object_id=document_id,
             object_name=document["name"] if document else document_id,
@@ -345,7 +342,6 @@ async def merge_document_markdown(
             failure_reason=failure_reason,
             summary=f"需求归并失败：{document['name'] if document else document_id}",
             after={
-                "confirm_preview_id": confirm_preview_id,
                 "force_rebuild": force_rebuild,
                 "failure_reason": failure_reason,
             },
@@ -366,7 +362,7 @@ async def merge_document_markdown(
         operation_log_service.record_failure(
             log_type="audit",
             module="requirement",
-            action=action,
+            action="merge",
             object_type="requirement",
             object_id=document_id,
             object_name=document["name"] if document else document_id,
@@ -382,7 +378,7 @@ async def merge_document_markdown(
         operation_log_service.record_success(
             log_type="audit",
             module="requirement",
-            action=action,
+            action="merge",
             object_type="requirement",
             object_id=document_id,
             object_name=document["name"] if document else document_id,
@@ -441,6 +437,9 @@ def update_document(project_id: str, document_id: str, payload: SourceDocumentUp
     name = payload.name.strip()
     if not name:
         raise api_error(400, "DOCUMENT_NAME_REQUIRED", "请填写需求名称。")
+    markdown_content = payload.markdown_content.strip()
+    if not markdown_content:
+        raise api_error(422, "DOCUMENT_MARKDOWN_REQUIRED", "最终需求稿不能为空。")
 
     with connect() as db:
         existing = document_repo.find_by_project_and_id(db, project_id, document_id)
@@ -455,7 +454,7 @@ def update_document(project_id: str, document_id: str, payload: SourceDocumentUp
         version_no = document_repo.next_version_no(db, document_id)
         markdown_path = _version_markdown_path(project_id, document_id, version_no)
         markdown_path.parent.mkdir(parents=True, exist_ok=True)
-        markdown_path.write_text(payload.markdown_content, encoding="utf-8")
+        markdown_path.write_text(markdown_content, encoding="utf-8")
 
         document_repo.update_document_name(db, document_id, name)
         document_repo.create_version(

@@ -1,0 +1,17 @@
+{
+  "batch_index": 4,
+  "batch_count": 23,
+  "source_node_count": 9,
+  "source_node_ids": [
+    "C-01-10-04",
+    "C-01-10-05",
+    "C-01-10-06",
+    "C-01-11",
+    "C-01-12",
+    "C-01-13",
+    "C-01-14",
+    "C-01-14-01",
+    "C-01-14-02"
+  ],
+  "assignable_target_section_count": 55
+}

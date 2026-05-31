@@ -53,5 +53,4 @@ class ConflictResolutionIn(BaseModel):
 
 class RequirementMergeRequestIn(BaseModel):
     merge_mode: str | None = None
-    confirm_preview_id: str = ""
     force_rebuild: bool = False

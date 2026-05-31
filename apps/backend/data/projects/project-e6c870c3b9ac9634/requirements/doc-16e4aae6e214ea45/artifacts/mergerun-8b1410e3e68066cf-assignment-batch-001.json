@@ -1,0 +1,122 @@
+[
+  {
+    "source_node_id": "A-01-01",
+    "target_section_id": "S3-001-01",
+    "assignment_type": "reference",
+    "reason": "阅读建议属于说明性内容，可作为背景与目标的参考资料，不能作为直接的需求，但 preserve_original=true 需要保留引用。"
+  },
+  {
+    "source_node_id": "A-01-02",
+    "target_section_id": "S3-001-01",
+    "assignment_type": "primary",
+    "reason": "背景内容直接对应目标大纲中的背景与目标章节。"
+  },
+  {
+    "source_node_id": "A-01-03",
+    "target_section_id": "S3-001-01",
+    "assignment_type": "primary",
+    "reason": "首期目标属于背景与目标的一部分，preserve_original=true 需保留表格等结构。"
+  },
+  {
+    "source_node_id": "A-01-04",
+    "target_section_id": "S3-001-02",
+    "assignment_type": "primary",
+    "reason": "接入范围内容直接对应目标大纲的接入范围章节。"
+  },
+  {
+    "source_node_id": "A-01-05",
+    "target_section_id": "S3-001-02",
+    "assignment_type": "primary",
+    "reason": "不接入范围属于接入范围的子内容，应归入接入范围章节。"
+  },
+  {
+    "source_node_id": "A-01-06",
+    "target_section_id": "S3-006-01",
+    "assignment_type": "primary",
+    "reason": "核心链路直接对应官网登录流程。"
+  },
+  {
+    "source_node_id": "A-01-07",
+    "target_section_id": "S3-002-02",
+    "assignment_type": "primary",
+    "reason": "产品侧要做什么直接对应产品侧职责。"
+  },
+  {
+    "source_node_id": "A-01-08",
+    "target_section_id": "S3-002-01",
+    "assignment_type": "primary",
+    "reason": "认证中心提供什么直接对应认证中心职责。"
+  },
+  {
+    "source_node_id": "A-01-09",
+    "target_section_id": "S3-002-03",
+    "assignment_type": "primary",
+    "reason": "认证中心不做什么直接对应认证中心不做什么章节。"
+  },
+  {
+    "source_node_id": "A-01-10",
+    "target_section_id": "S2-003",
+    "assignment_type": "primary",
+    "reason": "产品接入模式分类作为父节点，归入产品接入模式分类二级章节。"
+  },
+  {
+    "source_node_id": "A-01-10-01",
+    "target_section_id": "S3-003-01",
+    "assignment_type": "primary",
+    "reason": "C端产品子节点直接对应目标大纲的C端产品三级章节。"
+  },
+  {
+    "source_node_id": "A-01-10-02",
+    "target_section_id": "S3-003-02",
+    "assignment_type": "primary",
+    "reason": "B端产品子节点直接对应目标大纲的B端产品三级章节。"
+  },
+  {
+    "source_node_id": "A-01-10-03",
+    "target_section_id": "S3-003-03",
+    "assignment_type": "primary",
+    "reason": "B+C混合产品子节点直接对应目标大纲的B+C混合产品三级章节。"
+  },
+  {
+    "source_node_id": "A-01-10-04",
+    "target_section_id": "S3-003-04",
+    "assignment_type": "primary",
+    "reason": "INVITE_ONLY产品子节点直接对应目标大纲的邀请制/灰度产品三级章节。"
+  },
+  {
+    "source_node_id": "A-01-11",
+    "target_section_id": "S3-011-02",
+    "assignment_type": "primary",
+    "reason": "原产品登录入口保留原则直接对应目标大纲的同名三级章节。"
+  },
+  {
+    "source_node_id": "A-01-12",
+    "target_section_id": "S3-011-01",
+    "assignment_type": "primary",
+    "reason": "接入路径选择直接对应目标大纲的同名三级章节。"
+  },
+  {
+    "source_node_id": "A-01-13",
+    "target_section_id": "S3-010-01",
+    "assignment_type": "primary",
+    "reason": "联调流程直接对应目标大纲的联调流程章节。"
+  },
+  {
+    "source_node_id": "A-01-14",
+    "target_section_id": "S3-009-01",
+    "assignment_type": "primary",
+    "reason": "安全要求中的login_ticket安全部分归入login_ticket安全要求章节。"
+  },
+  {
+    "source_node_id": "A-01-15",
+    "target_section_id": "S3-010-02",
+    "assignment_type": "primary",
+    "reason": "验收标准直接对应目标大纲的验收标准章节。"
+  },
+  {
+    "source_node_id": "A-01-16",
+    "target_section_id": "S2-010",
+    "assignment_type": "reference",
+    "reason": "已自测验证的能力属于联调与验收的参考资料，可作为验收标准的辅助信息。"
+  }
+]

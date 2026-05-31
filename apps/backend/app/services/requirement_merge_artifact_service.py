@@ -129,6 +129,54 @@ def write_merge_machine_artifacts(
     }
 
 
+def write_outline_merge_machine_artifacts(
+    project_id: str,
+    document_id: str,
+    run_id: str,
+    *,
+    source_documents: list,
+    target_outline: list,
+    assignments: list,
+    section_results: list,
+    quality_result: str,
+    quality_issues: list[str],
+    stage_errors: list[str],
+    debug_artifacts: dict[str, object] | None = None,
+) -> dict[str, str]:
+    document_dir = project_requirement_dir(project_id, document_id)
+    artifacts_dir = document_dir / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    payloads = {
+        "source_outline_path": ("source-outline", source_documents),
+        "target_outline_path": ("target-outline", target_outline),
+        "outline_assignments_path": ("outline-assignments", assignments),
+        "section_merge_results_path": ("section-merge-results", section_results),
+        "quality_path": (
+            "quality",
+            {
+                "quality_result": quality_result,
+                "quality_issues": quality_issues,
+                "stage_errors": stage_errors,
+            },
+        ),
+        "stage_errors_path": ("stage-errors", stage_errors),
+    }
+    if debug_artifacts:
+        payloads.update(
+            {
+                key: (name, payload)
+                for key, (name, payload) in debug_artifacts.items()
+                if payload is not None
+            }
+        )
+    paths: dict[str, str] = {}
+    for key, (name, payload) in payloads.items():
+        path = artifacts_dir / f"{run_id}-{name}.json"
+        path.write_text(json.dumps(_jsonable(payload), ensure_ascii=False, indent=2), encoding="utf-8")
+        paths[key] = store_path(path) or str(path)
+    return paths
+
+
 def read_merge_artifact_tabs(project_id: str, document_id: str, run_id: str) -> list[dict]:
     artifacts = [
         ("quality", "质量检测", merge_quality_path(project_id, document_id, run_id)),
@@ -416,7 +464,7 @@ def build_quality_markdown(
         "| 指标 | 结果 |",
         "| --- | --- |",
         f"| 合并质量 | {_quality_result_label(quality_result)} |",
-        f"| 是否可确认写入版本 | {'否' if quality_result == 'failed' else '是'} |",
+        f"| 是否可写入最终需求 | {'否' if quality_result == 'failed' else '是'} |",
         f"| 质量摘要 | {md_cell(merge_summary or '已完成合并质量检测。')} |",
         "",
         "### 阻断原因",
@@ -583,7 +631,7 @@ def _retention_summary(source_unit_count: int, draft_unit_count: int, ratio: flo
     if source_unit_count < 20:
         return "来源内容较少，未触发摘要化比例门禁。"
     if ratio < 0.35:
-        return "合并稿疑似只生成摘要，不能确认写入版本。"
+        return "合并稿疑似只生成摘要，不能写入最终需求。"
     return "未发现明显摘要化。"
 
 
@@ -782,6 +830,16 @@ def summary_count_mismatches(merge_summary: str, counts: dict[str, int]) -> list
 
 def md_cell(value: str) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ").strip()
+
+
+def _jsonable(value):
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    return value
 
 
 def merge_merged_path(project_id: str, document_id: str, run_id: str) -> Path:

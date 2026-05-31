@@ -1,0 +1,50 @@
+[
+  {
+    "source_node_id": "D-09-01",
+    "target_section_id": "sec-04-05",
+    "assignment_type": "primary",
+    "reason": "标题匹配"
+  },
+  {
+    "source_node_id": "D-09-02",
+    "target_section_id": "sec-04-05",
+    "assignment_type": "primary",
+    "reason": "父子章节匹配"
+  },
+  {
+    "source_node_id": "D-09-03",
+    "target_section_id": "sec-04-05",
+    "assignment_type": "primary",
+    "reason": "父子章节匹配"
+  },
+  {
+    "source_node_id": "D-09-04",
+    "target_section_id": "sec-04-05",
+    "assignment_type": "primary",
+    "reason": "父子章节匹配"
+  },
+  {
+    "source_node_id": "D-09-05",
+    "target_section_id": "sec-04-05",
+    "assignment_type": "primary",
+    "reason": "父子章节匹配"
+  },
+  {
+    "source_node_id": "D-09-06",
+    "target_section_id": "sec-04-05",
+    "assignment_type": "primary",
+    "reason": "父子章节匹配"
+  },
+  {
+    "source_node_id": "D-09-07",
+    "target_section_id": "sec-04-05",
+    "assignment_type": "primary",
+    "reason": "父子章节匹配"
+  },
+  {
+    "source_node_id": "D-09-08",
+    "target_section_id": "sec-04-05",
+    "assignment_type": "primary",
+    "reason": "父子章节匹配"
+  }
+]

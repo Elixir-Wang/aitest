@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import threading
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.exploration import (
@@ -13,7 +15,7 @@ from app.schemas.exploration import (
     ExplorationRunOut,
     ExplorationRunUpdateIn,
 )
-from app.services import exploration_service, site_exploration_orchestrator
+from app.services import exploration_event_bus, exploration_service, site_exploration_orchestrator
 
 router = APIRouter(prefix="/projects", tags=["exploration"])
 global_router = APIRouter(prefix="/exploration-runs", tags=["exploration"])
@@ -45,8 +47,46 @@ def get_project_run_report(project_id: str, run_id: str, actor=Depends(current_u
 
 
 @router.get("/{project_id}/exploration-runs/{run_id}/log", response_model=ExplorationLogOut)
-def get_project_run_log(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
-    return exploration_service.get_project_run_log(project_id, run_id, actor)
+def get_project_run_log(
+    project_id: str,
+    run_id: str,
+    page: int = 1,
+    page_size: int = 10,
+    keyword: str = "",
+    type: str = "",
+    level: str = "",
+    page_ref: str = "",
+    include_raw_content: bool = False,
+    actor=Depends(current_user),
+) -> dict:
+    return exploration_service.get_project_run_log(
+        project_id,
+        run_id,
+        actor,
+        page=page,
+        page_size=page_size,
+        keyword=keyword,
+        type_filter=type,
+        level=level,
+        page_ref=page_ref,
+        include_raw_content=include_raw_content,
+    )
+
+
+@router.get("/{project_id}/exploration-runs/{run_id}/stream")
+def stream_project_run(project_id: str, run_id: str, actor=Depends(current_user)) -> StreamingResponse:
+    exploration_service.get_project_run(project_id, run_id, actor)
+
+    def event_stream():
+        for event in exploration_event_bus.subscribe(run_id):
+            if event is None:
+                yield ": keep-alive\n\n"
+                continue
+            event_type = str(event.get("type") or "message")
+            data = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
+            yield f"event: {event_type}\ndata: {data}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.post("/{project_id}/exploration-runs", response_model=ExplorationRunOut)

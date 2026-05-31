@@ -16,11 +16,13 @@ from app.schemas.requirement_merge import (
     RequirementFragmentClassificationBatch,
     RequirementFragmentCluster,
     RequirementMergeBaseVersion,
+    RequirementMergeConflictOut,
     RequirementMergeInput,
     RequirementMergeOutput,
     RequirementMergeResolvedConflict,
     RequirementMergeSourceFile,
     RequirementSectionMergeOutput,
+    RequirementSectionMergeOutputRaw,
     RequirementSourceFragment,
 )
 
@@ -90,11 +92,10 @@ async def run_requirement_merge(
         return _fallback_v2_preview(input_data, source_fragments, reason=str(exc))
 
     markdown = _render_v2_markdown(input_data.document_name, section_outputs, source_fragments)
-    status = "preview" if input_data.merge_mode == "incremental" else "merged"
     return RequirementMergeOutput(
-        status=status,
-        markdown_content=markdown if status == "merged" else "",
-        markdown_preview=markdown if status == "preview" else "",
+        status="merged",
+        markdown_content=markdown,
+        markdown_preview="",
         merge_summary=(
             f"按分层语义流水线归并 {len(input_data.source_files)} 个标准文件、"
             f"{len(source_fragments)} 个来源块、{len(clusters)} 个语义簇。"
@@ -383,11 +384,88 @@ async def _merge_sections_v2(
             continue
         prompt = _build_v2_section_merge_prompt(input_data, cluster, decision, fragments_by_id)
         parsed = await _run_small_json_stage(prompt, "需求归并智能体章节归并未返回合法 JSON。")
-        section_output = RequirementSectionMergeOutput.model_validate(parsed)
+        raw_section_output = RequirementSectionMergeOutputRaw.model_validate(parsed)
+        section_output = _canonicalize_section_merge_payload(raw_section_output)
         if section_output.section_key != cluster.cluster_id:
             raise ValueError(f"章节归并返回 section_key 与语义簇不一致：{cluster.cluster_id}。")
         section_outputs.append(section_output)
     return section_outputs
+
+
+def _canonicalize_section_merge_payload(raw_output: RequirementSectionMergeOutputRaw) -> RequirementSectionMergeOutput:
+    payload = raw_output.model_dump()
+    payload["blocks"] = [_canonicalize_section_block(block.model_dump()) for block in raw_output.blocks]
+    payload["covered_fragment_ids"] = [_string_value(item) for item in raw_output.covered_fragment_ids if _string_value(item)]
+    return RequirementSectionMergeOutput.model_validate(payload)
+
+
+def _canonicalize_section_block(block: dict) -> dict:
+    block_type = _normalize_section_block_type(block.get("type"))
+    if not block_type:
+        block_type = "paragraph"
+
+    content = _string_or_joined_lines(block.get("content"))
+    items = _string_list(block.get("items"))
+    if block_type == "bullet_list" and not items and content:
+        items = _string_list(block.get("content"))
+        content = ""
+    if block_type != "bullet_list":
+        items = []
+
+    return {
+        "type": block_type,
+        "content": content,
+        "items": items,
+        "fragment_id": _string_value(block.get("fragment_id")),
+    }
+
+
+def _normalize_section_block_type(raw_value: Any) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(raw_value or "").strip().lower()).strip("_")
+    aliases = {
+        "paragraph": "paragraph",
+        "text": "paragraph",
+        "content": "paragraph",
+        "bullet": "bullet_list",
+        "bullets": "bullet_list",
+        "bullet_list": "bullet_list",
+        "list": "bullet_list",
+        "unordered_list": "bullet_list",
+        "table": "table",
+        "markdown_table": "table",
+        "source": "source_block_ref",
+        "source_block": "source_block_ref",
+        "source_block_ref": "source_block_ref",
+        "fragment_ref": "source_block_ref",
+        "pending": "pending_clarification_ref",
+        "clarification": "pending_clarification_ref",
+        "pending_clarification": "pending_clarification_ref",
+        "pending_clarification_ref": "pending_clarification_ref",
+    }
+    return aliases.get(normalized, "")
+
+
+def _string_or_joined_lines(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return "\n".join(item for item in _string_list(value) if item)
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
+
+
+def _string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [_string_or_joined_lines(item).strip() for item in value if _string_or_joined_lines(item).strip()]
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def _string_value(value: Any) -> str:
+    return "" if value is None else str(value)
 
 
 def _build_fragment_clusters(
@@ -584,6 +662,7 @@ def _build_v2_cluster_decision_prompt(
         "不要输出完整合并稿，不要输出 markdown_content 或 markdown_preview。\n"
         "判断同一语义簇内来源块是互补合并、重复、冲突、待澄清还是丢弃。\n"
         "必须为 cluster.fragment_ids 中每个 fragment_id 返回一条 fragment_decisions。\n"
+        "所有字符串字段无值时必须返回空字符串 \"\"，不要返回 null。\n"
         "JSON 字段：cluster_id, decision, canonical_meaning, fragment_decisions, conflicts, clarification_items。\n\n"
         f"输入：\n{json.dumps(payload, ensure_ascii=False)}"
     )

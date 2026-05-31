@@ -1,0 +1,11 @@
+{
+  "batch_index": 23,
+  "batch_count": 23,
+  "source_node_count": 3,
+  "source_node_ids": [
+    "D-25-01",
+    "D-25-02",
+    "D-25-03"
+  ],
+  "assignable_target_section_count": 55
+}

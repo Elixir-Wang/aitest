@@ -8,9 +8,10 @@ import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Button as PaginationButton } from "@/components/ui/button-1";
-import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { OneClipboard } from "@/components/ui/one-clipboard";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -104,6 +105,7 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
   const [result, setResult] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ApiOperationLogDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(Math.max(page, 1), pageCount);
   const visiblePages = getVisiblePages(safePage, pageCount);
@@ -146,10 +148,16 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
 
   async function openDetail(row: ApiOperationLogListItem) {
     setSelectedId(row.id);
+    setDetail(null);
+    setDetailLoading(true);
+    setError("");
     try {
       setDetail(await apiRequest<ApiOperationLogDetail>(`/operation-logs/${row.id}`));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "日志详情加载失败");
+      setSelectedId(null);
+    } finally {
+      setDetailLoading(false);
     }
   }
 
@@ -343,17 +351,26 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
           </label>
         </div>
       </div>
-      <Drawer direction="right" open={Boolean(selectedId)} onOpenChange={(open) => !open && setSelectedId(null)}>
-        <DrawerContent className="sm:max-w-xl">
-          <DrawerHeader>
-            <DrawerTitle>日志详情</DrawerTitle>
-            <DrawerDescription>
+      <Dialog
+        open={Boolean(selectedId)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedId(null);
+            setDetail(null);
+          }
+        }}
+      >
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-5xl">
+          <DialogHeader className="shrink-0 gap-2 px-6 pt-6 pb-4">
+            <DialogTitle>日志详情</DialogTitle>
+            <DialogDescription>
               {detail
                 ? `${operationLogModuleToLabel(detail.module)} / ${operationLogActionToLabel(detail.action)}`
                 : "加载中"}
-            </DrawerDescription>
-          </DrawerHeader>
-          <div className="space-y-4 overflow-auto px-4 pb-4">
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 space-y-4 overflow-auto px-6 pb-6">
+            {detailLoading && !detail ? <div className="text-muted-foreground text-sm">正在加载日志详情</div> : null}
             {detail ? (
               <>
                 <DetailGrid detail={detail} />
@@ -361,18 +378,16 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
                 <JsonBlock title="变更后" value={detail.after} />
                 <JsonBlock title="关联产物" value={detail.artifact_path} />
               </>
-            ) : (
-              <div className="text-muted-foreground text-sm">正在加载日志详情</div>
-            )}
+            ) : null}
           </div>
-        </DrawerContent>
-      </Drawer>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 function DetailGrid({ detail }: { detail: ApiOperationLogDetail }) {
-  const rows = [
+  const rows: Array<[string, string]> = [
     ["时间", formatDateTime(detail.created_at)],
     ["对象", detail.object_name || detail.object_id || "-"],
     ["操作人", detail.actor_name],
@@ -384,25 +399,51 @@ function DetailGrid({ detail }: { detail: ApiOperationLogDetail }) {
     ["IP", detail.ip_address || "-"],
     ["User-Agent", detail.user_agent || "-"],
   ];
+
   return (
-    <div className="grid gap-2 rounded-lg border p-3 text-sm">
-      {rows.map(([label, value]) => (
-        <div className="grid grid-cols-[88px_1fr] gap-3" key={label}>
-          <span className="text-muted-foreground">{label}</span>
-          <span className="break-words">{value}</span>
-        </div>
-      ))}
+    <div className="relative min-w-0 rounded-lg border p-4 pr-28 text-sm">
+      <div className="absolute top-4 right-4">
+        <OneClipboard copiedLabel="已复制" label="复制" text={serializeDetailRows(rows)} />
+      </div>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="font-medium text-sm">基础信息</h2>
+      </div>
+      <div className="grid min-w-0 gap-3">
+        {rows.map(([label, value]) => (
+          <div className="grid min-w-0 gap-1 md:grid-cols-[120px_minmax(0,1fr)] md:gap-4" key={label}>
+            <span className="text-muted-foreground">{label}</span>
+            <span className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+              {label === "结果" ? (
+                <Badge variant={detail.result === "failed" ? "destructive" : "outline"}>{value}</Badge>
+              ) : (
+                value
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
 function JsonBlock({ title, value }: { title: string; value: unknown }) {
+  const text = JSON.stringify(value ?? {}, null, 2);
+
   return (
-    <div className="space-y-2">
-      <h3 className="font-medium text-sm">{title}</h3>
-      <pre className="max-h-64 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs">
-        {JSON.stringify(value ?? {}, null, 2)}
-      </pre>
-    </div>
+    <section className="space-y-2">
+      <h2 className="font-medium text-sm">{title}</h2>
+      <div className="relative min-w-0 rounded-lg border bg-muted/30">
+        <div className="absolute top-3 right-3">
+          <OneClipboard copiedLabel="已复制" label="复制" text={text} />
+        </div>
+        <pre className="min-w-0 overflow-auto whitespace-pre-wrap break-words p-4 pr-28 text-xs [overflow-wrap:anywhere]">
+          {text}
+        </pre>
+      </div>
+    </section>
   );
+}
+
+function serializeDetailRows(rows: Array<[string, string]>) {
+  return rows.map(([label, value]) => `${label}：${value}`).join("\n");
 }

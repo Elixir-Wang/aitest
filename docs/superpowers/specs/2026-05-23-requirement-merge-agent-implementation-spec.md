@@ -176,16 +176,16 @@ RequirementMergeAgent
 
 输出：
 
-- 默认先生成差异预览，不直接覆盖当前版本。
-- 差异预览包含新增、修改、废弃、冲突、待澄清和影响模块。
-- 用户确认差异后，后端再生成新的 `SourceDocumentVersion`。
+- 质量通过时直接生成新的 `SourceDocumentVersion`，并更新最终需求 Tab。
+- 差异信息进入质量检测、待确认项、覆盖矩阵和版本变化日志。
+- 存在冲突或质量阻断时，仅生成排查稿，不生成新的 `SourceDocumentVersion`。
 
-第一版可以暂时把“确认差异”并入 `/merge` 的二次调用，但接口返回必须能表达：
+接口返回必须能表达：
 
 ```json
 {
-  "status": "preview",
-  "preview_id": "merge-run-xxx",
+  "status": "merged",
+  "version_id": "docver-xxx",
   "merge_summary": "发现 3 个新增点、2 个修改点。",
   "diff_summary": "影响登录、权限两个模块。",
   "affected_modules": ["登录认证", "权限管理"]
@@ -420,7 +420,6 @@ RequirementMergeAgent
 ```json
 {
   "merge_mode": "initial",
-  "confirm_preview_id": "",
   "force_rebuild": false
 }
 ```
@@ -540,12 +539,12 @@ Agent 验收：
 3. 将当前简单合并逻辑迁移到独立 `requirement_merge_service`，保留确定性 fallback。
 4. 新增合并运行、覆盖矩阵、版本变化日志数据写入。
 5. 接入 Agent 输出解析和校验。
-6. 增量合并先返回 `preview`，确认后再写版本。
+6. 增量合并质量通过后直接写入最终需求版本。
 7. 前端补齐差异预览、覆盖矩阵和影响模块展示。
 
 ## 未决问题
 
-- 增量合并的“确认差异”是否新增独立接口，还是复用 `/merge` 加 `confirm_preview_id`。
+- 增量合并不再提供“确认差异后写版本”接口；`preview` 仅用于冲突、失败或质量阻断排查。
 - `RequirementMergeAgent` 第一版是否真实调用模型，还是先以确定性规则服务作为可替换实现。
 - 覆盖矩阵是否复用后续 `SourceCoverageItem`，还是为合并过程单独保留 `RequirementSourceCoverageItem`。
 - 冲突表是否直接迁移扩展现有 `source_document_merge_conflicts`，还是新增通用 `source_conflict_items` 并兼容旧接口。

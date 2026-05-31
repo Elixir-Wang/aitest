@@ -1,0 +1,460 @@
+[
+  {
+    "section_id": "root",
+    "parent_id": "",
+    "level": 1,
+    "title": "亦庄登录sso",
+    "reason": "系统固定的需求文档根节点。",
+    "children": [
+      {
+        "section_id": "sec-01",
+        "parent_id": "root",
+        "level": 2,
+        "title": "项目背景与目标",
+        "reason": "合并各文档中背景、目标、定位相关内容，包括doc-A阅读建议、背景、首期目标；doc-C项目概述、产品定位、建设原则",
+        "children": [
+          {
+            "section_id": "sec-01-01",
+            "parent_id": "sec-01",
+            "level": 3,
+            "title": "建设原则",
+            "reason": "合并doc-A首期目标中的原则性描述与doc-C建设原则",
+            "children": []
+          },
+          {
+            "section_id": "sec-01-02",
+            "parent_id": "sec-01",
+            "level": 3,
+            "title": "职责边界",
+            "reason": "对应doc-C 2.2 职责边界，明确认证中心与产品的责任划分",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-02",
+        "parent_id": "root",
+        "level": 2,
+        "title": "接入范围与模式",
+        "reason": "合并doc-A接入范围、不接入范围、产品接入模式分类；doc-C用户模型；doc-D总体接入原则、产品用户模式、准入原则",
+        "children": [
+          {
+            "section_id": "sec-02-01",
+            "parent_id": "sec-02",
+            "level": 3,
+            "title": "用户模型分类",
+            "reason": "合并doc-C 4.1-4.3 用户模型（C端/B端/混合）与doc-A 九、产品接入模式分类",
+            "children": []
+          },
+          {
+            "section_id": "sec-02-02",
+            "parent_id": "sec-02",
+            "level": 3,
+            "title": "各模式准入原则",
+            "reason": "对应doc-D 4.2 不同模式的准入原则；doc-A接入模式分类下的准入描述",
+            "children": []
+          },
+          {
+            "section_id": "sec-02-03",
+            "parent_id": "sec-02",
+            "level": 3,
+            "title": "邀请码与灰度产品",
+            "reason": "合并doc-A 9.4 INVITE_ONLY；doc-D 17. 邀请码/推荐码处理规则",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-03",
+        "parent_id": "root",
+        "level": 2,
+        "title": "核心业务流程",
+        "reason": "合并doc-A核心链路、接入路径选择；doc-C核心业务流程（官网登录、官网进入产品、产品直接访问）；doc-D标准链路",
+        "children": [
+          {
+            "section_id": "sec-03-01",
+            "parent_id": "sec-03",
+            "level": 3,
+            "title": "官网统一登录流程",
+            "reason": "对应doc-C 7.1 官网登录；包含ticket生成、上下文预注册等环节",
+            "children": []
+          },
+          {
+            "section_id": "sec-03-02",
+            "parent_id": "sec-03",
+            "level": 3,
+            "title": "官网进入产品流程",
+            "reason": "对应doc-C 7.2；doc-D标准链路描述；doc-A核心链路",
+            "children": []
+          },
+          {
+            "section_id": "sec-03-03",
+            "parent_id": "sec-03",
+            "level": 3,
+            "title": "产品直接访问流程",
+            "reason": "对应doc-C 7.3；产品直接访问的统一认证处理",
+            "children": []
+          },
+          {
+            "section_id": "sec-03-04",
+            "parent_id": "sec-03",
+            "level": 3,
+            "title": "登出机制",
+            "reason": "合并doc-C 9. 登出机制（本地登出/全局登出）；doc-D 22. 登出回调接口",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-04",
+        "parent_id": "root",
+        "level": 2,
+        "title": "接口契约",
+        "reason": "合并doc-B所有接口、doc-D所有接口；形成统一接口定义章节",
+        "children": [
+          {
+            "section_id": "sec-04-01",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "上下文预注册接口",
+            "reason": "对应doc-D 7. 接口一；上下文预注册接口",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-02",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "login_ticket 生成接口",
+            "reason": "对应doc-D 8. 接口二；login_ticket生成接口",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-03",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "官网跳转产品入口",
+            "reason": "对应doc-D 9. 接口三",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-04",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "login_ticket 校验接口",
+            "reason": "对应doc-D 10. 接口四；也包括doc-B 五、前端推荐流程、六、百工后端推荐流程涉及ticket校验",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-05",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "查询产品进入状态接口",
+            "reason": "对应doc-B 二、接口一；查询产品进入状态",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-06",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "确认产品首次接入接口",
+            "reason": "对应doc-B 三、接口二",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-07",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "第三方身份绑定接口（二期）",
+            "reason": "对应doc-D 19. 第三方身份绑定接口（二期/按需）",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-08",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "UserInfo用户信息结构",
+            "reason": "对应doc-D 11. UserInfo信息结构",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-09",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "biz_context 业务上下文",
+            "reason": "对应doc-D 12. biz_context设计规范",
+            "children": []
+          },
+          {
+            "section_id": "sec-04-10",
+            "parent_id": "sec-04",
+            "level": 3,
+            "title": "错误码规范",
+            "reason": "合并doc-B各接口错误码、doc-D 23. 错误码规范",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-05",
+        "parent_id": "root",
+        "level": 2,
+        "title": "产品接入要求",
+        "reason": "合并doc-A产品侧要做什么、认证中心提供什么、原产品登录入口保留原则；doc-D总体接入原则（负责/继续负责）、B端产品处理建议、B+C产品处理建议；doc-C产品接入要求、标准输出能力",
+        "children": [
+          {
+            "section_id": "sec-05-01",
+            "parent_id": "sec-05",
+            "level": 3,
+            "title": "产品侧职责",
+            "reason": "对应doc-A六、产品侧要做什么；doc-D 2.2 各产品继续负责；doc-C 12.产品接入要求",
+            "children": []
+          },
+          {
+            "section_id": "sec-05-02",
+            "parent_id": "sec-05",
+            "level": 3,
+            "title": "认证中心提供能力",
+            "reason": "对应doc-A七、认证中心提供什么；doc-D 2.1 官网统一认证中心负责",
+            "children": []
+          },
+          {
+            "section_id": "sec-05-03",
+            "parent_id": "sec-05",
+            "level": 3,
+            "title": "本地账号映射要求",
+            "reason": "对应doc-C 6.2 本地账号映射；doc-D 13. 产品本地账号映射要求",
+            "children": []
+          },
+          {
+            "section_id": "sec-05-04",
+            "parent_id": "sec-05",
+            "level": 3,
+            "title": "B端产品处理建议",
+            "reason": "对应doc-D 15. B端产品处理建议",
+            "children": []
+          },
+          {
+            "section_id": "sec-05-05",
+            "parent_id": "sec-05",
+            "level": 3,
+            "title": "B+C产品处理建议",
+            "reason": "对应doc-D 16. B+C产品处理建议",
+            "children": []
+          },
+          {
+            "section_id": "sec-05-06",
+            "parent_id": "sec-05",
+            "level": 3,
+            "title": "登录体验要求",
+            "reason": "对应doc-C 8. 登录体验要求",
+            "children": []
+          },
+          {
+            "section_id": "sec-05-07",
+            "parent_id": "sec-05",
+            "level": 3,
+            "title": "原产品登录入口保留",
+            "reason": "对应doc-A十、原产品登录入口保留原则",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-06",
+        "parent_id": "root",
+        "level": 2,
+        "title": "核心机制设计",
+        "reason": "合并doc-C 6. 核心机制设计（Unified UID、首次绑定机制等）；doc-D 13.3 首次进入处理规则",
+        "children": [
+          {
+            "section_id": "sec-06-01",
+            "parent_id": "sec-06",
+            "level": 3,
+            "title": "Unified UID",
+            "reason": "对应doc-C 6.1 Unified UID",
+            "children": []
+          },
+          {
+            "section_id": "sec-06-02",
+            "parent_id": "sec-06",
+            "level": 3,
+            "title": "首次绑定机制",
+            "reason": "对应doc-C 6.3 首次绑定机制；doc-D 13.3 首次进入处理规则",
+            "children": []
+          },
+          {
+            "section_id": "sec-06-03",
+            "parent_id": "sec-06",
+            "level": 3,
+            "title": "票据绑定规则",
+            "reason": "对应doc-D 8.8 票据绑定规则；doc-D 10.8 票据规则",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-07",
+        "parent_id": "root",
+        "level": 2,
+        "title": "安全要求",
+        "reason": "合并doc-A安全要求；doc-B安全说明；doc-D安全要求（login_ticket、biz_context、密钥）；doc-C安全规范；doc-D产品侧准入错误建议",
+        "children": [
+          {
+            "section_id": "sec-07-01",
+            "parent_id": "sec-07",
+            "level": 3,
+            "title": "login_ticket 安全",
+            "reason": "对应doc-D 24.1 login_ticket安全要求；doc-D 8.8票据绑定规则中的安全约束",
+            "children": []
+          },
+          {
+            "section_id": "sec-07-02",
+            "parent_id": "sec-07",
+            "level": 3,
+            "title": "biz_context 安全",
+            "reason": "对应doc-D 24.2 biz_context安全要求；doc-D 12.5安全原则",
+            "children": []
+          },
+          {
+            "section_id": "sec-07-03",
+            "parent_id": "sec-07",
+            "level": 3,
+            "title": "密钥安全与HTTPS",
+            "reason": "合并doc-D 24.3密钥安全；doc-C 10.4 client_secret、10.5 HTTPS",
+            "children": []
+          },
+          {
+            "section_id": "sec-07-04",
+            "parent_id": "sec-07",
+            "level": 3,
+            "title": "OAuth安全规范",
+            "reason": "对应doc-C 10.1 redirect_uri、10.2 state",
+            "children": []
+          },
+          {
+            "section_id": "sec-07-05",
+            "parent_id": "sec-07",
+            "level": 3,
+            "title": "日志安全",
+            "reason": "对应doc-C 10.6 日志安全",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-08",
+        "parent_id": "root",
+        "level": 2,
+        "title": "联调流程",
+        "reason": "合并doc-A联调流程；doc-D 25. 联调流程；doc-B 前端推荐流程、百工后端推荐流程",
+        "children": [
+          {
+            "section_id": "sec-08-01",
+            "parent_id": "sec-08",
+            "level": 3,
+            "title": "联调前置条件",
+            "reason": "对应doc-D 25.1 联调前置条件",
+            "children": []
+          },
+          {
+            "section_id": "sec-08-02",
+            "parent_id": "sec-08",
+            "level": 3,
+            "title": "联调步骤",
+            "reason": "合并doc-D 25.2 联调步骤；doc-A十二、联调流程",
+            "children": []
+          },
+          {
+            "section_id": "sec-08-03",
+            "parent_id": "sec-08",
+            "level": 3,
+            "title": "前端推荐流程",
+            "reason": "对应doc-B 五、前端推荐流程",
+            "children": []
+          },
+          {
+            "section_id": "sec-08-04",
+            "parent_id": "sec-08",
+            "level": 3,
+            "title": "后端推荐流程",
+            "reason": "对应doc-B 六、百工后端推荐流程",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-09",
+        "parent_id": "root",
+        "level": 2,
+        "title": "验收标准",
+        "reason": "合并doc-A验收标准、doc-C验收标准、doc-D验收标准",
+        "children": [
+          {
+            "section_id": "sec-09-01",
+            "parent_id": "sec-09",
+            "level": 3,
+            "title": "通用验收",
+            "reason": "对应doc-D 26.1 通用验收；doc-C 15.1 功能验收",
+            "children": []
+          },
+          {
+            "section_id": "sec-09-02",
+            "parent_id": "sec-09",
+            "level": 3,
+            "title": "C端产品验收",
+            "reason": "对应doc-D 26.2 C端产品验收",
+            "children": []
+          },
+          {
+            "section_id": "sec-09-03",
+            "parent_id": "sec-09",
+            "level": 3,
+            "title": "B端产品验收",
+            "reason": "对应doc-D 26.3 B端产品验收；doc-C 15.2 安全验收",
+            "children": []
+          },
+          {
+            "section_id": "sec-09-04",
+            "parent_id": "sec-09",
+            "level": 3,
+            "title": "安全验收",
+            "reason": "对应doc-A十四、验收标准中安全相关内容；doc-C 15.2 安全验收",
+            "children": []
+          }
+        ]
+      },
+      {
+        "section_id": "sec-10",
+        "parent_id": "root",
+        "level": 2,
+        "title": "非建设范围",
+        "reason": "合并doc-A不接入范围（首期）、认证中心不做什么；doc-C 13. 非建设范围",
+        "children": []
+      },
+      {
+        "section_id": "sec-11",
+        "parent_id": "root",
+        "level": 2,
+        "title": "数据库表",
+        "reason": "对应doc-B 四、数据库表",
+        "children": []
+      },
+      {
+        "section_id": "sec-12",
+        "parent_id": "root",
+        "level": 2,
+        "title": "当前已自测能力",
+        "reason": "对应doc-A十五、当前统一认证中心已自测验证了的能力",
+        "children": []
+      },
+      {
+        "section_id": "sec-99",
+        "parent_id": "root",
+        "level": 2,
+        "title": "待澄清问题",
+        "reason": "预留章节，用于容纳需要人工确认的冲突或差异，当前无具体内容",
+        "children": []
+      }
+    ]
+  }
+]

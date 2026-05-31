@@ -14,6 +14,7 @@ from app.schemas.requirement_merge import (
     RequirementMergeInput,
     RequirementMergeOutput,
     RequirementMergeSourceFile,
+    RequirementSectionMergeOutputRaw,
 )
 from app.services.requirement_merge_service import (
     _canonicalize_cluster_decision_payload,
@@ -479,6 +480,33 @@ POST /api/sso/ticket/verify
         with self.assertRaisesRegex(ValueError, "无法归一化"):
             _canonicalize_cluster_decision_payload(raw_decision)
 
+    def test_requirement_cluster_decision_raw_coerces_none_string_fields(self):
+        raw_decision = RequirementClusterDecisionRaw(
+            cluster_id="cluster-1",
+            decision="merge",
+            fragment_decisions=[
+                {
+                    "fragment_id": "frag-1",
+                    "coverage_status": "merged",
+                    "target_module": None,
+                    "target_heading": None,
+                    "covered_by_fragment_id": None,
+                    "related_conflict_key": None,
+                    "related_clarification_key": None,
+                    "reason": None,
+                }
+            ],
+        )
+
+        item = raw_decision.fragment_decisions[0]
+
+        self.assertEqual(item.target_module, "")
+        self.assertEqual(item.target_heading, "")
+        self.assertEqual(item.covered_by_fragment_id, "")
+        self.assertEqual(item.related_conflict_key, "")
+        self.assertEqual(item.related_clarification_key, "")
+        self.assertEqual(item.reason, "")
+
     def test_agent_prompt_forbids_source_document_grouping_in_markdown(self):
         prompt = requirement_merge_service._build_agent_prompt(
             RequirementMergeInput(
@@ -654,6 +682,64 @@ flowchart TD
         self.assertEqual(output.coverage_items[0].source_heading, "接入说明")
         self.assertIn("重复去重 1 处", output.merge_summary)
         self.assertEqual(output.conflicts[0].source_refs[0]["filename"], "接入说明")
+
+    def test_cluster_conflicts_normalizes_agent_conflict_payload(self):
+        decision = requirement_merge_service.RequirementClusterDecision(
+            cluster_id="cluster-1",
+            decision="conflict",
+            canonical_meaning="登录入口保留规则",
+            fragment_decisions=[],
+            conflicts=[
+                {
+                    "title": "登录入口保留规则冲突",
+                    "fragment_ids": ["A-01", "B-02"],
+                    "fragment_a": "原产品登录入口必须保留。",
+                    "fragment_b": "统一认证接入后隐藏原登录入口。",
+                }
+            ],
+        )
+
+        conflicts = requirement_merge_service._cluster_conflicts([decision])
+
+        self.assertEqual(len(conflicts), 1)
+        self.assertIsInstance(conflicts[0], RequirementMergeConflictOut)
+        self.assertEqual(conflicts[0].source_refs, [{"fragment_id": "A-01"}, {"fragment_id": "B-02"}])
+        self.assertEqual(conflicts[0].agent_suggestion, "需要人工确认。")
+
+    def test_section_merge_payload_normalizes_list_content(self):
+        raw_output = RequirementSectionMergeOutputRaw(
+            section_key="cluster-1",
+            blocks=[
+                {
+                    "type": "paragraph",
+                    "content": ["官网统一认证中心提供统一登录入口。", "产品侧保留全量登录入口。"],
+                }
+            ],
+            covered_fragment_ids=[1, "B-02", None],
+        )
+
+        output = requirement_merge_service._canonicalize_section_merge_payload(raw_output)
+
+        self.assertEqual(output.blocks[0].content, "官网统一认证中心提供统一登录入口。\n产品侧保留全量登录入口。")
+        self.assertEqual(output.covered_fragment_ids, ["1", "B-02"])
+
+    def test_section_merge_payload_normalizes_bullet_list_content(self):
+        raw_output = RequirementSectionMergeOutputRaw(
+            section_key="cluster-1",
+            blocks=[
+                {
+                    "type": "list",
+                    "content": ["支持账号登录", "支持短信登录"],
+                }
+            ],
+            covered_fragment_ids=[],
+        )
+
+        output = requirement_merge_service._canonicalize_section_merge_payload(raw_output)
+
+        self.assertEqual(output.blocks[0].type, "bullet_list")
+        self.assertEqual(output.blocks[0].content, "")
+        self.assertEqual(output.blocks[0].items, ["支持账号登录", "支持短信登录"])
 
     def test_normalize_merge_output_rejects_uncovered_source_file(self):
         input_data = RequirementMergeInput(
@@ -1263,6 +1349,78 @@ flowchart TD
 
         self.assertEqual(output.status, "merged")
         self.assertEqual(output.coverage_items[0].coverage_status, "merged")
+
+    async def test_run_requirement_merge_writes_incremental_result_as_merged_content(self):
+        input_data = RequirementMergeInput(
+            project_id="project-1",
+            document_id="doc-1",
+            document_name="登录需求",
+            merge_mode="incremental",
+            source_files=[
+                RequirementMergeSourceFile(
+                    mapping_id="docmap-1",
+                    original_filename="登录.md",
+                    markdown_content="# 登录\n\n- 支持账号登录",
+                    conversion_status="success",
+                    mapping_status="pending_merge",
+                )
+            ],
+        )
+        fragments = build_source_fragments(input_data.source_files)
+
+        async def fake_run_agent(_agent_id, prompt):
+            class Result:
+                output = {}
+
+            result = Result()
+            if '"task": "classify_source_blocks"' in prompt:
+                result.output = {
+                    "classifications": [
+                        {
+                            "fragment_id": fragments[0].fragment_id,
+                            "business_module": "登录",
+                            "semantic_key": "account_login",
+                            "fragment_role": "requirement",
+                            "summary": "支持账号登录",
+                            "confidence": 0.9,
+                        }
+                    ]
+                }
+            elif '"task": "decide_cluster"' in prompt:
+                cluster_id = re.search(r'"cluster_id": "([^"]+)"', prompt).group(1)
+                result.output = {
+                    "cluster_id": cluster_id,
+                    "decision": "merge",
+                    "canonical_meaning": "支持账号登录。",
+                    "fragment_decisions": [
+                        {
+                            "fragment_id": fragments[0].fragment_id,
+                            "coverage_status": "merged",
+                            "target_module": "登录",
+                            "target_heading": "账号登录",
+                            "reason": "合入账号登录需求。",
+                        }
+                    ],
+                    "conflicts": [],
+                    "clarification_items": [],
+                }
+            elif '"task": "merge_section"' in prompt:
+                section_key = re.search(r'"section_key": "([^"]+)"', prompt).group(1)
+                result.output = {
+                    "section_key": section_key,
+                    "blocks": [{"type": "paragraph", "content": "系统应支持账号登录。"}],
+                    "covered_fragment_ids": [fragments[0].fragment_id],
+                }
+            else:
+                self.fail("unexpected prompt")
+            return result
+
+        with patch("app.services.requirement_merge_service.run_agent", fake_run_agent):
+            output = await run_requirement_merge(input_data, fragments)
+
+        self.assertEqual(output.status, "merged")
+        self.assertIn("系统应支持账号登录。", output.markdown_content)
+        self.assertEqual(output.markdown_preview, "")
 
 
 if __name__ == "__main__":

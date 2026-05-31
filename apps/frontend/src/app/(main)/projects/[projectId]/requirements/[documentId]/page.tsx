@@ -132,7 +132,6 @@ type MergePreview = {
   previewId: string;
   markdownContent: string;
   mergeSummary: string;
-  canConfirm: boolean;
   qualityResult?: "passed" | "warning" | "failed";
   artifactTabs: MergeArtifactTab[];
 };
@@ -217,6 +216,23 @@ function fallbackMergeArtifactTabs(previewId: string): MergeArtifactTab[] {
   ];
 }
 
+function mergingMergeArtifactTabs(): MergeArtifactTab[] {
+  return [
+    {
+      key: "quality",
+      label: "质量检测",
+      path: "quality/merging.md",
+      content: "# 质量检测\n\n正在合并需求中，完成后会展示质量检测结果。",
+    },
+    {
+      key: "confirmations",
+      label: "待确认项",
+      path: "confirmations/merging.md",
+      content: "# 待确认项\n\n正在合并需求中，完成后会展示需要人工确认的内容。",
+    },
+  ];
+}
+
 function normalizeMergeArtifactTabs(tabs: MergeArtifactTab[] | undefined): MergeArtifactTab[] {
   const normalized = (tabs ?? [])
     .map((artifact) => {
@@ -237,6 +253,10 @@ function normalizeMergeArtifactTabs(tabs: MergeArtifactTab[] | undefined): Merge
     seen.add(artifact.key);
     return true;
   });
+}
+
+function mergeResponseArtifactTabs(tabs: MergeArtifactTab[] | undefined, fallbackId: string): MergeArtifactTab[] {
+  return tabs && tabs.length > 0 ? normalizeMergeArtifactTabs(tabs) : fallbackMergeArtifactTabs(fallbackId);
 }
 
 type MergeResponse =
@@ -326,6 +346,7 @@ export default function DocumentDetailPage() {
   const [mergeError, setMergeError] = useState("");
   const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
   const [mergeArtifactTab, setMergeArtifactTab] = useState(MERGED_REQUIREMENT_TAB_KEY);
+  const [mergeArtifactTabs, setMergeArtifactTabs] = useState<MergeArtifactTab[]>([]);
   const [analysisResult, setAnalysisResult] = useState<RequirementAnalysisResult | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [conflicts, setConflicts] = useState<RequirementConflict[]>([]);
@@ -372,9 +393,12 @@ export default function DocumentDetailPage() {
         ["pending", "processing"].includes(selectedFile.conversion_status)),
   );
   const showConflictTab = Boolean(overview?.has_open_conflicts || conflicts.length > 0);
-  const rawInitialArtifactTabs = mergePreview?.artifactTabs?.length
-    ? mergePreview.artifactTabs
-    : (overview?.artifact_tabs ?? []);
+  const rawInitialArtifactTabs =
+    merging && !mergePreview && mergeArtifactTabs.length === 0
+      ? mergingMergeArtifactTabs()
+      : mergePreview?.artifactTabs?.length
+        ? mergePreview.artifactTabs
+        : mergeArtifactTabs;
   const initialArtifactTabs = useMemo(
     () => normalizeMergeArtifactTabs(rawInitialArtifactTabs),
     [rawInitialArtifactTabs],
@@ -385,6 +409,7 @@ export default function DocumentDetailPage() {
     overview?.merge_sync_status === "outdated" &&
     changedStandardFiles.length > 0;
   const initialMarkdownContent = mergePreview?.markdownContent ?? overview?.initial_markdown_content ?? "";
+  const displayInitialMarkdownContent = merging && !mergePreview ? "" : initialMarkdownContent;
   const hasRunningConversions = Boolean(
     overview?.files.some((file) => ["pending", "processing"].includes(file.conversion_status)),
   );
@@ -411,7 +436,7 @@ export default function DocumentDetailPage() {
   }, [documentId, projectId, updateConflicts]);
 
   const loadOverview = useCallback(
-    async ({ silent = false }: { silent?: boolean } = {}) => {
+    async ({ refreshArtifacts = true, silent = false }: { refreshArtifacts?: boolean; silent?: boolean } = {}) => {
       if (!silent) {
         setLoading(true);
       }
@@ -422,6 +447,9 @@ export default function DocumentDetailPage() {
         );
         setOverview(data);
         setFileRows(data.files);
+        if (refreshArtifacts) {
+          setMergeArtifactTabs(data.artifact_tabs ?? []);
+        }
         setSelectedFileId((current) => current || data.files[0]?.id || "");
         if (data.has_open_conflicts) {
           void loadConflicts();
@@ -723,6 +751,9 @@ export default function DocumentDetailPage() {
     const taskId = createRunningTaskId("frontend", `merge-${documentId}`);
     setMerging(true);
     setMergeError("");
+    setMergePreview(null);
+    setMergeArtifactTabs([]);
+    setMergeArtifactTab(MERGED_REQUIREMENT_TAB_KEY);
     upsertRunningTask({
       id: taskId,
       projectId,
@@ -736,42 +767,39 @@ export default function DocumentDetailPage() {
     try {
       const result = await apiRequest<MergeResponse>(`/projects/${projectId}/requirements/${documentId}/merge`, {
         method: "POST",
+        body: JSON.stringify({ merge_mode: "rebuild", force_rebuild: true }),
       });
       if (result.status === "merged") {
         setMergeError("");
+        const artifactTabs = mergeResponseArtifactTabs(result.artifact_tabs, result.version_id);
+        setMergeArtifactTabs(artifactTabs);
         setMergePreview({
           previewId: result.version_id,
           markdownContent: result.markdown_content,
           mergeSummary: result.merge_summary,
-          canConfirm: false,
           qualityResult: result.quality_result,
-          artifactTabs:
-            result.artifact_tabs && result.artifact_tabs.length > 0
-              ? normalizeMergeArtifactTabs(result.artifact_tabs)
-              : fallbackMergeArtifactTabs(result.version_id),
+          artifactTabs,
         });
         setMergeArtifactTab(MERGED_REQUIREMENT_TAB_KEY);
-        toast.success("初始需求已生成");
+        toast.success("合并需求稿已写入最终需求");
         await loadOverview({ silent: true });
         setActiveTab("initial");
         return;
       }
       if (result.status === "preview") {
         setMergeError("");
+        const artifactTabs = mergeResponseArtifactTabs(result.artifact_tabs, result.preview_id);
+        setMergeArtifactTabs(artifactTabs);
         setMergePreview({
           previewId: result.preview_id,
           markdownContent: result.markdown_preview,
           mergeSummary: result.merge_summary,
-          canConfirm: true,
           qualityResult: result.quality_result,
-          artifactTabs:
-            result.artifact_tabs && result.artifact_tabs.length > 0
-              ? normalizeMergeArtifactTabs(result.artifact_tabs)
-              : fallbackMergeArtifactTabs(result.preview_id),
+          artifactTabs,
         });
         setMergeArtifactTab(MERGED_REQUIREMENT_TAB_KEY);
         updateConflicts(result.conflicts ?? []);
-        toast.success("已生成合并需求稿、质量检测和待确认项");
+        toast.warning("合并未写入最终需求，请查看质量检测和待确认项");
         await loadOverview({ silent: true });
         setActiveTab("initial");
         return;
@@ -779,9 +807,10 @@ export default function DocumentDetailPage() {
       if (result.status === "conflict") {
         setMergeError("");
         setMergePreview(null);
+        setMergeArtifactTabs([]);
         updateConflicts(result.conflicts ?? []);
         toast.warning(`发现 ${result.conflict_count} 个待确认项，请先处理后再生成合并需求稿`);
-        await loadOverview({ silent: true });
+        await loadOverview({ refreshArtifacts: false, silent: true });
         setActiveTab("conflicts");
         return;
       }
@@ -790,61 +819,10 @@ export default function DocumentDetailPage() {
       setMergeError(message);
       toast.error(message);
       setMergePreview(null);
-      await loadOverview({ silent: true });
+      setMergeArtifactTabs([]);
+      await loadOverview({ refreshArtifacts: false, silent: true });
       setMergeArtifactTab(MERGED_REQUIREMENT_TAB_KEY);
       setActiveTab("initial");
-    } finally {
-      setMerging(false);
-      removeRunningTask(taskId);
-    }
-  }
-
-  async function confirmMergePreview() {
-    if (!mergePreview) {
-      return;
-    }
-    const taskId = createRunningTaskId("frontend", `merge-confirm-${documentId}`);
-    setMerging(true);
-    upsertRunningTask({
-      id: taskId,
-      projectId,
-      projectName: projectId,
-      title: overview?.document.name ? `确认合并：${overview.document.name}` : "确认合并",
-      moduleLabel: "需求",
-      status: "running",
-      statusLabel: "写入中",
-      updatedAt: new Date().toISOString(),
-    });
-    try {
-      const result = await apiRequest<MergeResponse>(`/projects/${projectId}/requirements/${documentId}/merge`, {
-        method: "POST",
-        body: JSON.stringify({ confirm_preview_id: mergePreview.previewId }),
-      });
-      if (result.status !== "merged") {
-        toast.error("归并预览确认失败，请重新发起合并");
-        return;
-      }
-      setMergePreview((current) =>
-        current
-          ? {
-              ...current,
-              previewId: result.version_id,
-              markdownContent: result.markdown_content,
-              mergeSummary: result.merge_summary,
-              canConfirm: false,
-              qualityResult: result.quality_result ?? current.qualityResult,
-              artifactTabs:
-                result.artifact_tabs && result.artifact_tabs.length > 0
-                  ? normalizeMergeArtifactTabs(result.artifact_tabs)
-                  : current.artifactTabs,
-            }
-          : null,
-      );
-      toast.success("增量需求已写入新版本");
-      await loadOverview({ silent: true });
-      setActiveTab("initial");
-    } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "归并预览确认失败");
     } finally {
       setMerging(false);
       removeRunningTask(taskId);
@@ -1381,9 +1359,9 @@ export default function DocumentDetailPage() {
                   </TabsList>
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <Button
-                      disabled={!initialMarkdownContent.trim()}
+                      disabled={!displayInitialMarkdownContent.trim()}
                       onClick={() => {
-                        setInitialMarkdownDraft(initialMarkdownContent);
+                        setInitialMarkdownDraft(displayInitialMarkdownContent);
                         setEditingInitial(true);
                       }}
                       type="button"
@@ -1393,7 +1371,7 @@ export default function DocumentDetailPage() {
                       编辑
                     </Button>
                     <Button
-                      disabled={!initialMarkdownContent.trim()}
+                      disabled={!displayInitialMarkdownContent.trim()}
                       onClick={runRequirementAnalysis}
                       type="button"
                       variant="outline"
@@ -1413,7 +1391,7 @@ export default function DocumentDetailPage() {
                       <div>
                         <h2 className="font-medium text-sm">质量检测摘要</h2>
                         <p className="mt-1 text-muted-foreground text-xs">
-                          {mergePreview.mergeSummary || "请确认预览内容后写入版本。"}
+                          {mergePreview.mergeSummary || "合并未写入最终需求，请根据质量检测处理后重新合并。"}
                         </p>
                         {mergePreview.qualityResult ? (
                           <div className="mt-2">
@@ -1423,24 +1401,14 @@ export default function DocumentDetailPage() {
                           </div>
                         ) : null}
                       </div>
-                      {mergePreview.canConfirm ? (
-                        <Button
-                          disabled={merging || mergePreview.qualityResult === "failed"}
-                          onClick={confirmMergePreview}
-                          type="button"
-                        >
-                          <Check className="size-4" />
-                          {merging ? "确认中" : "确认写入版本"}
-                        </Button>
-                      ) : null}
                     </div>
                   </div>
                 ) : null}
                 <TabsContent value={MERGED_REQUIREMENT_TAB_KEY}>
                   <MarkdownPreview
                     className="requirement-document-preview"
-                    content={initialMarkdownContent}
-                    emptyText="尚未生成初始需求，请先在标准文件中发起合并。"
+                    content={displayInitialMarkdownContent}
+                    emptyText={merging ? "正在合并需求中，完成后会展示合并需求稿。" : "尚未生成初始需求，请先在标准文件中发起合并。"}
                     indentParagraphs
                   />
                 </TabsContent>
@@ -1466,7 +1434,7 @@ export default function DocumentDetailPage() {
                       <Button
                         disabled={savingInitial}
                         onClick={() => {
-                          setInitialMarkdownDraft(initialMarkdownContent);
+                          setInitialMarkdownDraft(displayInitialMarkdownContent);
                           setEditingInitial(false);
                         }}
                         type="button"
@@ -1479,9 +1447,9 @@ export default function DocumentDetailPage() {
                   ) : (
                     <>
                       <Button
-                        disabled={!initialMarkdownContent.trim()}
+                        disabled={!displayInitialMarkdownContent.trim()}
                         onClick={() => {
-                          setInitialMarkdownDraft(initialMarkdownContent);
+                          setInitialMarkdownDraft(displayInitialMarkdownContent);
                           setEditingInitial(true);
                         }}
                         type="button"
@@ -1491,7 +1459,7 @@ export default function DocumentDetailPage() {
                         编辑
                       </Button>
                       <Button
-                        disabled={!initialMarkdownContent.trim()}
+                        disabled={!displayInitialMarkdownContent.trim()}
                         onClick={runRequirementAnalysis}
                         type="button"
                         variant="outline"
@@ -1515,9 +1483,9 @@ export default function DocumentDetailPage() {
                 ) : (
                   <MarkdownPreview
                     className="requirement-document-preview"
-                    content={overview.initial_markdown_content}
+                    content={displayInitialMarkdownContent}
                     emptyClassName="flex items-center justify-center text-center"
-                    emptyText="尚未生成初始需求，请先在标准文件中发起合并。"
+                    emptyText={merging ? "正在合并需求中，完成后会展示合并需求稿。" : "尚未生成初始需求，请先在标准文件中发起合并。"}
                     indentParagraphs
                   />
                 )}
@@ -1584,7 +1552,7 @@ export default function DocumentDetailPage() {
               className="requirement-document-preview"
               content={overview.initial_markdown_content}
               emptyClassName="flex items-center justify-center text-center"
-              emptyText="尚未生成最终需求，请先完成初始需求归并并确认写入版本。"
+              emptyText="尚未生成最终需求，请先完成标准文件合并。"
               indentParagraphs
             />
             <div className="mt-6 rounded-lg border bg-muted/20 p-4">
