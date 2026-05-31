@@ -63,7 +63,7 @@ def build_agent(definition: AgentDefinition, skills: list[SkillDefinition] | Non
     )
 
 
-async def run_agent(agent_id: str, prompt: str) -> AgentRunResult:
+async def run_agent(agent_id: str, agent_input: Any) -> AgentRunResult:
     definition = agent_registry.get(agent_id)
     skills = skill_registry.select(definition.skill_ids, agent_id=definition.id)
     model_selection = resolve_agent_model_selection(definition)
@@ -73,20 +73,20 @@ async def run_agent(agent_id: str, prompt: str) -> AgentRunResult:
     run_id = f"agrun-{secrets.token_hex(8)}"
 
     agent_logger.info(
-        "Agent run started | run={run_id} agent={agent_id} model={model} provider={provider} skills={skills} prompt_len={prompt_len}",
+        "Agent run started | run={run_id} agent={agent_id} model={model} provider={provider} skills={skills} input_len={input_len}",
         run_id=run_id,
         agent_id=agent_id,
         model=model_selection.model,
         provider=model_selection.provider or "default",
         skills=skill_names,
-        prompt_len=len(prompt),
+        input_len=len(str(agent_input)),
     )
 
     try:
         agent = build_agent(definition, skills)
         result = await Runner.run(
             agent,
-            prompt,
+            agent_input,
             run_config=RunConfig(
                 model=model_selection.model,
                 model_provider=_build_model_provider(model_selection),

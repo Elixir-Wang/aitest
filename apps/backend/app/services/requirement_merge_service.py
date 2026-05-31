@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.agents.runtime import run_agent
+from app.agents.requirement_merge.runner import run_requirement_merge_prompt
 from app.schemas.requirement_merge import (
     RequirementClusterDecision,
     RequirementClusterDecisionRaw,
@@ -135,8 +135,8 @@ def _fallback_v2_preview(
 
 
 async def run_requirement_merge_agent(input_data: RequirementMergeInput) -> RequirementMergeOutput:
-    result = await run_agent(REQUIREMENT_MERGE_AGENT_ID, _build_agent_prompt(input_data))
-    merge_output = _parse_agent_output(result.output)
+    output = await run_requirement_merge_prompt(_build_agent_prompt(input_data))
+    merge_output = _parse_agent_output(output)
     _complete_source_file_coverage(merge_output, input_data)
     return normalize_merge_output(merge_output, input_data)
 
@@ -697,16 +697,16 @@ def _build_v2_section_merge_prompt(
 
 
 async def _run_small_json_stage(prompt: str, error_message: str) -> Any:
-    result = await run_agent(REQUIREMENT_MERGE_AGENT_ID, prompt)
+    output = await run_requirement_merge_prompt(prompt)
     try:
-        return _parse_small_json_output(result.output, error_message)
+        return _parse_small_json_output(output, error_message)
     except ValueError as first_exc:
-        repair_prompt = _build_json_repair_prompt(result.output, error_message)
-        repaired_result = await run_agent(REQUIREMENT_MERGE_AGENT_ID, repair_prompt)
+        repair_prompt = _build_json_repair_prompt(output, error_message)
+        repaired_output = await run_requirement_merge_prompt(repair_prompt)
         try:
-            return _parse_small_json_output(repaired_result.output, error_message)
+            return _parse_small_json_output(repaired_output, error_message)
         except ValueError as second_exc:
-            raw_excerpt = _raw_output_excerpt(result.output)
+            raw_excerpt = _raw_output_excerpt(output)
             raise ValueError(f"{error_message} 原始输出摘要：{raw_excerpt}") from second_exc
 
 

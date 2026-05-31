@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
+from app.ai_agents.document_editor.workflow import edit_document
 from app.dependencies.auth import current_user
 from app.schemas.document_editor import DocumentEditInput, DocumentEditOutput
 from app.schemas.agent import AgentModelAssignmentIn, AgentModelAssignmentOut, AgentOut, AgentRunIn, AgentRunOut, SkillOut
 from app.services import agent_service
-from app.services.document_editor_service import edit_document
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -33,7 +33,7 @@ def update_model_assignment(agent_id: str, payload: AgentModelAssignmentIn, acto
 
 @router.post("/document-editor/run", response_model=DocumentEditOutput)
 async def run_document_editor(payload: DocumentEditInput, actor=Depends(current_user)) -> DocumentEditOutput:
-    return await edit_document(payload)
+    return await edit_document(payload, actor_id=actor["id"])
 
 
 @router.post("/{agent_id}/run", response_model=AgentRunOut)

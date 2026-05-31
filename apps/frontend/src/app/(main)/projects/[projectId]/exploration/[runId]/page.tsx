@@ -600,6 +600,7 @@ function buildAgentPlanTasks(detail: ExplorationRunDetail | null): AgentPlanTask
         description: page.recent_event || page.structure_summary || page.blocker_reason || "",
         status: normalizeAgentPlanStatus(page.status || "pending"),
         meta: [page.url || page.entry_path].filter((item): item is string => Boolean(item)),
+        steps: page.steps,
       })),
     }));
 }
@@ -1324,13 +1325,7 @@ function TaskSection({ children, title }: { children: ReactNode; title: string }
   );
 }
 
-function GoalValidationSection({
-  detail,
-  run,
-}: {
-  detail: ExplorationRunDetail | null;
-  run: ExplorationRun | null;
-}) {
+function GoalValidationSection({ detail, run }: { detail: ExplorationRunDetail | null; run: ExplorationRun | null }) {
   const validation = detail?.goal_validation;
   const goal = validation?.goal || run?.goal || "";
   const status = validation?.status || (goal ? "pending" : "skipped");

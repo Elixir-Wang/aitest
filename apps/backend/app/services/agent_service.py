@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from app.agents.admin_runner import run_ad_hoc_agent
 from app.agents.registry import agent_registry
-from app.agents.runtime import run_agent
 from app.agents.skills import skill_registry
+from app.ai_agents.manifest import get_ai_agent, list_ai_agents
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.repositories import model_repo
@@ -19,7 +20,7 @@ def list_agents(_actor) -> list[dict]:
             "model": agent.model,
             "skill_ids": list(agent.skill_ids),
         }
-        for agent in agent_registry.list()
+        for agent in list_ai_agents()
     ]
 
 
@@ -38,7 +39,7 @@ def list_skills(_actor) -> list[dict]:
 
 async def execute_agent(agent_id: str, payload: AgentRunIn, actor) -> dict:
     try:
-        result = await run_agent(agent_id, payload.prompt)
+        result = await run_ad_hoc_agent(agent_id, payload.prompt)
     except KeyError as exc:
         raise api_error(404, "AGENT_NOT_FOUND", "智能体不存在。") from exc
     output = {
@@ -85,7 +86,7 @@ def list_model_assignments(_actor) -> list[dict]:
     with connect() as db:
         rows = {row["agent_id"]: row for row in model_repo.list_agent_assignments(db)}
         assignments: list[dict] = []
-        for agent in agent_registry.list():
+        for agent in list_ai_agents():
             row = rows.get(agent.id)
             assignments.append(_serialize_assignment(agent.id, row))
         return assignments
@@ -93,7 +94,7 @@ def list_model_assignments(_actor) -> list[dict]:
 
 def update_model_assignment(agent_id: str, payload: AgentModelAssignmentIn, actor) -> dict:
     try:
-        agent_registry.get(agent_id)
+        get_ai_agent(agent_id)
     except KeyError as exc:
         raise api_error(404, "AGENT_NOT_FOUND", "智能体不存在。") from exc
 
@@ -127,7 +128,7 @@ def update_model_assignment(agent_id: str, payload: AgentModelAssignmentIn, acto
 
 
 def _serialize_assignment(agent_id: str, row) -> dict:
-    agent = agent_registry.get(agent_id)
+    agent = get_ai_agent(agent_id)
     base = {
         "agent_id": agent.id,
         "agent_name": agent.name,

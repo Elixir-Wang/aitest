@@ -147,6 +147,8 @@ def write_outline_merge_machine_artifacts(
     artifacts_dir = document_dir / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     payloads = {
+        "source_title_tree_path": ("source-title-tree", _source_title_tree_payload(source_documents)),
+        "source_node_classification_path": ("source-node-classification", _source_node_classification_payload(source_documents)),
         "source_outline_path": ("source-outline", source_documents),
         "target_outline_path": ("target-outline", target_outline),
         "outline_assignments_path": ("outline-assignments", assignments),
@@ -175,6 +177,58 @@ def write_outline_merge_machine_artifacts(
         path.write_text(json.dumps(_jsonable(payload), ensure_ascii=False, indent=2), encoding="utf-8")
         paths[key] = store_path(path) or str(path)
     return paths
+
+
+def _source_title_tree_payload(source_documents: list) -> list[dict]:
+    return [
+        {
+            "document_code": document.document_code,
+            "mapping_id": document.mapping_id,
+            "source_file": document.source_file,
+            "title_tree": [_source_node_tree_payload(node) for node in document.nodes],
+        }
+        for document in source_documents
+    ]
+
+
+def _source_node_tree_payload(node) -> dict:
+    return {
+        "node_id": node.node_id,
+        "level": node.level,
+        "title": node.title,
+        "node_role": node.node_role,
+        "must_assign": node.must_assign,
+        "children": [_source_node_tree_payload(child) for child in node.children],
+    }
+
+
+def _source_node_classification_payload(source_documents: list) -> list[dict]:
+    nodes = []
+    for document in source_documents:
+        for node in _flatten_source_nodes(document.nodes):
+            nodes.append(
+                {
+                    "node_id": node.node_id,
+                    "document_code": node.document_code,
+                    "source_file": node.source_file,
+                    "level": node.level,
+                    "title": node.title,
+                    "node_role": node.node_role,
+                    "must_assign": node.must_assign,
+                    "parent_path": node.heading_path,
+                    "children": [child.node_id for child in node.children],
+                    "has_body": bool(node.own_body_plain_text),
+                }
+            )
+    return nodes
+
+
+def _flatten_source_nodes(nodes) -> list:
+    result = []
+    for node in nodes:
+        result.append(node)
+        result.extend(_flatten_source_nodes(node.children))
+    return result
 
 
 def read_merge_artifact_tabs(project_id: str, document_id: str, run_id: str) -> list[dict]:

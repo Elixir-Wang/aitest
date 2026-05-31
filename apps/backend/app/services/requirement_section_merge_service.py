@@ -4,7 +4,7 @@ import json
 import re
 from typing import Any
 
-from app.agents.runtime import run_agent
+from app.agents.requirement_merge.runner import run_requirement_merge_prompt
 from app.schemas.requirement_merge import (
     OutlineAssignment,
     OutlineSectionBlock,
@@ -82,8 +82,8 @@ async def _merge_single_section(
     source_nodes: list[SourceOutlineNode],
 ) -> OutlineSectionMergeResult:
     prompt = _build_section_merge_prompt(section, source_nodes)
-    result = await run_agent(REQUIREMENT_MERGE_AGENT_ID, prompt)
-    parsed = _parse_json_object(result.output)
+    output = await run_requirement_merge_prompt(prompt)
+    parsed = _parse_json_object(output)
     section_result = _parse_section_result(section.section_id, parsed)
     issues = validate_section_result(section_result, source_nodes)
     if issues:

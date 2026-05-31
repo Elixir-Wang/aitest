@@ -1,4 +1,4 @@
-# SSO 产品进入状态接口 v1.1
+# SSO 产品进入状态接口 v1.0
 
 > **说明**：为前端判断是否弹邀请码，为产品后端回写首次接入状态
 
@@ -6,14 +6,13 @@
 
 ## 一、背景
 
-百工等邀请制产品需要前端在用户点击"进入产品"时判断是否弹出邀请码弹窗。认证中心维护轻量状态：某个 unified\_uid 是否已完成某个 product\_code 的首次接入。
+百工等邀请制产品需要前端在用户点击"进入产品"时判断是否弹出邀请码弹窗。认证中心维护轻量状态：某个 unified_uid 是否已完成某个 product_code 的首次接入。
 
 **职责边界**：
 
-*   认证中心：维护首次接入状态（CONNECTED / NOT\_CONNECTED）
+*   认证中心：维护首次接入状态（CONNECTED / NOT_CONNECTED）
     
 *   产品侧：校验邀请码有效性、维护本地账号、角色、权限
-    
 
 ---
 
@@ -30,20 +29,19 @@
 
 ### 业务逻辑
 
-1.  校验 session\_token，获取 unified\_uid
+1.  校验 session_token，获取 unified_uid
     
-2.  查询产品配置（不存在 → PRODUCT\_INVALID，禁用 → PRODUCT\_DISABLED）
+2.  查询产品配置（不存在 → PRODUCT_INVALID，禁用 → PRODUCT_DISABLED）
     
-3.  如果 `require_invite_code = false`：action = CREATE\_TICKET\_DIRECTLY
+3.  如果 `require_invite_code = false`：action = CREATE_TICKET_DIRECTLY
     
 4.  如果 `require_invite_code = true`：
     
     *   查询 `auth_product_user_access` 是否存在 CONNECTED 记录
         
-    *   存在 → action = CREATE\_TICKET\_DIRECTLY
+    *   存在 → action = CREATE_TICKET_DIRECTLY
         
-    *   不存在 → action = SHOW\_INVITE\_DIALOG
-        
+    *   不存在 → action = SHOW_INVITE_DIALOG
 
 ### 成功响应：需要弹邀请码
 
@@ -85,10 +83,10 @@
 
 | 错误码 | 说明 |
 | --- | --- |
-| SESSION\_INVALID | 未登录或 session 过期 |
-| PRODUCT\_INVALID | 产品不存在 |
-| PRODUCT\_DISABLED | 产品已禁用 |
-| PARAM\_INVALID | product\_code 为空 |
+| SESSION_INVALID | 未登录或 session 过期 |
+| PRODUCT_INVALID | 产品不存在 |
+| PRODUCT_DISABLED | 产品已禁用 |
+| PARAM_INVALID | product_code 为空 |
 
 ---
 
@@ -120,31 +118,29 @@
 | `product_code` | string | ✅ | 产品编码 |
 | `unified_uid` | string | ✅ | 统一用户 ID |
 | `access_status` | string | ✅ | P0 仅支持 `CONNECTED` |
-| `bind_source` | string | ❌ | 接入来源：INVITE\_CODE / ADMIN / IMPORT / UNKNOWN |
+| `bind_source` | string | ❌ | 接入来源：INVITE_CODE / ADMIN / IMPORT / UNKNOWN |
 
 ### 鉴权逻辑
 
-1.  校验 Authorization: Bearer {product\_access\_key}
+1.  校验 Authorization: Bearer {product_access_key}
     
-2.  product\_access\_key 必须属于请求体中的 product\_code
+2.  product_access_key 必须属于请求体中的 product_code
     
 3.  产品必须 ENABLED
     
-4.  鉴权失败 → PRODUCT\_ACCESS\_DENIED
-    
+4.  鉴权失败 → PRODUCT_ACCESS_DENIED
 
 ### 业务逻辑
 
-1.  校验 unified\_uid 对应用户存在
+1.  校验 unified_uid 对应用户存在
     
-2.  校验 access\_status = CONNECTED
+2.  校验 access_status = CONNECTED
     
 3.  Upsert `auth_product_user_access`：
     
-    *   不存在：插入，first\_connected\_at = now，last\_connected\_at = now
+    *   不存在：插入，first_connected_at = now，last_connected_at = now
         
-    *   已存在：更新 access\_status = CONNECTED，last\_connected\_at = now（不覆盖 first\_connected\_at）
-        
+    *   已存在：更新 access_status = CONNECTED，last_connected_at = now（不覆盖 first_connected_at）
 
 ### 成功响应
 
@@ -164,11 +160,11 @@
 
 | 错误码 | 说明 |
 | --- | --- |
-| PRODUCT\_ACCESS\_DENIED | product\_access\_key 错误 |
-| PRODUCT\_INVALID | 产品不存在 |
-| PRODUCT\_DISABLED | 产品已禁用 |
-| USER\_NOT\_FOUND | unified\_uid 不存在 |
-| PARAM\_INVALID | 参数错误或 access\_status 非 CONNECTED |
+| PRODUCT_ACCESS_DENIED | product_access_key 错误 |
+| PRODUCT_INVALID | 产品不存在 |
+| PRODUCT_DISABLED | 产品已禁用 |
+| USER_NOT_FOUND | unified_uid 不存在 |
+| PARAM_INVALID | 参数错误或 access_status 非 CONNECTED |
 
 ---
 
@@ -192,7 +188,7 @@ CREATE TABLE auth_product_user_access (
 
 ```
 
-**不存储**：邀请码、local\_user\_id、local\_tenant\_id、权限
+**不存储**：邀请码、local_user_id、local_tenant_id、权限
 
 ---
 
@@ -244,12 +240,12 @@ flowchart TD
 
 ## 七、安全说明
 
-*   status 接口使用官网 session\_token 鉴权，只返回当前用户自己的状态
+*   status 接口使用官网 session_token 鉴权，只返回当前用户自己的状态
     
-*   confirm 接口使用 product\_access\_key 鉴权，只有合法产品后端才能调用
+*   confirm 接口使用 product_access_key 鉴权，只有合法产品后端才能调用
     
-*   日志中不打印 session\_token、product\_access\_key、邀请码
+*   日志中不打印 session_token、product_access_key、邀请码
     
 *   不存储邀请码明文
     
-*   不存储 local\_user\_id / local\_tenant\_id
+*   不存储 local_user_id / local_tenant_id

@@ -16,13 +16,15 @@ def build_source_outline(source_files: list[RequirementMergeSourceFile]) -> list
     for source_index, source_file in enumerate(source_files):
         document_code = _source_code(source_index)
         flat_nodes = _outline_nodes_for_file(source_file, document_code)
+        nodes = _nest_nodes(flat_nodes)
+        _classify_nodes(nodes)
         documents.append(
             SourceOutlineDocument(
                 document_code=document_code,
                 mapping_id=source_file.mapping_id,
                 source_file=source_file.original_filename,
                 source_file_hash=_content_hash(source_file.markdown_content),
-                nodes=_nest_nodes(flat_nodes),
+                nodes=nodes,
             )
         )
     return documents
@@ -61,6 +63,8 @@ def _outline_nodes_for_file(source_file: RequirementMergeSourceFile, document_co
         node_id = _node_id(document_code, [value for value in counters if value])
         markdown = unit["markdown"].strip()
         content_types = _content_types(markdown)
+        own_body_markdown = _own_body_markdown(markdown, unit["title"])
+        own_body_plain_text = _plain_text(own_body_markdown)
         nodes.append(
             SourceOutlineNode(
                 node_id=node_id,
@@ -72,6 +76,8 @@ def _outline_nodes_for_file(source_file: RequirementMergeSourceFile, document_co
                 heading_path=unit["heading_path"],
                 content_markdown=markdown,
                 plain_text=_plain_text(markdown),
+                own_body_markdown=own_body_markdown,
+                own_body_plain_text=own_body_plain_text,
                 sub_headings=_sub_headings(markdown, min_level=level + 1),
                 content_types=content_types,
                 anchors=_anchors(markdown),
@@ -231,3 +237,32 @@ def _is_non_requirement(markdown: str) -> bool:
     if not plain:
         return True
     return bool(re.fullmatch(r"[-*_]{3,}", plain))
+
+
+def _own_body_markdown(markdown: str, title: str) -> str:
+    lines = markdown.splitlines()
+    body_started = False
+    body_lines: list[str] = []
+    for line in lines:
+        heading = _heading_match(line)
+        if not body_started and heading and heading[1].strip() == title.strip():
+            body_started = True
+            continue
+        if body_started:
+            body_lines.append(line)
+    return "\n".join(body_lines).strip()
+
+
+def _node_role(level: int, children: list, own_body_plain_text: str) -> str:
+    if level not in {2, 3}:
+        return "structural"
+    if children and not own_body_plain_text:
+        return "structural"
+    return "content"
+
+
+def _classify_nodes(nodes: list[SourceOutlineNode]) -> None:
+    for node in nodes:
+        _classify_nodes(node.children)
+        node.node_role = _node_role(node.level, node.children, node.own_body_plain_text)
+        node.must_assign = node.node_role == "content"

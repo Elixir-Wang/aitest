@@ -692,7 +692,18 @@ def stop_project_run(project_id: str, run_id: str, actor) -> dict:
             after = _run_snapshot(result)
             should_log = False
         elif existing["status"] == "stopping":
-            result = serialize_exploration_run(existing, actor["role"])
+            if existing["finished_at"]:
+                exploration_repo.update_run_state(
+                    db,
+                    run_id,
+                    status="cancelled",
+                    result_summary=existing["result_summary"] or "用户已停止探索，已保留停止前生成的日志和产物。",
+                    finished=True,
+                )
+                row = exploration_repo.find_by_id(db, run_id)
+                result = serialize_exploration_run(row, actor["role"])
+            else:
+                result = serialize_exploration_run(existing, actor["role"])
             after = _run_snapshot(result)
             should_log = False
         elif existing["status"] in {"queued", "running", "waiting_human"}:

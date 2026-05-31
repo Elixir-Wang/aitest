@@ -76,10 +76,14 @@ class SourceOutlineNode(BaseModel):
     heading_path: list[str] = Field(default_factory=list)
     content_markdown: str
     plain_text: str
+    own_body_markdown: str = ""
+    own_body_plain_text: str = ""
     sub_headings: list[str] = Field(default_factory=list)
     content_types: list[str] = Field(default_factory=list)
     anchors: list[str] = Field(default_factory=list)
     preserve_original: bool = False
+    node_role: str = "content"
+    must_assign: bool = True
     content_hash: str
     children: list["SourceOutlineNode"] = Field(default_factory=list)
 

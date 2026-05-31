@@ -4,7 +4,7 @@ import json
 import re
 from typing import Any
 
-from app.agents.runtime import run_agent
+from app.agents.requirement_merge.runner import run_requirement_merge_prompt
 from app.schemas.requirement_merge import SourceOutlineDocument, SourceOutlineNode, TargetOutlineSection
 from app.services.requirement_source_outline_service import flatten_source_outline
 
@@ -22,12 +22,16 @@ async def generate_target_outline(
         "raw_output": "",
     }
     try:
-        result = await run_agent(REQUIREMENT_MERGE_AGENT_ID, prompt)
-        debug["raw_output"] = str(result.output)
-        parsed = _parse_json_object(result.output)
+        output = await run_requirement_merge_prompt(prompt)
+        debug["raw_output"] = str(output)
+        parsed = _parse_json_object(output)
         sections = _parse_outline_sections(parsed.get("sections", parsed.get("outline", [])))
         outline = build_target_outline(document_name, sections)
         issues = validate_target_outline(outline, document_name)
+        if not issues:
+            from app.services.requirement_outline_assignment_service import validate_outline_source_refs
+
+            issues = validate_outline_source_refs(source_documents, outline)
         if issues:
             raise ValueError("；".join(issues))
         return outline, [], debug
@@ -52,7 +56,7 @@ def validate_target_outline(outline: list[TargetOutlineSection], document_name: 
     if root.title.strip() != document_name.strip():
         issues.append("目标大纲一级标题必须等于需求名称。")
     if not root.children:
-        issues.append("目标大纲必须包含至少一个二级业务章节。")
+        issues.append("目标大纲必须包含至少一个二级章节。")
 
     def visit(section: TargetOutlineSection, parent: TargetOutlineSection | None = None) -> None:
         if not section.section_id.strip():
@@ -80,56 +84,6 @@ def validate_target_outline(outline: list[TargetOutlineSection], document_name: 
     return issues
 
 
-def fallback_target_outline(source_documents: list[SourceOutlineDocument]) -> list[TargetOutlineSection]:
-    nodes = flatten_source_outline(source_documents)
-    buckets = [
-        ("S-01", "背景与目标", ("background",)),
-        ("S-02", "范围与职责边界", ("requirement",)),
-        ("S-03", "核心业务规则", ("requirement", "acceptance")),
-        ("S-04", "接口契约", ("interface", "table", "error_code")),
-        ("S-05", "流程与状态流转", ("state_flow",)),
-        ("S-06", "安全要求", ("security",)),
-        ("S-07", "验收标准", ("acceptance",)),
-    ]
-    used_titles: set[str] = set()
-    children: list[TargetOutlineSection] = []
-    for section_id, title, content_types in buckets:
-        if content_types and not any(set(node.content_types) & set(content_types) for node in nodes):
-            continue
-        if title in used_titles:
-            continue
-        used_titles.add(title)
-        children.append(
-            TargetOutlineSection(
-                section_id=section_id,
-                parent_id="root",
-                level=2,
-                title=title,
-                reason="系统根据旧大纲标题和内容类型生成的保守合并章节。",
-                source_node_ids=[node.node_id for node in nodes if set(node.content_types) & set(content_types)] if content_types else [],
-            )
-        )
-    if not children:
-        children = [
-            TargetOutlineSection(
-                section_id="S-01",
-                parent_id="root",
-                level=2,
-                title="合并需求",
-                reason="来源大纲不足，使用全文合并章节。",
-            )
-        ]
-    return [
-        TargetOutlineSection(
-            section_id="root",
-            level=1,
-            title="合并需求",
-            reason="系统固定的需求文档根节点。",
-            children=children,
-        )
-    ]
-
-
 def flatten_target_outline(outline: list[TargetOutlineSection]) -> list[TargetOutlineSection]:
     result: list[TargetOutlineSection] = []
 
@@ -155,16 +109,19 @@ def build_target_outline(document_name: str, sections: list[TargetOutlineSection
         reason="系统固定的需求文档根节点。",
         children=_normalize_outline_children(sections, parent_id="root"),
     )
+    _move_parent_source_refs_to_leaf(root)
     return [root]
 
 
 def outline_stage_input_summary(source_documents: list[SourceOutlineDocument]) -> dict:
     nodes = flatten_source_outline(source_documents)
     indexed_nodes = [node for node in nodes if node.level in {2, 3}]
+    assignable_nodes = [node for node in indexed_nodes if node.must_assign]
     return {
         "document_count": len(source_documents),
         "source_node_count": len(nodes),
         "indexed_heading_count": len(indexed_nodes),
+        "assignable_heading_count": len(assignable_nodes),
         "level_counts": {str(level): sum(1 for node in nodes if node.level == level) for level in sorted({node.level for node in nodes})},
         "indexed_level_counts": {
             str(level): sum(1 for node in indexed_nodes if node.level == level)
@@ -176,17 +133,19 @@ def outline_stage_input_summary(source_documents: list[SourceOutlineDocument]) -
 def _build_outline_prompt(document_name: str, source_documents: list[SourceOutlineDocument]) -> str:
     payload = {
         "document_name": document_name,
-        "source_heading_index": [_document_index(document) for document in source_documents],
+        "source_title_tree": [_document_index(document) for document in source_documents],
     }
     return (
-        "你是需求归并智能体。当前阶段只生成新的统一目标大纲的二级、三级业务目录。\n"
+        "你是通用文档合并智能体。当前阶段只生成新的统一目标大纲的二级、三级目录。\n"
         "一级标题由系统固定为 document_name，你禁止输出一级标题。\n"
-        "输入是多个旧需求文档的二级、三级标题索引、父子关系、内容类型和锚点，不是正文。\n"
-        "请根据多个原文档二三级目录组合、去重、归并生成新的二级、三级目录，不要照搬源文档顺序。\n"
-        "生成每个二级、三级目录时，必须同时输出该目录直接承接的 source_node_ids；source_node_ids 只能使用输入 source_heading_index 中存在的 node_id。\n"
+        "输入是多个来源文档的标题树，不是正文。标题树保留一级、二级、三级目录关系。\n"
+        "字段说明：node_id 是旧标题唯一 ID；level 是旧标题层级；title 是旧标题原文；node_role=content 表示有独立正文；node_role=structural 表示仅为结构标题；must_assign=true 表示该旧标题必须进入一个新叶子目录；children 是子标题。\n"
+        "请根据多个原文档标题树组合、去重、归并生成新的二级、三级目录，不要照搬源文档顺序，不要引入输入中不存在的领域概念。\n"
+        "生成每个二级、三级目录时，必须同时输出该目录直接承接的 source_node_ids；source_node_ids 只能使用输入 source_title_tree 中 must_assign=true 的 node_id。\n"
+        "node_role=structural 或 must_assign=false 的 node_id 只能辅助理解结构，禁止放入 source_node_ids。\n"
         "只有没有 children 的叶子目录可以承接 source_node_ids；有 children 的父目录必须作为结构容器，source_node_ids 必须为空。\n"
-        "每个旧 node_id 必须且只能出现在一个叶子目录的 source_node_ids 中；没有子目录的叶子目录 source_node_ids 不能为空。\n"
-        "如果旧二级标题自身有内容且新目录需要拆成三级，请为该旧二级标题生成一个对应的三级叶子目录承接它，不要把它挂到父目录。\n"
+        "每个 must_assign=true 的旧 node_id 必须且只能出现在一个叶子目录的 source_node_ids 中；没有子目录的叶子目录 source_node_ids 不能为空。\n"
+        "如果旧标题自身有内容且新目录需要拆成子目录，请为该旧标题生成一个对应的叶子目录承接它，不要把它挂到父目录。\n"
         "reason 只作为说明，不作为后续归属依据。\n"
         "只返回 JSON 对象，不要 Markdown 代码块，不要解释文字。\n"
         "JSON 字段：sections。sections 每项字段：section_id, parent_id, level, title, reason, source_node_ids, children。\n"
@@ -201,7 +160,7 @@ def _document_index(document: SourceOutlineDocument) -> dict:
         "document_code": document.document_code,
         "mapping_id": document.mapping_id,
         "source_file": document.source_file,
-        "nodes": [_node_index(node) for node in flatten_nodes(document.nodes) if node.level in {2, 3}],
+        "title_tree": [_node_index(node) for node in document.nodes],
     }
 
 
@@ -218,11 +177,9 @@ def _node_index(node: SourceOutlineNode) -> dict:
         "node_id": node.node_id,
         "level": node.level,
         "title": node.title,
-        "heading_path": node.heading_path,
-        "sub_headings": node.sub_headings,
-        "content_types": node.content_types,
-        "anchors": node.anchors,
-        "preserve_original": node.preserve_original,
+        "node_role": node.node_role,
+        "must_assign": node.must_assign,
+        "children": [_node_index(child) for child in node.children],
     }
 
 
@@ -270,6 +227,33 @@ def _normalize_outline_children(sections: list[TargetOutlineSection], *, parent_
             )
         )
     return normalized
+
+
+def _move_parent_source_refs_to_leaf(section: TargetOutlineSection) -> None:
+    for child in section.children:
+        _move_parent_source_refs_to_leaf(child)
+    if section.level not in {2, 3} or not section.children or not section.source_node_ids:
+        return
+    existing_ids = {child.section_id for child in section.children}
+    base_id = f"{section.section_id}-leaf"
+    overview_id = base_id
+    index = 1
+    while overview_id in existing_ids:
+        overview_id = f"{base_id}-{index:02d}"
+        index += 1
+    section.children.insert(
+        0,
+        TargetOutlineSection(
+            section_id=overview_id,
+            parent_id=section.section_id,
+            level=section.level + 1,
+            title="概述",
+            reason="系统将父章节来源下沉到叶子章节，父章节仅保留结构作用。",
+            source_node_ids=list(section.source_node_ids),
+            children=[],
+        ),
+    )
+    section.source_node_ids = []
 
 
 def _parse_source_node_ids(raw_value: Any) -> list[str]:

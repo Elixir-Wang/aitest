@@ -280,4 +280,4 @@ def _assignment_batches(source_nodes: list[SourceOutlineNode]) -> list[list[Sour
 
 
 def assignable_source_nodes(source_documents: list[SourceOutlineDocument]) -> list[SourceOutlineNode]:
-    return [node for node in flatten_source_outline(source_documents) if node.level in {2, 3}]
+    return [node for node in flatten_source_outline(source_documents) if node.must_assign]
