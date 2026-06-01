@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import secrets
 import shutil
 from pathlib import Path
@@ -13,9 +11,8 @@ from app.core.storage import project_requirement_dir, resolve_stored_path, store
 from app.repositories import document_repo, project_repo
 from app.services.document_serializer import serialize_document_from_db, serialize_file_mapping
 from app.schemas.requirement_conversion import RequirementConversionInput
-from app.services.raw_requirement_format_converter_service import convert_raw_requirement_format
+from app.agents.raw_requirement_converter.service import convert_requirement_file, fallback_convert_requirement_file
 from app.services.requirement_markdown_normalizer import normalize_requirement_markdown
-from app.services.requirement_file_converter import convert_requirement_file_to_markdown
 from app.services import operation_log_service
 
 DOCUMENT_PENDING_MERGE_STATUS = "pending_merge"
@@ -315,7 +312,7 @@ async def convert_source_file_mapping(mapping_id: str) -> dict:
         markdown_path = standard_markdown_path(row["project_id"], row["document_id"], row["id"])
         markdown_text, conversion_summary = await convert_to_markdown(
             row["original_filename"],
-            source_path.read_bytes(),
+            source_path=source_path,
             assets_dir=standard_assets_dir(row["project_id"], row["document_id"], row["id"]),
         )
         markdown_path.parent.mkdir(parents=True, exist_ok=True)
@@ -341,18 +338,31 @@ async def convert_source_file_mapping(mapping_id: str) -> dict:
             return serialize_file_mapping(updated)
 
 
-async def convert_to_markdown(filename: str, raw_bytes: bytes, *, assets_dir: Path | None = None) -> tuple[str, str]:
-    candidate_markdown, candidate_summary = convert_requirement_file_to_markdown(filename, raw_bytes, assets_dir=assets_dir)
-    candidate_markdown = normalize_requirement_markdown(candidate_markdown)
+async def convert_to_markdown(
+    filename: str,
+    raw_bytes: bytes | None = None,
+    *,
+    source_path: Path | None = None,
+    assets_dir: Path | None = None,
+) -> tuple[str, str]:
+    if source_path is None:
+        if raw_bytes is None:
+            raise ValueError("缺少原始文件路径或文件内容，无法生成 Markdown 标准文件。")
+        source_path = assets_dir.parent / filename if assets_dir is not None else Path(filename)
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_bytes(raw_bytes)
+
     conversion_input = RequirementConversionInput(
         filename=filename,
         file_format=file_format_for_filename(filename),
-        candidate_markdown=candidate_markdown,
-        candidate_summary=candidate_summary,
+        source_file_path=str(source_path),
+        assets_dir_path=str(assets_dir) if assets_dir else None,
     )
     try:
-        agent_output = await convert_raw_requirement_format(conversion_input)
+        agent_output = await convert_requirement_file(conversion_input)
     except Exception as exc:
+        fallback_markdown, fallback_summary = fallback_convert_requirement_file(conversion_input)
+        fallback_markdown = normalize_requirement_markdown(fallback_markdown)
         logger.warning(
             "Requirement format agent output failed; using local conversion fallback | filename={filename} file_format={file_format} error={error_type}: {error}",
             filename=filename,
@@ -360,16 +370,16 @@ async def convert_to_markdown(filename: str, raw_bytes: bytes, *, assets_dir: Pa
             error_type=type(exc).__name__,
             error=str(exc),
         )
-        return candidate_markdown, f"{candidate_summary}（智能体输出解析或运行失败，已使用本地转换结果：{type(exc).__name__}。）"
+        return fallback_markdown, f"{fallback_summary}（智能体输出解析或运行失败，已使用本地转换结果：{type(exc).__name__}。）"
 
     markdown = normalize_requirement_markdown(agent_output.markdown_content)
     markdown = markdown.strip()
     if not markdown:
-        return candidate_markdown, f"{candidate_summary}（智能体未返回有效 Markdown，已使用本地转换结果。）"
+        fallback_markdown, fallback_summary = fallback_convert_requirement_file(conversion_input)
+        fallback_markdown = normalize_requirement_markdown(fallback_markdown)
+        return fallback_markdown, f"{fallback_summary}（智能体未返回有效 Markdown，已使用本地转换结果。）"
 
     summary = agent_output.conversion_summary.strip() or "已通过格式转换智能体标准化 Markdown。"
-    if agent_output.warnings:
-        summary = f"{summary} 警告：{'；'.join(agent_output.warnings)}"
     return markdown + "\n", summary
 
 

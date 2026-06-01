@@ -1,6 +1,6 @@
-from __future__ import annotations
+from app.agents.raw_requirement_converter.service import convert_requirement_file
+from app.schemas.requirement_conversion import RequirementConversionInput, RequirementConversionOutput
 
-from app.agents.raw_requirement_format_converter.runner import convert_raw_requirement_format
 
-
-__all__ = ["convert_raw_requirement_format"]
+async def convert_raw_requirement_format(input_data: RequirementConversionInput) -> RequirementConversionOutput:
+    return await convert_requirement_file(input_data)

@@ -41,10 +41,11 @@ export type ApiModelProvider = {
   available_actions: string[];
 };
 
-export type ApiAgentModelAssignment = {
-  agent_id: string;
-  agent_name: string;
-  agent_description: string;
+export type ApiModelAssignment = {
+  capability_id: string;
+  capability_name: string;
+  capability_description: string;
+  capability_kind: "agent" | "llm_task";
   model_provider_id: string | null;
   provider: string | null;
   model: string | null;

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
 from app.dependencies.auth import current_user

@@ -1,17 +1,13 @@
-from __future__ import annotations
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class RequirementConversionInput(BaseModel):
     filename: str
     file_format: str
-    candidate_markdown: str
-    candidate_summary: str
+    source_file_path: str
+    assets_dir_path: str | None = None
 
 
 class RequirementConversionOutput(BaseModel):
-    markdown_content: str = ""
+    markdown_content: str
     conversion_summary: str = ""
-    quality_score: int = Field(default=100, ge=0, le=100)
-    warnings: list[str] = Field(default_factory=list)

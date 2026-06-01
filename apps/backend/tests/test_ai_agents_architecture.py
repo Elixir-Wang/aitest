@@ -1,10 +1,11 @@
-from __future__ import annotations
-
 from pathlib import Path
 
 
 BACKEND_APP = Path(__file__).resolve().parents[1] / "app"
-AI_AGENTS_ROOT = BACKEND_APP / "ai_agents"
+OLD_AI_AGENTS_ROOT = BACKEND_APP / "ai_agents"
+OLD_LLM_TASKS_ROOT = BACKEND_APP / "llm_tasks"
+LEGACY_AGENTS_ROOT = BACKEND_APP / "agents_bak"
+NEW_AGENTS_ROOT = BACKEND_APP / "agents"
 
 
 def _python_files(root: Path) -> list[Path]:
@@ -13,29 +14,58 @@ def _python_files(root: Path) -> list[Path]:
     return sorted(path for path in root.rglob("*.py") if "__pycache__" not in path.parts)
 
 
-def test_ai_agents_root_exists() -> None:
-    assert AI_AGENTS_ROOT.exists()
+def test_old_ai_agents_root_removed() -> None:
+    assert not OLD_AI_AGENTS_ROOT.exists()
 
 
-def test_ai_agents_do_not_use_old_prompt_or_runner_modules() -> None:
+def test_old_llm_tasks_root_removed() -> None:
+    assert not OLD_LLM_TASKS_ROOT.exists()
+
+
+def test_new_agents_do_not_use_old_prompt_or_runner_modules() -> None:
     forbidden = [
-        *AI_AGENTS_ROOT.glob("**/prompts.py"),
-        *AI_AGENTS_ROOT.glob("**/runner.py"),
-        *AI_AGENTS_ROOT.glob("**/*_agent.py"),
+        *NEW_AGENTS_ROOT.glob("**/prompts.py"),
+        *NEW_AGENTS_ROOT.glob("**/runner.py"),
+        *NEW_AGENTS_ROOT.glob("**/*_agent.py"),
     ]
     assert [str(path.relative_to(BACKEND_APP.parent)) for path in sorted(forbidden)] == []
 
 
-def test_business_agent_packages_have_sdk_entrypoint_and_workflow() -> None:
+def test_business_agent_packages_have_agent_entrypoint() -> None:
     missing: list[str] = []
-    for package in sorted(path for path in AI_AGENTS_ROOT.iterdir() if path.is_dir()):
+    for package in sorted(path for path in NEW_AGENTS_ROOT.iterdir() if path.is_dir()):
         if package.name.startswith("_") or package.name == "shared":
             continue
-        has_agent_entrypoint = (package / "agent.py").exists() or (package / "agents.py").exists()
-        has_workflow = (package / "workflow.py").exists()
-        if not has_agent_entrypoint or not has_workflow:
+        has_agent_entrypoint = (package / "agent.py").exists()
+        if not has_agent_entrypoint:
             missing.append(package.name)
     assert missing == []
+
+
+def test_document_editor_is_not_a_legacy_agent_package() -> None:
+    assert not (LEGACY_AGENTS_ROOT / "document_editor").exists()
+
+
+def test_document_editor_exists_in_new_agents_directory() -> None:
+    assert (NEW_AGENTS_ROOT / "document_editor" / "agent.py").exists()
+
+
+def test_raw_requirement_converter_exists_in_new_agents_directory() -> None:
+    assert (NEW_AGENTS_ROOT / "raw_requirement_converter" / "agent.py").exists()
+    assert not (NEW_AGENTS_ROOT / "raw_requirement_converter" / "skills").exists()
+    for filename in ("pdf.py", "word.py", "text.py", "markdown.py"):
+        assert (NEW_AGENTS_ROOT / "raw_requirement_converter" / "converters" / filename).exists()
+
+
+def test_document_editor_no_longer_uses_llm_task_module() -> None:
+    assert not (OLD_LLM_TASKS_ROOT / "document_editor.py").exists()
+
+
+def test_raw_requirement_converter_service_no_longer_imports_old_runner() -> None:
+    service_path = BACKEND_APP / "services" / "raw_requirement_format_converter_service.py"
+    content = service_path.read_text(encoding="utf-8")
+    assert "app.agents.raw_requirement_format_converter.runner" not in content
+    assert "app.agents.raw_requirement_converter.service" in content
 
 
 def test_services_do_not_call_openai_runner_directly() -> None:
@@ -54,3 +84,9 @@ def test_api_does_not_define_sdk_agents() -> None:
         if "from agents import Agent" in text or "Agent(" in text:
             offenders.append(str(path.relative_to(BACKEND_APP.parent)))
     assert offenders == []
+
+
+def test_v1_api_package_imports_after_agents_rebuild() -> None:
+    from app.api.v1 import v1_router
+
+    assert v1_router.routes

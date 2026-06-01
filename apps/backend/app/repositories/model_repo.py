@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from sqlite3 import Connection, Row
 
 
@@ -57,53 +55,53 @@ def delete_provider(db: Connection, provider_id: str) -> None:
     db.execute("DELETE FROM model_providers WHERE id = ?", (provider_id,))
 
 
-def list_agent_assignments(db: Connection) -> list[Row]:
+def list_model_assignments(db: Connection) -> list[Row]:
     return db.execute(
         """
-        SELECT ama.agent_id,
-               ama.model_provider_id,
-               ama.created_at,
-               ama.updated_at,
+        SELECT ma.capability_id,
+               ma.model_provider_id,
+               ma.created_at,
+               ma.updated_at,
                mp.provider,
                mp.model,
                mp.base_url,
                mp.api_key,
                mp.status AS model_status
-        FROM agent_model_assignments ama
-        JOIN model_providers mp ON mp.id = ama.model_provider_id
-        ORDER BY ama.agent_id ASC
+        FROM model_assignments ma
+        JOIN model_providers mp ON mp.id = ma.model_provider_id
+        ORDER BY ma.capability_id ASC
         """
     ).fetchall()
 
 
-def find_agent_assignment(db: Connection, agent_id: str) -> Row | None:
+def find_model_assignment(db: Connection, capability_id: str) -> Row | None:
     return db.execute(
         """
-        SELECT ama.agent_id,
-               ama.model_provider_id,
-               ama.created_at,
-               ama.updated_at,
+        SELECT ma.capability_id,
+               ma.model_provider_id,
+               ma.created_at,
+               ma.updated_at,
                mp.provider,
                mp.model,
                mp.base_url,
                mp.api_key,
                mp.status AS model_status
-        FROM agent_model_assignments ama
-        JOIN model_providers mp ON mp.id = ama.model_provider_id
-        WHERE ama.agent_id = ?
+        FROM model_assignments ma
+        JOIN model_providers mp ON mp.id = ma.model_provider_id
+        WHERE ma.capability_id = ?
         """,
-        (agent_id,),
+        (capability_id,),
     ).fetchone()
 
 
-def upsert_agent_assignment(db: Connection, *, agent_id: str, model_provider_id: str) -> None:
+def upsert_model_assignment(db: Connection, *, capability_id: str, model_provider_id: str) -> None:
     db.execute(
         """
-        INSERT INTO agent_model_assignments (agent_id, model_provider_id)
+        INSERT INTO model_assignments (capability_id, model_provider_id)
         VALUES (?, ?)
-        ON CONFLICT(agent_id) DO UPDATE SET
+        ON CONFLICT(capability_id) DO UPDATE SET
           model_provider_id = excluded.model_provider_id,
           updated_at = CURRENT_TIMESTAMP
         """,
-        (agent_id, model_provider_id),
+        (capability_id, model_provider_id),
     )

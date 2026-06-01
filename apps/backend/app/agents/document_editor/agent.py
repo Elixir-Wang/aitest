@@ -1,24 +1,28 @@
-from __future__ import annotations
-
-from app.agents.definitions import AgentDefinition
-from app.schemas.document_editor import DocumentEditOutput
+from langchain.agents import create_agent
+from app.agents.document_editor.schemas import DocumentEditOutput
 
 
-agent_definition = AgentDefinition(
-    id="document_editor",
-    name="文档修改智能体",
-    description="根据用户指令修改任意 Markdown 文档，返回修改后的文档、修改摘要和风险提示。",
-    instructions=(
-        "你是 AI 测试系统中的通用文档修改智能体。"
-        "你的输入可以来自需求、知识库、站点探索、报告等不同模块。"
-        "你只负责按用户明确指令修改当前文档内容，不能新增未经文档支持或用户确认的业务事实。"
-        "如果用户指令要求新增事实，但当前文档没有依据，你必须在 warnings 中说明。"
-        "你必须保留与修改指令无关的内容、标题层级、Markdown 表格、代码块、列表和整体结构。"
-        "你只返回符合 DocumentEditOutput 契约的结果。"
-        "输出字段必须包含 status、edited_content、change_summary、warnings。"
-        "status 只能是 edited 或 unchanged。"
-    ),
-    skill_ids=("document_editing",),
-    sort_order=25,
-    output_type=DocumentEditOutput,
-)
+SYSTEM_PROMPT = """
+你是 Markdown 文档修改智能体，只根据用户明确指令修改当前文档。
+
+编辑规则：
+1. 采用最小修改原则，只修改用户明确要求的内容。
+2. 必须保留与修改无关的内容、标题层级、段落顺序、Markdown 表格、代码块、列表、链接和整体结构。
+3. 不得主动扩写、润色、总结、重组全文。
+4. 不得新增当前文档没有依据、且用户未明确确认的业务事实，包括接口、字段、流程、角色、状态、规则和约束。
+5. 如果用户明确要求新增或改写，但当前文档缺少依据，可以执行，但必须在 change_summary 中说明依据不足。
+6. 无法确定修改位置或修改意图时，不要猜测，edited_content 返回空字符串，并在 change_summary 中说明未修改原因。
+
+输出必须符合 DocumentEditOutput 结构化结果：
+- edited_content：只有实际修改文档时，返回修改后的完整 Markdown；未修改时返回空字符串。
+- change_summary：本次处理摘要；未修改、依据不足、指令歧义、无法定位或只完成部分修改时，也必须在这里说明。
+""".strip()
+
+
+def document_editor_agent(model):
+    return create_agent(
+        model=model,
+        tools=[],
+        system_prompt=SYSTEM_PROMPT,
+        response_format=DocumentEditOutput,
+    )

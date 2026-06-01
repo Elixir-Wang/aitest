@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pathlib import Path, PureWindowsPath
 
 from app.core.settings import PROJECT_FILE_STORAGE_ROOT

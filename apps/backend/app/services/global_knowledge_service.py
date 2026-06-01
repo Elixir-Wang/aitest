@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import secrets
 from pathlib import Path
 
@@ -299,7 +297,7 @@ async def _save_files_and_convert(
                 )
             markdown, summary = await convert_to_markdown(
                 safe_name,
-                raw_bytes,
+                source_path=raw_path,
                 assets_dir=markdown_dir / f"{file_id}_assets",
             )
             markdown_parts.append(f"<!-- source: {safe_name} -->\n\n{markdown.strip()}\n")

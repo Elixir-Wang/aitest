@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from sqlite3 import Connection
 
 from app.core.storage import expose_stored_path

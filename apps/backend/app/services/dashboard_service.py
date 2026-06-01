@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.repositories import dashboard_repo, project_repo

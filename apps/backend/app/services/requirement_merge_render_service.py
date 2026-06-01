@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from app.schemas.requirement_merge import (
     OutlineAssignment,
     OutlineMergeConflict,

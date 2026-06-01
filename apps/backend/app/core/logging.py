@@ -11,8 +11,6 @@
 trace_id 通过 contextvars 在同一请求的所有日志行中自动注入。
 """
 
-from __future__ import annotations
-
 import logging
 import sys
 from contextvars import ContextVar

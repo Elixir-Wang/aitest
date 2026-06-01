@@ -1,11 +1,9 @@
-from __future__ import annotations
-
 from fastapi import APIRouter, Depends
 
-from app.ai_agents.document_editor.workflow import edit_document
 from app.dependencies.auth import current_user
+from app.services.document_editor_service import edit_document
 from app.schemas.document_editor import DocumentEditInput, DocumentEditOutput
-from app.schemas.agent import AgentModelAssignmentIn, AgentModelAssignmentOut, AgentOut, AgentRunIn, AgentRunOut, SkillOut
+from app.schemas.agent import AgentOut, AgentRunIn, AgentRunOut, SkillOut
 from app.services import agent_service
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -21,19 +19,9 @@ def list_skills(actor=Depends(current_user)) -> list[dict]:
     return agent_service.list_skills(actor)
 
 
-@router.get("/model-assignments", response_model=list[AgentModelAssignmentOut])
-def list_model_assignments(actor=Depends(current_user)) -> list[dict]:
-    return agent_service.list_model_assignments(actor)
-
-
-@router.put("/{agent_id}/model-assignment", response_model=AgentModelAssignmentOut)
-def update_model_assignment(agent_id: str, payload: AgentModelAssignmentIn, actor=Depends(current_user)) -> dict:
-    return agent_service.update_model_assignment(agent_id, payload, actor)
-
-
 @router.post("/document-editor/run", response_model=DocumentEditOutput)
-async def run_document_editor(payload: DocumentEditInput, actor=Depends(current_user)) -> DocumentEditOutput:
-    return await edit_document(payload, actor_id=actor["id"])
+def run_document_editor(payload: DocumentEditInput, _actor=Depends(current_user)) -> DocumentEditOutput:
+    return edit_document(payload)
 
 
 @router.post("/{agent_id}/run", response_model=AgentRunOut)

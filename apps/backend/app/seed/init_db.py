@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import sqlite3
 from pathlib import Path, PureWindowsPath
 
@@ -50,8 +48,8 @@ def init_db() -> None:
               FOREIGN KEY(created_by) REFERENCES users(id)
             );
 
-            CREATE TABLE IF NOT EXISTS agent_model_assignments (
-              agent_id TEXT PRIMARY KEY,
+            CREATE TABLE IF NOT EXISTS model_assignments (
+              capability_id TEXT PRIMARY KEY,
               model_provider_id TEXT NOT NULL,
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -542,6 +540,7 @@ def init_db() -> None:
         _migrate_source_documents(db)
         _migrate_file_mappings(db)
         _migrate_merge_conflicts(db)
+        _migrate_agent_model_assignments(db)
         _migrate_stored_paths(db)
         _seed_operation_log_retention_policy(db)
         _seed_user(db, "u-admin", "admin", "admin@example.com", "平台管理员", "admin", "admin", "enabled", "全部项目", "平台管理员，负责用户、模型和项目权限维护。")
@@ -770,6 +769,26 @@ def _migrate_merge_conflicts(db: sqlite3.Connection) -> None:
     _ensure_column(db, "source_document_merge_conflicts", "severity", "TEXT NOT NULL DEFAULT 'medium'")
     _ensure_column(db, "source_document_merge_conflicts", "source_refs", "TEXT NOT NULL DEFAULT '[]'")
     _ensure_column(db, "source_document_merge_conflicts", "agent_suggestion", "TEXT NOT NULL DEFAULT ''")
+
+
+def _migrate_agent_model_assignments(db: sqlite3.Connection) -> None:
+    exists = db.execute(
+        """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'agent_model_assignments'
+        """
+    ).fetchone()
+    if not exists:
+        return
+    db.execute(
+        """
+        INSERT OR REPLACE INTO model_assignments (capability_id, model_provider_id, created_at, updated_at)
+        SELECT agent_id, model_provider_id, created_at, updated_at
+        FROM agent_model_assignments
+        """
+    )
+    db.execute("DROP TABLE agent_model_assignments")
 
 
 def _migrate_stored_paths(db: sqlite3.Connection) -> None:

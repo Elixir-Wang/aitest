@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -17,8 +15,7 @@ class AgentOut(BaseModel):
     id: str
     name: str
     description: str
-    model: str
-    skill_ids: list[str]
+    kind: str
 
 
 class AgentRunIn(BaseModel):
@@ -40,18 +37,3 @@ class AgentRunOut(BaseModel):
     usage: dict[str, Any] | None = None
 
 
-class AgentModelAssignmentIn(BaseModel):
-    model_provider_id: str = Field(min_length=1)
-
-
-class AgentModelAssignmentOut(BaseModel):
-    agent_id: str
-    agent_name: str
-    agent_description: str
-    model_provider_id: str | None = None
-    provider: str | None = None
-    model: str | None = None
-    base_url: str | None = None
-    api_key: str | None = None
-    model_status: str | None = None
-    updated_at: str | None = None

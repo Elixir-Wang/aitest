@@ -122,10 +122,8 @@ type StandardPreview = {
 };
 
 type DocumentEditResponse = {
-  status: "edited" | "unchanged";
   edited_content: string;
   change_summary: string;
-  warnings: string[];
 };
 
 type MergePreview = {
@@ -649,12 +647,14 @@ export default function DocumentDetailPage() {
       const editResult = await apiRequest<DocumentEditResponse>("/agents/document-editor/run", {
         method: "POST",
         body: JSON.stringify({
-          document_type: "requirement_standard_file",
-          document_title: standardMarkdownFilename(selectedFile.original_filename),
           content: standardPreview.markdownContent,
           instruction,
         }),
       });
+      if (!editResult.edited_content.trim()) {
+        toast.info(editResult.change_summary || "AI 未修改文档");
+        return;
+      }
       const savedResult = await apiRequest<{
         original_filename: string;
         markdown_content: string;
@@ -673,11 +673,7 @@ export default function DocumentDetailPage() {
       });
       setMarkdownDraft(savedResult.markdown_content);
       setEditingStandard(false);
-      if (editResult.warnings.length > 0) {
-        toast.warning(`标准文件已保存；${editResult.warnings.join("；")}`);
-      } else {
-        toast.success(editResult.change_summary || "AI修改已保存");
-      }
+      toast.success(editResult.change_summary || "AI修改已保存");
       await loadOverview({ silent: true });
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "智能修改失败");

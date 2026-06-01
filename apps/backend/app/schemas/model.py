@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pydantic import BaseModel, Field
 
 Status = str
@@ -26,3 +24,28 @@ class ModelProviderIn(BaseModel):
     api_key: str = ""
     description: str = ""
     status: Status = "enabled"
+
+
+class AiCapabilityOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    kind: str
+
+
+class ModelAssignmentIn(BaseModel):
+    model_provider_id: str = Field(min_length=1)
+
+
+class ModelAssignmentOut(BaseModel):
+    capability_id: str
+    capability_name: str
+    capability_description: str
+    capability_kind: str
+    model_provider_id: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    model_status: str | None = None
+    updated_at: str | None = None
