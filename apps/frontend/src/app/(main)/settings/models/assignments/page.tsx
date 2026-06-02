@@ -57,11 +57,6 @@ export default function Page() {
     }
   }
 
-  const groupedAssignments = [
-    { label: "普通 LLM 能力", rows: assignments.filter((assignment) => assignment.capability_kind === "llm_task") },
-    { label: "智能体", rows: assignments.filter((assignment) => assignment.capability_kind === "agent") },
-  ].filter((group) => group.rows.length > 0);
-
   return (
     <PageShell
       activeTab="模型分配"
@@ -76,52 +71,50 @@ export default function Page() {
     >
       <ShellSection>
         <div className="space-y-5">
-          {groupedAssignments.map((group) => (
-            <div className="overflow-hidden rounded-lg border" key={group.label}>
-              <div className="border-b bg-muted/30 px-4 py-3 font-medium text-sm">{group.label}</div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>AI 能力</TableHead>
-                    <TableHead>说明</TableHead>
-                    <TableHead className="w-[320px]">模型配置</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {group.rows.map((assignment) => {
-                    const selectedProviderId = selectedProviderIds[assignment.capability_id] ?? "";
-                    const saving = savingCapabilityId === assignment.capability_id;
-                    return (
-                      <TableRow key={assignment.capability_id}>
-                        <TableCell className="font-medium">{assignment.capability_name}</TableCell>
-                        <TableCell className="max-w-xl text-muted-foreground">
-                          {assignment.capability_description}
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            disabled={loading || saving || enabledProviders.length === 0}
-                            value={selectedProviderId}
-                            onValueChange={(value) => void updateSelectedProvider(assignment.capability_id, value)}
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder={saving ? "保存中" : "空"} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {enabledProviders.map((provider) => (
-                                <SelectItem key={provider.id} value={provider.id}>
-                                  {provider.provider} / {provider.model}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          ))}
+          <div className="overflow-hidden rounded-lg border">
+            <div className="border-b bg-muted/30 px-4 py-3 font-medium text-sm">智能体</div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>AI 能力</TableHead>
+                  <TableHead>说明</TableHead>
+                  <TableHead className="w-[320px]">模型配置</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {assignments.map((assignment) => {
+                  const selectedProviderId = selectedProviderIds[assignment.capability_id] ?? "";
+                  const saving = savingCapabilityId === assignment.capability_id;
+                  return (
+                    <TableRow key={assignment.capability_id}>
+                      <TableCell className="font-medium">{assignment.capability_name}</TableCell>
+                      <TableCell className="max-w-xl text-muted-foreground">
+                        {assignment.capability_description}
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          disabled={loading || saving || enabledProviders.length === 0}
+                          value={selectedProviderId}
+                          onValueChange={(value) => void updateSelectedProvider(assignment.capability_id, value)}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder={saving ? "保存中" : "空"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {enabledProviders.map((provider) => (
+                              <SelectItem key={provider.id} value={provider.id}>
+                                {provider.provider} / {provider.model}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       </ShellSection>
     </PageShell>

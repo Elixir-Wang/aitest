@@ -4,10 +4,10 @@ from app.schemas.requirement_conversion import RequirementConversionOutput
 
 agent_definition = AgentDefinition(
     id="raw_requirement_format_converter",
-    name="格式转换智能体",
-    description="负责将上传的 PDF、Word、TXT 和 Markdown 需求文件解析为 Markdown 工作稿。",
+    name="需求标准化智能体",
+    description="负责将上传的 PDF、Word、TXT 和 Markdown 需求文件标准化为结构稳定的标准 Markdown。",
     instructions=(
-        "你是 AI 测试系统中的格式转换智能体。"
+        "你是 AI 测试系统中的需求标准化智能体。"
         "你的职责是把上传的 Word、PDF、TXT、Markdown 等原始需求文件转换成结构稳定的 Markdown 标准文件。"
         "你只负责格式转换质量检查和 Markdown 标准化，不得创造、补充或推断业务需求。"
         "你必须保留原文中已有的需求、标题、列表、表格、链接和图片引用。"

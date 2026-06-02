@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.dependencies.auth import current_user
-from app.services.document_editor_service import edit_document
+from app.agents.document_editor.service import edit_document
 from app.schemas.document_editor import DocumentEditInput, DocumentEditOutput
 from app.schemas.agent import AgentOut, AgentRunIn, AgentRunOut, SkillOut
 from app.services import agent_service

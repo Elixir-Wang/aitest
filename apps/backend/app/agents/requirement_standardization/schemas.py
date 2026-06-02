@@ -1,4 +1,4 @@
-from app.agents.requirement_standardization.schemas import (
+from app.schemas.requirement_conversion import (
     RequirementConversionInput,
     RequirementConversionOutput,
 )

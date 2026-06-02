@@ -23,7 +23,7 @@ def parse_requirement_conversion_output(output: Any) -> RequirementConversionOut
     if isinstance(output, dict):
         return RequirementConversionOutput.model_validate(output)
     if not isinstance(output, str):
-        raise ValueError("格式转换智能体输出类型不支持。")
+        raise ValueError("需求标准化智能体输出类型不支持。")
 
     text = _extract_json_text(output)
     try:
@@ -32,11 +32,11 @@ def parse_requirement_conversion_output(output: Any) -> RequirementConversionOut
         partial_output = _parse_partial_agent_output(text)
         if partial_output is not None:
             return partial_output
-        raise ValueError("格式转换智能体未返回合法 JSON。") from exc
+        raise ValueError("需求标准化智能体未返回合法 JSON。") from exc
     try:
         return RequirementConversionOutput.model_validate(parsed)
     except ValidationError as exc:
-        raise ValueError("格式转换智能体输出不符合转换契约。") from exc
+        raise ValueError("需求标准化智能体输出不符合转换契约。") from exc
 
 
 def _strip_code_fence(text: str) -> str:

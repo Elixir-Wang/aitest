@@ -16,7 +16,7 @@
 - 使用 LangChain `create_agent` 构建一个 `raw_requirement_converter_agent`。
 - 删除 DeepAgents 依赖、`FilesystemBackend`、自定义 subagents 和 `skills/` 目录。
 - 保留一个业务智能体，代表“原始需求文件转换为标准 Markdown”完整能力。
-- 将 PDF、Word、TXT、Markdown 转换能力作为 tools 暴露给 agent。
+- 将 PDF、Word、TXT 转换能力作为 tools 暴露给 agent，Markdown 原文直接进入规范化流程。
 - 将确定性解析实现放在 agent 包内的 `converters/` 下。
 - service 只负责编排上传流程、保存文件、调用 agent service、保存转换结果。
 - 保持 `RequirementConversionOutput` 简洁，只包含最终 Markdown 和转换摘要。
@@ -44,7 +44,6 @@ apps/backend/app/agents/raw_requirement_converter/
     pdf.py
     word.py
     text.py
-    markdown.py
 ```
 
 删除目录：
@@ -107,7 +106,6 @@ def raw_requirement_converter_agent(model):
 convert_pdf_to_markdown
 convert_word_to_markdown
 convert_text_to_markdown
-convert_markdown_to_markdown
 normalize_markdown_content
 ```
 
@@ -151,14 +149,6 @@ converters/text.py
 
 - 解码 TXT。
 - 处理编码兼容，例如 `utf-8`、`utf-8-sig`、`gb18030`。
-
-```text
-converters/markdown.py
-```
-
-- Markdown 文件 pass-through。
-- 保留原有 Markdown 结构。
-- 可调用 normalizer 做最小清理。
 
 ```text
 converters/__init__.py
@@ -244,7 +234,7 @@ flowchart TD
     F -->|pdf| G["convert_pdf_to_markdown tool"]
     F -->|doc/docx| H["convert_word_to_markdown tool"]
     F -->|txt| I["convert_text_to_markdown tool"]
-    F -->|md/markdown| J["convert_markdown_to_markdown tool"]
+    F -->|md/markdown| J["direct normalization"]
     G --> K["candidate Markdown"]
     H --> K
     I --> K
@@ -291,8 +281,8 @@ deepagents.backends.filesystem.FilesystemBackend
 - `agent.py` 不再 import `deepagents`。
 - `agent.py` 不再存在 `SUBAGENTS`。
 - `raw_requirement_converter/skills` 目录不存在。
-- `tools.py` 暴露 PDF、Word、TXT、Markdown、normalize 五个工具。
-- `converters/` 下存在 `pdf.py`、`word.py`、`text.py`、`markdown.py`。
+- `tools.py` 暴露 PDF、Word、TXT、normalize 四个工具。
+- `converters/` 下存在 `pdf.py`、`word.py`、`text.py`。
 - `RequirementConversionInput` 不再包含 `candidate_markdown`、`candidate_summary`。
 - `RequirementConversionInput` 包含 `source_file_path`、`assets_dir_path`。
 - `document_file_service.py` 不再直接调用 service-owned converter。

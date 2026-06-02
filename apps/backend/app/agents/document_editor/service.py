@@ -1,6 +1,5 @@
 from app.agents.document_editor.agent import document_editor_agent
-from app.agents.model_factory import build_agent_model
-from app.agents.model_selection import resolve_model_selection
+from app.agents.model_selection import build_agent_model, resolve_model_selection
 from app.schemas.document_editor import DocumentEditInput, DocumentEditOutput
 
 

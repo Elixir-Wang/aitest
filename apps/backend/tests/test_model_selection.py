@@ -31,7 +31,7 @@ def _create_provider(provider_id: str = "mp-openai", *, status: str = "enabled",
         )
 
 
-def test_model_assignment_update_and_selection_use_capability_id(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_model_assignment_update_and_selection_resolves_model_config(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _create_provider()
 
@@ -42,12 +42,9 @@ def test_model_assignment_update_and_selection_use_capability_id(monkeypatch: py
     )
 
     assert result["capability_id"] == "document_editor"
-    assert result["capability_kind"] == "agent"
+    assert "capability_kind" not in result
 
     selection = resolve_model_selection("document_editor")
-    assert selection.capability_id == "document_editor"
-    assert selection.capability_kind == "agent"
-    assert selection.model_provider_id == "mp-openai"
     assert selection.model == "gpt-5.5"
     assert selection.api_key == "sk-test"
 

@@ -30,7 +30,6 @@ class AiCapabilityOut(BaseModel):
     id: str
     name: str
     description: str
-    kind: str
 
 
 class ModelAssignmentIn(BaseModel):
@@ -41,7 +40,6 @@ class ModelAssignmentOut(BaseModel):
     capability_id: str
     capability_name: str
     capability_description: str
-    capability_kind: str
     model_provider_id: str | None = None
     provider: str | None = None
     model: str | None = None

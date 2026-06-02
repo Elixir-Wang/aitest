@@ -120,7 +120,6 @@ def list_ai_capability_rows(_actor) -> list[dict]:
             "id": capability.id,
             "name": capability.name,
             "description": capability.description,
-            "kind": capability.kind,
         }
         for capability in list_ai_capabilities()
     ]
@@ -188,7 +187,6 @@ def _serialize_assignment(capability_id: str, row) -> dict:
         "capability_id": capability.id,
         "capability_name": capability.name,
         "capability_description": capability.description,
-        "capability_kind": capability.kind,
     }
     if not row:
         return base

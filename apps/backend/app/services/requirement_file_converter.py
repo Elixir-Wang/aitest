@@ -1,4 +1,4 @@
-from app.agents.raw_requirement_converter.converters import (
+from app.services.requirement_file_conversion import (
     ConvertedRequirementFile,
     convert_requirement_file_to_markdown,
 )

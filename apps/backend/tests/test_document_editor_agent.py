@@ -1,4 +1,5 @@
 import pytest
+from pydantic import SecretStr
 
 from app.agents.document_editor import schemas
 from app.agents.document_editor.agent import document_editor_agent
@@ -28,44 +29,38 @@ def test_document_editor_agent_uses_langchain_create_agent(monkeypatch: pytest.M
     assert "文档修改智能体" in calls["system_prompt"]
 
 
-def test_build_agent_model_maps_openai_compatible_to_openai_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.agents.model_factory import build_agent_model
+def test_build_agent_model_uses_openai_compatible_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.agents.model_selection import build_agent_model
 
     calls = {}
 
-    def fake_init_chat_model(**kwargs):
+    def fake_chat_openai(**kwargs):
         calls.update(kwargs)
         return "chat-model"
 
-    monkeypatch.setattr("app.agents.model_factory.init_chat_model", fake_init_chat_model)
+    monkeypatch.setattr("app.agents.model_selection.ChatOpenAI", fake_chat_openai)
 
     model = build_agent_model(
         ModelSelection(
-            capability_id="document_editor",
-            capability_kind="agent",
-            model_provider_id="mp-deepseek",
             provider="deepseek",
             model="deepseek-chat",
             base_url="https://api.deepseek.com",
             api_key="sk-test",
-            model_status="enabled",
         )
     )
 
     assert model == "chat-model"
-    assert calls == {
-        "model": "deepseek-chat",
-        "model_provider": "openai",
-        "api_key": "sk-test",
-        "base_url": "https://api.deepseek.com",
-        "temperature": 0,
-    }
+    assert calls["model"] == "deepseek-chat"
+    assert isinstance(calls["api_key"], SecretStr)
+    assert calls["api_key"].get_secret_value() == "sk-test"
+    assert calls["base_url"] == "https://api.deepseek.com"
+    assert calls["temperature"] == 0
 
 
 def test_document_editor_service_returns_structured_response(monkeypatch: pytest.MonkeyPatch) -> None:
     original_content = "# Old title\n\n" + "Body line.\n" * 20
     edited_content = "# New title\n\n" + "Body line.\n" * 20
-    from app.services.document_editor_service import edit_document
+    from app.agents.document_editor.service import edit_document
 
     output = DocumentEditOutput(
         edited_content=edited_content,
@@ -79,9 +74,9 @@ def test_document_editor_service_returns_structured_response(monkeypatch: pytest
             assert "document_content:" in payload["messages"][0]["content"]
             return {"structured_response": output}
 
-    monkeypatch.setattr("app.services.document_editor_service.resolve_model_selection", lambda capability_id: "selection")
-    monkeypatch.setattr("app.services.document_editor_service.build_agent_model", lambda selection: "model")
-    monkeypatch.setattr("app.services.document_editor_service.document_editor_agent", lambda model: FakeAgent())
+    monkeypatch.setattr("app.agents.document_editor.service.resolve_model_selection", lambda capability_id: "selection")
+    monkeypatch.setattr("app.agents.document_editor.service.build_agent_model", lambda selection: "model")
+    monkeypatch.setattr("app.agents.document_editor.service.document_editor_agent", lambda model: FakeAgent())
 
     result = edit_document(
         DocumentEditInput(
@@ -97,7 +92,7 @@ def test_document_editor_service_allows_empty_content_for_unchanged_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     original_content = "# Old title\n\n" + "Body line.\n" * 20
-    from app.services.document_editor_service import edit_document
+    from app.agents.document_editor.service import edit_document
 
     output = DocumentEditOutput(
         edited_content="",
@@ -108,9 +103,9 @@ def test_document_editor_service_allows_empty_content_for_unchanged_result(
         def invoke(self, payload):
             return {"structured_response": output}
 
-    monkeypatch.setattr("app.services.document_editor_service.resolve_model_selection", lambda capability_id: "selection")
-    monkeypatch.setattr("app.services.document_editor_service.build_agent_model", lambda selection: "model")
-    monkeypatch.setattr("app.services.document_editor_service.document_editor_agent", lambda model: FakeAgent())
+    monkeypatch.setattr("app.agents.document_editor.service.resolve_model_selection", lambda capability_id: "selection")
+    monkeypatch.setattr("app.agents.document_editor.service.build_agent_model", lambda selection: "model")
+    monkeypatch.setattr("app.agents.document_editor.service.document_editor_agent", lambda model: FakeAgent())
 
     result = edit_document(
         DocumentEditInput(
@@ -126,15 +121,15 @@ def test_document_editor_service_allows_empty_content_for_unchanged_result(
 
 def test_document_editor_service_rejects_missing_structured_response(monkeypatch: pytest.MonkeyPatch) -> None:
     original_content = "# Old title\n\n" + "Body line.\n" * 20
-    from app.services.document_editor_service import edit_document
+    from app.agents.document_editor.service import edit_document
 
     class FakeAgent:
         def invoke(self, payload):
             return {}
 
-    monkeypatch.setattr("app.services.document_editor_service.resolve_model_selection", lambda capability_id: "selection")
-    monkeypatch.setattr("app.services.document_editor_service.build_agent_model", lambda selection: "model")
-    monkeypatch.setattr("app.services.document_editor_service.document_editor_agent", lambda model: FakeAgent())
+    monkeypatch.setattr("app.agents.document_editor.service.resolve_model_selection", lambda capability_id: "selection")
+    monkeypatch.setattr("app.agents.document_editor.service.build_agent_model", lambda selection: "model")
+    monkeypatch.setattr("app.agents.document_editor.service.document_editor_agent", lambda model: FakeAgent())
 
     with pytest.raises(ValueError, match="未返回结构化结果"):
         edit_document(

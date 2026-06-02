@@ -53,8 +53,32 @@ def test_document_editor_exists_in_new_agents_directory() -> None:
 def test_raw_requirement_converter_exists_in_new_agents_directory() -> None:
     assert (NEW_AGENTS_ROOT / "raw_requirement_converter" / "agent.py").exists()
     assert not (NEW_AGENTS_ROOT / "raw_requirement_converter" / "skills").exists()
-    for filename in ("pdf.py", "word.py", "text.py", "markdown.py"):
+    for filename in ("pdf.py", "word.py", "text.py"):
         assert (NEW_AGENTS_ROOT / "raw_requirement_converter" / "converters" / filename).exists()
+
+
+def test_requirement_standardization_agent_exists_as_canonical_package() -> None:
+    assert (NEW_AGENTS_ROOT / "requirement_standardization" / "agent.py").exists()
+    assert (NEW_AGENTS_ROOT / "requirement_standardization" / "service.py").exists()
+    assert (NEW_AGENTS_ROOT / "requirement_standardization" / "tools.py").exists()
+    assert (NEW_AGENTS_ROOT / "requirement_standardization" / "schemas.py").exists()
+
+
+def test_deterministic_requirement_file_conversion_lives_outside_agent_package() -> None:
+    conversion_root = BACKEND_APP / "services" / "requirement_file_conversion"
+    for filename in ("__init__.py", "pdf.py", "word.py", "text.py"):
+        assert (conversion_root / filename).exists()
+    assert not (NEW_AGENTS_ROOT / "requirement_standardization" / "converters").exists()
+
+
+def test_raw_requirement_format_converter_capability_is_displayed_as_requirement_standardization() -> None:
+    from app.agents.capabilities import get_ai_capability
+
+    capability = get_ai_capability("raw_requirement_format_converter")
+
+    assert capability.name == "需求标准化智能体"
+    assert "标准 Markdown" in capability.description
+    assert "解析为 Markdown 工作稿" not in capability.description
 
 
 def test_document_editor_no_longer_uses_llm_task_module() -> None:
@@ -65,7 +89,8 @@ def test_raw_requirement_converter_service_no_longer_imports_old_runner() -> Non
     service_path = BACKEND_APP / "services" / "raw_requirement_format_converter_service.py"
     content = service_path.read_text(encoding="utf-8")
     assert "app.agents.raw_requirement_format_converter.runner" not in content
-    assert "app.agents.raw_requirement_converter.service" in content
+    assert "app.agents.requirement_standardization.service" in content
+    assert "app.agents.raw_requirement_converter.service" not in content
 
 
 def test_services_do_not_call_openai_runner_directly() -> None:

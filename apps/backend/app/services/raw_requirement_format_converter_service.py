@@ -1,4 +1,4 @@
-from app.agents.raw_requirement_converter.service import convert_requirement_file
+from app.agents.requirement_standardization.service import convert_requirement_file
 from app.schemas.requirement_conversion import RequirementConversionInput, RequirementConversionOutput
 
 

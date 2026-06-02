@@ -15,7 +15,6 @@ class AgentOut(BaseModel):
     id: str
     name: str
     description: str
-    kind: str
 
 
 class AgentRunIn(BaseModel):

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import List
 
 from app.agents.definitions import SkillDefinition
 from app.agents.registry import agent_registry
@@ -25,7 +26,7 @@ class SkillRegistry:
             raise KeyError(skill_id)
         raise KeyError(f"Skill id is ambiguous without agent_id: {skill_id}")
 
-    def select(self, skill_ids: tuple[str, ...], agent_id: str) -> list[SkillDefinition]:
+    def select(self, skill_ids: tuple[str, ...], agent_id: str) -> List[SkillDefinition]:
         return [self.get(skill_id, agent_id=agent_id) for skill_id in skill_ids]
 
 

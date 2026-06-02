@@ -45,7 +45,6 @@ export type ApiModelAssignment = {
   capability_id: string;
   capability_name: string;
   capability_description: string;
-  capability_kind: "agent" | "llm_task";
   model_provider_id: string | null;
   provider: string | null;
   model: string | null;

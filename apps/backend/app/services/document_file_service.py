@@ -11,7 +11,7 @@ from app.core.storage import project_requirement_dir, resolve_stored_path, store
 from app.repositories import document_repo, project_repo
 from app.services.document_serializer import serialize_document_from_db, serialize_file_mapping
 from app.schemas.requirement_conversion import RequirementConversionInput
-from app.agents.raw_requirement_converter.service import convert_requirement_file, fallback_convert_requirement_file
+from app.agents.requirement_standardization.service import convert_requirement_file, fallback_convert_requirement_file
 from app.services.requirement_markdown_normalizer import normalize_requirement_markdown
 from app.services import operation_log_service
 
@@ -379,7 +379,7 @@ async def convert_to_markdown(
         fallback_markdown = normalize_requirement_markdown(fallback_markdown)
         return fallback_markdown, f"{fallback_summary}（智能体未返回有效 Markdown，已使用本地转换结果。）"
 
-    summary = agent_output.conversion_summary.strip() or "已通过格式转换智能体标准化 Markdown。"
+    summary = agent_output.conversion_summary.strip() or "已通过需求标准化智能体生成标准 Markdown。"
     return markdown + "\n", summary
 
 
