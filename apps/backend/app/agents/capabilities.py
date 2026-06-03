@@ -11,7 +11,7 @@ class AiCapability:
 AI_CAPABILITIES: tuple[AiCapability, ...] = (
     AiCapability(
         id="document_editor",
-        name="文档修改智能体",
+        name="文档修改",
         description="根据用户指令修改 Markdown 文档，返回修改后的文档、修改摘要和风险提示。",
     ),
     AiCapability(

@@ -9,17 +9,15 @@ from fastapi import HTTPException
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir, resolve_stored_path, store_path
+from app.agents_bak.requirement_analysis.runner import run_requirement_analysis
 from app.repositories import document_repo
 from app.schemas.document import SourceDocumentUpdateIn
 from app.schemas.requirement_analysis import RequirementAnalysisInput
-from app.services import (
-    document_file_service,
-    document_merge_orchestrator,
-    document_serializer,
-    operation_log_service,
-    requirement_analysis_service,
-    requirement_merge_artifact_service,
-)
+from app.services import operation_log_service
+from app.services.document import file_service as document_file_service
+from app.services.document import merge_orchestrator as document_merge_orchestrator
+from app.services.document import serializer as document_serializer
+from app.services.requirement_merge import artifact_service as requirement_merge_artifact_service
 
 DOCUMENT_PENDING_MERGE_STATUS = "pending_merge"
 DOCUMENT_VERSIONED_STATUS = "versioned"
@@ -237,7 +235,7 @@ async def analyze_document_requirement(project_id: str, document_id: str, actor)
         markdown_content=markdown_content,
     )
     try:
-        analysis_output = await requirement_analysis_service.run_requirement_analysis(analysis_input)
+        analysis_output = await run_requirement_analysis(analysis_input)
     except Exception as exc:
         raise api_error(502, "REQUIREMENT_ANALYSIS_AGENT_FAILED", f"需求分析智能体运行失败：{exc}") from exc
 
@@ -524,15 +522,6 @@ def delete_document(project_id: str, document_id: str, actor) -> dict:
 
 def _version_markdown_path(project_id: str, document_id: str, version_no: int) -> Path:
     return project_requirement_dir(project_id, document_id) / "versions" / f"v{version_no}.md"
-
-
-def _decode_text(raw_bytes: bytes) -> str:
-    for encoding in ("utf-8", "utf-8-sig", "gb18030"):
-        try:
-            return raw_bytes.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return raw_bytes.decode("utf-8", errors="ignore")
 
 
 def _merge_status_label(status: str) -> str:

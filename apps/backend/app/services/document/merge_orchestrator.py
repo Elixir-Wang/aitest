@@ -7,21 +7,17 @@ from app.core.storage import project_requirement_dir, resolve_stored_path, store
 from app.repositories import document_repo
 from app.schemas.requirement_merge import (
     OutlineMergeConflict,
-    RequirementMergeBaseVersion,
     RequirementMergeConflictOut,
     RequirementMergeSourceFile,
 )
-from app.services import (
-    requirement_fragment_service,
-    requirement_merge_outline_service,
-    requirement_merge_artifact_service,
-    requirement_merge_quality_service,
-    requirement_merge_render_service,
-    requirement_outline_assignment_service,
-    requirement_section_merge_service,
-    requirement_source_block_service,
-    requirement_source_outline_service,
-)
+from app.services.requirement_merge import artifact_service as requirement_merge_artifact_service
+from app.services.requirement_merge import outline_assignment_service as requirement_outline_assignment_service
+from app.services.requirement_merge import outline_service as requirement_merge_outline_service
+from app.services.requirement_merge import quality_service as requirement_merge_quality_service
+from app.services.requirement_merge import render_service as requirement_merge_render_service
+from app.services.requirement_merge import section_merge_service as requirement_section_merge_service
+from app.services.requirement_merge import source_block_service as requirement_source_block_service
+from app.services.requirement_merge import source_outline_service as requirement_source_outline_service
 
 DOCUMENT_VERSIONED_STATUS = "versioned"
 CONVERSION_SUCCESS_STATUS = "success"
@@ -75,7 +71,6 @@ async def merge_document_markdown(
         if not source_files:
             raise api_error(409, "DOCUMENT_MERGE_NO_FILES", "暂无可合并的标准文件。")
         source_blocks = requirement_source_block_service.build_source_blocks(source_files)
-        legacy_source_fragments = requirement_fragment_service.build_source_fragments(source_files)
 
         resolved_conflicts = document_repo.list_conflicts(db, document_id, status="resolved")
         merge_mode = _detect_merge_mode(existing["current_version_id"], force_rebuild=force_rebuild)
@@ -97,7 +92,6 @@ async def merge_document_markdown(
             project_id,
             document_id,
             run_id,
-            source_fragments=legacy_source_fragments,
             source_blocks=source_blocks,
         )
         try:
@@ -719,20 +713,6 @@ def _detect_merge_mode(current_version_id: str | None, *, force_rebuild: bool = 
     if current_version_id:
         return "incremental"
     return "initial"
-
-
-def _current_merge_base_version(row) -> RequirementMergeBaseVersion | None:
-    if not row["current_version_id"]:
-        return None
-    version_id = row["current_version_id"]
-    version_no = row["version_no"] if "version_no" in row.keys() and row["version_no"] else 0
-    file_path = row["markdown_file_path"] if "markdown_file_path" in row.keys() else ""
-    markdown_content = ""
-    if file_path:
-        path = resolve_stored_path(file_path) or Path(file_path)
-        if path.exists():
-            markdown_content = path.read_text(encoding="utf-8")
-    return RequirementMergeBaseVersion(id=version_id, version_no=version_no, markdown_content=markdown_content)
 
 
 def _serialize_conflict(row) -> dict:

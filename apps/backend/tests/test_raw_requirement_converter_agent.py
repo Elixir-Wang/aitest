@@ -171,7 +171,7 @@ async def test_requirement_standardization_service_rejects_missing_structured_re
 
 
 def test_document_file_service_uses_requirement_standardization_service() -> None:
-    service_path = Path("app/services/document_file_service.py")
+    service_path = Path("app/services/document/file_service.py")
     content = service_path.read_text(encoding="utf-8")
     assert "from app.agents.requirement_standardization.service import convert_requirement_file" in content
     assert "from app.agents.raw_requirement_converter.service import convert_requirement_file" not in content
@@ -180,7 +180,7 @@ def test_document_file_service_uses_requirement_standardization_service() -> Non
 
 @pytest.mark.anyio
 async def test_document_file_service_converts_locally_before_standardization(monkeypatch, tmp_path) -> None:
-    from app.services import document_file_service
+    from app.services.document import file_service as document_file_service
 
     source_path = tmp_path / "demo.docx"
     source_path.write_bytes(b"fake-docx")

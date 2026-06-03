@@ -1,12 +1,9 @@
-import hashlib
 import re
 
-from app.schemas.requirement_merge import RequirementMergeSourceFile, RequirementSourceBlock, RequirementSourceFragment
+from app.schemas.requirement_merge import RequirementMergeSourceFile, RequirementSourceBlock
 
 
 HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
-FENCE_PATTERN = re.compile(r"(?ms)^```([A-Za-z0-9_-]*)\n.*?^```")
-API_PATH_PATTERN = re.compile(r"\b(?:GET|POST|PUT|DELETE|PATCH)\s+(/[A-Za-z0-9_./{}-]+)", re.IGNORECASE)
 
 
 def build_source_blocks(
@@ -25,22 +22,6 @@ def build_source_blocks(
                 blocks.append(_source_block(source_file, source_code, sequence, unit))
                 sequence += 1
     return blocks
-
-
-def source_blocks_to_fragments(source_blocks: list[RequirementSourceBlock]) -> list[RequirementSourceFragment]:
-    return [
-        RequirementSourceFragment(
-            fragment_id=block.block_id,
-            mapping_id=block.mapping_id,
-            source_filename=block.source_file,
-            heading_path=block.heading_path,
-            fragment_type=_fragment_type_from_block(block),
-            content_hash=block.content_hash,
-            text=block.plain_text,
-            markdown_block=block.markdown,
-        )
-        for block in source_blocks
-    ]
 
 
 def _second_level_sections(markdown: str) -> list[dict]:
@@ -149,25 +130,18 @@ def _source_block(
     unit: dict,
 ) -> RequirementSourceBlock:
     markdown = unit.get("markdown") or "\n".join(unit["body"]).strip()
-    content_types = _content_types(markdown)
     return RequirementSourceBlock(
         block_id=f"{source_code}-{sequence:02d}" if sequence < 100 else f"{source_code}-{sequence}",
         source_code=source_code,
         sequence=sequence,
         mapping_id=source_file.mapping_id,
         source_file=source_file.original_filename,
-        source_file_hash=_content_hash(source_file.markdown_content),
         original_heading=unit["original_heading"],
         heading_level=unit["heading_level"],
         heading_path=list(unit["heading_path"]),
         markdown=markdown,
         plain_text=_plain_text(markdown),
         sub_headings=_sub_headings(markdown),
-        content_types=content_types,
-        anchors=_anchors(markdown),
-        must_preserve_original=any(item in content_types for item in ("interface", "table", "code", "state_flow")),
-        token_estimate=max(1, len(markdown) // 4),
-        content_hash=_content_hash(markdown),
     )
 
 
@@ -189,10 +163,6 @@ def _source_code(index: int) -> str:
             return code
 
 
-def _content_hash(content: str) -> str:
-    return f"sha256:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
-
-
 def _plain_text(markdown: str) -> str:
     text = re.sub(r"(?ms)^```.*?^```", "", markdown)
     text = re.sub(r"!\[[^\]]*]\([^)]+\)", "", text)
@@ -211,48 +181,8 @@ def _sub_headings(markdown: str) -> list[str]:
     return headings
 
 
-def _content_types(markdown: str) -> list[str]:
-    types: list[str] = []
-    lowered = markdown.lower()
-    if re.search(r"(?m)^\|.*\|$", markdown):
-        types.append("table")
-    fence_languages = [match.group(1).lower() for match in FENCE_PATTERN.finditer(markdown)]
-    if "mermaid" in fence_languages:
-        types.append("state_flow")
-    if fence_languages:
-        types.append("code")
-    if API_PATH_PATTERN.search(markdown) or any(token in lowered for token in ("接口", "request", "response", "错误码")):
-        types.append("interface")
-    if any(token in lowered for token in ("验收", "acceptance")):
-        types.append("acceptance")
-    if any(token in lowered for token in ("背景", "目标", "概述")):
-        types.append("background")
-    return types or ["requirement"]
-
-
-def _anchors(markdown: str) -> list[str]:
-    anchors: list[str] = []
-    for match in API_PATH_PATTERN.finditer(markdown):
-        anchors.append(match.group(1))
-    for match in re.finditer(r"`([A-Za-z_][A-Za-z0-9_]{2,})`", markdown):
-        anchors.append(match.group(1))
-    return list(dict.fromkeys(anchors))
-
-
 def _is_non_requirement(markdown: str) -> bool:
     plain = _plain_text(markdown)
     if not plain:
         return True
     return bool(re.fullmatch(r"[-*_]{3,}", plain))
-
-
-def _fragment_type_from_block(block: RequirementSourceBlock) -> str:
-    if "state_flow" in block.content_types:
-        return "state_flow"
-    if "interface" in block.content_types:
-        return "interface"
-    if "acceptance" in block.content_types:
-        return "acceptance"
-    if "background" in block.content_types:
-        return "background"
-    return "requirement"

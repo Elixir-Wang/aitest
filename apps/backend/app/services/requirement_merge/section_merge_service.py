@@ -14,8 +14,8 @@ from app.schemas.requirement_merge import (
     SourceOutlineNode,
     TargetOutlineSection,
 )
-from app.services.requirement_merge_outline_service import assignable_target_sections
-from app.services.requirement_outline_assignment_service import assignable_source_nodes
+from app.services.requirement_merge.outline_service import assignable_target_sections
+from app.services.requirement_merge.outline_assignment_service import assignable_source_nodes
 
 
 REQUIREMENT_MERGE_AGENT_ID = "requirement_merge"
@@ -65,13 +65,13 @@ def _direct_section_result(section: TargetOutlineSection, source_node: SourceOut
         section_id=section.section_id,
         blocks=[OutlineSectionBlock(type="source_node_ref", source_node_id=source_node.node_id)],
         decisions=[
-            OutlineSectionDecision(
-                section_id=section.section_id,
-                source_node_id=source_node.node_id,
-                status="preserved_original" if source_node.preserve_original else "merged",
-                target_heading=section.title,
-                reason="单块章节直接填充原始内容，不需要再次合并。",
-            )
+                OutlineSectionDecision(
+                    section_id=section.section_id,
+                    source_node_id=source_node.node_id,
+                    status="merged",
+                    target_heading=section.title,
+                    reason="单块章节直接填充原始内容，不需要再次合并。",
+                )
         ],
         conflicts=[],
     )
@@ -101,11 +101,6 @@ def validate_section_result(result: OutlineSectionMergeResult, source_nodes: lis
         issues.append(f"章节决策缺少旧节点：{', '.join(missing)}。")
     if unknown:
         issues.append(f"章节决策包含未知旧节点：{', '.join(unknown)}。")
-    block_node_ids = {block.source_node_id for block in result.blocks if block.source_node_id}
-    preserve_ids = {node.node_id for node in source_nodes if node.preserve_original}
-    missing_preserve = sorted(preserve_ids - block_node_ids)
-    if missing_preserve:
-        issues.append(f"高保真旧节点未通过 source_node_ref 保留：{', '.join(missing_preserve)}。")
     return issues
 
 
@@ -118,9 +113,8 @@ def _build_section_merge_prompt(section: TargetOutlineSection, source_nodes: lis
         "你是需求归并智能体。当前阶段只合并一个目标大纲章节。\n"
         "请基于归属到本章节的旧大纲节点，做组合、去重、冲突和待澄清判断。\n"
         "只返回 JSON 对象，不要 Markdown 代码块，不要解释文字。\n"
-        "高保真节点 preserve_original=true 必须用 source_node_ref 保留，不要改写为普通段落。\n"
         "blocks.type 只能是 paragraph, bullet_list, table, source_node_ref, pending_clarification_ref, conflict_ref。\n"
-        "decisions.status 只能是 merged, duplicate, preserved_original, merged_and_preserved, conflict, pending_clarification, discarded。\n"
+        "decisions.status 只能是 merged, duplicate, conflict, pending_clarification, discarded。\n"
         "必须为每个 source_node_id 返回一条 decisions。\n"
         "JSON 字段：section_id, blocks, decisions, conflicts。\n\n"
         f"输入：\n{json.dumps(payload, ensure_ascii=False)}"
@@ -133,9 +127,6 @@ def _node_payload(node: SourceOutlineNode) -> dict:
         "source_file": node.source_file,
         "title": node.title,
         "heading_path": node.heading_path,
-        "content_types": node.content_types,
-        "anchors": node.anchors,
-        "preserve_original": node.preserve_original,
         "content_markdown": node.content_markdown,
     }
 
@@ -221,11 +212,6 @@ def _normalize_decision_status(raw_value: Any) -> str:
         "merged": "merged",
         "duplicate": "duplicate",
         "deduplicate": "duplicate",
-        "preserved": "preserved_original",
-        "preserved_original": "preserved_original",
-        "preserve_original": "preserved_original",
-        "merged_and_preserved": "merged_and_preserved",
-        "merge_and_preserve": "merged_and_preserved",
         "conflict": "conflict",
         "pending": "pending_clarification",
         "pending_clarification": "pending_clarification",

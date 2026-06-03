@@ -18,7 +18,9 @@ from app.schemas.knowledge import (
     WikiLintIssueOutput,
     WikiPageOutput,
 )
-from app.services import exploration_service, knowledge_builder_service, operation_log_service
+from app.services import operation_log_service
+from app.services.exploration import service as exploration_service
+from app.services.knowledge import builder_service as knowledge_builder_service
 
 READY_EXPLORATION_STATUSES = {"completed", "partial"}
 

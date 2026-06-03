@@ -1,12 +1,9 @@
-import hashlib
 import re
 
 from app.schemas.requirement_merge import RequirementMergeSourceFile, SourceOutlineDocument, SourceOutlineNode
 
 
 HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
-FENCE_PATTERN = re.compile(r"(?ms)^```([A-Za-z0-9_-]*)\n.*?^```")
-API_PATH_PATTERN = re.compile(r"\b(?:GET|POST|PUT|DELETE|PATCH)\s+(/[A-Za-z0-9_./{}-]+)", re.IGNORECASE)
 
 
 def build_source_outline(source_files: list[RequirementMergeSourceFile]) -> list[SourceOutlineDocument]:
@@ -21,7 +18,6 @@ def build_source_outline(source_files: list[RequirementMergeSourceFile]) -> list
                 document_code=document_code,
                 mapping_id=source_file.mapping_id,
                 source_file=source_file.original_filename,
-                source_file_hash=_content_hash(source_file.markdown_content),
                 nodes=nodes,
             )
         )
@@ -60,7 +56,6 @@ def _outline_nodes_for_file(source_file: RequirementMergeSourceFile, document_co
             counters[index] = 0
         node_id = _node_id(document_code, [value for value in counters if value])
         markdown = unit["markdown"].strip()
-        content_types = _content_types(markdown)
         own_body_markdown = _own_body_markdown(markdown, unit["title"])
         own_body_plain_text = _plain_text(own_body_markdown)
         nodes.append(
@@ -77,13 +72,6 @@ def _outline_nodes_for_file(source_file: RequirementMergeSourceFile, document_co
                 own_body_markdown=own_body_markdown,
                 own_body_plain_text=own_body_plain_text,
                 sub_headings=_sub_headings(markdown, min_level=level + 1),
-                content_types=content_types,
-                anchors=_anchors(markdown),
-                preserve_original=any(
-                    item in content_types
-                    for item in ("interface", "table", "code", "state_flow", "error_code")
-                ),
-                content_hash=_content_hash(markdown),
             )
         )
     return [node for node in nodes if node.plain_text or node.content_markdown]
@@ -176,10 +164,6 @@ def _node_id(document_code: str, counters: list[int]) -> str:
     return f"{document_code}-{suffix}" if suffix else document_code
 
 
-def _content_hash(content: str) -> str:
-    return f"sha256:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
-
-
 def _plain_text(markdown: str) -> str:
     text = re.sub(r"(?ms)^```.*?^```", "", markdown)
     text = re.sub(r"!\[[^\]]*]\([^)]+\)", "", text)
@@ -196,38 +180,6 @@ def _sub_headings(markdown: str, *, min_level: int) -> list[str]:
         if heading and heading[0] >= min_level:
             headings.append(heading[1])
     return headings
-
-
-def _content_types(markdown: str) -> list[str]:
-    types: list[str] = []
-    lowered = markdown.lower()
-    if re.search(r"(?m)^\|.*\|$", markdown):
-        types.append("table")
-    fence_languages = [match.group(1).lower() for match in FENCE_PATTERN.finditer(markdown)]
-    if "mermaid" in fence_languages:
-        types.append("state_flow")
-    if fence_languages:
-        types.append("code")
-    if API_PATH_PATTERN.search(markdown) or any(token in lowered for token in ("接口", "request", "response")):
-        types.append("interface")
-    if any(token in lowered for token in ("错误码", "error code", "状态码")):
-        types.append("error_code")
-    if any(token in lowered for token in ("验收", "acceptance")):
-        types.append("acceptance")
-    if any(token in lowered for token in ("安全", "鉴权", "权限", "token")):
-        types.append("security")
-    if any(token in lowered for token in ("背景", "目标", "概述")):
-        types.append("background")
-    return types or ["requirement"]
-
-
-def _anchors(markdown: str) -> list[str]:
-    anchors: list[str] = []
-    for match in API_PATH_PATTERN.finditer(markdown):
-        anchors.append(match.group(1))
-    for match in re.finditer(r"`([A-Za-z_][A-Za-z0-9_]{2,})`", markdown):
-        anchors.append(match.group(1))
-    return list(dict.fromkeys(anchors))
 
 
 def _is_non_requirement(markdown: str) -> bool:

@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 
 from app.core.storage import project_requirement_dir, store_path
-from app.schemas.requirement_merge import RequirementMergeSourceFile, RequirementSourceBlock, RequirementSourceFragment
+from app.schemas.requirement_merge import RequirementMergeSourceFile, RequirementSourceBlock
 
 
 def evaluate_merge_quality(
@@ -101,7 +101,6 @@ def write_merge_machine_artifacts(
     document_id: str,
     run_id: str,
     *,
-    source_fragments: list[RequirementSourceFragment],
     source_blocks: list[RequirementSourceBlock] | None = None,
     decisions: list[dict] | None = None,
 ) -> dict[str, str]:
@@ -109,20 +108,14 @@ def write_merge_machine_artifacts(
     artifacts_dir = document_dir / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     source_blocks_path = artifacts_dir / f"{run_id}-source-blocks.json"
-    fragments_path = artifacts_dir / f"{run_id}-fragments.json"
     decisions_path = artifacts_dir / f"{run_id}-decisions.json"
     source_blocks_path.write_text(
         json.dumps([block.model_dump() for block in source_blocks or []], ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    fragments_path.write_text(
-        json.dumps([fragment.model_dump() for fragment in source_fragments], ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
     decisions_path.write_text(json.dumps(decisions or [], ensure_ascii=False, indent=2), encoding="utf-8")
     return {
         "source_blocks_path": store_path(source_blocks_path) or str(source_blocks_path),
-        "fragments_path": store_path(fragments_path) or str(fragments_path),
         "decisions_path": store_path(decisions_path) or str(decisions_path),
     }
 
@@ -407,23 +400,21 @@ def build_mapping_markdown(
             "",
             "## 来源块清单",
             "",
-            "| 来源块ID | 代号 | 原标题 | 内容类型 | 是否保留原文 |",
-            "| --- | --- | --- | --- | --- |",
+            "| 来源块ID | 代号 | 原标题 |",
+            "| --- | --- | --- |",
         ]
     )
     if source_blocks:
         for block in source_blocks:
             rows.append(
-                "| {block_id} | {source_code} | {heading} | {content_types} | {preserve} |".format(
+                "| {block_id} | {source_code} | {heading} |".format(
                     block_id=md_cell(block.block_id),
                     source_code=md_cell(block.source_code),
                     heading=md_cell(block.original_heading),
-                    content_types=md_cell("、".join(block.content_types)),
-                    preserve="是" if block.must_preserve_original else "否",
                 )
             )
     else:
-        rows.append("| - | - | - | - | - |")
+        rows.append("| - | - | - |")
     rows.extend(
         [
             "",
@@ -442,8 +433,8 @@ def build_mapping_markdown(
         "",
             "## 来源块覆盖表",
         "",
-            "| 来源块ID | 源文档 | 原二级标题 | 合并后位置 | 处理方式 | 是否保留原文 | 备注 |",
-            "| --- | --- | --- | --- | --- | --- | --- |",
+            "| 来源块ID | 源文档 | 原二级标题 | 合并后位置 | 处理方式 | 备注 |",
+            "| --- | --- | --- | --- | --- | --- |",
         ]
     )
     if source_blocks:
@@ -454,13 +445,12 @@ def build_mapping_markdown(
         for item in coverage_items:
             mapping_id = item.get("mapping_id", "")
             rows.append(
-                "| {block_id} | {source_file} | {source_heading} | {target} | {status} | {preserve} | {reason} |".format(
+                "| {block_id} | {source_file} | {source_heading} | {target} | {status} | {reason} |".format(
                     block_id=md_cell(item.get("source_block_id", "")),
                     source_file=md_cell(source_names.get(mapping_id, source_stems.get(mapping_id, mapping_id))),
                     source_heading=md_cell(item.get("source_heading", "")),
                     target=md_cell(" / ".join(filter(None, [item.get("target_module", ""), item.get("target_heading", "")]))),
                     status=md_cell(_coverage_status_label(item.get("coverage_status", ""))),
-                    preserve="否",
                     reason=md_cell(item.get("reason", "")),
                 )
             )
@@ -472,16 +462,6 @@ def build_mapping_markdown(
     rows.extend(["", "## 未覆盖来源块清单", ""])
     if uncovered_blocks:
         rows.extend([f"- {block.block_id} {block.source_file} / {block.original_heading}" for block in uncovered_blocks])
-    else:
-        rows.append("无")
-    rows.extend(["", "## 高保真内容保留清单", ""])
-    preserve_blocks = [block for block in source_blocks if block.must_preserve_original]
-    if preserve_blocks:
-        for block in preserve_blocks:
-            item = coverage_by_block_id.get(block.block_id) or _coverage_item_for_block(coverage_items, block) or {}
-            rows.append(
-                f"- {block.block_id} {block.original_heading}：{_preserve_status(item, block)}"
-            )
     else:
         rows.append("无")
     return "\n".join(rows) + "\n"
@@ -558,7 +538,6 @@ def build_quality_markdown(
             _structure_metric_row("Markdown 表格", source_metrics["table_rows"], draft_metrics["table_rows"], minimum=8, threshold=0.35),
             _structure_metric_row("Mermaid 流程图", source_metrics["mermaid_blocks"], draft_metrics["mermaid_blocks"], minimum=1, threshold=0.5),
             _structure_metric_row("代码块 / JSON 示例", source_metrics["fenced_blocks"], draft_metrics["fenced_blocks"], minimum=3, threshold=0.5),
-            f"| 高保真来源块 | {len([block for block in source_blocks if block.must_preserve_original])} | - | {_preserve_summary(coverage_items, source_blocks)} |",
             "",
             "## 合并完整性",
             "",
@@ -667,18 +646,6 @@ def _structure_metric_row(label: str, source_count: int, draft_count: int, *, mi
     return f"| {label} | {source_count} | {draft_count} | {result} |"
 
 
-def _preserve_summary(coverage_items: list[dict], source_blocks: list[RequirementSourceBlock]) -> str:
-    preserve_blocks = [block for block in source_blocks if block.must_preserve_original]
-    if not preserve_blocks:
-        return "无高保真来源块"
-    failed = []
-    for block in preserve_blocks:
-        item = _coverage_item_for_block(coverage_items, block) or {}
-        if _preserve_status(item, block) == "否":
-            failed.append(block.original_heading)
-    return "通过" if not failed else f"保留不足：{'、'.join(failed)}"
-
-
 def _retention_summary(source_unit_count: int, draft_unit_count: int, ratio: float) -> str:
     if source_unit_count < 20:
         return "来源内容较少，未触发摘要化比例门禁。"
@@ -751,13 +718,12 @@ def _coverage_row_for_block(block: RequirementSourceBlock, item: dict | None) ->
     item = item or {}
     target = " / ".join(filter(None, [item.get("target_module", ""), item.get("target_heading", "")]))
     return (
-        "| {block_id} | {source_file} | {heading} | {target} | {status} | {preserve} | {reason} |".format(
+        "| {block_id} | {source_file} | {heading} | {target} | {status} | {reason} |".format(
             block_id=md_cell(block.block_id),
             source_file=md_cell(block.source_file),
             heading=md_cell(block.original_heading),
             target=md_cell(target or "-"),
             status=md_cell(_coverage_status_label(item.get("coverage_status", "missing"))),
-            preserve=_preserve_status(item, block),
             reason=md_cell(item.get("reason", "未覆盖") if item else "未覆盖"),
         )
     )
@@ -772,17 +738,6 @@ def _coverage_status_label(status: str) -> str:
         "discarded": "放入附录",
         "missing": "未覆盖",
     }.get(status, status)
-
-
-def _preserve_status(item: dict, block: RequirementSourceBlock) -> str:
-    if not block.must_preserve_original:
-        return "否"
-    status = str(item.get("coverage_status", ""))
-    if status in {"merged", "duplicate"}:
-        return "是"
-    if status in {"conflict", "pending_clarification"}:
-        return "部分"
-    return "否"
 
 
 def _source_code(index: int) -> str:

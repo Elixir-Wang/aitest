@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from app.dependencies.auth import current_user, require_admin
-from app.services import document_service
+from app.services.document import service as document_service
 
 router = APIRouter(prefix="/projects/{project_id}/documents", tags=["documents"])
 
@@ -44,5 +44,4 @@ def get_document(project_id: str, document_id: str, actor=Depends(current_user))
 
 @router.delete("/{document_id}")
 def delete_document(project_id: str, document_id: str, actor=Depends(require_admin)) -> dict:
-    _ = actor
-    return document_service.delete_document(project_id, document_id)
+    return document_service.delete_document(project_id, document_id, actor)

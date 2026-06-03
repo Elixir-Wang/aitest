@@ -12,7 +12,8 @@ from app.core.storage import resolve_stored_path
 from app.presentation.serializers import serialize_exploration_run
 from app.repositories import environment_repo, exploration_repo, project_repo
 from app.schemas.exploration import ExplorationRunCreateIn, ExplorationRunUpdateIn
-from app.services import exploration_artifact_service, operation_log_service
+from app.services import operation_log_service
+from app.services.exploration import artifact_service as exploration_artifact_service
 
 STATUSES = {"pending", "queued", "running", "waiting_human", "stopping", "cancelled", "partial", "completed", "blocked"}
 LOGIN_STRATEGIES = {"reuse_state", "manual", "account_password", "skip_login"}

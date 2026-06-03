@@ -13,7 +13,9 @@ from app.schemas.exploration import (
     ExplorationRunOut,
     ExplorationRunUpdateIn,
 )
-from app.services import exploration_event_bus, exploration_service, site_exploration_orchestrator
+from app.services.exploration import event_bus as exploration_event_bus
+from app.services.exploration import service as exploration_service
+from app.services.exploration import site_orchestrator as site_exploration_orchestrator
 
 router = APIRouter(prefix="/projects", tags=["exploration"])
 global_router = APIRouter(prefix="/exploration-runs", tags=["exploration"])

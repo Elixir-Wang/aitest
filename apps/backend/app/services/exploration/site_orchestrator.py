@@ -17,13 +17,11 @@ from app.core.settings import (
 from app.core.db import connect
 from app.core.storage import PROJECT_FILE_STORAGE_ROOT, store_path
 from app.repositories import exploration_repo
-from app.services import (
-    exploration_artifact_service,
-    exploration_event_bus,
-    exploration_goal_validation_service,
-    exploration_service,
-    operation_log_service,
-)
+from app.services import operation_log_service
+from app.services.exploration import artifact_service as exploration_artifact_service
+from app.services.exploration import event_bus as exploration_event_bus
+from app.services.exploration import goal_validation_service as exploration_goal_validation_service
+from app.services.exploration import service as exploration_service
 
 
 def run_exploration(run_id: str) -> None:

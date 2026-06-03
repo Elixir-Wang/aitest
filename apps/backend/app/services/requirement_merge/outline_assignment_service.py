@@ -2,8 +2,8 @@ import re
 from typing import Any
 
 from app.schemas.requirement_merge import OutlineAssignment, SourceOutlineDocument, SourceOutlineNode, TargetOutlineSection
-from app.services.requirement_merge_outline_service import assignable_target_sections, flatten_target_outline
-from app.services.requirement_source_outline_service import flatten_source_outline
+from app.services.requirement_merge.outline_service import assignable_target_sections, flatten_target_outline
+from app.services.requirement_merge.source_outline_service import flatten_source_outline
 
 
 ASSIGNMENT_BATCH_SIZE = 30
@@ -161,9 +161,6 @@ def _node_payload(node: SourceOutlineNode) -> dict:
         "source_node_id": node.node_id,
         "title": node.title,
         "heading_path": node.heading_path,
-        "content_types": node.content_types,
-        "anchors": node.anchors,
-        "preserve_original": node.preserve_original,
     }
 
 

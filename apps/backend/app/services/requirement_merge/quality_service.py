@@ -8,9 +8,9 @@ from app.schemas.requirement_merge import (
     SourceOutlineDocument,
     TargetOutlineSection,
 )
-from app.services.requirement_merge_outline_service import assignable_target_sections
-from app.services.requirement_outline_assignment_service import assignable_source_nodes
-from app.services.requirement_source_outline_service import flatten_source_outline
+from app.services.requirement_merge.outline_service import assignable_target_sections
+from app.services.requirement_merge.outline_assignment_service import assignable_source_nodes
+from app.services.requirement_merge.source_outline_service import flatten_source_outline
 
 
 def evaluate_outline_merge_quality(
@@ -53,16 +53,6 @@ def evaluate_outline_merge_quality(
     if missing_decisions:
         issues.append(f"旧节点缺少章节处理决策：{', '.join(missing_decisions)}。")
 
-    preserved_refs = {
-        block.source_node_id
-        for result in section_results
-        for block in result.blocks
-        if block.type == "source_node_ref" and block.source_node_id
-    }
-    missing_preserved = sorted(node.node_id for node in source_nodes if node.preserve_original and node.node_id not in preserved_refs)
-    if missing_preserved:
-        issues.append(f"高保真旧节点未原文保留：{', '.join(missing_preserved)}。")
-
     if _contains_source_structure(merged_markdown, source_documents):
         issues.append("合并稿包含源文件名、docmap 或 mapping_id 等来源结构污染。")
 
@@ -88,7 +78,7 @@ def evaluate_outline_merge_quality(
 
 
 def _has_blocking_issue(issues: list[str]) -> bool:
-    blocking_tokens = ("缺少", "未知", "未原文保留", "污染", "异常过短", "保留不足")
+    blocking_tokens = ("缺少", "未知", "污染", "异常过短", "保留不足")
     return any(any(token in issue for token in blocking_tokens) for issue in issues)
 
 

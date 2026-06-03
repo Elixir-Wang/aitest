@@ -9,7 +9,7 @@ from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir, resolve_stored_path, store_path
 from app.repositories import document_repo, project_repo
-from app.services.document_serializer import serialize_document_from_db, serialize_file_mapping
+from app.services.document.serializer import serialize_document_from_db, serialize_file_mapping
 from app.schemas.requirement_conversion import RequirementConversionInput
 from app.agents.requirement_standardization.service import convert_requirement_file
 from app.services.requirement_file_conversion.dispatcher import convert_requirement_file_to_markdown

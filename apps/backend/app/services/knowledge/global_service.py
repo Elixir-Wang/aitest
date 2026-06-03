@@ -9,7 +9,7 @@ from app.core.storage import global_knowledge_version_dir, resolve_stored_path, 
 from app.repositories import global_knowledge_repo
 from app.schemas.global_knowledge import GlobalKnowledgeListQuery, GlobalKnowledgeUpdateIn
 from app.services import operation_log_service
-from app.services.document_file_service import convert_to_markdown, file_format_for_filename, safe_filename_for_storage
+from app.services.document.file_service import convert_to_markdown, file_format_for_filename, safe_filename_for_storage
 
 KNOWLEDGE_TYPES = {
     "platform_prd": "平台 PRD",

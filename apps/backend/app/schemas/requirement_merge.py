@@ -24,44 +24,18 @@ class RequirementMergeResolvedConflict(BaseModel):
     resolution_type: str
 
 
-class RequirementSourceFragment(BaseModel):
-    fragment_id: str
-    mapping_id: str
-    source_filename: str
-    heading_path: list[str] = Field(default_factory=list)
-    fragment_type: Literal[
-        "requirement",
-        "constraint",
-        "interface",
-        "state_flow",
-        "acceptance",
-        "background",
-        "attachment",
-        "non_requirement",
-    ] = "requirement"
-    content_hash: str
-    text: str
-    markdown_block: str
-
-
 class RequirementSourceBlock(BaseModel):
     block_id: str
     source_code: str
     sequence: int
     mapping_id: str
     source_file: str
-    source_file_hash: str
     original_heading: str
     heading_level: int
     heading_path: list[str] = Field(default_factory=list)
     markdown: str
     plain_text: str
     sub_headings: list[str] = Field(default_factory=list)
-    content_types: list[str] = Field(default_factory=list)
-    anchors: list[str] = Field(default_factory=list)
-    must_preserve_original: bool = False
-    token_estimate: int = 0
-    content_hash: str
 
 
 class SourceOutlineNode(BaseModel):
@@ -77,12 +51,8 @@ class SourceOutlineNode(BaseModel):
     own_body_markdown: str = ""
     own_body_plain_text: str = ""
     sub_headings: list[str] = Field(default_factory=list)
-    content_types: list[str] = Field(default_factory=list)
-    anchors: list[str] = Field(default_factory=list)
-    preserve_original: bool = False
     node_role: str = "content"
     must_assign: bool = True
-    content_hash: str
     children: list["SourceOutlineNode"] = Field(default_factory=list)
 
 
@@ -90,7 +60,6 @@ class SourceOutlineDocument(BaseModel):
     document_code: str
     mapping_id: str
     source_file: str
-    source_file_hash: str
     nodes: list[SourceOutlineNode] = Field(default_factory=list)
 
 
@@ -138,8 +107,6 @@ class OutlineSectionDecision(BaseModel):
     status: Literal[
         "merged",
         "duplicate",
-        "preserved_original",
-        "merged_and_preserved",
         "conflict",
         "pending_clarification",
         "discarded",

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
 from app.dependencies.auth import current_user
 from app.schemas.global_knowledge import GlobalKnowledgeListQuery, GlobalKnowledgeUpdateIn
-from app.services import global_knowledge_service
+from app.services.knowledge import global_service as global_knowledge_service
 
 router = APIRouter(prefix="/global-knowledge", tags=["global-knowledge"])
 

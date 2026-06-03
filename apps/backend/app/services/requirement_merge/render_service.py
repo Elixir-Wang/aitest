@@ -6,8 +6,8 @@ from app.schemas.requirement_merge import (
     SourceOutlineNode,
     TargetOutlineSection,
 )
-from app.services.requirement_merge_outline_service import flatten_target_outline
-from app.services.requirement_source_outline_service import flatten_source_outline
+from app.services.requirement_merge.outline_service import flatten_target_outline
+from app.services.requirement_merge.source_outline_service import flatten_source_outline
 
 
 def render_merged_markdown(
@@ -91,8 +91,8 @@ def render_mapping_markdown(
             "",
             "## 旧大纲到新大纲映射",
             "",
-            "| 旧节点ID | 源文档 | 旧标题路径 | 新章节 | 处理方式 | 是否原文保留 | 原因 |",
-            "| --- | --- | --- | --- | --- | --- | --- |",
+            "| 旧节点ID | 源文档 | 旧标题路径 | 新章节 | 处理方式 | 原因 |",
+            "| --- | --- | --- | --- | --- | --- |",
         ]
     )
     for assignment in assignments:
@@ -103,15 +103,13 @@ def render_mapping_markdown(
         section_title = section.title if section else ""
         decisions = decisions_by_node.get(node.node_id, [])
         status = "、".join(_decision_label(decision.status) for decision in decisions) or _assignment_label(assignment.assignment_type)
-        preserved = "是" if node.preserve_original and any(decision.status in {"preserved_original", "merged_and_preserved"} for decision in decisions) else "否"
         rows.append(
-            "| {node_id} | {source_file} | {heading_path} | {target} | {status} | {preserved} | {reason} |".format(
+            "| {node_id} | {source_file} | {heading_path} | {target} | {status} | {reason} |".format(
                 node_id=md_cell(node.node_id),
                 source_file=md_cell(node.source_file),
                 heading_path=md_cell(" / ".join(node.heading_path)),
                 target=md_cell(section_title or "-"),
                 status=md_cell(status),
-                preserved=preserved,
                 reason=md_cell(_decision_reasons(decisions) or assignment.reason),
             )
         )
@@ -171,8 +169,6 @@ def _decision_label(value: str) -> str:
     return {
         "merged": "合并",
         "duplicate": "重复去重",
-        "preserved_original": "原文保留",
-        "merged_and_preserved": "合并+原文保留",
         "conflict": "放入待确认",
         "pending_clarification": "待澄清",
         "discarded": "丢弃",

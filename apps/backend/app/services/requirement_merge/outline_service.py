@@ -4,7 +4,7 @@ from typing import Any
 
 from app.agents.requirement_merge.runner import run_requirement_merge_prompt
 from app.schemas.requirement_merge import SourceOutlineDocument, SourceOutlineNode, TargetOutlineSection
-from app.services.requirement_source_outline_service import flatten_source_outline
+from app.services.requirement_merge.source_outline_service import flatten_source_outline
 
 
 REQUIREMENT_MERGE_AGENT_ID = "requirement_merge"
@@ -27,7 +27,7 @@ async def generate_target_outline(
         outline = build_target_outline(document_name, sections)
         issues = validate_target_outline(outline, document_name)
         if not issues:
-            from app.services.requirement_outline_assignment_service import validate_outline_source_refs
+            from app.services.requirement_merge.outline_assignment_service import validate_outline_source_refs
 
             issues = validate_outline_source_refs(source_documents, outline)
         if issues:

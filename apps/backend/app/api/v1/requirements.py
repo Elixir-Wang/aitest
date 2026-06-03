@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.document import ConflictResolutionIn, RequirementMergeRequestIn, SourceDocumentUpdateIn, SourceMarkdownUpdateIn
-from app.services import document_service
+from app.services.document import service as document_service
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirements"])
 file_router = APIRouter(prefix="/requirement-files", tags=["requirements"])

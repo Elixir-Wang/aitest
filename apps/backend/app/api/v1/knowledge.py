@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.dependencies.auth import current_user
-from app.services import knowledge_service
+from app.services.knowledge import service as knowledge_service
 
 router = APIRouter(prefix="/projects/{project_id}/knowledge", tags=["knowledge"])
 
