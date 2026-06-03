@@ -180,7 +180,7 @@ flowchart TD
     B --> C{有账号？}
     C -->|是| D{有 B 端权限？}
     D -->|是| E[建 Session]
-    D -->|否| F[提示"产品未开通"或"联系管理员"]
+    D -->|否| F[提示“产品未开通”或“联系管理员”]
     C -->|否| G[引导留资或申请试用]
 ```
 
@@ -220,13 +220,13 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[context/register 预注册 {invite_code: "BG_INV_XXX"}] --> B[用户登录]
+    A["context/register 预注册 {invite_code: BG_INV_XXX}"] --> B[用户登录]
     B --> C[ticket verify]
     C --> D[从 biz_context 获取 invite_code]
     D --> E[产品后端校验邀请码]
     E --> F{有效？}
     F -->|是| G[建 Session]
-    F -->|否| H[提示"邀请码无效"]
+    F -->|否| H[提示“邀请码无效”]
 ```
 
 ## 十、原产品登录入口保留原则
