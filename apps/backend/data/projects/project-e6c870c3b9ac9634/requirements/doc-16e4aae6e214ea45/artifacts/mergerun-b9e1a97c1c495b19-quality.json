@@ -1,9 +1,0 @@
-{
-  "quality_result": "failed",
-  "quality_issues": [
-    "旧大纲归属生成失败：目标大纲章节没有旧块归属：sec-09-04, sec-99。"
-  ],
-  "stage_errors": [
-    "旧大纲归属生成失败：目标大纲章节没有旧块归属：sec-09-04, sec-99。"
-  ]
-}

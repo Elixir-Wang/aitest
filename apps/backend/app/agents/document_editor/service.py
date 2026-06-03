@@ -1,6 +1,6 @@
 from app.agents.document_editor.agent import document_editor_agent
+from app.agents.document_editor.schemas import DocumentEditInput, DocumentEditOutput
 from app.agents.model_selection import build_agent_model, resolve_model_selection
-from app.schemas.document_editor import DocumentEditInput, DocumentEditOutput
 
 
 def edit_document(input_data: DocumentEditInput) -> DocumentEditOutput:
@@ -22,8 +22,6 @@ def edit_document(input_data: DocumentEditInput) -> DocumentEditOutput:
     output = result.get("structured_response")
     if output is None:
         raise ValueError("文档修改智能体未返回结构化结果。")
-
-    _validate_document_edit_output(input_data, output)
     return output
 
 
@@ -37,16 +35,3 @@ def _build_document_editor_input(input_data: DocumentEditInput) -> str:
             input_data.content,
         ]
     )
-
-
-def _validate_document_edit_output(input_data: DocumentEditInput, output: DocumentEditOutput) -> None:
-    if not output.change_summary.strip():
-        raise ValueError("文档修改返回的 change_summary 不能为空。")
-
-    original = input_data.content.strip()
-    edited = output.edited_content.strip()
-    if not edited:
-        return
-
-    if original and len(edited) < max(50, int(len(original) * 0.2)):
-        raise ValueError("文档修改输出疑似异常缩水。")

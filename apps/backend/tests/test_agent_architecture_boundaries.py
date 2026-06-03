@@ -43,3 +43,12 @@ def test_agent_packages_have_definition_entrypoint() -> None:
 def test_agent_packages_do_not_use_legacy_agent_filenames() -> None:
     legacy_files = sorted(BACKEND_APP.glob("agents/*/*_agent.py"))
     assert [str(path.relative_to(BACKEND_APP.parent)) for path in legacy_files] == []
+
+
+def test_legacy_agent_service_facade_removed() -> None:
+    assert not (BACKEND_APP / "services" / "agent_service.py").exists()
+    assert not (BACKEND_APP / "schemas" / "agent.py").exists()
+
+    agents_api = (BACKEND_APP / "api" / "v1" / "agents.py").read_text(encoding="utf-8")
+    assert "agent_service" not in agents_api
+    assert '@router.post("/{agent_id}/run"' not in agents_api

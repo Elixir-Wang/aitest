@@ -1,16 +1,10 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from app.agents.requirement_standardization import schemas
 from app.agents.requirement_standardization.agent import requirement_standardization_agent
-from app.agents.requirement_standardization.tools import (
-    convert_pdf_to_markdown,
-    convert_text_to_markdown,
-    convert_word_to_markdown,
-    normalize_markdown_content,
-    tools,
-)
 from app.schemas.requirement_conversion import RequirementConversionInput, RequirementConversionOutput
 
 
@@ -21,13 +15,19 @@ def test_requirement_conversion_output_contract_is_minimal() -> None:
     }
 
 
-def test_requirement_conversion_input_uses_source_path_contract() -> None:
+def test_requirement_conversion_input_uses_candidate_markdown_contract() -> None:
     assert set(RequirementConversionInput.model_fields) == {
         "filename",
-        "file_format",
-        "source_file_path",
-        "assets_dir_path",
+        "markdown_content",
     }
+
+
+def test_requirement_conversion_output_requires_conversion_summary() -> None:
+    with pytest.raises(ValidationError):
+        RequirementConversionOutput(
+            markdown_content="# 登录\n\n- 支持账号密码登录。\n",
+            conversion_summary="",
+        )
 
 
 def test_requirement_standardization_schemas_reuse_api_contract() -> None:
@@ -35,20 +35,20 @@ def test_requirement_standardization_schemas_reuse_api_contract() -> None:
     assert schemas.RequirementConversionOutput is RequirementConversionOutput
 
 
-def test_requirement_standardization_exposes_file_conversion_tools() -> None:
-    assert tools == [
-        convert_pdf_to_markdown,
-        convert_word_to_markdown,
-        convert_text_to_markdown,
-        normalize_markdown_content,
-    ]
-    assert normalize_markdown_content.invoke({"markdown": "# 标题\n正文"}) == "# 标题\n正文\n"
+def test_requirement_standardization_agent_does_not_expose_file_conversion_tools() -> None:
+    agent_source = Path("app/agents/requirement_standardization/agent.py").read_text(encoding="utf-8")
+    assert "convert_pdf_to_markdown" not in agent_source
+    assert "convert_word_to_markdown" not in agent_source
+    assert "convert_text_to_markdown" not in agent_source
+    assert "langchain_core.tools" not in agent_source
 
 
 def test_requirement_standardization_uses_service_file_converters() -> None:
     converter_root = Path("app/services/requirement_file_conversion")
-    for filename in ("__init__.py", "pdf.py", "word.py", "text.py"):
+    for filename in ("__init__.py", "common.py", "dispatcher.py", "pdf.py", "word.py", "text.py"):
         assert (converter_root / filename).exists()
+    assert not Path("app/services/requirement_file_converter.py").exists()
+    assert not Path("app/agents/requirement_standardization/tools.py").exists()
 
 
 def test_requirement_standardization_has_no_deepagents_or_subagents() -> None:
@@ -86,18 +86,29 @@ def test_requirement_standardization_agent_uses_langchain_create_agent(monkeypat
 
     assert agent == "agent"
     assert calls["model"] == "model"
-    assert calls["tools"] == tools
+    assert calls["tools"] == []
     assert calls["response_format"] is RequirementConversionOutput
-    assert "需求标准化智能体" in calls["system_prompt"]
+    assert "markdown 文档标准化智能体" in calls["system_prompt"]
     assert "不得编造" in calls["system_prompt"]
+    assert "你的唯一处理对象是 candidate_markdown" in calls["system_prompt"]
+    assert "原文能够支撑的标题层级" in calls["system_prompt"]
+    assert "不要为了形式完整强凑标题层级" in calls["system_prompt"]
+    assert "有序列表或无序列表" in calls["system_prompt"]
+    assert "Markdown 表格" in calls["system_prompt"]
+    assert "代码块" in calls["system_prompt"]
+    assert "Mermaid 流程图" in calls["system_prompt"]
+    assert "依据不足时保持原文文本，不要强行转图" in calls["system_prompt"]
+    assert "不得把不确定的普通段落、规则说明或字段说明强行转换为 Mermaid" in calls["system_prompt"]
+    assert "链接和图片引用" in calls["system_prompt"]
+    assert "不得根据 filename 后缀臆测原始文件结构" in calls["system_prompt"]
+    assert "对 PDF/TXT 转换出的纯文本" not in calls["system_prompt"]
+    assert "对 Word/Markdown 转换结果" not in calls["system_prompt"]
 
 
 @pytest.mark.anyio
-async def test_requirement_standardization_service_returns_structured_response(monkeypatch, tmp_path) -> None:
+async def test_requirement_standardization_service_returns_structured_response(monkeypatch) -> None:
     from app.agents.requirement_standardization.service import convert_requirement_file
 
-    source_path = tmp_path / "demo.md"
-    source_path.write_text("# 登录\n支持账号密码登录。", encoding="utf-8")
     expected = RequirementConversionOutput(
         markdown_content="# 登录\n\n- 支持账号密码登录。\n",
         conversion_summary="已标准化 Markdown。",
@@ -106,8 +117,9 @@ async def test_requirement_standardization_service_returns_structured_response(m
     class FakeAgent:
         async def ainvoke(self, payload):
             content = payload["messages"][0]["content"]
-            assert "source_file_path:" in content
-            assert str(source_path) in content
+            assert "candidate_markdown:" in content
+            assert "source_file_path:" not in content
+            assert "# 登录\n支持账号密码登录。" in content
             return {"structured_response": expected}
 
     monkeypatch.setattr("app.agents.requirement_standardization.service.resolve_model_selection", lambda capability_id: "selection")
@@ -117,8 +129,7 @@ async def test_requirement_standardization_service_returns_structured_response(m
     result = await convert_requirement_file(
         RequirementConversionInput(
             filename="demo.md",
-            file_format="md",
-            source_file_path=str(source_path),
+            markdown_content="# 登录\n支持账号密码登录。",
         )
     )
 
@@ -126,11 +137,8 @@ async def test_requirement_standardization_service_returns_structured_response(m
 
 
 @pytest.mark.anyio
-async def test_requirement_standardization_service_rejects_missing_structured_response(monkeypatch, tmp_path) -> None:
+async def test_requirement_standardization_service_rejects_missing_structured_response(monkeypatch) -> None:
     from app.agents.requirement_standardization.service import convert_requirement_file
-
-    source_path = tmp_path / "demo.md"
-    source_path.write_text("# 登录\n支持账号密码登录。", encoding="utf-8")
 
     class FakeAgent:
         async def ainvoke(self, payload):
@@ -144,8 +152,7 @@ async def test_requirement_standardization_service_rejects_missing_structured_re
         await convert_requirement_file(
             RequirementConversionInput(
                 filename="demo.md",
-                file_format="md",
-                source_file_path=str(source_path),
+                markdown_content="# 登录\n支持账号密码登录。",
             )
         )
 
@@ -158,15 +165,46 @@ def test_document_file_service_uses_requirement_standardization_service() -> Non
     assert "from app.agents.raw_requirement_converter.converters import convert_requirement_file_to_markdown" not in content
 
 
-def test_raw_requirement_converter_imports_remain_compatible(monkeypatch) -> None:
-    from app.agents.raw_requirement_converter import agent as legacy_agent_module
-    from app.agents.raw_requirement_converter.service import convert_requirement_file as legacy_convert
-    from app.agents.requirement_standardization.service import convert_requirement_file as canonical_convert
+@pytest.mark.anyio
+async def test_document_file_service_converts_locally_before_standardization(monkeypatch, tmp_path) -> None:
+    from app.services import document_file_service
 
-    monkeypatch.setattr(
-        "app.agents.raw_requirement_converter.agent.requirement_standardization_agent",
-        lambda model: ("agent", model),
+    source_path = tmp_path / "demo.docx"
+    source_path.write_bytes(b"fake-docx")
+    seen = {}
+
+    def fake_local_convert(filename, raw_bytes, *, assets_dir=None):
+        seen["local"] = {
+            "filename": filename,
+            "raw_bytes": raw_bytes,
+            "assets_dir": assets_dir,
+        }
+        return "# 登录\n支持账号密码登录。", "已通过本地 Word 转换器提取正文。"
+
+    async def fake_standardize(input_data):
+        seen["agent_input"] = input_data
+        return RequirementConversionOutput(
+            markdown_content="# 登录\n\n- 支持账号密码登录。",
+            conversion_summary="已标准化候选 Markdown。",
+        )
+
+    monkeypatch.setattr(document_file_service, "convert_requirement_file_to_markdown", fake_local_convert)
+    monkeypatch.setattr(document_file_service, "convert_requirement_file", fake_standardize)
+
+    markdown, summary = await document_file_service.convert_to_markdown(
+        "demo.docx",
+        source_path=source_path,
+        assets_dir=tmp_path / "assets",
     )
 
-    assert legacy_agent_module.raw_requirement_converter_agent("model") == ("agent", "model")
-    assert legacy_convert is canonical_convert
+    assert seen["local"]["raw_bytes"] == b"fake-docx"
+    assert seen["agent_input"].markdown_content == "# 登录\n支持账号密码登录。\n"
+    assert not hasattr(seen["agent_input"], "conversion_summary")
+    assert not hasattr(seen["agent_input"], "file_format")
+    assert not hasattr(seen["agent_input"], "source_file_path")
+    assert markdown == "# 登录\n\n- 支持账号密码登录。\n"
+    assert summary == "已标准化候选 Markdown。"
+
+
+def test_raw_requirement_converter_legacy_package_removed() -> None:
+    assert not Path("app/agents/raw_requirement_converter").exists()

@@ -16,7 +16,6 @@ type MarkdownPreviewProps = {
   content: string;
   emptyClassName?: string;
   emptyText?: string;
-  indentParagraphs?: boolean;
 };
 
 export function MarkdownPreview({
@@ -24,7 +23,6 @@ export function MarkdownPreview({
   content,
   emptyClassName,
   emptyText = "当前版本暂无可展示内容。",
-  indentParagraphs = false,
 }: MarkdownPreviewProps) {
   const markdown = content.trim();
 
@@ -60,7 +58,6 @@ export function MarkdownPreview({
             }
             return <code className={className}>{children}</code>;
           },
-          p: ({ children }) => <p style={indentParagraphs ? { textIndent: "2em" } : undefined}>{children}</p>,
           table: ({ children }) => (
             <div className="markdown-table-scroll">
               <table>{children}</table>

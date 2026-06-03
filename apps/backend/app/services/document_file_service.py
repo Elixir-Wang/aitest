@@ -11,8 +11,8 @@ from app.core.storage import project_requirement_dir, resolve_stored_path, store
 from app.repositories import document_repo, project_repo
 from app.services.document_serializer import serialize_document_from_db, serialize_file_mapping
 from app.schemas.requirement_conversion import RequirementConversionInput
-from app.agents.requirement_standardization.service import convert_requirement_file, fallback_convert_requirement_file
-from app.services.requirement_markdown_normalizer import normalize_requirement_markdown
+from app.agents.requirement_standardization.service import convert_requirement_file
+from app.services.requirement_file_conversion.dispatcher import convert_requirement_file_to_markdown
 from app.services import operation_log_service
 
 DOCUMENT_PENDING_MERGE_STATUS = "pending_merge"
@@ -352,32 +352,35 @@ async def convert_to_markdown(
         source_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.write_bytes(raw_bytes)
 
+    local_markdown, local_summary = convert_requirement_file_to_markdown(
+        filename,
+        source_path.read_bytes(),
+        assets_dir=assets_dir,
+    )
+    local_markdown = _normalize_converted_markdown(local_markdown)
+    if not local_markdown.strip():
+        raise ValueError("本地转换未生成有效 Markdown。")
+
     conversion_input = RequirementConversionInput(
         filename=filename,
-        file_format=file_format_for_filename(filename),
-        source_file_path=str(source_path),
-        assets_dir_path=str(assets_dir) if assets_dir else None,
+        markdown_content=local_markdown,
     )
     try:
         agent_output = await convert_requirement_file(conversion_input)
     except Exception as exc:
-        fallback_markdown, fallback_summary = fallback_convert_requirement_file(conversion_input)
-        fallback_markdown = normalize_requirement_markdown(fallback_markdown)
         logger.warning(
-            "Requirement format agent output failed; using local conversion fallback | filename={filename} file_format={file_format} error={error_type}: {error}",
+            "Requirement standardization agent output failed; using local conversion fallback | filename={filename} file_format={file_format} error={error_type}: {error}",
             filename=filename,
-            file_format=conversion_input.file_format,
+            file_format=file_format_for_filename(filename),
             error_type=type(exc).__name__,
             error=str(exc),
         )
-        return fallback_markdown, f"{fallback_summary}（智能体输出解析或运行失败，已使用本地转换结果：{type(exc).__name__}。）"
+        return local_markdown, f"{local_summary}（智能体标准化失败，已使用本地转换结果：{type(exc).__name__}。）"
 
-    markdown = normalize_requirement_markdown(agent_output.markdown_content)
+    markdown = _normalize_converted_markdown(agent_output.markdown_content)
     markdown = markdown.strip()
     if not markdown:
-        fallback_markdown, fallback_summary = fallback_convert_requirement_file(conversion_input)
-        fallback_markdown = normalize_requirement_markdown(fallback_markdown)
-        return fallback_markdown, f"{fallback_summary}（智能体未返回有效 Markdown，已使用本地转换结果。）"
+        return local_markdown, f"{local_summary}（智能体未返回有效 Markdown，已使用本地转换结果。）"
 
     summary = agent_output.conversion_summary.strip() or "已通过需求标准化智能体生成标准 Markdown。"
     return markdown + "\n", summary
@@ -387,6 +390,10 @@ def converted_assets_dir(row, markdown_path_value: str | None) -> Path:
     if markdown_path_value:
         return (resolve_stored_path(markdown_path_value) or Path(markdown_path_value)).parent / f"{row['id']}_assets"
     return standard_assets_dir(row["project_id"], row["document_id"], row["id"])
+
+
+def _normalize_converted_markdown(markdown: str) -> str:
+    return markdown.strip() + "\n" if markdown.strip() else ""
 
 
 def safe_filename_for_storage(filename: str) -> str:

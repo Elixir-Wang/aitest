@@ -1,1 +1,0 @@
-"{\n  \"assignments\": [\n    {\n      \"source_node_id\": \"D-22-01\",\n      \"target_section_id\": \"sec-04-10\",\n      \"assignment_type\": \"primary\",\n      \"reason\": \"标题匹配+结构化内容保留\"\n    },\n    {\n      \"source_node_id\": \"D-22-02\",\n      \"target_section_id\": \"sec-07\",\n      \"assignment_type\": \"reference\",\n      \"reason\": \"标题匹配\"\n    }\n  ]\n}"

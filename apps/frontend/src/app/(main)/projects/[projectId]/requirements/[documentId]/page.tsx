@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
@@ -116,6 +116,7 @@ type OriginalPreview = {
 };
 
 type StandardPreview = {
+  fileId: string;
   title: string;
   markdownContent: string;
   conversionSummary: string;
@@ -375,6 +376,7 @@ export default function DocumentDetailPage() {
     () => overview?.files.find((file) => file.id === selectedFileId) ?? overview?.files[0] ?? null,
     [overview?.files, selectedFileId],
   );
+  const selectedFileRef = useRef<SourceFile | null>(null);
   const filteredFiles = useMemo(
     () =>
       fileRows.filter((file) =>
@@ -384,7 +386,8 @@ export default function DocumentDetailPage() {
       ),
     [fileRows, fileSearchText],
   );
-  const canEditStandard = Boolean(standardPreview) && !standardLoading && standardError.length === 0;
+  const currentStandardPreview = standardPreview?.fileId === selectedFile?.id ? standardPreview : null;
+  const canEditStandard = Boolean(currentStandardPreview) && !standardLoading && standardError.length === 0;
   const selectedStandardGenerating = Boolean(
     selectedFile &&
       (selectedFile.standard_file_status === "generating" ||
@@ -411,6 +414,9 @@ export default function DocumentDetailPage() {
   const hasRunningConversions = Boolean(
     overview?.files.some((file) => ["pending", "processing"].includes(file.conversion_status)),
   );
+  const selectedFileEffectKey = selectedFile
+    ? [selectedFile.id, selectedFile.conversion_status, selectedFile.standard_file_status].join(":")
+    : "";
 
   const updateConflicts = useCallback((nextConflicts: unknown) => {
     const normalizedConflicts: RequirementConflict[] = Array.isArray(nextConflicts) ? nextConflicts : [];
@@ -503,8 +509,6 @@ export default function DocumentDetailPage() {
   const loadStandardPreview = useCallback(async (file: SourceFile) => {
     setStandardLoading(true);
     setStandardError("");
-    setStandardPreview(null);
-    setMarkdownDraft("");
     if (file.standard_file_status === "generating" || ["pending", "processing"].includes(file.conversion_status)) {
       setStandardLoading(false);
       return;
@@ -516,6 +520,7 @@ export default function DocumentDetailPage() {
         conversion_summary: string;
       }>(`/requirement-files/${file.id}/markdown`);
       setStandardPreview({
+        fileId: file.id,
         title: standardMarkdownFilename(data.original_filename),
         markdownContent: data.markdown_content,
         conversionSummary: data.conversion_summary,
@@ -543,17 +548,25 @@ export default function DocumentDetailPage() {
   }, [loadOverview, searchParams]);
 
   useEffect(() => {
-    if (!selectedFile) {
+    selectedFileRef.current = selectedFile;
+  }, [selectedFile]);
+
+  useEffect(() => {
+    if (!selectedFileEffectKey) {
+      return;
+    }
+    const file = selectedFileRef.current;
+    if (!file) {
       return;
     }
     if (activeTab === "original") {
-      void loadReadableOriginalPreview(selectedFile);
+      void loadReadableOriginalPreview(file);
     }
     if (activeTab === "standard") {
       setEditingStandard(false);
-      void loadStandardPreview(selectedFile);
+      void loadStandardPreview(file);
     }
-  }, [activeTab, loadReadableOriginalPreview, loadStandardPreview, selectedFile]);
+  }, [activeTab, loadReadableOriginalPreview, loadStandardPreview, selectedFileEffectKey]);
 
   useEffect(() => {
     if (activeTab !== "initial") {
@@ -613,6 +626,7 @@ export default function DocumentDetailPage() {
         body: JSON.stringify({ markdown_content: markdownDraft, change_summary: "人工修订标准文件" }),
       });
       setStandardPreview({
+        fileId: selectedFile.id,
         title: data.original_filename,
         markdownContent: data.markdown_content,
         conversionSummary: data.conversion_summary,
@@ -628,7 +642,7 @@ export default function DocumentDetailPage() {
   }
 
   async function editStandardMarkdownWithAi(instruction: string) {
-    if (!selectedFile || !standardPreview) {
+    if (!selectedFile || !currentStandardPreview) {
       return;
     }
     const taskId = createRunningTaskId("frontend", `ai-edit-${selectedFile.id}`);
@@ -647,7 +661,7 @@ export default function DocumentDetailPage() {
       const editResult = await apiRequest<DocumentEditResponse>("/agents/document-editor/run", {
         method: "POST",
         body: JSON.stringify({
-          content: standardPreview.markdownContent,
+          content: currentStandardPreview.markdownContent,
           instruction,
         }),
       });
@@ -667,6 +681,7 @@ export default function DocumentDetailPage() {
         }),
       });
       setStandardPreview({
+        fileId: selectedFile.id,
         title: savedResult.original_filename,
         markdownContent: savedResult.markdown_content,
         conversionSummary: savedResult.conversion_summary,
@@ -1003,14 +1018,14 @@ export default function DocumentDetailPage() {
   }
 
   const showRequirementToc =
-    (activeTab === "standard" && !editingStandard && Boolean(standardPreview?.markdownContent.trim())) ||
+    (activeTab === "standard" && !editingStandard && Boolean(currentStandardPreview?.markdownContent.trim())) ||
     (activeTab === "initial" && !editingInitial && Boolean(initialMarkdownContent.trim())) ||
     (activeTab === "final" && Boolean(overview.initial_markdown_content.trim()));
   const requirementTocRefreshKey = [
     activeTab,
     selectedFile?.id ?? "",
     mergeArtifactTab,
-    standardPreview?.markdownContent.length ?? 0,
+    currentStandardPreview?.markdownContent.length ?? 0,
     initialMarkdownContent.length,
     overview.initial_markdown_content.length,
   ].join(":");
@@ -1276,7 +1291,7 @@ export default function DocumentDetailPage() {
                     <Button
                       disabled={savingStandard}
                       onClick={() => {
-                        setMarkdownDraft(standardPreview?.markdownContent ?? "");
+                        setMarkdownDraft(currentStandardPreview?.markdownContent ?? "");
                         setEditingStandard(false);
                       }}
                       type="button"
@@ -1329,9 +1344,8 @@ export default function DocumentDetailPage() {
             ) : (
               <MarkdownPreview
                 className="requirement-document-preview"
-                content={standardPreview?.markdownContent ?? ""}
+                content={currentStandardPreview?.markdownContent ?? ""}
                 emptyText="当前文件暂无可展示的标准 Markdown。"
-                indentParagraphs
               />
             )}
           </ShellSection>
@@ -1404,8 +1418,11 @@ export default function DocumentDetailPage() {
                   <MarkdownPreview
                     className="requirement-document-preview"
                     content={displayInitialMarkdownContent}
-                    emptyText={merging ? "正在合并需求中，完成后会展示合并需求稿。" : "尚未生成初始需求，请先在标准文件中发起合并。"}
-                    indentParagraphs
+                    emptyText={
+                      merging
+                        ? "正在合并需求中，完成后会展示合并需求稿。"
+                        : "尚未生成初始需求，请先在标准文件中发起合并。"
+                    }
                   />
                 </TabsContent>
                 {initialArtifactTabs.map((artifact) => (
@@ -1481,8 +1498,11 @@ export default function DocumentDetailPage() {
                     className="requirement-document-preview"
                     content={displayInitialMarkdownContent}
                     emptyClassName="flex items-center justify-center text-center"
-                    emptyText={merging ? "正在合并需求中，完成后会展示合并需求稿。" : "尚未生成初始需求，请先在标准文件中发起合并。"}
-                    indentParagraphs
+                    emptyText={
+                      merging
+                        ? "正在合并需求中，完成后会展示合并需求稿。"
+                        : "尚未生成初始需求，请先在标准文件中发起合并。"
+                    }
                   />
                 )}
               </>
@@ -1549,7 +1569,6 @@ export default function DocumentDetailPage() {
               content={overview.initial_markdown_content}
               emptyClassName="flex items-center justify-center text-center"
               emptyText="尚未生成最终需求，请先完成标准文件合并。"
-              indentParagraphs
             />
             <div className="mt-6 rounded-lg border bg-muted/20 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">

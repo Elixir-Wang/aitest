@@ -50,24 +50,23 @@ def test_document_editor_exists_in_new_agents_directory() -> None:
     assert (NEW_AGENTS_ROOT / "document_editor" / "agent.py").exists()
 
 
-def test_raw_requirement_converter_exists_in_new_agents_directory() -> None:
-    assert (NEW_AGENTS_ROOT / "raw_requirement_converter" / "agent.py").exists()
-    assert not (NEW_AGENTS_ROOT / "raw_requirement_converter" / "skills").exists()
-    for filename in ("pdf.py", "word.py", "text.py"):
-        assert (NEW_AGENTS_ROOT / "raw_requirement_converter" / "converters" / filename).exists()
+def test_raw_requirement_converter_legacy_package_removed() -> None:
+    assert not (NEW_AGENTS_ROOT / "raw_requirement_converter").exists()
+    assert not (LEGACY_AGENTS_ROOT / "raw_requirement_format_converter").exists()
 
 
 def test_requirement_standardization_agent_exists_as_canonical_package() -> None:
     assert (NEW_AGENTS_ROOT / "requirement_standardization" / "agent.py").exists()
     assert (NEW_AGENTS_ROOT / "requirement_standardization" / "service.py").exists()
-    assert (NEW_AGENTS_ROOT / "requirement_standardization" / "tools.py").exists()
     assert (NEW_AGENTS_ROOT / "requirement_standardization" / "schemas.py").exists()
+    assert not (NEW_AGENTS_ROOT / "requirement_standardization" / "tools.py").exists()
 
 
 def test_deterministic_requirement_file_conversion_lives_outside_agent_package() -> None:
     conversion_root = BACKEND_APP / "services" / "requirement_file_conversion"
-    for filename in ("__init__.py", "pdf.py", "word.py", "text.py"):
+    for filename in ("__init__.py", "common.py", "dispatcher.py", "pdf.py", "word.py", "text.py"):
         assert (conversion_root / filename).exists()
+    assert not (BACKEND_APP / "services" / "requirement_file_converter.py").exists()
     assert not (NEW_AGENTS_ROOT / "requirement_standardization" / "converters").exists()
 
 
@@ -85,12 +84,9 @@ def test_document_editor_no_longer_uses_llm_task_module() -> None:
     assert not (OLD_LLM_TASKS_ROOT / "document_editor.py").exists()
 
 
-def test_raw_requirement_converter_service_no_longer_imports_old_runner() -> None:
+def test_raw_requirement_converter_legacy_service_removed() -> None:
     service_path = BACKEND_APP / "services" / "raw_requirement_format_converter_service.py"
-    content = service_path.read_text(encoding="utf-8")
-    assert "app.agents.raw_requirement_format_converter.runner" not in content
-    assert "app.agents.requirement_standardization.service" in content
-    assert "app.agents.raw_requirement_converter.service" not in content
+    assert not service_path.exists()
 
 
 def test_services_do_not_call_openai_runner_directly() -> None:

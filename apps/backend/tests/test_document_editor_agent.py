@@ -3,11 +3,11 @@ from pydantic import SecretStr
 
 from app.agents.document_editor import schemas
 from app.agents.document_editor.agent import document_editor_agent
+from app.agents.document_editor.schemas import DocumentEditInput, DocumentEditOutput
 from app.agents.model_selection import ModelSelection
-from app.schemas.document_editor import DocumentEditInput, DocumentEditOutput
 
 
-def test_document_editor_agent_schemas_reuse_api_contract() -> None:
+def test_document_editor_agent_schemas_expose_structured_output() -> None:
     assert schemas.DocumentEditOutput is DocumentEditOutput
 
 

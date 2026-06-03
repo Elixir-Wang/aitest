@@ -1,9 +1,0 @@
-{
-  "quality_result": "failed",
-  "quality_issues": [
-    "旧大纲归属生成失败：Expecting ',' delimiter: line 932 column 6 (char 24756)"
-  ],
-  "stage_errors": [
-    "旧大纲归属生成失败：Expecting ',' delimiter: line 932 column 6 (char 24756)"
-  ]
-}

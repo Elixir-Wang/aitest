@@ -42,7 +42,6 @@ export function OriginalFilePreview({ preview, selectedFilename }: OriginalFileP
           className="requirement-document-preview"
           content={preview.content}
           emptyText="当前原始 Markdown 文件暂无可展示内容。"
-          indentParagraphs
         />
       );
     }
