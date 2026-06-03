@@ -2,8 +2,6 @@
 
 > **说明**：为前端判断是否弹邀请码，为产品后端回写首次接入状态
 
----
-
 ## 一、背景
 
 百工等邀请制产品需要前端在用户点击"进入产品"时判断是否弹出邀请码弹窗。认证中心维护轻量状态：某个 unified_uid 是否已完成某个 product_code 的首次接入。
@@ -12,8 +10,6 @@
 
 - 认证中心：维护首次接入状态（CONNECTED / NOT_CONNECTED）
 - 产品侧：校验邀请码有效性、维护本地账号、角色、权限
-
----
 
 ## 二、接口一：查询产品进入状态
 
@@ -78,8 +74,6 @@
 | PRODUCT_INVALID | 产品不存在 |
 | PRODUCT_DISABLED | 产品已禁用 |
 | PARAM_INVALID | product_code 为空 |
-
----
 
 ## 三、接口二：确认产品首次接入
 
@@ -148,8 +142,6 @@
 | USER_NOT_FOUND | unified_uid 不存在 |
 | PARAM_INVALID | 参数错误或 access_status 非 CONNECTED |
 
----
-
 ## 四、数据库表
 
 ```sql
@@ -171,38 +163,35 @@ CREATE TABLE auth_product_user_access (
 
 **不存储**：邀请码、local_user_id、local_tenant_id、权限
 
----
-
 ## 五、前端推荐流程
 
-```plaintext
-用户点击"进入百工"
-  → GET /api/sso/product-entry/status?product_code=baigong
-  → action = SHOW_INVITE_DIALOG?
-    → 弹窗输入邀请码
-    → ticket/create（biz_context 带 invite_code）
-    → 跳转 redirect_url
-  → action = CREATE_TICKET_DIRECTLY?
-    → 直接 ticket/create
-    → 跳转 redirect_url
+```mermaid
+flowchart TD
+    A[用户点击"进入百工"] --> B[GET /api/sso/product-entry/status?product_code=baigong]
+    B --> C{action = SHOW_INVITE_DIALOG?}
+    C -->|是| D[弹窗输入邀请码]
+    D --> E[ticket/create（biz_context 带 invite_code）]
+    E --> F[跳转 redirect_url]
+    C -->|否| G{action = CREATE_TICKET_DIRECTLY?}
+    G -->|是| H[直接 ticket/create]
+    H --> F
 ```
-
----
 
 ## 六、百工后端推荐流程
 
-```plaintext
-百工收到 login_ticket + state
-  → POST /api/sso/ticket/verify
-  → 获取 unified_uid、biz_context.invite_code
-  → 查询百工本地映射
-    → 已有映射：建立百工 Session
-    → 无映射：校验 invite_code
-      → 有效：创建本地用户 + 建立 Session + POST /api/sso/product-entry/confirm
-      → 无效：拒绝进入
+```mermaid
+flowchart TD
+    A[百工收到 login_ticket + state] --> B[POST /api/sso/ticket/verify]
+    B --> C[获取 unified_uid、biz_context.invite_code]
+    C --> D[查询百工本地映射]
+    D --> E{已有映射?}
+    E -->|是| F[建立百工 Session]
+    E -->|否| G[校验 invite_code]
+    G --> H{有效?}
+    H -->|有效| I[创建本地用户 + 建立 Session + POST /api/sso/product-entry/confirm]
+    I --> F
+    H -->|无效| J[拒绝进入]
 ```
-
----
 
 ## 七、安全说明
 

@@ -298,9 +298,9 @@ function useMermaidSvg(svg: string) {
     const fragment = template.content.cloneNode(true);
     if (fragment instanceof DocumentFragment) {
       fixMermaidNodeLabels(fragment);
-      trimMermaidViewBox(fragment);
     }
     container.append(fragment);
+    trimMermaidViewBox(container);
   }, [container, svg]);
 
   return setContainer;
@@ -501,8 +501,8 @@ function fixMermaidNodeLabels(fragment: DocumentFragment) {
   });
 }
 
-function trimMermaidViewBox(fragment: DocumentFragment) {
-  const svg = fragment.querySelector<SVGSVGElement>("svg.flowchart");
+function trimMermaidViewBox(container: ParentNode) {
+  const svg = container.querySelector<SVGSVGElement>("svg.flowchart");
   const root = svg?.querySelector<SVGGElement>("g.root");
   if (!svg || !root) {
     return;
