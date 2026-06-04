@@ -27,7 +27,6 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { type ApiProject, apiRequest, formatDateTime } from "@/lib/api-client";
-import { createRunningTaskId, useRunningTaskStore } from "@/stores/running-task-store";
 
 type ProjectScope = "all" | "project";
 
@@ -156,9 +155,7 @@ const loginStrategyLabels: Record<string, string> = {
 const environmentLoginStrategyOptions = ["skip_login", "account_password"];
 
 const explorationTabs = ["探索列表", "探索环境"];
-const RUNNING_EXPLORATION_STATUSES = new Set(["queued", "running", "waiting_human", "stopping"]);
 const STOPPABLE_EXPLORATION_STATUSES = new Set(["queued", "running", "waiting_human"]);
-const EXPLORATION_TASK_SOURCE = "exploration-page";
 const explorationPlaceholders = {
   scope: "填写本次要探索的页面范围，例如全站、指定菜单、指定 URL 或核心模块。",
   forbiddenPaths: "填写禁止进入或点击的路径/动作，例如删除、支付、外发、批量通知、退出登录。",
@@ -194,7 +191,6 @@ export function ExplorationWorkspace({
   const [error, setError] = useState("");
   const [searchText, setSearchText] = useState("");
   const [projects, setProjects] = useState<ApiProject[]>([]);
-  const replaceRunningTasksBySource = useRunningTaskStore((state) => state.replaceTasksBySource);
   const [form, setForm] = useState<EnvironmentForm>({ ...emptyForm, projectId: projectId ?? "" });
   const [explorationForm, setExplorationForm] = useState<ExplorationForm>({
     ...emptyExplorationForm,
@@ -291,21 +287,6 @@ export function ExplorationWorkspace({
         const data = await apiRequest<ExplorationRun[]>(path);
         if (!ignore) {
           explorationSelection.setRows(data);
-          replaceRunningTasksBySource(
-            EXPLORATION_TASK_SOURCE,
-            data
-              .filter((item) => RUNNING_EXPLORATION_STATUSES.has(item.status))
-              .map((item) => ({
-                id: createRunningTaskId(EXPLORATION_TASK_SOURCE, item.id),
-                projectId: item.project_id,
-                projectName: item.project_name,
-                title: item.title,
-                moduleLabel: "站点探索",
-                status: item.status,
-                statusLabel: statusLabels[item.status] ?? item.status,
-                updatedAt: item.updated_at,
-              })),
-          );
         }
       } catch (requestError) {
         if (!ignore) {
@@ -323,7 +304,7 @@ export function ExplorationWorkspace({
     return () => {
       ignore = true;
     };
-  }, [projectId, projectScope, explorationSelection.setRows, replaceRunningTasksBySource]);
+  }, [projectId, projectScope, explorationSelection.setRows]);
 
   const filteredRows = useMemo(
     () =>

@@ -1,12 +1,14 @@
 # 百系产品接入官网统一认证中心总说明v1.0
 
-适用对象：百系产品研发团队、产品负责人 文档定位：本文档是总览 / 首读材料。本文档不替代接口契约，也不替代产品侧开发指南。正式开发接入时，请继续阅读后续专项文档。
+适用对象：百系产品研发团队、产品负责人
+
+文档定位：本文档是总览 / 首读材料。本文档不替代接口契约，也不替代产品侧开发指南。正式开发接入时，请继续阅读后续专项文档。
 
 ## 阅读建议
 
 如果你是产品后端研发，请务必继续阅读：
 
-- [《产品接入配置表》](https://alidocs.dingtalk.com/i/nodes/dxXB52LJqwOlvPGaTMwmBMPOWqjMp697?doc_type=wiki_doc&iframeQuery=anchorId%3DX02mpb8c7yftiyum1g5pnc&rnd=0.46687305236416)（接入前需要填写）
+- [请至钉钉文档查看附件《产品接入配置表》。](https://alidocs.dingtalk.com/i/nodes/dxXB52LJqwOlvPGaTMwmBMPOWqjMp697?doc_type=wiki_doc&iframeQuery=anchorId%3DX02mpb8c7yftiyum1g5pnc&rnd=0.46687305236416)（接入前需要填写）
 - [《SSO 接口文档（对外发布版）v1.0》](https://alidocs.dingtalk.com/i/nodes/0eMKjyp81MqNm07lT4zgNoXv8xAZB1Gv)— 接口规范
 - [《百系产品接入官网统一认证中心接口契约 v1.2》](https://alidocs.dingtalk.com/i/nodes/Amq4vjg89Z9qyj61CP6kP1woW3kdP0wQ?utm_scene=team_space&sideCollapsed=true&iframeQuery=utm_source%253Dportal%2526utm_medium%253Dportal_new_tab_open&corpId=ding6edcd346b15043ddffe93478753d9884)
 
@@ -46,24 +48,29 @@
 - 有复杂租户审批、邀请码校验、企业邮箱校验的现有入口
 - 存量客户已收藏的产品后台地址
 
-**重要原则：** 首期不要求产品将原有登录入口全部迁移到官网。原入口可继续保留，认证中心提供的是新增链路能力。
+重要原则：首期不要求产品将原有登录入口全部迁移到官网。原入口可继续保留，认证中心提供的是新增链路能力。
 
 ## 五、核心链路
 
 ```mermaid
 flowchart TD
-    A[用户访问新版官网] --> B[用户完成官网登录（手机号/邮箱）]
-    B --> C[可选：产品后端预注册 context_id（携带 biz_context）]
-    C --> D[用户点击产品入口，官网服务端调用 ticket/create 生成 login_ticket]
-    D --> E[官网跳转至产品 sso_entry_url，携带 login_ticket + state]
-    E --> F[产品后端调用认证中心 /api/sso/ticket/verify]
-    F --> G[认证中心返回 UserInfo + account_status + return_url + biz_context]
-    G --> H[产品侧：查询本地映射 → 老用户绑定/新用户处理/B 端权限判断]
-    H --> I[产品侧：建立本地 Session（JWT/Cookie）]
-    I --> J[用户进入产品，或进入产品侧准入提示页]
+    A[用户访问新版官网] --> B[用户完成官网登录]
+    B --> C[可选 产品后端预注册 context_id 并携带 biz_context]
+    C --> D[用户点击产品入口]
+    D --> E[官网服务端调用 ticket create 生成 login_ticket]
+    E --> F[官网跳转至产品 sso_entry_url 并携带 login_ticket 和 state]
+    F --> G[产品后端调用认证中心 ticket verify]
+    G --> H[认证中心返回 UserInfo account_status return_url 和 biz_context]
+    H --> I[产品侧查询本地映射并处理老用户绑定 新用户处理 B 端权限判断]
+    I --> J[产品侧建立本地 Session]
+    J --> K[用户进入产品或进入产品侧准入提示页]
 ```
 
-> 说明：有邀请码/推荐码/活动业务上下文时，建议产品后端先调用 context/register；从官网标准入口进入且无产品侧业务上下文则可跳过此步。ticket/create 由官网侧发起，产品侧通常不直接调用。
+补充说明：
+
+- 有邀请码、推荐码、活动业务上下文时，建议产品后端先调用 context/register。
+- 从官网标准入口进入且无产品侧业务上下文则可跳过预注册。
+- ticket/create 由官网侧发起，产品侧通常不直接调用。
 
 ## 六、产品侧要做什么
 
@@ -113,7 +120,7 @@ flowchart TD
 
 ## 九、产品接入模式分类
 
-### product_user_mode 枚举说明
+product_user_mode 枚举说明：
 
 | 接口枚举值 | 业务展示值 | 说明 |
 | --- | --- | --- |
@@ -122,132 +129,134 @@ flowchart TD
 | B_PLUS_C | B+C | 同时支持个人和企业 |
 | INVITE_ONLY | 邀请制 | 邀请码 / 灰度准入 |
 
-接口响应中 product_context.product_user_mode 返回接口枚举值（如 B_PLUS_C）。本文档中的"B+C"为业务展示值，代码判断请使用枚举值。
+接口响应中 product_context.product_user_mode 返回接口枚举值（如 B_PLUS_C）。本文档中的“B+C”为业务展示值，代码判断请使用枚举值。
 
-### user_type 说明
+user_type 说明
 
 user_type 表示认证中心侧识别到的身份线索，取值为：
 
-- **UNKNOWN**：未知或暂未识别
-- **PERSONAL**：个人身份线索
-- **ENTERPRISE_MEMBER**：企业成员身份线索
+- UNKNOWN：未知或暂未识别；
+- PERSONAL：个人身份线索；
+- ENTERPRISE_MEMBER：企业成员身份线索。
 
-**注意：** user_type 不代表用户拥有某产品的 B 端权限。产品是否允许用户进入 B 端后台，由产品侧根据本地账号、企业租户、角色权限自行判断。产品用户模式（C/B/B+C/邀请制）由 product_context.product_user_mode 表示，与 user_type 是不同维度。
+注意：
+
+- user_type 不代表用户拥有某产品的 B 端权限。
+- 产品是否允许用户进入 B 端后台，由产品侧根据本地账号、企业租户、角色权限自行判断。
+- 产品用户模式（C/B/B+C/邀请制）由 product_context.product_user_mode 表示，与 user_type 是不同维度。
 
 ### 9.1 C 端产品
 
-**典型产品：** 百智个人场景（部分）
+典型产品：百智个人场景（部分）
 
-**特点：**
+特点：
 
 - 官网注册用户可尝试进入
 - 产品侧按 unified_uid 查映射，无映射可自动创建本地账号
 - 原登录入口首期可继续保留
 
-**推荐策略：**
+推荐策略：
 
 ```mermaid
-flowchart LR
+flowchart TD
     A[ticket verify] --> B[查映射]
-    B --> C{有映射？}
-    C -->|是| D[建 Session]
-    C -->|否| E[查手机号匹配]
-    E --> F{命中？}
-    F -->|是| G[自动绑定]
-    G --> D
-    F -->|否| H{允许自动创建？}
-    H -->|是| I[创建本地账号建 Session]
-    H -->|否| J[提示处理]
+    B --> C[有映射建 Session]
+    B --> D[无映射查手机号匹配]
+    D --> E[命中自动绑定]
+    D --> F[无命中且允许自动创建]
+    F --> G[创建本地账号建 Session]
 ```
 
 ### 9.2 B 端产品
 
-**典型产品：** 百才（HR 后台）、百察、百灵
+典型产品：百才（HR 后台）、百察、百灵
 
-**核心原则：** 官网注册登录 ≠ 自动开通 B 端产品权限
+核心原则：官网注册登录 ≠ 自动开通 B 端产品权限
 
-**特点：**
+特点：
 
 - ticket verify 成功后，还需查询本地是否有账号和 B 端权限
 - 无账号用户不应直接进入产品后台
 - 应引导至留资/申请试用/联系管理员
 
-**推荐策略：**
+推荐策略：
 
 ```mermaid
 flowchart TD
     A[ticket verify] --> B[查本地账号]
-    B --> C{有账号？}
-    C -->|是| D{有 B 端权限？}
-    D -->|是| E[建 Session]
-    D -->|否| F[提示“产品未开通”或“联系管理员”]
-    C -->|否| G[引导留资或申请试用]
+    B --> C[有账号有权限建 Session]
+    B --> D[有账号无权限提示未开通或联系管理员]
+    B --> E[无账号引导留资或申请试用]
 ```
 
 ### 9.3 B+C 混合产品
 
-**典型产品：** 百智、百工（B+C 场景）
+典型产品：百智、百工（B+C 场景）
 
-**特点：**
+特点：
 
 - 同一产品同时支持个人用户和企业用户
 - 产品根据 UID 和 biz_context 决定走个人空间还是企业空间
 - 可通过 biz_context 传递用户的进入场景标记
 
-**推荐策略：**
+推荐策略：
 
 ```mermaid
 flowchart TD
-    A[ticket verify] --> B[查 biz_context（scene / user_intent）]
-    B --> C{判断 B/C 分流}
-    C -->|B 流程| D[查企业归属 + 权限]
-    D --> E[企业空间]
-    C -->|C 流程| F[查个人映射]
-    F --> G[个人空间]
+    A[ticket verify] --> B[查 biz_context 中的 scene 或 user_intent]
+    B --> C[判断 B C 分流]
+    C --> D[B 流程 查企业归属和权限]
+    C --> E[C 流程 查个人映射]
+    D --> F[企业空间]
+    E --> G[个人空间]
 ```
 
 ### 9.4 INVITE_ONLY（邀请制/灰度产品）
 
-**典型场景：** 百工邀请制灰度开放
+典型场景：百工邀请制灰度开放
 
-**特点：**
+特点：
 
 - 通过 biz_context 携带邀请码（invite_code）
 - 认证中心只透传邀请码，不校验邀请码有效性
 - 产品后端收到邀请码后，自行校验是否有效
 
-**推荐策略：**
+推荐策略：
 
 ```mermaid
 flowchart TD
-    A["context/register 预注册 {invite_code: BG_INV_XXX}"] --> B[用户登录]
+    A[context register 预注册 invite_code] --> B[用户登录]
     B --> C[ticket verify]
     C --> D[从 biz_context 获取 invite_code]
     D --> E[产品后端校验邀请码]
-    E --> F{有效？}
-    F -->|是| G[建 Session]
-    F -->|否| H[提示“邀请码无效”]
+    E --> F[有效建 Session]
+    E --> G[无效提示邀请码无效]
 ```
 
 ## 十、原产品登录入口保留原则
 
-- 首期不要求迁移，原入口可继续保留
-- 官网统一认证中心主要承接新增链路（官网导流、活动、邀请、深链）
-- 存量用户正在使用的产品后台登录入口，首期无需改动
-- 产品完成联调验收后，可按自身节奏逐步扩大接入范围
-- 认证中心不强制要求任何产品立即迁移全量登录入口
+- 首期不要求迁移，原入口可继续保留。
+- 官网统一认证中心主要承接新增链路（官网导流、活动、邀请、深链）。
+- 存量用户正在使用的产品后台登录入口，首期无需改动。
+- 产品完成联调验收后，可按自身节奏逐步扩大接入范围。
+- 认证中心不强制要求任何产品立即迁移全量登录入口。
 
 ## 十一、接入路径选择
 
 ```mermaid
 flowchart TD
-    A[第一步：产品完成登记表] --> B[第二步：认证中心侧配置 product_code、sso_entry_url、allowed_redirect_domains]
-    B --> C[第三步：认证中心侧提供联调环境 product_access_key（安全渠道交付）]
-    C --> D[第四步：产品后端实现 sso_entry_url 接收逻辑和 ticket/verify 调用]
-    D --> E[第五步：联调验证]
-    E --> F[第六步：通过验收清单]
-    F --> G[第七步：生产上线（生产密钥单独分发）]
+    A[产品完成登记表] --> B[认证中心侧配置 product_code sso_entry_url allowed_redirect_domains]
+    B --> C[认证中心侧提供联调环境 product_access_key]
+    C --> D[产品后端实现 sso_entry_url 接收逻辑和 ticket verify 调用]
+    D --> E[联调验证]
+    E --> F[通过验收清单]
+    F --> G[生产上线]
 ```
+
+补充说明：
+
+- product_access_key 通过安全渠道交付。
+- 生产密钥单独分发。
 
 ## 十二、联调流程
 
@@ -273,8 +282,8 @@ flowchart TD
 
 核心验收项：
 
-- **正向链路：** context/register → login → ticket/create → ticket/verify → 建立 Session → return_url 跳转
-- **异常链路：** 票据重用、state 不符、nonce 重放、product_access_key 无效
+- 正向链路：context/register → login → ticket/create → ticket/verify → 建立 Session → return_url 跳转
+- 异常链路：票据重用、state 不符、nonce 重放、product_access_key 无效
 - 审计日志无敏感明文
 
 ## 十五、当前统一认证中心已自测验证了的能力

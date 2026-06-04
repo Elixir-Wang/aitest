@@ -175,7 +175,6 @@ export default function Page() {
                 <TableHead>模型提供商</TableHead>
                 <TableHead>模型</TableHead>
                 <TableHead>Base URL</TableHead>
-                <TableHead>API Key</TableHead>
                 <TableHead>更新时间</TableHead>
                 <TableHead className="w-16">操作</TableHead>
               </TableRow>
@@ -194,7 +193,6 @@ export default function Page() {
                   <TableCell className="font-medium">{item.provider}</TableCell>
                   <TableCell>{item.model}</TableCell>
                   <TableCell className="max-w-md truncate text-muted-foreground">{item.base_url}</TableCell>
-                  <TableCell className="max-w-xs truncate font-mono text-xs">{item.api_key || "未配置"}</TableCell>
                   <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                   <TableCell>
                     <RowActions
@@ -211,10 +209,10 @@ export default function Page() {
                   </TableCell>
                 </TableRow>
               ))}
-              {loading && filteredRows.length === 0 ? <TableLoadingRow colSpan={7} label="模型列表加载中" /> : null}
+              {loading && filteredRows.length === 0 ? <TableLoadingRow colSpan={6} label="模型列表加载中" /> : null}
               {!loading && filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={7}>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
                     暂无模型配置。添加模型后，可分配给需求分析、探索和测试生成等能力。
                   </TableCell>
                 </TableRow>

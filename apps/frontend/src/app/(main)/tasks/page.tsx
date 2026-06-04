@@ -1,131 +1,301 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useRouter } from "next/navigation";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Eye, ListTodo } from "lucide-react";
 
-import { AlertTriangle, CheckCircle2, Clock3, Eye, ListTodo, Radar } from "lucide-react";
-
-import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
-import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
+import { ListToolbar, MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { ProcessingState } from "@/components/ai-testing/table-loading-row";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
+import { Button as PaginationButton } from "@/components/ui/button-1";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { type ApiTaskItem, type ApiTaskList, apiRequest, formatDateTime } from "@/lib/api-client";
+import { useAuthStore } from "@/stores/auth-store";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
-const tasks: Array<{ id: string; project: string; name: string; status: string; updated: string }> = [];
+function getBadgeVariant(statusGroup: ApiTaskItem["status_group"]) {
+  if (statusGroup === "failed") {
+    return "destructive";
+  }
+  if (statusGroup === "waiting") {
+    return "outline";
+  }
+  return "secondary";
+}
+
+function TaskStatusBadge({ task }: { task: ApiTaskItem }) {
+  return (
+    <Badge variant={getBadgeVariant(task.status_group)}>
+      {task.status === "processing" ? <ProcessingState label={task.status_label} /> : task.status_label}
+    </Badge>
+  );
+}
+
+type PageItem = number | "ellipsis-start" | "ellipsis-end";
+
+function getVisiblePages(currentPage: number, pageCount: number): PageItem[] {
+  if (pageCount <= 7) {
+    return Array.from({ length: pageCount }, (_, index) => index + 1);
+  }
+
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, "ellipsis-end", pageCount];
+  }
+
+  if (currentPage >= pageCount - 3) {
+    return [1, "ellipsis-start", pageCount - 4, pageCount - 3, pageCount - 2, pageCount - 1, pageCount];
+  }
+
+  return [1, "ellipsis-start", currentPage - 1, currentPage, currentPage + 1, "ellipsis-end", pageCount];
+}
 
 export default function Page() {
-  const router = useRouter();
-  const hydrate = useProjectContextStore((state) => state.hydrate);
-  const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
-    useLocalTableSelection(tasks);
+  const { currentProjectId, hydrate, scope } = useProjectContextStore();
+  const { hasHydrated: hasAuthHydrated, hydrate: hydrateAuth, token } = useAuthStore();
+  const [tasks, setTasks] = useState<ApiTaskItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [error, setError] = useState("");
   const [searchText, setSearchText] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [selectedTask, setSelectedTask] = useState<ApiTaskItem | null>(null);
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(page, 1), pageCount);
+  const visiblePages = getVisiblePages(safePage, pageCount);
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
-  const filteredRows = rows.filter((task) =>
-    [task.project, task.name, task.status, task.updated].some((value) =>
-      value.toLowerCase().includes(searchText.trim().toLowerCase()),
-    ),
-  );
+  useEffect(() => {
+    hydrateAuth();
+  }, [hydrateAuth]);
 
-  function openExplorationTaskCreate() {
-    router.push("/exploration?create=exploration");
+  const loadTasks = useCallback(async () => {
+    if (!hasAuthHydrated || !token) {
+      setTasks([]);
+      setError("");
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+      if (scope === "project" && currentProjectId) {
+        params.set("project_id", currentProjectId);
+      }
+      if (searchText.trim()) {
+        params.set("keyword", searchText.trim());
+      }
+      const data = await apiRequest<ApiTaskList>(`/tasks?${params.toString()}`);
+      setTasks(data.items);
+      setTotal(data.total);
+      setPage(data.page);
+      setError("");
+    } catch (requestError) {
+      setTasks([]);
+      setTotal(0);
+      setError(requestError instanceof Error ? requestError.message : "任务列表加载失败");
+    }
+  }, [currentProjectId, hasAuthHydrated, page, pageSize, scope, searchText, token]);
+
+  useEffect(() => {
+    void loadTasks();
+  }, [loadTasks]);
+
+  function goToPage(nextPage: number) {
+    setPage(Math.min(Math.max(nextPage, 1), pageCount));
   }
+
+  const metrics = useMemo(() => {
+    const runningCount = tasks.filter((task) => task.status_group === "running").length;
+    const waitingCount = tasks.filter((task) => task.status_group === "waiting").length;
+    const failedCount = tasks.filter((task) => task.status_group === "failed").length;
+    return { runningCount, waitingCount, failedCount };
+  }, [tasks]);
 
   return (
     <PageShell
       breadcrumbs={["工作台", "任务中心"]}
       description="汇总需求分析、探索、知识库、用例、UI 自动化和失败诊断任务。"
       projectScope="all"
-      tabs={["全部任务", "等待人工", "失败任务", "任务详情"]}
+      tabs={["全部任务", "等待人工", "失败任务"]}
       title="任务中心"
     >
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard helper="真实接口接入后展示" icon={ListTodo} label="全部任务" value="-" />
-        <MetricCard helper="真实接口接入后展示" icon={Clock3} label="运行中" value="-" />
-        <MetricCard helper="真实接口接入后展示" icon={AlertTriangle} label="等待人工" value="-" />
-        <MetricCard helper="真实接口接入后展示" icon={CheckCircle2} label="成功率" value="-" />
+        <MetricCard helper="当前可见任务数量" icon={ListTodo} label="全部任务" value={String(total)} />
+        <MetricCard helper="正在执行的后台任务" icon={Clock3} label="运行中" value={String(metrics.runningCount)} />
+        <MetricCard
+          helper="需要人工继续处理"
+          icon={AlertTriangle}
+          label="等待人工"
+          value={String(metrics.waitingCount)}
+        />
+        <MetricCard helper="需要排查或重试" icon={CheckCircle2} label="失败任务" value={String(metrics.failedCount)} />
       </div>
       <ShellSection>
         <ListToolbar
-          createLabel="新建探索任务"
-          onBatchDelete={deleteSelected}
-          onCreate={openExplorationTaskCreate}
-          onSearch={setSearchText}
+          onSearch={(value) => {
+            setSearchText(value);
+            setPage(1);
+          }}
           placeholder="搜索任务种类、模块或项目"
-          selectedCount={selectedCount}
           title="任务列表"
         />
         <div className="overflow-hidden rounded-lg border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    aria-label="选择全部任务"
-                    checked={allSelected || (partiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => toggleAll(Boolean(checked))}
-                  />
-                </TableHead>
-                <TableHead>项目</TableHead>
+                <TableHead>任务名称</TableHead>
                 <TableHead>任务种类</TableHead>
+                <TableHead>项目</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>更新时间</TableHead>
                 <TableHead className="w-16">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredRows.map((task) => (
-                <TableRow data-state={selectedIds.includes(task.id) ? "selected" : undefined} key={task.id}>
+              {tasks.map((task) => (
+                <TableRow key={task.id}>
+                  <TableCell className="font-medium">{task.title}</TableCell>
+                  <TableCell>{task.module_label}</TableCell>
+                  <TableCell>{task.project_name}</TableCell>
                   <TableCell>
-                    <Checkbox
-                      aria-label={`选择 ${task.id}`}
-                      checked={selectedIds.includes(task.id)}
-                      onCheckedChange={(checked) => toggleOne(task.id, Boolean(checked))}
-                    />
+                    <TaskStatusBadge task={task} />
                   </TableCell>
-                  <TableCell>{task.project}</TableCell>
-                  <TableCell className="font-medium">{task.name}</TableCell>
+                  <TableCell>{formatDateTime(task.updated_at)}</TableCell>
                   <TableCell>
-                    <Badge
-                      variant={
-                        task.status === "失败" ? "destructive" : task.status === "等待人工" ? "outline" : "secondary"
-                      }
+                    <Button
+                      aria-label="查看任务详情"
+                      onClick={() => setSelectedTask(task)}
+                      size="icon-sm"
+                      variant="ghost"
                     >
-                      {task.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{task.updated}</TableCell>
-                  <TableCell>
-                    <RowActions
-                      actions={[
-                        { label: "查看", href: "/tasks", icon: Eye },
-                        {
-                          label: "新建探索任务",
-                          href: "/exploration?create=exploration",
-                          icon: Radar,
-                        },
-                      ]}
-                      label="打开操作菜单"
-                    />
+                      <Eye className="size-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
-              {filteredRows.length === 0 ? (
+              {tasks.length === 0 ? (
                 <TableRow>
                   <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
-                    暂无任务。发起需求分析、站点探索或自动化执行后，任务进度会显示在这里。
+                    {error || "暂无任务。发起需求分析、站点探索或自动化执行后，任务进度会显示在这里。"}
                   </TableCell>
                 </TableRow>
               ) : null}
             </TableBody>
           </Table>
         </div>
+        <div className="flex flex-col gap-3 pt-4 text-sm sm:flex-row sm:items-center sm:justify-end">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Pagination className="mx-0 w-auto justify-start sm:justify-end">
+              <PaginationContent>
+                <PaginationItem className="mr-2 text-muted-foreground">共 {total} 个任务</PaginationItem>
+                <PaginationItem>
+                  <PaginationButton
+                    disabled={safePage <= 1}
+                    onClick={() => goToPage(safePage - 1)}
+                    type="button"
+                    variant="ghost"
+                  >
+                    <ChevronLeft className="rtl:rotate-180" /> 上一页
+                  </PaginationButton>
+                </PaginationItem>
+                {visiblePages.map((item) =>
+                  typeof item === "number" ? (
+                    <PaginationItem key={item}>
+                      <PaginationButton
+                        aria-current={item === safePage ? "page" : undefined}
+                        mode="icon"
+                        onClick={() => goToPage(item)}
+                        selected={item === safePage}
+                        type="button"
+                        variant={item === safePage ? "outline" : "ghost"}
+                      >
+                        {item}
+                      </PaginationButton>
+                    </PaginationItem>
+                  ) : (
+                    <PaginationItem key={item}>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                  ),
+                )}
+                <PaginationItem>
+                  <PaginationButton
+                    disabled={safePage >= pageCount}
+                    onClick={() => goToPage(safePage + 1)}
+                    type="button"
+                    variant="ghost"
+                  >
+                    下一页 <ChevronRight className="rtl:rotate-180" />
+                  </PaginationButton>
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+            <label className="flex items-center gap-1 text-muted-foreground">
+              <span>每页</span>
+              <select
+                aria-label="每页显示任务数"
+                className="h-8 rounded-md border border-input bg-background px-2 text-foreground text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                onChange={(event) => {
+                  setPageSize(Number(event.target.value));
+                  setPage(1);
+                }}
+                value={pageSize}
+              >
+                {[10, 15, 20, 50, 100].map((option) => (
+                  <option key={option} value={option}>
+                    {option} 条
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
       </ShellSection>
+      <Dialog open={Boolean(selectedTask)} onOpenChange={(open) => !open && setSelectedTask(null)}>
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          <DialogHeader className="shrink-0 gap-2 px-6 pt-6 pb-4">
+            <DialogTitle>任务详情</DialogTitle>
+            <DialogDescription>
+              {selectedTask ? `${selectedTask.module_label} / ${selectedTask.status_label}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 overflow-auto px-6 pb-6">
+            {selectedTask ? <TaskDetail task={selectedTask} /> : null}
+          </div>
+        </DialogContent>
+      </Dialog>
     </PageShell>
+  );
+}
+
+function TaskDetail({ task }: { task: ApiTaskItem }) {
+  const rows: Array<[string, string]> = [
+    ["项目", task.project_name],
+    ["任务种类", task.module_label],
+    ["任务名称", task.title],
+    ["状态", task.status_label],
+    ["更新时间", formatDateTime(task.updated_at)],
+    ["任务 ID", task.source_id],
+    ["任务来源", task.source_type],
+    ["摘要", task.summary || "-"],
+    ["详情地址", task.detail_url || "-"],
+  ];
+
+  return (
+    <div className="grid gap-3 rounded-lg border p-4 text-sm">
+      {rows.map(([label, value]) => (
+        <div className="grid min-w-0 gap-1 md:grid-cols-[96px_minmax(0,1fr)] md:gap-4" key={label}>
+          <span className="text-muted-foreground">{label}</span>
+          <span className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+            {label === "状态" ? <TaskStatusBadge task={task} /> : value}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }

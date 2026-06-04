@@ -9,13 +9,21 @@ import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import {
   type ApiGlobalKnowledgeDetail,
   type ApiGlobalKnowledgeDocument,
@@ -85,8 +93,8 @@ export default function Page() {
     ),
   );
   const filteredCompanyRows = companyRows.filter((item) =>
-    [item.name, item.knowledge_type_label, item.version, item.scope, item.description, item.status_label].some((value) =>
-      value.toLowerCase().includes(searchText.trim().toLowerCase()),
+    [item.name, item.knowledge_type_label, item.version, item.scope, item.description, item.status_label].some(
+      (value) => value.toLowerCase().includes(searchText.trim().toLowerCase()),
     ),
   );
   const isCompanyKnowledge = activeScope === "company";
@@ -98,29 +106,34 @@ export default function Page() {
   }, [hydrate]);
 
   const openBuild = useCallback(async (targetProjectId: string, buildId: string) => {
-    const detail = await apiRequest<ApiKnowledgeBuildDetail>(`/projects/${targetProjectId}/knowledge/builds/${buildId}`);
+    const detail = await apiRequest<ApiKnowledgeBuildDetail>(
+      `/projects/${targetProjectId}/knowledge/builds/${buildId}`,
+    );
     setSelectedBuild(detail);
   }, []);
 
-  const loadBuilds = useCallback(async (targetProjectId: string) => {
-    setLoading(true);
-    setError("");
-    try {
-      const nextBuilds = await apiRequest<ApiKnowledgeBuild[]>(`/projects/${targetProjectId}/knowledge/builds`);
-      setBuilds(nextBuilds);
-      if (nextBuilds[0]) {
-        await openBuild(targetProjectId, nextBuilds[0].id);
-      } else {
+  const loadBuilds = useCallback(
+    async (targetProjectId: string) => {
+      setLoading(true);
+      setError("");
+      try {
+        const nextBuilds = await apiRequest<ApiKnowledgeBuild[]>(`/projects/${targetProjectId}/knowledge/builds`);
+        setBuilds(nextBuilds);
+        if (nextBuilds[0]) {
+          await openBuild(targetProjectId, nextBuilds[0].id);
+        } else {
+          setSelectedBuild(null);
+        }
+      } catch (nextError) {
+        setError(nextError instanceof Error ? nextError.message : "加载知识库失败。");
+        setBuilds([]);
         setSelectedBuild(null);
+      } finally {
+        setLoading(false);
       }
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "加载知识库失败。");
-      setBuilds([]);
-      setSelectedBuild(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [openBuild]);
+    },
+    [openBuild],
+  );
 
   useEffect(() => {
     if (isCompanyKnowledge || projectId === null) {
@@ -169,6 +182,7 @@ export default function Page() {
     }
     setRunning(true);
     setError("");
+    notifyAiTaskStarted();
     try {
       const detail = await apiRequest<ApiKnowledgeBuildDetail>(`/projects/${projectId}/knowledge/builds`, {
         method: "POST",
@@ -189,9 +203,12 @@ export default function Page() {
     setRunning(true);
     setError("");
     try {
-      const detail = await apiRequest<ApiKnowledgeBuildDetail>(`/projects/${projectId}/knowledge/builds/${buildId}/publish`, {
-        method: "POST",
-      });
+      const detail = await apiRequest<ApiKnowledgeBuildDetail>(
+        `/projects/${projectId}/knowledge/builds/${buildId}/publish`,
+        {
+          method: "POST",
+        },
+      );
       setSelectedBuild(detail);
       await loadBuilds(projectId);
     } catch (nextError) {
@@ -325,7 +342,11 @@ export default function Page() {
         ) : (
           <ListToolbar
             actions={
-              <Button disabled={loading || running || !projectId} onClick={() => projectId && void loadBuilds(projectId)} variant="outline">
+              <Button
+                disabled={loading || running || !projectId}
+                onClick={() => projectId && void loadBuilds(projectId)}
+                variant="outline"
+              >
                 <RefreshCw className="size-4" />
                 刷新
               </Button>
@@ -333,7 +354,9 @@ export default function Page() {
             createDisabled={cannotGenerate}
             createLabel={running ? "生成中" : "生成知识库"}
             createTitle={!projectId ? "请先选择具体项目" : undefined}
-            description={projectId ? "项目知识库基于已确认需求版本和已完成探索结果生成。" : "请先在顶部项目切换器选择具体项目。"}
+            description={
+              projectId ? "项目知识库基于已确认需求版本和已完成探索结果生成。" : "请先在顶部项目切换器选择具体项目。"
+            }
             onBatchDelete={deleteSelected}
             onCreate={() => void generateKnowledge()}
             onSearch={setSearchText}
@@ -354,7 +377,9 @@ export default function Page() {
                         ? allCompanySelected || (partiallyCompanySelected ? "indeterminate" : false)
                         : allSelected || (partiallySelected ? "indeterminate" : false)
                     }
-                    onCheckedChange={(checked) => (isCompanyKnowledge ? toggleAllCompany(Boolean(checked)) : toggleAll(Boolean(checked)))}
+                    onCheckedChange={(checked) =>
+                      isCompanyKnowledge ? toggleAllCompany(Boolean(checked)) : toggleAll(Boolean(checked))
+                    }
                   />
                 </TableHead>
                 <TableHead>{isCompanyKnowledge ? "知识名称" : "构建编号"}</TableHead>
@@ -365,109 +390,127 @@ export default function Page() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isCompanyKnowledge ? filteredCompanyRows.map((item) => (
-                <TableRow data-state={selectedCompanyIds.includes(item.id) ? "selected" : undefined} key={item.id}>
-                  <TableCell>
-                    <Checkbox
-                      aria-label={`选择 ${item.id}`}
-                      checked={selectedCompanyIds.includes(item.id)}
-                      onCheckedChange={(checked) => toggleOneCompany(item.id, Boolean(checked))}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <button className="text-left font-medium hover:underline" onClick={() => void openCompanyDoc(item.id)} type="button">
-                      {item.name}
-                    </button>
-                    <div className="text-muted-foreground text-xs">
-                      {item.version || "未生成版本"} · {item.scope}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        item.status === "available"
-                          ? "secondary"
-                          : item.status === "conversion_failed"
-                            ? "destructive"
-                            : "outline"
-                      }
-                    >
-                      {item.status_label}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{item.knowledge_type_label}</TableCell>
-                  <TableCell>{formatDateTime(item.updated_at)}</TableCell>
-                  <TableCell>
-                    <RowActions
-                      actions={[
-                        { label: "查看", icon: Eye, onSelect: () => void openCompanyDoc(item.id) },
-                        {
-                          label: "新增版本",
-                          icon: FilePlus2,
-                          disabled: item.status === "archived" || running,
-                          onSelect: () => {
-                            void openCompanyDoc(item.id);
-                            setCompanyForm({ ...emptyCompanyForm, version: "" });
-                            setCompanyFiles(null);
-                            setVersionDialogOpen(true);
-                          },
-                        },
-                        {
-                          label: "废弃",
-                          icon: Archive,
-                          disabled: item.status === "archived" || running,
-                          destructive: true,
-                          onSelect: () => void archiveCompanyDoc(item.id),
-                        },
-                      ]}
-                      label="打开操作菜单"
-                    />
-                  </TableCell>
-                </TableRow>
-              )) : filteredRows.map((item) => (
-                <TableRow data-state={selectedIds.includes(item.id) ? "selected" : undefined} key={item.id}>
-                  <TableCell>
-                    <Checkbox
-                      aria-label={`选择 ${item.id}`}
-                      checked={selectedIds.includes(item.id)}
-                      onCheckedChange={(checked) => toggleOne(item.id, Boolean(checked))}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <button
-                      className="text-left font-medium hover:underline"
-                      onClick={() => projectId && void openBuild(projectId, item.id)}
-                      type="button"
-                    >
-                      {item.build_no}
-                    </button>
-                    <div className="text-muted-foreground text-xs">{item.summary}</div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={item.status === "published" ? "secondary" : item.status === "blocked" ? "destructive" : "outline"}>
-                      {item.status_label}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {item.source_document_version_ids.length} 个需求版本 / {item.exploration_run_ids.length} 个探索
-                  </TableCell>
-                  <TableCell>{formatDateTime(item.updated_at)}</TableCell>
-                  <TableCell>
-                    <RowActions
-                      actions={[
-                        { label: "查看", icon: Eye, onSelect: () => projectId && void openBuild(projectId, item.id) },
-                        {
-                          label: "发布",
-                          icon: Rocket,
-                          disabled: item.status !== "draft" || running,
-                          onSelect: () => void publishKnowledge(item.id),
-                        },
-                      ]}
-                      label="打开操作菜单"
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {isCompanyKnowledge
+                ? filteredCompanyRows.map((item) => (
+                    <TableRow data-state={selectedCompanyIds.includes(item.id) ? "selected" : undefined} key={item.id}>
+                      <TableCell>
+                        <Checkbox
+                          aria-label={`选择 ${item.id}`}
+                          checked={selectedCompanyIds.includes(item.id)}
+                          onCheckedChange={(checked) => toggleOneCompany(item.id, Boolean(checked))}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <button
+                          className="text-left font-medium hover:underline"
+                          onClick={() => void openCompanyDoc(item.id)}
+                          type="button"
+                        >
+                          {item.name}
+                        </button>
+                        <div className="text-muted-foreground text-xs">
+                          {item.version || "未生成版本"} · {item.scope}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            item.status === "available"
+                              ? "secondary"
+                              : item.status === "conversion_failed"
+                                ? "destructive"
+                                : "outline"
+                          }
+                        >
+                          {item.status_label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{item.knowledge_type_label}</TableCell>
+                      <TableCell>{formatDateTime(item.updated_at)}</TableCell>
+                      <TableCell>
+                        <RowActions
+                          actions={[
+                            { label: "查看", icon: Eye, onSelect: () => void openCompanyDoc(item.id) },
+                            {
+                              label: "新增版本",
+                              icon: FilePlus2,
+                              disabled: item.status === "archived" || running,
+                              onSelect: () => {
+                                void openCompanyDoc(item.id);
+                                setCompanyForm({ ...emptyCompanyForm, version: "" });
+                                setCompanyFiles(null);
+                                setVersionDialogOpen(true);
+                              },
+                            },
+                            {
+                              label: "废弃",
+                              icon: Archive,
+                              disabled: item.status === "archived" || running,
+                              destructive: true,
+                              onSelect: () => void archiveCompanyDoc(item.id),
+                            },
+                          ]}
+                          label="打开操作菜单"
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                : filteredRows.map((item) => (
+                    <TableRow data-state={selectedIds.includes(item.id) ? "selected" : undefined} key={item.id}>
+                      <TableCell>
+                        <Checkbox
+                          aria-label={`选择 ${item.id}`}
+                          checked={selectedIds.includes(item.id)}
+                          onCheckedChange={(checked) => toggleOne(item.id, Boolean(checked))}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <button
+                          className="text-left font-medium hover:underline"
+                          onClick={() => projectId && void openBuild(projectId, item.id)}
+                          type="button"
+                        >
+                          {item.build_no}
+                        </button>
+                        <div className="text-muted-foreground text-xs">{item.summary}</div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            item.status === "published"
+                              ? "secondary"
+                              : item.status === "blocked"
+                                ? "destructive"
+                                : "outline"
+                          }
+                        >
+                          {item.status_label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {item.source_document_version_ids.length} 个需求版本 / {item.exploration_run_ids.length} 个探索
+                      </TableCell>
+                      <TableCell>{formatDateTime(item.updated_at)}</TableCell>
+                      <TableCell>
+                        <RowActions
+                          actions={[
+                            {
+                              label: "查看",
+                              icon: Eye,
+                              onSelect: () => projectId && void openBuild(projectId, item.id),
+                            },
+                            {
+                              label: "发布",
+                              icon: Rocket,
+                              disabled: item.status !== "draft" || running,
+                              onSelect: () => void publishKnowledge(item.id),
+                            },
+                          ]}
+                          label="打开操作菜单"
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
               {(isCompanyKnowledge ? filteredCompanyRows.length : filteredRows.length) === 0 ? (
                 <TableRow>
                   <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
@@ -517,7 +560,9 @@ export default function Page() {
                 {selectedCompanyDoc.files.map((file) => (
                   <div className="rounded-md border p-2 text-xs" key={file.id}>
                     <div className="font-medium">{file.original_filename}</div>
-                    <div className="text-muted-foreground">{file.file_type || "unknown"} · {file.file_size} bytes</div>
+                    <div className="text-muted-foreground">
+                      {file.file_type || "unknown"} · {file.file_size} bytes
+                    </div>
                   </div>
                 ))}
               </div>
@@ -549,7 +594,9 @@ export default function Page() {
                 <div className="rounded-lg border p-3" key={page.id}>
                   <div className="font-medium text-sm">{page.title}</div>
                   <div className="mt-1 text-muted-foreground text-xs">{page.relative_path}</div>
-                  <p className="mt-2 line-clamp-2 text-muted-foreground text-xs">{page.summary || "模块化 wiki 页面。"}</p>
+                  <p className="mt-2 line-clamp-2 text-muted-foreground text-xs">
+                    {page.summary || "模块化 wiki 页面。"}
+                  </p>
                 </div>
               ))}
             </div>
@@ -582,7 +629,9 @@ export default function Page() {
                     <p className="mt-1 text-muted-foreground">{issue.detail}</p>
                   </div>
                 ))}
-                {selectedBuild.lint_issues.length === 0 ? <p className="text-muted-foreground text-xs">暂无 lint 问题。</p> : null}
+                {selectedBuild.lint_issues.length === 0 ? (
+                  <p className="text-muted-foreground text-xs">暂无 lint 问题。</p>
+                ) : null}
               </div>
             </div>
           </aside>
@@ -649,11 +698,18 @@ function CompanyKnowledgeDialog({
             <>
               <div className="space-y-1">
                 <Label htmlFor={`${idPrefix}-name`}>知识名称</Label>
-                <Input id={`${idPrefix}-name`} value={form.name} onChange={(event) => onFormChange({ ...form, name: event.target.value })} />
+                <Input
+                  id={`${idPrefix}-name`}
+                  value={form.name}
+                  onChange={(event) => onFormChange({ ...form, name: event.target.value })}
+                />
               </div>
               <div className="space-y-1">
                 <Label htmlFor={`${idPrefix}-type`}>知识类型</Label>
-                <Select value={form.knowledge_type} onValueChange={(value) => onFormChange({ ...form, knowledge_type: value })}>
+                <Select
+                  value={form.knowledge_type}
+                  onValueChange={(value) => onFormChange({ ...form, knowledge_type: value })}
+                >
                   <SelectTrigger className="w-full" id={`${idPrefix}-type`}>
                     <SelectValue />
                   </SelectTrigger>
@@ -670,33 +726,62 @@ function CompanyKnowledgeDialog({
           ) : null}
           <div className="space-y-1">
             <Label htmlFor={`${idPrefix}-version`}>版本号</Label>
-            <Input id={`${idPrefix}-version`} placeholder={isVersionMode ? "留空自动生成" : "v1"} value={form.version} onChange={(event) => onFormChange({ ...form, version: event.target.value })} />
+            <Input
+              id={`${idPrefix}-version`}
+              placeholder={isVersionMode ? "留空自动生成" : "v1"}
+              value={form.version}
+              onChange={(event) => onFormChange({ ...form, version: event.target.value })}
+            />
           </div>
           {!isVersionMode ? (
             <div className="space-y-1">
               <Label htmlFor={`${idPrefix}-scope`}>适用范围</Label>
-              <Input id={`${idPrefix}-scope`} value={form.scope} onChange={(event) => onFormChange({ ...form, scope: event.target.value })} />
+              <Input
+                id={`${idPrefix}-scope`}
+                value={form.scope}
+                onChange={(event) => onFormChange({ ...form, scope: event.target.value })}
+              />
             </div>
           ) : null}
           <div className="space-y-1 md:col-span-2">
             <Label htmlFor={`${idPrefix}-source-note`}>来源说明</Label>
-            <Input id={`${idPrefix}-source-note`} value={form.source_note} onChange={(event) => onFormChange({ ...form, source_note: event.target.value })} />
+            <Input
+              id={`${idPrefix}-source-note`}
+              value={form.source_note}
+              onChange={(event) => onFormChange({ ...form, source_note: event.target.value })}
+            />
           </div>
           {isVersionMode ? (
             <div className="space-y-1 md:col-span-2">
               <Label htmlFor={`${idPrefix}-change-summary`}>变更摘要</Label>
-              <Textarea id={`${idPrefix}-change-summary`} value={form.change_summary} onChange={(event) => onFormChange({ ...form, change_summary: event.target.value })} />
+              <Textarea
+                id={`${idPrefix}-change-summary`}
+                value={form.change_summary}
+                onChange={(event) => onFormChange({ ...form, change_summary: event.target.value })}
+              />
             </div>
           ) : (
             <div className="space-y-1 md:col-span-2">
               <Label htmlFor={`${idPrefix}-description`}>描述</Label>
-              <Textarea id={`${idPrefix}-description`} value={form.description} onChange={(event) => onFormChange({ ...form, description: event.target.value })} />
+              <Textarea
+                id={`${idPrefix}-description`}
+                value={form.description}
+                onChange={(event) => onFormChange({ ...form, description: event.target.value })}
+              />
             </div>
           )}
           <div className="space-y-1 md:col-span-2">
             <Label htmlFor={`${idPrefix}-files`}>上传文件</Label>
-            <Input id={`${idPrefix}-files`} accept=".md,.markdown,.txt,.doc,.docx,.pdf" multiple onChange={(event) => onFilesChange(event.target.files)} type="file" />
-            <div className="text-muted-foreground text-xs">{files?.length ? `已选择 ${files.length} 个文件` : "支持 Markdown、TXT、DOCX、PDF。"}</div>
+            <Input
+              id={`${idPrefix}-files`}
+              accept=".md,.markdown,.txt,.doc,.docx,.pdf"
+              multiple
+              onChange={(event) => onFilesChange(event.target.files)}
+              type="file"
+            />
+            <div className="text-muted-foreground text-xs">
+              {files?.length ? `已选择 ${files.length} 个文件` : "支持 Markdown、TXT、DOCX、PDF。"}
+            </div>
           </div>
         </div>
         <DialogFooter>

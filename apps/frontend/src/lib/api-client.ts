@@ -131,7 +131,7 @@ export type ApiAvailableAction = {
 
 export type ApiKnowledgeBuild = {
   id: string;
-  project_id: string;
+  project_id: string | null;
   build_no: string;
   status: "building" | "blocked" | "draft" | "published";
   status_label: string;
@@ -176,6 +176,32 @@ export type ApiKnowledgeBuildDetail = {
     location: string;
     excerpt: string;
   }>;
+};
+
+export type ApiTaskStatusGroup = "running" | "waiting" | "failed" | "completed";
+
+export type ApiTaskItem = {
+  id: string;
+  source_type: string;
+  source_id: string;
+  project_id: string;
+  project_name: string;
+  module: string;
+  module_label: string;
+  title: string;
+  status: string;
+  status_label: string;
+  status_group: ApiTaskStatusGroup;
+  summary: string;
+  updated_at: string;
+  detail_url: string;
+};
+
+export type ApiTaskList = {
+  items: ApiTaskItem[];
+  total: number;
+  page: number;
+  page_size: number;
 };
 
 export type ApiGlobalKnowledgeDocument = {

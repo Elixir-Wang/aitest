@@ -64,6 +64,8 @@ def test_requirement_standardization_has_no_deepagents_or_subagents() -> None:
 
 
 def test_requirement_standardization_agent_uses_langchain_create_agent(monkeypatch) -> None:
+    from langchain.agents.structured_output import ToolStrategy
+
     calls = {}
 
     def fake_create_agent(model, tools, *, system_prompt, response_format):
@@ -87,7 +89,9 @@ def test_requirement_standardization_agent_uses_langchain_create_agent(monkeypat
     assert agent == "agent"
     assert calls["model"] == "model"
     assert calls["tools"] == []
-    assert calls["response_format"] is RequirementConversionOutput
+    assert isinstance(calls["response_format"], ToolStrategy)
+    assert calls["response_format"].schema is RequirementConversionOutput
+    assert calls["response_format"].handle_errors is True
     assert "markdown 文档标准化智能体" in calls["system_prompt"]
     assert "不得编造" in calls["system_prompt"]
     assert "你的唯一处理对象是 candidate_markdown" in calls["system_prompt"]
@@ -100,18 +104,23 @@ def test_requirement_standardization_agent_uses_langchain_create_agent(monkeypat
     assert "取值为：" in calls["system_prompt"]
     assert "必须整理为列表" in calls["system_prompt"]
     assert "连续枚举项，应整理为无序列表" in calls["system_prompt"]
+    assert "去掉条目正文开头重复的" in calls["system_prompt"]
+    assert "普通正文、标题、字段值中的同类文字必须保留" in calls["system_prompt"]
     assert "Markdown 表格" in calls["system_prompt"]
     assert "代码块" in calls["system_prompt"]
     assert "Mermaid 流程图" in calls["system_prompt"]
-    assert "只有能保证语法可渲染时才输出" in calls["system_prompt"]
     assert "业务流程箭头链不是代码" in calls["system_prompt"]
-    assert "Mermaid 语法安全规则" in calls["system_prompt"]
-    assert "节点文案可以为了 Mermaid 语法安全进行概括，不要求逐字保留" in calls["system_prompt"]
-    assert "节点文案禁止出现英文双引号、花括号、方括号、竖线、JSON 片段、参数赋值表达式" in calls["system_prompt"]
-    assert "详细内容放到流程图外的列表、表格或代码块中" in calls["system_prompt"]
-    assert "如果无法确认 Mermaid 能被解析，不要输出 Mermaid fenced block" in calls["system_prompt"]
-    assert "依据不足以确定方向、条件或节点关系时，保持原文文本，不要强行转图" in calls["system_prompt"]
-    assert "不得把不确定的普通段落、规则说明或字段说明强行转换为 Mermaid" in calls["system_prompt"]
+    assert "对由箭头串联且语义明确的流程、步骤、状态流转、页面跳转或调用链路，必须整理为 Mermaid 流程图" in calls["system_prompt"]
+    assert "ticket verify" not in calls["system_prompt"]
+    assert "有账号有权限建 Session" not in calls["system_prompt"]
+    assert "已有 `sequenceDiagram`、`flowchart` 或 `graph` 时，保留 Mermaid" in calls["system_prompt"]
+    assert "Mermaid 只表达流程关系" in calls["system_prompt"]
+    assert "参数、JSON、接口示例、代码、正则、HTML 和长错误提示放到图外" in calls["system_prompt"]
+    assert "节点文案必须简短安全" in calls["system_prompt"]
+    assert "概括成不含特殊语法符号的短语" in calls["system_prompt"]
+    assert "如果无法确认可渲染，不要输出 Mermaid" in calls["system_prompt"]
+    assert "依据不足时保持原文文本" in calls["system_prompt"]
+    assert "不得把不确定内容强行转换为 Mermaid" in calls["system_prompt"]
     assert "链接和图片引用" in calls["system_prompt"]
     assert "不得根据 filename 后缀臆测原始文件结构" in calls["system_prompt"]
     assert "对 PDF/TXT 转换出的纯文本" not in calls["system_prompt"]
@@ -216,6 +225,41 @@ async def test_document_file_service_converts_locally_before_standardization(mon
     assert not hasattr(seen["agent_input"], "file_format")
     assert not hasattr(seen["agent_input"], "source_file_path")
     assert markdown == "# 登录\n\n- 支持账号密码登录。\n"
+    assert summary == "已标准化候选 Markdown。"
+
+
+@pytest.mark.anyio
+async def test_document_file_service_returns_agent_markdown_without_mermaid_cleanup(monkeypatch, tmp_path) -> None:
+    from app.services.document import file_service as document_file_service
+
+    source_path = tmp_path / "demo.docx"
+    source_path.write_bytes(b"fake-docx")
+
+    def fake_local_convert(filename, raw_bytes, *, assets_dir=None):
+        return "# 登录\n支持账号密码登录。", "已通过本地 Word 转换器提取正文。"
+
+    async def fake_standardize(input_data):
+        return RequirementConversionOutput(
+            markdown_content='''# 推荐策略
+
+```mermaid
+flowchart TD
+    D -->|否| F[提示"产品未开通"<br>或"联系管理员"]
+```
+''',
+            conversion_summary="已标准化候选 Markdown。",
+        )
+
+    monkeypatch.setattr(document_file_service, "convert_requirement_file_to_markdown", fake_local_convert)
+    monkeypatch.setattr(document_file_service, "convert_requirement_file", fake_standardize)
+
+    markdown, summary = await document_file_service.convert_to_markdown(
+        "demo.docx",
+        source_path=source_path,
+        assets_dir=tmp_path / "assets",
+    )
+
+    assert 'F[提示"产品未开通"<br>或"联系管理员"]' in markdown
     assert summary == "已标准化候选 Markdown。"
 
 

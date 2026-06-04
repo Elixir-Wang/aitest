@@ -15,7 +15,8 @@ import FileUpload1 from "@/components/ui/file-upload-1";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { apiRequest, type ApiProject } from "@/lib/api-client";
+import { notifyAiTaskStarted } from "@/lib/ai-task-events";
+import { type ApiProject, apiRequest } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 
 type RequirementUploadPageProps = {
@@ -42,6 +43,13 @@ type UploadResponse = {
     project_id: string;
     name: string;
   };
+  files: Array<{
+    id: string;
+    original_filename: string;
+    conversion_status: string;
+    conversion_summary: string;
+    created_at: string;
+  }>;
 };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
@@ -155,6 +163,7 @@ export function RequirementUploadPage({
       } else {
         toast.success("文件已添加，请在来源文件列表中发起归并");
       }
+      notifyAiTaskStarted();
       router.push(`/projects/${result.document.project_id}/requirements/${result.document.id}?tab=source-files`);
       router.refresh();
     } catch (requestError) {
@@ -234,7 +243,11 @@ export function RequirementUploadPage({
 
           <Field>
             <FieldLabel>上传模式</FieldLabel>
-            <RadioGroup className="grid gap-2 sm:grid-cols-2" value={mode} onValueChange={(value) => setMode(value as UploadMode)}>
+            <RadioGroup
+              className="grid gap-2 sm:grid-cols-2"
+              value={mode}
+              onValueChange={(value) => setMode(value as UploadMode)}
+            >
               <Label className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm">
                 <RadioGroupItem value="new" />
                 新建需求
@@ -259,9 +272,7 @@ export function RequirementUploadPage({
                   setNameError("");
                 }}
               />
-              {nameError ? (
-                <div className="text-destructive text-xs">{nameError}</div>
-              ) : null}
+              {nameError ? <div className="text-destructive text-xs">{nameError}</div> : null}
             </Field>
           ) : (
             <Field>

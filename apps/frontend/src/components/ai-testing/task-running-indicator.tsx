@@ -1,51 +1,59 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Activity, AlertCircle, CheckCircle2, Clock3, Loader2 } from "lucide-react";
 
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { type ApiKnowledgeBuild, type ApiProject, apiRequest, formatDateTime } from "@/lib/api-client";
+import { AI_TASK_STARTED_EVENT } from "@/lib/ai-task-events";
+import { type ApiTaskItem, apiRequest, formatDateTime } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectContextStore } from "@/stores/project-context-store";
-import {
-  createRunningTaskId,
-  type RunningTaskItem,
-  useRunningTaskStore,
-} from "@/stores/running-task-store";
 
-type ExplorationRun = {
+const AGENT_BACKEND_SOURCE_TYPES = new Set(["knowledge_build", "requirement_file", "requirement_merge"]);
+const RUNNING_TASK_POLL_INTERVAL_MS = 2_000;
+const TASK_START_GRACE_MS = 8_000;
+
+type RunningTaskItem = {
   id: string;
-  project_id: string;
-  project_name: string;
+  projectId: string | null;
+  projectName: string;
   title: string;
+  moduleLabel: string;
   status: string;
-  updated_at: string;
-  started_at?: string | null;
-};
-
-const RUNNING_EXPLORATION_STATUSES = new Set(["queued", "running", "waiting_human"]);
-const RUNNING_KNOWLEDGE_STATUSES = new Set(["building"]);
-const POLL_INTERVAL_MS = 15_000;
-const BACKEND_TASK_SOURCE = "backend";
-
-const explorationStatusLabels: Record<string, string> = {
-  queued: "排队中",
-  running: "探索中",
-  waiting_human: "等待人工",
+  statusLabel: string;
+  updatedAt: string;
 };
 
 function getTaskStatusLabel(task: RunningTaskItem) {
   return task.statusLabel || task.status;
 }
 
+function toRunningTask(item: ApiTaskItem): RunningTaskItem {
+  return {
+    id: item.id,
+    projectId: item.project_id,
+    projectName: item.project_name,
+    title: item.title,
+    moduleLabel: item.module_label,
+    status: item.status,
+    statusLabel: item.status_label,
+    updatedAt: item.updated_at,
+  };
+}
+
+function isAgentBackendTask(item: ApiTaskItem) {
+  return AGENT_BACKEND_SOURCE_TYPES.has(item.source_type);
+}
+
 export function TaskRunningIndicator() {
   const { currentProjectId, hasHydrated: hasProjectHydrated, hydrate, scope } = useProjectContextStore();
   const { hasHydrated: hasAuthHydrated, hydrate: hydrateAuth, token } = useAuthStore();
-  const tasks = useRunningTaskStore((state) => state.tasks);
-  const replaceTasksBySource = useRunningTaskStore((state) => state.replaceTasksBySource);
+  const [tasks, setTasks] = useState<RunningTaskItem[]>([]);
   const [error, setError] = useState("");
+  const [tracking, setTracking] = useState(false);
+  const trackingStartedAtRef = useRef(0);
 
   useEffect(() => {
     hydrate();
@@ -57,77 +65,51 @@ export function TaskRunningIndicator() {
 
   const loadRunningTasks = useCallback(async () => {
     if (!hasAuthHydrated || !hasProjectHydrated || !token) {
-      replaceTasksBySource(BACKEND_TASK_SOURCE, []);
+      setTasks([]);
       setError("");
       return;
     }
 
     try {
-      const explorationPath =
-        scope === "project" && currentProjectId ? `/projects/${currentProjectId}/exploration-runs` : "/exploration-runs";
-      const explorations = await apiRequest<ExplorationRun[]>(explorationPath);
-      const runningExplorations = explorations
-        .filter((item) => RUNNING_EXPLORATION_STATUSES.has(item.status))
-        .map<RunningTaskItem>((item) => ({
-          id: createRunningTaskId(BACKEND_TASK_SOURCE, `exploration-${item.id}`),
-          projectId: item.project_id,
-          projectName: item.project_name,
-          title: item.title,
-          moduleLabel: "站点探索",
-          status: item.status,
-          statusLabel: explorationStatusLabels[item.status] ?? item.status,
-          updatedAt: item.updated_at,
-        }));
-
-      const targetProjects =
-        scope === "project" && currentProjectId
-          ? [{ id: currentProjectId, name: "" }]
-          : await apiRequest<ApiProject[]>("/projects").then((projects) => projects.filter((project) => project.status !== "archived"));
-      const projectNameById = new Map([
-        ...explorations.map((item) => [item.project_id, item.project_name] as const),
-        ...targetProjects.map((project) => [project.id, project.name || project.id] as const),
-      ]);
-
-      const knowledgeResults = await Promise.allSettled(
-        targetProjects.map(async (project) => {
-          const builds = await apiRequest<ApiKnowledgeBuild[]>(`/projects/${project.id}/knowledge/builds`);
-          return builds
-            .filter((item) => RUNNING_KNOWLEDGE_STATUSES.has(item.status))
-            .map<RunningTaskItem>((item) => ({
-              id: createRunningTaskId(BACKEND_TASK_SOURCE, `knowledge-${item.id}`),
-              projectId: item.project_id,
-              projectName: projectNameById.get(item.project_id) ?? item.project_id,
-              title: item.build_no,
-              moduleLabel: "知识库",
-              status: item.status,
-              statusLabel: item.status_label,
-              updatedAt: item.updated_at,
-            }));
-        }),
-      );
-
-      const runningKnowledge = knowledgeResults.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
-      replaceTasksBySource(
-        BACKEND_TASK_SOURCE,
-        [...runningExplorations, ...runningKnowledge].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-      );
+      const query =
+        scope === "project" && currentProjectId ? `?project_id=${encodeURIComponent(currentProjectId)}` : "";
+      const runningTasks = await apiRequest<ApiTaskItem[]>(`/tasks/running${query}`);
+      const nextTasks = runningTasks.filter(isAgentBackendTask).map(toRunningTask);
+      setTasks(nextTasks);
+      if (nextTasks.length === 0 && Date.now() - trackingStartedAtRef.current > TASK_START_GRACE_MS) {
+        setTracking(false);
+      }
       setError("");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "任务状态加载失败");
-      replaceTasksBySource(BACKEND_TASK_SOURCE, []);
+      setTasks([]);
     }
-  }, [currentProjectId, hasAuthHydrated, hasProjectHydrated, replaceTasksBySource, scope, token]);
+  }, [currentProjectId, hasAuthHydrated, hasProjectHydrated, scope, token]);
 
   useEffect(() => {
-    void loadRunningTasks();
+    function handleAiTaskStarted() {
+      trackingStartedAtRef.current = Date.now();
+      setTracking(true);
+      void loadRunningTasks();
+    }
+
+    window.addEventListener(AI_TASK_STARTED_EVENT, handleAiTaskStarted);
+    return () => {
+      window.removeEventListener(AI_TASK_STARTED_EVENT, handleAiTaskStarted);
+    };
+  }, [loadRunningTasks]);
+
+  useEffect(() => {
+    if (!tracking || !hasAuthHydrated || !hasProjectHydrated || !token) {
+      return;
+    }
     const timer = window.setInterval(() => {
       void loadRunningTasks();
-    }, POLL_INTERVAL_MS);
-
+    }, RUNNING_TASK_POLL_INTERVAL_MS);
     return () => {
       window.clearInterval(timer);
     };
-  }, [loadRunningTasks]);
+  }, [hasAuthHydrated, hasProjectHydrated, loadRunningTasks, token, tracking]);
 
   const dedupedTasks = useMemo(() => {
     const seen = new Set<string>();

@@ -13,7 +13,7 @@ from app.services.document.serializer import serialize_document_from_db, seriali
 from app.schemas.requirement_conversion import RequirementConversionInput
 from app.agents.requirement_standardization.service import convert_requirement_file
 from app.services.requirement_file_conversion.dispatcher import convert_requirement_file_to_markdown
-from app.services import operation_log_service
+from app.services import operation_log_service, task_service
 
 DOCUMENT_PENDING_MERGE_STATUS = "pending_merge"
 CONVERSION_SUCCESS_STATUS = "success"
@@ -304,8 +304,8 @@ async def convert_source_file_mapping(mapping_id: str) -> dict:
             conversion_status=CONVERSION_PROCESSING_STATUS,
             conversion_summary="正在生成 Markdown 标准文件。",
         )
-
     try:
+        publish_requirement_file_task_event(mapping_id)
         source_path = resolve_stored_path(row["source_file_path"]) or Path(row["source_file_path"])
         if not source_path.exists():
             raise RuntimeError("原始文件不存在，无法生成 Markdown 标准文件。")
@@ -325,7 +325,8 @@ async def convert_source_file_mapping(mapping_id: str) -> dict:
                 conversion_summary,
             )
             updated = document_repo.find_file_mapping(db, mapping_id)
-            return serialize_file_mapping(updated)
+            result = serialize_file_mapping(updated)
+            return result
     except Exception as exc:
         with connect() as db:
             document_repo.update_file_mapping_conversion_status(
@@ -335,7 +336,27 @@ async def convert_source_file_mapping(mapping_id: str) -> dict:
                 conversion_summary=str(exc) or "文件转换失败。",
             )
             updated = document_repo.find_file_mapping(db, mapping_id)
-            return serialize_file_mapping(updated)
+            result = serialize_file_mapping(updated)
+            return result
+
+
+def publish_requirement_file_task_event(mapping_id: str) -> None:
+    task = task_service.get_task_by_source_for_event(source_type="requirement_file", source_id=mapping_id)
+    if not task:
+        return
+    try:
+        operation_log_service.record_task_event(
+            module=task["module"],
+            action="update",
+            object_type=task["source_type"],
+            object_id=task["source_id"],
+            object_name=task["title"],
+            project_id=task["project_id"],
+            summary=task["summary"] or task["status_label"],
+            after=task,
+        )
+    except Exception as exc:
+        logger.warning("Failed to publish requirement file task event | mapping_id={mapping_id} error={error}", mapping_id=mapping_id, error=exc)
 
 
 async def convert_to_markdown(
@@ -377,8 +398,7 @@ async def convert_to_markdown(
         )
         return local_markdown, f"{local_summary}（智能体标准化失败，已使用本地转换结果：{type(exc).__name__}。）"
 
-    markdown = _normalize_converted_markdown(agent_output.markdown_content)
-    markdown = markdown.strip()
+    markdown = _normalize_converted_markdown(agent_output.markdown_content).strip()
     if not markdown:
         return local_markdown, f"{local_summary}（智能体未返回有效 Markdown，已使用本地转换结果。）"
 

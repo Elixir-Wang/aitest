@@ -48,9 +48,9 @@ import FileUpload1 from "@/components/ui/file-upload-1";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import { apiBlobRequest, apiRequest, formatDateTime } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
-import { createRunningTaskId, useRunningTaskStore } from "@/stores/running-task-store";
 
 const STANDARD_FILE_SECTION_ID = "standard-file-section";
 const ORIGINAL_FILE_SECTION_ID = "original-file-section";
@@ -351,8 +351,6 @@ export default function DocumentDetailPage() {
   const [conflicts, setConflicts] = useState<RequirementConflict[]>([]);
   const [conflictDrafts, setConflictDrafts] = useState<Record<string, string>>({});
   const token = useAuthStore((state) => state.token);
-  const removeRunningTask = useRunningTaskStore((state) => state.removeTask);
-  const upsertRunningTask = useRunningTaskStore((state) => state.upsertTask);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
@@ -645,18 +643,7 @@ export default function DocumentDetailPage() {
     if (!selectedFile || !currentStandardPreview) {
       return;
     }
-    const taskId = createRunningTaskId("frontend", `ai-edit-${selectedFile.id}`);
     setEditingStandardWithAi(true);
-    upsertRunningTask({
-      id: taskId,
-      projectId,
-      projectName: projectId,
-      title: `AI 修改：${selectedFile.original_filename}`,
-      moduleLabel: "需求",
-      status: "running",
-      statusLabel: "AI 修改中",
-      updatedAt: new Date().toISOString(),
-    });
     try {
       const editResult = await apiRequest<DocumentEditResponse>("/agents/document-editor/run", {
         method: "POST",
@@ -694,7 +681,6 @@ export default function DocumentDetailPage() {
       toast.error(requestError instanceof Error ? requestError.message : "智能修改失败");
     } finally {
       setEditingStandardWithAi(false);
-      removeRunningTask(taskId);
     }
   }
 
@@ -729,18 +715,7 @@ export default function DocumentDetailPage() {
   }
 
   async function runRequirementAnalysis() {
-    const taskId = createRunningTaskId("frontend", `analysis-${documentId}`);
     setAnalysisLoading(true);
-    upsertRunningTask({
-      id: taskId,
-      projectId,
-      projectName: projectId,
-      title: overview?.document.name ? `需求分析：${overview.document.name}` : "需求分析",
-      moduleLabel: "需求",
-      status: "running",
-      statusLabel: "分析中",
-      updatedAt: new Date().toISOString(),
-    });
     try {
       const result = await apiRequest<RequirementAnalysisResult>(
         `/projects/${projectId}/requirements/${documentId}/analysis`,
@@ -754,27 +729,16 @@ export default function DocumentDetailPage() {
       toast.error(requestError instanceof Error ? requestError.message : "需求分析失败");
     } finally {
       setAnalysisLoading(false);
-      removeRunningTask(taskId);
     }
   }
 
   async function mergeRequirement() {
-    const taskId = createRunningTaskId("frontend", `merge-${documentId}`);
     setMerging(true);
     setMergeError("");
     setMergePreview(null);
     setMergeArtifactTabs([]);
     setMergeArtifactTab(MERGED_REQUIREMENT_TAB_KEY);
-    upsertRunningTask({
-      id: taskId,
-      projectId,
-      projectName: projectId,
-      title: overview?.document.name ? `需求合并：${overview.document.name}` : "需求合并",
-      moduleLabel: "需求",
-      status: "running",
-      statusLabel: "合并中",
-      updatedAt: new Date().toISOString(),
-    });
+    notifyAiTaskStarted();
     try {
       const result = await apiRequest<MergeResponse>(`/projects/${projectId}/requirements/${documentId}/merge`, {
         method: "POST",
@@ -836,7 +800,6 @@ export default function DocumentDetailPage() {
       setActiveTab("initial");
     } finally {
       setMerging(false);
-      removeRunningTask(taskId);
     }
   }
 
@@ -911,65 +874,62 @@ export default function DocumentDetailPage() {
       ),
     );
 
-    await new Promise<void>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", `${apiBase}/projects/${projectId}/requirements`);
-      if (token) {
-        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-      }
-      xhr.upload.onprogress = (event) => {
-        if (!event.lengthComputable) return;
-        const progress = Math.min(99, Math.round((event.loaded / event.total) * 100));
-        setUploadStates(
-          Object.fromEntries(
-            uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress, status: "uploading" as const }]),
-          ),
-        );
-      };
-      xhr.onload = () => {
-        const payload = (() => {
-          try {
-            return JSON.parse(xhr.responseText);
-          } catch {
-            return null;
-          }
-        })();
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve();
-          return;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${apiBase}/projects/${projectId}/requirements`);
+        if (token) {
+          xhr.setRequestHeader("Authorization", `Bearer ${token}`);
         }
-        reject(new Error(payload?.detail?.message ?? payload?.detail ?? "文件上传失败"));
-      };
-      xhr.onerror = () => reject(new Error("网络异常，文件上传失败"));
-      const formData = new FormData();
-      formData.append("mode", "append");
-      formData.append("existing_document_id", documentId);
-      for (const f of uploadFiles) {
-        formData.append("files", f);
-      }
-      xhr.send(formData);
-    })
-      .then(async () => {
-        setUploadStates(
-          Object.fromEntries(
-            uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress: 100, status: "completed" as const }]),
-          ),
-        );
-        toast.success("文件已上传，正在后台生成标准文件");
-        setUploadDialogOpen(false);
-        await loadOverview({ silent: true });
-      })
-      .catch((err: unknown) => {
-        toast.error(err instanceof Error ? err.message : "文件上传失败");
-        setUploadStates(
-          Object.fromEntries(
-            uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress: 0, status: "error" as const }]),
-          ),
-        );
-      })
-      .finally(() => {
-        setUploadSubmitting(false);
+        xhr.upload.onprogress = (event) => {
+          if (!event.lengthComputable) return;
+          const progress = Math.min(99, Math.round((event.loaded / event.total) * 100));
+          setUploadStates(
+            Object.fromEntries(
+              uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress, status: "uploading" as const }]),
+            ),
+          );
+        };
+        xhr.onload = () => {
+          const payload = (() => {
+            try {
+              return JSON.parse(xhr.responseText);
+            } catch {
+              return null;
+            }
+          })();
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+            return;
+          }
+          reject(new Error(payload?.detail?.message ?? payload?.detail ?? "文件上传失败"));
+        };
+        xhr.onerror = () => reject(new Error("网络异常，文件上传失败"));
+        const formData = new FormData();
+        formData.append("mode", "append");
+        formData.append("existing_document_id", documentId);
+        for (const f of uploadFiles) {
+          formData.append("files", f);
+        }
+        xhr.send(formData);
       });
+      setUploadStates(
+        Object.fromEntries(
+          uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress: 100, status: "completed" as const }]),
+        ),
+      );
+      toast.success("文件已上传，正在后台生成标准文件");
+      setUploadDialogOpen(false);
+      notifyAiTaskStarted();
+      await loadOverview({ silent: true });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "文件上传失败");
+      setUploadStates(
+        Object.fromEntries(uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress: 0, status: "error" as const }])),
+      );
+    } finally {
+      setUploadSubmitting(false);
+    }
   }
 
   async function saveConflictResolution(conflict: RequirementConflict) {

@@ -215,10 +215,12 @@ export function ListToolbar({
             批量删除 ({selectedCount})
           </Button>
         ) : null}
-        <Button disabled={createDisabled} onClick={onCreate} title={createTitle}>
-          <Plus className="size-4" />
-          {createLabel}
-        </Button>
+        {onCreate ? (
+          <Button disabled={createDisabled} onClick={onCreate} title={createTitle}>
+            <Plus className="size-4" />
+            {createLabel}
+          </Button>
+        ) : null}
         {actions}
       </div>
     </div>
