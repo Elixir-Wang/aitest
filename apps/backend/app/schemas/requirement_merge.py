@@ -289,7 +289,6 @@ class RequirementCoverageItem(BaseModel):
     mapping_id: str
     source_block_id: str = ""
     source_heading: str = ""
-    source_excerpt: str
     target_module: str = ""
     target_heading: str = ""
     coverage_status: Literal["merged", "duplicate", "conflict", "pending_clarification", "discarded"]

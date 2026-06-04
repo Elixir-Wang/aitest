@@ -621,7 +621,7 @@ def _missing_coverage_count(coverage_items: list[dict], source_blocks: list[Requ
 
 def _uncovered_source_lines(coverage_items: list[dict], source_blocks: list[RequirementSourceBlock]) -> list[str]:
     lines = [
-        f"- {md_cell(str(item.get('source_heading') or item.get('source_excerpt') or '未命名来源内容'))}：未进入合并稿。"
+        f"- {md_cell(str(item.get('source_heading') or '未命名来源内容'))}：未进入合并稿。"
         for item in coverage_items
         if item.get("coverage_status") == "missing"
     ]
@@ -661,13 +661,11 @@ def _source_trace_lines(coverage_items: list[dict], source_blocks: list[Requirem
             item = _coverage_item_for_block(coverage_items, block) or {}
             status = str(item.get("coverage_status", "missing"))
             target = " / ".join(filter(None, [item.get("target_module", ""), item.get("target_heading", "")]))
-            excerpt = _trace_excerpt(item, block)
-            lines.append(f"- {md_cell(block.original_heading)}：{_trace_status_text(status, target)}{excerpt}")
+            lines.append(f"- {md_cell(block.original_heading)}：{_trace_status_text(status, target)}")
         return lines
     return [
-        f"- {md_cell(str(item.get('source_heading') or item.get('source_excerpt') or '未命名来源内容'))}："
+        f"- {md_cell(str(item.get('source_heading') or '未命名来源内容'))}："
         f"{_trace_status_text(str(item.get('coverage_status', 'missing')), ' / '.join(filter(None, [item.get('target_module', ''), item.get('target_heading', '')])))}"
-        f"{_trace_excerpt(item, None)}"
         for item in coverage_items
     ]
 
@@ -682,25 +680,6 @@ def _trace_status_text(status: str, target: str) -> str:
     if status == "discarded":
         return "已放入附录或不纳入正文"
     return "未覆盖，需要重新合并或人工补充"
-
-
-def _trace_excerpt(item: dict, block: RequirementSourceBlock | None) -> str:
-    excerpt = str(item.get("source_excerpt") or "")
-    if not excerpt and block is not None:
-        excerpt = _plain_text(block.markdown)
-    excerpt = md_cell(excerpt)
-    if not excerpt:
-        return ""
-    return f"（{excerpt[:80]}）"
-
-
-def _plain_text(markdown: str) -> str:
-    text = re.sub(r"(?ms)^```.*?^```", "", markdown)
-    text = re.sub(r"!\[[^\]]*]\([^)]+\)", "", text)
-    text = re.sub(r"\[([^\]]+)]\([^)]+\)", r"\1", text)
-    text = re.sub(r"(?m)^#{1,6}\s+", "", text)
-    text = re.sub(r"(?m)^[>*\-\d.)+\s]+", "", text)
-    return re.sub(r"\s+", " ", text).strip()
 
 
 def _dedupe_lines(lines: list[str]) -> list[str]:

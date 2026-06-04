@@ -621,7 +621,6 @@ def _outline_coverage_items(source_documents, assignments, section_results) -> l
                 "mapping_id": node.mapping_id,
                 "source_block_id": node.node_id,
                 "source_heading": " / ".join(node.heading_path),
-                "source_excerpt": node.plain_text[:80] or node.title,
                 "target_module": target_module,
                 "target_heading": target_module,
                 "coverage_status": status,
