@@ -133,14 +133,11 @@ def _source_block(
     return RequirementSourceBlock(
         block_id=f"{source_code}-{sequence:02d}" if sequence < 100 else f"{source_code}-{sequence}",
         source_code=source_code,
-        sequence=sequence,
         mapping_id=source_file.mapping_id,
         source_file=source_file.original_filename,
         original_heading=unit["original_heading"],
-        heading_level=unit["heading_level"],
         heading_path=list(unit["heading_path"]),
         markdown=markdown,
-        plain_text=_plain_text(markdown),
         sub_headings=_sub_headings(markdown),
     )
 

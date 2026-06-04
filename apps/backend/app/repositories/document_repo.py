@@ -333,11 +333,10 @@ def resolve_conflict(db: Connection, conflict_id: str, resolution: str, resoluti
     )
 
 
-def close_open_conflicts(db: Connection, document_id: str) -> None:
+def delete_open_conflicts(db: Connection, document_id: str) -> None:
     db.execute(
         """
-        UPDATE source_document_merge_conflicts
-        SET status = 'resolved', updated_at = CURRENT_TIMESTAMP
+        DELETE FROM source_document_merge_conflicts
         WHERE document_id = ? AND status = 'open'
         """,
         (document_id,),

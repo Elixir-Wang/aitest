@@ -7,8 +7,6 @@ class RequirementMergeSourceFile(BaseModel):
     mapping_id: str
     original_filename: str
     markdown_content: str
-    conversion_status: str
-    mapping_status: str
 
 
 class RequirementMergeBaseVersion(BaseModel):
@@ -27,14 +25,11 @@ class RequirementMergeResolvedConflict(BaseModel):
 class RequirementSourceBlock(BaseModel):
     block_id: str
     source_code: str
-    sequence: int
     mapping_id: str
     source_file: str
     original_heading: str
-    heading_level: int
     heading_path: list[str] = Field(default_factory=list)
     markdown: str
-    plain_text: str
     sub_headings: list[str] = Field(default_factory=list)
 
 

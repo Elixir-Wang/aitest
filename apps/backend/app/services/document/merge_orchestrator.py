@@ -43,14 +43,6 @@ async def merge_document_markdown(
         if not files:
             raise api_error(409, "DOCUMENT_MERGE_NO_FILES", "暂无可合并的标准文件。")
 
-        open_conflicts = document_repo.list_conflicts(db, document_id, status="open")
-        if open_conflicts:
-            return {
-                "status": "conflict",
-                "conflict_count": len(open_conflicts),
-                "conflicts": [_serialize_conflict(row) for row in open_conflicts],
-            }
-
         source_files: list[RequirementMergeSourceFile] = []
         for file_row in files:
             markdown_path_value = file_row["markdown_file_path"]
@@ -64,14 +56,13 @@ async def merge_document_markdown(
                     mapping_id=file_row["id"],
                     original_filename=file_row["original_filename"],
                     markdown_content=markdown_path.read_text(encoding="utf-8"),
-                    conversion_status=file_row["conversion_status"],
-                    mapping_status=file_row["mapping_status"],
                 )
             )
         if not source_files:
             raise api_error(409, "DOCUMENT_MERGE_NO_FILES", "暂无可合并的标准文件。")
         source_blocks = requirement_source_block_service.build_source_blocks(source_files)
 
+        document_repo.delete_open_conflicts(db, document_id)
         resolved_conflicts = document_repo.list_conflicts(db, document_id, status="resolved")
         merge_mode = _detect_merge_mode(existing["current_version_id"], force_rebuild=force_rebuild)
         base_version_id = existing["current_version_id"] if merge_mode == "incremental" else None
@@ -330,7 +321,7 @@ async def merge_document_markdown(
             created_by=actor["id"],
         )
         document_repo.mark_file_mappings_merged(db, document_id, version_id)
-        document_repo.close_open_conflicts(db, document_id)
+        document_repo.delete_open_conflicts(db, document_id)
         document_repo.update_current_version(db, document_id, version_id, DOCUMENT_VERSIONED_STATUS)
         document_repo.update_merge_run_result(
             db,

@@ -687,11 +687,20 @@ def _trace_status_text(status: str, target: str) -> str:
 def _trace_excerpt(item: dict, block: RequirementSourceBlock | None) -> str:
     excerpt = str(item.get("source_excerpt") or "")
     if not excerpt and block is not None:
-        excerpt = block.plain_text
+        excerpt = _plain_text(block.markdown)
     excerpt = md_cell(excerpt)
     if not excerpt:
         return ""
     return f"（{excerpt[:80]}）"
+
+
+def _plain_text(markdown: str) -> str:
+    text = re.sub(r"(?ms)^```.*?^```", "", markdown)
+    text = re.sub(r"!\[[^\]]*]\([^)]+\)", "", text)
+    text = re.sub(r"\[([^\]]+)]\([^)]+\)", r"\1", text)
+    text = re.sub(r"(?m)^#{1,6}\s+", "", text)
+    text = re.sub(r"(?m)^[>*\-\d.)+\s]+", "", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _dedupe_lines(lines: list[str]) -> list[str]:
