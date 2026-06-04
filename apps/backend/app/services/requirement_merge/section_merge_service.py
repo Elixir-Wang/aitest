@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import json
-import re
-from typing import Any
-
-from app.agents.requirement_merge.runner import run_requirement_merge_prompt
+from app.agents.requirement_merge.schemas import RequirementMergeSectionInput, RequirementMergeSectionSourceBlock
+from app.agents.requirement_merge.service import merge_requirement_section
 from app.schemas.requirement_merge import (
     OutlineAssignment,
+    OutlineMergeConflict,
     OutlineSectionBlock,
     OutlineSectionDecision,
     OutlineSectionMergeResult,
@@ -81,14 +79,67 @@ async def _merge_single_section(
     section: TargetOutlineSection,
     source_nodes: list[SourceOutlineNode],
 ) -> OutlineSectionMergeResult:
-    prompt = _build_section_merge_prompt(section, source_nodes)
-    output = await run_requirement_merge_prompt(prompt)
-    parsed = _parse_json_object(output)
-    section_result = _parse_section_result(section.section_id, parsed)
+    output = await merge_requirement_section(
+        RequirementMergeSectionInput(
+            module_id=section.section_id,
+            module_title=section.title,
+            source_blocks=[
+                RequirementMergeSectionSourceBlock(
+                    id=node.node_id,
+                    title=node.title,
+                    children=list(node.sub_headings),
+                    markdown=node.content_markdown,
+                )
+                for node in source_nodes
+            ],
+        )
+    )
+    section_result = _section_output_to_result(section, output, source_nodes)
     issues = validate_section_result(section_result, source_nodes)
     if issues:
         raise ValueError("；".join(issues))
     return section_result
+
+
+def _section_output_to_result(section: TargetOutlineSection, output, source_nodes: list[SourceOutlineNode]) -> OutlineSectionMergeResult:
+    source_ids = {node.node_id for node in source_nodes}
+    decisions = [
+        OutlineSectionDecision(
+            section_id=section.section_id,
+            source_node_id=item.source_id,
+            status=item.status,
+            target_heading=section.title,
+            reason=item.reason or "模块正文归并处理。",
+        )
+        for item in output.coverage
+        if item.source_id in source_ids
+    ]
+    blocks: list[OutlineSectionBlock] = []
+    for item in output.sections:
+        if item.title.strip():
+            blocks.append(OutlineSectionBlock(type="paragraph", content=f"### {item.title.strip()}"))
+        for paragraph in item.content:
+            if paragraph.strip():
+                blocks.append(OutlineSectionBlock(type="paragraph", content=paragraph.strip()))
+    conflicts = [
+        OutlineMergeConflict(
+            conflict_id=item.conflict_id,
+            title=item.title,
+            conflict_type=item.conflict_type,
+            severity=item.severity,
+            source_node_ids=[source_id for source_id in item.source_ids if source_id in source_ids],
+            fragment_a=item.fragment_a,
+            fragment_b=item.fragment_b,
+            agent_suggestion=item.agent_suggestion,
+        )
+        for item in output.conflicts
+    ]
+    return OutlineSectionMergeResult(
+        section_id=section.section_id,
+        blocks=blocks,
+        decisions=decisions,
+        conflicts=conflicts,
+    )
 
 
 def validate_section_result(result: OutlineSectionMergeResult, source_nodes: list[SourceOutlineNode]) -> list[str]:
@@ -103,144 +154,3 @@ def validate_section_result(result: OutlineSectionMergeResult, source_nodes: lis
         issues.append(f"章节决策包含未知旧节点：{', '.join(unknown)}。")
     return issues
 
-
-def _build_section_merge_prompt(section: TargetOutlineSection, source_nodes: list[SourceOutlineNode]) -> str:
-    payload = {
-        "section": section.model_dump(),
-        "source_nodes": [_node_payload(node) for node in source_nodes],
-    }
-    return (
-        "你是需求归并智能体。当前阶段只合并一个目标大纲章节。\n"
-        "请基于归属到本章节的旧大纲节点，做组合、去重、冲突和待澄清判断。\n"
-        "只返回 JSON 对象，不要 Markdown 代码块，不要解释文字。\n"
-        "blocks.type 只能是 paragraph, bullet_list, table, source_node_ref, pending_clarification_ref, conflict_ref。\n"
-        "decisions.status 只能是 merged, duplicate, conflict, pending_clarification, discarded。\n"
-        "必须为每个 source_node_id 返回一条 decisions。\n"
-        "JSON 字段：section_id, blocks, decisions, conflicts。\n\n"
-        f"输入：\n{json.dumps(payload, ensure_ascii=False)}"
-    )
-
-
-def _node_payload(node: SourceOutlineNode) -> dict:
-    return {
-        "source_node_id": node.node_id,
-        "source_file": node.source_file,
-        "title": node.title,
-        "heading_path": node.heading_path,
-        "content_markdown": node.content_markdown,
-    }
-
-
-def _parse_section_result(section_id: str, parsed: dict) -> OutlineSectionMergeResult:
-    return OutlineSectionMergeResult(
-        section_id=str(parsed.get("section_id") or section_id),
-        blocks=[_parse_block(item) for item in parsed.get("blocks", []) if isinstance(item, dict)],
-        decisions=[_parse_decision(section_id, item) for item in parsed.get("decisions", []) if isinstance(item, dict)],
-        conflicts=[_parse_conflict(item) for item in parsed.get("conflicts", []) if isinstance(item, dict)],
-    )
-
-
-def _parse_block(raw: dict) -> OutlineSectionBlock:
-    block_type = _normalize_block_type(raw.get("type"))
-    items = raw.get("items", [])
-    if isinstance(items, str):
-        items = [items] if items else []
-    return OutlineSectionBlock(
-        type=block_type,
-        content=_string_or_joined(raw.get("content", "")),
-        items=[str(item) for item in items if str(item).strip()],
-        source_node_id=str(raw.get("source_node_id") or raw.get("node_id") or ""),
-        conflict_id=str(raw.get("conflict_id") or ""),
-    )
-
-
-def _parse_decision(section_id: str, raw: dict) -> OutlineSectionDecision:
-    return OutlineSectionDecision(
-        section_id=str(raw.get("section_id") or section_id),
-        source_node_id=str(raw.get("source_node_id") or raw.get("node_id") or ""),
-        status=_normalize_decision_status(raw.get("status")),
-        target_heading=str(raw.get("target_heading") or ""),
-        covered_by_source_node_id=str(raw.get("covered_by_source_node_id") or raw.get("covered_by") or ""),
-        conflict_id=str(raw.get("conflict_id") or ""),
-        reason=str(raw.get("reason") or ""),
-    )
-
-
-def _parse_conflict(raw: dict) -> OutlineMergeConflict:
-    source_node_ids = raw.get("source_node_ids", [])
-    if isinstance(source_node_ids, str):
-        source_node_ids = [source_node_ids] if source_node_ids else []
-    return OutlineMergeConflict(
-        conflict_id=str(raw.get("conflict_id") or raw.get("id") or ""),
-        title=str(raw.get("title") or "未命名冲突"),
-        conflict_type=str(raw.get("conflict_type") or "contradiction"),
-        severity=str(raw.get("severity") or "medium"),
-        source_node_ids=[str(item) for item in source_node_ids if str(item)],
-        fragment_a=str(raw.get("fragment_a") or ""),
-        fragment_b=str(raw.get("fragment_b") or ""),
-        agent_suggestion=str(raw.get("agent_suggestion") or "需要人工确认。"),
-    )
-
-
-def _normalize_block_type(raw_value: Any) -> str:
-    normalized = re.sub(r"[^a-z0-9]+", "_", str(raw_value or "").strip().lower()).strip("_")
-    aliases = {
-        "text": "paragraph",
-        "content": "paragraph",
-        "paragraph": "paragraph",
-        "bullet": "bullet_list",
-        "bullets": "bullet_list",
-        "list": "bullet_list",
-        "bullet_list": "bullet_list",
-        "table": "table",
-        "source": "source_node_ref",
-        "source_node": "source_node_ref",
-        "source_node_ref": "source_node_ref",
-        "pending": "pending_clarification_ref",
-        "pending_clarification": "pending_clarification_ref",
-        "pending_clarification_ref": "pending_clarification_ref",
-        "conflict": "conflict_ref",
-        "conflict_ref": "conflict_ref",
-    }
-    return aliases.get(normalized, "paragraph")
-
-
-def _normalize_decision_status(raw_value: Any) -> str:
-    normalized = re.sub(r"[^a-z0-9]+", "_", str(raw_value or "").strip().lower()).strip("_")
-    aliases = {
-        "merge": "merged",
-        "merged": "merged",
-        "duplicate": "duplicate",
-        "deduplicate": "duplicate",
-        "conflict": "conflict",
-        "pending": "pending_clarification",
-        "pending_clarification": "pending_clarification",
-        "discard": "discarded",
-        "discarded": "discarded",
-    }
-    return aliases.get(normalized, "merged")
-
-
-def _string_or_joined(value: Any) -> str:
-    if isinstance(value, list):
-        return "\n".join(str(item) for item in value if str(item).strip())
-    if isinstance(value, dict):
-        return json.dumps(value, ensure_ascii=False)
-    return "" if value is None else str(value)
-
-
-def _parse_json_object(output: Any) -> dict:
-    if isinstance(output, dict):
-        return output
-    text = str(output).strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE).strip()
-        text = re.sub(r"```$", "", text).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end > start:
-        text = text[start : end + 1]
-    parsed = json.loads(text)
-    if not isinstance(parsed, dict):
-        raise ValueError("智能体未返回 JSON 对象。")
-    return parsed

@@ -17,10 +17,9 @@ def build_source_blocks(
         sections = _second_level_sections(source_file.markdown_content)
         sequence = 1
         for section in sections:
-            units = _split_oversized_section(section, max_chars=max_chars)
-            for unit in units:
-                blocks.append(_source_block(source_file, source_code, sequence, unit))
-                sequence += 1
+            markdown = "\n".join(section["body"]).strip()
+            blocks.append(_source_block(source_file, source_code, sequence, {**section, "markdown": markdown}))
+            sequence += 1
     return blocks
 
 
@@ -59,49 +58,6 @@ def _second_level_sections(markdown: str) -> list[dict]:
         if fallback:
             sections.append(fallback)
     return [section for section in sections if not _is_non_requirement("\n".join(section["body"]))]
-
-
-def _split_oversized_section(section: dict, *, max_chars: int) -> list[dict]:
-    markdown = "\n".join(section["body"]).strip()
-    if len(markdown) <= max_chars:
-        return [{**section, "markdown": markdown}]
-
-    third_level_units = _third_level_sections(section)
-    if len(third_level_units) <= 1:
-        return [{**section, "markdown": markdown}]
-    return third_level_units
-
-
-def _third_level_sections(section: dict) -> list[dict]:
-    lines = section["body"]
-    parent_path = list(section["heading_path"])
-    units: list[dict] = []
-    current: dict | None = None
-    in_fence = False
-
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-        heading = _heading_match(line) if not in_fence else None
-        if heading and heading[0] == 3:
-            if current and current["body"]:
-                current["markdown"] = "\n".join(current["body"]).strip()
-                units.append(current)
-            current = {
-                "heading_level": 3,
-                "original_heading": heading[1],
-                "heading_path": parent_path + [heading[1]],
-                "body": [line],
-            }
-            continue
-        if current is not None:
-            current["body"].append(line)
-
-    if current and current["body"]:
-        current["markdown"] = "\n".join(current["body"]).strip()
-        units.append(current)
-    return [unit for unit in units if unit.get("markdown", "").strip()]
 
 
 def _fallback_document_section(markdown: str) -> dict | None:

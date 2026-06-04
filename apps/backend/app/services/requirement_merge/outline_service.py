@@ -1,8 +1,7 @@
-import json
-import re
 from typing import Any
 
-from app.agents.requirement_merge.runner import run_requirement_merge_prompt
+from app.agents.requirement_merge.schemas import RequirementMergeOutlineInput, RequirementMergeSourceBlockIndex
+from app.agents.requirement_merge.service import generate_outline_and_placements
 from app.schemas.requirement_merge import SourceOutlineDocument, SourceOutlineNode, TargetOutlineSection
 from app.services.requirement_merge.source_outline_service import flatten_source_outline
 
@@ -18,13 +17,13 @@ async def generate_target_outline(
     debug = {
         "input_summary": outline_stage_input_summary(source_documents),
         "raw_output": "",
+        "input": _outline_input_payload(document_name, source_documents),
     }
     try:
-        output = await run_requirement_merge_prompt(prompt)
-        debug["raw_output"] = str(output)
-        parsed = _parse_json_object(output)
-        sections = _parse_outline_sections(parsed.get("sections", parsed.get("outline", [])))
-        outline = build_target_outline(document_name, sections)
+        _ = prompt
+        output = await generate_outline_and_placements(_outline_input(document_name, source_documents))
+        debug["raw_output"] = output.model_dump()
+        outline = build_target_outline_from_outline_output(document_name, output)
         issues = validate_target_outline(outline, document_name)
         if not issues:
             from app.services.requirement_merge.outline_assignment_service import validate_outline_source_refs
@@ -99,6 +98,34 @@ def assignable_target_sections(outline: list[TargetOutlineSection]) -> list[Targ
     return [section for section in flatten_target_outline(outline) if section.level in {2, 3}]
 
 
+def build_target_outline_from_outline_output(document_name: str, output) -> list[TargetOutlineSection]:
+    modules = [
+        TargetOutlineSection(
+            section_id=module.id,
+            parent_id="root",
+            level=2,
+            title=module.title,
+            reason=module.reason,
+            source_node_ids=[
+                placement.source_id
+                for placement in output.placements
+                if placement.target_id == module.id
+            ],
+            children=[],
+        )
+        for module in output.outline
+    ]
+    return [
+        TargetOutlineSection(
+            section_id="root",
+            level=1,
+            title=document_name,
+            reason="系统固定的需求文档根节点。",
+            children=modules,
+        )
+    ]
+
+
 def build_target_outline(document_name: str, sections: list[TargetOutlineSection]) -> list[TargetOutlineSection]:
     root = TargetOutlineSection(
         section_id="root",
@@ -129,28 +156,30 @@ def outline_stage_input_summary(source_documents: list[SourceOutlineDocument]) -
 
 
 def _build_outline_prompt(document_name: str, source_documents: list[SourceOutlineDocument]) -> str:
-    payload = {
-        "document_name": document_name,
-        "source_title_tree": [_document_index(document) for document in source_documents],
-    }
-    return (
-        "你是通用文档合并智能体。当前阶段只生成新的统一目标大纲的二级、三级目录。\n"
-        "一级标题由系统固定为 document_name，你禁止输出一级标题。\n"
-        "输入是多个来源文档的标题树，不是正文。标题树保留一级、二级、三级目录关系。\n"
-        "字段说明：node_id 是旧标题唯一 ID；level 是旧标题层级；title 是旧标题原文；node_role=content 表示有独立正文；node_role=structural 表示仅为结构标题；must_assign=true 表示该旧标题必须进入一个新叶子目录；children 是子标题。\n"
-        "请根据多个原文档标题树组合、去重、归并生成新的二级、三级目录，不要照搬源文档顺序，不要引入输入中不存在的领域概念。\n"
-        "生成每个二级、三级目录时，必须同时输出该目录直接承接的 source_node_ids；source_node_ids 只能使用输入 source_title_tree 中 must_assign=true 的 node_id。\n"
-        "node_role=structural 或 must_assign=false 的 node_id 只能辅助理解结构，禁止放入 source_node_ids。\n"
-        "只有没有 children 的叶子目录可以承接 source_node_ids；有 children 的父目录必须作为结构容器，source_node_ids 必须为空。\n"
-        "每个 must_assign=true 的旧 node_id 必须且只能出现在一个叶子目录的 source_node_ids 中；没有子目录的叶子目录 source_node_ids 不能为空。\n"
-        "如果旧标题自身有内容且新目录需要拆成子目录，请为该旧标题生成一个对应的叶子目录承接它，不要把它挂到父目录。\n"
-        "reason 只作为说明，不作为后续归属依据。\n"
-        "只返回 JSON 对象，不要 Markdown 代码块，不要解释文字。\n"
-        "JSON 字段：sections。sections 每项字段：section_id, parent_id, level, title, reason, source_node_ids, children。\n"
-        "约束：只允许 level=2 或 level=3；至少一个 level=2；level=3 必须挂在 level=2 下；"
-        "section_id 唯一；只输出目录，不输出正文。\n\n"
-        f"输入：\n{json.dumps(payload, ensure_ascii=False)}"
+    _ = document_name, source_documents
+    return ""
+
+
+def _outline_input(document_name: str, source_documents: list[SourceOutlineDocument]) -> RequirementMergeOutlineInput:
+    return RequirementMergeOutlineInput(
+        document_name=document_name,
+        source_blocks=[
+            RequirementMergeSourceBlockIndex(
+                id=node.node_id,
+                title=node.title,
+                children=list(node.sub_headings),
+            )
+            for node in _assignable_nodes(source_documents)
+        ],
     )
+
+
+def _outline_input_payload(document_name: str, source_documents: list[SourceOutlineDocument]) -> dict:
+    return _outline_input(document_name, source_documents).model_dump()
+
+
+def _assignable_nodes(source_documents: list[SourceOutlineDocument]) -> list[SourceOutlineNode]:
+    return [node for node in flatten_source_outline(source_documents) if node.must_assign]
 
 
 def _document_index(document: SourceOutlineDocument) -> dict:
@@ -264,19 +293,3 @@ def _parse_source_node_ids(raw_value: Any) -> list[str]:
             result.append(value)
     return result
 
-
-def _parse_json_object(output: Any) -> dict:
-    if isinstance(output, dict):
-        return output
-    text = str(output).strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE).strip()
-        text = re.sub(r"```$", "", text).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end > start:
-        text = text[start : end + 1]
-    parsed = json.loads(text)
-    if not isinstance(parsed, dict):
-        raise ValueError("智能体未返回 JSON 对象。")
-    return parsed

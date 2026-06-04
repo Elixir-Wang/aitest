@@ -91,7 +91,10 @@ def _heading_units(markdown: str) -> list[dict]:
         heading = _heading_match(line) if not in_fence else None
         if heading:
             level, title = heading
-            if level <= 3:
+            if level == 1:
+                title_stack = []
+                continue
+            if level == 2:
                 if current and current["body"]:
                     current["markdown"] = "\n".join(current["body"]).strip()
                     units.append(current)
@@ -204,9 +207,8 @@ def _own_body_markdown(markdown: str, title: str) -> str:
 
 
 def _node_role(level: int, children: list, own_body_plain_text: str) -> str:
-    if level not in {2, 3}:
-        return "structural"
-    if children and not own_body_plain_text:
+    _ = children, own_body_plain_text
+    if level != 2:
         return "structural"
     return "content"
 
