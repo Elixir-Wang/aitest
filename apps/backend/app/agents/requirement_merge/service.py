@@ -14,9 +14,6 @@ CAPABILITY_ID = "requirement_merge"
 
 
 async def generate_outline_and_placements(input_data: RequirementMergeOutlineInput) -> RequirementMergeOutlineOutput:
-    if not input_data.source_blocks:
-        raise ValueError("来源块为空，无法生成合并大纲。")
-
     selection = resolve_model_selection(CAPABILITY_ID)
     model = build_agent_model(selection)
     agent = requirement_merge_outline_agent(model)
@@ -37,9 +34,6 @@ async def generate_outline_and_placements(input_data: RequirementMergeOutlineInp
 
 
 async def merge_requirement_section(input_data: RequirementMergeSectionInput) -> RequirementMergeSectionOutput:
-    if not input_data.source_blocks:
-        raise ValueError("模块来源块为空，无法生成模块正文。")
-
     selection = resolve_model_selection(CAPABILITY_ID)
     model = build_agent_model(selection)
     agent = requirement_merge_section_agent(model)

@@ -116,9 +116,9 @@ def _section_output_to_result(section: TargetOutlineSection, output, source_node
     ]
     blocks: list[OutlineSectionBlock] = []
     for item in output.sections:
-        if item.title.strip():
-            blocks.append(OutlineSectionBlock(type="paragraph", content=f"### {item.title.strip()}"))
-        for paragraph in item.content:
+        if item.section_heading.strip():
+            blocks.append(OutlineSectionBlock(type="paragraph", content=f"### {item.section_heading.strip()}"))
+        for paragraph in item.markdown_blocks:
             if paragraph.strip():
                 blocks.append(OutlineSectionBlock(type="paragraph", content=paragraph.strip()))
     conflicts = [

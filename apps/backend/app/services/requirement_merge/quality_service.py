@@ -32,7 +32,6 @@ def evaluate_outline_merge_quality(
         decision.source_node_id
         for result in section_results
         for decision in result.decisions
-        if decision.status != "discarded"
     }
 
     missing_assignments = sorted(source_ids - assignment_ids)

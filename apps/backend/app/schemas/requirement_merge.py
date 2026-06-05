@@ -102,6 +102,7 @@ class OutlineSectionDecision(BaseModel):
     status: Literal[
         "merged",
         "duplicate",
+        "appendix",
         "conflict",
         "pending_clarification",
         "discarded",
@@ -143,7 +144,7 @@ class OutlineMergeArtifacts(BaseModel):
 class RequirementFragmentDecision(BaseModel):
     fragment_id: str
     mapping_id: str
-    coverage_status: Literal["merged", "duplicate", "conflict", "pending_clarification", "discarded"]
+    coverage_status: Literal["merged", "duplicate", "appendix", "conflict", "pending_clarification", "discarded"]
     target_module: str = ""
     target_heading: str = ""
     merged_requirement_key: str = ""
@@ -196,7 +197,7 @@ class RequirementFragmentCluster(BaseModel):
 
 class RequirementClusterDecisionItem(BaseModel):
     fragment_id: str
-    coverage_status: Literal["merged", "duplicate", "conflict", "pending_clarification", "discarded"]
+    coverage_status: Literal["merged", "duplicate", "appendix", "conflict", "pending_clarification", "discarded"]
     target_module: str = ""
     target_heading: str = ""
     covered_by_fragment_id: str = ""
@@ -291,7 +292,7 @@ class RequirementCoverageItem(BaseModel):
     source_heading: str = ""
     target_module: str = ""
     target_heading: str = ""
-    coverage_status: Literal["merged", "duplicate", "conflict", "pending_clarification", "discarded"]
+    coverage_status: Literal["merged", "duplicate", "appendix", "conflict", "pending_clarification", "discarded"]
     reason: str
 
 

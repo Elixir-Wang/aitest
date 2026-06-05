@@ -1,6 +1,10 @@
 from typing import Any
 
-from app.agents.requirement_merge.schemas import RequirementMergeOutlineInput, RequirementMergeSourceBlockIndex
+from app.agents.requirement_merge.schemas import (
+    RequirementMergeOutlineInput,
+    RequirementMergeSourceBlockIndex,
+    RequirementMergeSourceDocumentIndex,
+)
 from app.agents.requirement_merge.service import generate_outline_and_placements
 from app.schemas.requirement_merge import SourceOutlineDocument, SourceOutlineNode, TargetOutlineSection
 from app.services.requirement_merge.source_outline_service import flatten_source_outline
@@ -162,14 +166,20 @@ def _build_outline_prompt(document_name: str, source_documents: list[SourceOutli
 
 def _outline_input(document_name: str, source_documents: list[SourceOutlineDocument]) -> RequirementMergeOutlineInput:
     return RequirementMergeOutlineInput(
-        document_name=document_name,
-        source_blocks=[
-            RequirementMergeSourceBlockIndex(
-                id=node.node_id,
-                title=node.title,
-                children=list(node.sub_headings),
+        requirement_name=document_name,
+        source_documents=[
+            RequirementMergeSourceDocumentIndex(
+                document_name=document.source_file,
+                source_blocks=[
+                    RequirementMergeSourceBlockIndex(
+                        id=node.node_id,
+                        title=node.title,
+                        children=list(node.sub_headings),
+                    )
+                    for node in _assignable_nodes_for_document(document)
+                ],
             )
-            for node in _assignable_nodes(source_documents)
+            for document in source_documents
         ],
     )
 
@@ -180,6 +190,10 @@ def _outline_input_payload(document_name: str, source_documents: list[SourceOutl
 
 def _assignable_nodes(source_documents: list[SourceOutlineDocument]) -> list[SourceOutlineNode]:
     return [node for node in flatten_source_outline(source_documents) if node.must_assign]
+
+
+def _assignable_nodes_for_document(document: SourceOutlineDocument) -> list[SourceOutlineNode]:
+    return [node for node in flatten_nodes(document.nodes) if node.must_assign]
 
 
 def _document_index(document: SourceOutlineDocument) -> dict:

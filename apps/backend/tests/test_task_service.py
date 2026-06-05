@@ -132,7 +132,7 @@ def test_list_tasks_can_filter_by_status_group(monkeypatch: pytest.MonkeyPatch, 
     assert result["items"][0]["status_label"] == "归并失败"
 
 
-def test_requirement_file_task_uses_file_mapping_timestamp(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_requirement_file_task_uses_file_mapping_created_timestamp(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     with core_db.connect() as db:
         _seed_project(db)
@@ -155,7 +155,59 @@ def test_requirement_file_task_uses_file_mapping_timestamp(monkeypatch: pytest.M
     result = task_service.list_tasks(ACTOR, module="requirement")
 
     assert result["items"][0]["id"] == "requirement_file:file-1"
-    assert result["items"][0]["updated_at"] == "2026-06-04 16:58:01"
+    assert result["items"][0]["created_at"] == "2026-06-04 16:58:01"
+
+
+def test_requirement_merge_task_uses_run_created_timestamp(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_project(db)
+        _seed_requirement_document(db)
+        db.execute(
+            """
+            UPDATE source_documents
+            SET updated_at = '2026-06-04 16:59:19'
+            WHERE id = 'doc-1'
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO requirement_merge_runs
+              (id, project_id, document_id, merge_mode, status, created_by, created_at)
+            VALUES ('merge-1', 'project-1', 'doc-1', 'initial', 'running', 'u-admin', '2026-06-04 17:08:31')
+            """
+        )
+
+    result = task_service.list_tasks(ACTOR, module="requirement")
+
+    assert result["items"][0]["id"] == "requirement_merge:merge-1"
+    assert result["items"][0]["created_at"] == "2026-06-04 17:08:31"
+
+
+def test_startup_recovery_marks_orphaned_requirement_merge_task_as_failed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_project(db)
+        _seed_requirement_document(db)
+        db.execute(
+            """
+            INSERT INTO requirement_merge_runs
+              (id, project_id, document_id, merge_mode, status, created_by, created_at)
+            VALUES ('merge-orphaned', 'project-1', 'doc-1', 'initial', 'running', 'u-admin', '2026-06-05 15:34:47')
+            """
+        )
+
+    recovered_count = task_service.recover_orphaned_requirement_merge_tasks_after_startup()
+
+    assert recovered_count == 1
+    assert task_service.list_running_tasks(ACTOR) == []
+    result = task_service.list_tasks(ACTOR, status_group="failed")
+    assert result["total"] == 1
+    assert result["items"][0]["id"] == "requirement_merge:merge-orphaned"
+    assert result["items"][0]["status_label"] == "归并失败"
+    assert "后端服务重启" in result["items"][0]["summary"]
 
 
 def test_get_task_by_source_returns_normalized_exploration_task(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

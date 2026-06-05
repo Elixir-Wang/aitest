@@ -169,6 +169,7 @@ def _decision_label(value: str) -> str:
     return {
         "merged": "合并",
         "duplicate": "重复去重",
+        "appendix": "放入附录",
         "conflict": "放入待确认",
         "pending_clarification": "待澄清",
         "discarded": "丢弃",

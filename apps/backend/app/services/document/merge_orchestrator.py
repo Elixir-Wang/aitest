@@ -79,6 +79,8 @@ async def merge_document_markdown(
             resolved_conflict_ids=[row["id"] for row in resolved_conflicts],
             created_by=actor["id"],
         )
+        # Make the running merge visible to the task indicator before the long AI merge awaits.
+        db.commit()
         machine_artifacts = requirement_merge_artifact_service.write_merge_machine_artifacts(
             project_id,
             document_id,
@@ -637,6 +639,8 @@ def _coverage_status(assignment, decisions) -> str:
         return "conflict"
     if "pending_clarification" in statuses:
         return "pending_clarification"
+    if "appendix" in statuses:
+        return "appendix"
     if statuses and statuses <= {"duplicate", "discarded"}:
         return "duplicate" if "duplicate" in statuses else "discarded"
     return "merged"

@@ -1,0 +1,12 @@
+{
+  "source_node_count": 37,
+  "target_section_count": 11,
+  "assignable_target_section_count": 10,
+  "root_section_ids": [
+    "root"
+  ],
+  "assignable_level_counts": {
+    "2": 10
+  },
+  "batch_size": 30
+}

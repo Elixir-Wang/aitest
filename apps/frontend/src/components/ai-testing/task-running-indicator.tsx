@@ -23,7 +23,7 @@ type RunningTaskItem = {
   moduleLabel: string;
   status: string;
   statusLabel: string;
-  updatedAt: string;
+  createdAt: string;
 };
 
 function getTaskStatusLabel(task: RunningTaskItem) {
@@ -39,7 +39,7 @@ function toRunningTask(item: ApiTaskItem): RunningTaskItem {
     moduleLabel: item.module_label,
     status: item.status,
     statusLabel: item.status_label,
-    updatedAt: item.updated_at,
+    createdAt: item.created_at,
   };
 }
 
@@ -171,7 +171,7 @@ export function TaskRunningIndicator() {
                   </div>
                   <div className="mt-2 flex items-center gap-2 text-muted-foreground text-xs">
                     <Clock3 className="size-3.5" />
-                    <span>更新于 {formatDateTime(task.updatedAt)}</span>
+                    <span>创建于 {formatDateTime(task.createdAt)}</span>
                   </div>
                 </div>
               ))}

@@ -215,23 +215,6 @@ function fallbackMergeArtifactTabs(previewId: string): MergeArtifactTab[] {
   ];
 }
 
-function mergingMergeArtifactTabs(): MergeArtifactTab[] {
-  return [
-    {
-      key: "quality",
-      label: "质量检测",
-      path: "quality/merging.md",
-      content: "# 质量检测\n\n正在合并需求中，完成后会展示质量检测结果。",
-    },
-    {
-      key: "confirmations",
-      label: "待确认项",
-      path: "confirmations/merging.md",
-      content: "# 待确认项\n\n正在合并需求中，完成后会展示需要人工确认的内容。",
-    },
-  ];
-}
-
 function normalizeMergeArtifactTabs(tabs: MergeArtifactTab[] | undefined): MergeArtifactTab[] {
   const normalized = (tabs ?? [])
     .map((artifact) => {
@@ -392,12 +375,7 @@ export default function DocumentDetailPage() {
         ["pending", "processing"].includes(selectedFile.conversion_status)),
   );
   const showConflictTab = Boolean(overview?.has_open_conflicts || conflicts.length > 0);
-  const rawInitialArtifactTabs =
-    merging && !mergePreview && mergeArtifactTabs.length === 0
-      ? mergingMergeArtifactTabs()
-      : mergePreview?.artifactTabs?.length
-        ? mergePreview.artifactTabs
-        : mergeArtifactTabs;
+  const rawInitialArtifactTabs = mergePreview?.artifactTabs?.length ? mergePreview.artifactTabs : mergeArtifactTabs;
   const initialArtifactTabs = useMemo(
     () => normalizeMergeArtifactTabs(rawInitialArtifactTabs),
     [rawInitialArtifactTabs],
@@ -1314,7 +1292,11 @@ export default function DocumentDetailPage() {
         <TabsContent value="initial">
           <ShellSection id={INITIAL_REQUIREMENT_SECTION_ID}>
             {outdatedMergeBanner}
-            {initialArtifactTabs.length && !editingInitial ? (
+            {merging ? (
+              <div className="flex min-h-[220px] items-center justify-center text-center text-muted-foreground text-sm">
+                正在合并需求中，完成后会展示合并需求稿。
+              </div>
+            ) : initialArtifactTabs.length && !editingInitial ? (
               <Tabs className="space-y-4" onValueChange={setMergeArtifactTab} value={mergeArtifactTab}>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <TabsList className="h-auto min-h-10 max-w-full overflow-x-auto overflow-y-hidden">
@@ -1355,25 +1337,6 @@ export default function DocumentDetailPage() {
                     </Button>
                   </div>
                 </div>
-                {mergePreview ? (
-                  <div className="mb-4 rounded-lg border bg-muted/20 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <h2 className="font-medium text-sm">质量检测摘要</h2>
-                        <p className="mt-1 text-muted-foreground text-xs">
-                          {mergePreview.mergeSummary || "合并未写入最终需求，请根据质量检测处理后重新合并。"}
-                        </p>
-                        {mergePreview.qualityResult ? (
-                          <div className="mt-2">
-                            <Badge variant={mergePreview.qualityResult === "failed" ? "destructive" : "secondary"}>
-                              质量结果：{mergePreview.qualityResult}
-                            </Badge>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
                 <TabsContent value={MERGED_REQUIREMENT_TAB_KEY}>
                   <MarkdownPreview
                     className="requirement-document-preview"

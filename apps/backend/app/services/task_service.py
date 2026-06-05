@@ -7,6 +7,7 @@ COMPLETED_GROUP = "completed"
 
 RUNNING_GROUPS = {RUNNING_GROUP, WAITING_GROUP}
 RUNNING_INDICATOR_SOURCE_TYPES = {"knowledge_build", "requirement_file", "requirement_merge"}
+ORPHANED_REQUIREMENT_MERGE_MESSAGE = "后端服务重启，原需求归并执行已中断，请重新发起归并。"
 
 EXPLORATION_STATUS = {
     "pending": (WAITING_GROUP, "待启动"),
@@ -59,7 +60,7 @@ def list_running_tasks(actor, *, project_id: str | None = None) -> list[dict]:
         if task["source_type"] in RUNNING_INDICATOR_SOURCE_TYPES
         and is_active_task_status(task["source_type"], task["status"])
     ]
-    tasks.sort(key=lambda item: (item["updated_at"], item["id"]), reverse=True)
+    tasks.sort(key=lambda item: (item["created_at"], item["id"]), reverse=True)
     return tasks
 
 
@@ -75,7 +76,7 @@ def list_tasks(
 ) -> dict:
     tasks = _collect_visible_tasks(actor)
     tasks = _filter_tasks(tasks, project_id=project_id, status_group=status_group, module=module, keyword=keyword)
-    tasks.sort(key=lambda item: (item["updated_at"], item["id"]), reverse=True)
+    tasks.sort(key=lambda item: (item["created_at"], item["id"]), reverse=True)
     total = len(tasks)
     page = max(1, page)
     page_size = min(max(1, page_size), 100)
@@ -105,6 +106,32 @@ def get_task_by_source_for_event(*, source_type: str, source_id: str) -> dict | 
             if task["source_type"] == source_type and task["source_id"] == source_id:
                 return task
     return None
+
+
+def recover_orphaned_requirement_merge_tasks_after_startup() -> int:
+    with connect() as db:
+        rows = db.execute(
+            """
+            SELECT id
+            FROM requirement_merge_runs
+            WHERE status = 'running'
+            """
+        ).fetchall()
+        if not rows:
+            return 0
+        db.execute(
+            """
+            UPDATE requirement_merge_runs
+            SET status = 'failed',
+                merge_summary = ?,
+                diff_summary = ?,
+                affected_modules = '[]',
+                finished_at = CURRENT_TIMESTAMP
+            WHERE status = 'running'
+            """,
+            (ORPHANED_REQUIREMENT_MERGE_MESSAGE, ORPHANED_REQUIREMENT_MERGE_MESSAGE),
+        )
+    return len(rows)
 
 
 def is_active_task_status(source_type: str, status: str) -> bool:
@@ -168,6 +195,7 @@ def _exploration_tasks(db, project_names: dict[str, str]) -> list[dict]:
             status=row["status"],
             status_meta=EXPLORATION_STATUS,
             summary=row["result_summary"],
+            created_at=row["created_at"],
             updated_at=row["updated_at"] or row["created_at"],
             detail_url=f"/projects/{row['project_id']}/exploration/{row['id']}",
         )
@@ -199,6 +227,7 @@ def _knowledge_tasks(db, project_names: dict[str, str]) -> list[dict]:
             status=row["status"],
             status_meta=KNOWLEDGE_STATUS,
             summary=row["summary"],
+            created_at=row["created_at"],
             updated_at=row["updated_at"] or row["created_at"],
             detail_url="/knowledge",
         )
@@ -232,6 +261,7 @@ def _requirement_file_tasks(db, project_names: dict[str, str]) -> list[dict]:
             status=row["conversion_status"],
             status_meta=REQUIREMENT_FILE_STATUS,
             summary=row["conversion_summary"],
+            created_at=row["created_at"],
             updated_at=row["created_at"],
             detail_url=f"/projects/{row['project_id']}/requirements/{row['document_id']}",
         )
@@ -265,6 +295,7 @@ def _requirement_merge_tasks(db, project_names: dict[str, str]) -> list[dict]:
             status=row["status"],
             status_meta=REQUIREMENT_MERGE_STATUS,
             summary=row["merge_summary"],
+            created_at=row["created_at"],
             updated_at=row["finished_at"] or row["document_updated_at"] or row["created_at"],
             detail_url=f"/projects/{row['project_id']}/requirements/{row['document_id']}",
         )
@@ -285,6 +316,7 @@ def _task(
     status: str,
     status_meta: dict[str, tuple[str, str]],
     summary: str | None,
+    created_at: str,
     updated_at: str,
     detail_url: str,
 ) -> dict:
@@ -302,6 +334,7 @@ def _task(
         "status_label": status_label,
         "status_group": status_group,
         "summary": summary or "",
+        "created_at": created_at,
         "updated_at": updated_at,
         "detail_url": detail_url,
     }

@@ -193,6 +193,7 @@ export type ApiTaskItem = {
   status_label: string;
   status_group: ApiTaskStatusGroup;
   summary: string;
+  created_at: string;
   updated_at: string;
   detail_url: string;
 };

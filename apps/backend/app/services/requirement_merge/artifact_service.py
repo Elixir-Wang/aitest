@@ -426,6 +426,7 @@ def build_mapping_markdown(
         f"| 来源块数 | {len(coverage_items)} |",
         f"| 已合入 | {counts.get('merged', 0)} |",
         f"| 重复去重 | {counts.get('duplicate', 0)} |",
+        f"| 放入附录 | {counts.get('appendix', 0)} |",
         f"| 明显冲突 | {counts.get('conflict', 0)} |",
         f"| 待澄清 | {counts.get('pending_clarification', 0)} |",
         f"| 已丢弃 | {counts.get('discarded', 0)} |",
@@ -518,6 +519,7 @@ def build_quality_markdown(
             f"| 来源文件数 | {len(source_files)} |",
             f"| 来源块总数 | {len(source_blocks) or len(coverage_items)} |",
             f"| 已合入 | {counts.get('merged', 0)} |",
+            f"| 放入附录 | {counts.get('appendix', 0)} |",
             f"| 重复引用 | {counts.get('duplicate', 0)} |",
             f"| 进入待确认项 | {counts.get('conflict', 0) + counts.get('pending_clarification', 0)} |",
             f"| 未覆盖 | {_missing_coverage_count(coverage_items, source_blocks)} |",
@@ -675,6 +677,8 @@ def _trace_status_text(status: str, target: str) -> str:
         return f"已合入「{md_cell(target or '合并稿')}」"
     if status == "duplicate":
         return f"已通过重复引用覆盖「{md_cell(target or '合并稿')}」"
+    if status == "appendix":
+        return "已放入附录"
     if status in {"conflict", "pending_clarification"}:
         return "进入「待确认项」"
     if status == "discarded":
@@ -694,6 +698,10 @@ def _dedupe_lines(lines: list[str]) -> list[str]:
 
 
 def _coverage_item_for_block(coverage_items: list[dict], block: RequirementSourceBlock) -> dict | None:
+    for item in coverage_items:
+        item_block_id = str(item.get("source_block_id") or item.get("block_id") or "")
+        if item_block_id == block.block_id:
+            return item
     candidates = [item for item in coverage_items if item.get("mapping_id") == block.mapping_id]
     for item in candidates:
         heading = str(item.get("source_heading", ""))
@@ -721,6 +729,7 @@ def _coverage_status_label(status: str) -> str:
     return {
         "merged": "合并",
         "duplicate": "引用",
+        "appendix": "放入附录",
         "conflict": "放入待确认",
         "pending_clarification": "放入待确认",
         "discarded": "放入附录",
