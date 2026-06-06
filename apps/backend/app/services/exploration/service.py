@@ -85,7 +85,8 @@ def get_project_run_detail(project_id: str, run_id: str, actor) -> dict:
         _ensure_project_visible(existing, actor)
 
         modules = [dict(row) for row in exploration_repo.list_module_coverages(db, run_id)]
-        pages, elements, blockers = _load_run_artifacts(existing)
+        artifact_bundle = _load_run_artifact_bundle(existing)
+        pages, elements, blockers = _load_run_artifacts(existing, artifact_bundle)
 
         module_by_key = {
             module["module_key"]: {
@@ -147,6 +148,8 @@ def get_project_run_detail(project_id: str, run_id: str, actor) -> dict:
                     "fallback_locator": element["fallback_locator"],
                     "stability_note": element["stability_note"],
                     "source_ref": element["source_ref"],
+                    "primary_selector": element.get("primary_selector", {}),
+                    "fallback_selector": element.get("fallback_selector", {}),
                 }
             )
 
@@ -176,8 +179,11 @@ def get_project_run_detail(project_id: str, run_id: str, actor) -> dict:
 
         return {
             "run": serialize_exploration_run(existing, actor["role"]),
+            "artifact_schema_version": artifact_bundle.get("artifact_schema_version", 0),
+            "unsupported_artifact": bool(artifact_bundle.get("unsupported_artifact")),
+            "unsupported_reason": str(artifact_bundle.get("unsupported_reason") or ""),
             "modules": list(module_by_key.values()),
-            "goal_validation": _goal_validation_from_bundle(existing, _load_run_artifact_bundle(existing)),
+            "goal_validation": _goal_validation_from_bundle(existing, artifact_bundle),
         }
 
 
@@ -189,15 +195,19 @@ def get_project_run_report(project_id: str, run_id: str, actor) -> dict:
         _ensure_project_visible(existing, actor)
 
         artifacts = _load_run_artifact_bundle(existing)
-        has_summary = bool(artifacts["summary"])
-        markdown_content = exploration_artifact_service.build_exploration_report_markdown(artifacts) if has_summary else ""
+        unsupported = bool(artifacts.get("unsupported_artifact"))
+        markdown_content = "" if unsupported else str(artifacts.get("report_content") or "")
+        has_report = bool(markdown_content)
         return {
             "run_id": run_id,
-            "version_no": 1 if has_summary else None,
-            "title": "探索报告 v1" if has_summary else "探索报告",
+            "version_no": 2 if has_report else None,
+            "title": "探索报告" if not unsupported else "历史产物格式不支持新版报告",
             "markdown_content": markdown_content,
-            "change_summary": artifacts["summary"].get("summary", ""),
-            "created_at": existing["created_at"] if has_summary else None,
+            "change_summary": artifacts.get("summary", {}).get("summary", "") if isinstance(artifacts.get("summary"), dict) else "",
+            "created_at": existing["created_at"] if has_report else None,
+            "artifact_schema_version": artifacts.get("artifact_schema_version", 0),
+            "unsupported_artifact": unsupported,
+            "unsupported_reason": str(artifacts.get("unsupported_reason") or ""),
         }
 
 
@@ -1014,8 +1024,10 @@ def _run_snapshot(run) -> dict:
     }
 
 
-def _load_run_artifacts(run) -> tuple[list[dict], list[dict], list[dict]]:
-    bundle = _load_run_artifact_bundle(run)
+def _load_run_artifacts(run, bundle: dict | None = None) -> tuple[list[dict], list[dict], list[dict]]:
+    bundle = bundle or _load_run_artifact_bundle(run)
+    if bundle.get("unsupported_artifact"):
+        return [], [], []
     pages = []
     elements = []
     blockers = []
@@ -1029,7 +1041,7 @@ def _load_run_artifacts(run) -> tuple[list[dict], list[dict], list[dict]]:
                 "title": page.get("title", ""),
                 "url": page.get("url", ""),
                 "entry_path": page.get("normalized_url") or page.get("entry_path", ""),
-                "structure_summary": page.get("title", ""),
+                "structure_summary": page.get("structure_summary") or page.get("title", ""),
                 "yaml_path": page_item.get("file_path", ""),
                 "status": _normalize_page_display_status(page.get("status")),
                 "blocker_reason": "",
@@ -1037,22 +1049,7 @@ def _load_run_artifacts(run) -> tuple[list[dict], list[dict], list[dict]]:
                 "steps": _normalize_steps(content.get("steps", [])),
             }
         )
-        for element in content.get("accessibility_tree", []):
-            if not isinstance(element, dict):
-                continue
-            elements.append(
-                {
-                    "id": f"{page.get('id') or page_item.get('file_path', '')}:{element.get('role', '')}:{element.get('name', '')}",
-                    "page_id": page.get("id") or page_item.get("file_path", ""),
-                    "module_key": page.get("module", "site-entry"),
-                    "element_name": element.get("name", ""),
-                    "element_type": element.get("role", ""),
-                    "recommended_locator": element.get("locator_hint", ""),
-                    "fallback_locator": element.get("href", ""),
-                    "stability_note": "来自页面 YAML 产物。",
-                    "source_ref": page.get("url", ""),
-                }
-            )
+        elements.extend(_elements_from_v2_states(content, page, page_item))
         for blocker in content.get("relations", {}).get("outgoing_edges", []):
             if not isinstance(blocker, dict):
                 continue
@@ -1089,6 +1086,56 @@ def _load_run_artifacts(run) -> tuple[list[dict], list[dict], list[dict]]:
     return pages, elements, blockers
 
 
+def _elements_from_v2_states(content: dict, page: dict, page_item: dict) -> list[dict]:
+    states = content.get("states") if isinstance(content.get("states"), list) else []
+    page_id = str(page.get("id") or page_item.get("file_path", ""))
+    module_key = str(page.get("module") or "site-entry")
+    source_ref = str(page.get("url") or "")
+    elements = []
+    for state_index, state in enumerate(states, start=1):
+        if not isinstance(state, dict):
+            continue
+        state_id = str(state.get("id") or f"state-{state_index:03d}")
+        raw_elements = state.get("elements") if isinstance(state.get("elements"), list) else []
+        for element_index, element in enumerate(raw_elements, start=1):
+            if not isinstance(element, dict):
+                continue
+            primary_selector = element.get("primary_selector") if isinstance(element.get("primary_selector"), dict) else {}
+            fallback_selector = element.get("fallback_selector") if isinstance(element.get("fallback_selector"), dict) else {}
+            name = str(element.get("name") or element.get("label") or _selector_code(primary_selector) or "未命名元素")
+            role = str(element.get("role") or element.get("type") or "element")
+            element_id = str(element.get("id") or f"element-{element_index:03d}")
+            elements.append(
+                {
+                    "id": f"{page_id}:{state_id}:{element_id}",
+                    "page_id": page_id,
+                    "module_key": module_key,
+                    "element_name": name,
+                    "element_type": role,
+                    "recommended_locator": _selector_code(primary_selector),
+                    "fallback_locator": _selector_code(fallback_selector),
+                    "stability_note": _selector_stability_note(primary_selector),
+                    "source_ref": source_ref,
+                    "primary_selector": primary_selector,
+                    "fallback_selector": fallback_selector,
+                }
+            )
+    return elements
+
+
+def _selector_code(selector: dict) -> str:
+    return str(selector.get("code") or "") if isinstance(selector, dict) else ""
+
+
+def _selector_stability_note(selector: dict) -> str:
+    verification = selector.get("verification") if isinstance(selector.get("verification"), dict) else {}
+    if verification.get("checked") and verification.get("unique") and verification.get("visible"):
+        return "主 selector 已通过唯一性和可见性校验。"
+    if verification.get("checked"):
+        return "主 selector 未通过唯一性或可见性校验，生成自动化前需复核。"
+    return "主 selector 尚未完成唯一性和可见性校验。"
+
+
 def _normalize_steps(raw_steps) -> list[dict]:
     if not isinstance(raw_steps, list):
         return []
@@ -1116,7 +1163,21 @@ def _normalize_steps(raw_steps) -> list[dict]:
 def _load_run_artifact_bundle(run) -> dict:
     artifact_root = resolve_stored_path(run["artifact_root"])
     if not artifact_root:
-        return {"run": {}, "summary": {}, "graph": {}, "blockers": {}, "goal_validation": {}, "pages": [], "log_content": "", "log_path": ""}
+        return {
+            "artifact_schema_version": 0,
+            "unsupported_artifact": False,
+            "unsupported_reason": "",
+            "run": {},
+            "summary": {},
+            "graph": {},
+            "blockers": {},
+            "goal_validation": {},
+            "pages": [],
+            "log_content": "",
+            "report_content": "",
+            "report_path": "",
+            "log_path": "",
+        }
     bundle = exploration_artifact_service.load_exploration_run_artifacts(artifact_root)
     bundle["log_path"] = f"{run['artifact_root'].rstrip('/')}/logs/run.log"
     if not bundle.get("goal_validation"):

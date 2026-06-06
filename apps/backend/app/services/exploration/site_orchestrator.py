@@ -1,4 +1,5 @@
 import json
+import asyncio
 import queue
 import shutil
 import subprocess
@@ -17,6 +18,8 @@ from app.core.settings import (
 from app.core.db import connect
 from app.core.storage import PROJECT_FILE_STORAGE_ROOT, store_path
 from app.repositories import exploration_repo
+from app.agents.site_exploration import schemas as site_exploration_agent_schemas
+from app.agents.site_exploration import service as site_exploration_agent_service
 from app.services import operation_log_service
 from app.services.exploration import artifact_service as exploration_artifact_service
 from app.services.exploration import event_bus as exploration_event_bus
@@ -46,12 +49,28 @@ def _run_exploration(run_id: str) -> None:
         _ensure_artifact_dirs(artifact_root)
         exploration_repo.clear_run_outputs(db, run_id)
         exploration_service.seed_planned_modules_for_run(db, run)
+        plan = _plan_run_with_agent(run, artifact_root)
+        if plan.status == "blocked":
+            summary = plan.summary
+            log_path = artifact_root / "logs" / "run.log"
+            log_path.write_text(summary.rstrip() + "\n", encoding="utf-8")
+            exploration_repo.update_run_state(
+                db,
+                run_id,
+                status="blocked",
+                artifact_root=store_path(artifact_root) or "",
+                result_summary=summary,
+                finished=True,
+            )
+            _publish_run_event("run_failed", run, {"status": "blocked", "result_summary": summary})
+            exploration_event_bus.close(run_id)
+            return
         exploration_repo.update_run_state(
             db,
             run_id,
             status="running",
             artifact_root=store_path(artifact_root) or "",
-            result_summary="站点探索已开始，正在调用 Playwright CLI。",
+            result_summary=plan.summary or "站点探索已开始，正在调用 Playwright CLI。",
             started=True,
         )
         exploration_repo.update_module_coverages_status(
@@ -59,7 +78,7 @@ def _run_exploration(run_id: str) -> None:
             run_id,
             from_status="pending",
             to_status="running",
-            completion_summary="站点探索已开始，正在调用 Playwright CLI。",
+            completion_summary=plan.summary or "站点探索已开始，正在调用 Playwright CLI。",
         )
         start_event = (
             run,
@@ -203,6 +222,23 @@ def _mark_run_failed_after_unhandled_error(run_id: str, error: Exception) -> Non
 def _ensure_artifact_dirs(root: Path) -> None:
     for name in ("pages", "logs"):
         (root / name).mkdir(parents=True, exist_ok=True)
+
+
+def _plan_run_with_agent(run, artifact_root: Path) -> site_exploration_agent_schemas.SiteExplorationOutput:
+    input_data = site_exploration_agent_schemas.SiteExplorationInput(
+        run_id=run["id"],
+        project_name=str(run["project_name"] or ""),
+        environment_name=str(run["environment_name"] or ""),
+        site_url=_safe_site_url(run),
+        scope=str(run["scope"] or ""),
+        forbidden_paths=str(run["forbidden_paths"] or ""),
+        goal=str(run["goal"] or ""),
+        max_pages=int(run["max_pages"] if "max_pages" in run.keys() else 50),
+        max_actions=int(run["max_actions"] if "max_actions" in run.keys() else 1000),
+        timeout_minutes=int(run["timeout_minutes"] if "timeout_minutes" in run.keys() else 120),
+        artifact_root=str(artifact_root),
+    )
+    return asyncio.run(site_exploration_agent_service.plan_site_exploration(input_data))
 
 
 def _execute_playwright_probe(run_id: str, artifact_root: Path) -> dict:
@@ -945,6 +981,7 @@ def _persist_common_artifacts(db, run_id: str, artifacts: dict[str, str], log_pa
         ("yaml", artifacts.get("summary_path", ""), "探索概览摘要"),
         ("yaml", artifacts.get("graph_path", ""), "探索页面关系"),
         ("yaml", artifacts.get("blockers_path", ""), "探索阻塞清单"),
+        ("markdown", artifacts.get("report_path", ""), "探索报告"),
         ("log", log_path, "探索执行日志"),
     ):
         exploration_repo.create_artifact(
@@ -954,7 +991,7 @@ def _persist_common_artifacts(db, run_id: str, artifacts: dict[str, str], log_pa
             artifact_type=artifact_type,
             file_path=path_value,
             title=title,
-            summary="站点探索第一版产物。",
+            summary="站点探索 v2 产物。",
         )
 
 
@@ -1077,6 +1114,10 @@ def _elements_from_page_artifacts(page_artifacts: list[dict], module_key: str, p
     for page_artifact in page_artifacts:
         page_meta = page_artifact["page"]
         current_page_id = page_meta["id"]
+        state_elements = _elements_from_v2_states(page_artifact, module_key, page_url)
+        if state_elements:
+            elements.extend(state_elements)
+            continue
         for node in _flatten_yaml_nodes(page_artifact.get("accessibility_tree", [])):
             if not isinstance(node, dict):
                 continue
@@ -1099,6 +1140,55 @@ def _elements_from_page_artifacts(page_artifacts: list[dict], module_key: str, p
                 }
             )
     return elements
+
+
+def _elements_from_v2_states(page_artifact: dict, module_key: str, page_url: str) -> list[dict]:
+    page_meta = page_artifact["page"]
+    page_id = str(page_meta.get("id") or "")
+    source_ref = str(page_meta.get("url") or page_url)
+    states = page_artifact.get("states") if isinstance(page_artifact.get("states"), list) else []
+    elements = []
+    for state in states:
+        if not isinstance(state, dict):
+            continue
+        raw_elements = state.get("elements") if isinstance(state.get("elements"), list) else []
+        for element in raw_elements:
+            if not isinstance(element, dict):
+                continue
+            primary_selector = element.get("primary_selector") if isinstance(element.get("primary_selector"), dict) else {}
+            fallback_selector = element.get("fallback_selector") if isinstance(element.get("fallback_selector"), dict) else {}
+            primary_code = _selector_code(primary_selector)
+            fallback_code = _selector_code(fallback_selector)
+            name = str(element.get("name") or element.get("label") or primary_code or fallback_code or "未命名元素")
+            element_type = str(element.get("role") or element.get("type") or "element")
+            elements.append(
+                {
+                    "module_key": module_key,
+                    "page_id": page_id,
+                    "element_name": name,
+                    "element_type": element_type,
+                    "recommended_locator": primary_code,
+                    "fallback_locator": fallback_code,
+                    "stability_note": _selector_stability_note(primary_selector),
+                    "source_ref": source_ref,
+                    "primary_selector": primary_selector,
+                    "fallback_selector": fallback_selector,
+                }
+            )
+    return elements
+
+
+def _selector_code(selector: dict) -> str:
+    return str(selector.get("code") or "") if isinstance(selector, dict) else ""
+
+
+def _selector_stability_note(selector: dict) -> str:
+    verification = selector.get("verification") if isinstance(selector.get("verification"), dict) else {}
+    if verification.get("checked") and verification.get("unique") and verification.get("visible"):
+        return "主 selector 已通过唯一性和可见性校验。"
+    if verification.get("checked"):
+        return "主 selector 未通过唯一性或可见性校验，生成自动化前需复核。"
+    return "主 selector 尚未完成唯一性和可见性校验。"
 
 
 def _page_index_payload(page_artifact: dict, module_key: str) -> dict:

@@ -159,9 +159,9 @@ export function RequirementUploadPage({
         Object.fromEntries(files.map((file) => [getFileKey(file), { progress: 100, status: "completed" as const }])),
       );
       if (mode === "new") {
-        toast.success("需求文件已添加，请在来源文件列表中发起归并");
+        toast.success("需求文件已添加，系统会优先使用第一个文件作为主需求");
       } else {
-        toast.success("文件已添加，请在来源文件列表中发起归并");
+        toast.success("文件已添加，可在原始文件列表中设为主需求");
       }
       notifyAiTaskStarted();
       router.push(`/projects/${result.document.project_id}/requirements/${result.document.id}?tab=source-files`);

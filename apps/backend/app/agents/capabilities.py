@@ -20,14 +20,9 @@ AI_CAPABILITIES: tuple[AiCapability, ...] = (
         description="负责将上传的 PDF、Word、TXT 和 Markdown 需求文件标准化为结构稳定的标准 Markdown。",
     ),
     AiCapability(
-        id="requirement_merge",
-        name="需求归并智能体",
-        description="分析并归并多来源标准 Markdown，识别冲突并输出覆盖矩阵。",
-    ),
-    AiCapability(
         id="requirement_analysis",
         name="需求分析智能体",
-        description="基于已归并的需求 Markdown 工作稿，生成模块分析、澄清问题、可测试性检查和质量门禁结果。",
+        description="基于当前主需求 Markdown 工作稿，生成模块分析、澄清问题、可测试性检查和质量门禁结果。",
     ),
     AiCapability(
         id="site_exploration",

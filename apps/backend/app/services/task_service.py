@@ -6,8 +6,7 @@ FAILED_GROUP = "failed"
 COMPLETED_GROUP = "completed"
 
 RUNNING_GROUPS = {RUNNING_GROUP, WAITING_GROUP}
-RUNNING_INDICATOR_SOURCE_TYPES = {"knowledge_build", "requirement_file", "requirement_merge"}
-ORPHANED_REQUIREMENT_MERGE_MESSAGE = "后端服务重启，原需求归并执行已中断，请重新发起归并。"
+RUNNING_INDICATOR_SOURCE_TYPES = {"knowledge_build", "requirement_file"}
 
 EXPLORATION_STATUS = {
     "pending": (WAITING_GROUP, "待启动"),
@@ -36,19 +35,10 @@ REQUIREMENT_FILE_STATUS = {
     "failed": (FAILED_GROUP, "转换失败"),
 }
 
-REQUIREMENT_MERGE_STATUS = {
-    "running": (RUNNING_GROUP, "归并中"),
-    "conflict": (WAITING_GROUP, "等待冲突处理"),
-    "failed": (FAILED_GROUP, "归并失败"),
-    "preview": (COMPLETED_GROUP, "待确认"),
-    "merged": (COMPLETED_GROUP, "归并完成"),
-}
-
 STATUS_META_BY_SOURCE_TYPE = {
     "exploration_run": EXPLORATION_STATUS,
     "knowledge_build": KNOWLEDGE_STATUS,
     "requirement_file": REQUIREMENT_FILE_STATUS,
-    "requirement_merge": REQUIREMENT_MERGE_STATUS,
 }
 
 
@@ -101,37 +91,10 @@ def get_task_by_source_for_event(*, source_type: str, source_id: str) -> dict | 
             *_exploration_tasks(db, project_names),
             *_knowledge_tasks(db, project_names),
             *_requirement_file_tasks(db, project_names),
-            *_requirement_merge_tasks(db, project_names),
         ]:
             if task["source_type"] == source_type and task["source_id"] == source_id:
                 return task
     return None
-
-
-def recover_orphaned_requirement_merge_tasks_after_startup() -> int:
-    with connect() as db:
-        rows = db.execute(
-            """
-            SELECT id
-            FROM requirement_merge_runs
-            WHERE status = 'running'
-            """
-        ).fetchall()
-        if not rows:
-            return 0
-        db.execute(
-            """
-            UPDATE requirement_merge_runs
-            SET status = 'failed',
-                merge_summary = ?,
-                diff_summary = ?,
-                affected_modules = '[]',
-                finished_at = CURRENT_TIMESTAMP
-            WHERE status = 'running'
-            """,
-            (ORPHANED_REQUIREMENT_MERGE_MESSAGE, ORPHANED_REQUIREMENT_MERGE_MESSAGE),
-        )
-    return len(rows)
 
 
 def is_active_task_status(source_type: str, status: str) -> bool:
@@ -156,7 +119,6 @@ def _collect_visible_tasks(actor) -> list[dict]:
             *_exploration_tasks(db, project_names),
             *_knowledge_tasks(db, project_names),
             *_requirement_file_tasks(db, project_names),
-            *_requirement_merge_tasks(db, project_names),
         ]
 
 
@@ -263,40 +225,6 @@ def _requirement_file_tasks(db, project_names: dict[str, str]) -> list[dict]:
             summary=row["conversion_summary"],
             created_at=row["created_at"],
             updated_at=row["created_at"],
-            detail_url=f"/projects/{row['project_id']}/requirements/{row['document_id']}",
-        )
-        for row in rows
-    ]
-
-
-def _requirement_merge_tasks(db, project_names: dict[str, str]) -> list[dict]:
-    if not project_names:
-        return []
-    rows = db.execute(
-        """
-        SELECT r.id, r.project_id, r.document_id, r.status, r.merge_summary, r.created_at, r.finished_at,
-               d.name AS document_name, d.updated_at AS document_updated_at
-        FROM requirement_merge_runs r
-        JOIN source_documents d ON d.id = r.document_id
-        WHERE r.project_id IN ({})
-        """.format(_placeholders(project_names)),
-        tuple(project_names),
-    ).fetchall()
-    return [
-        _task(
-            task_id=f"requirement_merge:{row['id']}",
-            source_type="requirement_merge",
-            source_id=row["id"],
-            project_id=row["project_id"],
-            project_name=project_names[row["project_id"]],
-            module="requirement",
-            module_label="需求归并",
-            title=row["document_name"],
-            status=row["status"],
-            status_meta=REQUIREMENT_MERGE_STATUS,
-            summary=row["merge_summary"],
-            created_at=row["created_at"],
-            updated_at=row["finished_at"] or row["document_updated_at"] or row["created_at"],
             detail_url=f"/projects/{row['project_id']}/requirements/{row['document_id']}",
         )
         for row in rows

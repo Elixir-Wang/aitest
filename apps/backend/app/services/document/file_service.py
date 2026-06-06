@@ -65,7 +65,10 @@ async def upload_documents(
 
         created_mapping_ids: list[str] = []
         for index, upload in enumerate(files, start=1):
-            created_mapping_ids.append(await save_source_file(db, project_id, document_id, upload, index, actor))
+            file_role = "primary" if mode == "new" and index == 1 else "supporting"
+            created_mapping_ids.append(
+                await save_source_file(db, project_id, document_id, upload, index, actor, file_role=file_role)
+            )
 
         document_repo.update_document_status(db, document_id, DOCUMENT_PENDING_MERGE_STATUS)
         created_files = [
@@ -253,7 +256,16 @@ def delete_source_file(mapping_id: str, actor) -> dict:
     return {"success": True}
 
 
-async def save_source_file(db, project_id: str, document_id: str, upload: UploadFile, index: int, actor) -> str:
+async def save_source_file(
+    db,
+    project_id: str,
+    document_id: str,
+    upload: UploadFile,
+    index: int,
+    actor,
+    *,
+    file_role: str = "supporting",
+) -> str:
     raw_bytes = await upload.read()
     if not raw_bytes:
         raise api_error(400, "DOCUMENT_UPLOAD_EMPTY", "上传文件不能为空。")
@@ -279,6 +291,7 @@ async def save_source_file(db, project_id: str, document_id: str, upload: Upload
         markdown_file_path=None,
         conversion_status=CONVERSION_PENDING_STATUS,
         mapping_status=MAPPING_PENDING_MERGE_STATUS,
+        file_role=file_role,
         conversion_summary="文件已上传，等待生成 Markdown 标准文件。",
         conversion_quality=None,
         created_by=actor["id"],

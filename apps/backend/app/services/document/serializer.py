@@ -48,6 +48,7 @@ def serialize_file_mapping(row) -> dict:
         "preview_file_path": expose_stored_path(row["preview_file_path"]) if "preview_file_path" in row.keys() else None,
         "conversion_status": row["conversion_status"],
         "mapping_status": row["mapping_status"],
+        "file_role": row["file_role"] if "file_role" in row.keys() else "supporting",
         "conversion_summary": row["conversion_summary"],
         "conversion_quality": row["conversion_quality"],
         "created_by": row["created_by"],

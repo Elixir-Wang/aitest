@@ -108,69 +108,13 @@ def init_db() -> None:
               preview_file_path TEXT,
               conversion_status TEXT NOT NULL DEFAULT 'pending',
               mapping_status TEXT NOT NULL DEFAULT 'pending_merge',
+              file_role TEXT NOT NULL DEFAULT 'supporting',
               conversion_summary TEXT NOT NULL DEFAULT '',
               conversion_quality INTEGER,
               created_by TEXT NOT NULL DEFAULT 'system',
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
               FOREIGN KEY(version_id) REFERENCES source_document_versions(id) ON DELETE SET NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS source_document_merge_conflicts (
-              id TEXT PRIMARY KEY,
-              run_id TEXT,
-              document_id TEXT NOT NULL,
-              conflict_type TEXT NOT NULL DEFAULT 'contradiction',
-              severity TEXT NOT NULL DEFAULT 'medium',
-              title TEXT NOT NULL,
-              source_refs TEXT NOT NULL DEFAULT '[]',
-              source_file_names TEXT NOT NULL DEFAULT '',
-              fragment_a TEXT NOT NULL DEFAULT '',
-              fragment_b TEXT NOT NULL DEFAULT '',
-              agent_suggestion TEXT NOT NULL DEFAULT '',
-              resolution TEXT NOT NULL DEFAULT '',
-              resolution_type TEXT NOT NULL DEFAULT '',
-              status TEXT NOT NULL CHECK(status IN ('open', 'resolved', 'ignored')) DEFAULT 'open',
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS requirement_merge_runs (
-              id TEXT PRIMARY KEY,
-              project_id TEXT NOT NULL,
-              document_id TEXT NOT NULL,
-              base_version_id TEXT,
-              output_version_id TEXT,
-              merge_mode TEXT NOT NULL,
-              status TEXT NOT NULL,
-              input_mapping_ids TEXT NOT NULL DEFAULT '[]',
-              resolved_conflict_ids TEXT NOT NULL DEFAULT '[]',
-              merge_summary TEXT NOT NULL DEFAULT '',
-              diff_summary TEXT NOT NULL DEFAULT '',
-              affected_modules TEXT NOT NULL DEFAULT '[]',
-              output_preview_path TEXT,
-              created_by TEXT NOT NULL,
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              finished_at TEXT,
-              FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS requirement_source_coverage_items (
-              id TEXT PRIMARY KEY,
-              run_id TEXT NOT NULL,
-              document_id TEXT NOT NULL,
-              version_id TEXT,
-              mapping_id TEXT NOT NULL,
-              source_heading TEXT NOT NULL DEFAULT '',
-              source_excerpt TEXT NOT NULL DEFAULT '',
-              target_module TEXT NOT NULL DEFAULT '',
-              target_heading TEXT NOT NULL DEFAULT '',
-              coverage_status TEXT NOT NULL,
-              reason TEXT NOT NULL DEFAULT '',
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              FOREIGN KEY(run_id) REFERENCES requirement_merge_runs(id) ON DELETE CASCADE,
-              FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS document_version_change_logs (
@@ -539,7 +483,6 @@ def init_db() -> None:
         _migrate_exploration_run_statuses(db)
         _migrate_source_documents(db)
         _migrate_file_mappings(db)
-        _migrate_merge_conflicts(db)
         _migrate_agent_model_assignments(db)
         _migrate_stored_paths(db)
         _seed_operation_log_retention_policy(db)
@@ -728,6 +671,7 @@ def _migrate_file_mappings(db: sqlite3.Connection) -> None:
               preview_file_path TEXT,
               conversion_status TEXT NOT NULL DEFAULT 'success',
               mapping_status TEXT NOT NULL DEFAULT 'pending_merge',
+              file_role TEXT NOT NULL DEFAULT 'supporting',
               conversion_summary TEXT NOT NULL DEFAULT '',
               conversion_quality INTEGER,
               created_by TEXT NOT NULL DEFAULT 'system',
@@ -737,9 +681,9 @@ def _migrate_file_mappings(db: sqlite3.Connection) -> None:
             );
             INSERT OR IGNORE INTO source_document_file_mappings_new
               (id, document_id, version_id, source_file_path, original_filename, file_format, markdown_file_path,
-               conversion_status, mapping_status, conversion_summary, created_by, created_at)
+               conversion_status, mapping_status, file_role, conversion_summary, created_by, created_at)
             SELECT id, document_id, version_id, source_file_path, source_file_path, 'unknown', markdown_file_path,
-                   'success', mapping_status, conversion_summary, 'system', created_at
+                   'success', mapping_status, 'supporting', conversion_summary, 'system', created_at
             FROM source_document_file_mappings;
             DROP TABLE source_document_file_mappings;
             ALTER TABLE source_document_file_mappings_new RENAME TO source_document_file_mappings;
@@ -752,6 +696,7 @@ def _migrate_file_mappings(db: sqlite3.Connection) -> None:
     _ensure_column(db, "source_document_file_mappings", "file_format", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(db, "source_document_file_mappings", "preview_file_path", "TEXT")
     _ensure_column(db, "source_document_file_mappings", "conversion_status", "TEXT NOT NULL DEFAULT 'success'")
+    _ensure_column(db, "source_document_file_mappings", "file_role", "TEXT NOT NULL DEFAULT 'supporting'")
     _ensure_column(db, "source_document_file_mappings", "conversion_quality", "INTEGER")
     _ensure_column(db, "source_document_file_mappings", "created_by", "TEXT NOT NULL DEFAULT 'system'")
     db.execute(
@@ -761,15 +706,6 @@ def _migrate_file_mappings(db: sqlite3.Connection) -> None:
             file_format = CASE WHEN file_format = '' THEN 'unknown' ELSE file_format END
         """
     )
-
-
-def _migrate_merge_conflicts(db: sqlite3.Connection) -> None:
-    _ensure_column(db, "source_document_merge_conflicts", "run_id", "TEXT")
-    _ensure_column(db, "source_document_merge_conflicts", "conflict_type", "TEXT NOT NULL DEFAULT 'contradiction'")
-    _ensure_column(db, "source_document_merge_conflicts", "severity", "TEXT NOT NULL DEFAULT 'medium'")
-    _ensure_column(db, "source_document_merge_conflicts", "source_refs", "TEXT NOT NULL DEFAULT '[]'")
-    _ensure_column(db, "source_document_merge_conflicts", "agent_suggestion", "TEXT NOT NULL DEFAULT ''")
-
 
 def _migrate_agent_model_assignments(db: sqlite3.Connection) -> None:
     exists = db.execute(
@@ -795,7 +731,6 @@ def _migrate_stored_paths(db: sqlite3.Connection) -> None:
     for table, columns in {
         "source_document_versions": ("file_path",),
         "source_document_file_mappings": ("source_file_path", "markdown_file_path", "preview_file_path"),
-        "requirement_merge_runs": ("output_preview_path",),
     }.items():
         table_exists = db.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",

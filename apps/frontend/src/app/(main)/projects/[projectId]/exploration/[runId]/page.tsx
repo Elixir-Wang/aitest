@@ -74,6 +74,9 @@ type ExplorationRun = {
 
 type ExplorationRunDetail = {
   run: ExplorationRun;
+  artifact_schema_version: number;
+  unsupported_artifact: boolean;
+  unsupported_reason: string;
   goal_validation?: ExplorationGoalValidation;
   modules: Array<{
     id: string;
@@ -111,7 +114,11 @@ type ExplorationRunDetail = {
       element_name: string;
       element_type: string;
       recommended_locator: string;
+      fallback_locator: string;
       stability_note: string;
+      source_ref: string;
+      primary_selector: ExplorationSelector;
+      fallback_selector: ExplorationSelector;
     }>;
     blockers: Array<{
       id: string;
@@ -150,6 +157,24 @@ type ExplorationReport = {
   markdown_content: string;
   change_summary: string;
   created_at: string | null;
+  artifact_schema_version: number;
+  unsupported_artifact: boolean;
+  unsupported_reason: string;
+};
+
+type ExplorationSelector = {
+  kind?: string;
+  code?: string;
+  confidence?: string;
+  reason?: string;
+  verification?: {
+    checked?: boolean;
+    unique?: boolean;
+    visible?: boolean;
+    match_count?: number;
+    reason?: string;
+  };
+  [key: string]: unknown;
 };
 
 type ExplorationLog = {
@@ -963,6 +988,8 @@ export default function Page() {
   const startLabel = run && hasExplorationStarted(run) ? "重新探索" : "开始探索";
   const saveDisabled = !explorationForm.title.trim() || !explorationForm.environmentId || saving;
   const activeDetail = streamDetail ?? detail;
+  const isUnsupportedArtifact = Boolean(activeDetail?.unsupported_artifact);
+  const unsupportedArtifactReason = activeDetail?.unsupported_reason || "历史产物格式不支持新版详情，请重新探索。";
   const hasNoExplorationArtifacts = activeDetail
     ? activeDetail.modules.every((module) => hasNoModuleArtifacts(module))
     : false;
@@ -1070,10 +1097,19 @@ export default function Page() {
                 <div className="py-10 text-center text-muted-foreground text-sm">探索任务加载中</div>
               ) : run ? (
                 <div className="space-y-3">
-                  {shouldShowNoArtifactNotice ? (
+                  {isUnsupportedArtifact ? (
+                    <UnsupportedArtifactNotice
+                      onOpenLog={() => setActiveTab("探索日志")}
+                      onRestart={startExploration}
+                      reason={unsupportedArtifactReason}
+                      restarting={starting}
+                    />
+                  ) : shouldShowNoArtifactNotice ? (
                     <NoArtifactNotice run={run} onOpenLog={() => setActiveTab("探索日志")} />
                   ) : null}
-                  <AgentPlan completedTaskDecoration="none" emptyLabel="暂无探索模块" tasks={agentPlanTasks} />
+                  {isUnsupportedArtifact ? null : (
+                    <AgentPlan completedTaskDecoration="none" emptyLabel="暂无探索模块" tasks={agentPlanTasks} />
+                  )}
                 </div>
               ) : null}
             </ShellSection>
@@ -1105,7 +1141,7 @@ export default function Page() {
             </div>
           </div>
 
-          <GoalValidationSection detail={activeDetail} run={run} />
+          {isUnsupportedArtifact ? null : <GoalValidationSection detail={activeDetail} run={run} />}
         </>
       ) : null}
 
@@ -1121,7 +1157,13 @@ export default function Page() {
       ) : null}
 
       {activeTab === "探索报告" ? (
-        <ExplorationReportPanel error={reportError} loading={reportLoading} report={report} />
+        <ExplorationReportPanel
+          error={reportError}
+          loading={reportLoading}
+          onRestart={startExploration}
+          report={report}
+          restarting={starting}
+        />
       ) : null}
 
       <Dialog onOpenChange={setEditDialogOpen} open={editDialogOpen}>
@@ -1408,6 +1450,43 @@ function NoArtifactNotice({ onOpenLog, run }: { onOpenLog: () => void; run: Expl
         <div className="flex shrink-0 gap-2">
           <Button onClick={onOpenLog} size="sm" type="button" variant="outline">
             查看日志
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UnsupportedArtifactNotice({
+  onOpenLog,
+  onRestart,
+  reason,
+  restarting,
+}: {
+  onOpenLog?: () => void;
+  onRestart: () => Promise<void> | void;
+  reason: string;
+  restarting: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950 text-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          <div className="flex items-center gap-2 font-medium">
+            <AlertTriangle className="size-4 shrink-0" />
+            历史探索产物不支持新版详情
+          </div>
+          <p className="text-amber-800 dark:text-amber-200">{reason || "历史产物格式不支持新版详情，请重新探索。"}</p>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          {onOpenLog ? (
+            <Button onClick={onOpenLog} size="sm" type="button" variant="outline">
+              查看日志
+            </Button>
+          ) : null}
+          <Button disabled={restarting} onClick={() => void onRestart()} size="sm" type="button">
+            <Play className="size-4" />
+            重新探索
           </Button>
         </div>
       </div>
@@ -1708,12 +1787,18 @@ function ExplorationLogPanel({
 function ExplorationReportPanel({
   error,
   loading,
+  onRestart,
   report,
+  restarting,
 }: {
   error: string;
   loading: boolean;
+  onRestart: () => Promise<void> | void;
   report: ExplorationReport | null;
+  restarting: boolean;
 }) {
+  const unsupportedReason = report?.unsupported_reason || "历史产物格式不支持新版报告，请重新探索。";
+
   return (
     <ShellSection>
       <div className="mb-4">
@@ -1727,6 +1812,8 @@ function ExplorationReportPanel({
         <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-destructive text-sm">
           探索报告加载失败：{error}
         </div>
+      ) : report?.unsupported_artifact ? (
+        <UnsupportedArtifactNotice onRestart={onRestart} reason={unsupportedReason} restarting={restarting} />
       ) : report?.markdown_content ? (
         <div className="space-y-3">
           <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-sm sm:grid-cols-3">

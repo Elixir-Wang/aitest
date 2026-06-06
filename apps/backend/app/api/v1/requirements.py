@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from app.dependencies.auth import current_user, require_admin
-from app.schemas.document import ConflictResolutionIn, RequirementMergeRequestIn, SourceDocumentUpdateIn, SourceMarkdownUpdateIn
+from app.schemas.document import SourceDocumentUpdateIn, SourceMarkdownUpdateIn
 from app.services.document import service as document_service
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirements"])
@@ -66,6 +66,11 @@ async def analyze_requirement(project_id: str, document_id: str, actor=Depends(c
     return await document_service.analyze_document_requirement(project_id, document_id, actor)
 
 
+@router.post("/{document_id}/review")
+async def review_requirement(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
+    return await document_service.review_primary_requirement_file(project_id, document_id, actor)
+
+
 @router.get("/{document_id}/analysis")
 def get_requirement_analysis(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
     return document_service.get_latest_requirement_analysis(project_id, document_id, actor)
@@ -95,44 +100,6 @@ async def append_requirement_files(
     return result
 
 
-@router.post("/{document_id}/merge")
-async def merge_requirement(
-    project_id: str,
-    document_id: str,
-    payload: RequirementMergeRequestIn | None = Body(default=None),
-    actor=Depends(current_user),
-) -> dict:
-    return await document_service.merge_document_markdown(
-        project_id,
-        document_id,
-        actor,
-        force_rebuild=bool(payload and (payload.force_rebuild or payload.merge_mode == "rebuild")),
-    )
-
-
-@router.get("/{document_id}/conflicts")
-def list_requirement_conflicts(project_id: str, document_id: str, actor=Depends(current_user)) -> list[dict]:
-    return document_service.list_document_conflicts(project_id, document_id, actor)
-
-
-@router.put("/{document_id}/conflicts/{conflict_id}")
-def resolve_requirement_conflict(
-    project_id: str,
-    document_id: str,
-    conflict_id: str,
-    payload: ConflictResolutionIn,
-    actor=Depends(current_user),
-) -> dict:
-    return document_service.resolve_document_conflict(
-        project_id,
-        document_id,
-        conflict_id,
-        resolution=payload.resolution,
-        resolution_type=payload.resolution_type,
-        actor=actor,
-    )
-
-
 @router.put("/{document_id}")
 def update_requirement(
     project_id: str,
@@ -141,6 +108,16 @@ def update_requirement(
     actor=Depends(require_admin),
 ) -> dict:
     return document_service.update_document(project_id, document_id, payload, actor)
+
+
+@router.put("/{document_id}/files/{mapping_id}/primary")
+def set_primary_requirement_file(
+    project_id: str,
+    document_id: str,
+    mapping_id: str,
+    actor=Depends(current_user),
+) -> dict:
+    return document_service.set_primary_requirement_file(project_id, document_id, mapping_id, actor)
 
 
 @router.delete("/{document_id}")

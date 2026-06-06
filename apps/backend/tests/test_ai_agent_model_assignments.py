@@ -18,7 +18,7 @@ def test_ai_capability_ids_are_unique() -> None:
 def test_ai_capabilities_include_business_agents() -> None:
     ids = [capability.id for capability in list_ai_capabilities()]
     assert "document_editor" in ids
-    assert "requirement_merge" in ids
+    assert "requirement_analysis" in ids
 
 
 def test_ai_capabilities_do_not_carry_redundant_kind() -> None:

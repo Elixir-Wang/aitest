@@ -1,8 +1,7 @@
-from app.services.document import file_service, merge_orchestrator, serializer, service
+from app.services.document import file_service, serializer, service
 
 __all__ = [
     "file_service",
-    "merge_orchestrator",
     "serializer",
     "service",
 ]

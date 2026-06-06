@@ -6,6 +6,10 @@ import yaml
 from app.core.storage import store_path
 
 
+ARTIFACT_SCHEMA_VERSION = 2
+UNSUPPORTED_ARTIFACT_REASON = "历史产物格式不支持新版详情，请重新探索。"
+
+
 def write_exploration_artifacts(
     artifact_root: Path,
     *,
@@ -20,11 +24,11 @@ def write_exploration_artifacts(
     artifact_root.mkdir(parents=True, exist_ok=True)
     pages_dir = artifact_root / "pages"
     logs_dir = artifact_root / "logs"
-    documents_dir = artifact_root / "documents"
+    reports_dir = artifact_root / "reports"
     checks_dir = artifact_root / "checks"
     pages_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
-    documents_dir.mkdir(parents=True, exist_ok=True)
+    reports_dir.mkdir(parents=True, exist_ok=True)
     checks_dir.mkdir(parents=True, exist_ok=True)
 
     run_path = artifact_root / "run.yaml"
@@ -33,7 +37,7 @@ def write_exploration_artifacts(
     blockers_path = artifact_root / "blockers.yaml"
     goal_validation_path = checks_dir / "goal-validation.yaml"
     log_path = logs_dir / "run.log"
-    report_path = documents_dir / "exploration-v1.md"
+    report_path = reports_dir / "exploration-report.md"
     log_path.write_text(log_content.rstrip() + "\n", encoding="utf-8")
 
     page_payloads = _build_page_payloads(page_artifacts)
@@ -45,6 +49,7 @@ def write_exploration_artifacts(
         )
 
     run_yaml = {
+        "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
         "run": _run_section(run, summary, page_payloads, blockers),
         "summary": summary,
         "pages": [
@@ -57,6 +62,7 @@ def write_exploration_artifacts(
         ],
         "graph_path": "graph.yaml",
         "blockers_path": "blockers.yaml",
+        "report_path": "reports/exploration-report.md",
         "log_path": "logs/run.log",
     }
     run_path.write_text(yaml.safe_dump(run_yaml, allow_unicode=True, sort_keys=False, default_flow_style=False), encoding="utf-8")
@@ -64,7 +70,7 @@ def write_exploration_artifacts(
     summary_yaml = _summary_yaml(summary, run, page_payloads, blockers, goal_validation)
     goal_validation_yaml = summary_yaml["goal_validation"]
     graph_yaml = _graph_yaml(graph)
-    blockers_yaml = {"blockers": blockers}
+    blockers_yaml = {"artifact_schema_version": ARTIFACT_SCHEMA_VERSION, "blockers": blockers}
     summary_path.write_text(yaml.safe_dump(summary_yaml, allow_unicode=True, sort_keys=False, default_flow_style=False), encoding="utf-8")
     goal_validation_path.write_text(
         yaml.safe_dump(goal_validation_yaml, allow_unicode=True, sort_keys=False, default_flow_style=False),
@@ -121,6 +127,10 @@ def load_exploration_run_artifacts(artifact_root: Path) -> dict:
     graph = read_yaml_artifact(artifact_root / "graph.yaml")
     blockers = read_yaml_artifact(artifact_root / "blockers.yaml")
     goal_validation = read_yaml_artifact(artifact_root / "checks" / "goal-validation.yaml")
+    schema_version = _artifact_schema_version(run, summary)
+    has_artifacts = bool(run or summary or graph or blockers or goal_validation or (artifact_root / "pages").exists())
+    if has_artifacts and schema_version != ARTIFACT_SCHEMA_VERSION:
+        return _unsupported_bundle(schema_version, artifact_root)
     page_items = []
     pages_dir = artifact_root / "pages"
     if pages_dir.exists():
@@ -131,7 +141,11 @@ def load_exploration_run_artifacts(artifact_root: Path) -> dict:
                     "content": read_yaml_artifact(path),
                 }
             )
+    report_path = artifact_root / "reports" / "exploration-report.md"
     return {
+        "artifact_schema_version": schema_version,
+        "unsupported_artifact": False,
+        "unsupported_reason": "",
         "run": run,
         "summary": summary,
         "graph": graph,
@@ -139,6 +153,37 @@ def load_exploration_run_artifacts(artifact_root: Path) -> dict:
         "goal_validation": goal_validation,
         "pages": page_items,
         "log_content": read_text_artifact(artifact_root / "logs" / "run.log"),
+        "report_content": read_text_artifact(report_path),
+        "report_path": store_path(report_path) or "",
+    }
+
+
+def _artifact_schema_version(run: dict, summary: dict) -> int:
+    for source in (run, summary):
+        value = source.get("artifact_schema_version") if isinstance(source, dict) else None
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+    return 0
+
+
+def _unsupported_bundle(schema_version: int, artifact_root: Path) -> dict:
+    return {
+        "artifact_schema_version": schema_version,
+        "unsupported_artifact": True,
+        "unsupported_reason": UNSUPPORTED_ARTIFACT_REASON,
+        "run": {},
+        "summary": {},
+        "graph": {},
+        "blockers": {},
+        "goal_validation": {},
+        "pages": [],
+        "log_content": read_text_artifact(artifact_root / "logs" / "run.log"),
+        "report_content": "",
+        "report_path": "",
     }
 
 
@@ -713,6 +758,7 @@ def _build_page_payloads(page_artifacts: list[dict]) -> list[dict]:
         if not isinstance(page_content, dict) or not isinstance(page_content.get("page"), dict):
             raise ValueError("page_artifacts must contain structured page dictionaries with a page section")
         page_content = dict(page_content)
+        page_content["artifact_schema_version"] = ARTIFACT_SCHEMA_VERSION
         page_content["page"] = dict(page_content["page"])
         page_content["page"].pop("page_type", None)
         page_meta = page_content["page"]
@@ -753,8 +799,9 @@ def _run_section(run: dict, summary: dict, pages: list[dict], blockers: list[dic
 
 def _summary_yaml(summary: dict, run: dict, pages: list[dict], blockers: list[dict], goal_validation: dict | None = None) -> dict:
     return {
+        "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
         "run_id": run["id"],
-        "title": f"探索报告 v1",
+        "title": "探索概览 v2",
         "status": summary["status"],
         "summary": summary["summary"],
         "goal": _mapping_get(run, "goal", ""),
@@ -768,6 +815,7 @@ def _summary_yaml(summary: dict, run: dict, pages: list[dict], blockers: list[di
 def _default_goal_validation(goal: str) -> dict:
     if goal:
         return {
+            "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
             "goal": goal,
             "status": "pending",
             "summary": "目标验证尚未执行。",
@@ -775,6 +823,7 @@ def _default_goal_validation(goal: str) -> dict:
             "items": [],
         }
     return {
+        "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
         "goal": "",
         "status": "skipped",
         "summary": "未设置探索目标。",
@@ -785,6 +834,7 @@ def _default_goal_validation(goal: str) -> dict:
 
 def _graph_yaml(graph: dict) -> dict:
     return {
+        "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
         "nodes": graph.get("nodes") if isinstance(graph.get("nodes"), list) else [],
         "edges": graph.get("edges") if isinstance(graph.get("edges"), list) else [],
         "paths": graph.get("paths") if isinstance(graph.get("paths"), list) else [],

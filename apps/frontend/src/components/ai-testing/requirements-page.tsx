@@ -59,9 +59,9 @@ type RequirementPageProps = {
 
 const statusLabels: Record<string, string> = {
   parsing: "解析中",
-  pending_merge: "待归并",
+  pending_merge: "待选择主需求",
   pending_review: "待评审",
-  versioned: "已归并",
+  versioned: "已生成",
 };
 
 export function RequirementsPage({

@@ -1,4 +1,6 @@
 import { chromium } from "playwright";
+import { buildElementSelectors } from "./selector-generator.mjs";
+import { locatorForCandidate, verifyElementSelectors, verifySelectorCandidate } from "./selector-validator.mjs";
 
 const [, , startUrl, artifactRoot, channel = "", forbiddenInput = ""] = process.argv;
 
@@ -104,7 +106,7 @@ try {
 
     const facts = await collectAccessibilityFacts(page);
     const pageId = nextPageId;
-    const pageDoc = buildPageDoc(pageId, facts, targetUrl, blockers);
+    const pageDoc = await buildPageDoc(page, pageId, facts, targetUrl, blockers);
     addPageStep(pageDoc, "visit", "进入页面", `访问 ${targetUrl}`);
     emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
     addPageStep(pageDoc, "snapshot", "采集页面结构", `采集 ${facts.accessibility_tree.length} 个无障碍节点、${facts.links.length} 个链接。`);
@@ -213,8 +215,19 @@ try {
       }
       let clickValidation = null;
       if (action.action_type === "click" && action.role === "button") {
-        clickValidation = await validateSafeButtonClick(page, action, pageDoc.page.url);
         const storedAction = pageDoc.actions.find((item) => item.id === action.id || (item.name === action.name && item.locator_hint === action.locator_hint));
+        const capturedState = await captureStateAfterSafeOpenAction(page, pageDoc, action, storedAction);
+        if (capturedState) {
+          pageDoc.states.push(capturedState);
+          addPageStep(
+            pageDoc,
+            "state_captured",
+            "采集页面内状态",
+            `${action.name || action.locator_hint || "按钮"} 打开后识别 ${capturedState.elements.length} 个状态内元素。`,
+          );
+          emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
+        }
+        clickValidation = await validateSafeButtonClick(page, action, pageDoc.page.url);
         if (storedAction) {
           storedAction.validation = clickValidation;
         }
@@ -335,6 +348,7 @@ async function collectAccessibilityFacts(browserPage) {
     links: domFacts.links,
     forms: domFacts.forms,
     tables: domFacts.tables,
+    states: domFacts.states || [],
   };
 }
 
@@ -353,22 +367,78 @@ async function collectDomFacts(browserPage) {
       const value = el.getAttribute("value");
       return (aria || title || placeholder || text || value || el.name || el.id || el.tagName).trim().replace(/\s+/g, " ").slice(0, 120);
     };
-    const elements = Array.from(document.querySelectorAll("a,button,input,textarea,select,[role='button'],[role='link'],[role='tab'],[role='menuitem']"))
+    const explicitLabelOf = (el) => {
+      const id = el.getAttribute("id");
+      if (id) {
+        const label = document.querySelector(`label[for="${CSS.escape(id)}"]`);
+        if (label?.textContent?.trim()) {
+          return label.textContent.trim().replace(/\s+/g, " ").slice(0, 120);
+        }
+      }
+      const wrappedLabel = el.closest("label");
+      if (wrappedLabel?.textContent?.trim()) {
+        return wrappedLabel.textContent.trim().replace(/\s+/g, " ").slice(0, 120);
+      }
+      return "";
+    };
+    const roleOf = (el) => {
+      const tagName = el.tagName.toLowerCase();
+      const explicitRole = el.getAttribute("role");
+      if (explicitRole) return explicitRole;
+      if (tagName === "a") return "link";
+      if (tagName === "button") return "button";
+      if (tagName === "textarea") return "textbox";
+      if (tagName === "select") return "combobox";
+      if (tagName === "input") {
+        const inputType = (el.getAttribute("type") || "text").toLowerCase();
+        if (inputType === "checkbox") return "checkbox";
+        if (inputType === "radio") return "radio";
+        if (inputType === "button" || inputType === "submit" || inputType === "reset") return "button";
+        return "textbox";
+      }
+      return tagName;
+    };
+    const cssSelectorOf = (el) => {
+      const testId = el.getAttribute("data-testid") || el.getAttribute("data-test-id") || el.getAttribute("data-test");
+      if (testId) return `[data-testid="${CSS.escape(testId)}"]`;
+      const id = el.getAttribute("id");
+      if (id) return `#${CSS.escape(id)}`;
+      const name = el.getAttribute("name");
+      if (name) return `${el.tagName.toLowerCase()}[name="${CSS.escape(name)}"]`;
+      return "";
+    };
+    const elementFacts = (root) => Array.from(root.querySelectorAll("a,button,input,textarea,select,[role='button'],[role='link'],[role='tab'],[role='menuitem'],[role='option'],[role='checkbox'],[role='radio']"))
       .filter(visible)
       .slice(0, 120)
       .map((el, index) => {
-        const role = el.tagName.toLowerCase() === "a" ? "link" : (el.getAttribute("role") || el.tagName.toLowerCase());
+        const role = roleOf(el);
         const name = labelOf(el);
+        const tagName = el.tagName.toLowerCase();
         return {
           index,
           role,
           name,
-          action_type: ["input", "textarea"].includes(el.tagName.toLowerCase()) ? "fill" : "click",
+          label: explicitLabelOf(el),
+          testId: el.getAttribute("data-testid") || el.getAttribute("data-test-id") || el.getAttribute("data-test") || "",
+          text: (el.innerText || el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 120),
+          css: cssSelectorOf(el),
+          action_type: ["input", "textarea", "select"].includes(tagName) && !["button", "checkbox", "radio"].includes(role) ? "fill" : "click",
           locator_hint: role && name ? `getByRole('${role}', { name: ${JSON.stringify(name)} })` : "",
           href: el.href || "",
           source: "dom_fallback",
         };
       });
+    const elements = elementFacts(document);
+    const states = Array.from(document.querySelectorAll("[role='dialog'],[role='menu'],[role='listbox'],dialog,.modal,.ant-modal,.el-dialog"))
+      .filter(visible)
+      .slice(0, 20)
+      .map((state, index) => ({
+        id: state.getAttribute("id") || state.getAttribute("role") || `state-${String(index + 1).padStart(3, "0")}`,
+        role: state.getAttribute("role") || state.tagName.toLowerCase(),
+        title: labelOf(state),
+        css: cssSelectorOf(state),
+        elements: elementFacts(state).slice(0, 80),
+      }));
     const forms = Array.from(document.querySelectorAll("form")).slice(0, 20).map((form, index) => ({
       id: `form-${String(index + 1).padStart(3, "0")}`,
       name: labelOf(form),
@@ -391,6 +461,7 @@ async function collectDomFacts(browserPage) {
       links: elements.filter((item) => item.href),
       forms,
       tables,
+      states,
     };
   });
 }
@@ -420,10 +491,46 @@ function documentTitleFromNodes(nodes) {
   return heading?.name || "";
 }
 
-function buildPageDoc(pageId, facts, entryPath, blockers) {
+async function buildPageDoc(browserPage, pageId, facts, entryPath, blockers) {
   const moduleName = inferModuleName(facts.title, facts.url);
   const blocker = blockers.find((item) => item.page === facts.url || item.page === entryPath);
+  const actions = [];
+  const stateElements = [];
+  for (const [index, action] of facts.actions.entries()) {
+    const selectors = await verifyElementSelectors(browserPage, buildElementSelectors(action));
+    const elementId = stableElementId(action, index + 1);
+    actions.push({
+      id: makeId("action", index + 1),
+      role: action.role,
+      name: action.name,
+      locator_hint: selectors.primary_selector?.code || action.locator_hint,
+      action_type: action.action_type,
+      enabled: action.enabled,
+      visible: action.visible,
+      locator_confidence: selectorConfidence(selectors.primary_selector),
+      primary_selector: selectors.primary_selector || null,
+      fallback_selector: selectors.fallback_selector || null,
+    });
+    stateElements.push({
+      id: elementId,
+      name: action.name || "",
+      role: action.role || "",
+      action: action.action_type || "inspect",
+      enabled: action.enabled !== false,
+      visible: action.visible !== false,
+      source: action.source || "accessibility",
+      primary_selector: selectors.primary_selector || null,
+      fallback_selector: selectors.fallback_selector || null,
+      needs_confirmation: !selectorUsable(selectors.primary_selector),
+    });
+  }
+  const rootSelector = await verifySelectorCandidate(browserPage, {
+    kind: "css",
+    css: "body",
+    code: "page.locator('body')",
+  });
   return {
+    artifact_schema_version: 2,
     page: {
       id: pageId,
       title: facts.title || facts.url || "未命名页面",
@@ -434,18 +541,18 @@ function buildPageDoc(pageId, facts, entryPath, blockers) {
       status: blocker ? "blocked" : "explored",
       structure_summary: summarizeFacts(facts),
     },
+    states: [
+      {
+        id: "default",
+        type: "page",
+        title: facts.title || facts.url || "默认状态",
+        root_selector: rootSelector,
+        elements: stateElements,
+      },
+    ],
     accessibility_tree: treeFromFlatNodes(facts.accessibility_tree),
     steps: [],
-    actions: facts.actions.map((action, index) => ({
-      id: makeId("action", index + 1),
-      role: action.role,
-      name: action.name,
-      locator_hint: action.locator_hint,
-      action_type: action.action_type,
-      enabled: action.enabled,
-      visible: action.visible,
-      locator_confidence: action.locator_hint ? "medium" : "low",
-    })),
+    actions,
     forms: facts.forms,
     tables: facts.tables,
     relations: {
@@ -516,6 +623,142 @@ function summarizeFacts(facts) {
 
 function factsCount(pages) {
   return pages.reduce((count, pageDoc) => count + (pageDoc.actions?.length || 0), 0);
+}
+
+function selectorConfidence(selector) {
+  if (!selector?.verification?.checked) return "unverified";
+  if (selector.verification.unique && selector.verification.visible) return "high";
+  return "low";
+}
+
+function selectorUsable(selector) {
+  return Boolean(selector?.verification?.checked && selector.verification.unique && selector.verification.visible);
+}
+
+function stableElementId(action, index) {
+  const base = slugify(`${action.role || action.action_type || "element"}-${action.name || index}`);
+  return `${base || "element"}-${String(index).padStart(3, "0")}`;
+}
+
+async function captureStateAfterSafeOpenAction(browserPage, pageDoc, action, storedAction) {
+  if (!shouldCapturePostClickState(action, storedAction)) {
+    return null;
+  }
+  const beforeUrl = normalizeUrl(browserPage.url());
+  try {
+    const selector = storedAction?.primary_selector;
+    await locatorForCandidate(browserPage, selector).click({ timeout: 2500 });
+    await browserPage.waitForTimeout(500);
+    await browserPage.waitForLoadState("networkidle", { timeout: 1500 }).catch(() => {});
+    if (normalizeUrl(browserPage.url()) !== beforeUrl) {
+      await browserPage.goto(beforeUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
+      await browserPage.waitForLoadState("networkidle", { timeout: 1500 }).catch(() => {});
+      return null;
+    }
+    const stateFacts = await collectDomFacts(browserPage);
+    const visibleState = (stateFacts.states || []).find((state) => Array.isArray(state.elements) && state.elements.length > 0);
+    if (!visibleState) {
+      return null;
+    }
+    const elements = [];
+    for (const [index, element] of visibleState.elements.entries()) {
+      const selectors = await verifyElementSelectors(browserPage, buildElementSelectors(element));
+      elements.push({
+        id: stableElementId(element, index + 1),
+        name: element.name || "",
+        role: element.role || "",
+        action: element.action_type || "inspect",
+        enabled: element.enabled !== false,
+        visible: element.visible !== false,
+        source: "post_click_state",
+        primary_selector: selectors.primary_selector || null,
+        fallback_selector: selectors.fallback_selector || null,
+        needs_confirmation: !selectorUsable(selectors.primary_selector),
+      });
+    }
+    const rootSelector = await rootSelectorForState(browserPage, visibleState);
+    return {
+      id: `${slugify(action.name || action.locator_hint || "state")}-${String(pageDoc.states.length + 1).padStart(3, "0")}`,
+      type: stateTypeFromRole(visibleState.role),
+      title: visibleState.title || action.name || "页面内状态",
+      parent_state: "default",
+      trigger: {
+        element_id: stableElementId(action, actionIndex(action)),
+        action: "click",
+      },
+      root_selector: rootSelector,
+      elements,
+    };
+  } catch {
+    return null;
+  } finally {
+    await closeTransientState(browserPage);
+  }
+}
+
+function shouldCapturePostClickState(action, storedAction) {
+  const name = String(action.name || "").trim();
+  if (!name || !selectorUsable(storedAction?.primary_selector)) {
+    return false;
+  }
+  if (isUnsafeStateOpenName(name)) {
+    return false;
+  }
+  return /新增|新建|添加|详情|查看|编辑|设置|筛选|搜索|展开|更多|选择|add|create|new|detail|view|edit|setting|filter|search|more|select/i.test(name);
+}
+
+function isUnsafeStateOpenName(name) {
+  return /删除|移除|提交|支付|付款|确认|确定|发布|保存|上传|发送|delete|remove|submit|pay|confirm|save|upload|send/i.test(name || "");
+}
+
+async function rootSelectorForState(browserPage, state) {
+  if (state.role && state.title) {
+    return verifySelectorCandidate(browserPage, {
+      kind: "role",
+      role: state.role,
+      name: state.title,
+      code: `page.getByRole('${escapeSingle(state.role)}', { name: '${escapeSingle(state.title)}' })`,
+    });
+  }
+  if (state.css) {
+    return verifySelectorCandidate(browserPage, {
+      kind: "css",
+      css: state.css,
+      code: `page.locator('${escapeSingle(state.css)}')`,
+    });
+  }
+  return {
+    kind: "unknown",
+    code: "",
+    verification: {
+      checked: false,
+      unique: false,
+      visible: false,
+      match_count: 0,
+    },
+  };
+}
+
+function stateTypeFromRole(role) {
+  const normalized = String(role || "").toLowerCase();
+  if (normalized.includes("dialog") || normalized.includes("modal")) return "dialog";
+  if (normalized.includes("menu")) return "menu";
+  if (normalized.includes("listbox")) return "listbox";
+  return "panel";
+}
+
+async function closeTransientState(browserPage) {
+  await browserPage.keyboard.press("Escape").catch(() => {});
+  await browserPage.waitForTimeout(200).catch(() => {});
+}
+
+function actionIndex(action) {
+  const parsed = Number.parseInt(String(action.id || "").split("-").at(-1) || "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function escapeSingle(value) {
+  return String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
 function canInteract(action) {

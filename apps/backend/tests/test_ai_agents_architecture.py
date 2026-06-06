@@ -62,6 +62,15 @@ def test_requirement_standardization_agent_exists_as_canonical_package() -> None
     assert not (NEW_AGENTS_ROOT / "requirement_standardization" / "tools.py").exists()
 
 
+def test_site_exploration_agent_exists_as_langchain_package() -> None:
+    package = NEW_AGENTS_ROOT / "site_exploration"
+    assert (package / "agent.py").exists()
+    assert (package / "service.py").exists()
+    assert (package / "schemas.py").exists()
+    assert (package / "tools.py").exists()
+    assert (package / "__init__.py").exists()
+
+
 def test_deterministic_requirement_file_conversion_lives_outside_agent_package() -> None:
     conversion_root = BACKEND_APP / "services" / "requirement_file_conversion"
     for filename in ("__init__.py", "common.py", "dispatcher.py", "pdf.py", "word.py", "text.py"):

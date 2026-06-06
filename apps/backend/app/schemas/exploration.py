@@ -93,6 +93,8 @@ class ExplorationElementOut(BaseModel):
     fallback_locator: str
     stability_note: str
     source_ref: str
+    primary_selector: dict = Field(default_factory=dict)
+    fallback_selector: dict = Field(default_factory=dict)
 
 
 class ExplorationBlockerOut(BaseModel):
@@ -132,6 +134,9 @@ class ExplorationModuleOut(BaseModel):
 
 class ExplorationRunDetailOut(BaseModel):
     run: ExplorationRunOut
+    artifact_schema_version: int = 0
+    unsupported_artifact: bool = False
+    unsupported_reason: str = ""
     modules: list[ExplorationModuleOut]
     goal_validation: dict = Field(default_factory=dict)
 
@@ -143,6 +148,9 @@ class ExplorationReportOut(BaseModel):
     markdown_content: str = ""
     change_summary: str = ""
     created_at: str | None = None
+    artifact_schema_version: int = 0
+    unsupported_artifact: bool = False
+    unsupported_reason: str = ""
 
 
 class ExplorationLogItemOut(BaseModel):

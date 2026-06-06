@@ -131,7 +131,6 @@ def update_file_mapping_markdown(db: Connection, mapping_id: str, markdown_file_
         UPDATE source_document_file_mappings
         SET markdown_file_path = ?,
             conversion_status = 'success',
-            mapping_status = 'pending_merge',
             version_id = NULL,
             conversion_summary = ?,
             conversion_quality = 100
@@ -161,17 +160,40 @@ def update_file_mapping_conversion_status(
     )
 
 
-def mark_file_mappings_merged(db: Connection, document_id: str, version_id: str) -> None:
+def link_file_mapping_to_version(db: Connection, mapping_id: str, version_id: str) -> None:
     db.execute(
         """
         UPDATE source_document_file_mappings
-        SET version_id = ?, mapping_status = 'merged'
-        WHERE document_id = ?
-          AND conversion_status IN ('success', 'warning')
-          AND mapping_status != 'discarded'
+        SET version_id = ?
+        WHERE id = ?
         """,
-        (version_id, document_id),
+        (version_id, mapping_id),
     )
+
+
+def set_primary_file_mapping(db: Connection, document_id: str, mapping_id: str) -> None:
+    db.execute(
+        """
+        UPDATE source_document_file_mappings
+        SET file_role = CASE WHEN id = ? THEN 'primary' ELSE 'supporting' END
+        WHERE document_id = ?
+        """,
+        (mapping_id, document_id),
+    )
+
+
+def find_primary_file_mapping(db: Connection, document_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT m.*, d.project_id
+        FROM source_document_file_mappings m
+        JOIN source_documents d ON d.id = m.document_id
+        WHERE m.document_id = ? AND m.file_role = 'primary'
+        ORDER BY m.created_at DESC, m.id DESC
+        LIMIT 1
+        """,
+        (document_id,),
+    ).fetchone()
 
 
 def find_versions_by_document(db: Connection, document_id: str) -> list[Row]:
@@ -203,14 +225,15 @@ def create_file_mapping(
     conversion_summary: str,
     created_by: str,
     conversion_quality: int | None = None,
+    file_role: str = "supporting",
     preview_file_path: str | None = None,
 ) -> None:
     db.execute(
         """
         INSERT INTO source_document_file_mappings
           (id, document_id, version_id, source_file_path, original_filename, file_format, markdown_file_path, preview_file_path,
-           conversion_status, mapping_status, conversion_summary, conversion_quality, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           conversion_status, mapping_status, file_role, conversion_summary, conversion_quality, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             mapping_id,
@@ -223,6 +246,7 @@ def create_file_mapping(
             preview_file_path,
             conversion_status,
             mapping_status,
+            file_role,
             conversion_summary,
             conversion_quality,
             created_by,
@@ -260,206 +284,6 @@ def find_file_mapping(db: Connection, mapping_id: str) -> Row | None:
 
 def delete_file_mapping(db: Connection, mapping_id: str) -> None:
     db.execute("DELETE FROM source_document_file_mappings WHERE id = ?", (mapping_id,))
-
-
-def list_conflicts(db: Connection, document_id: str, *, status: str | None = None) -> list[Row]:
-    if status:
-        return db.execute(
-            """
-            SELECT *
-            FROM source_document_merge_conflicts
-            WHERE document_id = ? AND status = ?
-            ORDER BY created_at DESC, id DESC
-            """,
-            (document_id, status),
-        ).fetchall()
-    return db.execute(
-        """
-        SELECT *
-        FROM source_document_merge_conflicts
-        WHERE document_id = ?
-        ORDER BY created_at DESC, id DESC
-        """,
-        (document_id,),
-    ).fetchall()
-
-
-def create_conflict(
-    db: Connection,
-    *,
-    conflict_id: str,
-    document_id: str,
-    title: str,
-    source_file_names: str,
-    fragment_a: str,
-    fragment_b: str,
-    run_id: str | None = None,
-    conflict_type: str = "contradiction",
-    severity: str = "medium",
-    source_refs: list[dict] | None = None,
-    agent_suggestion: str = "",
-) -> None:
-    db.execute(
-        """
-        INSERT INTO source_document_merge_conflicts
-          (id, run_id, document_id, conflict_type, severity, title, source_refs, source_file_names,
-           fragment_a, fragment_b, agent_suggestion, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')
-        """,
-        (
-            conflict_id,
-            run_id,
-            document_id,
-            conflict_type,
-            severity,
-            title,
-            json.dumps(source_refs or [], ensure_ascii=False),
-            source_file_names,
-            fragment_a,
-            fragment_b,
-            agent_suggestion,
-        ),
-    )
-
-
-def resolve_conflict(db: Connection, conflict_id: str, resolution: str, resolution_type: str) -> None:
-    db.execute(
-        """
-        UPDATE source_document_merge_conflicts
-        SET resolution = ?, resolution_type = ?, status = 'resolved', updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-        """,
-        (resolution, resolution_type, conflict_id),
-    )
-
-
-def delete_open_conflicts(db: Connection, document_id: str) -> None:
-    db.execute(
-        """
-        DELETE FROM source_document_merge_conflicts
-        WHERE document_id = ? AND status = 'open'
-        """,
-        (document_id,),
-    )
-
-
-def create_merge_run(
-    db: Connection,
-    *,
-    run_id: str,
-    project_id: str,
-    document_id: str,
-    base_version_id: str | None,
-    merge_mode: str,
-    status: str,
-    input_mapping_ids: list[str],
-    resolved_conflict_ids: list[str],
-    created_by: str,
-) -> None:
-    db.execute(
-        """
-        INSERT INTO requirement_merge_runs
-          (id, project_id, document_id, base_version_id, merge_mode, status, input_mapping_ids,
-           resolved_conflict_ids, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            run_id,
-            project_id,
-            document_id,
-            base_version_id,
-            merge_mode,
-            status,
-            json.dumps(input_mapping_ids, ensure_ascii=False),
-            json.dumps(resolved_conflict_ids, ensure_ascii=False),
-            created_by,
-        ),
-    )
-
-
-def update_merge_run_result(
-    db: Connection,
-    *,
-    run_id: str,
-    status: str,
-    merge_summary: str,
-    diff_summary: str,
-    affected_modules: list[str],
-    output_version_id: str | None = None,
-    output_preview_path: str | None = None,
-) -> None:
-    db.execute(
-        """
-        UPDATE requirement_merge_runs
-        SET status = ?,
-            output_version_id = ?,
-            merge_summary = ?,
-            diff_summary = ?,
-            affected_modules = ?,
-            output_preview_path = ?,
-            finished_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-        """,
-        (
-            status,
-            output_version_id,
-            merge_summary,
-            diff_summary,
-            json.dumps(affected_modules, ensure_ascii=False),
-            output_preview_path,
-            run_id,
-        ),
-    )
-
-
-def find_merge_run(db: Connection, run_id: str) -> Row | None:
-    return db.execute("SELECT * FROM requirement_merge_runs WHERE id = ?", (run_id,)).fetchone()
-
-
-def find_latest_merge_run(db: Connection, document_id: str) -> Row | None:
-    return db.execute(
-        """
-        SELECT *
-        FROM requirement_merge_runs
-        WHERE document_id = ?
-          AND status IN ('merged', 'preview', 'failed')
-        ORDER BY COALESCE(finished_at, created_at) DESC, created_at DESC, id DESC
-        LIMIT 1
-        """,
-        (document_id,),
-    ).fetchone()
-
-
-def create_source_coverage_items(
-    db: Connection,
-    *,
-    run_id: str,
-    document_id: str,
-    version_id: str | None,
-    items: list[dict],
-) -> None:
-    for index, item in enumerate(items, start=1):
-        db.execute(
-            """
-            INSERT INTO requirement_source_coverage_items
-              (id, run_id, document_id, version_id, mapping_id, source_heading, source_excerpt,
-               target_module, target_heading, coverage_status, reason)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                f"{run_id}-coverage-{index}",
-                run_id,
-                document_id,
-                version_id,
-                item.get("mapping_id", ""),
-                item.get("source_heading", ""),
-                item.get("source_excerpt", ""),
-                item.get("target_module", ""),
-                item.get("target_heading", ""),
-                item.get("coverage_status", ""),
-                item.get("reason", ""),
-            ),
-        )
 
 
 def create_document_version_change_log(

@@ -1,2 +1,0 @@
-"""Requirement merge agent package."""
-

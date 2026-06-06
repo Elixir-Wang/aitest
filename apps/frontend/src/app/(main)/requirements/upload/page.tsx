@@ -46,7 +46,7 @@ export default function Page() {
   if (activeProjects.length === 0) {
     return (
       <EmptyState
-        description="创建或启用项目后，可上传需求文件并发起格式转换、归并和分析。"
+        description="创建或启用项目后，可上传需求文件并生成标准 Markdown 用于分析。"
         status="无可用项目"
         title="暂无可上传项目"
       />

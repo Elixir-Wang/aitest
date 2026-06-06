@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
-const AGENT_BACKEND_SOURCE_TYPES = new Set(["knowledge_build", "requirement_file", "requirement_merge"]);
+const AGENT_BACKEND_SOURCE_TYPES = new Set(["knowledge_build", "requirement_file"]);
 const RUNNING_TASK_POLL_INTERVAL_MS = 2_000;
 const TASK_START_GRACE_MS = 8_000;
 

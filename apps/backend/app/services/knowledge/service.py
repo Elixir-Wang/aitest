@@ -146,10 +146,6 @@ def _collect_build_input(project_id: str) -> tuple[KnowledgeBuildInput, list[str
         for doc in document_repo.list_by_project(db, project_id):
             if not doc["current_version_id"]:
                 continue
-            open_conflicts = document_repo.list_conflicts(db, doc["id"], status="open")
-            if open_conflicts:
-                blockers.append(f"需求文档「{doc['name']}」存在未解决归并冲突。")
-                continue
             version = document_repo.find_version(db, doc["current_version_id"])
             if not version:
                 continue
