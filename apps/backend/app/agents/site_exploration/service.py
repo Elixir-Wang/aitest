@@ -7,11 +7,6 @@ CAPABILITY_ID = "site_exploration"
 
 
 async def plan_site_exploration(input_data: SiteExplorationInput) -> SiteExplorationOutput:
-    if not input_data.site_url.strip():
-        raise ValueError("探索站点 URL 为空，无法规划站点探索。")
-    if not input_data.artifact_root.strip():
-        raise ValueError("探索产物目录为空，无法规划站点探索。")
-
     selection = resolve_model_selection(CAPABILITY_ID)
     model = build_agent_model(selection)
     agent = site_exploration_agent(model)
@@ -36,11 +31,7 @@ def _build_site_exploration_input(input_data: SiteExplorationInput) -> str:
     exclude_paths = _split_lines(input_data.forbidden_paths)
     return "\n".join(
         [
-            f"run_id: {input_data.run_id}",
-            f"project_name: {input_data.project_name}",
-            f"environment_name: {input_data.environment_name}",
             f"site_url: {input_data.site_url}",
-            f"artifact_root: {input_data.artifact_root}",
             "",
             "goal:",
             input_data.goal.strip() or "未设置",
@@ -51,10 +42,11 @@ def _build_site_exploration_input(input_data: SiteExplorationInput) -> str:
             "exclude_paths:",
             "\n".join(f"- {item}" for item in exclude_paths) if exclude_paths else "- 未设置",
             "",
-            "limits:",
-            f"- max_pages: {input_data.max_pages}",
-            f"- max_actions: {input_data.max_actions}",
-            f"- timeout_minutes: {input_data.timeout_minutes}",
+            "login:",
+            f"- login_strategy: {input_data.login_strategy}",
+            f"- captcha_strategy: {input_data.captcha_strategy}",
+            f"- reuse_auth_state: {_bool_text(input_data.reuse_auth_state)}",
+            f"- has_login_credentials: {_bool_text(input_data.has_login_credentials)}",
             "",
             "runner_contract_required:",
             "- runner: ts_playwright",
@@ -66,3 +58,7 @@ def _build_site_exploration_input(input_data: SiteExplorationInput) -> str:
 
 def _split_lines(value: str) -> list[str]:
     return [line.strip() for line in value.replace(",", "\n").splitlines() if line.strip()]
+
+
+def _bool_text(value: bool) -> str:
+    return "true" if value else "false"

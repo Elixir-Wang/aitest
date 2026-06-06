@@ -168,6 +168,8 @@ def init_db() -> None:
               username TEXT NOT NULL DEFAULT '',
               password_mask TEXT NOT NULL DEFAULT '',
               login_strategy TEXT NOT NULL DEFAULT 'reuse_state',
+              captcha_strategy TEXT NOT NULL DEFAULT 'none',
+              reuse_auth_state INTEGER NOT NULL DEFAULT 1,
               description TEXT NOT NULL DEFAULT '',
               created_by TEXT NOT NULL,
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -472,6 +474,8 @@ def init_db() -> None:
         _ensure_column(db, "projects", "default_site_url", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "projects", "created_by", "TEXT NOT NULL DEFAULT 'system'")
         _ensure_column(db, "project_environments", "login_strategy", "TEXT NOT NULL DEFAULT 'reuse_state'")
+        _ensure_column(db, "project_environments", "captcha_strategy", "TEXT NOT NULL DEFAULT 'none'")
+        _ensure_column(db, "project_environments", "reuse_auth_state", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(db, "exploration_runs", "artifact_root", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "exploration_runs", "result_summary", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "exploration_runs", "started_at", "TEXT")

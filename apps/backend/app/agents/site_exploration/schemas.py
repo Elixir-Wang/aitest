@@ -4,17 +4,14 @@ from pydantic import BaseModel, Field
 
 
 class SiteExplorationInput(BaseModel):
-    run_id: str = Field(min_length=1)
-    project_name: str = Field(min_length=1)
-    environment_name: str = Field(min_length=1)
     site_url: str = Field(min_length=1)
     scope: str = ""
     forbidden_paths: str = ""
     goal: str = ""
-    max_pages: int = 50
-    max_actions: int = 1000
-    timeout_minutes: int = 120
-    artifact_root: str = Field(min_length=1)
+    login_strategy: str = "skip_login"
+    captcha_strategy: str = "none"
+    reuse_auth_state: bool = False
+    has_login_credentials: bool = False
 
 
 class SiteExplorationOutput(BaseModel):
@@ -23,7 +20,7 @@ class SiteExplorationOutput(BaseModel):
     )
     runner_contract: dict = Field(
         default_factory=dict,
-        description="传递给 TS Playwright runner 的运行合同，包括 URL、范围、目标、禁止路径和执行边界。",
+        description="传递给 TS Playwright runner 的运行合同，包括 URL、范围、目标和禁止路径。",
     )
     artifact_contract: dict = Field(
         default_factory=dict,
@@ -35,15 +32,10 @@ class SiteExplorationOutput(BaseModel):
 
 
 class PlaywrightExplorerContract(BaseModel):
-    run_id: str
     site_url: str
-    artifact_root: str
     goal: str = ""
     include_paths: list[str] = []
     exclude_paths: list[str] = []
-    max_pages: int = 50
-    max_actions: int = 1000
-    timeout_minutes: int = 120
 
 
 class PlaywrightExplorerResult(BaseModel):

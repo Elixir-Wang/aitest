@@ -104,14 +104,16 @@ async def test_setting_supporting_file_as_primary_only_changes_roles(
 
 
 @pytest.mark.anyio
-async def test_review_primary_requirement_file_generates_version_and_analysis(
+async def test_review_primary_requirement_file_generates_preliminary_version_with_auxiliary_context(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project()
 
     async def fake_convert_to_markdown(filename, raw_bytes=None, *, source_path=None, assets_dir=None):
-        return f"# {filename}\n\n标准内容。\n", "已生成标准 Markdown。"
+        if filename == "main.md":
+            return "# 主需求\n\n用户可以使用验证码登录。\n", "已生成主需求标准 Markdown。"
+        return "# 辅助需求\n\n验证码有效期为 5 分钟。\n", "已生成辅助需求标准 Markdown。"
 
     class FakeQualityGate:
         result = "passed"
@@ -120,45 +122,78 @@ async def test_review_primary_requirement_file_generates_version_and_analysis(
 
     class FakeAnalysisOutput:
         status = "completed"
-        analysis_summary = "需求评审完成。"
+        analysis_summary = "需求分析完成，补强 1 项。"
         quality_gate = FakeQualityGate()
+        preliminary_requirement_markdown = (
+            "# 主需求\n\n用户可以使用验证码登录。\n\n"
+            "> 辅助补强\n"
+            "> 来源：supporting.md\n"
+            "> 证据：验证码有效期为 5 分钟。\n"
+        )
 
         def model_dump(self):
             return {
                 "status": "completed",
-                "analysis_summary": "需求评审完成。",
+                "analysis_summary": "需求分析完成，补强 1 项。",
+                "preliminary_requirement_markdown": self.preliminary_requirement_markdown,
+                "applied_supplements": [
+                    {
+                        "id": "SUP-001",
+                        "source_question_id": "Q-001",
+                        "module_key": "login",
+                        "module_name": "登录",
+                        "insertion_anchor": "用户可以使用验证码登录。",
+                        "inserted_markdown": "验证码有效期为 5 分钟。",
+                        "evidence": {
+                            "mapping_id": "supporting-mapping",
+                            "filename": "supporting.md",
+                            "excerpt": "验证码有效期为 5 分钟。",
+                            "section_hint": "",
+                        },
+                        "reason": "辅助文档明确补充验证码有效期。",
+                        "confidence": "high",
+                    }
+                ],
                 "modules": [],
                 "clarification_questions": [],
+                "conflicts": [],
                 "quality_gate": {
                     "result": "passed",
                     "testability_score": 90,
                     "blocking_issues": [],
-                    "warnings": [],
+                    "warning_issues": [],
+                    "passed_checks": ["辅助补强已写入初步需求"],
                 },
-                "traceability": [],
+                "next_actions": [],
             }
 
-    async def fake_run_requirement_analysis(input_data):
-        assert "# main.md" in input_data.markdown_content
+    async def fake_analyze_requirement(input_data):
+        assert input_data.primary_filename == "main.md"
+        assert "用户可以使用验证码登录" in input_data.primary_markdown_content
+        assert len(input_data.auxiliary_documents) == 1
+        assert input_data.auxiliary_documents[0].filename == "supporting.md"
+        assert "验证码有效期为 5 分钟" in input_data.auxiliary_documents[0].markdown_content
         return FakeAnalysisOutput()
 
     monkeypatch.setattr("app.services.document.file_service.convert_to_markdown", fake_convert_to_markdown)
-    monkeypatch.setattr("app.services.document.service.run_requirement_analysis", fake_run_requirement_analysis)
+    monkeypatch.setattr("app.services.document.service.analyze_requirement_with_agent", fake_analyze_requirement)
 
     result = await document_service.upload_documents(
         "project-1",
-        [_upload_file("main.md", "# main")],
+        [_upload_file("main.md", "# main"), _upload_file("supporting.md", "# supporting")],
         ACTOR,
         document_name="登录需求",
     )
-    mapping_id = result["files"][0]["id"]
-    await document_service.convert_pending_file_mappings([mapping_id])
+    mapping_ids = [item["id"] for item in result["files"]]
+    await document_service.convert_pending_file_mappings(mapping_ids)
 
     review = await document_service.review_primary_requirement_file("project-1", result["document"]["id"], ACTOR)
     overview = document_service.get_document_overview("project-1", result["document"]["id"], ACTOR)
 
     assert review["status"] == "completed"
-    assert review["analysis_summary"] == "需求评审完成。"
+    assert review["analysis_summary"] == "需求分析完成，补强 1 项。"
+    assert review["preliminary_requirement_markdown"] == FakeAnalysisOutput.preliminary_requirement_markdown
     assert overview["document"]["current_version"]["version_no"] == 1
-    assert "# main.md" in overview["initial_markdown_content"]
-    assert overview["files"][0]["version_no"] == 1
+    assert "辅助补强" in overview["initial_markdown_content"]
+    assert "验证码有效期为 5 分钟" in overview["initial_markdown_content"]
+    assert overview["document"]["current_version"]["source_action"] == "requirement_analysis"

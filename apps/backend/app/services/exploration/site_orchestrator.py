@@ -225,20 +225,60 @@ def _ensure_artifact_dirs(root: Path) -> None:
 
 
 def _plan_run_with_agent(run, artifact_root: Path) -> site_exploration_agent_schemas.SiteExplorationOutput:
+    login_strategy, captcha_strategy, reuse_auth_state = _agent_login_context(run)
     input_data = site_exploration_agent_schemas.SiteExplorationInput(
-        run_id=run["id"],
-        project_name=str(run["project_name"] or ""),
-        environment_name=str(run["environment_name"] or ""),
         site_url=_safe_site_url(run),
         scope=str(run["scope"] or ""),
         forbidden_paths=str(run["forbidden_paths"] or ""),
         goal=str(run["goal"] or ""),
-        max_pages=int(run["max_pages"] if "max_pages" in run.keys() else 50),
-        max_actions=int(run["max_actions"] if "max_actions" in run.keys() else 1000),
-        timeout_minutes=int(run["timeout_minutes"] if "timeout_minutes" in run.keys() else 120),
-        artifact_root=str(artifact_root),
+        login_strategy=login_strategy,
+        captcha_strategy=captcha_strategy,
+        reuse_auth_state=reuse_auth_state,
+        has_login_credentials=_has_login_credentials(run, login_strategy),
     )
     return asyncio.run(site_exploration_agent_service.plan_site_exploration(input_data))
+
+
+def _agent_login_context(run) -> tuple[str, str, bool]:
+    login_strategy = str(_run_value(run, "environment_login_strategy", _run_value(run, "login_strategy", "skip_login")) or "skip_login")
+    captcha_strategy = str(_run_value(run, "environment_captcha_strategy", "none") or "none")
+    reuse_auth_state = _bool_value(_run_value(run, "environment_reuse_auth_state", login_strategy != "skip_login"))
+    if login_strategy == "reuse_state":
+        return "account_password", "none", True
+    if login_strategy == "manual":
+        return "account_password", "manual", True
+    if login_strategy == "skip_login":
+        return "skip_login", "none", False
+    if captcha_strategy == "manual" and not reuse_auth_state:
+        return "account_password", "none", False
+    return login_strategy, captcha_strategy, reuse_auth_state
+
+
+def _has_login_credentials(run, login_strategy: str) -> bool:
+    if login_strategy != "account_password":
+        return False
+    username = str(_run_value(run, "environment_username", "") or "").strip()
+    password_mask = str(_run_value(run, "environment_password_mask", "") or "").strip()
+    return bool(username and password_mask)
+
+
+def _run_value(run, key: str, default=None):
+    return run[key] if key in run.keys() else default
+
+
+def _bool_value(value, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def _execute_playwright_probe(run_id: str, artifact_root: Path) -> dict:

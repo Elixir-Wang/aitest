@@ -1,5 +1,7 @@
 from sqlite3 import Row
 
+from app.core.environment_auth_state import auth_state_summary
+
 
 def user_actions(role: str) -> list[str]:
     return ["read", "create", "update", "delete"] if role == "admin" else ["read"]
@@ -80,15 +82,32 @@ def serialize_project(row: Row, actor_role: str, has_assets: bool = False) -> di
 
 
 def serialize_project_environment(row: Row, actor_role: str) -> dict:
+    login_strategy, captcha_strategy, reuse_auth_state = _normalize_auth_config_values(
+        _row_value(row, "login_strategy", "skip_login"),
+        _row_value(row, "captcha_strategy", "none"),
+        _row_value(row, "reuse_auth_state", True),
+    )
+    project_id = row["project_id"]
+    environment_id = row["id"]
+    auth_state = auth_state_summary(
+        project_id=project_id,
+        environment_id=environment_id,
+        login_strategy=login_strategy,
+        reuse_auth_state=reuse_auth_state,
+    )
     return {
-        "id": row["id"],
-        "project_id": row["project_id"],
+        "id": environment_id,
+        "project_id": project_id,
         "project_name": row["project_name"],
         "name": row["name"],
         "site_url": row["site_url"],
         "username": row["username"],
         "password_mask": row["password_mask"],
-        "login_strategy": row["login_strategy"],
+        "login_strategy": login_strategy,
+        "captcha_strategy": captcha_strategy,
+        "reuse_auth_state": reuse_auth_state,
+        "auth_state_status": auth_state["status"],
+        "auth_state_expires_at": auth_state["expires_at"],
         "description": row["description"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -96,7 +115,51 @@ def serialize_project_environment(row: Row, actor_role: str) -> dict:
     }
 
 
+def _normalize_auth_config_values(login_strategy: object, captcha_strategy: object, reuse_auth_state: object) -> tuple[str, str, bool]:
+    login_strategy = str(login_strategy or "skip_login")
+    captcha_strategy = str(captcha_strategy or "none")
+    reuse_auth_state = _bool_value(reuse_auth_state, default=True)
+    if login_strategy == "reuse_state":
+        return "account_password", "none", True
+    if login_strategy == "manual":
+        return "account_password", "manual", True
+    if login_strategy == "skip_login":
+        return "skip_login", "none", False
+    if captcha_strategy == "manual" and not reuse_auth_state:
+        return "account_password", "none", False
+    return login_strategy, captcha_strategy or "none", reuse_auth_state
+
+
+def _row_value(row: Row, key: str, default=None):
+    return row[key] if key in row.keys() else default
+
+
+def _bool_value(value: object, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def serialize_exploration_run(row: Row, actor_role: str) -> dict:
+    login_strategy, captcha_strategy, reuse_auth_state = _normalize_auth_config_values(
+        _row_value(row, "environment_login_strategy", _row_value(row, "login_strategy", "skip_login")),
+        _row_value(row, "environment_captcha_strategy", "none"),
+        _row_value(row, "environment_reuse_auth_state", True),
+    )
+    has_login_credentials = bool(
+        login_strategy == "account_password"
+        and str(_row_value(row, "environment_username", "") or "").strip()
+        and str(_row_value(row, "environment_password_mask", "") or "").strip()
+    )
     return {
         "id": row["id"],
         "project_id": row["project_id"],
@@ -108,7 +171,10 @@ def serialize_exploration_run(row: Row, actor_role: str) -> dict:
         "status": row["status"],
         "scope": row["scope"],
         "forbidden_paths": row["forbidden_paths"],
-        "login_strategy": row["environment_login_strategy"] if "environment_login_strategy" in row.keys() else row["login_strategy"],
+        "login_strategy": login_strategy,
+        "captcha_strategy": captcha_strategy,
+        "reuse_auth_state": reuse_auth_state,
+        "has_login_credentials": has_login_credentials,
         "goal": row["goal"] if "goal" in row.keys() else "",
         "notes": row["notes"] if "notes" in row.keys() else "",
         "max_pages": row["max_pages"] if "max_pages" in row.keys() else 50,

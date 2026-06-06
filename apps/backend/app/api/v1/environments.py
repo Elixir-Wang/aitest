@@ -1,8 +1,13 @@
 from fastapi import APIRouter, Depends
 
 from app.dependencies.auth import current_user, require_admin
-from app.schemas.environment import ProjectEnvironmentCreateIn, ProjectEnvironmentOut, ProjectEnvironmentUpdateIn
-from app.services import environment_service
+from app.schemas.environment import (
+    ManualAuthSessionOut,
+    ProjectEnvironmentCreateIn,
+    ProjectEnvironmentOut,
+    ProjectEnvironmentUpdateIn,
+)
+from app.services import environment_service, manual_auth_service
 
 router = APIRouter(prefix="/projects", tags=["environments"])
 global_router = APIRouter(prefix="/environments", tags=["environments"])
@@ -35,6 +40,37 @@ def update_project_environment(
     actor=Depends(require_admin),
 ) -> dict:
     return environment_service.update_project_environment(project_id, environment_id, payload, actor)
+
+
+@router.post("/{project_id}/environments/{environment_id}/manual-auth/start", response_model=ManualAuthSessionOut)
+def start_manual_auth_session(project_id: str, environment_id: str, actor=Depends(require_admin)) -> dict:
+    return manual_auth_service.start_manual_auth_session(project_id, environment_id, actor)
+
+
+@router.post(
+    "/{project_id}/environments/{environment_id}/manual-auth/{session_id}/save",
+    response_model=ManualAuthSessionOut,
+)
+def save_manual_auth_session(
+    project_id: str,
+    environment_id: str,
+    session_id: str,
+    actor=Depends(require_admin),
+) -> dict:
+    return manual_auth_service.save_manual_auth_session(project_id, environment_id, session_id, actor)
+
+
+@router.post(
+    "/{project_id}/environments/{environment_id}/manual-auth/{session_id}/cancel",
+    response_model=ManualAuthSessionOut,
+)
+def cancel_manual_auth_session(
+    project_id: str,
+    environment_id: str,
+    session_id: str,
+    actor=Depends(require_admin),
+) -> dict:
+    return manual_auth_service.cancel_manual_auth_session(project_id, environment_id, session_id, actor)
 
 
 @router.delete("/{project_id}/environments/{environment_id}")

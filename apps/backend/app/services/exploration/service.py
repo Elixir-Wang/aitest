@@ -1008,13 +1008,24 @@ def _unique_preserve_order(items: list[str]) -> list[str]:
 
 
 def _run_snapshot(run) -> dict:
+    login_strategy, captcha_strategy, reuse_auth_state = _snapshot_auth_config(run)
+    has_login_credentials = _snapshot_value(run, "has_login_credentials", None)
+    if has_login_credentials is None:
+        has_login_credentials = bool(
+            login_strategy == "account_password"
+            and str(_snapshot_value(run, "environment_username", "") or "").strip()
+            and str(_snapshot_value(run, "environment_password_mask", "") or "").strip()
+        )
     return {
         "title": run["title"],
         "status": run["status"],
         "environment_id": run["environment_id"],
         "scope": run["scope"],
         "forbidden_paths": run["forbidden_paths"],
-        "login_strategy": run["login_strategy"],
+        "login_strategy": login_strategy,
+        "captcha_strategy": captcha_strategy,
+        "reuse_auth_state": reuse_auth_state,
+        "has_login_credentials": bool(has_login_credentials),
         "goal": run["goal"],
         "notes": run["notes"],
         "max_pages": run["max_pages"],
@@ -1022,6 +1033,43 @@ def _run_snapshot(run) -> dict:
         "timeout_minutes": run["timeout_minutes"],
         "result_summary": run["result_summary"],
     }
+
+
+def _snapshot_auth_config(run) -> tuple[str, str, bool]:
+    login_strategy = str(_snapshot_value(run, "environment_login_strategy", _snapshot_value(run, "login_strategy", "skip_login")) or "skip_login")
+    captcha_strategy = str(_snapshot_value(run, "environment_captcha_strategy", _snapshot_value(run, "captcha_strategy", "none")) or "none")
+    reuse_auth_state = _snapshot_bool(
+        _snapshot_value(run, "environment_reuse_auth_state", _snapshot_value(run, "reuse_auth_state", login_strategy != "skip_login")),
+        default=login_strategy != "skip_login",
+    )
+    if login_strategy == "reuse_state":
+        return "account_password", "none", True
+    if login_strategy == "manual":
+        return "account_password", "manual", True
+    if login_strategy == "skip_login":
+        return "skip_login", "none", False
+    if captcha_strategy == "manual" and not reuse_auth_state:
+        return "account_password", "none", False
+    return login_strategy, captcha_strategy, reuse_auth_state
+
+
+def _snapshot_value(run, key: str, default=None):
+    return run[key] if key in run.keys() else default
+
+
+def _snapshot_bool(value, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def _load_run_artifacts(run, bundle: dict | None = None) -> tuple[list[dict], list[dict], list[dict]]:

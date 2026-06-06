@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useSearchParams } from "next/navigation";
 
-import { Eye, EyeOff, Pencil, Play, Plus, Square, Trash2 } from "lucide-react";
+import { Eye, EyeOff, LogIn, Pencil, Play, Plus, Save, Square, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
@@ -39,6 +39,10 @@ type ProjectEnvironment = {
   username: string;
   password_mask: string;
   login_strategy: string;
+  captcha_strategy: string;
+  reuse_auth_state: boolean;
+  auth_state_status: string;
+  auth_state_expires_at: string | null;
   description: string;
   created_at: string;
   updated_at: string;
@@ -82,7 +86,17 @@ type EnvironmentForm = {
   username: string;
   password: string;
   loginStrategy: string;
+  captchaStrategy: string;
+  reuseAuthState: boolean;
   description: string;
+};
+
+type ManualAuthSession = {
+  session_id: string;
+  status: string;
+  auth_state_status: string;
+  auth_state_expires_at: string | null;
+  message: string;
 };
 
 type ExplorationForm = {
@@ -105,6 +119,8 @@ const emptyForm: EnvironmentForm = {
   username: "",
   password: "",
   loginStrategy: "skip_login",
+  captchaStrategy: "none",
+  reuseAuthState: true,
   description: "",
 };
 
@@ -149,10 +165,41 @@ const loginStrategyLabels: Record<string, string> = {
   reuse_state: "复用登录态",
   manual: "手动登录保存状态",
   account_password: "账号密码",
-  skip_login: "无需密码",
+  skip_login: "无需登录",
 };
 
+const captchaStrategyLabels: Record<string, string> = {
+  none: "无",
+  ai_letter: "字母 AI 校验",
+  manual: "人工登录",
+};
+
+const reuseAuthStateLabels: Record<string, string> = {
+  enabled: "开启",
+  disabled: "关闭",
+};
+
+const authStateStatusLabels: Record<string, string> = {
+  none: "无",
+  valid: "有效",
+  expired: "过期",
+  unknown: "未检测",
+};
+
+const authStateStatusBadgeClassNames: Record<string, string> = {
+  none: "border-muted-foreground/25 bg-muted text-muted-foreground",
+  valid: "border-green-600/35 bg-green-500/10 text-green-700 dark:text-green-300",
+  expired: "border-destructive/35 bg-destructive/10 text-destructive",
+  unknown: "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+};
+
+function formatAuthStateExpiresAt(expiresAt: string | null | undefined) {
+  return expiresAt ? formatDateTime(expiresAt) : "有效期未知";
+}
+
 const environmentLoginStrategyOptions = ["skip_login", "account_password"];
+const captchaStrategyOptions = ["none", "ai_letter", "manual"];
+const reuseAuthStateOptions = ["enabled", "disabled"];
 
 const explorationTabs = ["探索列表", "探索环境"];
 const STOPPABLE_EXPLORATION_STATUSES = new Set(["queued", "running", "waiting_human"]);
@@ -183,6 +230,8 @@ export function ExplorationWorkspace({
   const [showPassword, setShowPassword] = useState(false);
   const [editingEnvironment, setEditingEnvironment] = useState<ProjectEnvironment | null>(null);
   const [editingExploration, setEditingExploration] = useState<ExplorationRun | null>(null);
+  const [manualAuthSession, setManualAuthSession] = useState<ManualAuthSession | null>(null);
+  const [manualAuthAction, setManualAuthAction] = useState<"cancel" | "save" | "start" | "">("");
   const [stoppingExploration, setStoppingExploration] = useState<ExplorationRun | null>(null);
   const [stoppingExplorationId, setStoppingExplorationId] = useState("");
   const [explorationLoading, setExplorationLoading] = useState(true);
@@ -309,9 +358,16 @@ export function ExplorationWorkspace({
   const filteredRows = useMemo(
     () =>
       rows.filter((item) =>
-        [item.name, item.project_name, item.site_url, item.username, item.updated_at].some((value) =>
-          value.toLowerCase().includes(searchText.trim().toLowerCase()),
-        ),
+        [
+          item.name,
+          item.project_name,
+          item.site_url,
+          item.username,
+          loginStrategyLabels[item.login_strategy] ?? item.login_strategy,
+          captchaStrategyLabels[item.captcha_strategy] ?? item.captcha_strategy,
+          authStateStatusLabels[item.auth_state_status] ?? item.auth_state_status,
+          item.updated_at,
+        ].some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase())),
       ),
     [rows, searchText],
   );
@@ -342,11 +398,24 @@ export function ExplorationWorkspace({
     "";
   const environmentProjectValue = projectScope === "project" ? (projectId ?? "") : form.projectId;
   const explorationProjectValue = projectScope === "project" ? (projectId ?? "") : explorationForm.projectId;
+  const hasReusableEnvironmentPassword =
+    editingEnvironment?.login_strategy === "account_password" && editingEnvironment.password_mask.trim().length > 0;
   const canCreateEnvironment =
     form.name.trim().length > 0 &&
     form.siteUrl.trim().length > 0 &&
-    (projectScope === "project" || form.projectId.length > 0);
-  const showLoginCredentials = form.loginStrategy !== "skip_login";
+    (projectScope === "project" || form.projectId.length > 0) &&
+    (form.loginStrategy !== "account_password" ||
+      (form.username.trim().length > 0 && (hasReusableEnvironmentPassword || form.password.trim().length > 0)));
+  const showLoginCredentials = form.loginStrategy === "account_password";
+  const availableCaptchaStrategyOptions = form.reuseAuthState
+    ? captchaStrategyOptions
+    : captchaStrategyOptions.filter((value) => value !== "manual");
+  const selectedAuthStateStatus =
+    manualAuthSession?.auth_state_status ?? editingEnvironment?.auth_state_status ?? "none";
+  const selectedAuthStateExpiresAt =
+    manualAuthSession?.auth_state_expires_at ?? editingEnvironment?.auth_state_expires_at ?? null;
+  const selectedManualCaptcha = showLoginCredentials && form.captchaStrategy === "manual";
+  const showManualAuthControls = Boolean(editingEnvironment) && selectedManualCaptcha && form.reuseAuthState;
   const selectedProjectId = projectScope === "project" ? (projectId ?? "") : explorationForm.projectId;
   const availableEnvironments = rows.filter((environment) => environment.project_id === selectedProjectId);
   const canCreateExploration = selectedProjectId.length > 0 && explorationForm.environmentId.length > 0;
@@ -363,6 +432,8 @@ export function ExplorationWorkspace({
 
   function openCreateDialog() {
     setEditingEnvironment(null);
+    setManualAuthSession(null);
+    setManualAuthAction("");
     setForm({ ...emptyForm, projectId: projectId ?? projects[0]?.id ?? "" });
     setShowPassword(false);
     setDialogOpen(true);
@@ -392,6 +463,8 @@ export function ExplorationWorkspace({
 
   function openEditDialog(environment: ProjectEnvironment) {
     setEditingEnvironment(environment);
+    setManualAuthSession(null);
+    setManualAuthAction("");
     setForm({
       name: environment.name,
       projectId: environment.project_id,
@@ -399,16 +472,42 @@ export function ExplorationWorkspace({
       username: environment.username,
       password: "",
       loginStrategy: environment.login_strategy,
+      captchaStrategy: environment.captcha_strategy ?? "none",
+      reuseAuthState: environment.reuse_auth_state ?? true,
       description: environment.description,
     });
     setShowPassword(false);
     setDialogOpen(true);
   }
 
+  function setReuseAuthStateValue(value: string) {
+    const reuseAuthState = value === "enabled";
+    if (!reuseAuthState && form.captchaStrategy === "manual") {
+      void cancelManualAuth(false);
+      setManualAuthSession(null);
+    }
+    setForm((current) => ({
+      ...current,
+      captchaStrategy: reuseAuthState || current.captchaStrategy !== "manual" ? current.captchaStrategy : "none",
+      reuseAuthState,
+    }));
+  }
+
+  function setCaptchaStrategyValue(value: string) {
+    if (value !== "manual") {
+      void cancelManualAuth(false);
+      setManualAuthSession(null);
+    }
+    setForm((current) => ({ ...current, captchaStrategy: value }));
+  }
+
   function handleEnvironmentDialogOpenChange(open: boolean) {
     setDialogOpen(open);
     if (!open) {
+      void cancelManualAuth(false);
       setEditingEnvironment(null);
+      setManualAuthSession(null);
+      setManualAuthAction("");
       setShowPassword(false);
       setForm({ ...emptyForm, projectId: projectId ?? form.projectId });
     }
@@ -443,13 +542,22 @@ export function ExplorationWorkspace({
     }
 
     try {
+      const normalizedCaptchaStrategy =
+        showLoginCredentials && form.captchaStrategy !== "manual"
+          ? form.captchaStrategy
+          : showLoginCredentials && form.reuseAuthState
+            ? form.captchaStrategy
+            : "none";
+      const normalizedReuseAuthState = showLoginCredentials ? form.reuseAuthState : false;
       if (editingEnvironment) {
         // 更新环境
-        const payload: Record<string, string> = {
+        const payload: Record<string, boolean | string> = {
           name: form.name,
           site_url: form.siteUrl,
           username: showLoginCredentials ? form.username : "",
           login_strategy: form.loginStrategy,
+          captcha_strategy: normalizedCaptchaStrategy,
+          reuse_auth_state: normalizedReuseAuthState,
           description: form.description,
         };
         // 只有填写了密码才更新密码
@@ -465,6 +573,7 @@ export function ExplorationWorkspace({
           },
         );
         setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+        setEditingEnvironment(updated);
         toast.success("环境已更新");
       } else {
         // 创建环境
@@ -477,10 +586,28 @@ export function ExplorationWorkspace({
             username: showLoginCredentials ? form.username : "",
             password: showLoginCredentials ? form.password : "",
             login_strategy: form.loginStrategy,
+            captcha_strategy: normalizedCaptchaStrategy,
+            reuse_auth_state: normalizedReuseAuthState,
             description: form.description,
           }),
         });
         setRows((current) => [created, ...current]);
+        if (created.captcha_strategy === "manual" && created.reuse_auth_state) {
+          setEditingEnvironment(created);
+          setForm({
+            name: created.name,
+            projectId: created.project_id,
+            siteUrl: created.site_url,
+            username: created.username,
+            password: "",
+            loginStrategy: created.login_strategy,
+            captchaStrategy: created.captcha_strategy,
+            reuseAuthState: created.reuse_auth_state,
+            description: created.description,
+          });
+          toast.success("环境已创建，可打开登录窗口保存登录态");
+          return;
+        }
         toast.success("环境已创建");
       }
       handleEnvironmentDialogOpenChange(false);
@@ -590,6 +717,88 @@ export function ExplorationWorkspace({
       toast.error(requestError instanceof Error ? requestError.message : "探索任务停止失败");
     } finally {
       setStoppingExplorationId("");
+    }
+  }
+
+  async function startManualAuth() {
+    if (!editingEnvironment) {
+      return;
+    }
+    setManualAuthAction("start");
+    try {
+      const session = await apiRequest<ManualAuthSession>(
+        `/projects/${editingEnvironment.project_id}/environments/${editingEnvironment.id}/manual-auth/start`,
+        { method: "POST" },
+      );
+      setManualAuthSession(session);
+      toast.success(session.message || "登录窗口已打开");
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "打开人工登录窗口失败");
+    } finally {
+      setManualAuthAction("");
+    }
+  }
+
+  async function saveManualAuth() {
+    if (!editingEnvironment || !manualAuthSession) {
+      return;
+    }
+    setManualAuthAction("save");
+    try {
+      const result = await apiRequest<ManualAuthSession>(
+        `/projects/${editingEnvironment.project_id}/environments/${editingEnvironment.id}/manual-auth/${manualAuthSession.session_id}/save`,
+        { method: "POST" },
+      );
+      setManualAuthSession(result);
+      setEditingEnvironment((current) =>
+        current
+          ? {
+              ...current,
+              auth_state_status: result.auth_state_status,
+              auth_state_expires_at: result.auth_state_expires_at,
+            }
+          : current,
+      );
+      setRows((current) =>
+        current.map((row) =>
+          row.id === editingEnvironment.id
+            ? {
+                ...row,
+                auth_state_status: result.auth_state_status,
+                auth_state_expires_at: result.auth_state_expires_at,
+              }
+            : row,
+        ),
+      );
+      setManualAuthSession(null);
+      toast.success(result.message || "登录态已保存");
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "保存登录态失败");
+    } finally {
+      setManualAuthAction("");
+    }
+  }
+
+  async function cancelManualAuth(showToast = true) {
+    if (!editingEnvironment || !manualAuthSession) {
+      return;
+    }
+    setManualAuthAction("cancel");
+    try {
+      const result = await apiRequest<ManualAuthSession>(
+        `/projects/${editingEnvironment.project_id}/environments/${editingEnvironment.id}/manual-auth/${manualAuthSession.session_id}/cancel`,
+        { method: "POST" },
+      );
+      setManualAuthSession(null);
+      if (showToast) {
+        toast.success(result.message || "人工登录会话已取消");
+      }
+    } catch (requestError) {
+      if (showToast) {
+        toast.error(requestError instanceof Error ? requestError.message : "取消人工登录失败");
+      }
+    } finally {
+      setManualAuthAction("");
     }
   }
 
@@ -778,6 +987,7 @@ export function ExplorationWorkspace({
                   <TableHead>环境名称</TableHead>
                   <TableHead>项目</TableHead>
                   <TableHead>站点地址</TableHead>
+                  <TableHead>登录态</TableHead>
                   <TableHead>更新时间</TableHead>
                   <TableHead className="w-16">操作</TableHead>
                 </TableRow>
@@ -802,6 +1012,18 @@ export function ExplorationWorkspace({
                       <span className="block max-w-72 truncate" title={item.site_url}>
                         {item.site_url}
                       </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex min-w-36 flex-col gap-1">
+                        <Badge className={authStateStatusBadgeClassNames[item.auth_state_status]} variant="outline">
+                          {authStateStatusLabels[item.auth_state_status] ?? item.auth_state_status}
+                        </Badge>
+                        {item.auth_state_status === "valid" || item.auth_state_status === "expired" ? (
+                          <span className="text-muted-foreground text-xs">
+                            {formatAuthStateExpiresAt(item.auth_state_expires_at)}
+                          </span>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                     <TableCell>
@@ -839,9 +1061,6 @@ export function ExplorationWorkspace({
         <DialogContent className="gap-0 p-0 sm:max-w-3xl">
           <DialogHeader className="shrink-0 gap-3 px-6 pt-6">
             <DialogTitle>{editingEnvironment ? "编辑环境" : "新建环境"}</DialogTitle>
-            <DialogDescription>
-              填写环境名称、所属项目、站点地址、登录信息和登录策略，用于后续探索任务。
-            </DialogDescription>
           </DialogHeader>
           <FieldGroup className="grid gap-x-6 gap-y-5 px-6 py-5 sm:grid-cols-2">
             <Field>
@@ -892,14 +1111,20 @@ export function ExplorationWorkspace({
               <Select
                 id="environment-login-strategy"
                 placeholder="选择登录策略"
-                setValue={(value) =>
+                setValue={(value) => {
+                  if (value === "skip_login") {
+                    void cancelManualAuth(false);
+                    setManualAuthSession(null);
+                  }
                   setForm((current) => ({
                     ...current,
                     loginStrategy: value,
+                    captchaStrategy: value === "skip_login" ? "none" : current.captchaStrategy,
                     password: value === "skip_login" ? "" : current.password,
+                    reuseAuthState: value === "skip_login" ? false : current.reuseAuthState,
                     username: value === "skip_login" ? "" : current.username,
-                  }))
-                }
+                  }));
+                }}
                 value={form.loginStrategy}
               >
                 {environmentLoginStrategyOptions.map((value) => (
@@ -922,14 +1147,14 @@ export function ExplorationWorkspace({
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="environment-password">
-                    {editingEnvironment ? "密码（留空表示不修改）" : "密码"}
+                    {hasReusableEnvironmentPassword ? "密码（留空表示不修改）" : "密码"}
                   </FieldLabel>
                   <div className="relative">
                     <Input
                       className="pr-10"
                       id="environment-password"
                       onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-                      placeholder={editingEnvironment ? "留空表示不修改密码" : "请输入密码"}
+                      placeholder={hasReusableEnvironmentPassword ? "留空表示不修改密码" : "请输入密码"}
                       type={showPassword ? "text" : "password"}
                       value={form.password}
                     />
@@ -945,6 +1170,100 @@ export function ExplorationWorkspace({
                     </Button>
                   </div>
                 </Field>
+                <div className="grid gap-x-6 gap-y-5 sm:col-span-2 sm:grid-cols-2">
+                  <Field>
+                    <FieldLabel htmlFor="environment-reuse-auth-state">复用登录态</FieldLabel>
+                    <Select
+                      id="environment-reuse-auth-state"
+                      placeholder="选择复用策略"
+                      setValue={setReuseAuthStateValue}
+                      value={form.reuseAuthState ? "enabled" : "disabled"}
+                    >
+                      {reuseAuthStateOptions.map((value) => (
+                        <SelectOption key={value} value={value}>
+                          {reuseAuthStateLabels[value]}
+                        </SelectOption>
+                      ))}
+                    </Select>
+                    <p className="text-muted-foreground text-xs">人工登录必须开启复用登录态。</p>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="environment-captcha-strategy">验证码策略</FieldLabel>
+                    <Select
+                      id="environment-captcha-strategy"
+                      placeholder="选择验证码策略"
+                      setValue={setCaptchaStrategyValue}
+                      value={form.captchaStrategy}
+                    >
+                      {availableCaptchaStrategyOptions.map((value) => (
+                        <SelectOption key={value} value={value}>
+                          {captchaStrategyLabels[value]}
+                        </SelectOption>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+                <Field className="sm:col-span-2">
+                  <div className="flex flex-col gap-3 rounded-md border bg-muted/20 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">登录态</span>
+                        <Badge className={authStateStatusBadgeClassNames[selectedAuthStateStatus]} variant="outline">
+                          {authStateStatusLabels[selectedAuthStateStatus] ?? selectedAuthStateStatus}
+                        </Badge>
+                      </div>
+                      {selectedAuthStateStatus === "valid" || selectedAuthStateStatus === "expired" ? (
+                        <p className="text-muted-foreground text-xs">
+                          有效期：{formatAuthStateExpiresAt(selectedAuthStateExpiresAt)}
+                        </p>
+                      ) : null}
+                      {showManualAuthControls ? (
+                        <p className="text-muted-foreground text-xs">
+                          {manualAuthSession ? manualAuthSession.message : "打开登录窗口，手动完成验证码后保存登录态。"}
+                        </p>
+                      ) : selectedManualCaptcha && form.reuseAuthState ? (
+                        <p className="text-muted-foreground text-xs">保存环境后可打开登录窗口并保存登录态。</p>
+                      ) : (
+                        <p className="text-muted-foreground text-xs">仅人工登录策略需要手动保存登录态。</p>
+                      )}
+                    </div>
+                    {showManualAuthControls ? (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          disabled={manualAuthAction === "start"}
+                          onClick={startManualAuth}
+                          type="button"
+                          variant="outline"
+                        >
+                          <LogIn className="size-4" />
+                          打开登录
+                        </Button>
+                        {manualAuthSession ? (
+                          <>
+                            <Button
+                              disabled={manualAuthAction === "save"}
+                              onClick={saveManualAuth}
+                              type="button"
+                              variant="outline"
+                            >
+                              <Save className="size-4" />
+                              保存登录态
+                            </Button>
+                            <Button
+                              disabled={manualAuthAction === "cancel"}
+                              onClick={cancelManualAuth}
+                              type="button"
+                              variant="ghost"
+                            >
+                              <X className="size-4" />
+                              取消
+                            </Button>
+                          </>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                </Field>
               </>
             ) : null}
             <Field className="sm:col-span-2">
@@ -953,7 +1272,7 @@ export function ExplorationWorkspace({
                 className="min-h-20"
                 id="environment-description"
                 onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-                placeholder="账号权限、验证码处理方式、探索范围或注意事项"
+                placeholder="例如：预发环境、回归专用账号、只读访客环境"
                 value={form.description}
               />
             </Field>

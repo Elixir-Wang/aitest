@@ -3,13 +3,23 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class RequirementAuxiliaryDocument(BaseModel):
+    mapping_id: str
+    filename: str
+    markdown_content: str
+
+
 class RequirementAnalysisInput(BaseModel):
     project_id: str
     document_id: str
     document_name: str
-    version_id: str
-    version_no: int
-    markdown_content: str
+    primary_mapping_id: str = ""
+    primary_filename: str = ""
+    primary_markdown_content: str = ""
+    auxiliary_documents: list[RequirementAuxiliaryDocument] = Field(default_factory=list)
+    version_id: str = ""
+    version_no: int = 0
+    markdown_content: str = ""
 
 
 class RequirementAnalysisModule(BaseModel):
@@ -48,6 +58,45 @@ class RequirementClarificationQuestion(BaseModel):
     ]
     severity: Literal["blocker", "major", "minor"] = "major"
     source_excerpt: str = ""
+
+
+class RequirementEvidenceReference(BaseModel):
+    mapping_id: str
+    filename: str
+    excerpt: str
+    section_hint: str = ""
+
+
+class RequirementAppliedSupplement(BaseModel):
+    id: str
+    source_question_id: str
+    module_key: str
+    module_name: str
+    insertion_anchor: str
+    inserted_markdown: str
+    evidence: RequirementEvidenceReference
+    reason: str
+    confidence: Literal["high", "medium"]
+
+
+class RequirementUnresolvedFinding(BaseModel):
+    id: str
+    module_key: str
+    module_name: str
+    issue_type: Literal[
+        "missing_answer",
+        "conflict",
+        "out_of_scope",
+        "weak_evidence",
+        "source_unclear",
+        "other",
+    ]
+    question: str
+    reason: str
+    impact: str
+    severity: Literal["blocker", "major", "minor"] = "major"
+    primary_excerpt: str = ""
+    evidence: list[RequirementEvidenceReference] = Field(default_factory=list)
 
 
 class RequirementCoverageAuditItem(BaseModel):
@@ -106,11 +155,14 @@ class RequirementAssumptionItem(BaseModel):
 class RequirementAnalysisOutput(BaseModel):
     status: Literal["completed", "needs_clarification", "blocked"]
     analysis_summary: str
+    preliminary_requirement_markdown: str = ""
+    applied_supplements: list[RequirementAppliedSupplement] = Field(default_factory=list)
     maturity_assessment: RequirementMaturityAssessment | None = None
     key_gaps: list[RequirementGapItem] = Field(default_factory=list)
     assumptions: list[RequirementAssumptionItem] = Field(default_factory=list)
     modules: list[RequirementAnalysisModule] = Field(default_factory=list)
-    clarification_questions: list[RequirementClarificationQuestion] = Field(default_factory=list)
+    clarification_questions: list[RequirementClarificationQuestion | RequirementUnresolvedFinding] = Field(default_factory=list)
+    conflicts: list[RequirementUnresolvedFinding] = Field(default_factory=list)
     coverage_audit: list[RequirementCoverageAuditItem] = Field(default_factory=list)
     quality_gate: RequirementQualityGate
     next_actions: list[str] = Field(default_factory=list)

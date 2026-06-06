@@ -13,6 +13,9 @@ class ExplorationRunOut(BaseModel):
     scope: str
     forbidden_paths: str
     login_strategy: str
+    captcha_strategy: str = "none"
+    reuse_auth_state: bool = False
+    has_login_credentials: bool = False
     goal: str
     notes: str = ""
     max_pages: int = 50

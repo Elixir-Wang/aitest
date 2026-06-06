@@ -3,7 +3,11 @@ from sqlite3 import Connection, Row
 
 BASE_SELECT = """
 SELECT er.*, p.name AS project_name, pe.name AS environment_name, pe.site_url AS environment_site_url,
-       pe.login_strategy AS environment_login_strategy
+       pe.login_strategy AS environment_login_strategy,
+       pe.captcha_strategy AS environment_captcha_strategy,
+       pe.reuse_auth_state AS environment_reuse_auth_state,
+       pe.username AS environment_username,
+       pe.password_mask AS environment_password_mask
 FROM exploration_runs er
 JOIN projects p ON p.id = er.project_id
 JOIN project_environments pe ON pe.id = er.environment_id

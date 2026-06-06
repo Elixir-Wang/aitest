@@ -7,10 +7,10 @@ from fastapi import UploadFile
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir, resolve_stored_path, store_path
-from app.agents_bak.requirement_analysis.runner import run_requirement_analysis
+from app.agents.requirement_analysis.service import analyze_requirement as analyze_requirement_with_agent
 from app.repositories import document_repo
 from app.schemas.document import SourceDocumentUpdateIn
-from app.schemas.requirement_analysis import RequirementAnalysisInput
+from app.schemas.requirement_analysis import RequirementAnalysisInput, RequirementAuxiliaryDocument
 from app.services import operation_log_service
 from app.services.document import file_service as document_file_service
 from app.services.document import serializer as document_serializer
@@ -175,73 +175,7 @@ def get_document_overview(project_id: str, document_id: str, actor) -> dict:
 
 
 async def analyze_document_requirement(project_id: str, document_id: str, actor) -> dict:
-    with connect() as db:
-        existing = document_repo.find_by_project_and_id(db, project_id, document_id)
-        if not existing:
-            raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
-        if not existing["current_version_id"]:
-            raise api_error(409, "REQUIREMENT_ANALYSIS_NO_VERSION", "请先在主需求标准文件中完成需求评审。")
-
-        version = document_repo.find_version(db, existing["current_version_id"])
-        if not version:
-            raise api_error(409, "DOCUMENT_VERSION_NOT_FOUND", "当前需求版本不存在。")
-
-        markdown_path = resolve_stored_path(version["file_path"]) or Path(version["file_path"])
-        if not markdown_path.exists():
-            raise api_error(409, "DOCUMENT_VERSION_FILE_MISSING", "当前需求版本文件不存在。")
-        markdown_content = markdown_path.read_text(encoding="utf-8")
-
-    analysis_input = RequirementAnalysisInput(
-        project_id=project_id,
-        document_id=document_id,
-        document_name=existing["name"],
-        version_id=version["id"],
-        version_no=version["version_no"],
-        markdown_content=markdown_content,
-    )
-    try:
-        analysis_output = await run_requirement_analysis(analysis_input)
-    except Exception as exc:
-        raise api_error(502, "REQUIREMENT_ANALYSIS_AGENT_FAILED", f"需求分析智能体运行失败：{exc}") from exc
-
-    analysis_id = f"reqana-{secrets.token_hex(8)}"
-    output_data = analysis_output.model_dump()
-    with connect() as db:
-        document_repo.create_requirement_analysis(
-            db,
-            analysis_id=analysis_id,
-            project_id=project_id,
-            document_id=document_id,
-            version_id=version["id"],
-            status=analysis_output.status,
-            analysis_summary=analysis_output.analysis_summary,
-            output_json=output_data,
-            quality_result=analysis_output.quality_gate.result,
-            testability_score=analysis_output.quality_gate.testability_score,
-            created_by=actor["id"],
-        )
-
-    result = {
-        "id": analysis_id,
-        "document_id": document_id,
-        "version_id": version["id"],
-        **output_data,
-    }
-    operation_log_service.record_success(
-        log_type="agent",
-        module="requirement",
-        action="run",
-        object_type="requirement_analysis",
-        object_id=analysis_id,
-        object_name=existing["name"],
-        project_id=project_id,
-        actor_id=actor["id"],
-        actor_name=operation_log_service.actor_display_name(actor),
-        source="agent",
-        summary=f"执行需求分析：{existing['name']}",
-        after={"status": analysis_output.status, "quality_result": analysis_output.quality_gate.result},
-    )
-    return result
+    return await review_primary_requirement_file(project_id, document_id, actor)
 
 
 async def review_primary_requirement_file(project_id: str, document_id: str, actor) -> dict:
@@ -260,12 +194,39 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
         if not markdown_path.exists():
             raise api_error(404, "DOCUMENT_MARKDOWN_MISSING", "主需求标准文件不存在。")
 
-        markdown_content = markdown_path.read_text(encoding="utf-8")
-        version_id = f"docver-{secrets.token_hex(8)}"
+        primary_markdown_content = markdown_path.read_text(encoding="utf-8")
+        auxiliary_documents = _collect_auxiliary_documents(db, document_id, primary_file["id"])
+
+    analysis_input = RequirementAnalysisInput(
+        project_id=project_id,
+        document_id=document_id,
+        document_name=document["name"],
+        primary_mapping_id=primary_file["id"],
+        primary_filename=primary_file["original_filename"],
+        primary_markdown_content=primary_markdown_content,
+        auxiliary_documents=auxiliary_documents,
+        markdown_content=primary_markdown_content,
+    )
+    try:
+        analysis_output = await analyze_requirement_with_agent(analysis_input)
+    except Exception as exc:
+        raise api_error(502, "REQUIREMENT_ANALYSIS_AGENT_FAILED", f"需求分析智能体运行失败：{exc}") from exc
+
+    preliminary_markdown = analysis_output.preliminary_requirement_markdown.strip()
+    if not preliminary_markdown:
+        raise api_error(502, "REQUIREMENT_ANALYSIS_EMPTY_DRAFT", "需求分析智能体未返回初步需求。")
+
+    analysis_id = f"reqana-{secrets.token_hex(8)}"
+    output_data = analysis_output.model_dump()
+    pending_count = len(output_data.get("clarification_questions", [])) + len(output_data.get("conflicts", []))
+    supplement_count = len(output_data.get("applied_supplements", []))
+    version_id = f"docver-{secrets.token_hex(8)}"
+
+    with connect() as db:
         version_no = document_repo.next_version_no(db, document_id)
         version_path = _version_markdown_path(project_id, document_id, version_no)
         version_path.parent.mkdir(parents=True, exist_ok=True)
-        version_path.write_text(markdown_content, encoding="utf-8")
+        version_path.write_text(preliminary_markdown + "\n", encoding="utf-8")
 
         document_repo.create_version(
             db,
@@ -273,15 +234,48 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
             document_id=document_id,
             version_no=version_no,
             file_path=store_path(version_path) or str(version_path),
-            source_action="requirement_review",
-            change_summary=f"需求评审生成最终需求：{primary_file['original_filename']}",
-            diff_summary="从主需求标准文件执行需求评审后生成最终需求版本。",
+            source_action="requirement_analysis",
+            change_summary="需求分析生成初步需求",
+            diff_summary=f"辅助补强 {supplement_count} 项，待确认 {pending_count} 项。",
             created_by=actor["id"],
         )
         document_repo.link_file_mapping_to_version(db, primary_file["id"], version_id)
         document_repo.update_current_version(db, document_id, version_id, DOCUMENT_VERSIONED_STATUS)
+        document_repo.create_requirement_analysis(
+            db,
+            analysis_id=analysis_id,
+            project_id=project_id,
+            document_id=document_id,
+            version_id=version_id,
+            status=analysis_output.status,
+            analysis_summary=analysis_output.analysis_summary,
+            output_json=output_data,
+            quality_result=analysis_output.quality_gate.result,
+            testability_score=analysis_output.quality_gate.testability_score,
+            created_by=actor["id"],
+        )
 
-    return await analyze_document_requirement(project_id, document_id, actor)
+    result = {
+        "id": analysis_id,
+        "document_id": document_id,
+        "version_id": version_id,
+        **output_data,
+    }
+    operation_log_service.record_success(
+        log_type="agent",
+        module="requirement",
+        action="run",
+        object_type="requirement_analysis",
+        object_id=analysis_id,
+        object_name=document["name"],
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="agent",
+        summary=f"执行需求分析：{document['name']}",
+        after={"status": analysis_output.status, "quality_result": analysis_output.quality_gate.result},
+    )
+    return result
 
 
 def get_latest_requirement_analysis(project_id: str, document_id: str, actor) -> dict:
@@ -435,6 +429,32 @@ def delete_document(project_id: str, document_id: str, actor) -> dict:
         after={},
     )
     return {"success": True}
+
+
+def _collect_auxiliary_documents(db, document_id: str, primary_mapping_id: str) -> list[RequirementAuxiliaryDocument]:
+    auxiliary_documents: list[RequirementAuxiliaryDocument] = []
+    for row in document_repo.list_file_mappings(db, document_id):
+        if row["id"] == primary_mapping_id:
+            continue
+        if row["conversion_status"] not in {CONVERSION_SUCCESS_STATUS, "warning"}:
+            continue
+        markdown_path_value = row["markdown_file_path"]
+        if not markdown_path_value:
+            continue
+        markdown_path = resolve_stored_path(markdown_path_value) or Path(markdown_path_value)
+        if not markdown_path.exists():
+            continue
+        markdown_content = markdown_path.read_text(encoding="utf-8")
+        if not markdown_content.strip():
+            continue
+        auxiliary_documents.append(
+            RequirementAuxiliaryDocument(
+                mapping_id=row["id"],
+                filename=row["original_filename"],
+                markdown_content=markdown_content,
+            )
+        )
+    return auxiliary_documents
 
 
 def _version_markdown_path(project_id: str, document_id: str, version_no: int) -> Path:
