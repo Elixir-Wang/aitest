@@ -28,9 +28,9 @@ def exploration_actions(role: str, status: str) -> list[str]:
     if role != "admin":
         return ["read"]
     actions = ["read", "create"]
-    if status in {"queued", "running", "waiting_human"}:
+    if status in {"queued", "running"}:
         actions.append("cancel")
-    if status not in {"queued", "running", "waiting_human", "stopping"}:
+    if status not in {"queued", "running", "stopping"}:
         actions.append("delete")
     return actions
 
@@ -95,6 +95,10 @@ def serialize_project_environment(row: Row, actor_role: str) -> dict:
         login_strategy=login_strategy,
         reuse_auth_state=reuse_auth_state,
     )
+    has_saved_credentials = bool(
+        login_strategy == "account_password"
+        and _row_value(row, "password_encrypted", "")
+    )
     return {
         "id": environment_id,
         "project_id": project_id,
@@ -102,10 +106,10 @@ def serialize_project_environment(row: Row, actor_role: str) -> dict:
         "name": row["name"],
         "site_url": row["site_url"],
         "username": row["username"],
-        "password_mask": row["password_mask"],
         "login_strategy": login_strategy,
         "captcha_strategy": captcha_strategy,
         "reuse_auth_state": reuse_auth_state,
+        "has_saved_credentials": has_saved_credentials,
         "auth_state_status": auth_state["status"],
         "auth_state_expires_at": auth_state["expires_at"],
         "description": row["description"],
@@ -119,10 +123,6 @@ def _normalize_auth_config_values(login_strategy: object, captcha_strategy: obje
     login_strategy = str(login_strategy or "skip_login")
     captcha_strategy = str(captcha_strategy or "none")
     reuse_auth_state = _bool_value(reuse_auth_state, default=True)
-    if login_strategy == "reuse_state":
-        return "account_password", "none", True
-    if login_strategy == "manual":
-        return "account_password", "manual", True
     if login_strategy == "skip_login":
         return "skip_login", "none", False
     if captcha_strategy == "manual" and not reuse_auth_state:
@@ -155,11 +155,7 @@ def serialize_exploration_run(row: Row, actor_role: str) -> dict:
         _row_value(row, "environment_captcha_strategy", "none"),
         _row_value(row, "environment_reuse_auth_state", True),
     )
-    has_login_credentials = bool(
-        login_strategy == "account_password"
-        and str(_row_value(row, "environment_username", "") or "").strip()
-        and str(_row_value(row, "environment_password_mask", "") or "").strip()
-    )
+    has_login_credentials = bool(login_strategy == "account_password" and _row_value(row, "environment_has_password", 0))
     return {
         "id": row["id"],
         "project_id": row["project_id"],

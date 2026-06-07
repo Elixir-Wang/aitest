@@ -75,7 +75,23 @@ def get_project_run_log(
 
 @router.get("/{project_id}/exploration-runs/{run_id}/stream")
 def stream_project_run(project_id: str, run_id: str, actor=Depends(current_user)) -> StreamingResponse:
-    exploration_service.get_project_run(project_id, run_id, actor)
+    run = exploration_service.get_project_run(project_id, run_id, actor)
+    if run["status"] in {"completed", "partial", "blocked", "cancelled"}:
+        event_type = _terminal_stream_event_type(run["status"])
+
+        def terminal_event_stream():
+            data = json.dumps(
+                {
+                    "type": event_type,
+                    "run_id": run_id,
+                    "payload": run,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            yield f"event: {event_type}\ndata: {data}\n\n"
+
+        return StreamingResponse(terminal_event_stream(), media_type="text/event-stream")
 
     def event_stream():
         for event in exploration_event_bus.subscribe(run_id):
@@ -87,6 +103,14 @@ def stream_project_run(project_id: str, run_id: str, actor=Depends(current_user)
             yield f"event: {event_type}\ndata: {data}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _terminal_stream_event_type(status: str) -> str:
+    if status == "completed":
+        return "run_completed"
+    if status == "cancelled":
+        return "run_cancelled"
+    return "run_failed"
 
 
 @router.post("/{project_id}/exploration-runs", response_model=ExplorationRunOut)

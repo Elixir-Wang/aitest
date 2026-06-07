@@ -44,3 +44,13 @@ class SourceMarkdownUpdateIn(BaseModel):
     change_summary: str = ""
 
 
+class RequirementAnalysisFinalizeIn(BaseModel):
+    analysis_id: str = Field(min_length=1)
+    confirm_unresolved: bool = False
+
+
+class RequirementClarificationAnswerIn(BaseModel):
+    question_id: str = Field(min_length=1)
+    answer_type: str = Field(pattern="^(recommended_option|custom|defer)$")
+    selected_option_id: str = ""
+    custom_answer: str = ""

@@ -28,6 +28,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { type ApiProject, apiRequest, formatDateTime } from "@/lib/api-client";
+import { reportError } from "@/lib/error-feedback";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
@@ -75,6 +76,12 @@ export default function Page() {
     try {
       setRows(await apiRequest<ProjectRow[]>("/projects"));
     } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "项目列表加载失败",
+        actionLabel: "加载项目列表",
+        method: "GET",
+        path: "/projects",
+      });
       setError(requestError instanceof Error ? requestError.message : "项目列表加载失败");
     } finally {
       setLoading(false);
@@ -140,6 +147,12 @@ export default function Page() {
       window.dispatchEvent(new Event(PROJECT_LIST_CHANGED_EVENT));
       setDialogOpen(false);
     } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "项目保存失败",
+        actionLabel: editingProject ? "编辑项目" : "新建项目",
+        method: editingProject ? "PATCH" : "POST",
+        path: editingProject ? `/projects/${editingProject.id}` : "/projects",
+      });
       setError(requestError instanceof Error ? requestError.message : "项目保存失败");
     }
   }
@@ -153,7 +166,12 @@ export default function Page() {
       window.dispatchEvent(new Event(PROJECT_LIST_CHANGED_EVENT));
       toast.success(`已删除 ${ids.length} 个项目`);
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "项目删除失败");
+      reportError(requestError, {
+        fallbackMessage: "项目删除失败",
+        actionLabel: "删除项目",
+        method: "DELETE",
+        path: "/projects/{id}",
+      });
     }
   }
 

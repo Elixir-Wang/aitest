@@ -8,6 +8,7 @@ import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { type ApiModelAssignment, type ApiModelProvider, apiRequest } from "@/lib/api-client";
+import { reportError } from "@/lib/error-feedback";
 
 export default function Page() {
   const [assignments, setAssignments] = useState<ApiModelAssignment[]>([]);
@@ -31,7 +32,12 @@ export default function Page() {
         Object.fromEntries(assignmentRows.map((item) => [item.capability_id, item.model_provider_id ?? ""])),
       );
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "模型分配加载失败");
+      reportError(error, {
+        fallbackMessage: "模型分配加载失败",
+        actionLabel: "加载模型分配",
+        method: "GET",
+        path: "/model-assignments",
+      });
     } finally {
       setLoading(false);
     }
@@ -52,7 +58,12 @@ export default function Page() {
       toast.success("模型分配已保存");
       await loadData();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "模型分配保存失败");
+      reportError(error, {
+        fallbackMessage: "模型分配保存失败",
+        actionLabel: "保存模型分配",
+        method: "PUT",
+        path: `/model-assignments/${capabilityId}`,
+      });
     } finally {
       setSavingCapabilityId("");
     }

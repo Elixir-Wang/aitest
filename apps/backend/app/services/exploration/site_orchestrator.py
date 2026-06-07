@@ -9,6 +9,7 @@ from pathlib import Path
 import secrets
 import time
 
+from app.core.environment_auth_state import auth_state_path
 from app.core.settings import (
     PLAYWRIGHT_BROWSER_CHANNEL,
     PLAYWRIGHT_CLI_COMMAND,
@@ -21,6 +22,7 @@ from app.repositories import exploration_repo
 from app.agents.site_exploration import schemas as site_exploration_agent_schemas
 from app.agents.site_exploration import service as site_exploration_agent_service
 from app.services import operation_log_service
+from app.services.exploration import agentic_orchestrator
 from app.services.exploration import artifact_service as exploration_artifact_service
 from app.services.exploration import event_bus as exploration_event_bus
 from app.services.exploration import goal_validation_service as exploration_goal_validation_service
@@ -49,28 +51,12 @@ def _run_exploration(run_id: str) -> None:
         _ensure_artifact_dirs(artifact_root)
         exploration_repo.clear_run_outputs(db, run_id)
         exploration_service.seed_planned_modules_for_run(db, run)
-        plan = _plan_run_with_agent(run, artifact_root)
-        if plan.status == "blocked":
-            summary = plan.summary
-            log_path = artifact_root / "logs" / "run.log"
-            log_path.write_text(summary.rstrip() + "\n", encoding="utf-8")
-            exploration_repo.update_run_state(
-                db,
-                run_id,
-                status="blocked",
-                artifact_root=store_path(artifact_root) or "",
-                result_summary=summary,
-                finished=True,
-            )
-            _publish_run_event("run_failed", run, {"status": "blocked", "result_summary": summary})
-            exploration_event_bus.close(run_id)
-            return
         exploration_repo.update_run_state(
             db,
             run_id,
             status="running",
             artifact_root=store_path(artifact_root) or "",
-            result_summary=plan.summary or "站点探索已开始，正在调用 Playwright CLI。",
+            result_summary="站点探索已开始，正在生成运行合同。",
             started=True,
         )
         exploration_repo.update_module_coverages_status(
@@ -78,7 +64,7 @@ def _run_exploration(run_id: str) -> None:
             run_id,
             from_status="pending",
             to_status="running",
-            completion_summary=plan.summary or "站点探索已开始，正在调用 Playwright CLI。",
+            completion_summary="站点探索已开始，正在生成运行合同。",
         )
         start_event = (
             run,
@@ -100,8 +86,41 @@ def _run_exploration(run_id: str) -> None:
     if start_event:
         _record_runner_event(start_event[0], **start_event[1])
 
-    result = _execute_playwright_probe(run_id, artifact_root)
+    with connect() as db:
+        current = exploration_repo.find_by_id(db, run_id)
+        if not current:
+            return
+        finish_event = None
+        if current["status"] == "stopping":
+            _mark_cancelled(db, current, "用户已停止探索，任务未继续执行。")
+            _publish_run_event("run_cancelled", current, {"status": "cancelled", "result_summary": "用户已停止探索，任务未继续执行。"})
+            exploration_event_bus.close(run_id)
+            finish_event = (
+                current,
+                {
+                    "action": "finish",
+                    "result": "cancelled",
+                    "summary": f"站点探索已停止：{current['title']}",
+                    "after": {"status": "cancelled", "result_summary": "用户已停止探索，任务未继续执行。"},
+                },
+            )
+        else:
+            exploration_repo.update_run_state(
+                db,
+                run_id,
+                status="running",
+                artifact_root=store_path(artifact_root) or "",
+                result_summary="Agentic Loop 已开始，正在观察页面并决策下一步。",
+            )
+    if finish_event:
+        _record_runner_event(finish_event[0], **finish_event[1])
+        return
 
+    result = _execute_agentic_loop(run_id, artifact_root)
+    _persist_runner_result(run_id, artifact_root, result)
+
+
+def _persist_runner_result(run_id: str, artifact_root: Path, result: dict) -> None:
     finish_event = None
     with connect() as db:
         run = exploration_repo.find_by_id(db, run_id)
@@ -167,13 +186,36 @@ def _run_exploration(run_id: str) -> None:
         _record_runner_event(finish_event[0], **finish_event[1])
 
 
+def _execute_agentic_loop(run_id: str, artifact_root: Path) -> dict:
+    log_path = artifact_root / "logs" / "run.log"
+    if not _playwright_cli_available():
+        message = "未检测到可用 Playwright CLI，无法执行 Agentic Playwright 探索。"
+        log_path.write_text(f"{message}\n", encoding="utf-8")
+        return {
+            "status": "blocked",
+            "summary": message,
+            "reason_type": "runner_unavailable",
+            "suggested_action": "在后端运行环境安装 Playwright，并执行 npx playwright install 后重试。",
+            "log_path": store_path(log_path) or "",
+            "log": f"{message}\n",
+        }
+    page_url, forbidden_paths, storage_state_path = _safe_run_context_from_db(run_id)
+    return agentic_orchestrator.run_agentic_exploration(
+        run_id,
+        artifact_root,
+        start_url=page_url,
+        forbidden_paths=forbidden_paths,
+        storage_state_path=storage_state_path,
+    )
+
+
 def _mark_run_failed_after_unhandled_error(run_id: str, error: Exception) -> None:
     error_detail = f"{type(error).__name__}: {error}"
     summary = f"探索执行异常中断：{error_detail[:500]}"
     try:
         with connect() as db:
             run = exploration_repo.find_by_id(db, run_id)
-            if not run or run["status"] not in {"queued", "running", "stopping", "waiting_human"}:
+            if not run or run["status"] not in {"queued", "running", "stopping"}:
                 return
             artifact_root = PROJECT_FILE_STORAGE_ROOT / run["project_id"] / "exploration" / run_id
             _ensure_artifact_dirs(artifact_root)
@@ -243,10 +285,6 @@ def _agent_login_context(run) -> tuple[str, str, bool]:
     login_strategy = str(_run_value(run, "environment_login_strategy", _run_value(run, "login_strategy", "skip_login")) or "skip_login")
     captcha_strategy = str(_run_value(run, "environment_captcha_strategy", "none") or "none")
     reuse_auth_state = _bool_value(_run_value(run, "environment_reuse_auth_state", login_strategy != "skip_login"))
-    if login_strategy == "reuse_state":
-        return "account_password", "none", True
-    if login_strategy == "manual":
-        return "account_password", "manual", True
     if login_strategy == "skip_login":
         return "skip_login", "none", False
     if captcha_strategy == "manual" and not reuse_auth_state:
@@ -258,8 +296,8 @@ def _has_login_credentials(run, login_strategy: str) -> bool:
     if login_strategy != "account_password":
         return False
     username = str(_run_value(run, "environment_username", "") or "").strip()
-    password_mask = str(_run_value(run, "environment_password_mask", "") or "").strip()
-    return bool(username and password_mask)
+    has_password = bool(_run_value(run, "environment_has_password", 0))
+    return bool(username and has_password)
 
 
 def _run_value(run, key: str, default=None):
@@ -295,8 +333,8 @@ def _execute_playwright_probe(run_id: str, artifact_root: Path) -> dict:
             "log": f"{message}\n",
         }
 
-    page_url, forbidden_paths = _safe_run_context_from_db(run_id)
-    exploration_result = _run_site_explorer(page_url, artifact_root, forbidden_paths)
+    page_url, forbidden_paths, storage_state_path = _safe_run_context_from_db(run_id)
+    exploration_result = _run_site_explorer(page_url, artifact_root, forbidden_paths, storage_state_path)
     if exploration_result["status"] == "blocked":
         log_path.write_text(exploration_result["log"], encoding="utf-8")
         failure_detail = _failure_detail_from_log(exploration_result["log"])
@@ -346,9 +384,22 @@ def _npx_command_path() -> str | None:
     return shutil.which("npx")
 
 
-def _run_site_explorer(page_url: str, artifact_root: Path, forbidden_paths: str = "") -> dict:
+def _run_site_explorer(
+    page_url: str,
+    artifact_root: Path,
+    forbidden_paths: str = "",
+    storage_state_path: str = "",
+) -> dict:
     script_path = PLAYWRIGHT_RUNNER_DIR / "site-explorer.mjs"
-    command = ["node", str(script_path), page_url, str(artifact_root), PLAYWRIGHT_BROWSER_CHANNEL, forbidden_paths]
+    command = [
+        "node",
+        str(script_path),
+        page_url,
+        str(artifact_root),
+        PLAYWRIGHT_BROWSER_CHANNEL,
+        forbidden_paths,
+        storage_state_path,
+    ]
     timeout_seconds = max(PLAYWRIGHT_CLI_TIMEOUT_SECONDS, 30)
     env = _runner_env_from_db(artifact_root.name)
     try:
@@ -506,12 +557,29 @@ def _run_cancel_requested(artifact_root: Path) -> bool:
         return bool(run and run["status"] == "stopping")
 
 
-def _safe_run_context_from_db(run_id: str) -> tuple[str, str]:
+def _safe_run_context_from_db(run_id: str) -> tuple[str, str, str]:
     with connect() as db:
         run = exploration_repo.find_by_id(db, run_id)
         if not run:
-            return "about:blank", ""
-        return _safe_site_url(run) or "about:blank", str(run["forbidden_paths"] or "")
+            return "about:blank", "", ""
+        storage_state_path = _stored_auth_state_path_for_run(run)
+        start_url = _exploration_start_url(run)
+        return start_url or "about:blank", str(run["forbidden_paths"] or ""), str(storage_state_path or "")
+
+
+def _stored_auth_state_path_for_run(run) -> Path | None:
+    login_strategy, _, reuse_auth_state = _agent_login_context(run)
+    if login_strategy != "account_password" or not reuse_auth_state:
+        return None
+    path = auth_state_path(str(run["project_id"]), str(run["environment_id"]))
+    return path if path.exists() else None
+
+
+def _exploration_start_url(run) -> str:
+    site_url = _safe_site_url(run)
+    if not site_url:
+        return "about:blank"
+    return site_url
 
 
 def _record_runner_event(
@@ -757,7 +825,7 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> tup
         run=run,
         status=result_status,
         summary=result_summary,
-        module_status="partial" if result_status in {"partial", "waiting_human"} else "completed",
+        module_status="partial" if result_status == "partial" else "completed",
         page_url=page_url,
         blocker="",
         pages=[page for module in module_coverages for page in module["pages"]],
@@ -774,6 +842,7 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> tup
                     "reason": blocker.get("reason") or "探索过程中存在未覆盖项。",
                     "evidence_path": result["log_path"],
                     "suggested_action": blocker.get("suggested_action") or "人工确认后重新探索。",
+                    "is_blocking": bool(blocker.get("is_blocking", True)),
                 }
             )
     artifacts = exploration_artifact_service.write_exploration_artifacts(
@@ -884,17 +953,18 @@ def _build_module_coverages(
         blockers = module["blockers"]
         explored_page_count = len(pages)
         planned_page_count = max(explored_page_count, 1)
-        blocked_page_count = len(blockers)
-        has_blocking = any(True for blocker in blockers if blocker.get("reason_type") or blocker.get("is_blocking"))
+        blocking_blockers = [blocker for blocker in blockers if blocker.get("is_blocking")]
+        blocked_page_count = len(blocking_blockers)
+        has_blocking = bool(blocking_blockers)
         progress_percent = min(100, round((explored_page_count / max(planned_page_count, explored_page_count, 1)) * 100))
         recent_page = pages[-1] if pages else None
         blocker_summary = blockers[0]["reason"] if blockers else "无"
-        if result_status in {"partial", "waiting_human"} and coverage_gap_blocker and pages:
+        if result_status == "partial" and coverage_gap_blocker and pages:
             completion_status = "partial"
-        elif result_status == "waiting_human":
-            completion_status = "waiting_human"
         elif has_blocking:
             completion_status = "blocked"
+        elif blockers:
+            completion_status = "partial"
         else:
             completion_status = "completed"
         module["planned_page_count"] = planned_page_count
@@ -977,8 +1047,6 @@ def _build_module_summary(
         return f"已覆盖 {explored_page_count}/{planned_page_count} 个页面，{recent_text}，阻塞：{blocker_summary}。"
     if completion_status == "partial":
         return f"已覆盖 {explored_page_count}/{planned_page_count} 个页面，{recent_text}，部分完成：{blocker_summary}。"
-    if completion_status == "waiting_human":
-        return f"已覆盖 {explored_page_count}/{planned_page_count} 个页面，{recent_text}，目标未完成，等待人工确认。"
     if result_status == "running":
         return f"已覆盖 {explored_page_count}/{planned_page_count} 个页面，{recent_text}，探索中。"
     return f"已覆盖 {explored_page_count}/{planned_page_count} 个页面，{recent_text}，无阻塞。"

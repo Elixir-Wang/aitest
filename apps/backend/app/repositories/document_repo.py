@@ -33,10 +33,23 @@ def list_by_project(db: Connection, project_id: str) -> list[Row]:
                v.change_summary AS change_summary,
                v.diff_summary AS diff_summary,
                v.created_by AS version_created_by,
-               v.created_at AS version_created_at
+               v.created_at AS version_created_at,
+               latest_run.id AS requirement_analysis_run_id,
+               latest_run.status AS requirement_analysis_run_status,
+               latest_run.summary AS requirement_analysis_run_summary,
+               latest_run.failure_reason AS requirement_analysis_run_failure_reason,
+               latest_run.created_at AS requirement_analysis_run_created_at,
+               latest_run.updated_at AS requirement_analysis_run_updated_at
         FROM source_documents d
         LEFT JOIN source_document_versions v ON v.id = d.current_version_id
         LEFT JOIN source_document_file_mappings m ON m.document_id = d.id
+        LEFT JOIN requirement_analysis_runs latest_run ON latest_run.id = (
+            SELECT r.id
+            FROM requirement_analysis_runs r
+            WHERE r.document_id = d.id
+            ORDER BY r.created_at DESC, r.id DESC
+            LIMIT 1
+        )
         WHERE d.project_id = ?
         GROUP BY d.id
         ORDER BY d.created_at DESC
@@ -108,6 +121,13 @@ def update_current_version(db: Connection, document_id: str, version_id: str, st
     db.execute(
         "UPDATE source_documents SET current_version_id = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         (version_id, status, document_id),
+    )
+
+
+def clear_current_version(db: Connection, document_id: str, status: str) -> None:
+    db.execute(
+        "UPDATE source_documents SET current_version_id = NULL, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (status, document_id),
     )
 
 
@@ -207,6 +227,19 @@ def find_version(db: Connection, version_id: str) -> Row | None:
     return db.execute(
         "SELECT id, document_id, version_no, file_path, source_action, change_summary, diff_summary, created_by, created_at FROM source_document_versions WHERE id = ?",
         (version_id,),
+    ).fetchone()
+
+
+def find_latest_final_requirement_version(db: Connection, document_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT id, document_id, version_no, file_path, source_action, change_summary, diff_summary, created_by, created_at
+        FROM source_document_versions
+        WHERE document_id = ? AND source_action IN ('requirement_analysis', 'requirement_analysis_finalize')
+        ORDER BY version_no DESC, created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (document_id,),
     ).fetchone()
 
 
@@ -326,34 +359,49 @@ def create_requirement_analysis(
     analysis_id: str,
     project_id: str,
     document_id: str,
-    version_id: str,
+    version_id: str | None,
+    primary_mapping_id: str | None = None,
     status: str,
     analysis_summary: str,
     output_json: dict,
     quality_result: str,
     testability_score: int,
+    draft_content_hash: str = "",
     created_by: str,
 ) -> None:
     db.execute(
         """
         INSERT INTO requirement_analyses
-          (id, project_id, document_id, version_id, status, analysis_summary, output_json,
-           quality_result, testability_score, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, project_id, document_id, version_id, primary_mapping_id, status, analysis_summary, output_json,
+           quality_result, testability_score, draft_content_hash, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             analysis_id,
             project_id,
             document_id,
             version_id,
+            primary_mapping_id,
             status,
             analysis_summary,
             json.dumps(output_json, ensure_ascii=False),
             quality_result,
             testability_score,
+            draft_content_hash,
             created_by,
         ),
     )
+
+
+def find_requirement_analysis(db: Connection, analysis_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT *
+        FROM requirement_analyses
+        WHERE id = ?
+        """,
+        (analysis_id,),
+    ).fetchone()
 
 
 def find_latest_requirement_analysis(db: Connection, document_id: str) -> Row | None:
@@ -361,6 +409,19 @@ def find_latest_requirement_analysis(db: Connection, document_id: str) -> Row | 
         """
         SELECT *
         FROM requirement_analyses
+        WHERE document_id = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (document_id,),
+    ).fetchone()
+
+
+def find_latest_requirement_analysis_run(db: Connection, document_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT *
+        FROM requirement_analysis_runs
         WHERE document_id = ?
         ORDER BY created_at DESC, id DESC
         LIMIT 1
@@ -379,3 +440,56 @@ def list_requirement_analyses(db: Connection, document_id: str) -> list[Row]:
         """,
         (document_id,),
     ).fetchall()
+
+
+def mark_requirement_analysis_finalized(
+    db: Connection,
+    *,
+    analysis_id: str,
+    version_id: str,
+    finalized_by: str,
+) -> None:
+    db.execute(
+        """
+        UPDATE requirement_analyses
+        SET finalized_version_id = ?,
+            finalized_at = CURRENT_TIMESTAMP,
+            finalized_by = ?
+        WHERE id = ?
+        """,
+        (version_id, finalized_by, analysis_id),
+    )
+
+
+def update_requirement_analysis_output(
+    db: Connection,
+    *,
+    analysis_id: str,
+    status: str,
+    analysis_summary: str,
+    output_json: dict,
+    quality_result: str,
+    testability_score: int,
+    draft_content_hash: str,
+) -> None:
+    db.execute(
+        """
+        UPDATE requirement_analyses
+        SET status = ?,
+            analysis_summary = ?,
+            output_json = ?,
+            quality_result = ?,
+            testability_score = ?,
+            draft_content_hash = ?
+        WHERE id = ?
+        """,
+        (
+            status,
+            analysis_summary,
+            json.dumps(output_json, ensure_ascii=False),
+            quality_result,
+            testability_score,
+            draft_content_hash,
+            analysis_id,
+        ),
+    )

@@ -38,7 +38,7 @@ def test_site_orchestrator_builds_langchain_agent_input(monkeypatch: pytest.Monk
         "environment_captcha_strategy": "ai_letter",
         "environment_reuse_auth_state": 1,
         "environment_username": "tester",
-        "environment_password_mask": "s*******3",
+        "environment_has_password": 1,
     }
 
     output = site_orchestrator._plan_run_with_agent(run, tmp_path / "explore-1")
@@ -85,7 +85,6 @@ def test_site_exploration_prompt_includes_login_summary_without_secrets() -> Non
     assert "- has_login_credentials: true" in prompt
     assert "username:" not in prompt
     assert "password:" not in prompt
-    assert "password_mask:" not in prompt
 
 
 def test_serialize_exploration_run_uses_environment_auth_summary() -> None:
@@ -101,12 +100,12 @@ def test_serialize_exploration_run_uses_environment_auth_summary() -> None:
             "status": "pending",
             "scope": "",
             "forbidden_paths": "",
-            "login_strategy": "reuse_state",
+            "login_strategy": "account_password",
             "environment_login_strategy": "account_password",
             "environment_captcha_strategy": "ai_letter",
             "environment_reuse_auth_state": 1,
             "environment_username": "tester",
-            "environment_password_mask": "s*******3",
+            "environment_has_password": 1,
             "goal": "",
             "notes": "",
             "max_pages": 50,
@@ -126,7 +125,6 @@ def test_serialize_exploration_run_uses_environment_auth_summary() -> None:
     assert result["captcha_strategy"] == "ai_letter"
     assert result["reuse_auth_state"] is True
     assert result["has_login_credentials"] is True
-    assert "environment_password_mask" not in result
     assert "environment_username" not in result
 
 
@@ -138,12 +136,12 @@ def test_run_snapshot_uses_environment_auth_summary_without_secrets() -> None:
             "environment_id": "env-1",
             "scope": "",
             "forbidden_paths": "",
-            "login_strategy": "reuse_state",
+            "login_strategy": "account_password",
             "environment_login_strategy": "account_password",
             "environment_captcha_strategy": "ai_letter",
             "environment_reuse_auth_state": 1,
             "environment_username": "tester",
-            "environment_password_mask": "s*******3",
+            "environment_has_password": 1,
             "goal": "",
             "notes": "",
             "max_pages": 50,
@@ -158,7 +156,6 @@ def test_run_snapshot_uses_environment_auth_summary_without_secrets() -> None:
     assert snapshot["reuse_auth_state"] is True
     assert snapshot["has_login_credentials"] is True
     assert "environment_username" not in snapshot
-    assert "environment_password_mask" not in snapshot
 
 
 def test_site_orchestrator_reads_elements_from_v2_states() -> None:
@@ -253,3 +250,80 @@ def test_site_orchestrator_registers_v2_report_artifact(monkeypatch: pytest.Monk
         }
         for item in created
     ]
+
+
+def test_site_orchestrator_uses_configured_entry_with_auth_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    auth_root = tmp_path / "projects"
+    monkeypatch.setattr(site_orchestrator, "PROJECT_FILE_STORAGE_ROOT", auth_root)
+    monkeypatch.setattr(site_orchestrator.auth_state_path.__globals__["settings"], "PROJECT_FILE_STORAGE_ROOT", auth_root)
+    state_path = auth_root / "project-1" / "environments" / "env-1" / "auth" / "storage-state.json"
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text('{"cookies":[],"origins":[]}', encoding="utf-8")
+
+    run = {
+        "project_id": "project-1",
+        "environment_id": "env-1",
+        "environment_site_url": "https://www.cybotstar.cn/agentStore",
+        "environment_login_strategy": "account_password",
+        "environment_captcha_strategy": "manual",
+        "environment_reuse_auth_state": 1,
+        "forbidden_paths": "",
+    }
+
+    assert site_orchestrator._stored_auth_state_path_for_run(run) == state_path
+    assert site_orchestrator._exploration_start_url(run) == "https://www.cybotstar.cn/agentStore"
+
+
+def test_site_orchestrator_does_not_rewrite_login_like_configured_entry() -> None:
+    run = {
+        "project_id": "project-1",
+        "environment_id": "env-1",
+        "environment_site_url": "https://example.test/login",
+        "environment_login_strategy": "account_password",
+        "environment_captcha_strategy": "manual",
+        "environment_reuse_auth_state": 1,
+    }
+
+    assert site_orchestrator._exploration_start_url(run) == "https://example.test/login"
+
+
+def test_run_site_explorer_passes_storage_state_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    captured = {}
+
+    class FakeProcess:
+        returncode = 0
+        stdout = iter(
+            [
+                '{"kind":"result","payload":{"status":"completed","summary":"ok","log":"","structured_pages":[]}}',
+            ]
+        )
+
+        class _Stderr:
+            def read(self):
+                return ""
+
+        stderr = _Stderr()
+
+        def poll(self):
+            return 0
+
+        def wait(self, timeout=None):
+            return 0
+
+    def fake_popen(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return FakeProcess()
+
+    monkeypatch.setattr(site_orchestrator, "_playwright_cli_available", lambda: True)
+    monkeypatch.setattr(site_orchestrator.subprocess, "Popen", fake_popen)
+
+    result = site_orchestrator._run_site_explorer(
+        "https://example.test/",
+        tmp_path / "explore-1",
+        "/logout",
+        "/tmp/storage-state.json",
+    )
+
+    assert result["status"] == "completed"
+    assert captured["command"][-2:] == ["/logout", "/tmp/storage-state.json"]

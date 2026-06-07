@@ -4,7 +4,12 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Uplo
 from fastapi.responses import FileResponse
 
 from app.dependencies.auth import current_user, require_admin
-from app.schemas.document import SourceDocumentUpdateIn, SourceMarkdownUpdateIn
+from app.schemas.document import (
+    RequirementAnalysisFinalizeIn,
+    RequirementClarificationAnswerIn,
+    SourceDocumentUpdateIn,
+    SourceMarkdownUpdateIn,
+)
 from app.services.document import service as document_service
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirements"])
@@ -56,6 +61,27 @@ def list_requirement_versions(project_id: str, document_id: str, actor=Depends(c
     return document_service.get_document_versions(document_id)
 
 
+@router.get("/{document_id}/versions/{version_id}")
+def get_requirement_version_detail(
+    project_id: str,
+    document_id: str,
+    version_id: str,
+    actor=Depends(current_user),
+) -> dict:
+    _ = actor
+    return document_service.get_document_version_detail(project_id, document_id, version_id)
+
+
+@router.put("/{document_id}/versions/{version_id}/current")
+def switch_requirement_current_version(
+    project_id: str,
+    document_id: str,
+    version_id: str,
+    actor=Depends(current_user),
+) -> dict:
+    return document_service.switch_document_current_version(project_id, document_id, version_id, actor)
+
+
 @router.get("/{document_id}/overview")
 def get_requirement_overview(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
     return document_service.get_document_overview(project_id, document_id, actor)
@@ -67,13 +93,66 @@ async def analyze_requirement(project_id: str, document_id: str, actor=Depends(c
 
 
 @router.post("/{document_id}/review")
-async def review_requirement(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
-    return await document_service.review_primary_requirement_file(project_id, document_id, actor)
+def review_requirement(
+    project_id: str,
+    document_id: str,
+    background_tasks: BackgroundTasks,
+    actor=Depends(current_user),
+) -> dict:
+    task = document_service.start_requirement_review_run(project_id, document_id, actor)
+    background_tasks.add_task(document_service.execute_requirement_review_run, task["source_id"], dict(actor))
+    return task
 
 
 @router.get("/{document_id}/analysis")
 def get_requirement_analysis(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
     return document_service.get_latest_requirement_analysis(project_id, document_id, actor)
+
+
+@router.post("/{document_id}/analysis/finalize")
+def finalize_requirement_analysis(
+    project_id: str,
+    document_id: str,
+    payload: RequirementAnalysisFinalizeIn,
+    actor=Depends(current_user),
+) -> dict:
+    return document_service.finalize_requirement_analysis(project_id, document_id, payload, actor)
+
+
+@router.post("/{document_id}/analysis/{analysis_id}/enhance")
+async def enhance_requirement_analysis(
+    project_id: str,
+    document_id: str,
+    analysis_id: str,
+    actor=Depends(current_user),
+) -> dict:
+    return await document_service.enhance_requirement_analysis_with_auxiliary_documents(
+        project_id,
+        document_id,
+        analysis_id,
+        actor,
+    )
+
+
+@router.get("/{document_id}/analysis/{analysis_id}/clarification-answers")
+def list_requirement_clarification_answers(
+    project_id: str,
+    document_id: str,
+    analysis_id: str,
+    actor=Depends(current_user),
+) -> dict:
+    return document_service.list_requirement_clarification_answers(project_id, document_id, analysis_id, actor)
+
+
+@router.post("/{document_id}/analysis/{analysis_id}/clarification-answers")
+def save_requirement_clarification_answer(
+    project_id: str,
+    document_id: str,
+    analysis_id: str,
+    payload: RequirementClarificationAnswerIn,
+    actor=Depends(current_user),
+) -> dict:
+    return document_service.save_requirement_clarification_answer(project_id, document_id, analysis_id, payload, actor)
 
 
 @router.get("/{document_id}")

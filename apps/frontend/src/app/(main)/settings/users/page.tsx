@@ -32,6 +32,7 @@ import {
   roleToLabel,
   statusToLabel,
 } from "@/lib/api-client";
+import { reportError } from "@/lib/error-feedback";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
@@ -78,7 +79,12 @@ export default function Page() {
     try {
       setRows(await apiRequest<UserRow[]>("/users"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "用户列表加载失败");
+      reportError(error, {
+        fallbackMessage: "用户列表加载失败",
+        actionLabel: "加载用户列表",
+        method: "GET",
+        path: "/users",
+      });
     } finally {
       setLoading(false);
     }
@@ -174,7 +180,12 @@ export default function Page() {
       setDialogOpen(false);
       await loadUsers();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "用户保存失败");
+      reportError(error, {
+        fallbackMessage: "用户保存失败",
+        actionLabel: editingUser ? "编辑用户" : "新增用户",
+        method: editingUser ? "PATCH" : "POST",
+        path: editingUser ? `/users/${editingUser.id}` : "/users",
+      });
     }
   }
 
@@ -185,7 +196,12 @@ export default function Page() {
       toast.success("用户已删除");
       await loadUsers();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "用户删除失败");
+      reportError(error, {
+        fallbackMessage: "用户删除失败",
+        actionLabel: "删除用户",
+        method: "DELETE",
+        path: "/users/{id}",
+      });
     }
   }
 

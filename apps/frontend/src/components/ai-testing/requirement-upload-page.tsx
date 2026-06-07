@@ -16,7 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
-import { type ApiProject, apiRequest } from "@/lib/api-client";
+import { type ApiProject, apiErrorFromXhr, apiRequest } from "@/lib/api-client";
+import { reportError } from "@/lib/error-feedback";
 import { useAuthStore } from "@/stores/auth-store";
 
 type RequirementUploadPageProps = {
@@ -110,7 +111,12 @@ export function RequirementUploadPage({
         }
       } catch (requestError) {
         if (!ignore) {
-          toast.error(requestError instanceof Error ? requestError.message : "需求列表加载失败");
+          reportError(requestError, {
+            fallbackMessage: "需求列表加载失败",
+            actionLabel: "加载可追加需求",
+            method: "GET",
+            path: `/projects/${projectId}/requirements`,
+          });
           setRequirements([]);
         }
       }
@@ -167,7 +173,12 @@ export function RequirementUploadPage({
       router.push(`/projects/${result.document.project_id}/requirements/${result.document.id}?tab=source-files`);
       router.refresh();
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "需求上传失败");
+      reportError(requestError, {
+        fallbackMessage: "需求上传失败",
+        actionLabel: mode === "new" ? "上传需求文件" : "追加需求文件",
+        method: "POST",
+        path: `/projects/${projectId}/requirements`,
+      });
       setUploadStates(
         Object.fromEntries(files.map((file) => [getFileKey(file), { progress: 0, status: "error" as const }])),
       );
@@ -198,9 +209,9 @@ export function RequirementUploadPage({
           resolve(payload?.data ?? payload);
           return;
         }
-        reject(new Error(payload?.detail?.message ?? payload?.detail ?? "需求上传失败"));
+        reject(apiErrorFromXhr(xhr, "需求上传失败"));
       };
-      xhr.onerror = () => reject(new Error("网络异常，需求上传失败"));
+      xhr.onerror = () => reject(apiErrorFromXhr(xhr, "网络异常，需求上传失败"));
       const formData = new FormData();
       formData.append("mode", mode);
       if (mode === "new") {

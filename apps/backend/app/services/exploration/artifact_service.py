@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import re
 
 import yaml
@@ -48,9 +49,10 @@ def write_exploration_artifacts(
             encoding="utf-8",
         )
 
+    combined_blockers = _with_action_failure_blockers(blockers, page_payloads)
     run_yaml = {
         "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
-        "run": _run_section(run, summary, page_payloads, blockers),
+        "run": _run_section(run, summary, page_payloads, combined_blockers),
         "summary": summary,
         "pages": [
             {
@@ -67,10 +69,10 @@ def write_exploration_artifacts(
     }
     run_path.write_text(yaml.safe_dump(run_yaml, allow_unicode=True, sort_keys=False, default_flow_style=False), encoding="utf-8")
 
-    summary_yaml = _summary_yaml(summary, run, page_payloads, blockers, goal_validation)
+    summary_yaml = _summary_yaml(summary, run, page_payloads, combined_blockers, goal_validation)
     goal_validation_yaml = summary_yaml["goal_validation"]
     graph_yaml = _graph_yaml(graph)
-    blockers_yaml = {"artifact_schema_version": ARTIFACT_SCHEMA_VERSION, "blockers": blockers}
+    blockers_yaml = {"artifact_schema_version": ARTIFACT_SCHEMA_VERSION, "blockers": combined_blockers}
     summary_path.write_text(yaml.safe_dump(summary_yaml, allow_unicode=True, sort_keys=False, default_flow_style=False), encoding="utf-8")
     goal_validation_path.write_text(
         yaml.safe_dump(goal_validation_yaml, allow_unicode=True, sort_keys=False, default_flow_style=False),
@@ -128,8 +130,8 @@ def load_exploration_run_artifacts(artifact_root: Path) -> dict:
     blockers = read_yaml_artifact(artifact_root / "blockers.yaml")
     goal_validation = read_yaml_artifact(artifact_root / "checks" / "goal-validation.yaml")
     schema_version = _artifact_schema_version(run, summary)
-    has_artifacts = bool(run or summary or graph or blockers or goal_validation or (artifact_root / "pages").exists())
-    if has_artifacts and schema_version != ARTIFACT_SCHEMA_VERSION:
+    has_versioned_artifacts = bool(run or summary)
+    if has_versioned_artifacts and schema_version != ARTIFACT_SCHEMA_VERSION:
         return _unsupported_bundle(schema_version, artifact_root)
     page_items = []
     pages_dir = artifact_root / "pages"
@@ -205,6 +207,8 @@ def build_exploration_report_markdown(bundle: dict) -> str:
     goal_validation_status = _text(goal_validation.get("status")) or _text(summary.get("goal_validation", {}).get("status") if isinstance(summary.get("goal_validation"), dict) else "")
     goal_validation_summary = _text(goal_validation.get("summary")) or _text(summary.get("goal_validation", {}).get("summary") if isinstance(summary.get("goal_validation"), dict) else "")
     goal_validation_stats = goal_validation.get("stats") if isinstance(goal_validation.get("stats"), dict) else {}
+    report_status = _normalize_report_status(report_status, goal_validation_status, blocker_items)
+    page_title_map = _page_title_map(graph, page_items)
 
     page_rows = []
     module_rows = []
@@ -236,7 +240,7 @@ def build_exploration_report_markdown(bundle: dict) -> str:
         page_rows.append(
             [
                 module_name,
-                _text(page.get("title")),
+                _page_display_title(page),
                 _text(page.get("url")),
                 _text(page.get("status")) or "pending",
                 _rel_path(page_item.get("file_path")),
@@ -245,7 +249,7 @@ def build_exploration_report_markdown(bundle: dict) -> str:
         if bool(quality.get("needs_confirmation")):
             confirm_rows.append(
                 [
-                    _text(page.get("title")),
+                    _page_display_title(page),
                     "页面事实需要确认",
                     module_name,
                     "页面事实或状态含义暂不确定",
@@ -255,11 +259,13 @@ def build_exploration_report_markdown(bundle: dict) -> str:
     for edge in graph.get("edges") if isinstance(graph.get("edges"), list) else []:
         if not isinstance(edge, dict):
             continue
+        source_ref = _text(edge.get("source")) or _text(edge.get("from"))
+        target_ref = _text(edge.get("target")) or _text(edge.get("to"))
         relation_rows.append(
             [
-                _text(edge.get("from")),
-                _text(edge.get("action")),
-                _text(edge.get("to")),
+                _text(edge.get("source_title")) or page_title_map.get(source_ref, source_ref),
+                _edge_action_text(edge),
+                _text(edge.get("target_title")) or page_title_map.get(target_ref, target_ref),
                 _text(edge.get("type")),
                 _rel_path("graph.yaml"),
             ]
@@ -518,7 +524,7 @@ def build_exploration_report_markdown(bundle: dict) -> str:
             "| 覆盖摘要 | `summary.yaml` | 模块与页面概览 |",
             "| 页面事实 | `pages/*.yaml` | 页面结构、字段、操作、定位提示 |",
             "| 页面关系 | `graph.yaml` | 跳转、提交、弹窗、数据依赖 |",
-            "| 阻塞记录 | `blockers.yaml` | 无法探索、跳过、安全拦截 |",
+            "| 阻塞记录 | `blockers.yaml` | 无法探索、动作跳过 |",
             "| 运行日志 | `logs/run.log` | 探索过程审计 |",
         ]
     )
@@ -734,6 +740,129 @@ def _mapping_get(mapping: object, key: str, default: object = "") -> object:
         return default
 
 
+def _first_page_url(pages: list[dict]) -> str:
+    for page in pages:
+        content = page.get("content") if isinstance(page.get("content"), dict) else {}
+        page_meta = content.get("page") if isinstance(content.get("page"), dict) else {}
+        url = _text(page_meta.get("url"))
+        if url:
+            return url
+    return ""
+
+
+def _run_started_url(log_content: str) -> str:
+    for line in str(log_content or "").splitlines():
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and payload.get("event") == "run_started":
+            return _text(payload.get("url"))
+    return ""
+
+
+def _site_url_text(run: dict, page_items: list[dict], log_content: str) -> str:
+    source = run.get("run") if isinstance(run.get("run"), dict) else run
+    return _text(source.get("site_url")) or _first_page_url(page_items) or _run_started_url(log_content) or "缺失来源"
+
+
+def _page_display_title(page: dict) -> str:
+    return _text(page.get("semantic_title")) or _text(page.get("title")) or _text(page.get("url")) or "-"
+
+
+def _page_title_map(graph: dict, page_items: list[dict]) -> dict[str, str]:
+    title_map: dict[str, str] = {}
+    for node in graph.get("nodes") if isinstance(graph.get("nodes"), list) else []:
+        if not isinstance(node, dict):
+            continue
+        node_id = _text(node.get("id"))
+        if node_id:
+            title_map[node_id] = _text(node.get("semantic_title")) or _text(node.get("title")) or _text(node.get("url")) or node_id
+    for page_item in page_items:
+        if not isinstance(page_item, dict):
+            continue
+        content = page_item.get("content") if isinstance(page_item.get("content"), dict) else {}
+        page = content.get("page") if isinstance(content.get("page"), dict) else {}
+        page_id = _text(page.get("id"))
+        if page_id:
+            title_map[page_id] = _page_display_title(page)
+    return title_map
+
+
+def _edge_action_text(edge: dict) -> str:
+    return " ".join(item for item in [_text(edge.get("action")), _text(edge.get("action_target"))] if item) or "-"
+
+
+def _business_headline(content: dict) -> str:
+    business_summary = content.get("business_summary") if isinstance(content.get("business_summary"), dict) else {}
+    return _text(business_summary.get("headline"))
+
+
+def _compact_text(value: str, limit: int) -> str:
+    text = re.sub(r"\s+", " ", _text(value))
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _page_key_note(content: dict) -> str:
+    page = content.get("page") if isinstance(content.get("page"), dict) else {}
+    return _business_headline(content) or _compact_text(_text(page.get("structure_summary")), 120) or "-"
+
+
+def _normalize_report_status(status: str, goal_validation_status: str, blocker_items: list[dict]) -> str:
+    normalized = _text(status) or "pending"
+    if normalized == "completed" and _text(goal_validation_status) == "pending":
+        return "partial"
+    if normalized == "completed" and blocker_items:
+        return "partial"
+    return normalized
+
+
+def _with_action_failure_blockers(blockers: list[dict], page_payloads: list[dict]) -> list[dict]:
+    combined = [dict(blocker) for blocker in blockers if isinstance(blocker, dict)]
+    seen = {
+        (
+            _text(blocker.get("reason_type") or blocker.get("type")),
+            _text(blocker.get("page_ref") or blocker.get("page")),
+            _text(blocker.get("action") or blocker.get("action_target")),
+        )
+        for blocker in combined
+    }
+    for payload in page_payloads:
+        content = payload.get("content") if isinstance(payload.get("content"), dict) else {}
+        page = content.get("page") if isinstance(content.get("page"), dict) else {}
+        for action in content.get("actions") if isinstance(content.get("actions"), list) else []:
+            if not isinstance(action, dict) or _text(action.get("status")) != "failed":
+                continue
+            action_name = _text(action.get("element_name")) or _text(action.get("action_target")) or _text(action.get("element_id")) or _text(action.get("type")) or "动作"
+            page_ref = _text(page.get("id")) or _text(page.get("url"))
+            key = ("action_failed", page_ref, action_name)
+            if key in seen:
+                continue
+            result = action.get("result") if isinstance(action.get("result"), dict) else {}
+            reason = _text(result.get("error_summary")) or _text(result.get("error")) or "动作执行失败。"
+            combined.append(
+                {
+                    "id": f"blocker-{len(combined) + 1:03d}",
+                    "type": "action_failed",
+                    "reason_type": "action_failed",
+                    "module_key": _text(page.get("module")) or "site-entry",
+                    "page_ref": page_ref,
+                    "page": _text(page.get("url")),
+                    "action": action_name,
+                    "reason": reason,
+                    "severity": "warning",
+                    "impact_scope": f"{action_name} 未验证",
+                    "suggested_action": "人工确认页面状态、locator 稳定性或弹层遮挡后重新探索。",
+                    "evidence_path": _rel_path(payload.get("file_path")) or "logs/run.log",
+                    "is_blocking": False,
+                }
+            )
+            seen.add(key)
+    return combined
+
+
 def _rel_path(value: str) -> str:
     normalized = _text(value)
     return normalized or "-"
@@ -769,6 +898,7 @@ def _build_page_payloads(page_artifacts: list[dict]) -> list[dict]:
 
 
 def _run_section(run: dict, summary: dict, pages: list[dict], blockers: list[dict]) -> dict:
+    site_url = _mapping_get(run, "site_url", "") or _first_page_url(pages)
     return {
         "id": run["id"],
         "project_id": run["project_id"],
@@ -776,7 +906,7 @@ def _run_section(run: dict, summary: dict, pages: list[dict], blockers: list[dic
         "environment_id": run["environment_id"],
         "environment_name": run["environment_name"],
         "title": run["title"],
-        "site_url": _mapping_get(run, "site_url", ""),
+        "site_url": site_url,
         "scope": _mapping_get(run, "scope", ""),
         "goal": _mapping_get(run, "goal", ""),
         "forbidden_paths": _mapping_get(run, "forbidden_paths", ""),

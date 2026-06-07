@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ChevronLeft, ChevronRight, Eye, RefreshCw, Search } from "lucide-react";
 
+import { OperationLogDetailContent } from "@/components/ai-testing/operation-logs/operation-log-detail-content";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,6 @@ import { Button as PaginationButton } from "@/components/ui/button-1";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { OneClipboard } from "@/components/ui/one-clipboard";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -24,6 +24,7 @@ import {
   operationLogModuleToLabel,
   operationLogResultToLabel,
 } from "@/lib/api-client";
+import { reportError } from "@/lib/error-feedback";
 
 type OperationLogViewProps = {
   endpoint: string;
@@ -44,6 +45,7 @@ const modules = [
   "auth",
   "agent",
   "user",
+  "frontend",
 ];
 const actions = [
   "",
@@ -67,10 +69,18 @@ const actions = [
   "update_global_knowledge",
   "create_global_knowledge_version",
   "archive_global_knowledge",
+  "submit_requirement_analysis",
+  "start_requirement_analysis",
+  "finish_requirement_analysis",
+  "fail_requirement_analysis",
+  "answer_requirement_clarification",
+  "finalize_requirement_analysis",
+  "set_primary_file",
   "assign_model",
   "resolve_conflict",
   "update_retention_policy",
   "cleanup",
+  "client_error",
 ];
 const results = ["", "success", "failed", "partial_success", "cancelled"];
 
@@ -92,6 +102,13 @@ function getVisiblePages(currentPage: number, pageCount: number): PageItem[] {
   return [1, "ellipsis-start", currentPage - 1, currentPage, currentPage + 1, "ellipsis-end", pageCount];
 }
 
+function initialKeyword() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return new URLSearchParams(window.location.search).get("keyword") ?? "";
+}
+
 export function OperationLogView({ endpoint, showProjectFilter = false }: OperationLogViewProps) {
   const [logs, setLogs] = useState<ApiOperationLogListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -99,7 +116,7 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
   const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [keyword, setKeyword] = useState("");
+  const [keyword, setKeyword] = useState(initialKeyword);
   const [module, setModule] = useState("");
   const [action, setAction] = useState("");
   const [result, setResult] = useState("");
@@ -136,6 +153,12 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
       setTotal(data.total);
       setPage(data.page);
     } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "日志加载失败",
+        actionLabel: "加载操作日志",
+        method: "GET",
+        path: `${endpoint}?${query}`,
+      });
       setError(requestError instanceof Error ? requestError.message : "日志加载失败");
     } finally {
       setLoading(false);
@@ -154,6 +177,12 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
     try {
       setDetail(await apiRequest<ApiOperationLogDetail>(`/operation-logs/${row.id}`));
     } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "日志详情加载失败",
+        actionLabel: "查看日志详情",
+        method: "GET",
+        path: `/operation-logs/${row.id}`,
+      });
       setError(requestError instanceof Error ? requestError.message : "日志详情加载失败");
       setSelectedId(null);
     } finally {
@@ -235,44 +264,59 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
         </Button>
       </div>
       <div className="overflow-hidden rounded-lg border">
-        <Table className="table-fixed">
+        <Table className="min-w-[1080px] table-fixed">
           <TableHeader>
             <TableRow>
               <TableHead className="w-[15%]">时间</TableHead>
               <TableHead className="w-[10%]">模块</TableHead>
-              <TableHead className="w-[9%]">动作</TableHead>
-              <TableHead className={showProjectFilter ? "w-[22%]" : "w-[26%]"}>对象</TableHead>
+              <TableHead className="w-[13%]">动作</TableHead>
+              <TableHead className={showProjectFilter ? "w-[20%]" : "w-[24%]"}>对象</TableHead>
               <TableHead className="w-[10%]">结果</TableHead>
-              <TableHead className="w-[28%]">摘要</TableHead>
+              <TableHead className="w-[26%]">摘要</TableHead>
               <TableHead className="w-[6%]">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {logs.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell className="truncate text-muted-foreground text-xs">
-                  {formatDateTime(row.created_at)}
-                </TableCell>
-                <TableCell>{operationLogModuleToLabel(row.module)}</TableCell>
-                <TableCell>{operationLogActionToLabel(row.action)}</TableCell>
-                <TableCell className="truncate" title={row.object_name || row.object_id || ""}>
-                  {row.object_name || row.object_id || "-"}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={row.result === "failed" ? "destructive" : "outline"}>
-                    {operationLogResultToLabel(row.result)}
-                  </Badge>
-                </TableCell>
-                <TableCell className="truncate" title={row.summary || row.failure_reason}>
-                  {row.summary || row.failure_reason || "-"}
-                </TableCell>
-                <TableCell>
-                  <Button aria-label="查看日志详情" onClick={() => openDetail(row)} size="icon-sm" variant="ghost">
-                    <Eye className="size-4" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
+            {logs.map((row) => {
+              const moduleLabel = operationLogModuleToLabel(row.module);
+              const actionLabel = operationLogActionToLabel(row.action);
+              const objectLabel = row.object_name || row.object_id || "-";
+              const summaryLabel = row.result === "failed" ? row.failure_reason || row.summary || "-" : row.summary || "-";
+              const summaryTitle =
+                row.result === "failed" && row.failure_reason && row.summary
+                  ? `${row.summary}\n失败原因：${row.failure_reason}`
+                  : summaryLabel;
+
+              return (
+                <TableRow key={row.id}>
+                  <TableCell className="overflow-hidden text-muted-foreground text-xs">
+                    <span className="block truncate">{formatDateTime(row.created_at)}</span>
+                  </TableCell>
+                  <TableCell className="overflow-hidden" title={moduleLabel}>
+                    <span className="block truncate">{moduleLabel}</span>
+                  </TableCell>
+                  <TableCell className="overflow-hidden" title={actionLabel}>
+                    <span className="block truncate">{actionLabel}</span>
+                  </TableCell>
+                  <TableCell className="overflow-hidden" title={objectLabel}>
+                    <span className="block truncate">{objectLabel}</span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={row.result === "failed" ? "destructive" : "outline"}>
+                      {operationLogResultToLabel(row.result)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="overflow-hidden" title={summaryTitle}>
+                    <span className="block truncate">{summaryLabel}</span>
+                  </TableCell>
+                  <TableCell>
+                    <Button aria-label="查看日志详情" onClick={() => openDetail(row)} size="icon-sm" variant="ghost">
+                      <Eye className="size-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
             {loading ? <TableLoadingRow colSpan={7} /> : null}
             {!loading && logs.length === 0 ? (
               <TableRow>
@@ -371,79 +415,10 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
           </DialogHeader>
           <div className="min-h-0 space-y-4 overflow-auto px-6 pb-6">
             {detailLoading && !detail ? <div className="text-muted-foreground text-sm">正在加载日志详情</div> : null}
-            {detail ? (
-              <>
-                <DetailGrid detail={detail} />
-                <JsonBlock title="变更前" value={detail.before} />
-                <JsonBlock title="变更后" value={detail.after} />
-                <JsonBlock title="关联产物" value={detail.artifact_path} />
-              </>
-            ) : null}
+            {detail ? <OperationLogDetailContent detail={detail} /> : null}
           </div>
         </DialogContent>
       </Dialog>
     </div>
   );
-}
-
-function DetailGrid({ detail }: { detail: ApiOperationLogDetail }) {
-  const rows: Array<[string, string]> = [
-    ["时间", formatDateTime(detail.created_at)],
-    ["对象", detail.object_name || detail.object_id || "-"],
-    ["操作人", detail.actor_name],
-    ["结果", operationLogResultToLabel(detail.result)],
-    ["摘要", detail.summary || "-"],
-    ["失败原因", detail.failure_reason || "-"],
-    ["任务 ID", detail.task_id || "-"],
-    ["请求 ID", detail.request_id || "-"],
-    ["IP", detail.ip_address || "-"],
-    ["User-Agent", detail.user_agent || "-"],
-  ];
-
-  return (
-    <div className="relative min-w-0 rounded-lg border p-4 pr-28 text-sm">
-      <div className="absolute top-4 right-4">
-        <OneClipboard copiedLabel="已复制" label="复制" text={serializeDetailRows(rows)} />
-      </div>
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="font-medium text-sm">基础信息</h2>
-      </div>
-      <div className="grid min-w-0 gap-3">
-        {rows.map(([label, value]) => (
-          <div className="grid min-w-0 gap-1 md:grid-cols-[120px_minmax(0,1fr)] md:gap-4" key={label}>
-            <span className="text-muted-foreground">{label}</span>
-            <span className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-              {label === "结果" ? (
-                <Badge variant={detail.result === "failed" ? "destructive" : "outline"}>{value}</Badge>
-              ) : (
-                value
-              )}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function JsonBlock({ title, value }: { title: string; value: unknown }) {
-  const text = JSON.stringify(value ?? {}, null, 2);
-
-  return (
-    <section className="space-y-2">
-      <h2 className="font-medium text-sm">{title}</h2>
-      <div className="relative min-w-0 rounded-lg border bg-muted/30">
-        <div className="absolute top-3 right-3">
-          <OneClipboard copiedLabel="已复制" label="复制" text={text} />
-        </div>
-        <pre className="min-w-0 overflow-auto whitespace-pre-wrap break-words p-4 pr-28 text-xs [overflow-wrap:anywhere]">
-          {text}
-        </pre>
-      </div>
-    </section>
-  );
-}
-
-function serializeDetailRows(rows: Array<[string, string]>) {
-  return rows.map(([label, value]) => `${label}：${value}`).join("\n");
 }

@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from app.dependencies.auth import current_user, require_admin
-from app.schemas.operation_log import OperationLogCleanupRequest, OperationLogRetentionPolicyUpdate
+from app.schemas.operation_log import ClientErrorReport, OperationLogCleanupRequest, OperationLogRetentionPolicyUpdate
 from app.services import operation_log_service
 
 router = APIRouter(prefix="/operation-logs", tags=["operation-logs"])
@@ -63,6 +63,17 @@ def cleanup_logs(payload: OperationLogCleanupRequest, actor=Depends(require_admi
 @router.get("/export")
 def export_logs(actor=Depends(require_admin)) -> dict:
     return {"status": "pending", "message": "日志导出将在前端页面接入后补充文件生成。"}
+
+
+@router.post("/client-errors")
+def report_client_error(payload: ClientErrorReport, request: Request, actor=Depends(current_user)) -> dict:
+    client_host = request.client.host if request.client else ""
+    return operation_log_service.record_client_error(
+        payload,
+        actor,
+        ip_address=client_host,
+        user_agent=request.headers.get("user-agent", ""),
+    )
 
 
 @router.get("/{log_id}")

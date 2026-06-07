@@ -93,10 +93,34 @@ def test_list_running_tasks_aggregates_existing_business_statuses(monkeypatch: p
 
     tasks = task_service.list_running_tasks(ACTOR)
 
-    assert [task["id"] for task in tasks] == ["requirement_file:file-1", "knowledge:kb-1"]
+    assert [task["id"] for task in tasks] == ["requirement_file:file-1", "knowledge:kb-1", "exploration:run-1"]
     assert {task["status_group"] for task in tasks} == {"running"}
     assert tasks[0]["module_label"] == "需求标准化"
     assert tasks[0]["detail_url"] == "/projects/project-1/requirements/doc-1"
+
+
+def test_list_running_tasks_includes_active_exploration(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_project(db)
+        db.execute(
+            """
+            INSERT INTO project_environments (id, project_id, name, site_url, created_by)
+            VALUES ('env-1', 'project-1', '测试环境', 'https://example.test', 'u-admin')
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO exploration_runs (id, project_id, environment_id, title, status, created_by, created_at)
+            VALUES ('run-1', 'project-1', 'env-1', '首页探索', 'running', 'u-admin', '2026-06-04 17:00:01')
+            """
+        )
+
+    tasks = task_service.list_running_tasks(ACTOR)
+
+    assert [task["id"] for task in tasks] == ["exploration:run-1"]
+    assert tasks[0]["source_type"] == "exploration_run"
+    assert tasks[0]["status_label"] == "探索中"
 
 
 def test_requirement_file_task_uses_file_mapping_created_timestamp(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -123,6 +147,153 @@ def test_requirement_file_task_uses_file_mapping_created_timestamp(monkeypatch: 
 
     assert result["items"][0]["id"] == "requirement_file:file-1"
     assert result["items"][0]["created_at"] == "2026-06-04 16:58:01"
+
+
+def test_requirement_analysis_run_is_visible_as_requirement_review_task(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_project(db)
+        _seed_requirement_document(db)
+        db.execute(
+            """
+            INSERT INTO source_document_file_mappings
+              (id, document_id, source_file_path, original_filename, file_format, conversion_status, created_by)
+            VALUES ('file-1', 'doc-1', 'uploads/login.docx', 'login.docx', 'docx', 'success', 'u-admin')
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO requirement_analysis_runs
+              (id, project_id, document_id, primary_mapping_id, status, summary, created_by, created_at)
+            VALUES ('run-1', 'project-1', 'doc-1', 'file-1', 'needs_clarification', '存在待确认问题。', 'u-admin', '2026-06-04 17:00:01')
+            """
+        )
+
+    result = task_service.list_tasks(ACTOR, module="requirement")
+
+    task = next(item for item in result["items"] if item["source_type"] == "requirement_analysis_run")
+    assert task["id"] == "requirement_analysis:run-1"
+    assert task["module_label"] == "需求评审"
+    assert task["title"] == "登录需求"
+    assert task["status_label"] == "等待澄清"
+    assert task["status_group"] == "waiting"
+    assert task["detail_url"] == "/projects/project-1/requirements/doc-1"
+
+
+def test_running_tasks_include_active_requirement_analysis_run(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_project(db)
+        _seed_requirement_document(db)
+        db.execute(
+            """
+            INSERT INTO source_document_file_mappings
+              (id, document_id, source_file_path, original_filename, file_format, conversion_status, created_by)
+            VALUES ('file-1', 'doc-1', 'uploads/login.docx', 'login.docx', 'docx', 'success', 'u-admin')
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO requirement_analysis_runs
+              (id, project_id, document_id, primary_mapping_id, status, summary, created_by, created_at)
+            VALUES ('run-1', 'project-1', 'doc-1', 'file-1', 'running', '需求评审智能体正在分析。', 'u-admin', '2026-06-04 17:00:01')
+            """
+        )
+
+    tasks = task_service.list_running_tasks(ACTOR)
+
+    assert [task["id"] for task in tasks] == ["requirement_analysis:run-1"]
+    assert tasks[0]["status_label"] == "评审中"
+
+
+def test_running_tasks_recovers_stale_requirement_analysis_run(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_project(db)
+        _seed_requirement_document(db)
+        db.execute(
+            """
+            INSERT INTO source_document_file_mappings
+              (id, document_id, source_file_path, original_filename, file_format, conversion_status, created_by)
+            VALUES ('file-1', 'doc-1', 'uploads/login.docx', 'login.docx', 'docx', 'success', 'u-admin')
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO requirement_analysis_runs
+              (id, project_id, document_id, primary_mapping_id, status, summary, created_by, created_at, updated_at)
+            VALUES (
+              'run-1',
+              'project-1',
+              'doc-1',
+              'file-1',
+              'running',
+              '需求评审智能体正在分析。',
+              'u-admin',
+              datetime('now', '-121 minutes'),
+              datetime('now', '-121 minutes')
+            )
+            """
+        )
+
+    tasks = task_service.list_running_tasks(ACTOR)
+
+    assert tasks == []
+    with core_db.connect() as db:
+        run = db.execute("SELECT status, summary, failure_reason FROM requirement_analysis_runs WHERE id = 'run-1'").fetchone()
+        log = db.execute(
+            """
+            SELECT action, result, failure_reason
+            FROM operation_logs
+            WHERE task_id = 'run-1' AND action = 'fail_requirement_analysis'
+            """
+        ).fetchone()
+    assert run["status"] == "failed"
+    assert run["summary"] == "需求评审失败。"
+    assert "超过 120 分钟" in run["failure_reason"]
+    assert log["result"] == "failed"
+    assert "超过 120 分钟" in log["failure_reason"]
+
+
+def test_startup_recovers_interrupted_requirement_analysis_run(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_project(db)
+        _seed_requirement_document(db)
+        db.execute(
+            """
+            INSERT INTO source_document_file_mappings
+              (id, document_id, source_file_path, original_filename, file_format, conversion_status, created_by)
+            VALUES ('file-1', 'doc-1', 'uploads/login.docx', 'login.docx', 'docx', 'success', 'u-admin')
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO requirement_analysis_runs
+              (id, project_id, document_id, primary_mapping_id, status, summary, created_by)
+            VALUES ('run-1', 'project-1', 'doc-1', 'file-1', 'running', '需求评审智能体正在分析。', 'u-admin')
+            """
+        )
+
+    task_service.recover_interrupted_requirement_analysis_runs()
+
+    with core_db.connect() as db:
+        run = db.execute("SELECT status, summary, failure_reason FROM requirement_analysis_runs WHERE id = 'run-1'").fetchone()
+        log = db.execute(
+            """
+            SELECT action, result, failure_reason
+            FROM operation_logs
+            WHERE task_id = 'run-1' AND action = 'fail_requirement_analysis'
+            """
+        ).fetchone()
+
+    assert run["status"] == "failed"
+    assert run["summary"] == "需求评审已中断。"
+    assert "服务已重启" in run["failure_reason"]
+    assert log["result"] == "failed"
+    assert "服务已重启" in log["failure_reason"]
 
 
 def test_get_task_by_source_returns_normalized_exploration_task(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -158,3 +329,7 @@ def test_is_active_task_status_matches_running_indicator_contract() -> None:
     assert task_service.is_active_task_status("exploration_run", "stopping") is True
     assert task_service.is_active_task_status("exploration_run", "pending") is False
     assert task_service.is_active_task_status("exploration_run", "completed") is False
+    assert task_service.is_active_task_status("requirement_analysis_run", "queued") is True
+    assert task_service.is_active_task_status("requirement_analysis_run", "running") is True
+    assert task_service.is_active_task_status("requirement_analysis_run", "needs_clarification") is True
+    assert task_service.is_active_task_status("requirement_analysis_run", "completed") is False

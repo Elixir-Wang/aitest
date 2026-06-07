@@ -8,8 +8,10 @@ import {
   ArrowLeft,
   Check,
   Download,
+  Eye,
   FileSearch,
   FileText,
+  History,
   Loader2,
   Pencil,
   Save,
@@ -26,11 +28,28 @@ import {
   RequirementFileSwitcher,
   type RequirementSwitcherFile,
 } from "@/components/ai-testing/requirement-file-switcher";
+import {
+  isFinalRequirementVersion,
+  type RequirementVersionDetail,
+  RequirementVersionDetailContent,
+  requirementVersionActionLabel,
+  requirementVersionSummary,
+} from "@/components/ai-testing/requirement-version-detail-content";
 import { StandardMarkdownEditor } from "@/components/ai-testing/standard-markdown-editor";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { AiEditInput } from "@/components/ui/ai-input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Badge as RequirementRoleBadge, BadgeDot } from "@/components/ui/badge-2";
+import { BadgeDot, Badge as RequirementRoleBadge } from "@/components/ui/badge-2";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -45,15 +64,29 @@ import { DynamicIslandTOC } from "@/components/ui/dynamic-island-toc";
 import FileUpload1 from "@/components/ui/file-upload-1";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
-import { apiBlobRequest, apiRequest, formatDateTime } from "@/lib/api-client";
+import {
+  ApiRequestError,
+  type ApiTaskItem,
+  apiBlobRequest,
+  apiErrorFromXhr,
+  apiRequest,
+  formatDateTime,
+} from "@/lib/api-client";
+import { reportError } from "@/lib/error-feedback";
+import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 
 const STANDARD_FILE_SECTION_ID = "standard-file-section";
 const ORIGINAL_FILE_SECTION_ID = "original-file-section";
+const PRELIMINARY_REQUIREMENT_SECTION_ID = "preliminary-requirement-section";
 const FINAL_REQUIREMENT_SECTION_ID = "final-requirement-section";
 const REQUIREMENT_DOCUMENT_TOC_SELECTOR =
   '[data-state="active"] .requirement-document-preview h1, [data-state="active"] .requirement-document-preview h2, [data-state="active"] .requirement-document-preview h3, [data-state="active"] .requirement-document-preview h4, [data-state="active"] .requirement-document-preview [data-toc]';
+const REQUIREMENT_REVIEW_ACTIVE_STATUSES = new Set(["queued", "running"]);
+const REQUIREMENT_REVIEW_POLL_INTERVAL_MS = 2000;
+const REQUIREMENT_REVIEW_MAX_POLLS = 90;
 
 type SourceFile = RequirementSwitcherFile & {
   version_id: string | null;
@@ -73,6 +106,14 @@ type RequirementOverviewResponse = {
     status: string;
     updated_at: string;
     current_version_id: string | null;
+    latest_requirement_analysis_run: {
+      id: string;
+      status: string;
+      summary: string;
+      failure_reason: string;
+      created_at: string;
+      updated_at: string;
+    } | null;
   };
   stats: {
     total_files: number;
@@ -116,21 +157,82 @@ type RequirementAnalysisQuestion = {
   dimension: string;
   severity: "blocker" | "major" | "minor";
   source_excerpt: string;
+  recommended_options?: RequirementClarificationOption[];
+  answer?: RequirementClarificationAnswer;
+};
+
+type RequirementAnalysisConflict = {
+  id: string;
+  module_key: string;
+  module_name: string;
+  issue_type: string;
+  question: string;
+  reason: string;
+  impact: string;
+  severity: "blocker" | "major" | "minor";
+  primary_excerpt: string;
+  source_excerpt?: string;
+  evidence?: Array<{
+    mapping_id: string;
+    filename: string;
+    excerpt: string;
+    section_hint: string;
+  }>;
+  recommended_options?: RequirementClarificationOption[];
+  answer?: RequirementClarificationAnswer;
+};
+
+type RequirementAnalysisPendingItem = RequirementAnalysisQuestion | RequirementAnalysisConflict;
+
+type RequirementClarificationOption = {
+  id: string;
+  label: string;
+  answer_markdown: string;
+  rationale?: string;
+  confidence?: "high" | "medium" | "low";
+};
+
+type RequirementClarificationAnswer = {
+  id: string;
+  question_id: string;
+  answer_type: "recommended_option" | "custom" | "defer";
+  selected_option_id: string;
+  answer_markdown: string;
+  user_note: string;
+  apply_status: "not_applicable" | "applied" | "failed";
+  insertion_anchor: string;
+  failure_reason: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type PendingAnswerDraft = {
+  selectedOptionId: string;
+  customAnswer: string;
+  answerType: "recommended_option" | "custom" | "defer";
 };
 
 type RequirementAnalysisResult = {
   id: string;
+  project_id: string;
   document_id: string;
-  version_id: string;
+  version_id: string | null;
+  primary_mapping_id: string | null;
   status: "completed" | "needs_clarification" | "blocked";
   analysis_summary: string;
   quality_result: "passed" | "warning" | "blocked";
   testability_score: number;
+  draft_content_hash: string;
+  finalized_version_id: string | null;
+  finalized_at: string | null;
+  finalized_by: string | null;
   created_by: string;
   created_at: string;
   output: {
     status: "completed" | "needs_clarification" | "blocked";
     analysis_summary: string;
+    preliminary_requirement_markdown: string;
+    applied_supplements: unknown[];
     modules: Array<{
       module_key: string;
       module_name: string;
@@ -144,6 +246,7 @@ type RequirementAnalysisResult = {
       risks: string[];
     }>;
     clarification_questions: RequirementAnalysisQuestion[];
+    conflicts: RequirementAnalysisConflict[];
     coverage_audit: Array<{
       module_key: string;
       module_name: string;
@@ -162,6 +265,43 @@ type RequirementAnalysisResult = {
   };
 };
 
+type RequirementAnalysisResponse = {
+  analysis: RequirementAnalysisResult | null;
+};
+
+type RequirementAnalysisFinalizeResponse = {
+  analysis: RequirementAnalysisResult;
+  version: {
+    id: string;
+    document_id: string;
+    version_no: number;
+    source_action: string;
+    change_summary: string;
+    created_by: string;
+    created_at: string;
+  };
+  document: {
+    id: string;
+    current_version_id: string | null;
+  };
+  markdown_content: string;
+};
+
+type RequirementVersion = RequirementVersionDetail;
+
+type RequirementClarificationAnswerResponse = {
+  answer: RequirementClarificationAnswer;
+  analysis: RequirementAnalysisResult;
+};
+
+type RequirementProgressStepStatus = "completed" | "running" | "upcoming";
+
+type RequirementProgressStep = {
+  id: string;
+  title: string;
+  status: RequirementProgressStepStatus;
+};
+
 const conversionLabels: Record<string, string> = {
   pending: "待转换",
   processing: "转换中",
@@ -175,10 +315,15 @@ const fileRoleLabels: Record<string, string> = {
   supporting: "辅助文件",
 };
 
-const initialRequirementLabels: Record<string, string> = {
-  generated: "已生成",
-  not_generated: "未生成",
+const qualityResultLabels: Record<string, string> = {
+  passed: "通过",
+  warning: "警告",
+  blocked: "阻塞",
 };
+
+function defaultRequirementFileId(files: SourceFile[]) {
+  return files.find((file) => file.file_role === "primary")?.id ?? files[0]?.id ?? "";
+}
 
 export default function DocumentDetailPage() {
   const router = useRouter();
@@ -200,7 +345,18 @@ export default function DocumentDetailPage() {
   const [editingStandardWithAi, setEditingStandardWithAi] = useState(false);
   const [settingPrimaryFileId, setSettingPrimaryFileId] = useState("");
   const [analysisResult, setAnalysisResult] = useState<RequirementAnalysisResult | null>(null);
+  const [requirementVersions, setRequirementVersions] = useState<RequirementVersion[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versionsError, setVersionsError] = useState("");
+  const [selectedRequirementVersion, setSelectedRequirementVersion] = useState<RequirementVersion | null>(null);
+  const [selectedRequirementVersionLoading, setSelectedRequirementVersionLoading] = useState(false);
+  const [switchingRequirementVersionId, setSwitchingRequirementVersionId] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [finalizingRequirement, setFinalizingRequirement] = useState(false);
+  const [savingClarificationId, setSavingClarificationId] = useState("");
+  const [pendingAnswerDrafts, setPendingAnswerDrafts] = useState<Record<string, PendingAnswerDraft>>({});
+  const [finalizeConfirmOpen, setFinalizeConfirmOpen] = useState(false);
+  const [reviewClearConfirmOpen, setReviewClearConfirmOpen] = useState(false);
   const token = useAuthStore((state) => state.token);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
@@ -222,7 +378,11 @@ export default function DocumentDetailPage() {
   } = useLocalTableSelection<SourceFile>([]);
 
   const selectedFile = useMemo(
-    () => overview?.files.find((file) => file.id === selectedFileId) ?? overview?.files[0] ?? null,
+    () =>
+      overview?.files.find((file) => file.id === selectedFileId) ??
+      overview?.files.find((file) => file.file_role === "primary") ??
+      overview?.files[0] ??
+      null,
     [overview?.files, selectedFileId],
   );
   const selectedFileRef = useRef<SourceFile | null>(null);
@@ -236,6 +396,10 @@ export default function DocumentDetailPage() {
     [fileRows, fileSearchText],
   );
   const currentStandardPreview = standardPreview?.fileId === selectedFile?.id ? standardPreview : null;
+  const currentPrimaryFile = useMemo(
+    () => overview?.files.find((file) => file.file_role === "primary") ?? null,
+    [overview?.files],
+  );
   const canEditStandard = Boolean(currentStandardPreview) && !standardLoading && standardError.length === 0;
   const selectedStandardGenerating = Boolean(
     selectedFile &&
@@ -243,14 +407,108 @@ export default function DocumentDetailPage() {
         ["pending", "processing"].includes(selectedFile.conversion_status)),
   );
   const initialMarkdownContent = overview?.initial_markdown_content ?? "";
+  const preliminaryMarkdown = analysisResult?.output.preliminary_requirement_markdown ?? "";
+  const appliedSupplementCount = analysisResult?.output.applied_supplements?.length ?? 0;
+  const clarificationQuestions = analysisResult?.output.clarification_questions ?? [];
+  const analysisConflicts = analysisResult?.output.conflicts ?? [];
+  const pendingAnalysisItems: RequirementAnalysisPendingItem[] = [...clarificationQuestions, ...analysisConflicts];
+  const unresolvedCount = pendingAnalysisItems.filter((item) => !isPendingItemAnswered(item)).length;
+  const hasQualityWarning =
+    analysisResult?.quality_result === "warning" ||
+    analysisResult?.output.quality_gate.result === "warning" ||
+    Boolean(analysisResult?.output.quality_gate.warning_issues.length);
+  const qualitySummary = analysisResult
+    ? `${qualityResultLabels[analysisResult.output.quality_gate.result] ?? analysisResult.output.quality_gate.result}${
+        hasQualityWarning ? "，需确认" : ""
+      }`
+    : "";
+  const isBlocked =
+    analysisResult?.status === "blocked" ||
+    analysisResult?.quality_result === "blocked" ||
+    analysisResult?.output.quality_gate.result === "blocked";
+  const isFinalized = Boolean(analysisResult?.finalized_version_id);
+  const isPrimaryAnalysisChanged = Boolean(
+    analysisResult?.primary_mapping_id && analysisResult.primary_mapping_id !== currentPrimaryFile?.id,
+  );
+  const finalizeDisabledReason = (() => {
+    if (reviewLoading) {
+      return "需求分析中";
+    }
+    if (!analysisResult) {
+      return "尚未生成初步需求";
+    }
+    if (!preliminaryMarkdown.trim()) {
+      return "初步需求为空";
+    }
+    if (isFinalized) {
+      return "已转为最终需求";
+    }
+    if (isBlocked) {
+      return "存在阻塞问题，不能转为最终需求";
+    }
+    if (isPrimaryAnalysisChanged) {
+      return "主需求已变更，请重新分析";
+    }
+    return "";
+  })();
+  const finalizeButtonLabel = isFinalized ? "已转为最终需求" : finalizingRequirement ? "转换中" : "转为最终需求";
   const hasRunningConversions = Boolean(
     overview?.files.some((file) => ["pending", "processing"].includes(file.conversion_status)),
   );
+  const hasFinalRequirementContent = Boolean(initialMarkdownContent.trim());
+  const hasStandardRequirement = Boolean(
+    overview && overview.stats.conversion_success + overview.stats.conversion_warning > 0,
+  );
+  const latestRequirementAnalysisRunStatus = overview?.document.latest_requirement_analysis_run?.status ?? "";
+  const requirementReviewRunning =
+    reviewLoading ||
+    REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRequirementAnalysisRunStatus) ||
+    Boolean(overview?.document.status === "pending_review" && !analysisResult && !latestRequirementAnalysisRunStatus);
+  const requirementReviewPassed = Boolean(analysisResult?.status === "completed" && !isBlocked);
+  const requirementProgressSteps: RequirementProgressStep[] = [
+    {
+      id: "raw",
+      title: "原始需求",
+      status: uploadSubmitting ? "running" : overview?.stats.total_files ? "completed" : "upcoming",
+    },
+    {
+      id: "standard",
+      title: "标准需求",
+      status: hasRunningConversions ? "running" : hasStandardRequirement ? "completed" : "upcoming",
+    },
+    {
+      id: "review",
+      title: "需求评审",
+      status: requirementReviewRunning ? "running" : requirementReviewPassed ? "completed" : "upcoming",
+    },
+    {
+      id: "final",
+      title: "最终需求",
+      status: finalizingRequirement ? "running" : isFinalized && hasFinalRequirementContent ? "completed" : "upcoming",
+    },
+  ];
+  const analysisEmptyText = reviewLoading
+    ? "需求分析中，分析完成后会在这里展示初步需求。"
+    : "尚未生成初步需求，请先在主需求标准文件中执行需求分析。";
+  const finalRequirementEmptyText = reviewLoading
+    ? "需求分析中，当前最终需求已清空，分析完成并转为最终需求后会在这里展示。"
+    : "尚未生成最终需求，请先在初步需求中点击“转为最终需求”。";
+  const finalRequirementVersions = useMemo(
+    () => requirementVersions.filter(isFinalRequirementVersion),
+    [requirementVersions],
+  );
+  const currentRequirementVersion = useMemo(
+    () => finalRequirementVersions.find((version) => version.id === overview?.document.current_version_id) ?? null,
+    [finalRequirementVersions, overview?.document.current_version_id],
+  );
+  const currentRequirementVersionText = overview?.document.current_version_id
+    ? currentRequirementVersion
+      ? `当前生效版本 v${currentRequirementVersion.version_no}`
+      : "当前最终需求版本已生成"
+    : "当前没有生效最终需求";
   const selectedFileEffectKey = selectedFile
     ? [selectedFile.id, selectedFile.conversion_status, selectedFile.standard_file_status].join(":")
     : "";
-  const hasClarificationQuestions = Boolean(analysisResult?.output.clarification_questions.length);
-
   const loadOverview = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
       if (!silent) {
@@ -263,7 +521,9 @@ export default function DocumentDetailPage() {
         );
         setOverview(data);
         setFileRows(data.files);
-        setSelectedFileId((current) => current || data.files[0]?.id || "");
+        setSelectedFileId((current) =>
+          current && data.files.some((file) => file.id === current) ? current : defaultRequirementFileId(data.files),
+        );
         return data;
       } catch (requestError) {
         setError(requestError instanceof Error ? requestError.message : "需求概览加载失败");
@@ -275,6 +535,43 @@ export default function DocumentDetailPage() {
       }
     },
     [documentId, projectId, setFileRows],
+  );
+
+  const loadLatestAnalysis = useCallback(async () => {
+    try {
+      const data = await apiRequest<RequirementAnalysisResponse>(
+        `/projects/${projectId}/requirements/${documentId}/analysis`,
+      );
+      setAnalysisResult(data.analysis);
+      return data.analysis;
+    } catch (_requestError) {
+      setAnalysisResult(null);
+      return null;
+    }
+  }, [documentId, projectId]);
+
+  const loadRequirementVersions = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!silent) {
+        setVersionsLoading(true);
+      }
+      setVersionsError("");
+      try {
+        const data = await apiRequest<RequirementVersion[]>(
+          `/projects/${projectId}/requirements/${documentId}/versions`,
+        );
+        setRequirementVersions(data);
+        return data;
+      } catch (requestError) {
+        setVersionsError(requestError instanceof Error ? requestError.message : "版本记录加载失败");
+        return [];
+      } finally {
+        if (!silent) {
+          setVersionsLoading(false);
+        }
+      }
+    },
+    [documentId, projectId],
   );
 
   const loadReadableOriginalPreview = useCallback(async (file: SourceFile) => {
@@ -306,7 +603,12 @@ export default function DocumentDetailPage() {
       });
     } catch (requestError) {
       setOriginalPreview(null);
-      toast.error(requestError instanceof Error ? requestError.message : "原始文件预览失败");
+      reportError(requestError, {
+        fallbackMessage: "原始文件预览失败",
+        actionLabel: "预览原始文件",
+        method: "GET",
+        path: `/requirement-files/${file.id}/original`,
+      });
     }
   }, []);
 
@@ -334,7 +636,12 @@ export default function DocumentDetailPage() {
       setStandardPreview(null);
       setMarkdownDraft("");
       setStandardError(requestError instanceof Error ? requestError.message : "标准文件生成失败");
-      toast.error(requestError instanceof Error ? requestError.message : "标准文件加载失败");
+      reportError(requestError, {
+        fallbackMessage: "标准文件加载失败",
+        actionLabel: "加载标准文件",
+        method: "GET",
+        path: `/requirement-files/${file.id}/markdown`,
+      });
     } finally {
       setStandardLoading(false);
     }
@@ -343,14 +650,16 @@ export default function DocumentDetailPage() {
   useEffect(() => {
     const queryTab = searchParams.get("tab");
     if (queryTab === "initial") {
-      setActiveTab("final");
+      setActiveTab("analysis");
     } else if (queryTab === "clarification") {
-      setActiveTab(hasClarificationQuestions ? "clarification" : "final");
-    } else if (queryTab && ["overview", "original", "standard", "final"].includes(queryTab)) {
+      setActiveTab("analysis");
+    } else if (queryTab && ["overview", "original", "standard", "analysis", "final", "versions"].includes(queryTab)) {
       setActiveTab(queryTab);
     }
     void loadOverview();
-  }, [hasClarificationQuestions, loadOverview, searchParams]);
+    void loadLatestAnalysis();
+    void loadRequirementVersions({ silent: true });
+  }, [loadLatestAnalysis, loadOverview, loadRequirementVersions, searchParams]);
 
   useEffect(() => {
     selectedFileRef.current = selectedFile;
@@ -391,6 +700,10 @@ export default function DocumentDetailPage() {
     };
   }, [originalPreview?.objectUrl]);
 
+  function handleDetailTabChange(nextTab: string) {
+    setActiveTab(nextTab);
+  }
+
   function selectFileForTab(fileId: string, tab: string) {
     setSelectedFileId(fileId);
     setActiveTab(tab);
@@ -420,7 +733,12 @@ export default function DocumentDetailPage() {
       toast.success("标准文件已保存");
       await loadOverview({ silent: true });
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "标准文件保存失败");
+      reportError(requestError, {
+        fallbackMessage: "标准文件保存失败",
+        actionLabel: "保存标准文件",
+        method: "PUT",
+        path: selectedFile ? `/requirement-files/${selectedFile.id}/markdown` : undefined,
+      });
     } finally {
       setSavingStandard(false);
     }
@@ -465,34 +783,254 @@ export default function DocumentDetailPage() {
       toast.success(editResult.change_summary || "AI修改已保存");
       await loadOverview({ silent: true });
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "智能修改失败");
+      reportError(requestError, {
+        fallbackMessage: "智能修改失败",
+        actionLabel: "AI 修改标准文件",
+        method: "POST",
+        path: "/agents/document-editor/run",
+      });
     } finally {
       setEditingStandardWithAi(false);
     }
   }
 
   async function reviewPrimaryRequirement() {
-    if (!selectedFile || selectedFile.file_role !== "primary") {
+    if (selectedFile?.file_role !== "primary") {
       toast.error("请先选择主需求标准文件");
       return;
     }
+    setReviewClearConfirmOpen(true);
+  }
+
+  function clearRequirementAnalysisTabs() {
+    setAnalysisResult(null);
+    setFinalizeConfirmOpen(false);
+    setReviewClearConfirmOpen(false);
+    setOverview((current) =>
+      current
+        ? {
+            ...current,
+            document: {
+              ...current.document,
+              current_version_id: null,
+            },
+            stats: {
+              ...current.stats,
+              initial_requirement_status: "not_generated",
+            },
+            initial_markdown_content: "",
+          }
+        : current,
+    );
+  }
+
+  async function submitRequirementAnalysis() {
     setReviewLoading(true);
+    clearRequirementAnalysisTabs();
+    let runId = "";
     try {
+      const task = await apiRequest<ApiTaskItem>(`/projects/${projectId}/requirements/${documentId}/review`, {
+        method: "POST",
+      });
+      runId = task.source_id;
       notifyAiTaskStarted();
-      const result = await apiRequest<RequirementAnalysisResult>(
-        `/projects/${projectId}/requirements/${documentId}/review`,
-        {
-          method: "POST",
-        },
-      );
-      setAnalysisResult(result);
-      toast.success("需求评审已完成");
-      await loadOverview({ silent: true });
-      setActiveTab(result.output.clarification_questions.length > 0 ? "clarification" : "final");
+      toast.success("需求分析已提交，正在分析中");
+      setActiveTab("analysis");
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "需求评审失败");
+      reportError(requestError, {
+        fallbackMessage: "需求分析提交失败",
+        actionLabel: "提交需求分析",
+        method: "POST",
+        path: `/projects/${projectId}/requirements/${documentId}/review`,
+      });
+      setReviewLoading(false);
+      await loadOverview({ silent: true });
+      await loadLatestAnalysis();
+      return;
+    }
+
+    try {
+      await waitForRequirementReviewTask(runId);
+      await loadOverview({ silent: true });
+      await loadLatestAnalysis();
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "需求分析状态同步失败",
+        actionLabel: "同步需求分析状态",
+        method: "GET",
+        path: `/tasks?project_id=${projectId}&module=requirement&page_size=100`,
+      });
     } finally {
       setReviewLoading(false);
+    }
+  }
+
+  async function waitForRequirementReviewTask(runId: string) {
+    for (let index = 0; index < REQUIREMENT_REVIEW_MAX_POLLS; index += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, REQUIREMENT_REVIEW_POLL_INTERVAL_MS));
+      const params = new URLSearchParams({
+        project_id: projectId,
+        module: "requirement",
+        page_size: "100",
+      });
+      const data = await apiRequest<{ items: ApiTaskItem[] }>(`/tasks?${params.toString()}`);
+      const task = data.items.find(
+        (item) => item.source_type === "requirement_analysis_run" && item.source_id === runId,
+      );
+      if (!task || !REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(task.status)) {
+        return;
+      }
+    }
+  }
+
+  async function finalizePreliminaryRequirement(confirmUnresolved = false) {
+    if (!analysisResult) {
+      toast.error("尚未生成初步需求");
+      return;
+    }
+    setFinalizingRequirement(true);
+    try {
+      const result = await apiRequest<RequirementAnalysisFinalizeResponse>(
+        `/projects/${projectId}/requirements/${documentId}/analysis/finalize`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            analysis_id: analysisResult.id,
+            confirm_unresolved: confirmUnresolved,
+          }),
+        },
+      );
+      setAnalysisResult(result.analysis);
+      setFinalizeConfirmOpen(false);
+      toast.success("已转为最终需求");
+      await loadOverview({ silent: true });
+      await loadRequirementVersions({ silent: true });
+      setActiveTab("final");
+    } catch (requestError) {
+      if (!confirmUnresolved && isConfirmRequired(requestError)) {
+        setFinalizeConfirmOpen(true);
+        return;
+      }
+      reportError(requestError, {
+        fallbackMessage: "转为最终需求失败",
+        actionLabel: "转为最终需求",
+        method: "POST",
+        path: `/projects/${projectId}/requirements/${documentId}/analysis/finalize`,
+      });
+    } finally {
+      setFinalizingRequirement(false);
+    }
+  }
+
+  async function openRequirementVersionDetail(version: RequirementVersion) {
+    setSelectedRequirementVersion(version);
+    setSelectedRequirementVersionLoading(true);
+    try {
+      const detail = await apiRequest<RequirementVersion>(
+        `/projects/${projectId}/requirements/${documentId}/versions/${version.id}`,
+      );
+      setSelectedRequirementVersion(detail);
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "版本详情加载失败",
+        actionLabel: "查看需求版本",
+        method: "GET",
+        path: `/projects/${projectId}/requirements/${documentId}/versions/${version.id}`,
+      });
+      setSelectedRequirementVersion(null);
+    } finally {
+      setSelectedRequirementVersionLoading(false);
+    }
+  }
+
+  async function switchRequirementVersion(version: RequirementVersion) {
+    setSwitchingRequirementVersionId(version.id);
+    try {
+      await apiRequest(`/projects/${projectId}/requirements/${documentId}/versions/${version.id}/current`, {
+        method: "PUT",
+      });
+      toast.success(`已切换为 v${version.version_no}`);
+      setSelectedRequirementVersion((current) => (current ? { ...current, is_current: true } : current));
+      await loadOverview({ silent: true });
+      await loadRequirementVersions({ silent: true });
+      setActiveTab("final");
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "版本切换失败",
+        actionLabel: "切换最终需求版本",
+        method: "PUT",
+        path: `/projects/${projectId}/requirements/${documentId}/versions/${version.id}/current`,
+      });
+    } finally {
+      setSwitchingRequirementVersionId("");
+    }
+  }
+
+  function updatePendingAnswerDraft(questionId: string, patch: Partial<PendingAnswerDraft>) {
+    setPendingAnswerDrafts((current) => {
+      const existing = current[questionId] ?? {
+        selectedOptionId: "",
+        customAnswer: "",
+        answerType: "recommended_option",
+      };
+      return {
+        ...current,
+        [questionId]: {
+          ...existing,
+          ...patch,
+        },
+      };
+    });
+  }
+
+  async function saveClarificationAnswer(item: RequirementAnalysisPendingItem) {
+    if (!analysisResult) {
+      toast.error("尚未生成需求分析结果");
+      return;
+    }
+    const draft = pendingAnswerDrafts[item.id] ?? {
+      selectedOptionId: item.answer?.selected_option_id ?? item.recommended_options?.[0]?.id ?? "",
+      customAnswer: "",
+      answerType: item.answer?.answer_type ?? "recommended_option",
+    };
+    const customAnswer = draft.customAnswer.trim();
+    const answerType = customAnswer ? "custom" : draft.answerType;
+    if (answerType === "recommended_option" && !draft.selectedOptionId) {
+      toast.error("请选择推荐选项，或填写自定义说明");
+      return;
+    }
+    setSavingClarificationId(item.id);
+    try {
+      const result = await apiRequest<RequirementClarificationAnswerResponse>(
+        `/projects/${projectId}/requirements/${documentId}/analysis/${analysisResult.id}/clarification-answers`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            question_id: item.id,
+            answer_type: answerType,
+            selected_option_id: answerType === "recommended_option" ? draft.selectedOptionId : "",
+            custom_answer: customAnswer,
+          }),
+        },
+      );
+      setAnalysisResult(result.analysis);
+      setPendingAnswerDrafts((current) => {
+        const next = { ...current };
+        delete next[item.id];
+        return next;
+      });
+      toast.success(answerType === "defer" ? "已标记暂不处理" : "答复已写入初步需求");
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "保存答复失败",
+        actionLabel: "保存待确认问题答复",
+        method: "POST",
+        path: analysisResult
+          ? `/projects/${projectId}/requirements/${documentId}/analysis/${analysisResult.id}/clarification-answers`
+          : undefined,
+      });
+    } finally {
+      setSavingClarificationId("");
     }
   }
 
@@ -506,7 +1044,12 @@ export default function DocumentDetailPage() {
       await loadOverview({ silent: true });
       setSelectedFileId(file.id);
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "主需求文件设置失败");
+      reportError(requestError, {
+        fallbackMessage: "主需求文件设置失败",
+        actionLabel: "设为主需求文件",
+        method: "PUT",
+        path: `/projects/${projectId}/requirements/${documentId}/files/${file.id}/primary`,
+      });
     } finally {
       setSettingPrimaryFileId("");
     }
@@ -521,7 +1064,12 @@ export default function DocumentDetailPage() {
       toast.success(`已删除 ${ids.length} 个原始文件`);
       await loadOverview({ silent: true });
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "原始文件删除失败");
+      reportError(requestError, {
+        fallbackMessage: "原始文件删除失败",
+        actionLabel: "删除原始文件",
+        method: "DELETE",
+        path: "/requirement-files/{id}",
+      });
     }
   }
 
@@ -600,20 +1148,13 @@ export default function DocumentDetailPage() {
           );
         };
         xhr.onload = () => {
-          const payload = (() => {
-            try {
-              return JSON.parse(xhr.responseText);
-            } catch {
-              return null;
-            }
-          })();
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve();
             return;
           }
-          reject(new Error(payload?.detail?.message ?? payload?.detail ?? "文件上传失败"));
+          reject(apiErrorFromXhr(xhr, "文件上传失败"));
         };
-        xhr.onerror = () => reject(new Error("网络异常，文件上传失败"));
+        xhr.onerror = () => reject(apiErrorFromXhr(xhr, "网络异常，文件上传失败"));
         const formData = new FormData();
         formData.append("mode", "append");
         formData.append("existing_document_id", documentId);
@@ -632,7 +1173,12 @@ export default function DocumentDetailPage() {
       notifyAiTaskStarted();
       await loadOverview({ silent: true });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "文件上传失败");
+      reportError(err, {
+        fallbackMessage: "文件上传失败",
+        actionLabel: "追加需求文件",
+        method: "POST",
+        path: `/projects/${projectId}/requirements`,
+      });
       setUploadStates(
         Object.fromEntries(uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress: 0, status: "error" as const }])),
       );
@@ -663,22 +1209,26 @@ export default function DocumentDetailPage() {
 
   const showRequirementToc =
     (activeTab === "standard" && !editingStandard && Boolean(currentStandardPreview?.markdownContent.trim())) ||
+    (activeTab === "analysis" && Boolean(preliminaryMarkdown.trim())) ||
     (activeTab === "final" && Boolean(overview.initial_markdown_content.trim()));
   const requirementTocRefreshKey = [
     activeTab,
     selectedFile?.id ?? "",
     currentStandardPreview?.markdownContent.length ?? 0,
+    preliminaryMarkdown.length,
     initialMarkdownContent.length,
-    overview.initial_markdown_content.length,
+    analysisResult?.finalized_version_id ?? "",
   ].join(":");
   const requirementTocAnchorSelector =
     activeTab === "standard"
       ? `#${STANDARD_FILE_SECTION_ID} .requirement-document-preview`
-      : `#${FINAL_REQUIREMENT_SECTION_ID} .requirement-document-preview`;
+      : activeTab === "analysis"
+        ? `#${PRELIMINARY_REQUIREMENT_SECTION_ID} .requirement-document-preview`
+        : `#${FINAL_REQUIREMENT_SECTION_ID} .requirement-document-preview`;
   return (
     <PageShell
       breadcrumbs={["项目", "需求", overview.document.name]}
-      description="查看原始文件、标准文件、主需求和评审结果。"
+      description="查看原始文件、标准文件、主需求和分析结果。"
       title="需求概览"
     >
       {showRequirementToc ? (
@@ -688,25 +1238,18 @@ export default function DocumentDetailPage() {
           selector={REQUIREMENT_DOCUMENT_TOC_SELECTOR}
         />
       ) : null}
-      <Tabs className="space-y-4" onValueChange={setActiveTab} value={activeTab}>
+      <Tabs className="space-y-4" onValueChange={handleDetailTabChange} value={activeTab}>
         <TabsList>
           <TabsTrigger value="overview">概览</TabsTrigger>
           <TabsTrigger value="original">原始文件</TabsTrigger>
           <TabsTrigger value="standard">标准文件</TabsTrigger>
-          {hasClarificationQuestions ? <TabsTrigger value="clarification">需求澄清</TabsTrigger> : null}
+          <TabsTrigger value="analysis">需求分析</TabsTrigger>
           <TabsTrigger value="final">最终需求</TabsTrigger>
+          <TabsTrigger value="versions">版本记录</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
-          <div className="grid gap-3 md:grid-cols-4">
-            <SummaryMetric label="原始文件" value={`${overview.stats.total_files}`} />
-            <SummaryMetric label="主需求文件" value={`${overview.stats.primary_files}`} />
-            <SummaryMetric label="辅助文件" value={`${Math.max(overview.stats.total_files - overview.stats.primary_files, 0)}`} />
-            <SummaryMetric
-              label="最终需求"
-              value={initialRequirementLabels[overview.stats.initial_requirement_status] ?? "未生成"}
-            />
-          </div>
+          <RequirementProgressSteps steps={requirementProgressSteps} />
           <ShellSection className="mt-6">
             <ListToolbar
               description={`转换成功 ${overview.stats.conversion_success} · 有警告 ${overview.stats.conversion_warning} · 失败 ${overview.stats.conversion_failed}`}
@@ -862,11 +1405,14 @@ export default function DocumentDetailPage() {
         <TabsContent value="original">
           <ShellSection id={ORIGINAL_FILE_SECTION_ID}>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <RequirementFileSwitcher
-                files={overview.files}
-                onSelect={setSelectedFileId}
-                selectedFileId={selectedFile?.id ?? ""}
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <RequirementFileSwitcher
+                  files={overview.files}
+                  onSelect={setSelectedFileId}
+                  selectedFileId={selectedFile?.id ?? ""}
+                />
+                {selectedFile ? <FileRoleBadge file={selectedFile} /> : null}
+              </div>
               <Button disabled={!originalPreview} onClick={downloadOriginalPreview} type="button" variant="outline">
                 <Download className="size-4" />
                 下载文件
@@ -886,21 +1432,7 @@ export default function DocumentDetailPage() {
                   onSelect={setSelectedFileId}
                   selectedFileId={selectedFile?.id ?? ""}
                 />
-                {selectedFile ? (
-                  <RequirementRoleBadge
-                    appearance="outline"
-                    className={
-                      selectedFile.file_role === "primary"
-                        ? "border-primary/20 bg-primary/5 text-foreground"
-                        : "border-border bg-muted/40 text-muted-foreground"
-                    }
-                    shape="circle"
-                    variant="secondary"
-                  >
-                    <BadgeDot className={selectedFile.file_role === "primary" ? "bg-primary" : "bg-muted-foreground"} />
-                    {fileRoleLabels[selectedFile.file_role] ?? selectedFile.file_role}
-                  </RequirementRoleBadge>
-                ) : null}
+                {selectedFile ? <FileRoleBadge file={selectedFile} /> : null}
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {editingStandard ? (
@@ -954,7 +1486,7 @@ export default function DocumentDetailPage() {
                         ) : (
                           <FileSearch className="size-4" />
                         )}
-                        {reviewLoading ? "评审中" : "需求评审"}
+                        {reviewLoading ? "分析中" : "需求分析"}
                       </Button>
                     ) : (
                       <Button
@@ -999,100 +1531,484 @@ export default function DocumentDetailPage() {
           </ShellSection>
         </TabsContent>
 
-        {hasClarificationQuestions ? (
-          <TabsContent value="clarification">
-            <ShellSection>
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-medium text-sm">需求澄清</h2>
-                  <p className="mt-1 text-muted-foreground text-xs">集中处理需求评审识别出的待澄清问题。</p>
-                </div>
-              </div>
-              {analysisResult?.output.clarification_questions.length ? (
-                <div className="space-y-3">
-                  {analysisResult.output.clarification_questions.map((question) => (
-                    <div className="rounded-lg border bg-background p-4" key={question.id}>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant={question.severity === "blocker" ? "destructive" : "secondary"}>
-                          {question.severity}
-                        </Badge>
-                        <span className="font-medium text-sm">{question.module_name}</span>
+        <TabsContent value="analysis">
+          <ShellSection>
+            <Tabs className="space-y-4" defaultValue="preliminary">
+              <TabsList>
+                <TabsTrigger value="preliminary">初步需求</TabsTrigger>
+                <TabsTrigger value="pending">待确认问题</TabsTrigger>
+              </TabsList>
+              <TabsContent id={PRELIMINARY_REQUIREMENT_SECTION_ID} value="preliminary">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="font-medium text-sm">初步需求</h2>
+                    <p className="mt-1 text-muted-foreground text-xs">
+                      {analysisResult
+                        ? `辅助补强 ${appliedSupplementCount} 项 · 待确认 ${unresolvedCount} 项 · 质量状态：${qualitySummary}`
+                        : "需求分析完成后会在这里展示初步需求。"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {isFinalized ? (
+                      <Button onClick={() => setActiveTab("final")} type="button" variant="outline">
+                        <FileText className="size-4" />
+                        查看最终需求
+                      </Button>
+                    ) : null}
+                    <Button
+                      disabled={Boolean(finalizeDisabledReason) || finalizingRequirement}
+                      onClick={() => void finalizePreliminaryRequirement()}
+                      title={finalizeDisabledReason || undefined}
+                      type="button"
+                    >
+                      {finalizingRequirement ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Check className="size-4" />
+                      )}
+                      {finalizeButtonLabel}
+                    </Button>
+                    {finalizeDisabledReason && !isFinalized ? (
+                      <div className="basis-full text-right text-muted-foreground text-xs">
+                        {finalizeDisabledReason}
                       </div>
-                      <div className="mt-3 text-sm">{question.question}</div>
-                      <div className="mt-2 text-muted-foreground text-xs">{question.reason}</div>
-                      {question.impact ? (
-                        <div className="mt-2 text-muted-foreground text-xs">影响：{question.impact}</div>
-                      ) : null}
-                      {question.source_excerpt ? (
-                        <div className="mt-3 rounded-md bg-muted/40 p-3 text-xs">{question.source_excerpt}</div>
-                      ) : null}
-                    </div>
-                  ))}
+                    ) : null}
+                  </div>
                 </div>
-              ) : (
-                <div className="flex min-h-[280px] items-center justify-center rounded-lg border bg-muted/20 text-center text-muted-foreground text-sm">
-                  {analysisResult ? "暂无待澄清问题。" : "尚未执行需求评审，完成评审后会在这里展示澄清问题。"}
-                </div>
-              )}
-            </ShellSection>
-          </TabsContent>
-        ) : null}
+                <MarkdownPreview
+                  className="requirement-document-preview"
+                  content={preliminaryMarkdown}
+                  emptyClassName="flex items-center justify-center text-center"
+                  emptyText={analysisEmptyText}
+                />
+              </TabsContent>
+              <TabsContent value="pending">
+                {pendingAnalysisItems.length ? (
+                  <div className="space-y-3">
+                    {pendingAnalysisItems.map((item) => {
+                      const draft = pendingAnswerDrafts[item.id] ?? {
+                        selectedOptionId: item.answer?.selected_option_id ?? item.recommended_options?.[0]?.id ?? "",
+                        customAnswer: "",
+                        answerType: item.answer?.answer_type ?? "recommended_option",
+                      };
+                      const isSaving = savingClarificationId === item.id;
+                      const answered = isPendingItemAnswered(item);
+                      return (
+                        <div className="rounded-lg border bg-background p-4" key={item.id}>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>
+                              {item.severity}
+                            </Badge>
+                            <span className="font-medium text-sm">{item.module_name}</span>
+                            {"issue_type" in item ? (
+                              <span className="text-muted-foreground text-xs">{item.issue_type}</span>
+                            ) : null}
+                            {item.answer ? (
+                              <Badge variant={item.answer.apply_status === "applied" ? "default" : "outline"}>
+                                {clarificationAnswerStatusLabel(item.answer)}
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <div className="mt-3 text-sm">{item.question}</div>
+                          <div className="mt-2 text-muted-foreground text-xs">{item.reason}</div>
+                          {item.impact ? (
+                            <div className="mt-2 text-muted-foreground text-xs">影响：{item.impact}</div>
+                          ) : null}
+                          {pendingItemExcerpt(item) ? (
+                            <div className="mt-3 rounded-md bg-muted/40 p-3 text-xs">{pendingItemExcerpt(item)}</div>
+                          ) : null}
+
+                          <div className="mt-4 space-y-3 border-t pt-4">
+                            {item.recommended_options?.length ? (
+                              <div className="space-y-2">
+                                <div className="font-medium text-xs">推荐选项</div>
+                                <div className="grid gap-2 md:grid-cols-2">
+                                  {item.recommended_options.slice(0, 2).map((option) => {
+                                    const selected =
+                                      draft.answerType === "recommended_option" && draft.selectedOptionId === option.id;
+                                    return (
+                                      <button
+                                        className={cn(
+                                          "rounded-md border p-3 text-left text-sm transition-colors",
+                                          selected
+                                            ? "border-primary bg-primary/5 text-foreground"
+                                            : "bg-background hover:bg-muted/50",
+                                        )}
+                                        disabled={isSaving || isFinalized}
+                                        key={option.id}
+                                        onClick={() =>
+                                          updatePendingAnswerDraft(item.id, {
+                                            answerType: "recommended_option",
+                                            selectedOptionId: option.id,
+                                          })
+                                        }
+                                        type="button"
+                                      >
+                                        <div className="font-medium">{option.label}</div>
+                                        <div className="mt-1 text-muted-foreground text-xs">
+                                          {option.answer_markdown}
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-muted-foreground text-xs">暂无推荐选项，可填写自定义说明。</div>
+                            )}
+
+                            <button
+                              className={cn(
+                                "rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                                draft.answerType === "defer"
+                                  ? "border-primary bg-primary/5"
+                                  : "bg-background hover:bg-muted/50",
+                              )}
+                              disabled={isSaving || isFinalized}
+                              onClick={() => updatePendingAnswerDraft(item.id, { answerType: "defer" })}
+                              type="button"
+                            >
+                              暂不处理
+                            </button>
+
+                            <Textarea
+                              className="min-h-24 text-sm"
+                              disabled={isSaving || isFinalized}
+                              onChange={(event) =>
+                                updatePendingAnswerDraft(item.id, {
+                                  answerType: "custom",
+                                  customAnswer: event.target.value,
+                                })
+                              }
+                              placeholder="也可以手动输入自定义答案，保存后会写入初步需求。"
+                              value={draft.customAnswer}
+                            />
+
+                            {item.answer?.answer_markdown ? (
+                              <div className="rounded-md bg-muted/40 p-3 text-xs">
+                                <div className="font-medium">当前答复</div>
+                                <div className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                                  {item.answer.answer_markdown}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-muted-foreground text-xs">
+                                {answered
+                                  ? item.answer?.insertion_anchor
+                                    ? `已写入：${item.answer.insertion_anchor}`
+                                    : "已处理"
+                                  : "保存后会更新初步需求内容。"}
+                              </div>
+                              <Button
+                                disabled={isSaving || isFinalized}
+                                onClick={() => void saveClarificationAnswer(item)}
+                                type="button"
+                              >
+                                {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                                保存答复
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex min-h-[280px] items-center justify-center rounded-lg border bg-muted/20 text-center text-muted-foreground text-sm">
+                    {analysisResult ? "暂无待确认问题。" : "尚未执行需求分析，完成分析后会在这里展示待确认问题。"}
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </ShellSection>
+        </TabsContent>
 
         <TabsContent value="final">
           <ShellSection id={FINAL_REQUIREMENT_SECTION_ID}>
             <div className="mb-3">
-              <div>
-                <h2 className="font-medium text-sm">最终需求</h2>
-                <p className="mt-1 text-muted-foreground text-xs">当前已生效的需求版本内容。</p>
-              </div>
+              <h2 className="font-medium text-sm">最终需求</h2>
+              <p className="mt-1 text-muted-foreground text-xs">当前已生效的需求版本内容。</p>
             </div>
             <MarkdownPreview
               className="requirement-document-preview"
               content={overview.initial_markdown_content}
               emptyClassName="flex items-center justify-center text-center"
-              emptyText="尚未生成最终需求，请先在主需求标准文件中执行需求评审。"
+              emptyText={finalRequirementEmptyText}
             />
-            <div className="mt-6 rounded-lg border bg-muted/20 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-medium text-sm">最近一次需求评审</h3>
-                  <p className="mt-1 text-muted-foreground text-xs">
-                    {analysisResult
-                      ? `状态：${analysisResult.status} · 可测试性：${analysisResult.testability_score}`
-                      : "尚未执行需求评审。"}
-                  </p>
-                </div>
-              </div>
-              {analysisResult ? (
-                <div className="mt-4 space-y-4">
-                  <div className="text-sm">{analysisResult.analysis_summary}</div>
-                  {analysisResult.output.quality_gate.blocking_issues.length ? (
-                    <div className="space-y-2">
-                      <div className="font-medium text-xs">阻塞项</div>
-                      <ul className="list-disc space-y-1 pl-5 text-sm">
-                        {analysisResult.output.quality_gate.blocking_issues.map((item) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
           </ShellSection>
         </TabsContent>
 
+        <TabsContent value="versions">
+          <ShellSection>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-medium text-sm">版本记录</h2>
+                <p className="mt-1 text-muted-foreground text-xs">{currentRequirementVersionText}。</p>
+              </div>
+              <Button
+                disabled={versionsLoading}
+                onClick={() => {
+                  void loadRequirementVersions();
+                }}
+                type="button"
+                variant="outline"
+              >
+                {versionsLoading ? <Loader2 className="size-4 animate-spin" /> : <History className="size-4" />}
+                刷新
+              </Button>
+            </div>
+            {versionsError ? (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-destructive text-sm">
+                {versionsError}
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>版本</TableHead>
+                      <TableHead>摘要</TableHead>
+                      <TableHead>创建时间</TableHead>
+                      <TableHead className="w-20">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {finalRequirementVersions.map((version) => (
+                      <TableRow key={version.id}>
+                        <TableCell>{`v${version.version_no}`}</TableCell>
+                        <TableCell className="max-w-2xl whitespace-normal">
+                          {requirementVersionSummary(version)}
+                        </TableCell>
+                        <TableCell>{formatDateTime(version.created_at)}</TableCell>
+                        <TableCell>
+                          <Button
+                            aria-label="查看版本详情"
+                            onClick={() => {
+                              void openRequirementVersionDetail(version);
+                            }}
+                            size="icon-sm"
+                            type="button"
+                            variant="ghost"
+                          >
+                            <Eye className="size-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {finalRequirementVersions.length === 0 ? (
+                      <TableRow>
+                        <TableCell className="py-8 text-center text-muted-foreground text-sm" colSpan={4}>
+                          尚未生成最终需求版本
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </ShellSection>
+        </TabsContent>
       </Tabs>
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedRequirementVersion(null);
+            setSelectedRequirementVersionLoading(false);
+          }
+        }}
+        open={Boolean(selectedRequirementVersion)}
+      >
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-4xl">
+          <DialogHeader className="shrink-0 gap-2 px-6 pt-6 pb-4">
+            <DialogTitle>版本详情</DialogTitle>
+            <DialogDescription>
+              {selectedRequirementVersion
+                ? `v${selectedRequirementVersion.version_no} / ${requirementVersionActionLabel()}`
+                : "加载中"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 space-y-4 overflow-auto px-6 pb-6">
+            {selectedRequirementVersionLoading ? (
+              <div className="flex items-center gap-2 rounded-lg border bg-muted/20 p-4 text-muted-foreground text-sm">
+                <Loader2 className="size-4 animate-spin" />
+                正在加载版本最终需求
+              </div>
+            ) : null}
+            {selectedRequirementVersion ? (
+              <RequirementVersionDetailContent version={selectedRequirementVersion} />
+            ) : null}
+          </div>
+          <DialogFooter className="border-t px-6 py-4">
+            <Button
+              disabled={[
+                !selectedRequirementVersion,
+                selectedRequirementVersionLoading,
+                selectedRequirementVersion ? switchingRequirementVersionId === selectedRequirementVersion.id : false,
+                selectedRequirementVersion
+                  ? selectedRequirementVersion.id === overview.document.current_version_id
+                  : false,
+                selectedRequirementVersion?.is_current === true,
+              ].some(Boolean)}
+              onClick={() => {
+                if (selectedRequirementVersion) {
+                  void switchRequirementVersion(selectedRequirementVersion);
+                }
+              }}
+              type="button"
+            >
+              {selectedRequirementVersion && switchingRequirementVersionId === selectedRequirementVersion.id ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Check className="size-4" />
+              )}
+              {[
+                selectedRequirementVersion?.id === overview.document.current_version_id,
+                selectedRequirementVersion?.is_current,
+              ].some(Boolean)
+                ? "当前生效版本"
+                : "切换为当前版本"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog onOpenChange={setReviewClearConfirmOpen} open={reviewClearConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div
+              aria-hidden="true"
+              className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/15"
+            >
+              <FileSearch className="size-5" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <AlertDialogTitle>{hasFinalRequirementContent ? "重新需求分析" : "开始需求分析？"}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {hasFinalRequirementContent
+                  ? "当前已有最终需求内容。重新执行需求分析会清空需求分析和最终需求 tab 内容，分析完成后需要重新转为最终需求。是否继续？"
+                  : "将基于当前主需求标准文件生成初步需求、待确认问题和质量评审结果。分析开始后会清空旧的需求分析和最终需求内容。"}
+              </AlertDialogDescription>
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="sm:justify-center">
+            <AlertDialogCancel disabled={reviewLoading}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={reviewLoading}
+              onClick={() => {
+                void submitRequirementAnalysis();
+              }}
+            >
+              {reviewLoading ? <Loader2 className="size-4 animate-spin" /> : <FileSearch className="size-4" />}
+              继续分析
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Dialog onOpenChange={setFinalizeConfirmOpen} open={finalizeConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>转为最终需求</DialogTitle>
+            <DialogDescription>
+              当前初步需求仍存在待确认问题或质量警告。转为最终需求后会生成新的最终需求版本，后续可继续通过版本记录追溯。是否继续？
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              disabled={finalizingRequirement}
+              onClick={() => setFinalizeConfirmOpen(false)}
+              type="button"
+              variant="outline"
+            >
+              取消
+            </Button>
+            <Button
+              disabled={finalizingRequirement}
+              onClick={() => {
+                setFinalizeConfirmOpen(false);
+                void finalizePreliminaryRequirement(true);
+              }}
+              type="button"
+            >
+              {finalizingRequirement ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+              继续转换
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }
 
-function SummaryMetric({ label, value }: { label: string; value: string }) {
+function RequirementProgressSteps({ steps }: { steps: RequirementProgressStep[] }) {
   return (
     <ShellSection>
-      <div className="text-muted-foreground text-xs">{label}</div>
-      <div className="mt-2 font-semibold text-2xl tabular-nums">{value}</div>
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-medium text-sm">需求处理进度</h2>
+          <p className="mt-1 text-muted-foreground text-xs">按原始需求、标准需求、需求评审、最终需求推进。</p>
+        </div>
+      </div>
+      <div className="relative">
+        <div className="absolute top-4 bottom-4 left-4 w-px bg-border md:top-5 md:right-[12.5%] md:left-[12.5%] md:h-px md:w-auto" />
+        <div className="relative grid gap-5 md:grid-cols-4">
+          {steps.map((step) => (
+            <div className="relative flex gap-3 md:flex-col md:items-center md:gap-2 md:text-center" key={step.id}>
+              <RequirementStepMarker status={step.status} />
+              <div className="min-w-0">
+                <h3
+                  className={cn(
+                    "font-medium text-sm",
+                    step.status === "completed" && "text-emerald-700 dark:text-emerald-300",
+                    step.status === "running" && "text-primary",
+                    step.status === "upcoming" && "text-muted-foreground",
+                  )}
+                >
+                  {step.title}
+                </h3>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </ShellSection>
+  );
+}
+
+function RequirementStepMarker({ status }: { status: RequirementProgressStepStatus }) {
+  return (
+    <span
+      className={cn(
+        "z-10 flex size-8 shrink-0 items-center justify-center rounded-full border bg-card",
+        status === "completed" &&
+          "border-emerald-500 bg-emerald-500 text-white shadow-[0_0_0_4px] shadow-emerald-500/15",
+        status === "running" &&
+          "border-primary bg-primary text-primary-foreground shadow-[0_0_0_4px] shadow-primary/15",
+        status === "upcoming" && "border-border bg-muted/80 text-muted-foreground",
+      )}
+    >
+      {status === "completed" ? <Check className="size-4" /> : null}
+      {status === "running" ? <Loader2 className="size-4 animate-spin" /> : null}
+      {status === "upcoming" ? <span className="size-2 rounded-full bg-current" /> : null}
+    </span>
+  );
+}
+
+function FileRoleBadge({ file }: { file: SourceFile }) {
+  return (
+    <RequirementRoleBadge
+      appearance="outline"
+      className={
+        file.file_role === "primary"
+          ? "border-primary/20 bg-primary/5 text-foreground"
+          : "border-border bg-muted/40 text-muted-foreground"
+      }
+      shape="circle"
+      variant="secondary"
+    >
+      <BadgeDot className={file.file_role === "primary" ? "bg-primary" : "bg-muted-foreground"} />
+      {fileRoleLabels[file.file_role] ?? file.file_role}
+    </RequirementRoleBadge>
   );
 }
 
@@ -1147,6 +2063,30 @@ function standardMarkdownFilename(filename: string) {
   return displayName.replace(/\.[^.]+$/, "");
 }
 
+function isPendingItemAnswered(item: RequirementAnalysisPendingItem) {
+  return item.answer?.apply_status === "applied" || item.answer?.apply_status === "not_applicable";
+}
 
+function clarificationAnswerStatusLabel(answer: RequirementClarificationAnswer) {
+  if (answer.apply_status === "applied") {
+    return "已应用";
+  }
+  if (answer.apply_status === "not_applicable") {
+    return "暂不处理";
+  }
+  return "应用失败";
+}
 
+function pendingItemExcerpt(item: RequirementAnalysisPendingItem) {
+  if ("source_excerpt" in item && item.source_excerpt) {
+    return item.source_excerpt;
+  }
+  if ("primary_excerpt" in item && item.primary_excerpt) {
+    return item.primary_excerpt;
+  }
+  return "";
+}
 
+function isConfirmRequired(error: unknown) {
+  return error instanceof ApiRequestError && error.code === "REQUIREMENT_ANALYSIS_CONFIRM_REQUIRED";
+}

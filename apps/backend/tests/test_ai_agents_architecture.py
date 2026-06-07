@@ -42,8 +42,8 @@ def test_business_agent_packages_have_agent_entrypoint() -> None:
     assert missing == []
 
 
-def test_document_editor_is_not_a_legacy_agent_package() -> None:
-    assert not (LEGACY_AGENTS_ROOT / "document_editor").exists()
+def test_legacy_agents_root_removed() -> None:
+    assert not LEGACY_AGENTS_ROOT.exists()
 
 
 def test_document_editor_exists_in_new_agents_directory() -> None:

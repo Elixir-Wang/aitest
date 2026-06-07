@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { type ApiModelProvider, apiRequest, formatDateTime } from "@/lib/api-client";
+import { reportError } from "@/lib/error-feedback";
 import { useAuthStore } from "@/stores/auth-store";
 
 type ModelRow = ApiModelProvider;
@@ -59,7 +60,12 @@ export default function Page() {
     try {
       setRows(await apiRequest<ModelRow[]>("/models/providers"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "模型配置加载失败");
+      reportError(error, {
+        fallbackMessage: "模型配置加载失败",
+        actionLabel: "加载模型配置",
+        method: "GET",
+        path: "/models/providers",
+      });
     } finally {
       setLoading(false);
     }
@@ -123,7 +129,12 @@ export default function Page() {
       setDialogOpen(false);
       await loadProviders();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "模型配置保存失败");
+      reportError(error, {
+        fallbackMessage: "模型配置保存失败",
+        actionLabel: editingModel ? "编辑模型配置" : "新增模型配置",
+        method: editingModel ? "PATCH" : "POST",
+        path: editingModel ? `/models/providers/${editingModel.id}` : "/models/providers",
+      });
     }
   }
 
@@ -134,7 +145,12 @@ export default function Page() {
       toast.success("模型配置已删除");
       await loadProviders();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "模型配置删除失败");
+      reportError(error, {
+        fallbackMessage: "模型配置删除失败",
+        actionLabel: "删除模型配置",
+        method: "DELETE",
+        path: "/models/providers/{id}",
+      });
     }
   }
 

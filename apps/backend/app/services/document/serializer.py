@@ -6,6 +6,7 @@ CONVERSION_FAILED_STATUS = "failed"
 
 
 def serialize_document(row, actor_role: str) -> dict:
+    row_keys = row.keys()
     current_version = None
     if row["version_id"]:
         current_version = {
@@ -17,6 +18,17 @@ def serialize_document(row, actor_role: str) -> dict:
             "diff_summary": row["diff_summary"],
             "created_by": row["version_created_by"],
             "created_at": row["version_created_at"],
+        }
+
+    latest_requirement_analysis_run = None
+    if "requirement_analysis_run_id" in row_keys and row["requirement_analysis_run_id"]:
+        latest_requirement_analysis_run = {
+            "id": row["requirement_analysis_run_id"],
+            "status": row["requirement_analysis_run_status"],
+            "summary": row["requirement_analysis_run_summary"],
+            "failure_reason": row["requirement_analysis_run_failure_reason"],
+            "created_at": row["requirement_analysis_run_created_at"],
+            "updated_at": row["requirement_analysis_run_updated_at"],
         }
 
     return {
@@ -31,6 +43,7 @@ def serialize_document(row, actor_role: str) -> dict:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
         "current_version": current_version,
+        "latest_requirement_analysis_run": latest_requirement_analysis_run,
         "available_actions": ["read", "create", "update", "delete"] if actor_role == "admin" else ["read", "create"],
     }
 

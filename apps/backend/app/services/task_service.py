@@ -1,18 +1,25 @@
 from app.core.db import connect
+from app.repositories import document_repo, requirement_analysis_run_repo
+from app.services import operation_log_service
 
 RUNNING_GROUP = "running"
 WAITING_GROUP = "waiting"
 FAILED_GROUP = "failed"
 COMPLETED_GROUP = "completed"
+REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES = 120
 
 RUNNING_GROUPS = {RUNNING_GROUP, WAITING_GROUP}
-RUNNING_INDICATOR_SOURCE_TYPES = {"knowledge_build", "requirement_file"}
+RUNNING_INDICATOR_SOURCE_TYPES = {
+    "exploration_run",
+    "knowledge_build",
+    "requirement_file",
+    "requirement_analysis_run",
+}
 
 EXPLORATION_STATUS = {
     "pending": (WAITING_GROUP, "待启动"),
     "queued": (RUNNING_GROUP, "排队中"),
     "running": (RUNNING_GROUP, "探索中"),
-    "waiting_human": (WAITING_GROUP, "等待人工"),
     "stopping": (RUNNING_GROUP, "停止中"),
     "cancelled": (COMPLETED_GROUP, "已取消"),
     "partial": (COMPLETED_GROUP, "部分完成"),
@@ -35,14 +42,25 @@ REQUIREMENT_FILE_STATUS = {
     "failed": (FAILED_GROUP, "转换失败"),
 }
 
+REQUIREMENT_ANALYSIS_STATUS = {
+    "queued": (RUNNING_GROUP, "排队中"),
+    "running": (RUNNING_GROUP, "评审中"),
+    "completed": (COMPLETED_GROUP, "已完成"),
+    "needs_clarification": (WAITING_GROUP, "等待澄清"),
+    "blocked": (FAILED_GROUP, "评审阻塞"),
+    "failed": (FAILED_GROUP, "评审失败"),
+}
+
 STATUS_META_BY_SOURCE_TYPE = {
     "exploration_run": EXPLORATION_STATUS,
     "knowledge_build": KNOWLEDGE_STATUS,
     "requirement_file": REQUIREMENT_FILE_STATUS,
+    "requirement_analysis_run": REQUIREMENT_ANALYSIS_STATUS,
 }
 
 
 def list_running_tasks(actor, *, project_id: str | None = None) -> list[dict]:
+    recover_stale_requirement_analysis_runs(project_id=project_id)
     tasks = _collect_visible_tasks(actor)
     tasks = [
         task
@@ -64,6 +82,7 @@ def list_tasks(
     page: int = 1,
     page_size: int = 50,
 ) -> dict:
+    recover_stale_requirement_analysis_runs(project_id=project_id)
     tasks = _collect_visible_tasks(actor)
     tasks = _filter_tasks(tasks, project_id=project_id, status_group=status_group, module=module, keyword=keyword)
     tasks.sort(key=lambda item: (item["created_at"], item["id"]), reverse=True)
@@ -75,6 +94,8 @@ def list_tasks(
 
 
 def get_task_by_source(actor, *, source_type: str, source_id: str) -> dict | None:
+    if source_type == "requirement_analysis_run":
+        recover_stale_requirement_analysis_runs()
     for task in _collect_visible_tasks(actor):
         if task["source_type"] == source_type and task["source_id"] == source_id:
             return task
@@ -82,6 +103,8 @@ def get_task_by_source(actor, *, source_type: str, source_id: str) -> dict | Non
 
 
 def get_task_by_source_for_event(*, source_type: str, source_id: str) -> dict | None:
+    if source_type == "requirement_analysis_run":
+        recover_stale_requirement_analysis_runs()
     with connect() as db:
         project_names = {
             row["id"]: row["name"]
@@ -91,6 +114,7 @@ def get_task_by_source_for_event(*, source_type: str, source_id: str) -> dict | 
             *_exploration_tasks(db, project_names),
             *_knowledge_tasks(db, project_names),
             *_requirement_file_tasks(db, project_names),
+            *_requirement_analysis_run_tasks(db, project_names),
         ]:
             if task["source_type"] == source_type and task["source_id"] == source_id:
                 return task
@@ -107,6 +131,96 @@ def is_active_task_status(source_type: str, status: str) -> bool:
     return status_group in RUNNING_GROUPS
 
 
+def recover_stale_requirement_analysis_runs(*, project_id: str | None = None) -> None:
+    failure_reason = _requirement_analysis_timeout_message()
+    with connect() as db:
+        rows = requirement_analysis_run_repo.list_stale_active_runs(
+            db,
+            project_id=project_id,
+            timeout_minutes=REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES,
+        )
+        recovered_runs = [dict(row) for row in rows]
+        for row in rows:
+            latest_final_version = document_repo.find_latest_final_requirement_version(db, row["document_id"])
+            if latest_final_version:
+                document_repo.update_current_version(
+                    db,
+                    row["document_id"],
+                    latest_final_version["id"],
+                    "versioned",
+                )
+            requirement_analysis_run_repo.update_status(
+                db,
+                row["id"],
+                status="failed",
+                summary="需求评审失败。",
+                failure_reason=failure_reason,
+            )
+
+    for row in recovered_runs:
+        operation_log_service.record_task_event(
+            module="requirement",
+            action="fail_requirement_analysis",
+            object_type="requirement_analysis_run",
+            object_id=row["id"],
+            object_name=row["document_name"],
+            project_id=row["project_id"],
+            actor_id="system",
+            actor_name="系统",
+            source="system",
+            result="failed",
+            failure_reason=failure_reason,
+            summary="需求评审失败。",
+            after={"status": "failed", "reason": "timeout_recovered"},
+            task_id=row["id"],
+        )
+
+
+def recover_interrupted_requirement_analysis_runs(*, project_id: str | None = None) -> None:
+    failure_reason = "服务已重启，内存中的需求评审后台任务已中断，请重新发起评审。"
+    with connect() as db:
+        rows = requirement_analysis_run_repo.list_active_runs(db, project_id=project_id)
+        recovered_runs = [dict(row) for row in rows]
+        for row in rows:
+            latest_final_version = document_repo.find_latest_final_requirement_version(db, row["document_id"])
+            if latest_final_version:
+                document_repo.update_current_version(
+                    db,
+                    row["document_id"],
+                    latest_final_version["id"],
+                    "versioned",
+                )
+            requirement_analysis_run_repo.update_status(
+                db,
+                row["id"],
+                status="failed",
+                summary="需求评审已中断。",
+                failure_reason=failure_reason,
+            )
+
+    for row in recovered_runs:
+        operation_log_service.record_task_event(
+            module="requirement",
+            action="fail_requirement_analysis",
+            object_type="requirement_analysis_run",
+            object_id=row["id"],
+            object_name=row["document_name"],
+            project_id=row["project_id"],
+            actor_id="system",
+            actor_name="系统",
+            source="system",
+            result="failed",
+            failure_reason=failure_reason,
+            summary="需求评审已中断。",
+            after={"status": "failed", "reason": "startup_recovered"},
+            task_id=row["id"],
+        )
+
+
+def _requirement_analysis_timeout_message() -> str:
+    return f"需求评审运行超过 {REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES} 分钟，已自动标记为失败。"
+
+
 def actor_can_see_project(actor, project_id: str) -> bool:
     with connect() as db:
         return project_id in _visible_project_names(db, actor)
@@ -119,6 +233,7 @@ def _collect_visible_tasks(actor) -> list[dict]:
             *_exploration_tasks(db, project_names),
             *_knowledge_tasks(db, project_names),
             *_requirement_file_tasks(db, project_names),
+            *_requirement_analysis_run_tasks(db, project_names),
         ]
 
 
@@ -225,6 +340,40 @@ def _requirement_file_tasks(db, project_names: dict[str, str]) -> list[dict]:
             summary=row["conversion_summary"],
             created_at=row["created_at"],
             updated_at=row["created_at"],
+            detail_url=f"/projects/{row['project_id']}/requirements/{row['document_id']}",
+        )
+        for row in rows
+    ]
+
+
+def _requirement_analysis_run_tasks(db, project_names: dict[str, str]) -> list[dict]:
+    if not project_names:
+        return []
+    rows = db.execute(
+        """
+        SELECT r.id, r.project_id, r.document_id, r.status, r.summary, r.failure_reason,
+               r.created_at, r.updated_at, d.name AS document_name
+        FROM requirement_analysis_runs r
+        JOIN source_documents d ON d.id = r.document_id
+        WHERE r.project_id IN ({})
+        """.format(_placeholders(project_names)),
+        tuple(project_names),
+    ).fetchall()
+    return [
+        _task(
+            task_id=f"requirement_analysis:{row['id']}",
+            source_type="requirement_analysis_run",
+            source_id=row["id"],
+            project_id=row["project_id"],
+            project_name=project_names[row["project_id"]],
+            module="requirement",
+            module_label="需求评审",
+            title=row["document_name"],
+            status=row["status"],
+            status_meta=REQUIREMENT_ANALYSIS_STATUS,
+            summary=row["failure_reason"] if row["status"] == "failed" and row["failure_reason"] else row["summary"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"] or row["created_at"],
             detail_url=f"/projects/{row['project_id']}/requirements/{row['document_id']}",
         )
         for row in rows

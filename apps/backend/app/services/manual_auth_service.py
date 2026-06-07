@@ -1,14 +1,16 @@
+import os
 import secrets
 import subprocess
 import threading
 from pathlib import Path
 
+from app.core.db import connect
 from app.core.environment_auth_state import auth_state_path, auth_state_summary
+from app.core.environment_credentials import load_credentials
 from app.core.exceptions import api_error
 from app.core.settings import PLAYWRIGHT_BROWSER_CHANNEL, PLAYWRIGHT_RUNNER_DIR
 from app.repositories import environment_repo
 from app.services.environment_service import _ensure_project_visible
-from app.core.db import connect
 
 
 _sessions: dict[str, dict] = {}
@@ -17,6 +19,7 @@ _sessions_lock = threading.Lock()
 
 def start_manual_auth_session(project_id: str, environment_id: str, actor) -> dict:
     environment = _get_manual_auth_environment(project_id, environment_id, actor)
+    credentials = load_credentials(project_id, environment_id)
     _close_existing_environment_sessions(environment_id)
     state_path = auth_state_path(project_id, environment_id)
     state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -25,6 +28,7 @@ def start_manual_auth_session(project_id: str, environment_id: str, actor) -> di
         site_url=environment["site_url"],
         storage_state_path=state_path,
         browser_channel=PLAYWRIGHT_BROWSER_CHANNEL,
+        credentials=credentials,
     )
     with _sessions_lock:
         _sessions[session_id] = {
@@ -34,12 +38,18 @@ def start_manual_auth_session(project_id: str, environment_id: str, actor) -> di
             "storage_state_path": state_path,
         }
     auth_state = _account_password_auth_state(project_id, environment_id)
+    has_saved_credentials = credentials is not None
     return {
         "session_id": session_id,
         "status": "waiting_human",
         "auth_state_status": auth_state["status"],
         "auth_state_expires_at": auth_state["expires_at"],
-        "message": "已打开登录窗口，请在浏览器中完成登录后保存登录态。",
+        "has_saved_credentials": has_saved_credentials,
+        "message": (
+            "已打开登录窗口，会尝试自动填充用户名和密码，请完成登录后保存登录态。"
+            if has_saved_credentials
+            else "已打开登录窗口；当前环境未保存可自动填充的密码，请手动输入账号密码并完成登录后保存登录态。"
+        ),
     }
 
 
@@ -47,6 +57,8 @@ def save_manual_auth_session(project_id: str, environment_id: str, session_id: s
     _get_manual_auth_environment(project_id, environment_id, actor)
     session = _pop_session(session_id, project_id, environment_id)
     process = session["process"]
+    if process.poll() is not None:
+        return _ended_session_summary(project_id, environment_id, session_id)
     stdin = getattr(process, "stdin", None)
     if stdin is None:
         _terminate_process(process)
@@ -66,6 +78,7 @@ def save_manual_auth_session(project_id: str, environment_id: str, session_id: s
         "status": "saved",
         "auth_state_status": auth_state["status"],
         "auth_state_expires_at": auth_state["expires_at"],
+        "has_saved_credentials": _has_saved_credentials(project_id, environment_id),
         "message": "登录态已保存。",
     }
 
@@ -73,6 +86,8 @@ def save_manual_auth_session(project_id: str, environment_id: str, session_id: s
 def cancel_manual_auth_session(project_id: str, environment_id: str, session_id: str, actor) -> dict:
     _get_manual_auth_environment(project_id, environment_id, actor)
     session = _pop_session(session_id, project_id, environment_id)
+    if session["process"].poll() is not None:
+        return _ended_session_summary(project_id, environment_id, session_id)
     _terminate_process(session["process"])
     auth_state = _account_password_auth_state(project_id, environment_id)
     return {
@@ -80,8 +95,31 @@ def cancel_manual_auth_session(project_id: str, environment_id: str, session_id:
         "status": "cancelled",
         "auth_state_status": auth_state["status"],
         "auth_state_expires_at": auth_state["expires_at"],
+        "has_saved_credentials": _has_saved_credentials(project_id, environment_id),
         "message": "人工登录会话已取消。",
     }
+
+
+def get_manual_auth_session_status(project_id: str, environment_id: str, session_id: str, actor) -> dict:
+    _get_manual_auth_environment(project_id, environment_id, actor)
+    with _sessions_lock:
+        session = _sessions.get(session_id)
+        if not session or session["project_id"] != project_id or session["environment_id"] != environment_id:
+            session = None
+        elif session["process"].poll() is not None:
+            _sessions.pop(session_id, None)
+            return _ended_session_summary(project_id, environment_id, session_id, auto_save_possible=True)
+        else:
+            auth_state = _account_password_auth_state(project_id, environment_id)
+            return {
+                "session_id": session_id,
+                "status": "waiting_human",
+                "auth_state_status": auth_state["status"],
+                "auth_state_expires_at": auth_state["expires_at"],
+                "has_saved_credentials": _has_saved_credentials(project_id, environment_id),
+                "message": "已打开登录窗口，请在浏览器中完成登录后保存登录态。",
+            }
+    return _ended_session_summary(project_id, environment_id, session_id)
 
 
 def _get_manual_auth_environment(project_id: str, environment_id: str, actor):
@@ -117,8 +155,21 @@ def _pop_session(session_id: str, project_id: str, environment_id: str) -> dict:
     return session
 
 
-def _launch_manual_auth_process(*, site_url: str, storage_state_path: Path, browser_channel: str):
+def _launch_manual_auth_process(
+    *,
+    site_url: str,
+    storage_state_path: Path,
+    browser_channel: str,
+    credentials: dict | None = None,
+):
     script_path = PLAYWRIGHT_RUNNER_DIR / "manual-auth-session.mjs"
+    env = {**os.environ}
+    if credentials:
+        env["AI_TESTING_LOGIN_USERNAME"] = credentials["username"]
+        env["AI_TESTING_LOGIN_PASSWORD"] = credentials["password"]
+    else:
+        env.pop("AI_TESTING_LOGIN_USERNAME", None)
+        env.pop("AI_TESTING_LOGIN_PASSWORD", None)
     return subprocess.Popen(
         ["node", str(script_path), site_url, str(storage_state_path), browser_channel],
         cwd=PLAYWRIGHT_RUNNER_DIR,
@@ -126,6 +177,7 @@ def _launch_manual_auth_process(*, site_url: str, storage_state_path: Path, brow
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         text=True,
+        env=env,
     )
 
 
@@ -136,6 +188,37 @@ def _account_password_auth_state(project_id: str, environment_id: str) -> dict:
         login_strategy="account_password",
         reuse_auth_state=True,
     )
+
+
+def _ended_session_summary(
+    project_id: str,
+    environment_id: str,
+    session_id: str,
+    *,
+    auto_save_possible: bool = False,
+) -> dict:
+    auth_state = _account_password_auth_state(project_id, environment_id)
+    if auto_save_possible and auth_state["status"] in {"valid", "unknown_expiry"}:
+        return {
+            "session_id": session_id,
+            "status": "auto_saved",
+            "auth_state_status": auth_state["status"],
+            "auth_state_expires_at": auth_state["expires_at"],
+            "has_saved_credentials": _has_saved_credentials(project_id, environment_id),
+            "message": "检测到登录成功，登录态已自动保存。",
+        }
+    return {
+        "session_id": session_id,
+        "status": "ended",
+        "auth_state_status": auth_state["status"],
+        "auth_state_expires_at": auth_state["expires_at"],
+        "has_saved_credentials": _has_saved_credentials(project_id, environment_id),
+        "message": "登录窗口已关闭，请重新打开登录窗口。",
+    }
+
+
+def _has_saved_credentials(project_id: str, environment_id: str) -> bool:
+    return load_credentials(project_id, environment_id) is not None
 
 
 def _terminate_process(process) -> None:

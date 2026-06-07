@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { type ApiUser, apiRequest, roleToLabel } from "@/lib/api-client";
+import { reportError } from "@/lib/error-feedback";
 import { useAuthStore } from "@/stores/auth-store";
 
 const formSchema = z.object({
@@ -53,7 +54,12 @@ export function LoginForm() {
       });
       router.replace(searchParams.get("next") || "/dashboard");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "登录失败，请检查账号和密码。");
+      reportError(error, {
+        fallbackMessage: "登录失败，请检查账号和密码。",
+        actionLabel: "用户登录",
+        method: "POST",
+        path: "/auth/login",
+      });
     }
   };
 

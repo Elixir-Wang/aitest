@@ -96,8 +96,10 @@ def _build_where(filters: dict) -> tuple[str, tuple]:
         params.append(filters["end_time"])
     if filters.get("keyword"):
         keyword = f"%{filters['keyword']}%"
-        clauses.append("(object_name LIKE ? OR summary LIKE ? OR failure_reason LIKE ?)")
-        params.extend([keyword, keyword, keyword])
+        clauses.append(
+            "(object_name LIKE ? OR summary LIKE ? OR failure_reason LIKE ? OR request_id LIKE ? OR task_id LIKE ? OR object_id LIKE ?)"
+        )
+        params.extend([keyword, keyword, keyword, keyword, keyword, keyword])
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     return where, tuple(params)
 

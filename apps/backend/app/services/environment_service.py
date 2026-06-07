@@ -1,6 +1,7 @@
 import secrets
 
 from app.core.environment_auth_state import delete_auth_state
+from app.core.environment_credentials import delete_credentials, load_credentials, save_credentials
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.presentation.serializers import serialize_project_environment
@@ -9,7 +10,6 @@ from app.schemas.environment import ProjectEnvironmentCreateIn, ProjectEnvironme
 from app.services import operation_log_service
 
 LOGIN_STRATEGIES = {"account_password", "skip_login"}
-LEGACY_LOGIN_STRATEGIES = {"reuse_state", "manual"}
 CAPTCHA_STRATEGIES = {"none", "ai_letter", "manual"}
 
 
@@ -56,7 +56,6 @@ def create_project_environment(project_id: str, payload: ProjectEnvironmentCreat
                 name=payload.name.strip(),
                 site_url=payload.site_url.strip(),
                 username=auth_config["username"],
-                password_mask=_mask_password(auth_config["password"]),
                 login_strategy=auth_config["login_strategy"],
                 captcha_strategy=auth_config["captcha_strategy"],
                 reuse_auth_state=auth_config["reuse_auth_state"],
@@ -67,6 +66,17 @@ def create_project_environment(project_id: str, payload: ProjectEnvironmentCreat
             raise api_error(409, "ENVIRONMENT_CONFLICT", "同一项目下环境名称已存在。") from exc
         row = environment_repo.find_by_id(db, environment_id)
         result = serialize_project_environment(row, actor["role"])
+    if auth_config["login_strategy"] == "account_password":
+        save_credentials(
+            project_id,
+            environment_id,
+            username=auth_config["username"],
+            password=auth_config["password"],
+        )
+        result["has_saved_credentials"] = True
+    else:
+        delete_credentials(project_id, environment_id)
+        result["has_saved_credentials"] = False
     operation_log_service.record_change(
         log_type="config",
         module="environment",
@@ -86,6 +96,9 @@ def create_project_environment(project_id: str, payload: ProjectEnvironmentCreat
 
 def update_project_environment(project_id: str, environment_id: str, payload: ProjectEnvironmentUpdateIn, actor) -> dict:
     updates = payload.model_dump(exclude_unset=True)
+    password_provided = "password" in updates and bool(updates.get("password"))
+    if "password" in updates and not updates["password"]:
+        updates.pop("password")
     with connect() as db:
         existing = environment_repo.find_by_id(db, environment_id)
         if not existing or existing["project_id"] != project_id:
@@ -104,7 +117,7 @@ def update_project_environment(project_id: str, environment_id: str, payload: Pr
             username=updates.get("username", existing["username"]),
             password=updates.get("password", ""),
             require_password=False,
-            existing_password_mask=existing["password_mask"],
+            existing_password_available=bool(existing["password_encrypted"]),
         )
         updates = {
             **updates,
@@ -113,7 +126,7 @@ def update_project_environment(project_id: str, environment_id: str, payload: Pr
             "captcha_strategy": effective["captcha_strategy"],
             "reuse_auth_state": effective["reuse_auth_state"],
         }
-        if "password" in updates or effective["login_strategy"] == "skip_login":
+        if password_provided:
             updates["password"] = effective["password"]
         assignments, values = _build_update_assignments(updates)
         if "name" in updates:
@@ -137,7 +150,20 @@ def update_project_environment(project_id: str, environment_id: str, payload: Pr
         row = environment_repo.find_by_id(db, environment_id)
         result = serialize_project_environment(row, actor["role"])
         before = _environment_snapshot(existing)
-        after = _environment_snapshot(result)
+    if result["login_strategy"] == "skip_login":
+        delete_credentials(project_id, environment_id)
+        result["has_saved_credentials"] = False
+    elif password_provided:
+        save_credentials(
+            project_id,
+            environment_id,
+            username=result["username"],
+            password=updates["password"],
+        )
+        result["has_saved_credentials"] = True
+    else:
+        result["has_saved_credentials"] = load_credentials(project_id, environment_id) is not None
+    after = _environment_snapshot(result)
     operation_log_service.record_change(
         log_type="config",
         module="environment",
@@ -165,6 +191,7 @@ def delete_project_environment(project_id: str, environment_id: str, actor) -> d
         snapshot = _environment_snapshot(existing)
         environment_repo.delete(db, environment_id)
         delete_auth_state(project_id, environment_id)
+        delete_credentials(project_id, environment_id)
     operation_log_service.record_change(
         log_type="config",
         module="environment",
@@ -192,14 +219,6 @@ def _ensure_project_visible(project, actor) -> None:
     raise api_error(403, "PERMISSION_DENIED", "无权访问该项目。")
 
 
-def _mask_password(password: str) -> str:
-    if not password:
-        return ""
-    if len(password) <= 2:
-        return "*" * len(password)
-    return f"{password[0]}{'*' * max(len(password) - 2, 1)}{password[-1]}"
-
-
 def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
     field_map = {
         "name": "name",
@@ -220,9 +239,6 @@ def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
                 values.append(int(bool(value)))
             else:
                 values.append(value.strip() if isinstance(value, str) else value)
-    if "password" in updates:
-        assignments.append("password_mask = ?")
-        values.append(_mask_password(updates["password"]))
     return assignments, values
 
 
@@ -234,18 +250,10 @@ def _normalize_auth_config(
     username: str,
     password: str,
     require_password: bool,
-    existing_password_mask: str = "",
+    existing_password_available: bool = False,
 ) -> dict:
     login_strategy = (login_strategy or "skip_login").strip()
     captcha_strategy = (captcha_strategy or "none").strip()
-    if login_strategy == "reuse_state":
-        login_strategy = "account_password"
-        captcha_strategy = "none"
-        reuse_auth_state = True
-    elif login_strategy == "manual":
-        login_strategy = "account_password"
-        captcha_strategy = "manual"
-        reuse_auth_state = True
     if login_strategy not in LOGIN_STRATEGIES:
         raise api_error(400, "INVALID_LOGIN_STRATEGY", "登录策略不合法。")
     if captcha_strategy not in CAPTCHA_STRATEGIES:
@@ -263,7 +271,7 @@ def _normalize_auth_config(
         raise api_error(400, "INVALID_LOGIN_CREDENTIALS", "账号密码登录必须填写用户名。")
     if require_password and not password:
         raise api_error(400, "INVALID_LOGIN_CREDENTIALS", "账号密码登录必须填写密码。")
-    if not require_password and not password and not existing_password_mask:
+    if not require_password and not password and not existing_password_available:
         raise api_error(400, "INVALID_LOGIN_CREDENTIALS", "账号密码登录必须填写密码。")
     if captcha_strategy == "manual" and not reuse_auth_state:
         raise api_error(400, "INVALID_CAPTCHA_STRATEGY", "人工登录必须开启复用登录态。")
@@ -278,17 +286,27 @@ def _normalize_auth_config(
 
 def _environment_snapshot(environment) -> dict:
     return {
-        "name": environment["name"],
-        "site_url": environment["site_url"],
-        "username": environment["username"],
-        "password_mask": environment["password_mask"],
-        "login_strategy": environment["login_strategy"],
-        "captcha_strategy": environment["captcha_strategy"],
-        "reuse_auth_state": environment["reuse_auth_state"],
-        "auth_state_status": environment.get("auth_state_status", "none") if isinstance(environment, dict) else "none",
-        "auth_state_expires_at": environment.get("auth_state_expires_at") if isinstance(environment, dict) else None,
-        "description": environment["description"],
+        "name": _environment_value(environment, "name", ""),
+        "site_url": _environment_value(environment, "site_url", ""),
+        "username": _environment_value(environment, "username", ""),
+        "login_strategy": _environment_value(environment, "login_strategy", "skip_login"),
+        "captcha_strategy": _environment_value(environment, "captcha_strategy", "none"),
+        "reuse_auth_state": _environment_value(environment, "reuse_auth_state", False),
+        "has_saved_credentials": _environment_value(
+            environment,
+            "has_saved_credentials",
+            bool(_environment_value(environment, "password_encrypted", "")),
+        ),
+        "auth_state_status": _environment_value(environment, "auth_state_status", "none"),
+        "auth_state_expires_at": _environment_value(environment, "auth_state_expires_at", None),
+        "description": _environment_value(environment, "description", ""),
     }
+
+
+def _environment_value(environment, key: str, default=None):
+    if isinstance(environment, dict):
+        return environment.get(key, default)
+    return environment[key] if key in environment.keys() else default
 
 
 def _should_clear_auth_state(existing, updates: dict) -> bool:

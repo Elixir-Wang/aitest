@@ -43,7 +43,9 @@ import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } fro
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import { API_BASE_URL, apiAuthHeaders, apiRequest, formatDateTime, parseApiTimestamp } from "@/lib/api-client";
+import { reportError as reportApiError } from "@/lib/error-feedback";
 import { cn } from "@/lib/utils";
 
 type ExplorationRun = {
@@ -144,7 +146,7 @@ type ExplorationStep = {
   type: string;
   title: string;
   detail?: string;
-  status?: string;
+  status?: AgentPlanStatus;
   occurred_at?: string | null;
   artifact_path?: string;
   source?: string;
@@ -252,7 +254,7 @@ type ParsedLogEntry = {
   payload: Record<string, unknown>;
 };
 
-type LogCategory = "all" | "run" | "page" | "action" | "artifact" | "blocked" | "error" | "safety" | "raw";
+type LogCategory = "all" | "run" | "page" | "action" | "artifact" | "blocked" | "error" | "raw";
 type LogLevel = "all" | "info" | "warning" | "error";
 type PageItem = number | "ellipsis-start" | "ellipsis-end";
 
@@ -260,7 +262,6 @@ const statusLabels: Record<string, string> = {
   pending: "待执行",
   queued: "排队中",
   running: "探索中",
-  waiting_human: "等待人工",
   stopping: "正在停止",
   cancelled: "已中止",
   partial: "部分完成",
@@ -277,8 +278,6 @@ const goalValidationStatusLabels: Record<string, string> = {
 };
 
 const loginStrategyLabels: Record<string, string> = {
-  reuse_state: "复用登录态",
-  manual: "手动登录保存状态",
   account_password: "账号密码",
   skip_login: "无需登录",
 };
@@ -291,13 +290,19 @@ const logTypeLabels: Record<string, string> = {
   page_visited: "访问页面",
   page_captured: "采集页面",
   accessibility_captured: "生成无障碍树",
+  observe: "观察页面",
   action_detected: "发现动作",
   action_executed: "执行动作",
+  agent_observed: "Agent 观察",
+  agent_decision: "Agent 决策",
+  agent_decision_fallback: "Agent 决策降级",
+  action_started: "开始动作",
+  action_result: "动作结果",
+  action_completed: "动作完成",
   edge_created: "记录关系",
   artifact_written: "写入产物",
   blocked: "探索阻塞",
   skipped: "跳过",
-  safety_blocked: "安全拦截",
   error: "错误",
   run_completed: "探索完成",
   raw: "原始日志",
@@ -311,7 +316,6 @@ const logCategoryLabels: Record<LogCategory, string> = {
   artifact: "产物",
   blocked: "阻塞",
   error: "错误",
-  safety: "安全拦截",
   raw: "原始",
 };
 
@@ -322,21 +326,11 @@ const logLevelLabels: Record<LogLevel, string> = {
   error: "错误",
 };
 
-const logCategoryOptions: LogCategory[] = [
-  "all",
-  "run",
-  "page",
-  "action",
-  "artifact",
-  "blocked",
-  "error",
-  "safety",
-  "raw",
-];
+const logCategoryOptions: LogCategory[] = ["all", "run", "page", "action", "artifact", "blocked", "error", "raw"];
 const logLevelOptions: LogLevel[] = ["all", "info", "warning", "error"];
 
-const autoRefreshStatuses = new Set(["queued", "running", "waiting_human", "stopping", "in-progress"]);
-const stoppableStatuses = new Set(["queued", "running", "waiting_human"]);
+const autoRefreshStatuses = new Set(["queued", "running", "stopping", "in-progress"]);
+const stoppableStatuses = new Set(["queued", "running"]);
 const explorationPlaceholders = {
   scope: "填写本次要探索的页面范围，例如全站、指定菜单、指定 URL 或核心模块。",
   forbiddenPaths: "填写禁止进入或点击的路径/动作，例如删除、支付、外发、批量通知、退出登录。",
@@ -396,7 +390,7 @@ function parseStreamEvent(chunk: string): ExplorationStreamEvent | null {
 function applyStreamEvent(
   event: ExplorationStreamEvent,
   setters: {
-    setDetail: React.Dispatch<React.SetStateAction<ExplorationRunDetail | null>>;
+    setStreamDetail: React.Dispatch<React.SetStateAction<ExplorationRunDetail | null>>;
     setRun: React.Dispatch<React.SetStateAction<ExplorationRun | null>>;
   },
 ) {
@@ -407,18 +401,18 @@ function applyStreamEvent(
     event.type === "run_cancelled"
   ) {
     setters.setRun((current) => (current ? { ...current, ...(event.payload as Partial<ExplorationRun>) } : current));
-    setters.setDetail((current) =>
+    setters.setStreamDetail((current) =>
       current ? { ...current, run: { ...current.run, ...(event.payload as Partial<ExplorationRun>) } } : current,
     );
   }
   if (event.type.startsWith("module_")) {
-    setters.setDetail((current) => mergeModuleEvent(current, event));
+    setters.setStreamDetail((current) => mergeModuleEvent(current, event));
   } else if (event.type.startsWith("page_")) {
-    setters.setDetail((current) => mergePageEvent(current, event));
+    setters.setStreamDetail((current) => mergePageEvent(current, event));
   } else if (event.type === "step_recorded") {
-    setters.setDetail((current) => mergeStepEvent(current, event));
+    setters.setStreamDetail((current) => mergeStepEvent(current, event));
   } else if (event.type === "blocker_detected") {
-    setters.setDetail((current) => mergeBlockerEvent(current, event));
+    setters.setStreamDetail((current) => mergeBlockerEvent(current, event));
   }
 }
 
@@ -565,7 +559,7 @@ function normalizeExplorationStep(value: unknown, index: number): ExplorationSte
     type: String(item.type || "event"),
     title: String(item.title || item.detail || "探索步骤"),
     detail: String(item.detail || ""),
-    status: String(item.status || "completed"),
+    status: normalizeAgentPlanStatus(String(item.status || "completed")),
     occurred_at: item.occurred_at ? String(item.occurred_at) : null,
     artifact_path: String(item.artifact_path || ""),
     source: String(item.source || ""),
@@ -609,11 +603,7 @@ function buildAgentPlanTasks(detail: ExplorationRunDetail | null): AgentPlanTask
       id: module.id,
       title: module.module_name || "未命名模块",
       description: buildModuleProgressDescription(module),
-      status: normalizeAgentPlanStatus(
-        isTerminalStatus(detail.run.status) && ["queued", "running", "in-progress"].includes(module.completion_status)
-          ? detail.run.status
-          : module.completion_status,
-      ),
+      status: resolveModulePlanStatus(detail.run.status, module.completion_status),
       meta: [
         module.page_progress_text ||
           `${module.explored_page_count}/${Math.max(module.planned_page_count, module.explored_page_count, 1)} 页面`,
@@ -653,6 +643,18 @@ function buildModuleProgressDescription(module: ExplorationRunDetail["modules"][
   return `页面进度 ${pageProgress} · 最近页面：${recentPage} · ${blockerText}`;
 }
 
+function resolveModulePlanStatus(runStatus: string, moduleStatus: string): AgentPlanStatus {
+  const normalizedModuleStatus = normalizeAgentPlanStatus(moduleStatus);
+  const canFollowRunStatus = normalizedModuleStatus === "pending" || normalizedModuleStatus === "running";
+  if (isActiveStatus(runStatus) && canFollowRunStatus) {
+    return normalizeAgentPlanStatus(runStatus);
+  }
+  if (isTerminalStatus(runStatus) && normalizedModuleStatus === "running") {
+    return normalizeAgentPlanStatus(runStatus);
+  }
+  return normalizedModuleStatus;
+}
+
 function normalizeAgentPlanStatus(status: string): AgentPlanStatus {
   if (status === "running" || status === "queued" || status === "in-progress") {
     return "running";
@@ -660,8 +662,8 @@ function normalizeAgentPlanStatus(status: string): AgentPlanStatus {
   if (status === "stopping") {
     return "stopping";
   }
-  if (status === "blocked" || status === "waiting_human") {
-    return status === "waiting_human" ? "waiting_human" : "blocked";
+  if (status === "blocked") {
+    return "blocked";
   }
   if (status === "cancelled") {
     return "cancelled";
@@ -679,6 +681,10 @@ function normalizeAgentPlanStatus(status: string): AgentPlanStatus {
     return "completed";
   }
   return "pending";
+}
+
+function isActiveStatus(status: string): boolean {
+  return autoRefreshStatuses.has(status);
 }
 
 function isTerminalStatus(status: string): boolean {
@@ -718,6 +724,7 @@ export default function Page() {
   const [environments, setEnvironments] = useState<ProjectEnvironment[]>([]);
   const [environmentLoading, setEnvironmentLoading] = useState(false);
   const [explorationForm, setExplorationForm] = useState<ExplorationForm>(emptyExplorationForm);
+  const [durationNow, setDurationNow] = useState(() => Date.now());
 
   const loadRun = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -748,8 +755,27 @@ export default function Page() {
     void loadRun();
   }, [loadRun]);
 
+  const runStatus = run?.status;
+
   useEffect(() => {
-    if (!run || !autoRefreshStatuses.has(run.status)) {
+    const runStartedAt = run?.started_at ?? null;
+    const runFinishedAt = run?.finished_at ?? null;
+    const runStatus = run?.status;
+
+    if (!runStartedAt || runFinishedAt || !runStatus || !isActiveStatus(runStatus)) {
+      return undefined;
+    }
+
+    setDurationNow(Date.now());
+    const timer = window.setInterval(() => {
+      setDurationNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [run]);
+
+  useEffect(() => {
+    if (!runStatus || !autoRefreshStatuses.has(runStatus)) {
       return undefined;
     }
 
@@ -791,7 +817,7 @@ export default function Page() {
             if (!event) {
               continue;
             }
-            applyStreamEvent(event, { setDetail, setRun });
+            applyStreamEvent(event, { setStreamDetail, setRun });
           }
         }
       } catch {
@@ -813,7 +839,7 @@ export default function Page() {
         window.clearTimeout(retryTimer);
       }
     };
-  }, [loadRun, params.projectId, params.runId, run]);
+  }, [loadRun, params.projectId, params.runId, runStatus]);
 
   const loadReport = useCallback(async () => {
     setReportLoading(true);
@@ -867,6 +893,7 @@ export default function Page() {
     if (!run) {
       return;
     }
+    const restarting = hasExplorationStarted(run);
     setStarting(true);
     try {
       const updated = await apiRequest<ExplorationRun>(`/projects/${run.project_id}/exploration-runs/${run.id}/start`, {
@@ -874,10 +901,16 @@ export default function Page() {
       });
       setRun(updated);
       clearExplorationOutputs();
-      toast.success(hasExplorationStarted(run) ? "重新探索已开始" : "探索任务已开始");
+      notifyAiTaskStarted();
+      toast.success(restarting ? "重新探索已开始" : "探索任务已开始");
       window.setTimeout(() => void loadRun({ silent: true }), 800);
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "探索任务启动失败");
+      reportApiError(requestError, {
+        fallbackMessage: "探索任务启动失败",
+        actionLabel: restarting ? "重新探索" : "启动探索任务",
+        method: "POST",
+        path: `/projects/${run.project_id}/exploration-runs/${run.id}/start`,
+      });
     } finally {
       setStarting(false);
     }
@@ -898,7 +931,12 @@ export default function Page() {
       toast.success("探索任务已停止");
       window.setTimeout(() => void loadRun({ silent: true }), 800);
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "探索任务停止失败");
+      reportApiError(requestError, {
+        fallbackMessage: "探索任务停止失败",
+        actionLabel: "停止探索任务",
+        method: "POST",
+        path: `/projects/${run.project_id}/exploration-runs/${run.id}/stop`,
+      });
     } finally {
       setStopping(false);
     }
@@ -910,7 +948,12 @@ export default function Page() {
       const data = await apiRequest<ProjectEnvironment[]>(`/projects/${params.projectId}/environments`);
       setEnvironments(data);
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "环境列表加载失败");
+      reportApiError(requestError, {
+        fallbackMessage: "环境列表加载失败",
+        actionLabel: "加载环境列表",
+        method: "GET",
+        path: `/projects/${params.projectId}/environments`,
+      });
     } finally {
       setEnvironmentLoading(false);
     }
@@ -975,7 +1018,12 @@ export default function Page() {
       toast.success("探索任务已更新");
       void loadRun({ silent: true });
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "探索任务更新失败");
+      reportApiError(requestError, {
+        fallbackMessage: "探索任务更新失败",
+        actionLabel: "更新探索任务",
+        method: "PATCH",
+        path: `/projects/${run.project_id}/exploration-runs/${run.id}`,
+      });
     } finally {
       setSaving(false);
     }
@@ -983,7 +1031,7 @@ export default function Page() {
 
   const canStart = run ? ["pending", "partial", "completed", "blocked", "cancelled"].includes(run.status) : false;
   const canStop = run ? stoppableStatuses.has(run.status) : false;
-  const canEdit = run ? !["queued", "running", "waiting_human", "stopping"].includes(run.status) : false;
+  const canEdit = run ? !["queued", "running", "stopping"].includes(run.status) : false;
   const startDisabled = !canStart || starting;
   const startLabel = run && hasExplorationStarted(run) ? "重新探索" : "开始探索";
   const saveDisabled = !explorationForm.title.trim() || !explorationForm.environmentId || saving;
@@ -996,7 +1044,7 @@ export default function Page() {
   const shouldShowNoArtifactNotice = Boolean(
     run && hasNoExplorationArtifacts && (run.status === "cancelled" || run.status === "blocked"),
   );
-  const explorationDuration = run ? formatExplorationDuration(run) : "-";
+  const explorationDuration = run ? formatExplorationDuration(run, durationNow) : "-";
   const agentPlanTasks = buildAgentPlanTasks(activeDetail);
   const showRunActions = activeTab === "探索计划" || activeTab === "探索概览";
   const failureDetail = error
@@ -1061,7 +1109,7 @@ export default function Page() {
             <MetricCard
               helper="用于页面访问和探索执行"
               icon={Play}
-              label="测试环境"
+              label="探索环境"
               value={run?.environment_name ?? "-"}
             />
             <MetricCard
@@ -1080,18 +1128,6 @@ export default function Page() {
                   <h2 className="font-medium text-sm">探索模块进度</h2>
                   <p className="text-muted-foreground text-xs">展示模块、页面状态和页面探索步骤</p>
                 </div>
-                {canStop ? (
-                  <Button
-                    disabled={stopping}
-                    onClick={() => setStopDialogOpen(true)}
-                    size="sm"
-                    type="button"
-                    variant="destructive"
-                  >
-                    <Square className="size-3.5" />
-                    停止
-                  </Button>
-                ) : null}
               </div>
               {loading ? (
                 <div className="py-10 text-center text-muted-foreground text-sm">探索任务加载中</div>
@@ -1331,7 +1367,7 @@ function ExplorationTaskPanel({ run }: { run: ExplorationRun | null }) {
       <TaskSection title="环境">
         <div className="grid gap-3 md:grid-cols-2">
           <InfoRow label="所属项目" value={displayValue(run?.project_name)} />
-          <InfoRow label="测试环境" value={displayValue(run?.environment_name)} />
+          <InfoRow label="探索环境" value={displayValue(run?.environment_name)} />
           <InfoRow label="登录策略" value={loginStrategy} />
           <InfoRow label="站点地址" value={displayValue(run?.environment_site_url)} />
         </div>
@@ -2145,10 +2181,23 @@ function createRawLogEntry(index: number, raw: string, timestamp: string, summar
 
 function inferLogCategory(event: string): LogCategory {
   if (event === "blocked") return "blocked";
-  if (event === "safety_blocked") return "safety";
   if (event === "error") return "error";
-  if (event.includes("page") || event === "accessibility_captured") return "page";
-  if (event.includes("action") || event.includes("edge")) return "action";
+  if (
+    event.includes("page") ||
+    event === "accessibility_captured" ||
+    event === "agent_observed" ||
+    event === "observe"
+  ) {
+    return "page";
+  }
+  if (
+    event.includes("action") ||
+    event.includes("edge") ||
+    event === "agent_decision" ||
+    event === "agent_decision_fallback"
+  ) {
+    return "action";
+  }
   if (event.includes("artifact")) return "artifact";
   if (event.includes("run") || event.includes("login") || event === "skipped") return "run";
   return "raw";
@@ -2158,7 +2207,9 @@ function inferLogLevel(event: string, payload: Record<string, unknown>): LogLeve
   const explicit = stringValue(payload.level).toLowerCase();
   if (explicit === "error" || explicit === "warning" || explicit === "info") return explicit;
   if (event === "error" || stringValue(payload.status) === "failed") return "error";
-  if (event === "blocked" || event === "safety_blocked" || event === "skipped") return "warning";
+  if (event === "blocked" || event === "skipped") {
+    return "warning";
+  }
   return "info";
 }
 
@@ -2169,16 +2220,31 @@ function buildLogEntrySummary(event: string, payload: Record<string, unknown>): 
   if (event === "run_completed") {
     return `探索完成，状态 ${firstString(payload, ["status"]) || "completed"}`;
   }
-  if (event === "page_captured" || event === "page_visited" || event === "page_discovered") {
+  if (
+    event === "page_captured" ||
+    event === "page_visited" ||
+    event === "page_discovered" ||
+    event === "agent_observed" ||
+    event === "observe"
+  ) {
     return `采集页面 ${firstString(payload, ["title", "page_id", "url"]) || "-"}`;
   }
   if (event === "edge_created") {
     return `记录关系 ${firstString(payload, ["edge_id"]) || ""}：${firstString(payload, ["source"]) || "-"} -> ${firstString(payload, ["target"]) || "-"}`;
   }
+  if (event === "agent_decision") {
+    return `Agent 决策 ${firstString(payload, ["decision_type"]) || "-"}：${firstString(payload, ["action", "action_type"]) || "-"}`;
+  }
+  if (event === "agent_decision_fallback") {
+    return `Agent 决策降级：${firstString(payload, ["reason"]) || "-"}`;
+  }
   if (event === "action_executed") {
     return `执行动作 ${firstString(payload, ["action", "name", "locator_hint"]) || "-"}`;
   }
-  if (event === "blocked" || event === "safety_blocked" || event === "skipped") {
+  if (event === "action_started" || event === "action_result" || event === "action_completed") {
+    return `动作 ${firstString(payload, ["action", "action_type"]) || "-"}：${firstString(payload, ["status", "target"]) || "-"}`;
+  }
+  if (event === "blocked" || event === "skipped") {
     return firstString(payload, ["reason", "action", "page_id", "page"]) || logTypeLabels[event] || event;
   }
   if (event === "artifact_written") {
@@ -2257,13 +2323,13 @@ function formatLogTimestamp(value: string): string {
   }).format(parsed);
 }
 
-function formatExplorationDuration(run: ExplorationRun): string {
+function formatExplorationDuration(run: ExplorationRun, now: number = Date.now()): string {
   if (!run.started_at) {
     return "-";
   }
 
   const startedAt = parseApiTimestamp(run.started_at);
-  const finishedAt = run.finished_at ? parseApiTimestamp(run.finished_at) : Date.now();
+  const finishedAt = run.finished_at ? parseApiTimestamp(run.finished_at) : now;
   if (!Number.isFinite(startedAt) || !Number.isFinite(finishedAt) || finishedAt < startedAt) {
     return "-";
   }

@@ -38,7 +38,7 @@ class ExplorationRunCreateIn(BaseModel):
     title: str = Field(min_length=1)
     scope: str = ""
     forbidden_paths: str = ""
-    login_strategy: str = "reuse_state"
+    login_strategy: str = "skip_login"
     goal: str = ""
     notes: str = ""
     max_pages: int = 50

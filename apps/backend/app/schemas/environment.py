@@ -8,10 +8,10 @@ class ProjectEnvironmentOut(BaseModel):
     name: str
     site_url: str
     username: str
-    password_mask: str
     login_strategy: str
     captcha_strategy: str = "none"
     reuse_auth_state: bool = True
+    has_saved_credentials: bool = False
     auth_state_status: str = "none"
     auth_state_expires_at: str | None = None
     description: str
@@ -48,4 +48,5 @@ class ManualAuthSessionOut(BaseModel):
     status: str
     auth_state_status: str = "none"
     auth_state_expires_at: str | None = None
+    has_saved_credentials: bool = False
     message: str

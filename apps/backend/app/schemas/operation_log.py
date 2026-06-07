@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 LogType = Literal["audit", "config", "task", "agent"]
 LogSource = Literal["web", "api", "agent", "runner", "system"]
@@ -106,3 +106,23 @@ class OperationLogCleanupResult(BaseModel):
     matched_count: int
     deleted_count: int
     dry_run: bool
+
+
+class ClientErrorReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=120)
+    message: str = Field(min_length=1, max_length=1000)
+    code: str = Field(default="", max_length=80)
+    status: int | None = Field(default=None, ge=0, le=599)
+    trace_id: str = Field(default="", max_length=80)
+    method: str = Field(default="", max_length=12)
+    path: str = Field(default="", max_length=500)
+    page_url: str = Field(default="", max_length=1000)
+    action_label: str = Field(default="", max_length=120)
+    occurred_at: str = Field(default="", max_length=80)
+
+
+class ClientErrorReportOut(BaseModel):
+    log_id: str | None
+    trace_id: str

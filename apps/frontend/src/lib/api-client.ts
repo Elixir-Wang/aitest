@@ -9,6 +9,35 @@ type ApiEnvelope<T> = {
   trace_id: string;
 };
 
+export class ApiRequestError extends Error {
+  code: string;
+  status: number;
+  traceId: string;
+  detail: unknown;
+
+  constructor(
+    message: string,
+    {
+      code = "",
+      detail = null,
+      status,
+      traceId = "",
+    }: {
+      code?: string;
+      detail?: unknown;
+      status: number;
+      traceId?: string;
+    },
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.code = code;
+    this.status = status;
+    this.traceId = traceId;
+    this.detail = detail;
+  }
+}
+
 export type ApiRole = "admin" | "tester" | "guest";
 export type ApiStatus = "enabled" | "disabled";
 
@@ -278,6 +307,65 @@ export type ApiGlobalKnowledgeDetail = {
   available_actions: ApiAvailableAction[];
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function apiErrorMessageFromPayload(payload: unknown, fallbackMessage = "请求失败，请稍后重试。") {
+  const detail = isRecord(payload) ? payload.detail : null;
+  return (
+    (isRecord(detail) && typeof detail.message === "string" ? detail.message : "") ||
+    (typeof detail === "string" ? detail : "") ||
+    fallbackMessage
+  );
+}
+
+function apiErrorCodeFromPayload(payload: unknown) {
+  const detail = isRecord(payload) ? payload.detail : null;
+  return isRecord(detail) && typeof detail.code === "string" ? detail.code : "";
+}
+
+export function apiErrorFromResponse(
+  response: Response,
+  payload: unknown,
+  fallbackMessage = "请求失败，请稍后重试。",
+): ApiRequestError {
+  const detail = isRecord(payload) ? payload.detail : null;
+  const traceId =
+    (isRecord(payload) && typeof payload.trace_id === "string" ? payload.trace_id : "") ||
+    response.headers.get("x-trace-id") ||
+    "";
+
+  return new ApiRequestError(apiErrorMessageFromPayload(payload, fallbackMessage), {
+    code: apiErrorCodeFromPayload(payload),
+    detail,
+    status: response.status,
+    traceId,
+  });
+}
+
+export function apiErrorFromXhr(xhr: XMLHttpRequest, fallbackMessage = "请求失败，请稍后重试。"): ApiRequestError {
+  const payload = (() => {
+    try {
+      return JSON.parse(xhr.responseText);
+    } catch {
+      return null;
+    }
+  })();
+  const detail = isRecord(payload) ? payload.detail : null;
+  const traceId =
+    (isRecord(payload) && typeof payload.trace_id === "string" ? payload.trace_id : "") ||
+    xhr.getResponseHeader("x-trace-id") ||
+    "";
+
+  return new ApiRequestError(apiErrorMessageFromPayload(payload, fallbackMessage), {
+    code: apiErrorCodeFromPayload(payload),
+    detail,
+    status: xhr.status,
+    traceId,
+  });
+}
+
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   let { hasHydrated, token } = useAuthStore.getState();
 
@@ -299,8 +387,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const detail = payload?.detail;
-    throw new Error(detail?.message ?? "请求失败，请稍后重试。");
+    throw apiErrorFromResponse(response, payload);
   }
 
   return (payload as ApiEnvelope<T>).data;
@@ -341,8 +428,7 @@ export async function apiBlobRequest(path: string, options: RequestInit = {}): P
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    const detail = payload?.detail;
-    throw new Error(detail?.message ?? "请求失败，请稍后重试。");
+    throw apiErrorFromResponse(response, payload);
   }
 
   return response.blob();
@@ -369,8 +455,7 @@ export async function apiFormRequest<T>(path: string, formData: FormData, option
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const detail = payload?.detail;
-    throw new Error(detail?.message ?? "请求失败，请稍后重试。");
+    throw apiErrorFromResponse(response, payload);
   }
 
   return (payload as ApiEnvelope<T>).data;
@@ -431,24 +516,33 @@ export function operationLogActionToLabel(action: string) {
     (
       {
         archive: "归档",
+        answer_requirement_clarification: "答复澄清问题",
         cancel: "取消",
         confirm: "确认",
         create: "新增",
         create_global_knowledge_version: "新增知识版本",
         delete: "删除",
         export: "导出",
+        fail_requirement_analysis: "需求分析失败",
+        finalize_requirement_analysis: "确认最终需求",
         finish: "完成",
+        finish_requirement_analysis: "完成需求分析",
         generate: "生成",
         login: "登录",
         logout: "登出",
         publish: "发布",
+        resolve_conflict: "解决冲突",
         restore: "恢复",
         retry: "重试",
         run: "执行",
+        set_primary_file: "设置主文件",
         assign_model: "分配模型",
         archive_global_knowledge: "归档全局知识",
         cleanup: "清理",
+        client_error: "客户端错误",
         start: "开始",
+        start_requirement_analysis: "开始需求分析",
+        submit_requirement_analysis: "提交需求分析",
         update: "编辑",
         update_global_knowledge: "编辑全局知识",
         update_retention_policy: "更新保留策略",
@@ -480,6 +574,7 @@ export function operationLogModuleToLabel(module: string) {
         auth: "登录认证",
         environment: "环境",
         exploration: "站点探索",
+        frontend: "前端",
         knowledge: "知识库",
         model: "模型配置",
         operation_log: "系统日志",

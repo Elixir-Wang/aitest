@@ -15,8 +15,8 @@ from app.schemas.exploration import ExplorationRunCreateIn, ExplorationRunUpdate
 from app.services import operation_log_service
 from app.services.exploration import artifact_service as exploration_artifact_service
 
-STATUSES = {"pending", "queued", "running", "waiting_human", "stopping", "cancelled", "partial", "completed", "blocked"}
-LOGIN_STRATEGIES = {"reuse_state", "manual", "account_password", "skip_login"}
+STATUSES = {"pending", "queued", "running", "stopping", "cancelled", "partial", "completed", "blocked"}
+LOGIN_STRATEGIES = {"account_password", "skip_login"}
 AGENT_PLAN_DISPLAY_STATUSES = {
     "pending",
     "queued",
@@ -26,7 +26,6 @@ AGENT_PLAN_DISPLAY_STATUSES = {
     "completed",
     "partial",
     "blocked",
-    "waiting_human",
     "failed",
     "cancelled",
 }
@@ -41,11 +40,16 @@ LOG_EVENT_LABELS = {
     "accessibility_captured": "生成无障碍树",
     "action_detected": "发现动作",
     "action_executed": "执行动作",
+    "agent_observed": "Agent 观察",
+    "agent_decision": "Agent 决策",
+    "agent_decision_fallback": "Agent 决策降级",
+    "action_started": "开始动作",
+    "action_result": "动作结果",
+    "action_completed": "动作完成",
     "edge_created": "记录关系",
     "artifact_written": "写入产物",
     "blocked": "探索阻塞",
     "skipped": "跳过",
-    "safety_blocked": "安全拦截",
     "error": "错误",
     "run_completed": "探索完成",
     "raw": "原始日志",
@@ -59,12 +63,14 @@ def list_project_runs(project_id: str, actor) -> list[dict]:
             raise api_error(404, "NOT_FOUND", "项目不存在。")
         _ensure_project_visible(project, actor)
         rows = exploration_repo.list_by_project(db, project_id)
+        rows = [_recover_stale_stopping_run(db, row) for row in rows]
         return [serialize_exploration_run(row, actor["role"]) for row in rows]
 
 
 def list_visible_runs(actor) -> list[dict]:
     with connect() as db:
         rows = exploration_repo.list_visible(db, actor)
+        rows = [_recover_stale_stopping_run(db, row) for row in rows]
         return [serialize_exploration_run(row, actor["role"]) for row in rows]
 
 
@@ -74,6 +80,7 @@ def get_project_run(project_id: str, run_id: str, actor) -> dict:
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "探索任务不存在。")
         _ensure_project_visible(existing, actor)
+        existing = _recover_stale_stopping_run(db, existing)
         return serialize_exploration_run(existing, actor["role"])
 
 
@@ -83,6 +90,7 @@ def get_project_run_detail(project_id: str, run_id: str, actor) -> dict:
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "探索任务不存在。")
         _ensure_project_visible(existing, actor)
+        existing = _recover_stale_stopping_run(db, existing)
 
         modules = [dict(row) for row in exploration_repo.list_module_coverages(db, run_id)]
         artifact_bundle = _load_run_artifact_bundle(existing)
@@ -464,13 +472,11 @@ def _raw_log_entry(line: str, index: int) -> dict:
 def _infer_log_category(event: str) -> str:
     if event == "blocked":
         return "blocked"
-    if event == "safety_blocked":
-        return "safety"
     if event == "error":
         return "error"
-    if "page" in event or event == "accessibility_captured":
+    if "page" in event or event in {"accessibility_captured", "agent_observed", "observe"}:
         return "page"
-    if "action" in event or "edge" in event:
+    if "action" in event or "edge" in event or event in {"agent_decision", "agent_decision_fallback"}:
         return "action"
     if "artifact" in event:
         return "artifact"
@@ -485,7 +491,7 @@ def _infer_log_level(event: str, payload: dict) -> str:
         return explicit
     if event == "error" or _string_value(payload.get("status")) == "failed":
         return "error"
-    if event in {"blocked", "safety_blocked", "skipped"}:
+    if event in {"blocked", "skipped"}:
         return "warning"
     return "info"
 
@@ -499,9 +505,15 @@ def _build_log_summary(event: str, payload: dict) -> str:
         return f"采集页面 {_first_string(payload, ('title', 'page_id', 'url')) or '-'}"
     if event == "edge_created":
         return f"记录关系 {_first_string(payload, ('edge_id',))}：{_first_string(payload, ('source',)) or '-'} -> {_first_string(payload, ('target',)) or '-'}"
+    if event == "agent_decision":
+        return f"Agent 决策 {_first_string(payload, ('decision_type',)) or '-'}：{_first_string(payload, ('action',)) or '-'}"
+    if event == "agent_decision_fallback":
+        return f"Agent 决策降级：{_first_string(payload, ('reason',)) or '-'}"
     if event == "action_executed":
         return f"执行动作 {_first_string(payload, ('action', 'name', 'locator_hint')) or '-'}"
-    if event in {"blocked", "safety_blocked", "skipped"}:
+    if event in {"action_started", "action_result", "action_completed"}:
+        return f"动作 {_first_string(payload, ('action', 'action_type')) or '-'}：{_first_string(payload, ('status', 'target')) or '-'}"
+    if event in {"blocked", "skipped"}:
         return _first_string(payload, ("reason", "action", "page_id", "page")) or LOG_EVENT_LABELS.get(event, event)
     if event == "artifact_written":
         return f"写入产物 {_first_string(payload, ('artifact_path', 'file_path')) or '-'}"
@@ -604,7 +616,7 @@ def update_project_run(project_id: str, run_id: str, payload: ExplorationRunUpda
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "探索任务不存在。")
         _ensure_project_visible(existing, actor)
-        if existing["status"] in {"queued", "running", "waiting_human", "stopping"}:
+        if existing["status"] in {"queued", "running", "stopping"}:
             raise api_error(409, "RUNNING_EXPLORATION", "探索任务执行中，不能修改。")
         if "environment_id" in updates:
             environment = environment_repo.find_by_id(db, updates["environment_id"])
@@ -649,8 +661,9 @@ def start_project_run(project_id: str, run_id: str, actor) -> dict:
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "探索任务不存在。")
         _ensure_project_visible(existing, actor)
-        if existing["status"] in {"queued", "running", "waiting_human", "stopping"}:
-            raise api_error(409, "EXPLORATION_ALREADY_RUNNING", "探索任务正在执行或等待人工处理。")
+        existing = _recover_stale_stopping_run(db, existing)
+        if existing["status"] in {"queued", "running", "stopping"}:
+            raise api_error(409, "EXPLORATION_ALREADY_RUNNING", "探索任务正在执行。")
         if existing["status"] not in {"pending", "partial", "completed", "blocked", "cancelled"}:
             raise api_error(409, "EXPLORATION_NOT_STARTABLE", "当前状态不能发起探索。")
         _remove_run_artifact_directory(existing)
@@ -695,6 +708,7 @@ def stop_project_run(project_id: str, run_id: str, actor) -> dict:
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "探索任务不存在。")
         _ensure_project_visible(existing, actor)
+        existing = _recover_stale_stopping_run(db, existing)
         before = _run_snapshot(existing)
         if existing["status"] in {"completed", "partial", "blocked", "cancelled"}:
             result = serialize_exploration_run(existing, actor["role"])
@@ -715,7 +729,7 @@ def stop_project_run(project_id: str, run_id: str, actor) -> dict:
                 result = serialize_exploration_run(existing, actor["role"])
             after = _run_snapshot(result)
             should_log = False
-        elif existing["status"] in {"queued", "running", "waiting_human"}:
+        elif existing["status"] in {"queued", "running"}:
             exploration_repo.update_run_state(
                 db,
                 run_id,
@@ -748,13 +762,53 @@ def stop_project_run(project_id: str, run_id: str, actor) -> dict:
     return result
 
 
+def _recover_stale_stopping_run(db, run):
+    if run["status"] != "stopping":
+        return run
+    terminal_status = _terminal_status_from_finished_run(run)
+    if not terminal_status:
+        return run
+    summary = _recovered_stopping_summary(run["result_summary"], terminal_status)
+    exploration_repo.update_run_state(db, run["id"], status=terminal_status, result_summary=summary, finished=True)
+    return exploration_repo.find_by_id(db, run["id"]) or run
+
+
+def _terminal_status_from_finished_run(run) -> str:
+    log_content = _load_run_artifact_bundle(run).get("log_content", "")
+    for entry in reversed(parse_exploration_log_entries(log_content)):
+        event = entry.get("event")
+        if event == "run_completed":
+            return "completed"
+        if event == "run_cancelled":
+            return "cancelled"
+        if event in {"run_failed", "blocked", "error"}:
+            return "blocked"
+    if run["finished_at"]:
+        return "cancelled"
+    return ""
+
+
+def _stale_stopping_summary(status: str) -> str:
+    return {
+        "completed": "探索已完成，停止请求发生在任务结束后，状态已自动恢复。",
+        "cancelled": "探索已停止，已保留停止前生成的日志和产物。",
+        "blocked": "探索已结束但存在阻塞，请查看日志确认原因。",
+    }.get(status, "探索任务已结束。")
+
+
+def _recovered_stopping_summary(current_summary: str, status: str) -> str:
+    if current_summary and "正在终止" not in current_summary and "正在停止" not in current_summary:
+        return current_summary
+    return _stale_stopping_summary(status)
+
+
 def delete_project_run(project_id: str, run_id: str, actor) -> dict:
     with connect() as db:
         existing = exploration_repo.find_by_id(db, run_id)
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "探索任务不存在。")
         _ensure_project_visible(existing, actor)
-        if existing["status"] in {"queued", "running", "waiting_human", "stopping"}:
+        if existing["status"] in {"queued", "running", "stopping"}:
             raise api_error(409, "RUNNING_EXPLORATION", "探索任务运行中，不能删除。")
         snapshot = _run_snapshot(existing)
         artifact_root = _resolve_run_artifact_root(existing)
@@ -812,7 +866,7 @@ def _status_to_completion(status: str) -> str:
         return "completed"
     if status == "blocked":
         return "blocked"
-    if status in {"queued", "running", "waiting_human", "stopping"}:
+    if status in {"queued", "running", "stopping"}:
         return "in-progress"
     if status == "cancelled":
         return "blocked"
@@ -874,7 +928,7 @@ def _fallback_module(run_id: str, run, module_key: str) -> dict:
 
 
 def _planned_or_fallback_modules(run_id: str, run, fallback_key: str) -> dict[str, dict]:
-    if run["status"] in {"queued", "running", "waiting_human", "stopping"}:
+    if run["status"] in {"queued", "running", "stopping"}:
         modules = {}
         completion_status = _planned_module_status(run["status"])
         for index, name in enumerate(_planned_module_names(run), start=1):
@@ -919,7 +973,7 @@ def _planned_or_fallback_modules(run_id: str, run, fallback_key: str) -> dict[st
 
 
 def _planned_module_status(run_status: str) -> str:
-    if run_status in {"running", "waiting_human", "stopping"}:
+    if run_status in {"running", "stopping"}:
         return run_status
     return "pending"
 
@@ -1014,7 +1068,7 @@ def _run_snapshot(run) -> dict:
         has_login_credentials = bool(
             login_strategy == "account_password"
             and str(_snapshot_value(run, "environment_username", "") or "").strip()
-            and str(_snapshot_value(run, "environment_password_mask", "") or "").strip()
+            and _snapshot_value(run, "environment_has_password", 0)
         )
     return {
         "title": run["title"],
@@ -1042,10 +1096,6 @@ def _snapshot_auth_config(run) -> tuple[str, str, bool]:
         _snapshot_value(run, "environment_reuse_auth_state", _snapshot_value(run, "reuse_auth_state", login_strategy != "skip_login")),
         default=login_strategy != "skip_login",
     )
-    if login_strategy == "reuse_state":
-        return "account_password", "none", True
-    if login_strategy == "manual":
-        return "account_password", "manual", True
     if login_strategy == "skip_login":
         return "skip_login", "none", False
     if captcha_strategy == "manual" and not reuse_auth_state:

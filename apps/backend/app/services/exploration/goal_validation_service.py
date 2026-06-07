@@ -123,7 +123,7 @@ def terminal_status_for_goal_validation(current_status: str, validation: dict) -
         return "blocked"
     if validation_status == "partial":
         return "partial"
-    return "waiting_human"
+    return "partial"
 
 
 def _supports_article_link_button_login_goal(goal: str) -> bool:

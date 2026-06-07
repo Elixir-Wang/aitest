@@ -4,11 +4,15 @@ import re
 import secrets
 from sqlite3 import Row
 from typing import Any
+from urllib.parse import urlsplit
 
 from app.core.db import connect
 from app.core.exceptions import api_error
+from app.core.logging import get_trace_id
 from app.repositories import operation_log_repo, project_repo
 from app.schemas.operation_log import (
+    ClientErrorReport,
+    ClientErrorReportOut,
     OperationLogCleanupRequest,
     OperationLogCleanupResult,
     OperationLogCreate,
@@ -61,6 +65,55 @@ def record_task_event(**kwargs) -> str | None:
 def record_agent_run(**kwargs) -> str | None:
     payload = OperationLogCreate(log_type="agent", source=kwargs.pop("source", "agent"), **kwargs)
     return _record(payload)
+
+
+def record_client_error(payload: ClientErrorReport, actor: Row | None, *, ip_address: str = "", user_agent: str = "") -> dict:
+    effective_trace_id = payload.trace_id or get_trace_id()
+    if effective_trace_id == "-":
+        effective_trace_id = ""
+    project_id = _client_error_project_id(payload, actor)
+    actor_id = actor["id"] if actor else "anonymous"
+    actor_name = actor_display_name(actor) if actor else "匿名用户"
+    path = _safe_text(payload.path, 500)
+    method = _safe_text(payload.method.upper(), 12)
+    status = f"HTTP {payload.status}" if payload.status else "前端异常"
+    endpoint = " ".join(part for part in (method, path) if part)
+    summary_parts = [f"前端错误：{payload.title}", status]
+    if endpoint:
+        summary_parts.append(endpoint)
+    summary = "；".join(summary_parts)
+    failure_parts = [payload.message]
+    if payload.code:
+        failure_parts.append(f"错误码：{payload.code}")
+    failure_reason = "；".join(failure_parts)
+
+    log_id = record_failure(
+        log_type="audit",
+        module="frontend",
+        action="client_error",
+        object_type="client_error",
+        object_id=effective_trace_id or None,
+        object_name=payload.title,
+        project_id=project_id,
+        actor_id=actor_id,
+        actor_name=actor_name,
+        source="web",
+        failure_reason=failure_reason,
+        summary=summary,
+        before={
+            "status": payload.status,
+            "code": payload.code,
+            "method": method,
+            "path": path,
+            "page_url": _safe_text(payload.page_url, 1000),
+            "action_label": _safe_text(payload.action_label, 120),
+            "occurred_at": _safe_text(payload.occurred_at, 80),
+        },
+        request_id=effective_trace_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    return ClientErrorReportOut(log_id=log_id, trace_id=effective_trace_id).model_dump()
 
 
 def actor_display_name(actor) -> str:
@@ -172,6 +225,9 @@ def cleanup_logs(payload: OperationLogCleanupRequest, actor: Row) -> dict:
 
 def _record(payload: OperationLogCreate) -> str | None:
     log_id = f"oplog-{secrets.token_hex(8)}"
+    request_id = payload.request_id or get_trace_id()
+    if request_id == "-":
+        request_id = ""
     try:
         with connect() as db:
             operation_log_repo.create_log(
@@ -195,7 +251,7 @@ def _record(payload: OperationLogCreate) -> str | None:
                     "after_json": json.dumps(_mask_sensitive(payload.after or {}), ensure_ascii=False),
                     "task_id": payload.task_id,
                     "artifact_path": json.dumps(_mask_sensitive(payload.artifact_path), ensure_ascii=False),
-                    "request_id": payload.request_id,
+                    "request_id": request_id,
                     "ip_address": payload.ip_address,
                     "user_agent": _mask_sensitive(payload.user_agent),
                 },
@@ -204,6 +260,35 @@ def _record(payload: OperationLogCreate) -> str | None:
     except Exception as exc:
         logger.warning("operation log write failed: %s", exc)
         return None
+
+
+def _client_error_project_id(payload: ClientErrorReport, actor: Row | None) -> str | None:
+    if not actor:
+        return None
+    project_id = _extract_project_id(payload.path) or _extract_project_id(payload.page_url)
+    if not project_id:
+        return None
+    with connect() as db:
+        project = project_repo.find_by_id(db, project_id)
+    if not project:
+        return None
+    try:
+        _ensure_project_access(project_id, actor)
+    except Exception:
+        return None
+    return project_id
+
+
+def _extract_project_id(value: str) -> str | None:
+    if not value:
+        return None
+    path = urlsplit(value).path
+    match = re.search(r"/projects/([^/?#]+)", path)
+    return match.group(1) if match else None
+
+
+def _safe_text(value: str, limit: int) -> str:
+    return value.strip()[:limit]
 
 
 def _mask_sensitive(value: Any) -> Any:

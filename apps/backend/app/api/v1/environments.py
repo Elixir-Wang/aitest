@@ -60,6 +60,19 @@ def save_manual_auth_session(
     return manual_auth_service.save_manual_auth_session(project_id, environment_id, session_id, actor)
 
 
+@router.get(
+    "/{project_id}/environments/{environment_id}/manual-auth/{session_id}/status",
+    response_model=ManualAuthSessionOut,
+)
+def get_manual_auth_session_status(
+    project_id: str,
+    environment_id: str,
+    session_id: str,
+    actor=Depends(require_admin),
+) -> dict:
+    return manual_auth_service.get_manual_auth_session_status(project_id, environment_id, session_id, actor)
+
+
 @router.post(
     "/{project_id}/environments/{environment_id}/manual-auth/{session_id}/cancel",
     response_model=ManualAuthSessionOut,

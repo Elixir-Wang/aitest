@@ -136,16 +136,62 @@ def init_db() -> None:
               id TEXT PRIMARY KEY,
               project_id TEXT NOT NULL,
               document_id TEXT NOT NULL,
-              version_id TEXT NOT NULL,
+              version_id TEXT,
+              primary_mapping_id TEXT,
               status TEXT NOT NULL,
               analysis_summary TEXT NOT NULL DEFAULT '',
               output_json TEXT NOT NULL,
               quality_result TEXT NOT NULL,
               testability_score INTEGER NOT NULL DEFAULT 0,
+              draft_content_hash TEXT NOT NULL DEFAULT '',
+              finalized_version_id TEXT,
+              finalized_at TEXT,
+              finalized_by TEXT,
               created_by TEXT NOT NULL,
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
-              FOREIGN KEY(version_id) REFERENCES source_document_versions(id) ON DELETE CASCADE
+              FOREIGN KEY(version_id) REFERENCES source_document_versions(id) ON DELETE SET NULL,
+              FOREIGN KEY(primary_mapping_id) REFERENCES source_document_file_mappings(id) ON DELETE SET NULL,
+              FOREIGN KEY(finalized_version_id) REFERENCES source_document_versions(id) ON DELETE SET NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS requirement_analysis_runs (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              document_id TEXT NOT NULL,
+              primary_mapping_id TEXT,
+              analysis_id TEXT,
+              status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'needs_clarification', 'blocked', 'failed')),
+              summary TEXT NOT NULL DEFAULT '',
+              failure_reason TEXT NOT NULL DEFAULT '',
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+              FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
+              FOREIGN KEY(primary_mapping_id) REFERENCES source_document_file_mappings(id) ON DELETE SET NULL,
+              FOREIGN KEY(analysis_id) REFERENCES requirement_analyses(id) ON DELETE SET NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS requirement_clarification_answers (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              document_id TEXT NOT NULL,
+              analysis_id TEXT NOT NULL,
+              question_id TEXT NOT NULL,
+              answer_type TEXT NOT NULL CHECK(answer_type IN ('recommended_option', 'custom', 'defer')),
+              selected_option_id TEXT NOT NULL DEFAULT '',
+              answer_markdown TEXT NOT NULL DEFAULT '',
+              user_note TEXT NOT NULL DEFAULT '',
+              apply_status TEXT NOT NULL CHECK(apply_status IN ('not_applicable', 'applied', 'failed')),
+              insertion_anchor TEXT NOT NULL DEFAULT '',
+              failure_reason TEXT NOT NULL DEFAULT '',
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+              FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
+              FOREIGN KEY(analysis_id) REFERENCES requirement_analyses(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS dashboard_daily_stats (
@@ -166,8 +212,9 @@ def init_db() -> None:
               name TEXT NOT NULL,
               site_url TEXT NOT NULL,
               username TEXT NOT NULL DEFAULT '',
-              password_mask TEXT NOT NULL DEFAULT '',
-              login_strategy TEXT NOT NULL DEFAULT 'reuse_state',
+              password_encrypted TEXT NOT NULL DEFAULT '',
+              password_hash TEXT NOT NULL DEFAULT '',
+              login_strategy TEXT NOT NULL DEFAULT 'skip_login',
               captcha_strategy TEXT NOT NULL DEFAULT 'none',
               reuse_auth_state INTEGER NOT NULL DEFAULT 1,
               description TEXT NOT NULL DEFAULT '',
@@ -183,10 +230,10 @@ def init_db() -> None:
               project_id TEXT NOT NULL,
               environment_id TEXT NOT NULL,
               title TEXT NOT NULL,
-              status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'waiting_human', 'stopping', 'cancelled', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
+              status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
               scope TEXT NOT NULL DEFAULT '',
               forbidden_paths TEXT NOT NULL DEFAULT '',
-              login_strategy TEXT NOT NULL DEFAULT 'reuse_state',
+              login_strategy TEXT NOT NULL DEFAULT 'skip_login',
               goal TEXT NOT NULL DEFAULT '',
               notes TEXT NOT NULL DEFAULT '',
               max_pages INTEGER NOT NULL DEFAULT 50,
@@ -463,6 +510,11 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_wiki_pages_build ON wiki_pages(build_id, sort_order);
             CREATE INDEX IF NOT EXISTS idx_knowledge_items_build ON knowledge_items(build_id, module_key);
             CREATE INDEX IF NOT EXISTS idx_source_references_build ON source_references(build_id);
+            CREATE INDEX IF NOT EXISTS idx_requirement_analysis_runs_project_created ON requirement_analysis_runs(project_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_requirement_analysis_runs_document_created ON requirement_analysis_runs(document_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_requirement_analysis_runs_status ON requirement_analysis_runs(status);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_requirement_clarification_answers_current ON requirement_clarification_answers(analysis_id, question_id);
+            CREATE INDEX IF NOT EXISTS idx_requirement_clarification_answers_document ON requirement_clarification_answers(document_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_documents_status ON global_knowledge_documents(status, updated_at);
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_documents_type ON global_knowledge_documents(knowledge_type, updated_at);
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_versions_document ON global_knowledge_versions(document_id, created_at);
@@ -473,9 +525,12 @@ def init_db() -> None:
         _ensure_column(db, "projects", "code", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "projects", "default_site_url", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "projects", "created_by", "TEXT NOT NULL DEFAULT 'system'")
-        _ensure_column(db, "project_environments", "login_strategy", "TEXT NOT NULL DEFAULT 'reuse_state'")
+        _ensure_column(db, "project_environments", "login_strategy", "TEXT NOT NULL DEFAULT 'skip_login'")
         _ensure_column(db, "project_environments", "captcha_strategy", "TEXT NOT NULL DEFAULT 'none'")
         _ensure_column(db, "project_environments", "reuse_auth_state", "INTEGER NOT NULL DEFAULT 1")
+        _ensure_column(db, "project_environments", "password_encrypted", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(db, "project_environments", "password_hash", "TEXT NOT NULL DEFAULT ''")
+        _drop_column_if_exists(db, "project_environments", "password_mask")
         _ensure_column(db, "exploration_runs", "artifact_root", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "exploration_runs", "result_summary", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "exploration_runs", "started_at", "TEXT")
@@ -487,6 +542,7 @@ def init_db() -> None:
         _migrate_exploration_run_statuses(db)
         _migrate_source_documents(db)
         _migrate_file_mappings(db)
+        _migrate_requirement_analyses(db)
         _migrate_agent_model_assignments(db)
         _migrate_stored_paths(db)
         _seed_operation_log_retention_policy(db)
@@ -514,6 +570,13 @@ def _ensure_column(db: sqlite3.Connection, table: str, column: str, definition: 
     db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
+def _drop_column_if_exists(db: sqlite3.Connection, table: str, column: str) -> None:
+    columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in columns:
+        return
+    db.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+
+
 def _seed_operation_log_retention_policy(db: sqlite3.Connection) -> None:
     exists = db.execute("SELECT id FROM operation_log_retention_policy WHERE id = 'default'").fetchone()
     if exists:
@@ -530,19 +593,25 @@ def _backfill_environment_login_strategies(db: sqlite3.Connection) -> None:
     db.execute(
         """
         UPDATE project_environments
-        SET login_strategy = COALESCE(
-          (
-            SELECT er.login_strategy
-            FROM exploration_runs er
-            WHERE er.environment_id = project_environments.id
-              AND er.login_strategy != ''
-            ORDER BY er.updated_at DESC, er.created_at DESC
-            LIMIT 1
-          ),
-          login_strategy,
-          'reuse_state'
-        )
-        WHERE login_strategy = '' OR login_strategy IS NULL OR login_strategy = 'reuse_state'
+        SET login_strategy = 'skip_login',
+            captcha_strategy = 'none',
+            reuse_auth_state = 0,
+            username = '',
+            password_encrypted = '',
+            password_hash = ''
+        WHERE login_strategy = '' OR login_strategy IS NULL
+        """
+    )
+    db.execute(
+        """
+        UPDATE project_environments
+        SET login_strategy = 'account_password',
+            captcha_strategy = CASE
+              WHEN login_strategy = 'manual' THEN 'manual'
+              ELSE 'none'
+            END,
+            reuse_auth_state = 1
+        WHERE login_strategy IN ('reuse_state', 'manual')
         """
     )
 
@@ -554,10 +623,16 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
     if not table:
         return
     columns = {row["name"] for row in db.execute("PRAGMA table_info(exploration_runs)").fetchall()}
-    if "'stopping'" in table["sql"] and "goal" in columns and "notes" in columns and "description" not in columns:
+    required_columns = {"goal", "notes"}
+    legacy_columns = {"environment_type", "description", "execution_mode", "interaction_mode", "agent_turn_count"}
+    if (
+        "'stopping'" in table["sql"]
+        and required_columns.issubset(columns)
+        and columns.isdisjoint(legacy_columns)
+    ):
         return
     source_count = db.execute("SELECT COUNT(*) AS count FROM exploration_runs").fetchone()["count"]
-    goal_expr = "goal" if "goal" in columns else "description"
+    goal_expr = "goal" if "goal" in columns else ("description" if "description" in columns else "''")
     notes_expr = "notes" if "notes" in columns else "''"
     max_pages_expr = "max_pages" if "max_pages" in columns else "50"
     max_actions_expr = "max_actions" if "max_actions" in columns else "1000"
@@ -576,10 +651,10 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
           project_id TEXT NOT NULL,
           environment_id TEXT NOT NULL,
           title TEXT NOT NULL,
-          status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'waiting_human', 'stopping', 'cancelled', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
+          status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
           scope TEXT NOT NULL DEFAULT '',
           forbidden_paths TEXT NOT NULL DEFAULT '',
-          login_strategy TEXT NOT NULL DEFAULT 'reuse_state',
+          login_strategy TEXT NOT NULL DEFAULT 'skip_login',
           goal TEXT NOT NULL DEFAULT '',
           notes TEXT NOT NULL DEFAULT '',
           max_pages INTEGER NOT NULL DEFAULT 50,
@@ -604,9 +679,14 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
            max_pages, max_actions, timeout_minutes, artifact_root, result_summary, created_by, created_at, updated_at,
            started_at, finished_at)
         SELECT id, project_id, environment_id, title,
-               CASE WHEN status = 'queued' AND {started_at_expr} IS NULL THEN 'pending' ELSE status END,
+               CASE
+                 WHEN status = 'queued' AND {started_at_expr} IS NULL THEN 'pending'
+                 WHEN status = 'waiting_human' THEN 'partial'
+                 ELSE status
+               END,
                scope, forbidden_paths, login_strategy, {goal_expr}, {notes_expr},
-               {max_pages_expr}, {max_actions_expr}, {timeout_minutes_expr}, {artifact_root_expr}, {result_summary_expr},
+               {max_pages_expr}, {max_actions_expr}, {timeout_minutes_expr},
+               {artifact_root_expr}, {result_summary_expr},
                created_by, created_at, updated_at, {started_at_expr}, {finished_at_expr}
         FROM exploration_runs
         """
@@ -710,6 +790,88 @@ def _migrate_file_mappings(db: sqlite3.Connection) -> None:
             file_format = CASE WHEN file_format = '' THEN 'unknown' ELSE file_format END
         """
     )
+
+
+def _migrate_requirement_analyses(db: sqlite3.Connection) -> None:
+    table = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'requirement_analyses'",
+    ).fetchone()
+    if not table:
+        return
+
+    columns = {row["name"]: row for row in db.execute("PRAGMA table_info(requirement_analyses)").fetchall()}
+    expected_columns = {
+        "primary_mapping_id",
+        "draft_content_hash",
+        "finalized_version_id",
+        "finalized_at",
+        "finalized_by",
+    }
+    version_id_column = columns.get("version_id")
+    if version_id_column and not version_id_column["notnull"] and expected_columns.issubset(columns):
+        return
+
+    source_count = db.execute("SELECT COUNT(*) AS count FROM requirement_analyses").fetchone()["count"]
+    primary_mapping_expr = "primary_mapping_id" if "primary_mapping_id" in columns else "NULL"
+    draft_hash_expr = "draft_content_hash" if "draft_content_hash" in columns else "''"
+    finalized_version_expr = "finalized_version_id" if "finalized_version_id" in columns else "NULL"
+    finalized_at_expr = "finalized_at" if "finalized_at" in columns else "NULL"
+    finalized_by_expr = "finalized_by" if "finalized_by" in columns else "NULL"
+
+    db.execute("PRAGMA foreign_keys=off")
+    db.executescript(
+        """
+        DROP TABLE IF EXISTS requirement_analyses_new;
+        CREATE TABLE IF NOT EXISTS requirement_analyses_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          document_id TEXT NOT NULL,
+          version_id TEXT,
+          primary_mapping_id TEXT,
+          status TEXT NOT NULL,
+          analysis_summary TEXT NOT NULL DEFAULT '',
+          output_json TEXT NOT NULL,
+          quality_result TEXT NOT NULL,
+          testability_score INTEGER NOT NULL DEFAULT 0,
+          draft_content_hash TEXT NOT NULL DEFAULT '',
+          finalized_version_id TEXT,
+          finalized_at TEXT,
+          finalized_by TEXT,
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
+          FOREIGN KEY(version_id) REFERENCES source_document_versions(id) ON DELETE SET NULL,
+          FOREIGN KEY(primary_mapping_id) REFERENCES source_document_file_mappings(id) ON DELETE SET NULL,
+          FOREIGN KEY(finalized_version_id) REFERENCES source_document_versions(id) ON DELETE SET NULL
+        );
+        """
+    )
+    db.execute(
+        f"""
+        INSERT OR IGNORE INTO requirement_analyses_new
+          (id, project_id, document_id, version_id, primary_mapping_id, status, analysis_summary, output_json,
+           quality_result, testability_score, draft_content_hash, finalized_version_id, finalized_at, finalized_by,
+           created_by, created_at)
+        SELECT id, project_id, document_id, version_id, {primary_mapping_expr}, status, analysis_summary, output_json,
+               quality_result, testability_score, {draft_hash_expr}, {finalized_version_expr}, {finalized_at_expr},
+               {finalized_by_expr}, created_by, created_at
+        FROM requirement_analyses
+        """
+    )
+    migrated_count = db.execute("SELECT COUNT(*) AS count FROM requirement_analyses_new").fetchone()["count"]
+    if migrated_count != source_count:
+        db.execute("DROP TABLE IF EXISTS requirement_analyses_new")
+        db.execute("PRAGMA foreign_keys=on")
+        raise RuntimeError(f"需求分析迁移行数不一致：原表 {source_count} 行，新表 {migrated_count} 行。")
+
+    db.executescript(
+        """
+        DROP TABLE requirement_analyses;
+        ALTER TABLE requirement_analyses_new RENAME TO requirement_analyses;
+        """
+    )
+    db.execute("PRAGMA foreign_keys=on")
+
 
 def _migrate_agent_model_assignments(db: sqlite3.Connection) -> None:
     exists = db.execute(

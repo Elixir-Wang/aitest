@@ -11,7 +11,12 @@ import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
-const AGENT_BACKEND_SOURCE_TYPES = new Set(["knowledge_build", "requirement_file"]);
+const AGENT_BACKEND_SOURCE_TYPES = new Set([
+  "exploration_run",
+  "knowledge_build",
+  "requirement_file",
+  "requirement_analysis_run",
+]);
 const RUNNING_TASK_POLL_INTERVAL_MS = 2_000;
 const TASK_START_GRACE_MS = 8_000;
 
@@ -54,6 +59,7 @@ export function TaskRunningIndicator() {
   const [error, setError] = useState("");
   const [tracking, setTracking] = useState(false);
   const trackingStartedAtRef = useRef(0);
+  const loadRequestSeqRef = useRef(0);
 
   useEffect(() => {
     hydrate();
@@ -64,9 +70,12 @@ export function TaskRunningIndicator() {
   }, [hydrateAuth]);
 
   const loadRunningTasks = useCallback(async () => {
+    loadRequestSeqRef.current += 1;
+    const requestSeq = loadRequestSeqRef.current;
     if (!hasAuthHydrated || !hasProjectHydrated || !token) {
       setTasks([]);
       setError("");
+      setTracking(false);
       return;
     }
 
@@ -75,14 +84,23 @@ export function TaskRunningIndicator() {
         scope === "project" && currentProjectId ? `?project_id=${encodeURIComponent(currentProjectId)}` : "";
       const runningTasks = await apiRequest<ApiTaskItem[]>(`/tasks/running${query}`);
       const nextTasks = runningTasks.filter(isAgentBackendTask).map(toRunningTask);
+      if (requestSeq !== loadRequestSeqRef.current) {
+        return;
+      }
       setTasks(nextTasks);
-      if (nextTasks.length === 0 && Date.now() - trackingStartedAtRef.current > TASK_START_GRACE_MS) {
+      if (nextTasks.length > 0) {
+        setTracking(true);
+      } else if (Date.now() - trackingStartedAtRef.current > TASK_START_GRACE_MS) {
         setTracking(false);
       }
       setError("");
     } catch (requestError) {
+      if (requestSeq !== loadRequestSeqRef.current) {
+        return;
+      }
       setError(requestError instanceof Error ? requestError.message : "任务状态加载失败");
       setTasks([]);
+      setTracking(true);
     }
   }, [currentProjectId, hasAuthHydrated, hasProjectHydrated, scope, token]);
 
@@ -100,7 +118,14 @@ export function TaskRunningIndicator() {
   }, [loadRunningTasks]);
 
   useEffect(() => {
-    if (!tracking || !hasAuthHydrated || !hasProjectHydrated || !token) {
+    if (!hasAuthHydrated || !hasProjectHydrated || !token) {
+      return;
+    }
+    void loadRunningTasks();
+  }, [hasAuthHydrated, hasProjectHydrated, loadRunningTasks, token]);
+
+  useEffect(() => {
+    if ((!tracking && !error) || !hasAuthHydrated || !hasProjectHydrated || !token) {
       return;
     }
     const timer = window.setInterval(() => {
@@ -109,7 +134,7 @@ export function TaskRunningIndicator() {
     return () => {
       window.clearInterval(timer);
     };
-  }, [hasAuthHydrated, hasProjectHydrated, loadRunningTasks, token, tracking]);
+  }, [error, hasAuthHydrated, hasProjectHydrated, loadRunningTasks, token, tracking]);
 
   const dedupedTasks = useMemo(() => {
     const seen = new Set<string>();

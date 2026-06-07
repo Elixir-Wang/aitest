@@ -22,6 +22,33 @@ class RequirementAnalysisInput(BaseModel):
     markdown_content: str = ""
 
 
+class RequirementEnhancementQuestion(BaseModel):
+    id: str
+    module_key: str = ""
+    module_name: str = ""
+    question: str
+    reason: str = ""
+    impact: str = ""
+    severity: Literal["blocker", "major", "minor"] = "major"
+    primary_excerpt: str = ""
+
+
+class RequirementAuxiliaryArticleForEnhancement(BaseModel):
+    mapping_id: str
+    filename: str
+    markdown_content: str
+
+
+class RequirementAuxiliaryEnhancementInput(BaseModel):
+    project_id: str
+    document_id: str
+    analysis_id: str
+    primary_mapping_id: str = ""
+    primary_filename: str = ""
+    questions: list[RequirementEnhancementQuestion] = Field(default_factory=list)
+    auxiliary_articles: list[RequirementAuxiliaryArticleForEnhancement] = Field(default_factory=list)
+
+
 class RequirementAnalysisModule(BaseModel):
     module_key: str
     module_name: str
@@ -67,6 +94,14 @@ class RequirementEvidenceReference(BaseModel):
     section_hint: str = ""
 
 
+class RequirementClarificationOption(BaseModel):
+    id: str
+    label: str
+    answer_markdown: str
+    rationale: str = ""
+    confidence: Literal["high", "medium", "low"] = "medium"
+
+
 class RequirementAppliedSupplement(BaseModel):
     id: str
     source_question_id: str
@@ -97,6 +132,7 @@ class RequirementUnresolvedFinding(BaseModel):
     severity: Literal["blocker", "major", "minor"] = "major"
     primary_excerpt: str = ""
     evidence: list[RequirementEvidenceReference] = Field(default_factory=list)
+    recommended_options: list[RequirementClarificationOption] = Field(default_factory=list, max_length=2)
 
 
 class RequirementCoverageAuditItem(BaseModel):
@@ -166,3 +202,27 @@ class RequirementAnalysisOutput(BaseModel):
     coverage_audit: list[RequirementCoverageAuditItem] = Field(default_factory=list)
     quality_gate: RequirementQualityGate
     next_actions: list[str] = Field(default_factory=list)
+
+
+class RequirementResolvedQuestionOptions(BaseModel):
+    question_id: str
+    recommended_options: list[RequirementClarificationOption] = Field(default_factory=list, max_length=2)
+    evidence: list[RequirementEvidenceReference] = Field(default_factory=list)
+    resolution: Literal["answered", "weak_evidence", "conflict", "not_found"]
+    reason: str = ""
+
+
+class RequirementAuxiliaryCoverage(BaseModel):
+    question_id: str
+    matched_article_count: int = 0
+    coverage: Literal["answered", "partial", "conflict", "none"]
+    filenames: list[str] = Field(default_factory=list)
+
+
+class RequirementAuxiliaryEnhancementOutput(BaseModel):
+    enhancement_summary: str
+    applied_supplements: list[RequirementAppliedSupplement] = Field(default_factory=list)
+    resolved_question_options: list[RequirementResolvedQuestionOptions] = Field(default_factory=list)
+    new_conflicts: list[RequirementUnresolvedFinding] = Field(default_factory=list)
+    unchanged_question_ids: list[str] = Field(default_factory=list)
+    auxiliary_coverage: list[RequirementAuxiliaryCoverage] = Field(default_factory=list)

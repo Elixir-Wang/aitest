@@ -5,6 +5,7 @@ description = "FastAPI backend for the AI testing system."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "cryptography==48.0.0",
     "deepagents>=0.6.7",
     "email-validator==2.3.0",
     "fastapi==0.124.2",

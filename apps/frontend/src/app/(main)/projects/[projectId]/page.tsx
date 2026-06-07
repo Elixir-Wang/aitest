@@ -22,6 +22,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { type ApiProject, apiRequest } from "@/lib/api-client";
+import { reportError } from "@/lib/error-feedback";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
 const PROJECT_LIST_CHANGED_EVENT = "ai-testing:project-list-changed";
@@ -119,7 +120,12 @@ export default function Page() {
       toast.success("项目已保存");
       setDialogOpen(false);
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "项目保存失败");
+      reportError(requestError, {
+        fallbackMessage: "项目保存失败",
+        actionLabel: "编辑项目",
+        method: "PATCH",
+        path: `/projects/${projectId}`,
+      });
     }
   }
 

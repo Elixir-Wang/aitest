@@ -1,8 +1,8 @@
 import { chromium } from "playwright";
-import { buildElementSelectors } from "./selector-generator.mjs";
-import { locatorForCandidate, verifyElementSelectors, verifySelectorCandidate } from "./selector-validator.mjs";
+import { buildSelectorCandidates } from "./selector-generator.mjs";
+import { locatorForCandidate, verifySelectorCandidate } from "./selector-validator.mjs";
 
-const [, , startUrl, artifactRoot, channel = "", forbiddenInput = ""] = process.argv;
+const [, , startUrl, artifactRoot, channel = "", forbiddenInput = "", storageStatePath = ""] = process.argv;
 
 if (!startUrl || !artifactRoot) {
   console.error("Usage: node site-explorer.mjs <startUrl> <artifactRoot> [channel]");
@@ -22,6 +22,7 @@ const browser = await chromium.launch({
 const context = await browser.newContext({
   viewport: { width: 1440, height: 1000 },
   ignoreHTTPSErrors: true,
+  ...(storageStatePath ? { storageState: storageStatePath } : {}),
 });
 const page = await context.newPage();
 page.setDefaultTimeout(navigationTimeout);
@@ -227,7 +228,7 @@ try {
           );
           emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
         }
-        clickValidation = await validateSafeButtonClick(page, action, pageDoc.page.url);
+        clickValidation = await validateSafeButtonClick(page, action, pageDoc.page.url, storedAction);
         if (storedAction) {
           storedAction.validation = clickValidation;
         }
@@ -242,7 +243,7 @@ try {
           emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
         }
       }
-      graphEdges.push({
+      const edge = {
         id: makeId("edge", graphEdges.length + 1),
         source: pageId,
         target: pageId,
@@ -250,8 +251,39 @@ try {
         action: action.name || action.locator_hint || "action",
         element: action,
         result: clickValidation || { url_changed: false, target_page_detected: false },
-      });
-      logEvent("edge_created", { edge_id: graphEdges.at(-1).id, source: pageId, target: pageId, type: graphEdges.at(-1).type });
+      };
+      const clickedUrl = sameOriginHref(clickValidation?.after_url || "", start);
+      if (clickValidation?.status === "passed" && clickValidation.url_changed && clickedUrl) {
+        const normalizedClickedUrl = normalizeUrl(clickedUrl);
+        if (isForbidden(`${action.name} ${normalizedClickedUrl}`)) {
+          blockers.push({
+            id: makeId("blocker", blockers.length + 1),
+            type: "forbidden_path",
+            page: pageDoc.page.url,
+            action: action.name || normalizedClickedUrl,
+            reason: `按钮跳转命中禁止路径，已跳过：${action.name || normalizedClickedUrl}`,
+            severity: "warning",
+            suggested_action: "如需覆盖该功能，请在安全测试环境中调整禁止路径后重新探索。",
+          });
+          logEvent("skipped", { type: "forbidden_path", page_id: pageId, action: action.name || normalizedClickedUrl });
+          addPageStep(pageDoc, "skipped", "跳过禁止跳转", `按钮跳转命中禁止路径，已跳过：${action.name || normalizedClickedUrl}`);
+          emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
+        } else {
+          edge.target = normalizedClickedUrl;
+          edge.type = "navigation";
+          edge.result = {
+            ...clickValidation,
+            target_page_detected: true,
+          };
+          if (!visited.has(normalizedClickedUrl) && !queued.some((item) => normalizeUrl(item) === normalizedClickedUrl)) {
+            queued.push(clickedUrl);
+            addPageStep(pageDoc, "edge_created", "记录按钮跳转", `按钮 ${action.name || action.locator_hint || "action"} 跳转到 ${normalizedClickedUrl}`);
+            emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
+          }
+        }
+      }
+      graphEdges.push(edge);
+      logEvent("edge_created", { edge_id: graphEdges.at(-1).id, source: pageId, target: edge.target, type: graphEdges.at(-1).type });
       addPageStep(pageDoc, "action_observed", "识别动作", `发现 ${action.name || action.locator_hint || "action"}`);
       emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
       actionCount += 1;
@@ -319,18 +351,11 @@ async function collectAccessibilityFacts(browserPage) {
     visible: action.visible !== false,
     source: action.source || "dom_fallback",
   }));
-  const pageNodes = accessibilityNodes.length > 0 ? accessibilityNodes : domAccessibilityNodes;
-  const actions = accessibilityNodes
+  const pageNodes = mergePageNodes(accessibilityNodes, domAccessibilityNodes);
+  const accessibilityActions = accessibilityNodes
     .filter((node) => ["button", "link", "textbox", "combobox", "checkbox", "radio", "tab", "menuitem"].includes(node.role))
-    .map((node, index) => ({
-      id: makeId("action", index + 1),
-      role: node.role,
-      name: node.name || "",
-      locator_hint: locatorHint(node.role, node.name),
-      action_type: node.role === "textbox" ? "fill" : "click",
-      enabled: !node.disabled,
-      visible: true,
-    }));
+    .map(actionFromAccessibilityNode);
+  const actions = mergeActionFacts(domFacts.actions, accessibilityActions);
 
   return {
     title: documentTitleFromNodes(pageNodes) || domFacts.title,
@@ -354,33 +379,47 @@ async function collectAccessibilityFacts(browserPage) {
 
 async function collectDomFacts(browserPage) {
   return browserPage.evaluate(() => {
+    const clean = (value) => String(value || "").trim().replace(/\s+/g, " ").slice(0, 120);
+    const isGenericLabel = (value) => /^(a|button|div|i|img|input|label|li|select|span|svg|textarea)$/i.test(clean(value));
+    const firstMeaningful = (values) => {
+      const cleaned = values.map(clean).filter(Boolean);
+      return cleaned.find((value) => !isGenericLabel(value)) || cleaned[0] || "";
+    };
+    const textByIds = (ids) => ids
+      .split(/\s+/)
+      .map((id) => document.getElementById(id)?.textContent || "")
+      .join(" ");
     const visible = (el) => {
       const style = window.getComputedStyle(el);
       const rect = el.getBoundingClientRect();
       return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-    };
-    const labelOf = (el) => {
-      const aria = el.getAttribute("aria-label");
-      const title = el.getAttribute("title");
-      const placeholder = el.getAttribute("placeholder");
-      const text = el.innerText || el.textContent;
-      const value = el.getAttribute("value");
-      return (aria || title || placeholder || text || value || el.name || el.id || el.tagName).trim().replace(/\s+/g, " ").slice(0, 120);
     };
     const explicitLabelOf = (el) => {
       const id = el.getAttribute("id");
       if (id) {
         const label = document.querySelector(`label[for="${CSS.escape(id)}"]`);
         if (label?.textContent?.trim()) {
-          return label.textContent.trim().replace(/\s+/g, " ").slice(0, 120);
+          return clean(label.textContent);
         }
       }
       const wrappedLabel = el.closest("label");
       if (wrappedLabel?.textContent?.trim()) {
-        return wrappedLabel.textContent.trim().replace(/\s+/g, " ").slice(0, 120);
+        return clean(wrappedLabel.textContent);
       }
       return "";
     };
+    const labelOf = (el) => firstMeaningful([
+      textByIds(el.getAttribute("aria-labelledby") || ""),
+      el.getAttribute("aria-label"),
+      el.getAttribute("title"),
+      el.getAttribute("placeholder"),
+      explicitLabelOf(el),
+      el.innerText || el.textContent,
+      el.getAttribute("value"),
+      el.getAttribute("name"),
+      el.getAttribute("id"),
+      el.tagName,
+    ]);
     const roleOf = (el) => {
       const tagName = el.tagName.toLowerCase();
       const explicitRole = el.getAttribute("role");
@@ -405,7 +444,25 @@ async function collectDomFacts(browserPage) {
       if (id) return `#${CSS.escape(id)}`;
       const name = el.getAttribute("name");
       if (name) return `${el.tagName.toLowerCase()}[name="${CSS.escape(name)}"]`;
-      return "";
+      return uniqueCssPathOf(el);
+    };
+    const uniqueCssPathOf = (el) => {
+      const parts = [];
+      let current = el;
+      while (current?.nodeType === Node.ELEMENT_NODE && current !== document.documentElement) {
+        const tag = current.tagName.toLowerCase();
+        const parent = current.parentElement;
+        if (!parent) break;
+        const sameTagSiblings = Array.from(parent.children).filter((child) => child.tagName === current.tagName);
+        const index = sameTagSiblings.indexOf(current) + 1;
+        parts.unshift(sameTagSiblings.length > 1 ? `${tag}:nth-of-type(${index})` : tag);
+        const selector = parts.join(" > ");
+        if (document.querySelectorAll(selector).length === 1) {
+          return selector;
+        }
+        current = parent;
+      }
+      return parts.join(" > ");
     };
     const elementFacts = (root) => Array.from(root.querySelectorAll("a,button,input,textarea,select,[role='button'],[role='link'],[role='tab'],[role='menuitem'],[role='option'],[role='checkbox'],[role='radio']"))
       .filter(visible)
@@ -425,6 +482,8 @@ async function collectDomFacts(browserPage) {
           action_type: ["input", "textarea", "select"].includes(tagName) && !["button", "checkbox", "radio"].includes(role) ? "fill" : "click",
           locator_hint: role && name ? `getByRole('${role}', { name: ${JSON.stringify(name)} })` : "",
           href: el.href || "",
+          enabled: !el.disabled && el.getAttribute("aria-disabled") !== "true",
+          visible: true,
           source: "dom_fallback",
         };
       });
@@ -497,7 +556,7 @@ async function buildPageDoc(browserPage, pageId, facts, entryPath, blockers) {
   const actions = [];
   const stateElements = [];
   for (const [index, action] of facts.actions.entries()) {
-    const selectors = await verifyElementSelectors(browserPage, buildElementSelectors(action));
+    const selectors = await verifyBestElementSelectors(browserPage, action);
     const elementId = stableElementId(action, index + 1);
     actions.push({
       id: makeId("action", index + 1),
@@ -564,6 +623,116 @@ async function buildPageDoc(browserPage, pageId, facts, entryPath, blockers) {
       needs_confirmation: false,
       blockers: blocker ? [blocker.reason] : [],
     },
+  };
+}
+
+function actionFromAccessibilityNode(node, index) {
+  return {
+    id: makeId("action", index + 1),
+    role: node.role,
+    name: node.name || "",
+    locator_hint: locatorHint(node.role, node.name),
+    action_type: ["textbox", "combobox"].includes(node.role) ? "fill" : "click",
+    enabled: !node.disabled,
+    visible: true,
+    source: node.source || "accessibility",
+  };
+}
+
+function mergePageNodes(accessibilityNodes, domAccessibilityNodes) {
+  if (!accessibilityNodes.length) {
+    return domAccessibilityNodes;
+  }
+  const merged = [...accessibilityNodes];
+  const seen = new Set(accessibilityNodes.map((node) => nodeDedupeKey(node)).filter(Boolean));
+  for (const node of domAccessibilityNodes) {
+    const key = nodeDedupeKey(node);
+    if (key && seen.has(key)) {
+      continue;
+    }
+    if (key) {
+      seen.add(key);
+    }
+    merged.push(node);
+  }
+  return merged.slice(0, 300);
+}
+
+function mergeActionFacts(domActions, accessibilityActions) {
+  const merged = [];
+  const seen = new Set();
+  for (const action of domActions || []) {
+    addMergedAction(merged, seen, action, { keepGeneric: true });
+  }
+  for (const action of accessibilityActions || []) {
+    addMergedAction(merged, seen, action, { keepGeneric: !merged.length });
+  }
+  return merged.map((action, index) => ({
+    ...action,
+    id: action.id || makeId("action", index + 1),
+  }));
+}
+
+function addMergedAction(merged, seen, action, { keepGeneric }) {
+  const key = actionDedupeKey(action);
+  const generic = isGenericElementName(action?.name);
+  if (generic && !keepGeneric) {
+    return;
+  }
+  if (key && seen.has(key)) {
+    return;
+  }
+  if (key) {
+    seen.add(key);
+  }
+  merged.push(action);
+}
+
+function actionDedupeKey(action = {}) {
+  const role = String(action.role || action.action_type || "").toLowerCase();
+  const testId = String(action.testId || action.testid || action.test_id || "").trim();
+  const css = String(action.css || "").trim();
+  const href = String(action.href || "").trim();
+  const name = normalizedElementName(action.name);
+  if (testId) return `testid:${testId}`;
+  if (css) return `css:${css}`;
+  if (href) return `href:${href}`;
+  if (role && name && !isGenericElementName(name)) return `role:${role}:name:${name}`;
+  return "";
+}
+
+function nodeDedupeKey(node = {}) {
+  const role = String(node.role || "").toLowerCase();
+  const name = normalizedElementName(node.name);
+  if (role && name && !isGenericElementName(name)) return `role:${role}:name:${name}`;
+  return "";
+}
+
+function isGenericElementName(value) {
+  return /^(a|button|div|i|img|input|label|li|select|span|svg|textarea)$/i.test(normalizedElementName(value));
+}
+
+function normalizedElementName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+async function verifyBestElementSelectors(browserPage, action) {
+  const candidates = buildSelectorCandidates(action);
+  if (!candidates.length) {
+    return {};
+  }
+  const verified = [];
+  for (const candidate of candidates) {
+    verified.push(await verifySelectorCandidate(browserPage, candidate));
+  }
+  const usable = verified.filter(selectorUsable);
+  const primary = usable[0] || verified[0];
+  const fallback = usable.find((candidate) => candidate.code !== primary?.code)
+    || verified.find((candidate) => candidate.code !== primary?.code)
+    || null;
+  return {
+    primary_selector: primary || null,
+    fallback_selector: fallback,
   };
 }
 
@@ -662,7 +831,7 @@ async function captureStateAfterSafeOpenAction(browserPage, pageDoc, action, sto
     }
     const elements = [];
     for (const [index, element] of visibleState.elements.entries()) {
-      const selectors = await verifyElementSelectors(browserPage, buildElementSelectors(element));
+      const selectors = await verifyBestElementSelectors(browserPage, element);
       elements.push({
         id: stableElementId(element, index + 1),
         name: element.name || "",
@@ -765,7 +934,7 @@ function canInteract(action) {
   return ["button", "textbox", "combobox", "checkbox", "radio", "menuitem", "tab"].includes(action.role || action.action_type);
 }
 
-async function validateSafeButtonClick(browserPage, action, beforeUrl) {
+async function validateSafeButtonClick(browserPage, action, beforeUrl, storedAction) {
   const name = String(action.name || "").trim();
   if (!name || name.toUpperCase() === "BUTTON") {
     return {
@@ -788,21 +957,35 @@ async function validateSafeButtonClick(browserPage, action, beforeUrl) {
   const beforeTitle = await browserPage.title().catch(() => "");
   const beforePageUrl = browserPage.url();
   try {
-    const locator = browserPage.getByRole("button", { name }).first();
-    const count = await locator.count().catch(() => 0);
-    if (count < 1) {
+    const selector = storedAction?.primary_selector;
+    if (!selectorUsable(selector)) {
       return {
         status: "unverified",
         result: "unverified",
-        reason: "未能通过按钮名称重新定位按钮。",
+        reason: "按钮 selector 未通过唯一性和可见性校验，未执行点击验证。",
         before_url: beforePageUrl,
         after_url: "",
         before_title: beforeTitle,
+        selector: selector?.code || "",
       };
     }
-    await Promise.race([
-      locator.click({ timeout: 3000 }),
+    const locator = locatorForCandidate(browserPage, selector);
+    const count = await locator.count().catch(() => 0);
+    if (count !== 1) {
+      return {
+        status: "unverified",
+        result: "unverified",
+        reason: "按钮 selector 未能唯一定位元素。",
+        before_url: beforePageUrl,
+        after_url: "",
+        before_title: beforeTitle,
+        selector: selector.code || "",
+        match_count: count,
+      };
+    }
+    await Promise.all([
       browserPage.waitForLoadState("domcontentloaded", { timeout: 3000 }).catch(() => {}),
+      locator.click({ timeout: 3000 }),
     ]);
     await browserPage.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
     const afterUrl = browserPage.url();

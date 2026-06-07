@@ -83,7 +83,6 @@ def create(
     name: str,
     site_url: str,
     username: str,
-    password_mask: str,
     login_strategy: str,
     captcha_strategy: str,
     reuse_auth_state: bool,
@@ -93,8 +92,8 @@ def create(
     db.execute(
         """
         INSERT INTO project_environments
-          (id, project_id, name, site_url, username, password_mask, login_strategy, captcha_strategy, reuse_auth_state, description, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, project_id, name, site_url, username, login_strategy, captcha_strategy, reuse_auth_state, description, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             environment_id,
@@ -102,7 +101,6 @@ def create(
             name,
             site_url,
             username,
-            password_mask,
             login_strategy,
             captcha_strategy,
             int(reuse_auth_state),
