@@ -623,10 +623,6 @@ def _publish_run_event(event_type: str, run, payload: dict | None = None) -> Non
 
 
 def _publish_module_event(event_type: str, run_id: str, module) -> None:
-    explored = int(module["explored_page_count"] or 0)
-    planned = max(int(module["planned_page_count"] or 0), explored, 1)
-    blocker_count = int(module["blocked_page_count"] or 0)
-    progress_percent = min(100, round((explored / planned) * 100))
     exploration_event_bus.publish(
         run_id,
         event_type,
@@ -643,11 +639,6 @@ def _publish_module_event(event_type: str, run_id: str, module) -> None:
             "state_transition_count": module["state_transition_count"],
             "completion_status": module["completion_status"],
             "completion_summary": module["completion_summary"],
-            "recent_page_title": "",
-            "recent_page_url": "",
-            "blocker_summary": "无" if blocker_count == 0 else f"{blocker_count} 个页面阻塞",
-            "progress_percent": progress_percent,
-            "page_progress_text": f"{explored}/{planned} 页面",
         },
     )
 
@@ -848,7 +839,12 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> tup
     artifacts = exploration_artifact_service.write_exploration_artifacts(
         artifact_root,
         run=run,
-        summary={"status": result_status, "summary": result_summary, "markdown_content": markdown},
+        summary={
+            "status": result_status,
+            "summary": result_summary,
+            "markdown_content": markdown,
+            "modules": result.get("modules") if isinstance(result.get("modules"), list) else [],
+        },
         page_artifacts=page_artifacts,
         graph=_result_graph(result),
         blockers=payload_blockers,
@@ -956,7 +952,6 @@ def _build_module_coverages(
         blocking_blockers = [blocker for blocker in blockers if blocker.get("is_blocking")]
         blocked_page_count = len(blocking_blockers)
         has_blocking = bool(blocking_blockers)
-        progress_percent = min(100, round((explored_page_count / max(planned_page_count, explored_page_count, 1)) * 100))
         recent_page = pages[-1] if pages else None
         blocker_summary = blockers[0]["reason"] if blockers else "无"
         if result_status == "partial" and coverage_gap_blocker and pages:
@@ -986,10 +981,7 @@ def _build_module_coverages(
             completion_status=completion_status,
             result_status=result_status,
         )
-        module["recent_page_title"] = recent_page["title"] if recent_page else ""
-        module["recent_page_url"] = recent_page["url"] if recent_page else ""
         module["blocker_summary"] = blocker_summary
-        module["progress_percent"] = progress_percent
     return list(module_groups.values())
 
 

@@ -181,7 +181,6 @@ def test_agentic_loop_publishes_live_module_page_and_step_progress(
     assert {payload["module_key"] for payload in page_events} == {"planned-01"}
     assert {payload["module_key"] for payload in step_events} == {"planned-01"}
     assert module_events[-1]["explored_page_count"] == 2
-    assert module_events[-1]["recent_page_title"] == "使用"
     assert module_events[-1]["completion_status"] == "running"
 
 

@@ -28,8 +28,11 @@ async def analyze_requirement(input_data: RequirementAnalysisInput) -> Requireme
         raise ValueError("需求分析智能体未返回结构化结果。")
     if output.applied_supplements:
         output.applied_supplements = []
-    if not output.preliminary_requirement_markdown.strip():
-        raise ValueError("需求分析智能体未返回初步需求内容。")
+    primary_markdown = input_data.primary_markdown_content.strip()
+    if not primary_markdown:
+        raise ValueError("主需求标准文件为空，无法生成初步需求。")
+    # 初步需求是主需求标准文件原文；智能体只负责按技能产出分析字段。
+    output.preliminary_requirement_markdown = primary_markdown
     return output
 
 
@@ -37,6 +40,10 @@ def _build_requirement_analysis_input(input_data: RequirementAnalysisInput) -> s
     return "\n".join(
         [
             "请只基于主需求执行需求分析，返回 RequirementAnalysisOutput。",
+            "必须按 requirement-review 与 test-scenarios 两个技能分析。",
+            "只输出分析结论；不要生成、优化、摘要或改写需求正文。",
+            "preliminary_requirement_markdown 可返回空字符串，系统会直接使用 primary_markdown_content 原文作为初步需求。",
+            "分析发现的问题写入结构化字段。",
             "",
             "input_json:",
             json.dumps(_primary_visible_input(input_data), ensure_ascii=False, indent=2),

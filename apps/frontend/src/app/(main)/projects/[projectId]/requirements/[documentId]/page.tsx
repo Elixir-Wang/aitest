@@ -14,7 +14,9 @@ import {
   History,
   Loader2,
   Pencil,
+  RotateCcw,
   Save,
+  SkipForward,
   Trash2,
   Upload,
   X,
@@ -60,6 +62,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { DynamicIslandTOC } from "@/components/ui/dynamic-island-toc";
 import FileUpload1 from "@/components/ui/file-upload-1";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -87,6 +95,15 @@ const REQUIREMENT_DOCUMENT_TOC_SELECTOR =
 const REQUIREMENT_REVIEW_ACTIVE_STATUSES = new Set(["queued", "running"]);
 const REQUIREMENT_REVIEW_POLL_INTERVAL_MS = 2000;
 const REQUIREMENT_REVIEW_MAX_POLLS = 90;
+const pendingSeverityLabels: Record<"blocker" | "major" | "minor", string> = {
+  blocker: "阻塞",
+  major: "重要",
+  minor: "一般",
+};
+
+function optionBadge(index: number) {
+  return String.fromCharCode(65 + index);
+}
 
 type SourceFile = RequirementSwitcherFile & {
   version_id: string | null;
@@ -334,6 +351,7 @@ export default function DocumentDetailPage() {
   const [error, setError] = useState("");
   const [overview, setOverview] = useState<RequirementOverviewResponse | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
+  const [analysisTab, setAnalysisTab] = useState("preliminary");
   const [selectedFileId, setSelectedFileId] = useState("");
   const [originalPreview, setOriginalPreview] = useState<OriginalPreview | null>(null);
   const [standardPreview, setStandardPreview] = useState<StandardPreview | null>(null);
@@ -355,6 +373,7 @@ export default function DocumentDetailPage() {
   const [finalizingRequirement, setFinalizingRequirement] = useState(false);
   const [savingClarificationId, setSavingClarificationId] = useState("");
   const [pendingAnswerDrafts, setPendingAnswerDrafts] = useState<Record<string, PendingAnswerDraft>>({});
+  const [deferredPendingItemIds, setDeferredPendingItemIds] = useState<string[]>([]);
   const [finalizeConfirmOpen, setFinalizeConfirmOpen] = useState(false);
   const [reviewClearConfirmOpen, setReviewClearConfirmOpen] = useState(false);
   const token = useAuthStore((state) => state.token);
@@ -412,7 +431,9 @@ export default function DocumentDetailPage() {
   const clarificationQuestions = analysisResult?.output.clarification_questions ?? [];
   const analysisConflicts = analysisResult?.output.conflicts ?? [];
   const pendingAnalysisItems: RequirementAnalysisPendingItem[] = [...clarificationQuestions, ...analysisConflicts];
-  const unresolvedCount = pendingAnalysisItems.filter((item) => !isPendingItemAnswered(item)).length;
+  const visiblePendingAnalysisItems = pendingAnalysisItems.filter((item) => !deferredPendingItemIds.includes(item.id));
+  const deferredPendingAnalysisItems = pendingAnalysisItems.filter((item) => deferredPendingItemIds.includes(item.id));
+  const unresolvedCount = visiblePendingAnalysisItems.filter((item) => !isPendingItemAnswered(item)).length;
   const hasQualityWarning =
     analysisResult?.quality_result === "warning" ||
     analysisResult?.output.quality_gate.result === "warning" ||
@@ -983,6 +1004,19 @@ export default function DocumentDetailPage() {
     });
   }
 
+  function deferPendingItem(itemId: string) {
+    setDeferredPendingItemIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
+    setPendingAnswerDrafts((current) => {
+      const next = { ...current };
+      delete next[itemId];
+      return next;
+    });
+  }
+
+  function restorePendingItem(itemId: string) {
+    setDeferredPendingItemIds((current) => current.filter((id) => id !== itemId));
+  }
+
   async function saveClarificationAnswer(item: RequirementAnalysisPendingItem) {
     if (!analysisResult) {
       toast.error("尚未生成需求分析结果");
@@ -1209,10 +1243,11 @@ export default function DocumentDetailPage() {
 
   const showRequirementToc =
     (activeTab === "standard" && !editingStandard && Boolean(currentStandardPreview?.markdownContent.trim())) ||
-    (activeTab === "analysis" && Boolean(preliminaryMarkdown.trim())) ||
+    (activeTab === "analysis" && analysisTab === "preliminary" && Boolean(preliminaryMarkdown.trim())) ||
     (activeTab === "final" && Boolean(overview.initial_markdown_content.trim()));
   const requirementTocRefreshKey = [
     activeTab,
+    analysisTab,
     selectedFile?.id ?? "",
     currentStandardPreview?.markdownContent.length ?? 0,
     preliminaryMarkdown.length,
@@ -1533,11 +1568,34 @@ export default function DocumentDetailPage() {
 
         <TabsContent value="analysis">
           <ShellSection>
-            <Tabs className="space-y-4" defaultValue="preliminary">
-              <TabsList>
-                <TabsTrigger value="preliminary">初步需求</TabsTrigger>
-                <TabsTrigger value="pending">待确认问题</TabsTrigger>
-              </TabsList>
+            <Tabs className="space-y-4" onValueChange={setAnalysisTab} value={analysisTab}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <TabsList>
+                  <TabsTrigger value="preliminary">初步需求</TabsTrigger>
+                  <TabsTrigger value="pending">待确认问题</TabsTrigger>
+                </TabsList>
+                {analysisTab === "pending" ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button disabled={!deferredPendingAnalysisItems.length} type="button" variant="outline">
+                        <RotateCcw className="size-4" />
+                        恢复暂不处理
+                        {deferredPendingAnalysisItems.length ? `(${deferredPendingAnalysisItems.length})` : ""}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="max-w-96">
+                      {deferredPendingAnalysisItems.map((item) => (
+                        <DropdownMenuItem key={item.id} onSelect={() => restorePendingItem(item.id)}>
+                          <div className="min-w-0">
+                            <div className="truncate font-medium text-sm">{item.module_name}</div>
+                            <div className="line-clamp-2 text-muted-foreground text-xs">{item.question}</div>
+                          </div>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : null}
+              </div>
               <TabsContent id={PRELIMINARY_REQUIREMENT_SECTION_ID} value="preliminary">
                 <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -1583,21 +1641,20 @@ export default function DocumentDetailPage() {
                 />
               </TabsContent>
               <TabsContent value="pending">
-                {pendingAnalysisItems.length ? (
+                {visiblePendingAnalysisItems.length ? (
                   <div className="space-y-3">
-                    {pendingAnalysisItems.map((item) => {
+                    {visiblePendingAnalysisItems.map((item) => {
                       const draft = pendingAnswerDrafts[item.id] ?? {
                         selectedOptionId: item.answer?.selected_option_id ?? item.recommended_options?.[0]?.id ?? "",
                         customAnswer: "",
                         answerType: item.answer?.answer_type ?? "recommended_option",
                       };
                       const isSaving = savingClarificationId === item.id;
-                      const answered = isPendingItemAnswered(item);
                       return (
                         <div className="rounded-lg border bg-background p-4" key={item.id}>
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>
-                              {item.severity}
+                              {pendingSeverityLabels[item.severity] ?? item.severity}
                             </Badge>
                             <span className="font-medium text-sm">{item.module_name}</span>
                             {"issue_type" in item ? (
@@ -1614,25 +1671,21 @@ export default function DocumentDetailPage() {
                           {item.impact ? (
                             <div className="mt-2 text-muted-foreground text-xs">影响：{item.impact}</div>
                           ) : null}
-                          {pendingItemExcerpt(item) ? (
-                            <div className="mt-3 rounded-md bg-muted/40 p-3 text-xs">{pendingItemExcerpt(item)}</div>
-                          ) : null}
-
-                          <div className="mt-4 space-y-3 border-t pt-4">
+                          <div className="mt-4 space-y-2 border-t pt-3">
                             {item.recommended_options?.length ? (
-                              <div className="space-y-2">
-                                <div className="font-medium text-xs">推荐选项</div>
-                                <div className="grid gap-2 md:grid-cols-2">
-                                  {item.recommended_options.slice(0, 2).map((option) => {
+                              <div className="space-y-1">
+                                <div className="font-medium text-xs">推荐处理</div>
+                                <div className="space-y-px">
+                                  {item.recommended_options.slice(0, 2).map((option, index) => {
                                     const selected =
                                       draft.answerType === "recommended_option" && draft.selectedOptionId === option.id;
                                     return (
                                       <button
                                         className={cn(
-                                          "rounded-md border p-3 text-left text-sm transition-colors",
+                                          "-mx-2 flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
                                           selected
-                                            ? "border-primary bg-primary/5 text-foreground"
-                                            : "bg-background hover:bg-muted/50",
+                                            ? "bg-primary/10 text-foreground"
+                                            : "text-foreground hover:bg-muted/60",
                                         )}
                                         disabled={isSaving || isFinalized}
                                         key={option.id}
@@ -1644,45 +1697,53 @@ export default function DocumentDetailPage() {
                                         }
                                         type="button"
                                       >
-                                        <div className="font-medium">{option.label}</div>
-                                        <div className="mt-1 text-muted-foreground text-xs">
-                                          {option.answer_markdown}
-                                        </div>
+                                        <span
+                                          className={cn(
+                                            "inline-flex h-5 min-w-5 items-center justify-center rounded border px-1 font-medium text-xs",
+                                            selected
+                                              ? "border-primary bg-primary text-primary-foreground"
+                                              : "border-border text-muted-foreground",
+                                          )}
+                                        >
+                                          {optionBadge(index)}
+                                        </span>
+                                        <span className="min-w-0">
+                                          <span className="font-medium">{option.label}</span>
+                                          <span className="ml-2 text-muted-foreground text-xs">
+                                            {option.answer_markdown}
+                                          </span>
+                                        </span>
                                       </button>
                                     );
                                   })}
                                 </div>
                               </div>
-                            ) : (
-                              <div className="text-muted-foreground text-xs">暂无推荐选项，可填写自定义说明。</div>
-                            )}
+                            ) : null}
 
-                            <button
-                              className={cn(
-                                "rounded-md border px-3 py-2 text-left text-sm transition-colors",
-                                draft.answerType === "defer"
-                                  ? "border-primary bg-primary/5"
-                                  : "bg-background hover:bg-muted/50",
-                              )}
-                              disabled={isSaving || isFinalized}
-                              onClick={() => updatePendingAnswerDraft(item.id, { answerType: "defer" })}
-                              type="button"
-                            >
-                              暂不处理
-                            </button>
-
-                            <Textarea
-                              className="min-h-24 text-sm"
-                              disabled={isSaving || isFinalized}
-                              onChange={(event) =>
-                                updatePendingAnswerDraft(item.id, {
-                                  answerType: "custom",
-                                  customAnswer: event.target.value,
-                                })
-                              }
-                              placeholder="也可以手动输入自定义答案，保存后会写入初步需求。"
-                              value={draft.customAnswer}
-                            />
+                            <div className="flex max-w-3xl items-start gap-2 pt-1">
+                              <span
+                                className={cn(
+                                  "mt-1 inline-flex h-5 min-w-5 items-center justify-center rounded border px-1 font-medium text-xs",
+                                  draft.answerType === "custom" && draft.customAnswer.trim()
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border text-muted-foreground",
+                                )}
+                              >
+                                {optionBadge(item.recommended_options?.slice(0, 2).length ?? 0)}
+                              </span>
+                              <Textarea
+                                className="min-h-8 flex-1 resize-y py-1.5 text-sm"
+                                disabled={isSaving || isFinalized}
+                                onChange={(event) =>
+                                  updatePendingAnswerDraft(item.id, {
+                                    answerType: "custom",
+                                    customAnswer: event.target.value,
+                                  })
+                                }
+                                placeholder="手动补充确认口径"
+                                value={draft.customAnswer}
+                              />
+                            </div>
 
                             {item.answer?.answer_markdown ? (
                               <div className="rounded-md bg-muted/40 p-3 text-xs">
@@ -1693,22 +1754,28 @@ export default function DocumentDetailPage() {
                               </div>
                             ) : null}
 
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="text-muted-foreground text-xs">
-                                {answered
-                                  ? item.answer?.insertion_anchor
-                                    ? `已写入：${item.answer.insertion_anchor}`
-                                    : "已处理"
-                                  : "保存后会更新初步需求内容。"}
+                            <div className="flex items-center justify-end gap-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <Button
+                                  className="h-7 px-2 text-xs"
+                                  disabled={isSaving || isFinalized}
+                                  onClick={() => deferPendingItem(item.id)}
+                                  type="button"
+                                  variant="outline"
+                                >
+                                  <SkipForward className="size-4" />
+                                  暂不处理
+                                </Button>
+                                <Button
+                                  className="h-7 px-2.5 text-xs"
+                                  disabled={isSaving || isFinalized}
+                                  onClick={() => void saveClarificationAnswer(item)}
+                                  type="button"
+                                >
+                                  {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                                  保存答复
+                                </Button>
                               </div>
-                              <Button
-                                disabled={isSaving || isFinalized}
-                                onClick={() => void saveClarificationAnswer(item)}
-                                type="button"
-                              >
-                                {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                                保存答复
-                              </Button>
                             </div>
                           </div>
                         </div>
@@ -1717,7 +1784,11 @@ export default function DocumentDetailPage() {
                   </div>
                 ) : (
                   <div className="flex min-h-[280px] items-center justify-center rounded-lg border bg-muted/20 text-center text-muted-foreground text-sm">
-                    {analysisResult ? "暂无待确认问题。" : "尚未执行需求分析，完成分析后会在这里展示待确认问题。"}
+                    {analysisResult
+                      ? deferredPendingAnalysisItems.length
+                        ? "待确认问题已暂不处理，可通过右上角恢复。"
+                        : "暂无待确认问题。"
+                      : "尚未执行需求分析，完成分析后会在这里展示待确认问题。"}
                   </div>
                 )}
               </TabsContent>
@@ -2075,16 +2146,6 @@ function clarificationAnswerStatusLabel(answer: RequirementClarificationAnswer) 
     return "暂不处理";
   }
   return "应用失败";
-}
-
-function pendingItemExcerpt(item: RequirementAnalysisPendingItem) {
-  if ("source_excerpt" in item && item.source_excerpt) {
-    return item.source_excerpt;
-  }
-  if ("primary_excerpt" in item && item.primary_excerpt) {
-    return item.primary_excerpt;
-  }
-  return "";
 }
 
 function isConfirmRequired(error: unknown) {

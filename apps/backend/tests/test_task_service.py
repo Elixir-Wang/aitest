@@ -208,6 +208,31 @@ def test_running_tasks_include_active_requirement_analysis_run(monkeypatch: pyte
     assert tasks[0]["status_label"] == "评审中"
 
 
+def test_running_tasks_exclude_requirement_analysis_waiting_for_clarification(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_project(db)
+        _seed_requirement_document(db)
+        db.execute(
+            """
+            INSERT INTO source_document_file_mappings
+              (id, document_id, source_file_path, original_filename, file_format, conversion_status, created_by)
+            VALUES ('file-1', 'doc-1', 'uploads/login.docx', 'login.docx', 'docx', 'success', 'u-admin')
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO requirement_analysis_runs
+              (id, project_id, document_id, primary_mapping_id, status, summary, created_by, created_at)
+            VALUES ('run-1', 'project-1', 'doc-1', 'file-1', 'needs_clarification', '存在待确认问题。', 'u-admin', '2026-06-04 17:00:01')
+            """
+        )
+
+    assert task_service.list_running_tasks(ACTOR) == []
+
+
 def test_running_tasks_recovers_stale_requirement_analysis_run(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     with core_db.connect() as db:
@@ -331,5 +356,5 @@ def test_is_active_task_status_matches_running_indicator_contract() -> None:
     assert task_service.is_active_task_status("exploration_run", "completed") is False
     assert task_service.is_active_task_status("requirement_analysis_run", "queued") is True
     assert task_service.is_active_task_status("requirement_analysis_run", "running") is True
-    assert task_service.is_active_task_status("requirement_analysis_run", "needs_clarification") is True
+    assert task_service.is_active_task_status("requirement_analysis_run", "needs_clarification") is False
     assert task_service.is_active_task_status("requirement_analysis_run", "completed") is False

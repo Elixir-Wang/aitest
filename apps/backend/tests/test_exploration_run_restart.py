@@ -8,6 +8,7 @@ from app.core import storage
 from app.api.v1 import exploration as exploration_api
 from app.schemas.exploration import ExplorationRunCreateIn
 from app.seed.init_db import init_db
+from app.agents.site_exploration.plan_schemas import ExplorationPlanModule, ExplorationPlanOutput
 from app.services.exploration import service as exploration_service
 from app.services.exploration import artifact_service
 from app.services.exploration import site_orchestrator
@@ -42,10 +43,55 @@ def _seed_project_and_environment() -> None:
         )
 
 
-def _confirm_plan(run_id: str) -> None:
-    _write_discovery_artifacts(run_id, ["首页"])
+def _confirm_plan(run_id: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    _mock_ai_plan_generation(
+        monkeypatch,
+        [
+            ExplorationPlanModule(
+                module_name="首页",
+                reason="页面事实中出现首页内容。",
+                entry_hint="当前页面",
+                steps=["进入首页模块", "记录页面状态"],
+                expected_evidence=["首页入口可追溯", "首页状态已记录"],
+            )
+        ],
+    )
     exploration_service.generate_project_run_plan("project-1", run_id, ACTOR)
     exploration_service.confirm_project_run_plan("project-1", run_id, ACTOR)
+
+
+def _mark_run_completed(run_id: str) -> None:
+    with core_db.connect() as db:
+        db.execute(
+            "UPDATE exploration_runs SET artifact_root = ?, status = 'completed' WHERE id = ?",
+            (f"project-1/exploration/{run_id}", run_id),
+        )
+
+
+def _mock_ai_plan_generation(monkeypatch: pytest.MonkeyPatch, modules: list[ExplorationPlanModule]) -> None:
+    monkeypatch.setattr(
+        exploration_service,
+        "_collect_scope_plan_facts",
+        lambda run: {
+            "url": "https://example.test",
+            "normalized_url": "https://example.test",
+            "title": "测试页面",
+            "page_text_summary": "测试页面内容",
+            "elements": [],
+        },
+    )
+
+    async def fake_generate_exploration_plan(input_data):
+        if modules and modules[0].module_name == "工作台":
+            assert input_data.scope_constraints["scope"] == "工作台"
+            assert "工作台" in input_data.scope_constraints["allowed_terms"]
+        return ExplorationPlanOutput(summary=f"AI 已根据探索范围生成 {len(modules)} 个模块计划项。", modules=modules)
+
+    monkeypatch.setattr(
+        exploration_service.site_exploration_plan_service,
+        "generate_exploration_plan",
+        fake_generate_exploration_plan,
+    )
 
 
 def _write_discovery_artifacts(run_id: str, modules: list[str]) -> None:
@@ -123,7 +169,7 @@ def test_restart_recovers_stale_stopping_run_with_completed_log(monkeypatch: pyt
         ),
         ACTOR,
     )
-    _confirm_plan(created["id"])
+    _confirm_plan(created["id"], monkeypatch)
     artifact_root = project_root / "project-1" / "exploration" / created["id"]
     (artifact_root / "logs").mkdir(parents=True, exist_ok=True)
     (artifact_root / "run.yaml").write_text("artifact_schema_version: 2\n", encoding="utf-8")
@@ -209,7 +255,19 @@ def test_generate_confirmed_plan_before_starting_run(monkeypatch: pytest.MonkeyP
 
     first_discovery = exploration_service.start_project_run("project-1", created["id"], ACTOR)
     assert first_discovery["status"] == "queued"
-    _write_discovery_artifacts(created["id"], ["工作台"])
+    _mark_run_completed(created["id"])
+    _mock_ai_plan_generation(
+        monkeypatch,
+        [
+            ExplorationPlanModule(
+                module_name="工作台",
+                reason="页面事实中出现工作台导航和内容。",
+                entry_hint="工作台入口",
+                steps=["进入工作台模块", "查看主要页面和状态"],
+                expected_evidence=["工作台入口可追溯", "工作台状态已记录"],
+            )
+        ],
+    )
 
     generated = exploration_service.generate_project_run_plan("project-1", created["id"], ACTOR)
 
@@ -224,7 +282,7 @@ def test_generate_confirmed_plan_before_starting_run(monkeypatch: pytest.MonkeyP
     assert started["status"] == "queued"
 
 
-def test_generate_plan_uses_first_discovery_modules_instead_of_built_in_capabilities(
+def test_generate_plan_uses_ai_modules_from_current_scope_facts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -245,20 +303,40 @@ def test_generate_plan_uses_first_discovery_modules_instead_of_built_in_capabili
         ),
         ACTOR,
     )
-    _write_discovery_artifacts(created["id"], ["工作台", "资源库", "效果评测"])
+    _mock_ai_plan_generation(
+        monkeypatch,
+        [
+            ExplorationPlanModule(
+                module_name="工作台",
+                reason="页面事实中出现工作台模块入口。",
+                entry_hint="工作台导航",
+                steps=["进入工作台模块", "查看工作台主要状态"],
+                expected_evidence=["工作台入口可追溯", "工作台关键动作已记录"],
+            ),
+            ExplorationPlanModule(
+                module_name="资源库",
+                reason="页面事实中出现资源库入口。",
+                entry_hint="资源库导航",
+                steps=["进入资源库模块", "查看资源列表和筛选入口"],
+                expected_evidence=["资源库入口可追溯", "资源库页面状态已记录"],
+            ),
+        ],
+    )
 
     generated = exploration_service.generate_project_run_plan("project-1", created["id"], ACTOR)
 
     assert generated["plan_status"] == "draft"
-    assert generated["summary"] == "已根据首次探索采集结果生成 3 个模块计划项，等待人工确认或补充。"
-    assert [item["business_module"] for item in generated["items"]] == ["工作台", "资源库", "效果评测"]
+    assert generated["summary"] == "AI 已根据探索范围生成 1 个模块计划项，等待人工确认或补充。 已过滤范围外模块：资源库。"
+    assert [item["business_module"] for item in generated["items"]] == ["工作台"]
     assert {item["capability_type"] for item in generated["items"]} == {"module_discovery"}
+    assert generated["items"][0]["discovery_evidence"] == ["页面事实中出现工作台模块入口。", "工作台导航"]
+    assert generated["items"][0]["entry_path"] == "https://example.test"
     assert not {"search", "filter", "sort", "create", "import"} & {
         item["capability_type"] for item in generated["items"]
     }
 
 
-def test_generate_plan_requires_first_discovery_artifacts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_generate_plan_requires_ai_identified_modules(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_and_environment()
     created = exploration_service.create_project_run(
@@ -276,11 +354,12 @@ def test_generate_plan_requires_first_discovery_artifacts(monkeypatch: pytest.Mo
         ),
         ACTOR,
     )
+    _mock_ai_plan_generation(monkeypatch, [])
 
-    with pytest.raises(Exception) as missing_artifact_error:
+    with pytest.raises(Exception) as missing_modules_error:
         exploration_service.generate_project_run_plan("project-1", created["id"], ACTOR)
 
-    assert "请先执行首次探索，采集探索范围内的模块。" in str(missing_artifact_error.value)
+    assert "AI 未能根据当前探索范围识别模块" in str(missing_modules_error.value)
 
 
 def test_detail_recovers_stale_stopping_run_before_frontend_disables_restart(
@@ -351,7 +430,7 @@ def test_orchestrator_marks_queued_run_running_before_agentic_loop(
         ),
         ACTOR,
     )
-    _confirm_plan(created["id"])
+    _confirm_plan(created["id"], monkeypatch)
     exploration_service.start_project_run("project-1", created["id"], ACTOR)
     captured: dict[str, str] = {}
 

@@ -658,6 +658,7 @@ class _AgenticLoopRunner:
                     "artifact_schema_version": 2,
                     "status": "running",
                     "summary": "Agentic Loop 正在探索页面。",
+                    "modules": self._module_summary_payload("running"),
                 },
                 page_artifacts=[self.pages_by_signature[signature] for signature in self.page_order],
                 graph={"nodes": list(self.graph_nodes.values()), "edges": self.graph_edges, "paths": []},
@@ -680,7 +681,6 @@ class _AgenticLoopRunner:
         blocking_count = sum(1 for blocker in self.blockers if blocker.get("is_blocking"))
         recent = recent_page["page"] if recent_page else None
         blocker_summary = "无" if blocking_count == 0 else f"{blocking_count} 个页面阻塞"
-        progress_percent = min(100, round((explored / planned) * 100))
         self._publish(
             "module_updated",
             {
@@ -696,13 +696,48 @@ class _AgenticLoopRunner:
                 "state_transition_count": len(self.graph_edges),
                 "completion_status": "running",
                 "completion_summary": _live_module_summary(explored, planned, recent, blocker_summary),
-                "recent_page_title": str(recent.get("title") or "") if recent else "",
-                "recent_page_url": str(recent.get("url") or "") if recent else "",
-                "blocker_summary": blocker_summary,
-                "progress_percent": progress_percent,
-                "page_progress_text": f"{explored}/{planned} 页面",
             },
         )
+
+    def _module_summary_payload(self, status: str) -> list[dict]:
+        pages = [self.pages_by_signature[signature] for signature in self.page_order]
+        explored = len(pages)
+        planned = max(explored, 1)
+        blocking_count = sum(1 for blocker in self.blockers if blocker.get("is_blocking"))
+        recent_page = pages[-1]["page"] if pages else None
+        page_titles = []
+        for page_doc in pages:
+            page = page_doc.get("page") if isinstance(page_doc.get("page"), dict) else {}
+            title = str(page.get("semantic_title") or page.get("title") or page.get("url") or "").strip()
+            if title and title not in page_titles:
+                page_titles.append(title)
+        blocker_summary = "无" if blocking_count == 0 else f"{blocking_count} 个页面阻塞"
+        completion_status = "running" if status == "running" else ("partial" if status == "partial" else status)
+        field_count = sum(
+            1
+            for page_doc in pages
+            for action in page_doc.get("actions", [])
+            if action.get("type") == "fill"
+        )
+        return [
+            {
+                "module_key": self.live_module_key,
+                "module_name": self.live_module_name,
+                "status": completion_status,
+                "page_progress": f"{explored}/{planned}",
+                "planned_page_count": planned,
+                "explored_page_count": explored,
+                "blocked_page_count": blocking_count,
+                "action_count": self.action_count,
+                "field_count": field_count,
+                "state_transition_count": len(self.graph_edges),
+                "latest_page": recent_page.get("semantic_title") or recent_page.get("title") if recent_page else "",
+                "main_facts": "、".join(page_titles[:5]) if page_titles else "-",
+                "blocker_summary": blocker_summary,
+                "knowledge_base_availability": "部分可用" if status == "partial" else ("待确认" if status == "running" else "可用"),
+                "entry_path": self.live_module_entry_path,
+            }
+        ]
 
     def _mark_attempted(self, observation: dict, decision: AgenticDecisionOutput) -> None:
         if not decision.action or not decision.action.target_element_id:
@@ -879,6 +914,7 @@ class _AgenticLoopRunner:
         return {
             "status": status,
             "summary": summary,
+            "modules": self._module_summary_payload(status),
             "structured_pages": [self.pages_by_signature[signature] for signature in self.page_order],
             "graph": {"nodes": list(self.graph_nodes.values()), "edges": self.graph_edges, "paths": []},
             "blockers": self.blockers,
@@ -908,6 +944,7 @@ class _AgenticLoopRunner:
         return {
             "status": "blocked",
             "summary": summary,
+            "modules": self._module_summary_payload("blocked"),
             "reason_type": reason_type,
             "suggested_action": suggested_action,
             "structured_pages": [self.pages_by_signature[signature] for signature in self.page_order],

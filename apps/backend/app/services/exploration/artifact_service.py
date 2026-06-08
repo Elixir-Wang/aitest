@@ -323,7 +323,9 @@ def build_exploration_report_markdown(bundle: dict) -> str:
     page_rows = []
     module_rows = []
     relation_rows = []
-    blocker_rows = []
+    intra_page_relation_rows = []
+    blocking_rows = []
+    skipped_rows = []
     confirm_rows = []
 
     module_map = _build_module_report_map(summary, blocker_items, pages)
@@ -366,34 +368,16 @@ def build_exploration_report_markdown(bundle: dict) -> str:
                 ]
             )
 
-    for edge in graph.get("edges") if isinstance(graph.get("edges"), list) else []:
-        if not isinstance(edge, dict):
-            continue
-        source_ref = _text(edge.get("source")) or _text(edge.get("from"))
-        target_ref = _text(edge.get("target")) or _text(edge.get("to"))
-        relation_rows.append(
-            [
-                _text(edge.get("source_title")) or page_title_map.get(source_ref, source_ref),
-                _edge_action_text(edge),
-                _text(edge.get("target_title")) or page_title_map.get(target_ref, target_ref),
-                _text(edge.get("type")),
-                _rel_path("graph.yaml"),
-            ]
-        )
+    relation_rows, intra_page_relation_rows = _page_relation_rows(graph, page_title_map)
 
     for blocker in blocker_items:
         if not isinstance(blocker, dict):
             continue
-        blocker_rows.append(
-            [
-                _text(blocker.get("type")),
-                _text(blocker.get("page")) or _text(blocker.get("page_ref")) or _text(blocker.get("module_key")),
-                _text(blocker.get("reason")),
-                _text(blocker.get("impact_scope")),
-                _text(blocker.get("suggested_action")),
-                _rel_path(_text(blocker.get("evidence_path")) or "blockers.yaml"),
-            ]
-        )
+        row = _blocker_report_row(blocker, page_title_map)
+        if blocker.get("is_blocking"):
+            blocking_rows.append(row)
+        else:
+            skipped_rows.append(row)
         if blocker.get("type") in {"permission_denied", "captcha_required", "login_required"}:
             confirm_rows.append(
                 [
@@ -459,7 +443,8 @@ def build_exploration_report_markdown(bundle: dict) -> str:
         f"| 已跳过模块 | {_count_module_status(module_map, {'skipped'})} |",
         f"| 页面数 | {len(page_rows)} |",
         f"| 页面关系数 | {len(relation_rows)} |",
-        f"| 阻塞数 | {len(blocker_rows)} |",
+        f"| 阻塞数 | {len(blocking_rows)} |",
+        f"| 跳过/未验证数 | {len(skipped_rows)} |",
         "",
         "## 5. 模块覆盖矩阵",
         "",
@@ -491,12 +476,14 @@ def build_exploration_report_markdown(bundle: dict) -> str:
             "",
             "### 7.1 跳转路径",
             "",
-            "| 起点页面 | 动作 | 目标页面 | 关系类型 | 证据 |",
-            "| --- | --- | --- | --- | --- |",
+            "| 源页面 | 目标页面 | 关联关系 | 触发动作 | 次数 | 证据 |",
+            "| --- | --- | --- | --- | --- | --- |",
         ]
     )
     for row in relation_rows:
         lines.append("| " + " | ".join(_table_cell(value) for value in row) + " |")
+    if not relation_rows:
+        lines.append("| - | - | 未发现跨页面关联 | - | 0 | graph.yaml |")
 
     lines.extend(
         [
@@ -507,28 +494,10 @@ def build_exploration_report_markdown(bundle: dict) -> str:
             "| --- | --- | --- | --- |",
         ]
     )
-    for page_item in page_items:
-        if not isinstance(page_item, dict):
-            continue
-        content = page_item.get("content") if isinstance(page_item.get("content"), dict) else {}
-        page = content.get("page") if isinstance(content.get("page"), dict) else {}
-        relations = content.get("relations") if isinstance(content.get("relations"), dict) else {}
-        for outgoing in relations.get("outgoing_edges") if isinstance(relations.get("outgoing_edges"), list) else []:
-            if not isinstance(outgoing, dict):
-                continue
-            lines.append(
-                "| "
-                + " | ".join(
-                    _table_cell(value)
-                    for value in [
-                        _text(page.get("title")),
-                        _text(outgoing.get("type")),
-                        _text(outgoing.get("action")),
-                        _rel_path(page_item.get("file_path")),
-                    ]
-                )
-                + " |"
-            )
+    for row in intra_page_relation_rows:
+        lines.append("| " + " | ".join(_table_cell(value) for value in row) + " |")
+    if not intra_page_relation_rows:
+        lines.append("| - | - | 未发现页面内状态关系 | graph.yaml |")
 
     lines.extend(
         [
@@ -562,12 +531,30 @@ def build_exploration_report_markdown(bundle: dict) -> str:
             "",
             "## 8. 阻塞与跳过",
             "",
-            "| 类型 | 模块/页面/动作 | 原因 | 影响 | 建议 | 证据 |",
+            "### 8.1 阻塞项",
+            "",
+            "| 位置 | 动作/范围 | 原因 | 对下游影响 | 下一步 | 证据 |",
             "| --- | --- | --- | --- | --- | --- |",
         ]
     )
-    for row in blocker_rows:
+    for row in blocking_rows:
         lines.append("| " + " | ".join(_table_cell(value) for value in row) + " |")
+    if not blocking_rows:
+        lines.append("| - | - | 无阻塞项 | 不影响下游使用 | 无需处理 | blockers.yaml |")
+
+    lines.extend(
+        [
+            "",
+            "### 8.2 已跳过或未验证",
+            "",
+            "| 位置 | 动作/范围 | 原因 | 对下游影响 | 下一步 | 证据 |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for row in skipped_rows:
+        lines.append("| " + " | ".join(_table_cell(value) for value in row) + " |")
+    if not skipped_rows:
+        lines.append("| - | - | 无跳过或未验证项 | 不影响下游使用 | 无需处理 | blockers.yaml |")
 
     lines.extend(
         [
@@ -681,6 +668,44 @@ def _top_findings(summary: dict, pages: list[dict]) -> str:
         page = pages[0].get("page") if isinstance(pages[0].get("page"), dict) else {}
         return _compact_text(_text(page.get("structure_summary")), 120) or _page_display_title(page) or "已采集页面事实"
     return "暂无可用发现"
+
+
+def _blocker_report_row(blocker: dict, page_title_map: dict[str, str]) -> list[str]:
+    page_ref = _text(blocker.get("page_ref"))
+    page_text = _text(blocker.get("page")) or page_ref or _text(blocker.get("module_key"))
+    page_title = page_title_map.get(page_ref, "")
+    location = _join_parts([page_title, page_text], " / ") or "未知位置"
+    action = _text(blocker.get("action")) or _text(blocker.get("action_target")) or _text(blocker.get("element_name"))
+    scope = action or _text(blocker.get("impact_scope")) or _text(blocker.get("type")) or "未说明"
+    reason = _text(blocker.get("reason")) or _blocker_type_label(_text(blocker.get("type")))
+    impact = _text(blocker.get("impact_scope")) or ("阻塞相关页面进入知识库" if blocker.get("is_blocking") else "该动作未完成自动验证")
+    suggested_action = _text(blocker.get("suggested_action")) or ("人工处理后重新探索" if blocker.get("is_blocking") else "按需人工确认")
+    evidence = _rel_path(_text(blocker.get("evidence_path")) or "blockers.yaml")
+    return [location, scope, reason, impact, suggested_action, evidence]
+
+
+def _blocker_type_label(reason_type: str) -> str:
+    labels = {
+        "action_failed": "动作执行失败",
+        "forbidden_path": "命中禁止路径",
+        "scope_boundary": "超出探索范围",
+        "crud_scope_violation": "涉及业务数据修改",
+        "permission_denied": "权限不足",
+        "captcha_required": "需要验证码",
+        "login_required": "需要登录",
+        "navigation_failed": "页面无法访问",
+        "run_timeout": "探索超时",
+    }
+    return labels.get(reason_type, reason_type or "未说明")
+
+
+def _join_parts(parts: list[str], separator: str) -> str:
+    values = []
+    for part in parts:
+        text = _text(part)
+        if text and text not in values:
+            values.append(text)
+    return separator.join(values)
 
 
 def _limit_text(run: dict, key: str) -> str:
@@ -865,6 +890,107 @@ def _page_title_map(graph: dict, page_items: list[dict]) -> dict[str, str]:
         if page_id:
             title_map[page_id] = _page_display_title(page)
     return title_map
+
+
+def _page_relation_rows(graph: dict, page_title_map: dict[str, str]) -> tuple[list[list[object]], list[list[object]]]:
+    grouped_relations: dict[tuple[str, str, str], dict[str, object]] = {}
+    intra_page_relations: dict[tuple[str, str, str], dict[str, object]] = {}
+    for edge in graph.get("edges") if isinstance(graph.get("edges"), list) else []:
+        if not isinstance(edge, dict):
+            continue
+        source_ref = _text(edge.get("source")) or _text(edge.get("from"))
+        target_ref = _text(edge.get("target")) or _text(edge.get("to"))
+        if not source_ref and not target_ref:
+            continue
+        source_title = _text(edge.get("source_title")) or page_title_map.get(source_ref, source_ref)
+        target_title = _text(edge.get("target_title")) or page_title_map.get(target_ref, target_ref)
+        relation_type = _relation_type_text(edge)
+        action_text = _edge_action_text(edge)
+        if source_ref and target_ref and source_ref != target_ref:
+            key = (source_ref, target_ref, relation_type)
+            row = grouped_relations.setdefault(
+                key,
+                {
+                    "source_title": source_title,
+                    "target_title": target_title,
+                    "relation_type": relation_type,
+                    "actions": [],
+                    "count": 0,
+                },
+            )
+            row["count"] = int(row["count"]) + 1
+            if action_text != "-" and action_text not in row["actions"]:
+                row["actions"].append(action_text)
+            continue
+        page_ref = source_ref or target_ref
+        page_title = source_title or target_title or page_title_map.get(page_ref, page_ref)
+        key = (page_ref, relation_type, action_text)
+        row = intra_page_relations.setdefault(
+            key,
+            {
+                "page_title": page_title,
+                "relation_type": relation_type,
+                "action": action_text,
+                "count": 0,
+            },
+        )
+        row["count"] = int(row["count"]) + 1
+
+    relation_rows = [
+        [
+            row["source_title"],
+            row["target_title"],
+            row["relation_type"],
+            _join_limited(row["actions"], 5),
+            row["count"],
+            "graph.yaml",
+        ]
+        for row in grouped_relations.values()
+    ]
+    intra_page_rows = [
+        [
+            row["page_title"],
+            row["relation_type"],
+            _intra_page_relation_summary(_text(row["action"]), int(row["count"])),
+            "graph.yaml",
+        ]
+        for row in intra_page_relations.values()
+    ]
+    return relation_rows, intra_page_rows
+
+
+def _relation_type_text(edge: dict) -> str:
+    edge_type = _text(edge.get("type"))
+    if edge_type == "agent_action":
+        result = edge.get("result") if isinstance(edge.get("result"), dict) else {}
+        if bool(result.get("url_changed")):
+            return "页面跳转"
+        if bool(result.get("state_signature_changed")):
+            return "状态流转"
+        return "动作验证"
+    if edge_type == "navigation":
+        return "页面跳转"
+    if edge_type == "external_link":
+        return "外部链接"
+    if edge_type == "data_dependency":
+        return "数据依赖"
+    return edge_type or "页面关联"
+
+
+def _join_limited(values: list[str], limit: int) -> str:
+    clean_values = [_text(value) for value in values if _text(value)]
+    if not clean_values:
+        return "-"
+    shown = clean_values[:limit]
+    suffix = f" 等 {len(clean_values)} 个动作" if len(clean_values) > limit else ""
+    return "、".join(shown) + suffix
+
+
+def _intra_page_relation_summary(action: str, count: int) -> str:
+    action_text = action if action and action != "-" else "页面内动作"
+    if count <= 1:
+        return action_text
+    return f"{action_text}，出现 {count} 次"
 
 
 def _edge_action_text(edge: dict) -> str:
@@ -1075,6 +1201,7 @@ def _run_section(run: dict, summary: dict, pages: list[dict], blockers: list[dic
 
 
 def _summary_yaml(summary: dict, run: dict, pages: list[dict], blockers: list[dict], goal_validation: dict | None = None) -> dict:
+    modules = summary.get("modules") if isinstance(summary.get("modules"), list) else []
     return {
         "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
         "run_id": run["id"],
@@ -1086,6 +1213,7 @@ def _summary_yaml(summary: dict, run: dict, pages: list[dict], blockers: list[di
         "markdown_content": summary["markdown_content"],
         "page_count": len(pages),
         "blocker_count": len(blockers),
+        "modules": _summary_modules(modules, run, pages, blockers, summary["status"]),
     }
 
 
@@ -1107,6 +1235,103 @@ def _default_goal_validation(goal: str) -> dict:
         "stats": {},
         "items": [],
     }
+
+
+def _summary_modules(modules: list[dict], run: dict, pages: list[dict], blockers: list[dict], status: str) -> list[dict]:
+    normalized = [_normalize_summary_module(module, index) for index, module in enumerate(modules, start=1) if isinstance(module, dict)]
+    if normalized:
+        return normalized
+
+    target_module = _target_module_name(run)
+    page_titles = _unique_texts(
+        _page_display_title(page["content"]["page"])
+        for page in pages
+        if isinstance(page, dict) and isinstance(page.get("content"), dict) and isinstance(page["content"].get("page"), dict)
+    )
+    blocking_count = sum(1 for blocker in blockers if bool(blocker.get("is_blocking", True)))
+    explored = len(pages)
+    planned = max(explored, 1)
+    blocker_summary = _text(blockers[0].get("reason")) if blockers else "无"
+    return [
+        {
+            "module_key": "planned-01",
+            "module_name": target_module,
+            "status": _module_status_from_run(status, blockers),
+            "page_progress": f"{explored}/{planned}",
+            "planned_page_count": planned,
+            "explored_page_count": explored,
+            "blocked_page_count": blocking_count,
+            "action_count": sum(
+                len(page["content"].get("actions")) if isinstance(page.get("content"), dict) and isinstance(page["content"].get("actions"), list) else 0
+                for page in pages
+                if isinstance(page, dict)
+            ),
+            "field_count": 0,
+            "state_transition_count": 0,
+            "latest_page": page_titles[-1] if page_titles else "-",
+            "main_facts": "、".join(page_titles[:5]) if page_titles else "-",
+            "blocker_summary": blocker_summary,
+            "knowledge_base_availability": "部分可用" if status == "partial" else ("不可用" if status == "blocked" else "可用"),
+            "entry_path": _mapping_get(run, "scope", "") or _first_page_url(pages),
+        }
+    ]
+
+
+def _normalize_summary_module(module: dict, index: int) -> dict:
+    module_key = _text(module.get("module_key")) or f"planned-{index:02d}"
+    module_name = _text(module.get("module_name")) or _text(module.get("business_module")) or module_key
+    explored = module.get("explored_page_count")
+    planned = module.get("planned_page_count")
+    page_progress = _text(module.get("page_progress"))
+    if not page_progress and isinstance(explored, int) and isinstance(planned, int) and planned > 0:
+        page_progress = f"{explored}/{planned}"
+    return {
+        "module_key": module_key,
+        "module_name": module_name,
+        "status": _text(module.get("status")) or _text(module.get("completion_status")) or "pending",
+        "page_progress": page_progress or "-",
+        "planned_page_count": planned,
+        "explored_page_count": explored,
+        "blocked_page_count": module.get("blocked_page_count"),
+        "action_count": module.get("action_count"),
+        "field_count": module.get("field_count"),
+        "state_transition_count": module.get("state_transition_count"),
+        "latest_page": _text(module.get("latest_page")) or _text(module.get("recent_page_title")),
+        "main_facts": _text(module.get("main_facts")) or _text(module.get("completion_summary")),
+        "blocker_summary": _text(module.get("blocker_summary")) or "无",
+        "knowledge_base_availability": _text(module.get("knowledge_base_availability")) or "待确认",
+        "entry_path": _text(module.get("entry_path")),
+    }
+
+
+def _module_status_from_run(status: str, blockers: list[dict]) -> str:
+    if status == "blocked":
+        return "blocked"
+    if status == "partial" or blockers:
+        return "partial"
+    if status == "completed":
+        return "completed"
+    return status or "pending"
+
+
+def _target_module_name(run: dict) -> str:
+    scope = _text(_mapping_get(run, "scope", ""))
+    if scope:
+        return scope.splitlines()[0][:80]
+    title = _text(_mapping_get(run, "title", ""))
+    return title[:80] if title else "站点入口"
+
+
+def _unique_texts(items) -> list[str]:
+    seen = set()
+    unique = []
+    for item in items:
+        text = _text(item)
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        unique.append(text)
+    return unique
 
 
 def _graph_yaml(graph: dict) -> dict:

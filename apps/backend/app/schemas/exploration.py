@@ -145,11 +145,6 @@ class ExplorationModuleOut(BaseModel):
     state_transition_count: int
     completion_status: str
     completion_summary: str
-    recent_page_title: str = ""
-    recent_page_url: str = ""
-    blocker_summary: str = "无"
-    progress_percent: int = 0
-    page_progress_text: str = ""
     pages: list[ExplorationPageOut]
     elements: list[ExplorationElementOut]
     blockers: list[ExplorationBlockerOut]

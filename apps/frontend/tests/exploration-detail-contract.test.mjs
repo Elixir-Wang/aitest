@@ -70,7 +70,10 @@ test("exploration detail exposes no execution or interaction mode controls", () 
 
 test("exploration detail supports first discovery before confirmed plan runs", () => {
   assert.match(pageSource, /type ExplorationPlan = \{/);
-  assert.match(pageSource, /plan_status: "not_generated" \| "draft" \| "confirmed" \| "running" \| "completed" \| "blocked";/);
+  assert.match(
+    pageSource,
+    /plan_status: "not_generated" \| "draft" \| "confirmed" \| "running" \| "completed" \| "blocked";/,
+  );
   assert.match(pageSource, /async function generateExplorationPlan\(\)/);
   assert.match(pageSource, /async function confirmExplorationPlan\(\)/);
   assert.match(
@@ -78,10 +81,30 @@ test("exploration detail supports first discovery before confirmed plan runs", (
     /const hasFirstDiscoveryArtifacts = activeDetail[\s\S]*\? activeDetail\.modules\.some\(\(module\) => !hasNoModuleArtifacts\(module\)\)[\s\S]*: false;/,
   );
   assert.match(pageSource, /const canStartFirstDiscovery = Boolean\(run\) && canStart && !hasFirstDiscoveryArtifacts;/);
-  assert.match(pageSource, /const canStartFromPlan = explorationPlan\?\.plan_status === "confirmed" && Boolean\(run\) && canStart;/);
+  assert.match(
+    pageSource,
+    /const canStartFromPlan = explorationPlan\?\.plan_status === "confirmed" && Boolean\(run\) && canStart;/,
+  );
   assert.match(pageSource, />\s*首次探索采集\s*<\/Button>/);
-  assert.match(pageSource, />\s*生成探索计划\s*<\/Button>/);
+  assert.match(pageSource, /\{generatingPlan \? "生成中" : "生成探索计划"\}/);
   assert.match(pageSource, />\s*确认计划\s*<\/Button>/);
   assert.match(pageSource, />\s*按计划开始探索\s*<\/Button>/);
   assert.doesNotMatch(pageSource, />\s*\{startLabel\}\s*<\/Button>/);
+});
+
+test("regenerating an exploration plan clears stale generated plan modules", () => {
+  assert.match(pageSource, /function clearGeneratedExplorationPlanModules\(\)/);
+  assert.match(
+    pageSource,
+    /current \? \{ \.\.\.current, modules: current\.modules\.filter\(\(module\) => !isEmptyPlannedModule\(module\)\) \} : current/,
+  );
+  assert.match(pageSource, /setPlanAction\("generate"\);\s*clearGeneratedExplorationPlanModules\(\);/);
+});
+
+test("plan generation exposes local in-page progress instead of implying a task-center job", () => {
+  assert.match(pageSource, /const generatingPlan = planAction === "generate";/);
+  assert.match(pageSource, /formatElapsedDuration\(planActionNow - planActionStartedAt\)/);
+  assert.match(pageSource, /这一步不是后台任务，不会显示在任务中心/);
+  assert.match(pageSource, /\{generatingPlan \? "生成中" : "生成探索计划"\}/);
+  assert.match(pageSource, /探索计划正在生成/);
 });

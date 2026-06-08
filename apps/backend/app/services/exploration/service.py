@@ -1,4 +1,5 @@
 import json
+import asyncio
 import secrets
 import shutil
 import re
@@ -9,13 +10,17 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import yaml
 
 from app.core.db import connect
+from app.core.environment_auth_state import auth_state_path
 from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
+from app.agents.site_exploration import plan_service as site_exploration_plan_service
+from app.agents.site_exploration.plan_schemas import ExplorationPlanInput, ExplorationPlanOutput
 from app.presentation.serializers import serialize_exploration_run
 from app.repositories import environment_repo, exploration_repo, project_repo
 from app.schemas.exploration import ExplorationPlanUpdateIn, ExplorationRunCreateIn, ExplorationRunUpdateIn
 from app.services import operation_log_service
 from app.services.exploration import artifact_service as exploration_artifact_service
+from app.services.exploration.browser_session import BrowserSessionError, PlaywrightBrowserSession
 
 STATUSES = {"pending", "queued", "running", "stopping", "cancelled", "partial", "completed", "blocked"}
 LOGIN_STRATEGIES = {"account_password", "skip_login"}
@@ -389,21 +394,9 @@ def _enrich_module_progress(module: dict) -> None:
     explored = int(module.get("explored_page_count") or len(pages) or 0)
     planned = int(module.get("planned_page_count") or max(explored, len(pages), 1))
     blocked = int(module.get("blocked_page_count") or len(blockers) or 0)
-    recent_page = pages[-1] if pages else {}
-    blocker_summary = "无"
-    if blockers:
-        blocker_summary = str(blockers[0].get("reason") or blockers[0].get("reason_type") or "存在阻塞项")
-    progress_percent = min(100, round((explored / max(planned, explored, 1)) * 100))
     module["planned_page_count"] = planned
     module["explored_page_count"] = explored
     module["blocked_page_count"] = blocked
-    module["recent_page_title"] = str(recent_page.get("title") or "")
-    module["recent_page_url"] = str(recent_page.get("url") or "")
-    module["blocker_summary"] = blocker_summary
-    module["progress_percent"] = progress_percent
-    module["page_progress_text"] = f"{explored}/{planned} 页面"
-    if not module.get("completion_summary") or _looks_like_run_summary(str(module.get("completion_summary"))):
-        module["completion_summary"] = _module_progress_summary(module)
 
 
 def _module_status_from_artifacts(module: dict, run_status: str) -> str:
@@ -416,18 +409,6 @@ def _module_status_from_artifacts(module: dict, run_status: str) -> str:
     if pages:
         return "partial" if run_status == "partial" else "completed"
     return _status_to_completion(run_status)
-
-
-def _looks_like_run_summary(value: str) -> bool:
-    return "已探索" in value and "可交互元素" in value and "阻塞项" in value
-
-
-def _module_progress_summary(module: dict) -> str:
-    recent = module.get("recent_page_title") or "无"
-    blocker = module.get("blocker_summary") or "无"
-    if blocker != "无":
-        return f"页面进度 {module['page_progress_text']}，最近页面：{recent}，阻塞：{blocker}。"
-    return f"页面进度 {module['page_progress_text']}，最近页面：{recent}，无阻塞。"
 
 
 def _parse_json_log_line(line: str, index: int) -> dict | None:
@@ -734,8 +715,7 @@ def generate_project_run_plan(project_id: str, run_id: str, actor) -> dict:
         _ensure_project_visible(existing, actor)
         if existing["status"] in {"queued", "running", "stopping"}:
             raise api_error(409, "RUNNING_EXPLORATION", "探索任务执行中，不能重新生成探索计划。")
-        artifact_bundle = _load_run_artifact_bundle(existing)
-        plan = _build_discovery_based_exploration_plan(existing, artifact_bundle)
+        plan = _build_ai_generated_exploration_plan(existing)
         _write_exploration_plan(existing, plan)
         return plan
 
@@ -1008,6 +988,242 @@ def _build_discovery_based_exploration_plan(run, artifact_bundle: dict) -> dict:
     }
 
 
+def _build_ai_generated_exploration_plan(run) -> dict:
+    page_facts = _collect_scope_plan_facts(run)
+    scope_constraints = _plan_scope_constraints(run, page_facts)
+    try:
+        output = asyncio.run(
+            site_exploration_plan_service.generate_exploration_plan(
+                ExplorationPlanInput(
+                    run=_run_plan_context(run),
+                    page_facts=page_facts,
+                    scope_constraints=scope_constraints,
+                )
+            )
+        )
+    except Exception as error:
+        raise api_error(502, "EXPLORATION_PLAN_AI_FAILED", f"AI 生成探索计划失败：{str(error)[:300]}") from error
+
+    plan = _normalize_ai_exploration_plan(run, output, page_facts, scope_constraints)
+    if not plan["items"]:
+        raise api_error(409, "EXPLORATION_PLAN_MODULES_REQUIRED", "AI 未能根据当前探索范围识别模块，请补充探索范围或先人工确认页面内容。")
+    return plan
+
+
+def _collect_scope_plan_facts(run) -> dict:
+    start_url = _run_site_url(run)
+    if not start_url:
+        raise api_error(409, "EXPLORATION_SITE_URL_REQUIRED", "探索环境未配置站点地址，无法访问探索范围生成计划。")
+    storage_state_path = _stored_auth_state_path_for_run(run)
+    try:
+        with PlaywrightBrowserSession(
+            start_url=start_url,
+            storage_state_path=str(storage_state_path or ""),
+            timeout_seconds=45,
+        ) as session:
+            observation = session.observe()
+    except BrowserSessionError as error:
+        raise api_error(502, "EXPLORATION_PLAN_COLLECT_FAILED", f"访问探索范围并采集页面事实失败：{str(error)[:300]}") from error
+    return _plan_facts_from_observation(run, observation)
+
+
+def _plan_facts_from_observation(run, observation: dict) -> dict:
+    elements = observation.get("elements") if isinstance(observation.get("elements"), list) else []
+    visible_elements = []
+    for element in elements:
+        if not isinstance(element, dict):
+            continue
+        visible_elements.append(
+            {
+                "id": str(element.get("id") or ""),
+                "role": str(element.get("role") or ""),
+                "name": str(element.get("name") or ""),
+                "text": str(element.get("text") or ""),
+                "action_type": str(element.get("action_type") or ""),
+                "enabled": bool(element.get("enabled", True)),
+                "visible": bool(element.get("visible", True)),
+            }
+        )
+    return {
+        "url": str(observation.get("url") or ""),
+        "normalized_url": str(observation.get("normalized_url") or observation.get("url") or ""),
+        "title": str(observation.get("title") or ""),
+        "page_text_summary": str(observation.get("page_text_summary") or observation.get("text_summary") or ""),
+        "scope": _run_value(run, "scope", ""),
+        "goal": _run_value(run, "goal", ""),
+        "forbidden_paths": _run_value(run, "forbidden_paths", ""),
+        "elements": visible_elements[:120],
+    }
+
+
+def _run_plan_context(run) -> dict:
+    return {
+        "id": _run_value(run, "id", ""),
+        "title": _run_value(run, "title", ""),
+        "scope": _run_value(run, "scope", ""),
+        "goal": _run_value(run, "goal", ""),
+        "forbidden_paths": _run_value(run, "forbidden_paths", ""),
+        "site_url": _run_site_url(run),
+        "environment_name": _run_value(run, "environment_name", ""),
+    }
+
+
+def _normalize_ai_exploration_plan(
+    run,
+    output: ExplorationPlanOutput,
+    page_facts: dict,
+    scope_constraints: dict | None = None,
+) -> dict:
+    boundary = _plan_business_boundary(run)
+    items = []
+    skipped_modules = []
+    scope_constraints = scope_constraints or _plan_scope_constraints(run, page_facts)
+    for index, module in enumerate(output.modules, start=1):
+        module_name = module.module_name.strip()
+        if not module_name:
+            continue
+        if not _module_matches_plan_scope(module, scope_constraints):
+            skipped_modules.append(module_name)
+            continue
+        steps = module.steps or [
+            f"进入{module_name}模块",
+            "查看主要页面、状态和关键入口",
+            "记录操作入口、表单、跳转和阻塞原因",
+        ]
+        expected_evidence = module.expected_evidence or [
+            f"{module_name}模块入口可追溯",
+            "页面状态和关键动作已记录",
+        ]
+        item = _normalize_plan_item(
+            {
+                "id": f"plan-ai-module-{index:02d}",
+                "business_module": module_name,
+                "capability_type": "module_discovery",
+                "title": f"探索{module_name}模块",
+                "steps": steps,
+                "expected_evidence": expected_evidence,
+                "risk_level": module.risk_level,
+                "execution_policy": module.execution_policy,
+                "status": "pending",
+                "entry_path": str(page_facts.get("normalized_url") or page_facts.get("url") or ""),
+                "discovery_evidence": [module.reason, module.entry_hint],
+            },
+            index,
+            module_name,
+        )
+        items.append(item)
+    summary = f"AI 已根据探索范围生成 {len(items)} 个模块计划项，等待人工确认或补充。"
+    if skipped_modules:
+        summary = f"{summary} 已过滤范围外模块：{'、'.join(skipped_modules)}。"
+    return {
+        "artifact_schema_version": 1,
+        "plan_status": "draft",
+        "business_boundary": boundary,
+        "goal": _run_value(run, "goal", ""),
+        "summary": summary,
+        "items": items,
+    }
+
+
+def _plan_scope_constraints(run, page_facts: dict | None = None) -> dict:
+    scope = _run_value(run, "scope", "").strip()
+    allow_all = not scope or _is_full_site_scope(scope)
+    allowed_terms = [] if allow_all else _scope_constraint_terms(scope)
+    page_facts = page_facts if isinstance(page_facts, dict) else {}
+    return {
+        "scope": scope,
+        "allow_all": allow_all,
+        "allowed_terms": allowed_terms,
+        "instruction": (
+            "scope 未限制具体模块，可基于页面事实识别模块。"
+            if allow_all
+            else "只能生成 allowed_terms 或 scope 明确包含的模块；同级导航、相邻菜单和范围外页面必须忽略。"
+        ),
+        "current_url": str(page_facts.get("normalized_url") or page_facts.get("url") or ""),
+        "current_title": str(page_facts.get("title") or ""),
+    }
+
+
+def _scope_constraint_terms(scope: str) -> list[str]:
+    named_items = _scope_named_items(scope)
+    candidates = named_items or _split_scope_terms(scope)
+    terms: list[str] = []
+    for candidate in candidates:
+        text = _clean_scope_term(candidate)
+        if text:
+            terms.append(text)
+        route_label = _scope_route_label(text)
+        if route_label:
+            terms.append(route_label)
+    return _unique_preserve_order(terms)
+
+
+def _split_scope_terms(scope: str) -> list[str]:
+    normalized = re.sub(r"\s*和\s*", "\n", scope)
+    normalized = re.sub(r"\s*及\s*", "\n", normalized)
+    return [item.strip() for item in re.split(r"[、,，;；。\n]+", normalized) if item.strip()]
+
+
+def _clean_scope_term(term: str) -> str:
+    text = str(term or "").strip()
+    text = re.sub(r"^范围包含[：:]", "", text).strip()
+    text = re.sub(r"(模块|页面|菜单|入口|路径|URL)$", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"(的)?(全部内容|全部模块|相关内容|范围|探索)$", "", text).strip()
+    return text[:80]
+
+
+def _scope_route_label(term: str) -> str:
+    route_labels = {
+        "agentStore": "探索广场",
+        "workspace": "工作台",
+        "agentAnalysis": "效果评测",
+        "resource": "资源库",
+        "publish": "发布管理",
+        "manage": "管理中心",
+    }
+    normalized = str(term or "").strip("/").split("?")[0]
+    for segment, label in route_labels.items():
+        if segment in normalized:
+            return label
+    return ""
+
+
+def _module_matches_plan_scope(module: ExplorationPlanModule, scope_constraints: dict) -> bool:
+    if bool(scope_constraints.get("allow_all")):
+        return True
+    allowed_terms = [str(item).strip() for item in scope_constraints.get("allowed_terms", []) if str(item).strip()]
+    if not allowed_terms:
+        return True
+    haystack = _scope_match_text(
+        " ".join(
+            [
+                module.module_name,
+                module.reason,
+                module.entry_hint,
+                " ".join(module.steps),
+                " ".join(module.expected_evidence),
+            ]
+        )
+    )
+    module_name = _scope_match_text(module.module_name)
+    scope_text = _scope_match_text(str(scope_constraints.get("scope") or ""))
+    for term in allowed_terms:
+        normalized_term = _scope_match_text(term)
+        if not normalized_term:
+            continue
+        if normalized_term in module_name or module_name in normalized_term:
+            return True
+        if normalized_term in haystack:
+            return True
+        if module_name and module_name in scope_text:
+            return True
+    return False
+
+
+def _scope_match_text(value: str) -> str:
+    return re.sub(r"\s+", "", str(value or "").lower())
+
+
 def _discovered_plan_modules(run, artifact_bundle: dict) -> list[dict]:
     pages = artifact_bundle.get("pages") if isinstance(artifact_bundle.get("pages"), list) else []
     modules: dict[str, dict] = {}
@@ -1129,7 +1345,7 @@ def _plan_item(
 
 def _normalize_plan_item(raw: dict, index: int, boundary: str) -> dict:
     capability_type = str(raw.get("capability_type") or "custom").strip() or "custom"
-    return {
+    item = {
         "id": str(raw.get("id") or f"plan-{capability_type}-{index:02d}"),
         "business_module": str(raw.get("business_module") or boundary),
         "capability_type": capability_type,
@@ -1140,6 +1356,13 @@ def _normalize_plan_item(raw: dict, index: int, boundary: str) -> dict:
         "execution_policy": str(raw.get("execution_policy") or "auto"),
         "status": str(raw.get("status") or "pending"),
     }
+    entry_path = str(raw.get("entry_path") or "").strip()
+    if entry_path:
+        item["entry_path"] = entry_path
+    discovery_evidence = _string_list(raw.get("discovery_evidence"))
+    if discovery_evidence:
+        item["discovery_evidence"] = discovery_evidence
+    return item
 
 
 def _string_list(value) -> list[str]:
@@ -1164,6 +1387,18 @@ def _run_value(run, key: str, default: str = "") -> str:
     if key in run.keys():
         return str(run[key] or default)
     return default
+
+
+def _run_site_url(run) -> str:
+    return _run_value(run, "environment_site_url", "").strip()
+
+
+def _stored_auth_state_path_for_run(run) -> Path | None:
+    login_strategy, _, reuse_auth_state = _snapshot_auth_config(run)
+    if login_strategy != "account_password" or not reuse_auth_state:
+        return None
+    path = auth_state_path(_run_value(run, "project_id", ""), _run_value(run, "environment_id", ""))
+    return path if path.exists() else None
 
 
 def _ensure_project_visible(project, actor) -> None:

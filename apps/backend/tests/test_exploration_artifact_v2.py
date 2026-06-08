@@ -218,11 +218,71 @@ def test_report_uses_graph_source_target_and_page_semantic_titles(tmp_path: Path
 
     report = (tmp_path / "reports" / "exploration-report.md").read_text(encoding="utf-8")
 
-    assert "| 用户列表页 | click 查看详情 | 用户详情页 | navigation | graph.yaml |" in report
+    assert "| 用户列表页 | 用户详情页 | 页面跳转 | click 查看详情 | 1 | graph.yaml |" in report
     assert "| 用户管理 | 用户列表页 | https://example.test | explored | pages/page-001-用户列表页.yaml |" in report
     assert "- | click | -" not in report
     assert "### 6.2 页面核心事实" not in report
     assert "| 页面 | 主要字段 | 主要操作 | 主要状态 | 关键说明 |" not in report
+
+
+def test_report_groups_cross_page_relations_and_moves_same_page_actions_to_intra_page_section(tmp_path: Path) -> None:
+    first = _page_payload()
+    first["page"]["title"] = "示例系统"
+    first["page"]["semantic_title"] = "用户列表页"
+    first["page"]["module"] = "用户管理"
+    second = _second_page_payload()
+
+    artifact_service.write_exploration_artifacts(
+        tmp_path,
+        run=_run_payload(),
+        summary={"status": "completed", "summary": "探索完成。", "markdown_content": "探索完成。"},
+        page_artifacts=[first, second],
+        graph={
+            "nodes": [
+                {"id": "page-001", "title": "示例系统", "semantic_title": "用户列表页", "url": "https://example.test"},
+                {"id": "page-002", "title": "示例系统", "semantic_title": "用户详情页", "url": "https://example.test/users/1"},
+            ],
+            "edges": [
+                {
+                    "id": "edge-001",
+                    "source": "page-001",
+                    "target": "page-002",
+                    "type": "agent_action",
+                    "action": "click",
+                    "action_target": "查看详情",
+                    "result": {"status": "passed", "url_changed": True, "state_signature_changed": True},
+                },
+                {
+                    "id": "edge-002",
+                    "source": "page-001",
+                    "target": "page-002",
+                    "type": "agent_action",
+                    "action": "click",
+                    "action_target": "打开详情",
+                    "result": {"status": "passed", "url_changed": True, "state_signature_changed": True},
+                },
+                {
+                    "id": "edge-003",
+                    "source": "page-001",
+                    "target": "page-001",
+                    "type": "agent_action",
+                    "action": "fill",
+                    "action_target": "搜索框",
+                    "result": {"status": "passed", "url_changed": False, "state_signature_changed": True},
+                },
+            ],
+            "paths": [],
+        },
+        blockers=[],
+        log_content='{"event":"run_completed"}',
+    )
+
+    report = (tmp_path / "reports" / "exploration-report.md").read_text(encoding="utf-8")
+    relation_section = report.split("### 7.1 跳转路径", 1)[1].split("### 7.2 页面内关系", 1)[0]
+
+    assert "| 用户列表页 | 用户详情页 | 页面跳转 | click 查看详情、click 打开详情 | 2 | graph.yaml |" in relation_section
+    assert "fill 搜索框" not in relation_section
+    assert "| 用户列表页 | 状态流转 | fill 搜索框 | graph.yaml |" in report
 
 
 def test_report_backfills_semantic_page_titles_and_modules_for_generic_browser_titles(tmp_path: Path) -> None:
@@ -271,6 +331,52 @@ def test_report_backfills_semantic_page_titles_and_modules_for_generic_browser_t
     assert "| 效果评测 | 用户洞察 | https://www.cybotstar.cn/workspace/agentAnalysis?id=17990&agentId=17618 | explored | pages/page-002-用户洞察.yaml |" in report
     assert "| 百融百工 | 百融百工 |" not in report
     assert "### 6.2 页面核心事实" not in report
+
+
+def test_report_module_matrix_uses_scope_module_not_inferred_page_modules(tmp_path: Path) -> None:
+    run = _run_payload()
+    run["scope"] = "工作台"
+    run["goal"] = "工作台模块的全部内容"
+    first = _page_payload()
+    first["page"].update(
+        {
+            "id": "page-001",
+            "title": "百融百工",
+            "url": "https://www.cybotstar.cn/agentStore",
+            "normalized_url": "https://www.cybotstar.cn/agentStore",
+            "module": "百融百工",
+            "structure_summary": "标题：百融百工。正文：探索广场 创建智能体 工作台。",
+        }
+    )
+    second = _page_payload()
+    second["page"].update(
+        {
+            "id": "page-002",
+            "title": "百融百工",
+            "url": "https://www.cybotstar.cn/workspace",
+            "normalized_url": "https://www.cybotstar.cn/workspace",
+            "module": "百融百工",
+            "structure_summary": "标题：百融百工。正文：工作台 类型 全部 状态 全部。",
+        }
+    )
+
+    artifact_service.write_exploration_artifacts(
+        tmp_path,
+        run=run,
+        summary={"status": "partial", "summary": "探索完成。", "markdown_content": "探索完成。"},
+        page_artifacts=[first, second],
+        graph={"nodes": [], "edges": [], "paths": []},
+        blockers=[],
+        log_content='{"event":"run_completed"}',
+    )
+
+    summary = yaml.safe_load((tmp_path / "summary.yaml").read_text(encoding="utf-8"))
+    report = (tmp_path / "reports" / "exploration-report.md").read_text(encoding="utf-8")
+
+    assert [module["module_name"] for module in summary["modules"]] == ["工作台"]
+    assert "| 模块总数 | 1 |" in report
+    assert "| 工作台 | partial | 2/2 | 工作台 | 探索广场、工作台 | 无 | 部分可用 |" in report
+    assert "| 探索广场 | partial |" not in report
 
 
 def test_report_fills_site_url_limits_and_avoids_structure_summary_dump(tmp_path: Path) -> None:
@@ -334,4 +440,9 @@ def test_failed_page_actions_are_written_to_blockers_and_report(tmp_path: Path) 
     assert blockers[0]["type"] == "action_failed"
     assert blockers[0]["action"] == "查看历史"
     assert blockers[0]["impact_scope"] == "查看历史 未验证"
+    assert "### 8.1 阻塞项" in report
+    assert "### 8.2 已跳过或未验证" in report
+    assert "| - | - | 无阻塞项 | 不影响下游使用 | 无需处理 | blockers.yaml |" in report
+    assert "| 首页 / https://example.test | 查看历史 | 等待目标元素可执行超时。 | 查看历史 未验证 | 人工确认页面状态、locator 稳定性或弹层遮挡后重新探索。 | pages/page-001-首页.yaml |" in report
     assert "等待目标元素可执行超时" in report
+    assert "| action_failed |" not in report

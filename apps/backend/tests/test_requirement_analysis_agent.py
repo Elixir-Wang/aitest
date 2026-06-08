@@ -49,6 +49,10 @@ def test_requirement_analysis_input_is_primary_only():
 
     assert "primary_markdown_content" in prompt
     assert "用户可以使用验证码登录" in prompt
+    assert "requirement-review" in prompt
+    assert "test-scenarios" in prompt
+    assert "不要生成、优化、摘要或改写需求正文" in prompt
+    assert "系统会直接使用 primary_markdown_content 原文作为初步需求" in prompt
     assert "search_auxiliary_documents" not in prompt
     assert '"auxiliary_documents"' not in prompt
     assert '"markdown_content"' not in prompt
@@ -98,7 +102,41 @@ async def test_requirement_analysis_service_uses_direct_structured_primary_model
     assert output.status == "completed"
     message_content = fake_agent.payload["messages"][0]["content"]
     assert "primary_markdown_content" in message_content
+    assert "requirement-review" in message_content
+    assert "test-scenarios" in message_content
     assert "search_auxiliary_documents" not in message_content
+
+
+@pytest.mark.anyio
+async def test_requirement_analysis_service_uses_primary_markdown_as_preliminary_requirement(monkeypatch):
+    from app.agents.requirement_analysis.primary_analysis import service
+    from app.schemas.requirement_analysis import RequirementAnalysisInput, RequirementAnalysisOutput, RequirementQualityGate
+
+    response = RequirementAnalysisOutput(
+        status="needs_clarification",
+        analysis_summary="需求存在待澄清项。",
+        preliminary_requirement_markdown="",
+        quality_gate=RequirementQualityGate(result="warning", testability_score=72),
+    )
+    fake_agent = FakeAgent(response)
+
+    monkeypatch.setattr(service, "resolve_model_selection", lambda capability_id: {"model": "fake:model"})
+    monkeypatch.setattr(service, "build_agent_model", lambda selection: "model")
+    monkeypatch.setattr(service, "primary_analysis_agent", lambda model: fake_agent)
+
+    primary_markdown = "# 主需求\n\n## 登录\n\n用户可以使用验证码登录。\n\n| 字段 | 说明 |\n| --- | --- |\n| 手机号 | 必填 |\n"
+    output = await service.analyze_requirement(
+        RequirementAnalysisInput(
+            project_id="project-1",
+            document_id="doc-1",
+            document_name="登录需求",
+            primary_mapping_id="main-1",
+            primary_filename="main.md",
+            primary_markdown_content=primary_markdown,
+        )
+    )
+
+    assert output.preliminary_requirement_markdown == primary_markdown.strip()
 
 
 def test_primary_analysis_agent_uses_tool_strategy(monkeypatch):

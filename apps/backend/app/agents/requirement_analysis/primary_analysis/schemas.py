@@ -25,6 +25,21 @@ class RequirementAnalysisModule(BaseModel):
     risks: list[str] = Field(default_factory=list)
 
 
+class RequirementEvidenceReference(BaseModel):
+    mapping_id: str
+    filename: str
+    excerpt: str
+    section_hint: str = ""
+
+
+class RequirementClarificationOption(BaseModel):
+    id: str
+    label: str
+    answer_markdown: str
+    rationale: str = ""
+    confidence: Literal["high", "medium", "low"] = "medium"
+
+
 class RequirementClarificationQuestion(BaseModel):
     id: str
     module_key: str
@@ -48,21 +63,7 @@ class RequirementClarificationQuestion(BaseModel):
     ]
     severity: Literal["blocker", "major", "minor"] = "major"
     source_excerpt: str = ""
-
-
-class RequirementEvidenceReference(BaseModel):
-    mapping_id: str
-    filename: str
-    excerpt: str
-    section_hint: str = ""
-
-
-class RequirementClarificationOption(BaseModel):
-    id: str
-    label: str
-    answer_markdown: str
-    rationale: str = ""
-    confidence: Literal["high", "medium", "low"] = "medium"
+    recommended_options: list[RequirementClarificationOption] = Field(default_factory=list, max_length=2)
 
 
 class RequirementAppliedSupplement(BaseModel):
@@ -182,4 +183,3 @@ __all__ = [
     "RequirementQualityGate",
     "RequirementUnresolvedFinding",
 ]
-
