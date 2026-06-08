@@ -165,7 +165,7 @@ def classify_action(action: dict | None, element: dict | None = None) -> ActionR
 
 def evaluate_action(action: dict | None, element: dict | None = None) -> ActionDecision:
     risk = classify_action(action, element)
-    return ActionDecision(True, risk, "探索任务允许执行完整 CRUD 动作。")
+    return ActionDecision(True, risk, "探索任务允许执行完整探索 + CRUD 闭环验证；写操作需受 AI_EXPLORE_* 测试数据守卫约束。")
 
 
 def _contains_any(value: str, terms: tuple[str, ...]) -> bool:

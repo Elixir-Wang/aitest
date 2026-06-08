@@ -61,6 +61,26 @@ class ExplorationRunUpdateIn(BaseModel):
     timeout_minutes: int | None = None
 
 
+class ExplorationPlanItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str | None = None
+    business_module: str = Field(min_length=1)
+    capability_type: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    steps: list[str] = Field(default_factory=list)
+    expected_evidence: list[str] = Field(default_factory=list)
+    risk_level: str = "low"
+    execution_policy: str = "auto"
+    status: str = "pending"
+
+
+class ExplorationPlanUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ExplorationPlanItemIn]
+
+
 class ExplorationStepOut(BaseModel):
     id: str
     type: str
@@ -142,6 +162,7 @@ class ExplorationRunDetailOut(BaseModel):
     unsupported_reason: str = ""
     modules: list[ExplorationModuleOut]
     goal_validation: dict = Field(default_factory=dict)
+    exploration_plan: dict = Field(default_factory=dict)
 
 
 class ExplorationReportOut(BaseModel):

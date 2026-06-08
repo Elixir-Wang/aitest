@@ -2,16 +2,18 @@ import json
 import secrets
 import shutil
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+import yaml
 
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
 from app.presentation.serializers import serialize_exploration_run
 from app.repositories import environment_repo, exploration_repo, project_repo
-from app.schemas.exploration import ExplorationRunCreateIn, ExplorationRunUpdateIn
+from app.schemas.exploration import ExplorationPlanUpdateIn, ExplorationRunCreateIn, ExplorationRunUpdateIn
 from app.services import operation_log_service
 from app.services.exploration import artifact_service as exploration_artifact_service
 
@@ -46,6 +48,7 @@ LOG_EVENT_LABELS = {
     "action_started": "开始动作",
     "action_result": "动作结果",
     "action_completed": "动作完成",
+    "step_recorded": "探索步骤",
     "edge_created": "记录关系",
     "artifact_written": "写入产物",
     "blocked": "探索阻塞",
@@ -192,6 +195,7 @@ def get_project_run_detail(project_id: str, run_id: str, actor) -> dict:
             "unsupported_reason": str(artifact_bundle.get("unsupported_reason") or ""),
             "modules": list(module_by_key.values()),
             "goal_validation": _goal_validation_from_bundle(existing, artifact_bundle),
+            "exploration_plan": _load_exploration_plan(existing),
         }
 
 
@@ -204,7 +208,7 @@ def get_project_run_report(project_id: str, run_id: str, actor) -> dict:
 
         artifacts = _load_run_artifact_bundle(existing)
         unsupported = bool(artifacts.get("unsupported_artifact"))
-        markdown_content = "" if unsupported else str(artifacts.get("report_content") or "")
+        markdown_content = _render_run_report_markdown(artifacts)
         has_report = bool(markdown_content)
         return {
             "run_id": run_id,
@@ -217,6 +221,16 @@ def get_project_run_report(project_id: str, run_id: str, actor) -> dict:
             "unsupported_artifact": unsupported,
             "unsupported_reason": str(artifacts.get("unsupported_reason") or ""),
         }
+
+
+def _render_run_report_markdown(artifacts: dict) -> str:
+    if bool(artifacts.get("unsupported_artifact")):
+        return ""
+    if int(artifacts.get("artifact_schema_version") or 0) == exploration_artifact_service.ARTIFACT_SCHEMA_VERSION:
+        rendered = exploration_artifact_service.build_exploration_report_markdown(artifacts)
+        if rendered:
+            return rendered
+    return str(artifacts.get("report_content") or "")
 
 
 def get_project_run_log(
@@ -474,7 +488,7 @@ def _infer_log_category(event: str) -> str:
         return "blocked"
     if event == "error":
         return "error"
-    if "page" in event or event in {"accessibility_captured", "agent_observed", "observe"}:
+    if "page" in event or event in {"accessibility_captured", "agent_observed", "observe", "step_recorded"}:
         return "page"
     if "action" in event or "edge" in event or event in {"agent_decision", "agent_decision_fallback"}:
         return "action"
@@ -513,6 +527,10 @@ def _build_log_summary(event: str, payload: dict) -> str:
         return f"执行动作 {_first_string(payload, ('action', 'name', 'locator_hint')) or '-'}"
     if event in {"action_started", "action_result", "action_completed"}:
         return f"动作 {_first_string(payload, ('action', 'action_type')) or '-'}：{_first_string(payload, ('status', 'target')) or '-'}"
+    if event == "step_recorded":
+        title = _first_string(payload, ("title", "step_type")) or "探索步骤"
+        detail = _first_string(payload, ("detail", "summary"))
+        return f"{title}：{detail}" if detail else title
     if event in {"blocked", "skipped"}:
         return _first_string(payload, ("reason", "action", "page_id", "page")) or LOG_EVENT_LABELS.get(event, event)
     if event == "artifact_written":
@@ -548,7 +566,11 @@ def _format_log_timestamp(value: str) -> str:
         return value
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        target_timezone = ZoneInfo("Asia/Shanghai")
+    except ZoneInfoNotFoundError:
+        target_timezone = timezone(timedelta(hours=8))
+    return parsed.astimezone(target_timezone).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) -> dict:
@@ -666,7 +688,15 @@ def start_project_run(project_id: str, run_id: str, actor) -> dict:
             raise api_error(409, "EXPLORATION_ALREADY_RUNNING", "探索任务正在执行。")
         if existing["status"] not in {"pending", "partial", "completed", "blocked", "cancelled"}:
             raise api_error(409, "EXPLORATION_NOT_STARTABLE", "当前状态不能发起探索。")
+        plan = _load_exploration_plan(existing)
+        has_discovery_artifacts = _has_first_discovery_artifacts(existing)
+        if has_discovery_artifacts and plan["plan_status"] != "confirmed":
+            raise api_error(409, "EXPLORATION_PLAN_NOT_CONFIRMED", "请先根据首次探索生成并确认探索计划，再按计划开始探索。")
+        if plan["plan_status"] == "confirmed":
+            plan["plan_status"] = "running"
         _remove_run_artifact_directory(existing)
+        if plan["plan_status"] == "running":
+            _write_exploration_plan(existing, plan)
         exploration_repo.update_run_state(
             db,
             run_id,
@@ -694,6 +724,61 @@ def start_project_run(project_id: str, run_id: str, actor) -> dict:
         task_id=run_id,
     )
     return result
+
+
+def generate_project_run_plan(project_id: str, run_id: str, actor) -> dict:
+    with connect() as db:
+        existing = exploration_repo.find_by_id(db, run_id)
+        if not existing or existing["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "探索任务不存在。")
+        _ensure_project_visible(existing, actor)
+        if existing["status"] in {"queued", "running", "stopping"}:
+            raise api_error(409, "RUNNING_EXPLORATION", "探索任务执行中，不能重新生成探索计划。")
+        artifact_bundle = _load_run_artifact_bundle(existing)
+        plan = _build_discovery_based_exploration_plan(existing, artifact_bundle)
+        _write_exploration_plan(existing, plan)
+        return plan
+
+
+def update_project_run_plan(project_id: str, run_id: str, payload: ExplorationPlanUpdateIn, actor) -> dict:
+    with connect() as db:
+        existing = exploration_repo.find_by_id(db, run_id)
+        if not existing or existing["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "探索任务不存在。")
+        _ensure_project_visible(existing, actor)
+        if existing["status"] in {"queued", "running", "stopping"}:
+            raise api_error(409, "RUNNING_EXPLORATION", "探索任务执行中，不能修改探索计划。")
+        current = _load_exploration_plan(existing)
+        if current["plan_status"] in {"running", "completed", "blocked"}:
+            raise api_error(409, "EXPLORATION_PLAN_LOCKED", "探索计划已进入执行阶段，不能修改。")
+        items = [_normalize_plan_item(item.model_dump(), index + 1, _plan_business_boundary(existing)) for index, item in enumerate(payload.items)]
+        if not items:
+            raise api_error(400, "EMPTY_EXPLORATION_PLAN", "探索计划至少需要一个计划项。")
+        plan = {
+            **current,
+            "plan_status": "draft",
+            "items": items,
+            "summary": f"已人工调整 {len(items)} 个探索计划项，等待确认。",
+        }
+        _write_exploration_plan(existing, plan)
+        return plan
+
+
+def confirm_project_run_plan(project_id: str, run_id: str, actor) -> dict:
+    with connect() as db:
+        existing = exploration_repo.find_by_id(db, run_id)
+        if not existing or existing["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "探索任务不存在。")
+        _ensure_project_visible(existing, actor)
+        if existing["status"] in {"queued", "running", "stopping"}:
+            raise api_error(409, "RUNNING_EXPLORATION", "探索任务执行中，不能确认探索计划。")
+        plan = _load_exploration_plan(existing)
+        if not plan["items"]:
+            raise api_error(400, "EMPTY_EXPLORATION_PLAN", "请先生成或补充探索计划项。")
+        plan["plan_status"] = "confirmed"
+        plan["summary"] = f"已确认 {len(plan['items'])} 个探索计划项，可按计划开始探索。"
+        _write_exploration_plan(existing, plan)
+        return plan
 
 
 def _remove_run_artifact_directory(run) -> None:
@@ -850,6 +935,235 @@ def _resolve_run_artifact_root(run) -> Path | None:
     except ValueError:
         return None
     return artifact_root
+
+
+def _exploration_plan_path(run) -> Path | None:
+    artifact_root = _resolve_run_artifact_root(run)
+    if artifact_root is None:
+        return None
+    return artifact_root / "exploration-plan.yaml"
+
+
+def _load_exploration_plan(run) -> dict:
+    path = _exploration_plan_path(run)
+    if not path or not path.exists():
+        return _empty_exploration_plan(run)
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return _empty_exploration_plan(run)
+    items = data.get("items") if isinstance(data.get("items"), list) else []
+    boundary = str(data.get("business_boundary") or _plan_business_boundary(run))
+    return {
+        "artifact_schema_version": 1,
+        "plan_status": str(data.get("plan_status") or "not_generated"),
+        "business_boundary": boundary,
+        "goal": str(data.get("goal") or _run_value(run, "goal", "")),
+        "summary": str(data.get("summary") or ""),
+        "items": [_normalize_plan_item(item, index + 1, boundary) for index, item in enumerate(items) if isinstance(item, dict)],
+    }
+
+
+def _write_exploration_plan(run, plan: dict) -> None:
+    path = _exploration_plan_path(run)
+    if path is None:
+        raise api_error(500, "INVALID_ARTIFACT_ROOT", "探索任务产物目录无效，无法保存探索计划。")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(plan, allow_unicode=True, sort_keys=False, default_flow_style=False), encoding="utf-8")
+
+
+def _empty_exploration_plan(run) -> dict:
+    return {
+        "artifact_schema_version": 1,
+        "plan_status": "not_generated",
+        "business_boundary": _plan_business_boundary(run),
+        "goal": _run_value(run, "goal", ""),
+        "summary": "尚未生成探索计划。",
+        "items": [],
+    }
+
+
+def _has_first_discovery_artifacts(run) -> bool:
+    artifacts = _load_run_artifact_bundle(run)
+    if bool(artifacts.get("unsupported_artifact")):
+        return False
+    pages = artifacts.get("pages") if isinstance(artifacts.get("pages"), list) else []
+    return any(isinstance(page, dict) and isinstance(page.get("content"), dict) for page in pages)
+
+
+def _build_discovery_based_exploration_plan(run, artifact_bundle: dict) -> dict:
+    if bool(artifact_bundle.get("unsupported_artifact")):
+        raise api_error(409, "UNSUPPORTED_EXPLORATION_ARTIFACT", "历史探索产物无法生成探索计划，请先重新执行首次探索。")
+    modules = _discovered_plan_modules(run, artifact_bundle)
+    if not modules:
+        raise api_error(409, "EXPLORATION_DISCOVERY_REQUIRED", "请先执行首次探索，采集探索范围内的模块。")
+    boundary = _plan_business_boundary(run)
+    items = [_module_plan_item(module, index) for index, module in enumerate(modules, start=1)]
+    return {
+        "artifact_schema_version": 1,
+        "plan_status": "draft",
+        "business_boundary": boundary,
+        "goal": _run_value(run, "goal", ""),
+        "summary": f"已根据首次探索采集结果生成 {len(items)} 个模块计划项，等待人工确认或补充。",
+        "items": items,
+    }
+
+
+def _discovered_plan_modules(run, artifact_bundle: dict) -> list[dict]:
+    pages = artifact_bundle.get("pages") if isinstance(artifact_bundle.get("pages"), list) else []
+    modules: dict[str, dict] = {}
+    fallback_module = _plan_business_boundary(run)
+    for page_item in pages:
+        if not isinstance(page_item, dict):
+            continue
+        content = page_item.get("content") if isinstance(page_item.get("content"), dict) else {}
+        page = content.get("page") if isinstance(content.get("page"), dict) else {}
+        module_name = str(page.get("module") or fallback_module).strip() or fallback_module
+        module = modules.setdefault(
+            module_name,
+            {
+                "name": module_name,
+                "entry_path": str(page.get("normalized_url") or page.get("url") or "").strip(),
+                "page_titles": [],
+                "page_count": 0,
+                "action_count": 0,
+                "field_count": 0,
+                "blocked_count": 0,
+            },
+        )
+        if not module["entry_path"]:
+            module["entry_path"] = str(page.get("normalized_url") or page.get("url") or "").strip()
+        title = str(page.get("title") or page.get("semantic_title") or page.get("url") or "").strip()
+        if title and title not in module["page_titles"]:
+            module["page_titles"].append(title)
+        module["page_count"] += 1
+        module["action_count"] += len(content.get("actions")) if isinstance(content.get("actions"), list) else 0
+        module["field_count"] += len(content.get("forms")) if isinstance(content.get("forms"), list) else 0
+        status = str(page.get("status") or "").strip()
+        if status in {"blocked", "failed"}:
+            module["blocked_count"] += 1
+    return list(modules.values())
+
+
+def _module_plan_item(module: dict, index: int) -> dict:
+    name = str(module["name"])
+    entry_path = str(module.get("entry_path") or "")
+    page_titles = [str(title) for title in module.get("page_titles", []) if str(title).strip()]
+    sampled_pages = "、".join(page_titles[:3]) if page_titles else "首次探索采集页面"
+    steps = [
+        f"进入{name}模块入口" + (f"（{entry_path}）" if entry_path else ""),
+        f"按首次探索采集结果复核页面：{sampled_pages}",
+        "补充遗漏入口、关键页面状态和阻塞原因",
+    ]
+    expected_evidence = [
+        f"覆盖{name}模块已采集的 {int(module.get('page_count') or 0)} 个页面/状态",
+        f"记录模块动作、表单和跳转证据（已发现 {int(module.get('action_count') or 0)} 个动作）",
+    ]
+    if int(module.get("blocked_count") or 0):
+        expected_evidence.append(f"复核 {int(module.get('blocked_count') or 0)} 个阻塞页面并记录处理建议")
+    return _normalize_plan_item(
+        {
+            "id": f"plan-module-{index:02d}",
+            "business_module": name,
+            "capability_type": "module_discovery",
+            "title": f"探索{name}模块",
+            "steps": steps,
+            "expected_evidence": expected_evidence,
+            "risk_level": "medium" if int(module.get("blocked_count") or 0) else "low",
+            "execution_policy": "auto",
+            "status": "pending",
+        },
+        index,
+        name,
+    )
+
+
+def _build_default_exploration_plan(run) -> dict:
+    boundary = _plan_business_boundary(run)
+    items = [
+        _plan_item(boundary, "access", "访问边界首页", ["进入指定探索边界", "确认主内容区、导航和核心入口出现"], ["页面可访问", "保留页面截图和 accessibility snapshot"], "low", "auto", 1),
+        _plan_item(boundary, "search", f"搜索{boundary}内容", ["定位搜索框", "输入关键词并观察结果区变化"], ["搜索框可输入", "结果区刷新或出现空状态"], "low", "auto", 2),
+        _plan_item(boundary, "filter", f"筛选{boundary}内容", ["识别类型、范围、状态等筛选控件", "至少展开一个筛选项"], ["筛选控件可展开", "筛选条件有回显或结果区变化"], "low", "auto", 3),
+        _plan_item(boundary, "sort", f"排序{boundary}列表", ["识别排序控件", "切换排序条件"], ["排序条件可选择", "排序条件有回显"], "low", "auto", 4),
+        _plan_item(boundary, "create", f"打开{boundary}新建入口", ["点击创建或新增入口", "检查弹窗或创建页字段", "取消提交并返回"], ["新建入口可打开", "必填字段或表单结构可记录"], "medium", "confirm_before_submit", 5),
+        _plan_item(boundary, "import", f"检查{boundary}导入入口", ["点击导入入口", "检查上传控件、模板或格式限制", "关闭弹窗"], ["导入入口可打开", "上传限制和模板入口可记录"], "medium", "confirm_before_submit", 6),
+        _plan_item(boundary, "detail", f"查看{boundary}详情", ["点击一条列表、卡片或业务对象", "记录详情页、抽屉或弹窗内容"], ["详情入口可进入", "详情字段和返回路径可记录"], "low", "auto", 7),
+        _plan_item(boundary, "agent_usage", f"验证{boundary}智能体使用入口", ["识别使用、试用、运行或对话入口", "进入入口并记录状态", "遇到扣费、发布或外部调用时停止"], ["智能体使用入口可定位", "运行前状态和阻塞原因可记录"], "medium", "confirm_external_call", 8),
+        _plan_item(boundary, "empty_state", f"检查{boundary}空状态", ["观察无数据状态", "记录空状态文案和主按钮"], ["空状态文案可记录", "空状态引导入口可定位"], "low", "auto", 9),
+    ]
+    return {
+        "artifact_schema_version": 1,
+        "plan_status": "draft",
+        "business_boundary": boundary,
+        "goal": _run_value(run, "goal", ""),
+        "summary": f"已根据“{boundary}”边界生成 {len(items)} 个探索计划项，等待人工确认或补充。",
+        "items": items,
+    }
+
+
+def _plan_item(
+    boundary: str,
+    capability_type: str,
+    title: str,
+    steps: list[str],
+    expected_evidence: list[str],
+    risk_level: str,
+    execution_policy: str,
+    index: int,
+) -> dict:
+    return _normalize_plan_item(
+        {
+            "id": f"plan-{capability_type}-{index:02d}",
+            "business_module": boundary,
+            "capability_type": capability_type,
+            "title": title,
+            "steps": steps,
+            "expected_evidence": expected_evidence,
+            "risk_level": risk_level,
+            "execution_policy": execution_policy,
+            "status": "pending",
+        },
+        index,
+        boundary,
+    )
+
+
+def _normalize_plan_item(raw: dict, index: int, boundary: str) -> dict:
+    capability_type = str(raw.get("capability_type") or "custom").strip() or "custom"
+    return {
+        "id": str(raw.get("id") or f"plan-{capability_type}-{index:02d}"),
+        "business_module": str(raw.get("business_module") or boundary),
+        "capability_type": capability_type,
+        "title": str(raw.get("title") or f"{boundary}探索计划项"),
+        "steps": _string_list(raw.get("steps")),
+        "expected_evidence": _string_list(raw.get("expected_evidence")),
+        "risk_level": str(raw.get("risk_level") or "low"),
+        "execution_policy": str(raw.get("execution_policy") or "auto"),
+        "status": str(raw.get("status") or "pending"),
+    }
+
+
+def _string_list(value) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _plan_business_boundary(run) -> str:
+    scope = _run_value(run, "scope", "").strip()
+    if scope:
+        return scope.splitlines()[0][:80]
+    goal = _run_value(run, "goal", "").strip()
+    if goal:
+        return goal.splitlines()[0][:80]
+    return _run_value(run, "title", "站点入口").strip() or "站点入口"
+
+
+def _run_value(run, key: str, default: str = "") -> str:
+    if isinstance(run, dict):
+        return str(run.get(key) or default)
+    if key in run.keys():
+        return str(run[key] or default)
+    return default
 
 
 def _ensure_project_visible(project, actor) -> None:

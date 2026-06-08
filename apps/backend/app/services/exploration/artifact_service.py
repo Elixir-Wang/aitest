@@ -112,6 +112,49 @@ def write_exploration_artifacts(
     }
 
 
+def write_live_exploration_snapshot(
+    artifact_root: Path,
+    *,
+    run: dict,
+    summary: dict,
+    page_artifacts: list[dict],
+    graph: dict,
+    blockers: list[dict],
+    log_content: str,
+) -> dict[str, str]:
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    live_dir = artifact_root / "live"
+    live_dir.mkdir(parents=True, exist_ok=True)
+    state_path = live_dir / "state.json"
+
+    page_payloads = _build_page_payloads(page_artifacts)
+    for payload in page_payloads:
+        payload["file_path"] = f"live/pages/{payload['file_name']}"
+
+    state = {
+        "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
+        "run": _json_compatible(run),
+        "summary": _json_compatible(summary),
+        "graph": _json_compatible(graph),
+        "blockers": {
+            "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
+            "blockers": _json_compatible(blockers),
+        },
+        "pages": [
+            {
+                "file_path": page["file_path"],
+                "page_url": page["content"]["page"]["url"],
+                "title": page["content"]["page"]["title"],
+                "content": _json_compatible(page["content"]),
+            }
+            for page in page_payloads
+        ],
+        "log_content": log_content,
+    }
+    _write_json_atomic(state_path, state)
+    return {"live_state_path": store_path(state_path) or ""}
+
+
 def read_yaml_artifact(path: Path) -> dict:
     if not path.exists():
         return {}
@@ -121,6 +164,13 @@ def read_yaml_artifact(path: Path) -> dict:
 
 def read_text_artifact(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def read_json_artifact(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return data if isinstance(data, dict) else {}
 
 
 def load_exploration_run_artifacts(artifact_root: Path) -> dict:
@@ -133,6 +183,10 @@ def load_exploration_run_artifacts(artifact_root: Path) -> dict:
     has_versioned_artifacts = bool(run or summary)
     if has_versioned_artifacts and schema_version != ARTIFACT_SCHEMA_VERSION:
         return _unsupported_bundle(schema_version, artifact_root)
+    if not has_versioned_artifacts:
+        live_bundle = _load_live_snapshot_bundle(artifact_root)
+        if live_bundle:
+            return live_bundle
     page_items = []
     pages_dir = artifact_root / "pages"
     if pages_dir.exists():
@@ -157,6 +211,44 @@ def load_exploration_run_artifacts(artifact_root: Path) -> dict:
         "log_content": read_text_artifact(artifact_root / "logs" / "run.log"),
         "report_content": read_text_artifact(report_path),
         "report_path": store_path(report_path) or "",
+    }
+
+
+def _load_live_snapshot_bundle(artifact_root: Path) -> dict:
+    state = read_json_artifact(artifact_root / "live" / "state.json")
+    if not state:
+        return {}
+    schema_version = _artifact_schema_version(state, state.get("summary", {}))
+    if schema_version != ARTIFACT_SCHEMA_VERSION:
+        return _unsupported_bundle(schema_version, artifact_root)
+    blockers = state.get("blockers") if isinstance(state.get("blockers"), dict) else {}
+    pages = state.get("pages") if isinstance(state.get("pages"), list) else []
+    page_items = []
+    for index, page in enumerate(pages, start=1):
+        if not isinstance(page, dict):
+            continue
+        content = page.get("content") if isinstance(page.get("content"), dict) else {}
+        if not content:
+            continue
+        page_items.append(
+            {
+                "file_path": str(page.get("file_path") or f"live/pages/page-{index:03d}.yaml"),
+                "content": content,
+            }
+        )
+    return {
+        "artifact_schema_version": schema_version,
+        "unsupported_artifact": False,
+        "unsupported_reason": "",
+        "run": state.get("run") if isinstance(state.get("run"), dict) else {},
+        "summary": state.get("summary") if isinstance(state.get("summary"), dict) else {},
+        "graph": state.get("graph") if isinstance(state.get("graph"), dict) else {},
+        "blockers": blockers,
+        "goal_validation": {},
+        "pages": page_items,
+        "log_content": read_text_artifact(artifact_root / "logs" / "run.log") or str(state.get("log_content") or ""),
+        "report_content": "",
+        "report_path": "",
     }
 
 
@@ -187,6 +279,24 @@ def _unsupported_bundle(schema_version: int, artifact_root: Path) -> dict:
         "report_content": "",
         "report_path": "",
     }
+
+
+def _write_json_atomic(path: Path, payload: dict) -> None:
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def _json_compatible(value):
+    if isinstance(value, dict):
+        return {str(key): _json_compatible(item) for key, item in value.items()}
+    if hasattr(value, "keys") and not isinstance(value, (str, bytes)):
+        return {str(key): _json_compatible(value[key]) for key in value.keys()}
+    if isinstance(value, (list, tuple)):
+        return [_json_compatible(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
 
 
 def build_exploration_report_markdown(bundle: dict) -> str:
@@ -236,7 +346,7 @@ def build_exploration_report_markdown(bundle: dict) -> str:
         content = page_item.get("content") if isinstance(page_item.get("content"), dict) else {}
         page = content.get("page") if isinstance(content.get("page"), dict) else {}
         quality = content.get("quality") if isinstance(content.get("quality"), dict) else {}
-        module_name = _text(page.get("module")) or "未分组模块"
+        module_name = _page_module_name(page)
         page_rows.append(
             [
                 module_name,
@@ -373,38 +483,6 @@ def build_exploration_report_markdown(bundle: dict) -> str:
     )
     for row in page_rows:
         lines.append("| " + " | ".join(_table_cell(value) for value in row) + " |")
-
-    lines.extend(
-        [
-            "",
-            "### 6.2 页面核心事实",
-            "",
-            "| 页面 | 主要字段 | 主要操作 | 主要状态 | 关键说明 |",
-            "| --- | --- | --- | --- | --- |",
-        ]
-    )
-    for page_item in page_items:
-        if not isinstance(page_item, dict):
-            continue
-        content = page_item.get("content") if isinstance(page_item.get("content"), dict) else {}
-        page = content.get("page") if isinstance(content.get("page"), dict) else {}
-        fields = _page_field_summary(content)
-        actions = _page_action_summary(content)
-        states = _page_state_summary(content)
-        lines.append(
-            "| "
-            + " | ".join(
-                _table_cell(value)
-                for value in [
-                    _text(page.get("title")),
-                    fields,
-                    actions,
-                    states,
-                    _text(page.get("structure_summary")),
-                ]
-            )
-            + " |"
-        )
 
     lines.extend(
         [
@@ -552,15 +630,15 @@ def _build_module_report_map(summary: dict, blocker_items: list[dict], pages: li
     fallback_modules = {}
     for page in pages:
         page_item = page.get("page") if isinstance(page.get("page"), dict) else {}
-        key = _text(page_item.get("module")) or "未分组模块"
+        key = _page_module_name(page_item)
         fallback_modules.setdefault(
             key,
             {
                 "module_name": key,
                 "status": "pending",
                 "page_coverage": f"1/{len(pages)}" if pages else "0/0",
-                "latest_page": _text(page_item.get("title")) or "-",
-                "main_facts": _text(page_item.get("structure_summary")) or "-",
+                "latest_page": _page_display_title(page_item),
+                "main_facts": _page_key_note(page),
                 "blocker_summary": _module_blocker_hint({"module_name": key}, blocker_items),
                 "kb_availability": "待确认",
             },
@@ -601,13 +679,14 @@ def _top_findings(summary: dict, pages: list[dict]) -> str:
         return _text(summary.get("summary"))
     if pages:
         page = pages[0].get("page") if isinstance(pages[0].get("page"), dict) else {}
-        return _text(page.get("structure_summary")) or _text(page.get("title")) or "已采集页面事实"
+        return _compact_text(_text(page.get("structure_summary")), 120) or _page_display_title(page) or "已采集页面事实"
     return "暂无可用发现"
 
 
 def _limit_text(run: dict, key: str) -> str:
     source = run.get("run") if isinstance(run.get("run"), dict) else run
-    return _text(source.get(key)) or "-"
+    limits = source.get("limits") if isinstance(source.get("limits"), dict) else {}
+    return _text(source.get(key)) or _text(limits.get(key)) or "-"
 
 
 def _count_modules(module_map: dict[str, dict]) -> int:
@@ -618,45 +697,31 @@ def _count_module_status(module_map: dict[str, dict], statuses: set[str]) -> int
     return sum(1 for module in module_map.values() if _text(module.get("status")) in statuses)
 
 
-def _page_field_summary(content: dict) -> str:
-    page = content.get("page") if isinstance(content.get("page"), dict) else {}
-    tree = content.get("accessibility_tree") if isinstance(content.get("accessibility_tree"), list) else []
-    field_names = []
-    for node in tree:
-        if not isinstance(node, dict):
-            continue
-        role = _text(node.get("role"))
-        name = _text(node.get("name"))
-        if role in {"textbox", "combobox", "checkbox", "radio", "date", "textarea"} and name:
-            field_names.append(name)
-    if field_names:
-        return "、".join(field_names[:5])
-    return _text(page.get("structure_summary")) or "-"
-
-
 def _page_action_summary(content: dict) -> str:
     actions = content.get("actions") if isinstance(content.get("actions"), list) else []
     action_names = []
     for action in actions:
         if not isinstance(action, dict):
             continue
-        name = _text(action.get("name"))
+        name = _text(action.get("name")) or _text(action.get("element_name")) or _text(action.get("action_target"))
         if name:
             action_names.append(name)
-    return "、".join(action_names[:5]) or "-"
-
-
-def _page_state_summary(content: dict) -> str:
-    relations = content.get("relations") if isinstance(content.get("relations"), dict) else {}
-    outgoing = relations.get("outgoing_edges") if isinstance(relations.get("outgoing_edges"), list) else []
-    types = []
-    for edge in outgoing:
-        if not isinstance(edge, dict):
+    states = content.get("states") if isinstance(content.get("states"), list) else []
+    for state in states:
+        if not isinstance(state, dict):
             continue
-        edge_type = _text(edge.get("type"))
-        if edge_type:
-            types.append(edge_type)
-    return "、".join(types[:5]) or "-"
+        elements = state.get("elements") if isinstance(state.get("elements"), list) else []
+        for element in elements:
+            if not isinstance(element, dict):
+                continue
+            name = _text(element.get("name"))
+            if name and name not in action_names:
+                action_names.append(name)
+            if len(action_names) >= 5:
+                break
+        if len(action_names) >= 5:
+            break
+    return "、".join(action_names[:5]) or "-"
 
 
 def _risk_summary(blocker_items: list[dict], reason_type: str) -> str:
@@ -692,7 +757,7 @@ def _business_gap_summary(pages: list[dict]) -> str:
     if not pages:
         return "暂无页面事实"
     page = pages[0].get("page") if isinstance(pages[0].get("page"), dict) else {}
-    return _text(page.get("structure_summary")) or "页面业务含义待确认"
+    return _compact_text(_text(page.get("structure_summary")), 120) or "页面业务含义待确认"
 
 
 def _downstream_risk_summary(summary: dict, blocker_items: list[dict]) -> str:
@@ -708,8 +773,8 @@ def _module_fact_hint(module: dict, pages: list[dict]) -> str:
         for page in pages:
             content = page if isinstance(page, dict) else {}
             page_info = content.get("page") if isinstance(content.get("page"), dict) else {}
-            if _text(page_info.get("module")) == module_name:
-                matched_pages.append(_text(page_info.get("title")))
+            if _page_module_name(page_info) == module_name:
+                matched_pages.append(_page_display_title(page_info))
         if matched_pages:
             return "、".join(matched_pages[:3])
     return "-"
@@ -767,7 +832,20 @@ def _site_url_text(run: dict, page_items: list[dict], log_content: str) -> str:
 
 
 def _page_display_title(page: dict) -> str:
-    return _text(page.get("semantic_title")) or _text(page.get("title")) or _text(page.get("url")) or "-"
+    explicit = _text(page.get("semantic_title"))
+    if explicit:
+        return explicit
+    inferred = _infer_page_title(page)
+    return inferred or _text(page.get("title")) or _text(page.get("url")) or "-"
+
+
+def _page_module_name(page: dict) -> str:
+    inferred = _infer_module_name(page)
+    explicit = _text(page.get("module"))
+    title = _text(page.get("title"))
+    if inferred and (not explicit or explicit == title):
+        return inferred
+    return explicit or inferred or "未分组模块"
 
 
 def _page_title_map(graph: dict, page_items: list[dict]) -> dict[str, str]:
@@ -793,6 +871,59 @@ def _edge_action_text(edge: dict) -> str:
     return " ".join(item for item in [_text(edge.get("action")), _text(edge.get("action_target"))] if item) or "-"
 
 
+def _infer_module_name(page: dict) -> str:
+    return _route_label(_text(page.get("url")), prefer_deep=True) or _business_keyword_label(_text(page.get("structure_summary")))
+
+
+def _infer_page_title(page: dict) -> str:
+    title = _text(page.get("title"))
+    url = _text(page.get("url"))
+    summary = _text(page.get("structure_summary"))
+    keyword_label = _business_keyword_label(summary)
+    route_label = _route_label(url, prefer_deep=True)
+    if keyword_label in {"用户洞察", "数据统计"}:
+        return keyword_label
+    return route_label or keyword_label or title
+
+
+def _route_label(url: str, *, prefer_deep: bool = False) -> str:
+    try:
+        from urllib.parse import urlparse
+
+        segments = [segment for segment in urlparse(url).path.split("/") if segment]
+    except Exception:
+        return ""
+    labels = {
+        "agentStore": "探索广场",
+        "workspace": "工作台",
+        "agentAnalysis": "效果评测",
+        "resource": "资源库",
+        "publish": "发布管理",
+        "manage": "管理中心",
+    }
+    iterable = reversed(segments) if prefer_deep else segments
+    for segment in iterable:
+        if segment in labels:
+            return labels[segment]
+    return ""
+
+
+def _business_keyword_label(page_text: str) -> str:
+    text = _text(page_text)
+    keyword_labels = [
+        (("数据统计", "用户洞察"), "用户洞察"),
+        (("Token 消耗量", "用户"), "数据统计"),
+        (("结果即刻交付", "探索广场"), "探索广场"),
+        (("收藏", "探索广场"), "探索广场"),
+        (("资源库", "效果评测", "发布管理"), "创作中心"),
+        (("空间管理", "文档中心"), "管理中心"),
+    ]
+    for keywords, label in keyword_labels:
+        if all(keyword in text for keyword in keywords):
+            return label
+    return ""
+
+
 def _business_headline(content: dict) -> str:
     business_summary = content.get("business_summary") if isinstance(content.get("business_summary"), dict) else {}
     return _text(business_summary.get("headline"))
@@ -800,6 +931,9 @@ def _business_headline(content: dict) -> str:
 
 def _compact_text(value: str, limit: int) -> str:
     text = re.sub(r"\s+", " ", _text(value))
+    text = re.sub(r"^标题：[^。]*。", "", text).strip()
+    text = re.sub(r"^可交互元素：\d+。链接：\d+。表单：\d+。表格：\d+。", "", text).strip()
+    text = text.replace("正文：", "").strip()
     if len(text) <= limit:
         return text
     return text[: max(0, limit - 1)].rstrip() + "…"
@@ -891,7 +1025,20 @@ def _build_page_payloads(page_artifacts: list[dict]) -> list[dict]:
         page_content["page"] = dict(page_content["page"])
         page_content["page"].pop("page_type", None)
         page_meta = page_content["page"]
-        slug = _slugify(page_meta.get("title") or page_meta.get("url") or f"page-{index}")
+        if not _text(page_meta.get("semantic_title")):
+            page_meta["semantic_title"] = _page_display_title(page_meta)
+        if not _text(page_meta.get("module")) or _text(page_meta.get("module")) == _text(page_meta.get("title")):
+            page_meta["module"] = _page_module_name(page_meta)
+        if not isinstance(page_content.get("business_summary"), dict):
+            page_content["business_summary"] = {
+                "headline": _page_key_note(page_content),
+                "primary_actions": _page_action_summary(page_content).split("、")
+                if _page_action_summary(page_content) != "-"
+                else [],
+                "filters": [],
+                "observed_states": [],
+            }
+        slug = _slugify(page_meta.get("semantic_title") or page_meta.get("title") or page_meta.get("url") or f"page-{index}")
         file_name = f"{page_meta.get('id') or f'page-{index:03d}'}-{slug}.yaml"
         payloads.append({"file_name": file_name, "content": page_content})
     return payloads

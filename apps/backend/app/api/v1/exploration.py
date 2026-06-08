@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.exploration import (
     ExplorationLogOut,
+    ExplorationPlanUpdateIn,
     ExplorationReportOut,
     ExplorationRunCreateIn,
     ExplorationRunDetailOut,
@@ -130,6 +131,26 @@ def update_project_run(
     actor=Depends(require_admin),
 ) -> dict:
     return exploration_service.update_project_run(project_id, run_id, payload, actor)
+
+
+@router.post("/{project_id}/exploration-runs/{run_id}/plan/generate")
+def generate_project_run_plan(project_id: str, run_id: str, actor=Depends(require_admin)) -> dict:
+    return exploration_service.generate_project_run_plan(project_id, run_id, actor)
+
+
+@router.patch("/{project_id}/exploration-runs/{run_id}/plan")
+def update_project_run_plan(
+    project_id: str,
+    run_id: str,
+    payload: ExplorationPlanUpdateIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return exploration_service.update_project_run_plan(project_id, run_id, payload, actor)
+
+
+@router.post("/{project_id}/exploration-runs/{run_id}/plan/confirm")
+def confirm_project_run_plan(project_id: str, run_id: str, actor=Depends(require_admin)) -> dict:
+    return exploration_service.confirm_project_run_plan(project_id, run_id, actor)
 
 
 @router.post("/{project_id}/exploration-runs/{run_id}/start", response_model=ExplorationRunOut)

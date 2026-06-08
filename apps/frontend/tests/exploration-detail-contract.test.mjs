@@ -8,10 +8,7 @@ const pageSource = readFileSync(
 );
 
 test("exploration detail keeps only the page-level stop exploration action", () => {
-  assert.doesNotMatch(
-    pageSource,
-    /<h2 className="font-medium text-sm">探索模块进度<\/h2>[\s\S]*>\s*停止\s*<\/Button>/,
-  );
+  assert.doesNotMatch(pageSource, /<h2 className="font-medium text-sm">探索模块进度<\/h2>[\s\S]*>\s*停止\s*<\/Button>/);
   assert.match(pageSource, />\s*停止探索\s*<\/Button>/);
 });
 
@@ -20,9 +17,25 @@ test("running exploration runs show pending module plans as active", () => {
     pageSource,
     /function resolveModulePlanStatus\(runStatus: string, moduleStatus: string\): AgentPlanStatus/,
   );
-  assert.match(pageSource, /const canFollowRunStatus = normalizedModuleStatus === "pending" \|\| normalizedModuleStatus === "running";/);
-  assert.match(pageSource, /if \(isActiveStatus\(runStatus\) && canFollowRunStatus\) \{[\s\S]*return normalizeAgentPlanStatus\(runStatus\);/);
+  assert.match(
+    pageSource,
+    /const canFollowRunStatus = normalizedModuleStatus === "pending" \|\| normalizedModuleStatus === "running";/,
+  );
+  assert.match(
+    pageSource,
+    /if \(isActiveStatus\(runStatus\) && canFollowRunStatus\) \{[\s\S]*return normalizeAgentPlanStatus\(runStatus\);/,
+  );
   assert.match(pageSource, /status: resolveModulePlanStatus\(detail\.run\.status, module\.completion_status\)/);
+});
+
+test("running page events do not keep completed exploration pages active", () => {
+  assert.match(pageSource, /function resolvePagePlanStatus\(page: ExplorationPage\): AgentPlanStatus/);
+  assert.match(pageSource, /status: resolvePagePlanStatus\(page\)/);
+  assert.doesNotMatch(pageSource, /status: normalizeAgentPlanStatus\(page\.status \|\| "pending"\)/);
+});
+
+test("exploration module cards do not show synthetic percentage progress", () => {
+  assert.doesNotMatch(pageSource, /`\$\{module\.progress_percent \?\? 0\}%`/);
 });
 
 test("exploration stream updates the displayed detail snapshot", () => {
@@ -52,8 +65,23 @@ test("exploration detail exposes no execution or interaction mode controls", () 
   assert.doesNotMatch(pageSource, />探索引擎</);
   assert.doesNotMatch(pageSource, />交互策略</);
   assert.doesNotMatch(pageSource, /Agent 决策轮数/);
-  assert.doesNotMatch(
+  assert.doesNotMatch(pageSource, /body: JSON\.stringify\(\{[\s\S]*(execution_mode|interaction_mode)[\s\S]*\}\)/);
+});
+
+test("exploration detail supports first discovery before confirmed plan runs", () => {
+  assert.match(pageSource, /type ExplorationPlan = \{/);
+  assert.match(pageSource, /plan_status: "not_generated" \| "draft" \| "confirmed" \| "running" \| "completed" \| "blocked";/);
+  assert.match(pageSource, /async function generateExplorationPlan\(\)/);
+  assert.match(pageSource, /async function confirmExplorationPlan\(\)/);
+  assert.match(
     pageSource,
-    /body: JSON\.stringify\(\{[\s\S]*(execution_mode|interaction_mode)[\s\S]*\}\)/,
+    /const hasFirstDiscoveryArtifacts = activeDetail[\s\S]*\? activeDetail\.modules\.some\(\(module\) => !hasNoModuleArtifacts\(module\)\)[\s\S]*: false;/,
   );
+  assert.match(pageSource, /const canStartFirstDiscovery = Boolean\(run\) && canStart && !hasFirstDiscoveryArtifacts;/);
+  assert.match(pageSource, /const canStartFromPlan = explorationPlan\?\.plan_status === "confirmed" && Boolean\(run\) && canStart;/);
+  assert.match(pageSource, />\s*首次探索采集\s*<\/Button>/);
+  assert.match(pageSource, />\s*生成探索计划\s*<\/Button>/);
+  assert.match(pageSource, />\s*确认计划\s*<\/Button>/);
+  assert.match(pageSource, />\s*按计划开始探索\s*<\/Button>/);
+  assert.doesNotMatch(pageSource, />\s*\{startLabel\}\s*<\/Button>/);
 });

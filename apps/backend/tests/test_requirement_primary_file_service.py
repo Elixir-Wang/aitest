@@ -234,7 +234,7 @@ async def test_review_primary_requirement_file_generates_preliminary_analysis_wi
     async def fake_analyze_requirement(input_data):
         assert input_data.primary_filename == "main.md"
         assert "用户可以使用验证码登录" in input_data.primary_markdown_content
-        assert input_data.auxiliary_documents == []
+        assert "auxiliary_documents" not in type(input_data).model_fields
         return FakeAnalysisOutput()
 
     monkeypatch.setattr("app.services.document.file_service.convert_to_markdown", fake_convert_to_markdown)
@@ -267,7 +267,7 @@ async def test_review_primary_requirement_file_generates_preliminary_analysis_wi
 
 
 @pytest.mark.anyio
-async def test_enhance_requirement_analysis_passes_questions_and_auxiliary_articles(
+async def test_enhance_requirement_analysis_is_disabled_until_auxiliary_agent_is_connected(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
@@ -323,42 +323,9 @@ async def test_enhance_requirement_analysis_passes_questions_and_auxiliary_artic
     async def fake_analyze_requirement(input_data):
         return FakeAnalysisOutput()
 
-    captured = {}
-
     async def fake_enhance_requirement(input_data):
-        from app.schemas.requirement_analysis import (
-            RequirementAuxiliaryEnhancementOutput,
-            RequirementClarificationOption,
-            RequirementEvidenceReference,
-            RequirementResolvedQuestionOptions,
-        )
-
-        captured["input"] = input_data
-        return RequirementAuxiliaryEnhancementOutput(
-            enhancement_summary="辅助文档说明验证码有效期为 5 分钟。",
-            resolved_question_options=[
-                RequirementResolvedQuestionOptions(
-                    question_id="Q-001",
-                    resolution="answered",
-                    reason="辅助文档直接说明验证码有效期。",
-                    recommended_options=[
-                        RequirementClarificationOption(
-                            id="Q-001-option-1",
-                            label="5 分钟有效",
-                            answer_markdown="验证码有效期为 5 分钟。",
-                            confidence="high",
-                        )
-                    ],
-                    evidence=[
-                        RequirementEvidenceReference(
-                            mapping_id=captured["supporting_mapping_id"],
-                            filename="supporting.md",
-                            excerpt="验证码有效期为 5 分钟。",
-                        )
-                    ],
-                )
-            ],
-        )
+        _ = input_data
+        raise AssertionError("辅助增强智能体当前不应接入需求分析流程。")
 
     monkeypatch.setattr("app.services.document.file_service.convert_to_markdown", fake_convert_to_markdown)
     monkeypatch.setattr("app.services.document.service.analyze_requirement_with_agent", fake_analyze_requirement)
@@ -371,29 +338,20 @@ async def test_enhance_requirement_analysis_passes_questions_and_auxiliary_artic
         document_name="登录需求",
     )
     mapping_ids = [item["id"] for item in result["files"]]
-    captured["supporting_mapping_id"] = next(
-        item["id"] for item in result["files"] if item["original_filename"] == "supporting.md"
-    )
     await document_service.convert_pending_file_mappings(mapping_ids)
     review = await document_service.review_primary_requirement_file("project-1", result["document"]["id"], ACTOR)
 
-    enhanced = await document_service.enhance_requirement_analysis_with_auxiliary_documents(
-        "project-1",
-        result["document"]["id"],
-        review["id"],
-        ACTOR,
-    )
+    with pytest.raises(HTTPException) as exc_info:
+        await document_service.enhance_requirement_analysis_with_auxiliary_documents(
+            "project-1",
+            result["document"]["id"],
+            review["id"],
+            ACTOR,
+        )
 
-    enhancement_input = captured["input"]
-    assert enhancement_input.questions[0].id == "Q-001"
-    assert enhancement_input.questions[0].question == "验证码有效期是多少？"
-    assert [article.filename for article in enhancement_input.auxiliary_articles] == ["supporting.md"]
-    assert "验证码有效期为 5 分钟" in enhancement_input.auxiliary_articles[0].markdown_content
-
-    question = enhanced["analysis"]["output"]["clarification_questions"][0]
-    assert question["recommended_options"][0]["answer_markdown"] == "验证码有效期为 5 分钟。"
-    assert question["evidence"][0]["filename"] == "supporting.md"
-    assert "辅助文档增强" in enhanced["analysis"]["output"]["analysis_summary"]
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "REQUIREMENT_AUXILIARY_ENHANCEMENT_DISABLED"
+    assert exc_info.value.detail["message"] == "辅助文档增强智能体暂未接入需求分析流程。"
 
 
 @pytest.mark.anyio

@@ -11,9 +11,9 @@ from fastapi import UploadFile
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir, resolve_stored_path, store_path
-from app.agents.requirement_analysis.service import (
+from app.agents.requirement_analysis.auxiliary_enhancement.service import enhance_requirement_with_auxiliary_articles
+from app.agents.requirement_analysis.primary_analysis.service import (
     analyze_requirement as analyze_requirement_with_agent,
-    enhance_requirement_with_auxiliary_articles,
 )
 from app.repositories import document_repo, requirement_analysis_run_repo, requirement_clarification_answer_repo
 from app.schemas.document import RequirementAnalysisFinalizeIn, RequirementClarificationAnswerIn, SourceDocumentUpdateIn
@@ -35,6 +35,7 @@ CONVERSION_SUCCESS_STATUS = "success"
 CONVERSION_FAILED_STATUS = "failed"
 REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES = 120
 REQUIREMENT_ANALYSIS_RUN_TIMEOUT_SECONDS = REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES * 60
+REQUIREMENT_AUXILIARY_ENHANCEMENT_ENABLED = False
 
 
 def list_documents(project_id: str, actor) -> list[dict]:
@@ -472,8 +473,6 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
         primary_mapping_id=primary_file["id"],
         primary_filename=primary_file["original_filename"],
         primary_markdown_content=primary_markdown_content,
-        auxiliary_documents=[],
-        markdown_content=primary_markdown_content,
     )
     try:
         analysis_output = await analyze_requirement_with_agent(analysis_input)
@@ -617,6 +616,13 @@ async def enhance_requirement_analysis_with_auxiliary_documents(
     analysis_id: str,
     actor,
 ) -> dict:
+    if not REQUIREMENT_AUXILIARY_ENHANCEMENT_ENABLED:
+        raise api_error(
+            409,
+            "REQUIREMENT_AUXILIARY_ENHANCEMENT_DISABLED",
+            "辅助文档增强智能体暂未接入需求分析流程。",
+        )
+
     with connect() as db:
         document = document_repo.find_by_project_and_id(db, project_id, document_id)
         if not document:

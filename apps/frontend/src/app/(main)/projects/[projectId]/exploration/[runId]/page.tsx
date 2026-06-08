@@ -80,6 +80,7 @@ type ExplorationRunDetail = {
   unsupported_artifact: boolean;
   unsupported_reason: string;
   goal_validation?: ExplorationGoalValidation;
+  exploration_plan?: ExplorationPlan;
   modules: Array<{
     id: string;
     module_key: string;
@@ -141,6 +142,29 @@ type ExplorationGoalValidation = {
   items?: Array<Record<string, unknown>>;
 };
 
+type ExplorationPlanStatus = "not_generated" | "draft" | "confirmed" | "running" | "completed" | "blocked";
+
+type ExplorationPlan = {
+  artifact_schema_version: number;
+  plan_status: "not_generated" | "draft" | "confirmed" | "running" | "completed" | "blocked";
+  business_boundary: string;
+  goal: string;
+  summary: string;
+  items: ExplorationPlanItem[];
+};
+
+type ExplorationPlanItem = {
+  id: string;
+  business_module: string;
+  capability_type: string;
+  title: string;
+  steps: string[];
+  expected_evidence: string[];
+  risk_level: string;
+  execution_policy: string;
+  status: string;
+};
+
 type ExplorationStep = {
   id: string;
   type: string;
@@ -151,6 +175,8 @@ type ExplorationStep = {
   artifact_path?: string;
   source?: string;
 };
+
+type ExplorationPage = ExplorationRunDetail["modules"][number]["pages"][number];
 
 type ExplorationReport = {
   run_id: string;
@@ -275,6 +301,42 @@ const goalValidationStatusLabels: Record<string, string> = {
   partial: "部分完成",
   failed: "未通过",
   skipped: "已跳过",
+};
+
+const explorationPlanStatusLabels: Record<ExplorationPlanStatus, string> = {
+  not_generated: "未生成",
+  draft: "待确认",
+  confirmed: "已确认",
+  running: "探索中",
+  completed: "已完成",
+  blocked: "有阻塞",
+};
+
+const capabilityTypeLabels: Record<string, string> = {
+  access: "页面访问",
+  search: "搜索",
+  filter: "筛选",
+  sort: "排序",
+  create: "新建",
+  import: "导入",
+  detail: "详情查看",
+  agent_usage: "智能体使用",
+  empty_state: "空状态",
+  module_discovery: "模块采集",
+  custom: "人工补充",
+};
+
+const riskLevelLabels: Record<string, string> = {
+  low: "低风险",
+  medium: "中风险",
+  high: "高风险",
+};
+
+const executionPolicyLabels: Record<string, string> = {
+  auto: "自动执行",
+  confirm_before_submit: "提交前确认",
+  confirm_external_call: "外部调用前确认",
+  manual: "人工确认",
 };
 
 const loginStrategyLabels: Record<string, string> = {
@@ -607,17 +669,74 @@ function buildAgentPlanTasks(detail: ExplorationRunDetail | null): AgentPlanTask
       meta: [
         module.page_progress_text ||
           `${module.explored_page_count}/${Math.max(module.planned_page_count, module.explored_page_count, 1)} 页面`,
-        `${module.progress_percent ?? 0}%`,
       ],
       subtasks: module.pages.map((page) => ({
         id: page.id,
-        title: page.title || page.url || page.entry_path || "未命名页面",
+        title: buildExplorationPageTaskTitle(page),
         description: page.recent_event || page.structure_summary || page.blocker_reason || "",
-        status: normalizeAgentPlanStatus(page.status || "pending"),
-        meta: [page.url || page.entry_path].filter((item): item is string => Boolean(item)),
+        status: resolvePagePlanStatus(page),
+        meta: buildExplorationPageTaskMeta(page),
         steps: page.steps,
       })),
     }));
+}
+
+function resolvePagePlanStatus(page: ExplorationPage): AgentPlanStatus {
+  const normalizedPageStatus = normalizeAgentPlanStatus(page.status || "pending");
+  if (normalizedPageStatus !== "running") {
+    return normalizedPageStatus;
+  }
+  const actionStep = [...(page.steps ?? [])].reverse().find((step) => step.type === "action_result");
+  if (!actionStep) {
+    return normalizedPageStatus;
+  }
+  const actionStatus = normalizeAgentPlanStatus(actionStep.status || "completed");
+  return actionStatus === "running" || actionStatus === "pending" ? "completed" : actionStatus;
+}
+
+function buildExplorationPageTaskTitle(page: ExplorationPage): string {
+  const steps = page.steps ?? [];
+  const actionStep = [...steps].reverse().find((step) => step.type === "action_result" && step.detail);
+  if (actionStep?.detail) {
+    return formatActionStepTitle(actionStep.detail);
+  }
+  const decisionStep = [...steps].reverse().find((step) => step.type === "agent_decision" && step.detail);
+  if (decisionStep?.detail) {
+    return `决策：${compactText(decisionStep.detail)}`;
+  }
+  return page.url || page.entry_path || page.title || "未命名页面";
+}
+
+function buildExplorationPageTaskMeta(page: ExplorationPage): string[] {
+  const meta = [page.title, page.url || page.entry_path].filter((item): item is string => Boolean(item));
+  return Array.from(new Set(meta));
+}
+
+function formatActionStepTitle(detail: string): string {
+  const firstSentence = detail.split(/[，。]/)[0] ?? detail;
+  const withoutStatus = firstSentence.replace(
+    /\s*[：:]\s*(passed|failed|skipped|completed|unknown|unverified)\s*$/i,
+    "",
+  );
+  const actionMatch = withoutStatus.match(/^(click|fill|navigate|go_back|close_modal|wait)\s+(.+)$/i);
+  if (!actionMatch) {
+    return compactText(withoutStatus || detail);
+  }
+  const actionLabels: Record<string, string> = {
+    click: "点击",
+    fill: "填写",
+    navigate: "跳转",
+    go_back: "返回",
+    close_modal: "关闭弹窗",
+    wait: "等待",
+  };
+  const action = actionLabels[actionMatch[1].toLowerCase()] ?? actionMatch[1];
+  return `${action}：${compactText(actionMatch[2])}`;
+}
+
+function compactText(value: string, maxLength = 48): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
 }
 
 function isEmptyPlannedModule(module: ExplorationRunDetail["modules"][number]): boolean {
@@ -709,6 +828,7 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [planAction, setPlanAction] = useState<"generate" | "confirm" | "add" | "">("");
   const [error, setError] = useState("");
   const [failureVisible, setFailureVisible] = useState(true);
   const [activeTab, setActiveTab] = useState("探索概览");
@@ -916,6 +1036,99 @@ export default function Page() {
     }
   }
 
+  function applyExplorationPlan(plan: ExplorationPlan) {
+    setDetail((current) => (current ? { ...current, exploration_plan: plan } : current));
+    setStreamDetail((current) => (current ? { ...current, exploration_plan: plan } : current));
+  }
+
+  async function generateExplorationPlan() {
+    if (!run) {
+      return;
+    }
+    setPlanAction("generate");
+    try {
+      const plan = await apiRequest<ExplorationPlan>(
+        `/projects/${run.project_id}/exploration-runs/${run.id}/plan/generate`,
+        { method: "POST" },
+      );
+      applyExplorationPlan(plan);
+      toast.success("探索计划已生成，请确认或补充后再开始探索");
+    } catch (requestError) {
+      reportApiError(requestError, {
+        fallbackMessage: "探索计划生成失败",
+        actionLabel: "生成探索计划",
+        method: "POST",
+        path: `/projects/${run.project_id}/exploration-runs/${run.id}/plan/generate`,
+      });
+    } finally {
+      setPlanAction("");
+    }
+  }
+
+  async function addExplorationPlanItem() {
+    if (!run) {
+      return;
+    }
+    const currentPlan = (streamDetail ?? detail)?.exploration_plan;
+    const boundary = currentPlan?.business_boundary || run.scope || run.title;
+    const items = [
+      ...(currentPlan?.items ?? []),
+      {
+        id: `plan-custom-${Date.now()}`,
+        business_module: boundary,
+        capability_type: "custom",
+        title: `${boundary}人工补充探索项`,
+        steps: ["按人工补充说明进入目标入口", "记录页面事实、操作结果和阻塞原因"],
+        expected_evidence: ["页面事实或阻塞原因可追溯", "保留截图、snapshot 或日志证据"],
+        risk_level: "low",
+        execution_policy: "manual",
+        status: "pending",
+      },
+    ];
+    setPlanAction("add");
+    try {
+      const plan = await apiRequest<ExplorationPlan>(`/projects/${run.project_id}/exploration-runs/${run.id}/plan`, {
+        method: "PATCH",
+        body: JSON.stringify({ items }),
+      });
+      applyExplorationPlan(plan);
+      toast.success("已补充探索计划项");
+    } catch (requestError) {
+      reportApiError(requestError, {
+        fallbackMessage: "探索计划补充失败",
+        actionLabel: "补充探索计划",
+        method: "PATCH",
+        path: `/projects/${run.project_id}/exploration-runs/${run.id}/plan`,
+      });
+    } finally {
+      setPlanAction("");
+    }
+  }
+
+  async function confirmExplorationPlan() {
+    if (!run) {
+      return;
+    }
+    setPlanAction("confirm");
+    try {
+      const plan = await apiRequest<ExplorationPlan>(
+        `/projects/${run.project_id}/exploration-runs/${run.id}/plan/confirm`,
+        { method: "POST" },
+      );
+      applyExplorationPlan(plan);
+      toast.success("探索计划已确认，可以按计划开始探索");
+    } catch (requestError) {
+      reportApiError(requestError, {
+        fallbackMessage: "探索计划确认失败",
+        actionLabel: "确认探索计划",
+        method: "POST",
+        path: `/projects/${run.project_id}/exploration-runs/${run.id}/plan/confirm`,
+      });
+    } finally {
+      setPlanAction("");
+    }
+  }
+
   async function stopExploration() {
     if (!run) {
       return;
@@ -1032,10 +1245,14 @@ export default function Page() {
   const canStart = run ? ["pending", "partial", "completed", "blocked", "cancelled"].includes(run.status) : false;
   const canStop = run ? stoppableStatuses.has(run.status) : false;
   const canEdit = run ? !["queued", "running", "stopping"].includes(run.status) : false;
-  const startDisabled = !canStart || starting;
-  const startLabel = run && hasExplorationStarted(run) ? "重新探索" : "开始探索";
   const saveDisabled = !explorationForm.title.trim() || !explorationForm.environmentId || saving;
   const activeDetail = streamDetail ?? detail;
+  const explorationPlan = activeDetail?.exploration_plan;
+  const hasFirstDiscoveryArtifacts = activeDetail
+    ? activeDetail.modules.some((module) => !hasNoModuleArtifacts(module))
+    : false;
+  const canStartFirstDiscovery = Boolean(run) && canStart && !hasFirstDiscoveryArtifacts;
+  const canStartFromPlan = explorationPlan?.plan_status === "confirmed" && Boolean(run) && canStart;
   const isUnsupportedArtifact = Boolean(activeDetail?.unsupported_artifact);
   const unsupportedArtifactReason = activeDetail?.unsupported_reason || "历史产物格式不支持新版详情，请重新探索。";
   const hasNoExplorationArtifacts = activeDetail
@@ -1078,10 +1295,6 @@ export default function Page() {
                 停止探索
               </Button>
             ) : null}
-            <Button disabled={startDisabled} onClick={startExploration} size="sm">
-              <Play className="size-4" />
-              {startLabel}
-            </Button>
           </>
         ) : null
       }
@@ -1095,7 +1308,22 @@ export default function Page() {
         <ExplorationFailureNotice error={error} onClose={() => setFailureVisible(false)} />
       ) : null}
 
-      {activeTab === "探索计划" ? <ExplorationTaskPanel run={run} /> : null}
+      {activeTab === "探索计划" ? (
+        <ExplorationTaskPanel
+          canEdit={canEdit}
+          canGeneratePlan={hasFirstDiscoveryArtifacts}
+          canStartFirstDiscovery={canStartFirstDiscovery}
+          canStartFromPlan={canStartFromPlan}
+          onAddPlanItem={addExplorationPlanItem}
+          onConfirmPlan={confirmExplorationPlan}
+          onGeneratePlan={generateExplorationPlan}
+          onStart={startExploration}
+          plan={explorationPlan}
+          planAction={planAction}
+          run={run}
+          starting={starting}
+        />
+      ) : null}
 
       {activeTab === "探索概览" ? (
         <>
@@ -1359,8 +1587,38 @@ export default function Page() {
   );
 }
 
-function ExplorationTaskPanel({ run }: { run: ExplorationRun | null }) {
+function ExplorationTaskPanel({
+  canEdit,
+  canGeneratePlan,
+  canStartFirstDiscovery,
+  canStartFromPlan,
+  onAddPlanItem,
+  onConfirmPlan,
+  onGeneratePlan,
+  onStart,
+  plan,
+  planAction,
+  run,
+  starting,
+}: {
+  canEdit: boolean;
+  canGeneratePlan: boolean;
+  canStartFirstDiscovery: boolean;
+  canStartFromPlan: boolean;
+  onAddPlanItem: () => Promise<void> | void;
+  onConfirmPlan: () => Promise<void> | void;
+  onGeneratePlan: () => Promise<void> | void;
+  onStart: () => Promise<void> | void;
+  plan?: ExplorationPlan;
+  planAction: "generate" | "confirm" | "add" | "";
+  run: ExplorationRun | null;
+  starting: boolean;
+}) {
   const loginStrategy = run ? (loginStrategyLabels[run.login_strategy] ?? run.login_strategy) : "-";
+  const planStatus = plan?.plan_status ?? "not_generated";
+  const planStatusLabel = explorationPlanStatusLabels[planStatus];
+  const canGenerateDiscoveryPlan = canEdit && canGeneratePlan && !planAction;
+  const canConfirmPlan = canEdit && !planAction && Boolean(plan?.items.length) && planStatus !== "confirmed";
 
   return (
     <div className="space-y-4">
@@ -1388,6 +1646,108 @@ function ExplorationTaskPanel({ run }: { run: ExplorationRun | null }) {
           <InfoRow label="超时时间" value={run ? `${run.timeout_minutes ?? 120} 分钟` : "-"} />
         </div>
       </TaskSection>
+
+      <TaskSection title="探索计划">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">计划状态</span>
+              <Badge variant={planStatus === "confirmed" ? "default" : "secondary"}>{planStatusLabel}</Badge>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              {plan?.summary || "先执行首次探索采集探索范围内的模块，再根据采集结果生成探索计划。"}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={!canStartFirstDiscovery || starting}
+              onClick={() => void onStart()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Play className="size-4" />
+              首次探索采集
+            </Button>
+            <Button
+              disabled={!canGenerateDiscoveryPlan}
+              onClick={() => void onGeneratePlan()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <RefreshCw className="size-4" />
+              生成探索计划
+            </Button>
+            <Button
+              disabled={!canEdit || !plan || planAction === "add"}
+              onClick={() => void onAddPlanItem()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Pencil className="size-4" />
+              添加计划项
+            </Button>
+            <Button
+              disabled={!canConfirmPlan}
+              onClick={() => void onConfirmPlan()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              确认计划
+            </Button>
+            <Button disabled={!canStartFromPlan || starting} onClick={() => void onStart()} size="sm" type="button">
+              <Play className="size-4" />
+              按计划开始探索
+            </Button>
+          </div>
+        </div>
+
+        {plan?.items.length ? (
+          <div className="space-y-3">
+            {plan.items.map((item) => (
+              <div className="rounded-lg border bg-background p-3" key={item.id}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">
+                        {capabilityTypeLabels[item.capability_type] ?? item.capability_type}
+                      </Badge>
+                      <span className="font-medium">{item.title}</span>
+                    </div>
+                    <div className="text-muted-foreground text-xs">
+                      {item.business_module} · {riskLevelLabels[item.risk_level] ?? item.risk_level} ·{" "}
+                      {executionPolicyLabels[item.execution_policy] ?? item.execution_policy}
+                    </div>
+                  </div>
+                  <Badge variant="secondary">{item.status}</Badge>
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <PlanList title="探索动作" values={item.steps} />
+                  <PlanList title="预期证据" values={item.expected_evidence} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground text-sm">
+            暂无探索计划。请先执行首次探索采集，再根据采集结果生成计划。
+          </div>
+        )}
+      </TaskSection>
+    </div>
+  );
+}
+
+function PlanList({ title, values }: { title: string; values: string[] }) {
+  return (
+    <div className="space-y-1">
+      <div className="font-medium text-xs">{title}</div>
+      <ul className="space-y-1 text-muted-foreground text-xs">
+        {values.length ? values.map((value) => <li key={value}>{value}</li>) : <li>未设置</li>}
+      </ul>
     </div>
   );
 }

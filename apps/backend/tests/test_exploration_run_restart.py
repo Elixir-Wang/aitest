@@ -9,6 +9,7 @@ from app.api.v1 import exploration as exploration_api
 from app.schemas.exploration import ExplorationRunCreateIn
 from app.seed.init_db import init_db
 from app.services.exploration import service as exploration_service
+from app.services.exploration import artifact_service
 from app.services.exploration import site_orchestrator
 
 
@@ -41,6 +42,69 @@ def _seed_project_and_environment() -> None:
         )
 
 
+def _confirm_plan(run_id: str) -> None:
+    _write_discovery_artifacts(run_id, ["首页"])
+    exploration_service.generate_project_run_plan("project-1", run_id, ACTOR)
+    exploration_service.confirm_project_run_plan("project-1", run_id, ACTOR)
+
+
+def _write_discovery_artifacts(run_id: str, modules: list[str]) -> None:
+    artifact_root = storage.PROJECT_FILE_STORAGE_ROOT / "project-1" / "exploration" / run_id
+    page_artifacts = []
+    for index, module in enumerate(modules, start=1):
+        page_artifacts.append(
+            {
+                "page": {
+                    "id": f"page-{index:03d}",
+                    "title": f"{module}首页",
+                    "url": f"https://example.test/{index}",
+                    "normalized_url": f"https://example.test/{index}",
+                    "module": module,
+                    "depth": index - 1,
+                    "status": "explored",
+                    "structure_summary": f"{module}页面已采集。",
+                },
+                "actions": [{"name": f"打开{module}", "type": "navigation"}],
+                "forms": [],
+                "tables": [],
+                "steps": [{"type": "observe", "title": f"观察{module}", "detail": f"采集{module}页面事实。"}],
+            }
+        )
+    artifact_service.write_exploration_artifacts(
+        artifact_root,
+        run={
+            "id": run_id,
+            "project_id": "project-1",
+            "project_name": "测试项目",
+            "environment_id": "env-1",
+            "environment_name": "测试环境",
+            "title": "工作台探索",
+            "site_url": "https://example.test",
+            "scope": "工作台",
+            "goal": "采集探索范围全部模块",
+            "forbidden_paths": "",
+            "login_strategy": "skip_login",
+            "started_at": "",
+            "status": "completed",
+            "summary": "首次探索已采集模块。",
+            "max_pages": 10,
+            "max_actions": 20,
+            "timeout_minutes": 5,
+        },
+        summary={"status": "completed", "summary": "首次探索已采集模块。", "markdown_content": "# 首次探索\n"},
+        page_artifacts=page_artifacts,
+        graph={"edges": []},
+        blockers=[],
+        log_content='{"event":"run_completed","status":"completed"}',
+        goal_validation={"status": "passed", "summary": "ok", "stats": {}},
+    )
+    with core_db.connect() as db:
+        db.execute(
+            "UPDATE exploration_runs SET artifact_root = ?, status = 'completed' WHERE id = ?",
+            (f"project-1/exploration/{run_id}", run_id),
+        )
+
+
 def test_restart_recovers_stale_stopping_run_with_completed_log(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     project_root = _use_temp_db(monkeypatch, tmp_path)
     _seed_project_and_environment()
@@ -59,8 +123,9 @@ def test_restart_recovers_stale_stopping_run_with_completed_log(monkeypatch: pyt
         ),
         ACTOR,
     )
+    _confirm_plan(created["id"])
     artifact_root = project_root / "project-1" / "exploration" / created["id"]
-    (artifact_root / "logs").mkdir(parents=True)
+    (artifact_root / "logs").mkdir(parents=True, exist_ok=True)
     (artifact_root / "run.yaml").write_text("artifact_schema_version: 2\n", encoding="utf-8")
     (artifact_root / "logs" / "run.log").write_text(
         '{"event":"run_started"}\n{"event":"run_completed","status":"completed"}\n',
@@ -82,7 +147,9 @@ def test_restart_recovers_stale_stopping_run_with_completed_log(monkeypatch: pyt
 
     assert restarted["status"] == "queued"
     assert restarted["result_summary"] == "探索任务已提交，等待执行。"
-    assert not artifact_root.exists()
+    assert not (artifact_root / "run.yaml").exists()
+    assert not (artifact_root / "logs" / "run.log").exists()
+    assert (artifact_root / "exploration-plan.yaml").exists()
     with core_db.connect() as db:
         module_count = db.execute(
             "SELECT COUNT(*) AS count FROM exploration_module_coverages WHERE exploration_run_id = ?",
@@ -119,6 +186,101 @@ def test_create_run_has_no_execution_mode_columns(monkeypatch: pytest.MonkeyPatc
     assert "execution_mode" not in columns
     assert "interaction_mode" not in columns
     assert "agent_turn_count" not in columns
+
+
+def test_generate_confirmed_plan_before_starting_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_and_environment()
+    created = exploration_service.create_project_run(
+        "project-1",
+        ExplorationRunCreateIn(
+            environment_id="env-1",
+            title="工作台探索",
+            scope="工作台",
+            forbidden_paths="删除\n发布",
+            goal="工作台模块的全部内容",
+            notes="",
+            max_pages=10,
+            max_actions=20,
+            timeout_minutes=5,
+        ),
+        ACTOR,
+    )
+
+    first_discovery = exploration_service.start_project_run("project-1", created["id"], ACTOR)
+    assert first_discovery["status"] == "queued"
+    _write_discovery_artifacts(created["id"], ["工作台"])
+
+    generated = exploration_service.generate_project_run_plan("project-1", created["id"], ACTOR)
+
+    assert generated["plan_status"] == "draft"
+    assert generated["business_boundary"] == "工作台"
+    assert {item["capability_type"] for item in generated["items"]} == {"module_discovery"}
+
+    confirmed = exploration_service.confirm_project_run_plan("project-1", created["id"], ACTOR)
+
+    assert confirmed["plan_status"] == "confirmed"
+    started = exploration_service.start_project_run("project-1", created["id"], ACTOR)
+    assert started["status"] == "queued"
+
+
+def test_generate_plan_uses_first_discovery_modules_instead_of_built_in_capabilities(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_and_environment()
+    created = exploration_service.create_project_run(
+        "project-1",
+        ExplorationRunCreateIn(
+            environment_id="env-1",
+            title="工作台探索",
+            scope="工作台",
+            forbidden_paths="",
+            goal="采集探索范围全部模块",
+            notes="",
+            max_pages=10,
+            max_actions=20,
+            timeout_minutes=5,
+        ),
+        ACTOR,
+    )
+    _write_discovery_artifacts(created["id"], ["工作台", "资源库", "效果评测"])
+
+    generated = exploration_service.generate_project_run_plan("project-1", created["id"], ACTOR)
+
+    assert generated["plan_status"] == "draft"
+    assert generated["summary"] == "已根据首次探索采集结果生成 3 个模块计划项，等待人工确认或补充。"
+    assert [item["business_module"] for item in generated["items"]] == ["工作台", "资源库", "效果评测"]
+    assert {item["capability_type"] for item in generated["items"]} == {"module_discovery"}
+    assert not {"search", "filter", "sort", "create", "import"} & {
+        item["capability_type"] for item in generated["items"]
+    }
+
+
+def test_generate_plan_requires_first_discovery_artifacts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_and_environment()
+    created = exploration_service.create_project_run(
+        "project-1",
+        ExplorationRunCreateIn(
+            environment_id="env-1",
+            title="工作台探索",
+            scope="工作台",
+            forbidden_paths="",
+            goal="采集探索范围全部模块",
+            notes="",
+            max_pages=10,
+            max_actions=20,
+            timeout_minutes=5,
+        ),
+        ACTOR,
+    )
+
+    with pytest.raises(Exception) as missing_artifact_error:
+        exploration_service.generate_project_run_plan("project-1", created["id"], ACTOR)
+
+    assert "请先执行首次探索，采集探索范围内的模块。" in str(missing_artifact_error.value)
 
 
 def test_detail_recovers_stale_stopping_run_before_frontend_disables_restart(
@@ -189,6 +351,7 @@ def test_orchestrator_marks_queued_run_running_before_agentic_loop(
         ),
         ACTOR,
     )
+    _confirm_plan(created["id"])
     exploration_service.start_project_run("project-1", created["id"], ACTOR)
     captured: dict[str, str] = {}
 

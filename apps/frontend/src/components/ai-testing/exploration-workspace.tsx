@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Loader } from "@/components/ui/loader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -202,6 +203,7 @@ const reuseAuthStateOptions = ["enabled", "disabled"];
 
 const explorationTabs = ["探索列表", "探索环境"];
 const STOPPABLE_EXPLORATION_STATUSES = new Set(["queued", "running"]);
+const LOADING_EXPLORATION_STATUSES = new Set(["queued", "running", "stopping"]);
 const ACTIVE_MANUAL_AUTH_SESSION_STATUSES = new Set(["waiting_human"]);
 const explorationPlaceholders = {
   scope: "填写本次要探索的页面范围，例如全站、指定菜单、指定 URL 或核心模块。",
@@ -246,6 +248,17 @@ function formMatchesSavedManualAuthConfig(environment: ProjectEnvironment | null
 
 function isActiveManualAuthSession(session: ManualAuthSession | null) {
   return Boolean(session && ACTIVE_MANUAL_AUTH_SESSION_STATUSES.has(session.status));
+}
+
+function ExplorationStatusBadge({ status }: { status: string }) {
+  const isLoading = LOADING_EXPLORATION_STATUSES.has(status);
+
+  return (
+    <Badge className={statusBadgeClassNames[status]} variant="outline">
+      {isLoading ? <Loader className="-ml-0.5" size={12} /> : null}
+      {statusLabels[status] ?? status}
+    </Badge>
+  );
 }
 
 function isManualAuthSessionEnded(session: ManualAuthSession) {
@@ -1042,9 +1055,7 @@ export function ExplorationWorkspace({
                     <TableCell>{item.project_name}</TableCell>
                     <TableCell>{item.environment_name}</TableCell>
                     <TableCell>
-                      <Badge className={statusBadgeClassNames[item.status]} variant="outline">
-                        {statusLabels[item.status] ?? item.status}
-                      </Badge>
+                      <ExplorationStatusBadge status={item.status} />
                     </TableCell>
                     <TableCell>{loginStrategyLabels[item.login_strategy] ?? item.login_strategy}</TableCell>
                     <TableCell>{formatDateTime(item.updated_at)}</TableCell>
