@@ -2,89 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from app.agents.site_exploration import service as site_exploration_agent_service
-from app.agents.site_exploration.schemas import SiteExplorationInput, SiteExplorationOutput
 from app.presentation.serializers import serialize_exploration_run
 from app.services.exploration import service as exploration_service
 from app.services.exploration import site_orchestrator
-
-
-def test_site_orchestrator_builds_langchain_agent_input(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    captured = {}
-
-    async def fake_plan_site_exploration(input_data):
-        captured["input"] = input_data
-        return SiteExplorationOutput(
-            status="ready",
-            runner_contract={"runner": "ts_playwright"},
-            artifact_contract={"artifact_schema_version": 2},
-            summary="站点探索规划完成。",
-        )
-
-    monkeypatch.setattr(site_orchestrator.site_exploration_agent_service, "plan_site_exploration", fake_plan_site_exploration)
-
-    run = {
-        "id": "explore-1",
-        "project_name": "测试项目",
-        "environment_name": "测试环境",
-        "environment_site_url": "https://example.test",
-        "scope": "/users\n/roles",
-        "forbidden_paths": "/logout",
-        "goal": "探索用户管理",
-        "max_pages": 20,
-        "max_actions": 200,
-        "timeout_minutes": 30,
-        "environment_login_strategy": "account_password",
-        "environment_captcha_strategy": "ai_letter",
-        "environment_reuse_auth_state": 1,
-        "environment_username": "tester",
-        "environment_has_password": 1,
-    }
-
-    output = site_orchestrator._plan_run_with_agent(run, tmp_path / "explore-1")
-
-    assert output.status == "ready"
-    input_data = captured["input"]
-    assert input_data.site_url == "https://example.test"
-    assert input_data.scope == "/users\n/roles"
-    assert input_data.forbidden_paths == "/logout"
-    assert input_data.goal == "探索用户管理"
-    assert input_data.login_strategy == "account_password"
-    assert input_data.captcha_strategy == "ai_letter"
-    assert input_data.reuse_auth_state is True
-    assert input_data.has_login_credentials is True
-    assert not hasattr(input_data, "project_name")
-    assert not hasattr(input_data, "environment_name")
-    assert not hasattr(input_data, "run_id")
-    assert not hasattr(input_data, "max_pages")
-    assert not hasattr(input_data, "max_actions")
-    assert not hasattr(input_data, "timeout_minutes")
-    assert not hasattr(input_data, "artifact_root")
-    assert not hasattr(input_data, "username")
-    assert not hasattr(input_data, "password")
-
-
-def test_site_exploration_prompt_includes_login_summary_without_secrets() -> None:
-    prompt = site_exploration_agent_service._build_site_exploration_input(
-        SiteExplorationInput(
-            site_url="https://example.test",
-            scope="/users",
-            forbidden_paths="/logout",
-            goal="探索用户管理",
-            login_strategy="account_password",
-            captcha_strategy="ai_letter",
-            reuse_auth_state=True,
-            has_login_credentials=True,
-        )
-    )
-
-    assert "login:" in prompt
-    assert "- login_strategy: account_password" in prompt
-    assert "- captcha_strategy: ai_letter" in prompt
-    assert "- reuse_auth_state: true" in prompt
-    assert "- has_login_credentials: true" in prompt
-    assert "username:" not in prompt
-    assert "password:" not in prompt
 
 
 def test_serialize_exploration_run_uses_environment_auth_summary() -> None:

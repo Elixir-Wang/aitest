@@ -34,7 +34,7 @@ def test_new_agents_do_not_use_old_prompt_or_runner_modules() -> None:
 def test_business_agent_packages_have_agent_entrypoint() -> None:
     missing: list[str] = []
     for package in sorted(path for path in NEW_AGENTS_ROOT.iterdir() if path.is_dir()):
-        if package.name.startswith("_") or package.name in {"shared", "requirement_analysis"}:
+        if package.name.startswith("_") or package.name in {"shared", "requirement_analysis", "site_exploration"}:
             continue
         has_agent_entrypoint = (package / "agent.py").exists()
         if not has_agent_entrypoint:
@@ -62,13 +62,31 @@ def test_requirement_standardization_agent_exists_as_canonical_package() -> None
     assert not (NEW_AGENTS_ROOT / "requirement_standardization" / "tools.py").exists()
 
 
-def test_site_exploration_agent_exists_as_langchain_package() -> None:
+def test_site_exploration_agent_uses_child_agents() -> None:
     package = NEW_AGENTS_ROOT / "site_exploration"
-    assert (package / "agent.py").exists()
-    assert (package / "service.py").exists()
-    assert (package / "schemas.py").exists()
-    assert (package / "tools.py").exists()
+    assert not (package / "agent.py").exists()
+    assert not (package / "service.py").exists()
+    assert not (package / "schemas.py").exists()
+    assert not (package / "tools.py").exists()
     assert (package / "__init__.py").exists()
+    assert (package / "planning" / "agent.py").exists()
+    assert (package / "planning" / "service.py").exists()
+    assert (package / "planning" / "schemas.py").exists()
+    assert not (package / "planning" / "plan.py").exists()
+    assert not (package / "planning" / "plan_service.py").exists()
+    assert not (package / "planning" / "plan_schemas.py").exists()
+    assert not (package / "planning" / "tools.py").exists()
+    assert (package / "execution_decision" / "agent.py").exists()
+    assert (package / "execution_decision" / "service.py").exists()
+    assert (package / "execution_decision" / "schemas.py").exists()
+
+
+def test_site_exploration_services_use_child_agents() -> None:
+    exploration_service_path = BACKEND_APP / "services" / "exploration" / "service.py"
+    agentic_orchestrator_path = BACKEND_APP / "services" / "exploration" / "agentic_orchestrator.py"
+
+    assert "app.agents.site_exploration.planning" in exploration_service_path.read_text(encoding="utf-8")
+    assert "app.agents.site_exploration.execution_decision" in agentic_orchestrator_path.read_text(encoding="utf-8")
 
 
 def test_requirement_analysis_agent_owns_its_schemas() -> None:

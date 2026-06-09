@@ -1093,12 +1093,33 @@ export default function Page() {
     );
   }
 
+  function clearStaleExplorationPlan() {
+    const clearPlan = (current: ExplorationRunDetail | null) => {
+      if (!current?.exploration_plan) {
+        return current;
+      }
+      return {
+        ...current,
+        exploration_plan: {
+          ...current.exploration_plan,
+          plan_status: "not_generated" as ExplorationPlanStatus,
+          summary: "正在生成新的探索计划，旧计划已清除。",
+          items: [],
+        },
+      };
+    };
+
+    setDetail(clearPlan);
+    setStreamDetail(clearPlan);
+  }
+
   async function generateExplorationPlan() {
     if (!run) {
       return;
     }
     setPlanAction("generate");
     clearGeneratedExplorationPlanModules();
+    clearStaleExplorationPlan();
     setPlanActionStartedAt(Date.now());
     try {
       toast.info("正在生成探索计划，此操作在当前页面执行，不会进入任务中心");

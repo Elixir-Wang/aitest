@@ -92,13 +92,16 @@ test("exploration detail supports first discovery before confirmed plan runs", (
   assert.doesNotMatch(pageSource, />\s*\{startLabel\}\s*<\/Button>/);
 });
 
-test("regenerating an exploration plan clears stale generated plan modules", () => {
+test("regenerating an exploration plan clears stale generated modules and plan items", () => {
   assert.match(pageSource, /function clearGeneratedExplorationPlanModules\(\)/);
+  assert.match(pageSource, /function clearStaleExplorationPlan\(\)/);
   assert.match(
     pageSource,
     /current \? \{ \.\.\.current, modules: current\.modules\.filter\(\(module\) => !isEmptyPlannedModule\(module\)\) \} : current/,
   );
-  assert.match(pageSource, /setPlanAction\("generate"\);\s*clearGeneratedExplorationPlanModules\(\);/);
+  assert.match(pageSource, /items: \[\]/);
+  assert.match(pageSource, /summary: "正在生成新的探索计划，旧计划已清除。"/);
+  assert.match(pageSource, /setPlanAction\("generate"\);\s*clearGeneratedExplorationPlanModules\(\);\s*clearStaleExplorationPlan\(\);/);
 });
 
 test("plan generation exposes local in-page progress instead of implying a task-center job", () => {

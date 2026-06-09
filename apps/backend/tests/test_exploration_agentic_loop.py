@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.agents.site_exploration.agentic_schemas import AgenticAction, AgenticDecisionOutput, AgenticRisk
+from app.agents.site_exploration.execution_decision.schemas import AgenticAction, AgenticDecisionOutput, AgenticRisk
 from app.services.exploration import action_risk, agentic_orchestrator, artifact_service
 from app.services.exploration.service import parse_exploration_log_entries
 

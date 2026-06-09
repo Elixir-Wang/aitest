@@ -1147,7 +1147,6 @@ def _requirement_enhancement_questions(output: dict) -> list[RequirementEnhancem
                     module_key=str(item.get("module_key") or ""),
                     module_name=str(item.get("module_name") or ""),
                     question=str(item.get("question") or item.get("description") or ""),
-                    reason=str(item.get("reason") or ""),
                     impact=str(item.get("impact") or ""),
                     severity=str(item.get("severity") or "major"),
                     primary_excerpt=str(item.get("primary_excerpt") or item.get("source_excerpt") or ""),

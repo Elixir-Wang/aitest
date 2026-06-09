@@ -105,6 +105,10 @@ function optionBadge(index: number) {
   return String.fromCharCode(65 + index);
 }
 
+function pendingItemNumber(index: number) {
+  return index >= 0 ? String(index + 1).padStart(2, "0") : "--";
+}
+
 type SourceFile = RequirementSwitcherFile & {
   version_id: string | null;
   version_no: number | null;
@@ -169,7 +173,6 @@ type RequirementAnalysisQuestion = {
   module_key: string;
   module_name: string;
   question: string;
-  reason: string;
   impact: string;
   dimension: string;
   severity: "blocker" | "major" | "minor";
@@ -184,7 +187,6 @@ type RequirementAnalysisConflict = {
   module_name: string;
   issue_type: string;
   question: string;
-  reason: string;
   impact: string;
   severity: "blocker" | "major" | "minor";
   primary_excerpt: string;
@@ -332,12 +334,6 @@ const fileRoleLabels: Record<string, string> = {
   supporting: "辅助文件",
 };
 
-const qualityResultLabels: Record<string, string> = {
-  passed: "通过",
-  warning: "警告",
-  blocked: "阻塞",
-};
-
 function defaultRequirementFileId(files: SourceFile[]) {
   return files.find((file) => file.file_role === "primary")?.id ?? files[0]?.id ?? "";
 }
@@ -427,22 +423,11 @@ export default function DocumentDetailPage() {
   );
   const initialMarkdownContent = overview?.initial_markdown_content ?? "";
   const preliminaryMarkdown = analysisResult?.output.preliminary_requirement_markdown ?? "";
-  const appliedSupplementCount = analysisResult?.output.applied_supplements?.length ?? 0;
   const clarificationQuestions = analysisResult?.output.clarification_questions ?? [];
   const analysisConflicts = analysisResult?.output.conflicts ?? [];
   const pendingAnalysisItems: RequirementAnalysisPendingItem[] = [...clarificationQuestions, ...analysisConflicts];
   const visiblePendingAnalysisItems = pendingAnalysisItems.filter((item) => !deferredPendingItemIds.includes(item.id));
   const deferredPendingAnalysisItems = pendingAnalysisItems.filter((item) => deferredPendingItemIds.includes(item.id));
-  const unresolvedCount = visiblePendingAnalysisItems.filter((item) => !isPendingItemAnswered(item)).length;
-  const hasQualityWarning =
-    analysisResult?.quality_result === "warning" ||
-    analysisResult?.output.quality_gate.result === "warning" ||
-    Boolean(analysisResult?.output.quality_gate.warning_issues.length);
-  const qualitySummary = analysisResult
-    ? `${qualityResultLabels[analysisResult.output.quality_gate.result] ?? analysisResult.output.quality_gate.result}${
-        hasQualityWarning ? "，需确认" : ""
-      }`
-    : "";
   const isBlocked =
     analysisResult?.status === "blocked" ||
     analysisResult?.quality_result === "blocked" ||
@@ -1574,65 +1559,52 @@ export default function DocumentDetailPage() {
                   <TabsTrigger value="preliminary">初步需求</TabsTrigger>
                   <TabsTrigger value="pending">待确认问题</TabsTrigger>
                 </TabsList>
-                {analysisTab === "pending" ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button disabled={!deferredPendingAnalysisItems.length} type="button" variant="outline">
-                        <RotateCcw className="size-4" />
-                        恢复暂不处理
-                        {deferredPendingAnalysisItems.length ? `(${deferredPendingAnalysisItems.length})` : ""}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="max-w-96">
-                      {deferredPendingAnalysisItems.map((item) => (
-                        <DropdownMenuItem key={item.id} onSelect={() => restorePendingItem(item.id)}>
-                          <div className="min-w-0">
-                            <div className="truncate font-medium text-sm">{item.module_name}</div>
-                            <div className="line-clamp-2 text-muted-foreground text-xs">{item.question}</div>
-                          </div>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : null}
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {analysisTab === "pending" ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button disabled={!deferredPendingAnalysisItems.length} type="button" variant="outline">
+                          <RotateCcw className="size-4" />
+                          恢复暂不处理
+                          {deferredPendingAnalysisItems.length ? `(${deferredPendingAnalysisItems.length})` : ""}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="max-w-96">
+                        {deferredPendingAnalysisItems.map((item) => {
+                          const itemNumber = pendingItemNumber(
+                            pendingAnalysisItems.findIndex((pendingItem) => pendingItem.id === item.id),
+                          );
+                          return (
+                            <DropdownMenuItem
+                              className="items-start gap-2"
+                              key={item.id}
+                              onSelect={() => restorePendingItem(item.id)}
+                            >
+                              <span className="mt-0.5 inline-flex h-5 min-w-7 items-center justify-center rounded border bg-muted/50 px-1 font-medium text-[11px] text-muted-foreground tabular-nums">
+                                #{itemNumber}
+                              </span>
+                              <div className="min-w-0">
+                                <div className="truncate font-medium text-sm">{item.module_name}</div>
+                                <div className="line-clamp-2 text-muted-foreground text-xs">{item.question}</div>
+                              </div>
+                            </DropdownMenuItem>
+                          );
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : null}
+                  <Button
+                    disabled={Boolean(finalizeDisabledReason) || finalizingRequirement}
+                    onClick={() => void finalizePreliminaryRequirement()}
+                    title={finalizeDisabledReason || undefined}
+                    type="button"
+                  >
+                    {finalizingRequirement ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+                    {finalizeButtonLabel}
+                  </Button>
+                </div>
               </div>
               <TabsContent id={PRELIMINARY_REQUIREMENT_SECTION_ID} value="preliminary">
-                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h2 className="font-medium text-sm">初步需求</h2>
-                    <p className="mt-1 text-muted-foreground text-xs">
-                      {analysisResult
-                        ? `辅助补强 ${appliedSupplementCount} 项 · 待确认 ${unresolvedCount} 项 · 质量状态：${qualitySummary}`
-                        : "需求分析完成后会在这里展示初步需求。"}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    {isFinalized ? (
-                      <Button onClick={() => setActiveTab("final")} type="button" variant="outline">
-                        <FileText className="size-4" />
-                        查看最终需求
-                      </Button>
-                    ) : null}
-                    <Button
-                      disabled={Boolean(finalizeDisabledReason) || finalizingRequirement}
-                      onClick={() => void finalizePreliminaryRequirement()}
-                      title={finalizeDisabledReason || undefined}
-                      type="button"
-                    >
-                      {finalizingRequirement ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Check className="size-4" />
-                      )}
-                      {finalizeButtonLabel}
-                    </Button>
-                    {finalizeDisabledReason && !isFinalized ? (
-                      <div className="basis-full text-right text-muted-foreground text-xs">
-                        {finalizeDisabledReason}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
                 <MarkdownPreview
                   className="requirement-document-preview"
                   content={preliminaryMarkdown}
@@ -1644,6 +1616,9 @@ export default function DocumentDetailPage() {
                 {visiblePendingAnalysisItems.length ? (
                   <div className="space-y-3">
                     {visiblePendingAnalysisItems.map((item) => {
+                      const itemNumber = pendingItemNumber(
+                        pendingAnalysisItems.findIndex((pendingItem) => pendingItem.id === item.id),
+                      );
                       const draft = pendingAnswerDrafts[item.id] ?? {
                         selectedOptionId: item.answer?.selected_option_id ?? item.recommended_options?.[0]?.id ?? "",
                         customAnswer: "",
@@ -1653,6 +1628,9 @@ export default function DocumentDetailPage() {
                       return (
                         <div className="rounded-lg border bg-background p-4" key={item.id}>
                           <div className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex h-6 min-w-8 items-center justify-center rounded-md border bg-muted/40 px-1.5 font-medium text-[11px] text-muted-foreground tabular-nums">
+                              #{itemNumber}
+                            </span>
                             <Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>
                               {pendingSeverityLabels[item.severity] ?? item.severity}
                             </Badge>
@@ -1667,7 +1645,6 @@ export default function DocumentDetailPage() {
                             ) : null}
                           </div>
                           <div className="mt-3 text-sm">{item.question}</div>
-                          <div className="mt-2 text-muted-foreground text-xs">{item.reason}</div>
                           {item.impact ? (
                             <div className="mt-2 text-muted-foreground text-xs">影响：{item.impact}</div>
                           ) : null}
@@ -1707,11 +1684,9 @@ export default function DocumentDetailPage() {
                                         >
                                           {optionBadge(index)}
                                         </span>
-                                        <span className="min-w-0">
-                                          <span className="font-medium">{option.label}</span>
-                                          <span className="ml-2 text-muted-foreground text-xs">
-                                            {option.answer_markdown}
-                                          </span>
+                                        <span className="min-w-0 text-sm">
+                                          <span>{option.label}</span>
+                                          <span className="ml-2 text-muted-foreground">{option.answer_markdown}</span>
                                         </span>
                                       </button>
                                     );
@@ -1738,6 +1713,11 @@ export default function DocumentDetailPage() {
                                   updatePendingAnswerDraft(item.id, {
                                     answerType: "custom",
                                     customAnswer: event.target.value,
+                                  })
+                                }
+                                onFocus={() =>
+                                  updatePendingAnswerDraft(item.id, {
+                                    answerType: "custom",
                                   })
                                 }
                                 placeholder="手动补充确认口径"
@@ -2132,10 +2112,6 @@ function displayFilename(filename: string) {
 function standardMarkdownFilename(filename: string) {
   const displayName = displayFilename(filename);
   return displayName.replace(/\.[^.]+$/, "");
-}
-
-function isPendingItemAnswered(item: RequirementAnalysisPendingItem) {
-  return item.answer?.apply_status === "applied" || item.answer?.apply_status === "not_applicable";
 }
 
 function clarificationAnswerStatusLabel(answer: RequirementClarificationAnswer) {

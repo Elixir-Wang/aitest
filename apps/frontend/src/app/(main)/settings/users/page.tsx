@@ -253,7 +253,21 @@ export default function Page() {
                       onCheckedChange={(checked) => toggleOne(item.id, Boolean(checked))}
                     />
                   </TableCell>
-                  <TableCell className="font-medium">{item.username}</TableCell>
+                  <TableCell className="font-medium">
+                    {canWrite ? (
+                      <Button
+                        aria-label={`编辑用户 ${item.username}`}
+                        className="h-auto justify-start p-0 font-medium text-foreground no-underline hover:text-primary hover:no-underline"
+                        onClick={() => openEditDialog(item)}
+                        type="button"
+                        variant="link"
+                      >
+                        {item.username}
+                      </Button>
+                    ) : (
+                      item.username
+                    )}
+                  </TableCell>
                   <TableCell>{roleToLabel(item.role)}</TableCell>
                   <TableCell>{item.project_scope}</TableCell>
                   <TableCell>

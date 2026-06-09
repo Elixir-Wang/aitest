@@ -52,6 +52,8 @@ def test_requirement_analysis_input_is_primary_only():
     assert "requirement-review" in prompt
     assert "test-scenarios" in prompt
     assert "不要生成、优化、摘要或改写需求正文" in prompt
+    assert "不要拆出“当前缺口”“缺失说明”等额外字段或解释段" in prompt
+    assert "不确认的影响写入 impact" in prompt
     assert "系统会直接使用 primary_markdown_content 原文作为初步需求" in prompt
     assert "search_auxiliary_documents" not in prompt
     assert '"auxiliary_documents"' not in prompt
@@ -172,6 +174,8 @@ def test_primary_analysis_agent_uses_tool_strategy(monkeypatch):
     assert calls["response_format"].schema is RequirementAnalysisOutput
     assert calls["response_format"].handle_errors is True
     assert "主需求分析智能体" in calls["system_prompt"]
+    assert "不要拆出“当前缺口”“缺失说明”等额外字段或解释段" in calls["system_prompt"]
+    assert "写入 impact" in calls["system_prompt"]
 
 
 @pytest.mark.anyio

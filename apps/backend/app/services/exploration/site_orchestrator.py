@@ -1,5 +1,4 @@
 import json
-import asyncio
 import queue
 import shutil
 import subprocess
@@ -19,8 +18,6 @@ from app.core.settings import (
 from app.core.db import connect
 from app.core.storage import PROJECT_FILE_STORAGE_ROOT, store_path
 from app.repositories import exploration_repo
-from app.agents.site_exploration import schemas as site_exploration_agent_schemas
-from app.agents.site_exploration import service as site_exploration_agent_service
 from app.services import operation_log_service
 from app.services.exploration import agentic_orchestrator
 from app.services.exploration import artifact_service as exploration_artifact_service
@@ -264,21 +261,6 @@ def _mark_run_failed_after_unhandled_error(run_id: str, error: Exception) -> Non
 def _ensure_artifact_dirs(root: Path) -> None:
     for name in ("pages", "logs"):
         (root / name).mkdir(parents=True, exist_ok=True)
-
-
-def _plan_run_with_agent(run, artifact_root: Path) -> site_exploration_agent_schemas.SiteExplorationOutput:
-    login_strategy, captcha_strategy, reuse_auth_state = _agent_login_context(run)
-    input_data = site_exploration_agent_schemas.SiteExplorationInput(
-        site_url=_safe_site_url(run),
-        scope=str(run["scope"] or ""),
-        forbidden_paths=str(run["forbidden_paths"] or ""),
-        goal=str(run["goal"] or ""),
-        login_strategy=login_strategy,
-        captcha_strategy=captcha_strategy,
-        reuse_auth_state=reuse_auth_state,
-        has_login_credentials=_has_login_credentials(run, login_strategy),
-    )
-    return asyncio.run(site_exploration_agent_service.plan_site_exploration(input_data))
 
 
 def _agent_login_context(run) -> tuple[str, str, bool]:

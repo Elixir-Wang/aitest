@@ -21,6 +21,8 @@ SYSTEM_PROMPT = """
 - 返回 RequirementAnalysisOutput JSON。
 - applied_supplements 必须为空数组。
 - clarification_questions 和 conflicts 中每个需要人工确认的问题，尽量给出 2 个 recommended_options。
+- clarification_questions 和 conflicts 的 question 必须直接写成要请人确认的问题，可包含需要确认的字段清单；不要拆出“当前缺口”“缺失说明”等额外字段或解释段。
+- 不确认造成的下游影响写入 impact。
 - recommended_options 必须是最建议的人类可选答案，answer_markdown 必须可直接写入初步需求，不要给解释性废话。
 - 如果主需求没有足够依据生成建议答案，可以少于 2 个；不得臆造业务规则。
 - 不得引用辅助文件来源。

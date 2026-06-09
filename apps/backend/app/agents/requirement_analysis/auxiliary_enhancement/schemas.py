@@ -21,7 +21,6 @@ class RequirementEnhancementQuestion(BaseModel):
     module_key: str = ""
     module_name: str = ""
     question: str
-    reason: str = ""
     impact: str = ""
     severity: Literal["blocker", "major", "minor"] = "major"
     primary_excerpt: str = ""
@@ -76,4 +75,3 @@ __all__ = [
     "RequirementEnhancementQuestion",
     "RequirementResolvedQuestionOptions",
 ]
-

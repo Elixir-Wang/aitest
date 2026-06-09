@@ -8,7 +8,7 @@ from app.core import storage
 from app.api.v1 import exploration as exploration_api
 from app.schemas.exploration import ExplorationRunCreateIn
 from app.seed.init_db import init_db
-from app.agents.site_exploration.plan_schemas import ExplorationPlanModule, ExplorationPlanOutput
+from app.agents.site_exploration.planning.schemas import ExplorationPlanModule, ExplorationPlanOutput
 from app.services.exploration import service as exploration_service
 from app.services.exploration import artifact_service
 from app.services.exploration import site_orchestrator

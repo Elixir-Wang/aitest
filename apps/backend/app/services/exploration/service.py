@@ -13,8 +13,12 @@ from app.core.db import connect
 from app.core.environment_auth_state import auth_state_path
 from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
-from app.agents.site_exploration import plan_service as site_exploration_plan_service
-from app.agents.site_exploration.plan_schemas import ExplorationPlanInput, ExplorationPlanOutput
+from app.agents.site_exploration.planning import service as site_exploration_plan_service
+from app.agents.site_exploration.planning.schemas import (
+    ExplorationPlanInput,
+    ExplorationPlanModule,
+    ExplorationPlanOutput,
+)
 from app.presentation.serializers import serialize_exploration_run
 from app.repositories import environment_repo, exploration_repo, project_repo
 from app.schemas.exploration import ExplorationPlanUpdateIn, ExplorationRunCreateIn, ExplorationRunUpdateIn

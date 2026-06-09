@@ -44,6 +44,8 @@ def _build_requirement_analysis_input(input_data: RequirementAnalysisInput) -> s
             "只输出分析结论；不要生成、优化、摘要或改写需求正文。",
             "preliminary_requirement_markdown 可返回空字符串，系统会直接使用 primary_markdown_content 原文作为初步需求。",
             "分析发现的问题写入结构化字段。",
+            "clarification_questions/conflicts 的 question 只写直接待确认问题，可把需要确认的字段直接问出来，不要拆出“当前缺口”“缺失说明”等额外字段或解释段。",
+            "不确认的影响写入 impact。",
             "",
             "input_json:",
             json.dumps(_primary_visible_input(input_data), ensure_ascii=False, indent=2),

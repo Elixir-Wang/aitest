@@ -44,9 +44,13 @@ class RequirementClarificationQuestion(BaseModel):
     id: str
     module_key: str
     module_name: str
-    question: str
-    reason: str
-    impact: str
+    question: str = Field(
+        description=(
+            "直接面向人工确认的问题。必须把需要确认的字段直接问出来；"
+            "不要拆出“当前缺口”“缺失说明”等额外字段或解释段。"
+        )
+    )
+    impact: str = Field(description="不确认会造成的下游设计、开发、测试、日志或状态处理影响。")
     dimension: Literal[
         "boundary_value",
         "exception_path",
@@ -90,9 +94,13 @@ class RequirementUnresolvedFinding(BaseModel):
         "source_unclear",
         "other",
     ]
-    question: str
-    reason: str
-    impact: str
+    question: str = Field(
+        description=(
+            "直接面向人工确认的问题。必须把需要确认的字段直接问出来；"
+            "不要拆出“当前缺口”“缺失说明”等额外字段或解释段。"
+        )
+    )
+    impact: str = Field(description="不确认会造成的下游设计、开发、测试、日志或状态处理影响。")
     severity: Literal["blocker", "major", "minor"] = "major"
     primary_excerpt: str = ""
     evidence: list[RequirementEvidenceReference] = Field(default_factory=list)

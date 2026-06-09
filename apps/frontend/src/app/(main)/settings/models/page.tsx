@@ -206,7 +206,21 @@ export default function Page() {
                       onCheckedChange={(checked) => toggleOne(item.id, Boolean(checked))}
                     />
                   </TableCell>
-                  <TableCell className="font-medium">{item.provider}</TableCell>
+                  <TableCell className="font-medium">
+                    {canWrite ? (
+                      <Button
+                        aria-label={`编辑模型配置 ${item.provider}`}
+                        className="h-auto justify-start p-0 font-medium text-foreground no-underline hover:text-primary hover:no-underline"
+                        onClick={() => openEditDialog(item)}
+                        type="button"
+                        variant="link"
+                      >
+                        {item.provider}
+                      </Button>
+                    ) : (
+                      item.provider
+                    )}
+                  </TableCell>
                   <TableCell>{item.model}</TableCell>
                   <TableCell className="max-w-md truncate text-muted-foreground">{item.base_url}</TableCell>
                   <TableCell>{formatDateTime(item.updated_at)}</TableCell>

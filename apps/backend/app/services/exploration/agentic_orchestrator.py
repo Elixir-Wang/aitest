@@ -5,8 +5,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from app.agents.site_exploration import agentic_service
-from app.agents.site_exploration.agentic_schemas import AgenticAction, AgenticDecisionOutput, AgenticExplorationInput, AgenticRisk
+from app.agents.site_exploration.execution_decision import service as agentic_service
+from app.agents.site_exploration.execution_decision.schemas import (
+    AgenticAction,
+    AgenticDecisionOutput,
+    AgenticExplorationInput,
+    AgenticRisk,
+)
 from app.core.db import connect
 from app.core.storage import store_path
 from app.repositories import exploration_repo
