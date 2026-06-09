@@ -1,7 +1,7 @@
-from app.services.knowledge import builder_service, global_service, service
+from app.services.knowledge import global_service, query_service, service
 
 __all__ = [
-    "builder_service",
     "global_service",
+    "query_service",
     "service",
 ]

@@ -42,12 +42,12 @@ test("overview uses requirement progress steps instead of summary metric cards",
   assert.match(pageSource, /<RequirementProgressSteps steps=\{requirementProgressSteps\} \/>/);
   assert.match(pageSource, /title: "原始需求"/);
   assert.match(pageSource, /title: "标准需求"/);
-  assert.match(pageSource, /title: "需求评审"/);
+  assert.match(pageSource, /title: "需求分析"/);
   assert.match(pageSource, /title: "最终需求"/);
   assert.match(pageSource, /status === "running" \? <Loader2 className="size-4 animate-spin" \/> : null/);
   assert.match(
     pageSource,
-    /const requirementReviewPassed = Boolean\(analysisResult\?\.status === "completed" && !isBlocked\)/,
+    /const requirementReviewPassed = Boolean\(\s*analysisResult\?\.status && \["completed", "needs_clarification"\]\.includes\(analysisResult\.status\) && !isBlocked,\s*\)/,
   );
   assert.match(
     pageSource,
@@ -102,6 +102,23 @@ test("preliminary requirement can be finalized into the final requirement tab", 
   assert.match(pageSource, /toast\.success\("已转为最终需求"\)/);
   assert.match(pageSource, /setActiveTab\("final"\)/);
   assert.match(pageSource, /尚未生成最终需求，请先在初步需求中点击“转为最终需求”。/);
+});
+
+test("saved clarification answers stay visible while deferred questions are hidden", () => {
+  assert.match(
+    pageSource,
+    /const pendingAnalysisItems: RequirementAnalysisPendingItem\[\] = \[\.\.\.clarificationQuestions, \.\.\.analysisConflicts\]\.filter\(\s*\(item\) => item\.answer\?\.apply_status !== "not_applicable",\s*\)/,
+  );
+  assert.doesNotMatch(pageSource, />当前答复</);
+  assert.doesNotMatch(pageSource, />已保存答复</);
+  assert.match(
+    pageSource,
+    /const savedCustomAnswer =\s*isAppliedAnswer && item\.answer\?\.answer_type === "custom" \? item\.answer\.answer_markdown : ""/,
+  );
+  assert.match(pageSource, /customAnswer: savedCustomAnswer/);
+  assert.doesNotMatch(pageSource, /Boolean\(savedAnswer\)/);
+  assert.doesNotMatch(pageSource, /\{item\.issue_type\}/);
+  assert.doesNotMatch(pageSource, /clarificationAnswerStatusLabel/);
 });
 
 test("legacy query tabs route into requirement analysis", () => {

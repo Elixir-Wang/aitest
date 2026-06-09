@@ -380,79 +380,6 @@ def init_db() -> None:
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
-            CREATE TABLE IF NOT EXISTS knowledge_builds (
-              id TEXT PRIMARY KEY,
-              project_id TEXT NOT NULL,
-              build_no TEXT NOT NULL,
-              status TEXT NOT NULL CHECK(status IN ('building', 'blocked', 'draft', 'published')),
-              build_type TEXT NOT NULL DEFAULT 'initial',
-              source_document_version_ids TEXT NOT NULL DEFAULT '[]',
-              exploration_run_ids TEXT NOT NULL DEFAULT '[]',
-              output_dir TEXT NOT NULL DEFAULT '',
-              summary TEXT NOT NULL DEFAULT '',
-              change_summary TEXT NOT NULL DEFAULT '',
-              blockers_json TEXT NOT NULL DEFAULT '[]',
-              affected_modules_json TEXT NOT NULL DEFAULT '[]',
-              created_by TEXT NOT NULL,
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              published_at TEXT,
-              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
-              UNIQUE(project_id, build_no)
-            );
-
-            CREATE TABLE IF NOT EXISTS wiki_pages (
-              id TEXT PRIMARY KEY,
-              build_id TEXT NOT NULL,
-              title TEXT NOT NULL,
-              relative_path TEXT NOT NULL,
-              page_type TEXT NOT NULL,
-              module_key TEXT NOT NULL DEFAULT '',
-              summary TEXT NOT NULL DEFAULT '',
-              file_path TEXT NOT NULL,
-              source_refs_json TEXT NOT NULL DEFAULT '[]',
-              sort_order INTEGER NOT NULL DEFAULT 0,
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              FOREIGN KEY(build_id) REFERENCES knowledge_builds(id) ON DELETE CASCADE,
-              UNIQUE(build_id, relative_path)
-            );
-
-            CREATE TABLE IF NOT EXISTS knowledge_items (
-              id TEXT PRIMARY KEY,
-              build_id TEXT NOT NULL,
-              module_key TEXT NOT NULL DEFAULT '',
-              module_name TEXT NOT NULL DEFAULT '',
-              knowledge_type TEXT NOT NULL,
-              content TEXT NOT NULL,
-              source_refs_json TEXT NOT NULL DEFAULT '[]',
-              status TEXT NOT NULL DEFAULT 'confirmed',
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              FOREIGN KEY(build_id) REFERENCES knowledge_builds(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS source_references (
-              id TEXT PRIMARY KEY,
-              build_id TEXT NOT NULL,
-              source_type TEXT NOT NULL,
-              source_id TEXT NOT NULL,
-              source_title TEXT NOT NULL DEFAULT '',
-              location TEXT NOT NULL DEFAULT '',
-              excerpt TEXT NOT NULL DEFAULT '',
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              FOREIGN KEY(build_id) REFERENCES knowledge_builds(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS wiki_lint_issues (
-              id TEXT PRIMARY KEY,
-              build_id TEXT NOT NULL,
-              severity TEXT NOT NULL,
-              title TEXT NOT NULL,
-              detail TEXT NOT NULL DEFAULT '',
-              page_id TEXT NOT NULL DEFAULT '',
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              FOREIGN KEY(build_id) REFERENCES knowledge_builds(id) ON DELETE CASCADE
-            );
-
             CREATE TABLE IF NOT EXISTS global_knowledge_documents (
               id TEXT PRIMARY KEY,
               name TEXT NOT NULL,
@@ -506,10 +433,29 @@ def init_db() -> None:
               FOREIGN KEY(global_knowledge_version_id) REFERENCES global_knowledge_versions(id) ON DELETE CASCADE
             );
 
-            CREATE INDEX IF NOT EXISTS idx_knowledge_builds_project ON knowledge_builds(project_id, created_at);
-            CREATE INDEX IF NOT EXISTS idx_wiki_pages_build ON wiki_pages(build_id, sort_order);
-            CREATE INDEX IF NOT EXISTS idx_knowledge_items_build ON knowledge_items(build_id, module_key);
-            CREATE INDEX IF NOT EXISTS idx_source_references_build ON source_references(build_id);
+            CREATE TABLE IF NOT EXISTS knowledge_conversations (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              title TEXT NOT NULL DEFAULT '新对话',
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+              FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS knowledge_conversation_messages (
+              id TEXT PRIMARY KEY,
+              conversation_id TEXT NOT NULL,
+              role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+              content TEXT NOT NULL,
+              source_refs_json TEXT NOT NULL DEFAULT '[]',
+              used_requirement_versions_json TEXT NOT NULL DEFAULT '[]',
+              used_exploration_runs_json TEXT NOT NULL DEFAULT '[]',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(conversation_id) REFERENCES knowledge_conversations(id) ON DELETE CASCADE
+            );
+
             CREATE INDEX IF NOT EXISTS idx_requirement_analysis_runs_project_created ON requirement_analysis_runs(project_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_requirement_analysis_runs_document_created ON requirement_analysis_runs(document_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_requirement_analysis_runs_status ON requirement_analysis_runs(status);
@@ -518,6 +464,8 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_documents_status ON global_knowledge_documents(status, updated_at);
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_documents_type ON global_knowledge_documents(knowledge_type, updated_at);
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_versions_document ON global_knowledge_versions(document_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_knowledge_conversations_project_updated ON knowledge_conversations(project_id, created_by, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_knowledge_conversation_messages_conversation_created ON knowledge_conversation_messages(conversation_id, created_at);
             """
         )
         _ensure_column(db, "model_providers", "description", "TEXT NOT NULL DEFAULT ''")
@@ -544,6 +492,7 @@ def init_db() -> None:
         _migrate_file_mappings(db)
         _migrate_requirement_analyses(db)
         _migrate_agent_model_assignments(db)
+        _migrate_knowledge_query_model_assignment(db)
         _migrate_stored_paths(db)
         _seed_operation_log_retention_policy(db)
         _seed_user(db, "u-admin", "admin", "admin@example.com", "平台管理员", "admin", "admin", "enabled", "全部项目", "平台管理员，负责用户、模型和项目权限维护。")
@@ -891,6 +840,20 @@ def _migrate_agent_model_assignments(db: sqlite3.Connection) -> None:
         """
     )
     db.execute("DROP TABLE agent_model_assignments")
+
+
+def _migrate_knowledge_query_model_assignment(db: sqlite3.Connection) -> None:
+    db.execute(
+        """
+        UPDATE model_assignments
+        SET capability_id = 'knowledge_query', updated_at = CURRENT_TIMESTAMP
+        WHERE capability_id = 'knowledge_builder'
+          AND NOT EXISTS (
+            SELECT 1 FROM model_assignments existing WHERE existing.capability_id = 'knowledge_query'
+          )
+        """
+    )
+    db.execute("DELETE FROM model_assignments WHERE capability_id = 'knowledge_builder'")
 
 
 def _migrate_stored_paths(db: sqlite3.Connection) -> None:

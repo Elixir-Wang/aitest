@@ -11,7 +11,6 @@ REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES = 120
 RUNNING_GROUPS = {RUNNING_GROUP}
 RUNNING_INDICATOR_SOURCE_TYPES = {
     "exploration_run",
-    "knowledge_build",
     "requirement_file",
     "requirement_analysis_run",
 }
@@ -27,13 +26,6 @@ EXPLORATION_STATUS = {
     "blocked": (FAILED_GROUP, "探索阻塞"),
 }
 
-KNOWLEDGE_STATUS = {
-    "building": (RUNNING_GROUP, "构建中"),
-    "blocked": (FAILED_GROUP, "构建阻塞"),
-    "draft": (COMPLETED_GROUP, "草稿"),
-    "published": (COMPLETED_GROUP, "已发布"),
-}
-
 REQUIREMENT_FILE_STATUS = {
     "pending": (RUNNING_GROUP, "等待转换"),
     "processing": (RUNNING_GROUP, "转换中"),
@@ -44,16 +36,15 @@ REQUIREMENT_FILE_STATUS = {
 
 REQUIREMENT_ANALYSIS_STATUS = {
     "queued": (RUNNING_GROUP, "排队中"),
-    "running": (RUNNING_GROUP, "评审中"),
+    "running": (RUNNING_GROUP, "分析中"),
     "completed": (COMPLETED_GROUP, "已完成"),
     "needs_clarification": (WAITING_GROUP, "等待澄清"),
-    "blocked": (FAILED_GROUP, "评审阻塞"),
-    "failed": (FAILED_GROUP, "评审失败"),
+    "blocked": (FAILED_GROUP, "分析阻塞"),
+    "failed": (FAILED_GROUP, "分析失败"),
 }
 
 STATUS_META_BY_SOURCE_TYPE = {
     "exploration_run": EXPLORATION_STATUS,
-    "knowledge_build": KNOWLEDGE_STATUS,
     "requirement_file": REQUIREMENT_FILE_STATUS,
     "requirement_analysis_run": REQUIREMENT_ANALYSIS_STATUS,
 }
@@ -112,7 +103,6 @@ def get_task_by_source_for_event(*, source_type: str, source_id: str) -> dict | 
         }
         for task in [
             *_exploration_tasks(db, project_names),
-            *_knowledge_tasks(db, project_names),
             *_requirement_file_tasks(db, project_names),
             *_requirement_analysis_run_tasks(db, project_names),
         ]:
@@ -153,7 +143,7 @@ def recover_stale_requirement_analysis_runs(*, project_id: str | None = None) ->
                 db,
                 row["id"],
                 status="failed",
-                summary="需求评审失败。",
+                summary="需求分析失败。",
                 failure_reason=failure_reason,
             )
 
@@ -170,14 +160,14 @@ def recover_stale_requirement_analysis_runs(*, project_id: str | None = None) ->
             source="system",
             result="failed",
             failure_reason=failure_reason,
-            summary="需求评审失败。",
+            summary="需求分析失败。",
             after={"status": "failed", "reason": "timeout_recovered"},
             task_id=row["id"],
         )
 
 
 def recover_interrupted_requirement_analysis_runs(*, project_id: str | None = None) -> None:
-    failure_reason = "服务已重启，内存中的需求评审后台任务已中断，请重新发起评审。"
+    failure_reason = "服务已重启，内存中的需求分析后台任务已中断，请重新发起分析。"
     with connect() as db:
         rows = requirement_analysis_run_repo.list_active_runs(db, project_id=project_id)
         recovered_runs = [dict(row) for row in rows]
@@ -194,7 +184,7 @@ def recover_interrupted_requirement_analysis_runs(*, project_id: str | None = No
                 db,
                 row["id"],
                 status="failed",
-                summary="需求评审已中断。",
+                summary="需求分析已中断。",
                 failure_reason=failure_reason,
             )
 
@@ -211,14 +201,14 @@ def recover_interrupted_requirement_analysis_runs(*, project_id: str | None = No
             source="system",
             result="failed",
             failure_reason=failure_reason,
-            summary="需求评审已中断。",
+            summary="需求分析已中断。",
             after={"status": "failed", "reason": "startup_recovered"},
             task_id=row["id"],
         )
 
 
 def _requirement_analysis_timeout_message() -> str:
-    return f"需求评审运行超过 {REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES} 分钟，已自动标记为失败。"
+    return f"需求分析运行超过 {REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES} 分钟，已自动标记为失败。"
 
 
 def actor_can_see_project(actor, project_id: str) -> bool:
@@ -231,7 +221,6 @@ def _collect_visible_tasks(actor) -> list[dict]:
         project_names = _visible_project_names(db, actor)
         return [
             *_exploration_tasks(db, project_names),
-            *_knowledge_tasks(db, project_names),
             *_requirement_file_tasks(db, project_names),
             *_requirement_analysis_run_tasks(db, project_names),
         ]
@@ -275,38 +264,6 @@ def _exploration_tasks(db, project_names: dict[str, str]) -> list[dict]:
             created_at=row["created_at"],
             updated_at=row["updated_at"] or row["created_at"],
             detail_url=f"/projects/{row['project_id']}/exploration/{row['id']}",
-        )
-        for row in rows
-    ]
-
-
-def _knowledge_tasks(db, project_names: dict[str, str]) -> list[dict]:
-    if not project_names:
-        return []
-    rows = db.execute(
-        """
-        SELECT id, project_id, build_no, status, summary, updated_at, created_at
-        FROM knowledge_builds
-        WHERE project_id IN ({})
-        """.format(_placeholders(project_names)),
-        tuple(project_names),
-    ).fetchall()
-    return [
-        _task(
-            task_id=f"knowledge:{row['id']}",
-            source_type="knowledge_build",
-            source_id=row["id"],
-            project_id=row["project_id"],
-            project_name=project_names[row["project_id"]],
-            module="knowledge",
-            module_label="知识库",
-            title=row["build_no"],
-            status=row["status"],
-            status_meta=KNOWLEDGE_STATUS,
-            summary=row["summary"],
-            created_at=row["created_at"],
-            updated_at=row["updated_at"] or row["created_at"],
-            detail_url="/knowledge",
         )
         for row in rows
     ]
@@ -367,7 +324,7 @@ def _requirement_analysis_run_tasks(db, project_names: dict[str, str]) -> list[d
             project_id=row["project_id"],
             project_name=project_names[row["project_id"]],
             module="requirement",
-            module_label="需求评审",
+            module_label="需求分析",
             title=row["document_name"],
             status=row["status"],
             status_meta=REQUIREMENT_ANALYSIS_STATUS,

@@ -76,12 +76,6 @@ def test_list_running_tasks_aggregates_existing_business_statuses(monkeypatch: p
             VALUES ('run-1', 'project-1', 'env-1', '首页探索', 'running', 'u-admin')
             """
         )
-        db.execute(
-            """
-            INSERT INTO knowledge_builds (id, project_id, build_no, status, created_by)
-            VALUES ('kb-1', 'project-1', 'KB-001', 'building', 'u-admin')
-            """
-        )
         _seed_requirement_document(db)
         db.execute(
             """
@@ -93,7 +87,7 @@ def test_list_running_tasks_aggregates_existing_business_statuses(monkeypatch: p
 
     tasks = task_service.list_running_tasks(ACTOR)
 
-    assert [task["id"] for task in tasks] == ["requirement_file:file-1", "knowledge:kb-1", "exploration:run-1"]
+    assert [task["id"] for task in tasks] == ["requirement_file:file-1", "exploration:run-1"]
     assert {task["status_group"] for task in tasks} == {"running"}
     assert tasks[0]["module_label"] == "需求标准化"
     assert tasks[0]["detail_url"] == "/projects/project-1/requirements/doc-1"
@@ -175,7 +169,7 @@ def test_requirement_analysis_run_is_visible_as_requirement_review_task(
 
     task = next(item for item in result["items"] if item["source_type"] == "requirement_analysis_run")
     assert task["id"] == "requirement_analysis:run-1"
-    assert task["module_label"] == "需求评审"
+    assert task["module_label"] == "需求分析"
     assert task["title"] == "登录需求"
     assert task["status_label"] == "等待澄清"
     assert task["status_group"] == "waiting"
@@ -198,14 +192,14 @@ def test_running_tasks_include_active_requirement_analysis_run(monkeypatch: pyte
             """
             INSERT INTO requirement_analysis_runs
               (id, project_id, document_id, primary_mapping_id, status, summary, created_by, created_at)
-            VALUES ('run-1', 'project-1', 'doc-1', 'file-1', 'running', '需求评审智能体正在分析。', 'u-admin', '2026-06-04 17:00:01')
+            VALUES ('run-1', 'project-1', 'doc-1', 'file-1', 'running', '需求分析智能体正在分析。', 'u-admin', '2026-06-04 17:00:01')
             """
         )
 
     tasks = task_service.list_running_tasks(ACTOR)
 
     assert [task["id"] for task in tasks] == ["requirement_analysis:run-1"]
-    assert tasks[0]["status_label"] == "评审中"
+    assert tasks[0]["status_label"] == "分析中"
 
 
 def test_running_tasks_exclude_requirement_analysis_waiting_for_clarification(
@@ -255,7 +249,7 @@ def test_running_tasks_recovers_stale_requirement_analysis_run(monkeypatch: pyte
               'doc-1',
               'file-1',
               'running',
-              '需求评审智能体正在分析。',
+              '需求分析智能体正在分析。',
               'u-admin',
               datetime('now', '-121 minutes'),
               datetime('now', '-121 minutes')
@@ -276,7 +270,7 @@ def test_running_tasks_recovers_stale_requirement_analysis_run(monkeypatch: pyte
             """
         ).fetchone()
     assert run["status"] == "failed"
-    assert run["summary"] == "需求评审失败。"
+    assert run["summary"] == "需求分析失败。"
     assert "超过 120 分钟" in run["failure_reason"]
     assert log["result"] == "failed"
     assert "超过 120 分钟" in log["failure_reason"]
@@ -298,7 +292,7 @@ def test_startup_recovers_interrupted_requirement_analysis_run(monkeypatch: pyte
             """
             INSERT INTO requirement_analysis_runs
               (id, project_id, document_id, primary_mapping_id, status, summary, created_by)
-            VALUES ('run-1', 'project-1', 'doc-1', 'file-1', 'running', '需求评审智能体正在分析。', 'u-admin')
+            VALUES ('run-1', 'project-1', 'doc-1', 'file-1', 'running', '需求分析智能体正在分析。', 'u-admin')
             """
         )
 
@@ -315,7 +309,7 @@ def test_startup_recovers_interrupted_requirement_analysis_run(monkeypatch: pyte
         ).fetchone()
 
     assert run["status"] == "failed"
-    assert run["summary"] == "需求评审已中断。"
+    assert run["summary"] == "需求分析已中断。"
     assert "服务已重启" in run["failure_reason"]
     assert log["result"] == "failed"
     assert "服务已重启" in log["failure_reason"]

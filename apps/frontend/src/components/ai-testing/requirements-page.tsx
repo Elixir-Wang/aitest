@@ -60,11 +60,11 @@ const statusLabels: Record<string, string> = {
 
 const requirementAnalysisRunStatusLabels: Record<string, string> = {
   queued: "排队中",
-  running: "评审中",
-  completed: "评审完成",
+  running: "分析中",
+  completed: "分析完成",
   needs_clarification: "等待澄清",
-  blocked: "评审阻塞",
-  failed: "评审失败",
+  blocked: "分析阻塞",
+  failed: "分析失败",
 };
 
 function requirementDisplayStatus(item: RequirementRow) {

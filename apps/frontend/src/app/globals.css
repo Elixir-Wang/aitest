@@ -172,6 +172,11 @@ These serve as the fallback; there is no separate default.css file. */
     --markdown-accent-softer: color-mix(in srgb, var(--primary), transparent 94%);
     --markdown-border: color-mix(in srgb, var(--border), var(--primary) 16%);
     --markdown-code-bg: color-mix(in srgb, var(--muted), white 38%);
+    --markdown-mermaid-bg: #ffffff;
+    --markdown-mermaid-node-bg: #eef2ff;
+    --markdown-mermaid-node-border: #7c8db5;
+    --markdown-mermaid-node-text: #172033;
+    --markdown-mermaid-line: #667085;
     position: relative;
     border: 1px solid var(--markdown-border);
     border-radius: 10px;
@@ -194,6 +199,18 @@ These serve as the fallback; there is no separate default.css file. */
   .markdown-preview:hover {
     border-color: color-mix(in srgb, var(--markdown-accent), var(--border) 45%);
     box-shadow: 0 14px 35px color-mix(in srgb, var(--primary), transparent 88%);
+  }
+
+  .dark .markdown-preview {
+    --markdown-accent-soft: color-mix(in srgb, var(--primary), transparent 90%);
+    --markdown-accent-softer: color-mix(in srgb, var(--primary), transparent 96%);
+    --markdown-border: color-mix(in srgb, var(--border), var(--primary) 20%);
+    --markdown-code-bg: color-mix(in srgb, var(--muted), black 18%);
+    --markdown-mermaid-bg: color-mix(in srgb, var(--card), black 10%);
+    --markdown-mermaid-node-bg: color-mix(in srgb, var(--muted), var(--primary) 4%);
+    --markdown-mermaid-node-border: color-mix(in srgb, var(--border), var(--foreground) 34%);
+    --markdown-mermaid-node-text: var(--foreground);
+    --markdown-mermaid-line: color-mix(in srgb, var(--muted-foreground), var(--foreground) 24%);
   }
 
   .markdown-preview-empty {
@@ -574,13 +591,17 @@ These serve as the fallback; there is no separate default.css file. */
     margin: 1.25rem 0;
     border: 1px solid var(--markdown-border);
     border-radius: 8px;
-    background: #ffffff;
+    background: var(--markdown-mermaid-bg);
   }
 
   .markdown-preview .markdown-mermaid-card {
     position: relative;
     overflow: visible;
     padding-top: 2.75rem;
+    transition:
+      background-color 0.25s ease,
+      border-color 0.25s ease,
+      box-shadow 0.25s ease;
   }
 
   .markdown-preview pre:has(.markdown-mermaid-card) {
@@ -617,9 +638,36 @@ These serve as the fallback; there is no separate default.css file. */
     overflow: visible;
   }
 
+  .markdown-preview .markdown-mermaid svg[style] {
+    background: transparent !important;
+  }
+
+  .markdown-preview .markdown-mermaid svg .node rect,
+  .markdown-preview .markdown-mermaid svg .node circle,
+  .markdown-preview .markdown-mermaid svg .node ellipse,
+  .markdown-preview .markdown-mermaid svg .node polygon,
+  .markdown-preview .markdown-mermaid svg .node path {
+    fill: var(--markdown-mermaid-node-bg) !important;
+    stroke: var(--markdown-mermaid-node-border) !important;
+  }
+
+  .markdown-preview .markdown-mermaid svg .edgePath .path,
+  .markdown-preview .markdown-mermaid svg .flowchart-link {
+    stroke: var(--markdown-mermaid-line) !important;
+  }
+
   .markdown-preview .markdown-mermaid svg .label,
   .markdown-preview .markdown-mermaid svg .nodeLabel {
+    color: var(--markdown-mermaid-node-text) !important;
+    fill: var(--markdown-mermaid-node-text) !important;
     font-size: 14px;
+  }
+
+  .markdown-preview .markdown-mermaid svg .edgeLabel,
+  .markdown-preview .markdown-mermaid svg .edgeLabel p,
+  .markdown-preview .markdown-mermaid svg .label p,
+  .markdown-preview .markdown-mermaid svg .nodeLabel p {
+    color: var(--markdown-mermaid-node-text) !important;
   }
 
   .markdown-preview .markdown-mermaid svg foreignObject {
@@ -648,15 +696,15 @@ These serve as the fallback; there is no separate default.css file. */
     overflow: visible;
   }
 
-  .markdown-preview .markdown-flowchart-edges path {
+  .markdown-preview .markdown-flowchart svg.markdown-flowchart-edges path {
     fill: none;
     marker-end: url("#markdown-flowchart-arrow");
-    stroke: #667085;
+    stroke: var(--markdown-mermaid-line);
     stroke-width: 1.5px;
   }
 
-  .markdown-preview .markdown-flowchart-edges marker path {
-    fill: #667085;
+  .markdown-preview .markdown-flowchart svg.markdown-flowchart-edges marker path {
+    fill: var(--markdown-mermaid-line);
   }
 
   .markdown-preview .markdown-flowchart-node {
@@ -664,9 +712,9 @@ These serve as the fallback; there is no separate default.css file. */
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid #7c8db5;
-    background: #eef2ff;
-    color: #172033;
+    border: 1px solid var(--markdown-mermaid-node-border);
+    background: var(--markdown-mermaid-node-bg);
+    color: var(--markdown-mermaid-node-text);
     font-size: 0.9rem;
     line-height: 1.35;
     padding: 0.5rem 0.75rem;

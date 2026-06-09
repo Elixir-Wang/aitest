@@ -2,7 +2,29 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Archive, BookOpen, Building2, Eye, FilePlus2, FolderKanban, RefreshCw, Rocket, Upload } from "lucide-react";
+import {
+  Archive,
+  BookOpen,
+  Bot,
+  Building2,
+  Command,
+  Eye,
+  FilePlus2,
+  FolderKanban,
+  Lightbulb,
+  MapIcon,
+  MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Trash2,
+  TriangleAlert,
+  Upload,
+  User,
+} from "lucide-react";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
@@ -18,6 +40,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { KnowledgeChatInput } from "@/components/ui/knowledge-chat-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -28,8 +51,10 @@ import {
   type ApiGlobalKnowledgeDetail,
   type ApiGlobalKnowledgeDocument,
   type ApiGlobalKnowledgeList,
-  type ApiKnowledgeBuild,
-  type ApiKnowledgeBuildDetail,
+  type ApiKnowledgeConversation,
+  type ApiKnowledgeConversationDetail,
+  type ApiKnowledgeConversationMessage,
+  type ApiKnowledgeQueryResult,
   apiFormRequest,
   apiRequest,
   formatDateTime,
@@ -59,13 +84,30 @@ const emptyCompanyForm = {
   description: "",
   change_summary: "",
 };
+const emptyProjectBuildForm = {
+  includeRequirements: true,
+  includeExplorations: true,
+};
+const projectKnowledgeQuickPrompts = [
+  { icon: Search, label: "查需求", prompt: "帮我查询当前项目最终需求文档中的核心业务规则。" },
+  { icon: MapIcon, label: "看探索", prompt: "帮我总结当前项目探索记录覆盖了哪些页面和模块。" },
+  { icon: ShieldCheck, label: "找风险", prompt: "结合最终需求和探索记录，列出测试设计需要关注的风险点。" },
+  { icon: Lightbulb, label: "补缺口", prompt: "帮我找出需求文档和探索记录之间还缺少哪些确认信息。" },
+] as const;
+
+type ProjectChatMessage = {
+  id: string;
+  role: "assistant" | "user";
+  body: string;
+  sourceRefs?: ApiKnowledgeQueryResult["source_refs"];
+  usedRequirementVersions?: string[];
+  usedExplorationRuns?: string[];
+};
 
 export default function Page() {
   const [activeScope, setActiveScope] = useState<(typeof knowledgeScopes)[number]["value"]>("project");
   const [searchText, setSearchText] = useState("");
   const { currentProjectId, hydrate, scope } = useProjectContextStore();
-  const [builds, setBuilds] = useState<ApiKnowledgeBuild[]>([]);
-  const [selectedBuild, setSelectedBuild] = useState<ApiKnowledgeBuildDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
@@ -74,9 +116,12 @@ export default function Page() {
   const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
   const [companyForm, setCompanyForm] = useState(emptyCompanyForm);
+  const [projectBuildForm, setProjectBuildForm] = useState(emptyProjectBuildForm);
+  const [projectChatDraft, setProjectChatDraft] = useState("");
+  const [projectMessages, setProjectMessages] = useState<ProjectChatMessage[]>([]);
+  const [projectConversations, setProjectConversations] = useState<ApiKnowledgeConversation[]>([]);
+  const [activeProjectConversationId, setActiveProjectConversationId] = useState<string | null>(null);
   const [companyFiles, setCompanyFiles] = useState<FileList | null>(null);
-  const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
-    useLocalTableSelection(builds);
   const {
     allSelected: allCompanySelected,
     deleteSelected: deleteCompanySelected,
@@ -87,11 +132,6 @@ export default function Page() {
     toggleAll: toggleAllCompany,
     toggleOne: toggleOneCompany,
   } = useLocalTableSelection(companyDocs);
-  const filteredRows = rows.filter((item) =>
-    [item.build_no, item.status_label, item.summary, item.change_summary, item.updated_at].some((value) =>
-      value.toLowerCase().includes(searchText.trim().toLowerCase()),
-    ),
-  );
   const filteredCompanyRows = companyRows.filter((item) =>
     [item.name, item.knowledge_type_label, item.version, item.scope, item.description, item.status_label].some(
       (value) => value.toLowerCase().includes(searchText.trim().toLowerCase()),
@@ -99,50 +139,88 @@ export default function Page() {
   );
   const isCompanyKnowledge = activeScope === "company";
   const projectId = scope === "project" ? currentProjectId : null;
-  const cannotGenerate = isCompanyKnowledge ? true : running ? true : projectId === null;
+  const projectResetKey = `${scope}:${currentProjectId ?? ""}`;
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
-  const openBuild = useCallback(async (targetProjectId: string, buildId: string) => {
-    const detail = await apiRequest<ApiKnowledgeBuildDetail>(
-      `/projects/${targetProjectId}/knowledge/builds/${buildId}`,
-    );
-    setSelectedBuild(detail);
+  useEffect(() => {
+    void projectResetKey;
+    setProjectMessages([]);
+    setProjectChatDraft("");
+    setProjectConversations([]);
+    setActiveProjectConversationId(null);
+    setError("");
+  }, [projectResetKey]);
+
+  const loadProjectConversations = useCallback(async (targetProjectId: string) => {
+    setLoading(true);
+    setError("");
+    try {
+      const conversations = await apiRequest<ApiKnowledgeConversation[]>(
+        `/projects/${targetProjectId}/knowledge/conversations`,
+      );
+      setProjectConversations(conversations);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "加载项目知识库对话失败。");
+      setProjectConversations([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const loadBuilds = useCallback(
-    async (targetProjectId: string) => {
-      setLoading(true);
-      setError("");
-      try {
-        const nextBuilds = await apiRequest<ApiKnowledgeBuild[]>(`/projects/${targetProjectId}/knowledge/builds`);
-        setBuilds(nextBuilds);
-        if (nextBuilds[0]) {
-          await openBuild(targetProjectId, nextBuilds[0].id);
-        } else {
-          setSelectedBuild(null);
-        }
-      } catch (nextError) {
-        setError(nextError instanceof Error ? nextError.message : "加载知识库失败。");
-        setBuilds([]);
-        setSelectedBuild(null);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [openBuild],
-  );
+  const openProjectConversation = useCallback(async (targetProjectId: string, conversationId: string) => {
+    setLoading(true);
+    setError("");
+    try {
+      const detail = await apiRequest<ApiKnowledgeConversationDetail>(
+        `/projects/${targetProjectId}/knowledge/conversations/${conversationId}`,
+      );
+      setActiveProjectConversationId(detail.conversation.id);
+      setProjectMessages(detail.messages.map(projectMessageFromApi));
+      setProjectChatDraft("");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "打开项目知识库对话失败。");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (isCompanyKnowledge || projectId === null) {
-      setBuilds([]);
-      setSelectedBuild(null);
+    if (isCompanyKnowledge || !projectId) {
       return;
     }
-    void loadBuilds(projectId);
-  }, [isCompanyKnowledge, loadBuilds, projectId]);
+    void loadProjectConversations(projectId);
+  }, [isCompanyKnowledge, loadProjectConversations, projectId]);
+
+  function createProjectConversation() {
+    setActiveProjectConversationId(null);
+    setProjectMessages([]);
+    setProjectChatDraft("");
+    setError("");
+  }
+
+  async function deleteProjectConversation(conversationId: string) {
+    if (!projectId) {
+      return;
+    }
+    setRunning(true);
+    setError("");
+    try {
+      await apiRequest<{ deleted: boolean }>(`/projects/${projectId}/knowledge/conversations/${conversationId}`, {
+        method: "DELETE",
+      });
+      setProjectConversations((items) => items.filter((item) => item.id !== conversationId));
+      if (activeProjectConversationId === conversationId) {
+        createProjectConversation();
+      }
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "删除项目知识库对话失败。");
+    } finally {
+      setRunning(false);
+    }
+  }
 
   const openCompanyDoc = useCallback(async (documentId: string) => {
     const detail = await apiRequest<ApiGlobalKnowledgeDetail>(`/global-knowledge/documents/${documentId}`);
@@ -175,44 +253,47 @@ export default function Page() {
     }
   }, [isCompanyKnowledge, loadCompanyDocs]);
 
-  async function generateKnowledge() {
+  async function queryProjectKnowledge(question: string) {
     if (!projectId) {
       setError("请先在顶部选择具体项目。");
       return;
     }
+    const trimmedQuestion = question.trim();
+    if (!trimmedQuestion) {
+      return;
+    }
+    if (!projectBuildForm.includeRequirements && !projectBuildForm.includeExplorations) {
+      setError("请至少选择需求文件或探索文件作为知识库来源。");
+      return;
+    }
+    const userMessage: ProjectChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      body: trimmedQuestion,
+    };
+    setProjectMessages((messages) => [...messages, userMessage]);
     setRunning(true);
     setError("");
     notifyAiTaskStarted();
     try {
-      const detail = await apiRequest<ApiKnowledgeBuildDetail>(`/projects/${projectId}/knowledge/builds`, {
+      const result = await apiRequest<ApiKnowledgeQueryResult>(`/projects/${projectId}/knowledge/query`, {
         method: "POST",
+        body: JSON.stringify({
+          question: trimmedQuestion,
+          include_requirements: projectBuildForm.includeRequirements,
+          include_explorations: projectBuildForm.includeExplorations,
+          conversation_id: activeProjectConversationId,
+        }),
       });
-      setSelectedBuild(detail);
-      await loadBuilds(projectId);
+      setActiveProjectConversationId(result.conversation.id);
+      setProjectConversations((items) => upsertConversation(items, result.conversation));
+      setProjectMessages((messages) => [
+        ...messages,
+        ...result.messages.filter((message) => message.role === "assistant").map(projectMessageFromApi),
+      ]);
+      setProjectChatDraft("");
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "生成知识库失败。");
-    } finally {
-      setRunning(false);
-    }
-  }
-
-  async function publishKnowledge(buildId: string) {
-    if (!projectId) {
-      return;
-    }
-    setRunning(true);
-    setError("");
-    try {
-      const detail = await apiRequest<ApiKnowledgeBuildDetail>(
-        `/projects/${projectId}/knowledge/builds/${buildId}/publish`,
-        {
-          method: "POST",
-        },
-      );
-      setSelectedBuild(detail);
-      await loadBuilds(projectId);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "发布知识库失败。");
+      setError(nextError instanceof Error ? nextError.message : "查询项目知识库失败。");
     } finally {
       setRunning(false);
     }
@@ -316,8 +397,8 @@ export default function Page() {
           ))}
         </TabsList>
       </Tabs>
-      <ShellSection>
-        {isCompanyKnowledge ? (
+      {isCompanyKnowledge ? (
+        <ShellSection>
           <ListToolbar
             actions={
               <Button disabled={loading || running} onClick={() => void loadCompanyDocs()} variant="outline">
@@ -339,196 +420,120 @@ export default function Page() {
             selectedCount={selectedCompanyCount}
             title="公司知识库列表"
           />
-        ) : (
-          <ListToolbar
-            actions={
-              <Button
-                disabled={loading || running || !projectId}
-                onClick={() => projectId && void loadBuilds(projectId)}
-                variant="outline"
-              >
-                <RefreshCw className="size-4" />
-                刷新
-              </Button>
-            }
-            createDisabled={cannotGenerate}
-            createLabel={running ? "生成中" : "生成知识库"}
-            createTitle={!projectId ? "请先选择具体项目" : undefined}
-            description={
-              projectId ? "项目知识库基于已确认需求版本和已完成探索结果生成。" : "请先在顶部项目切换器选择具体项目。"
-            }
-            onBatchDelete={deleteSelected}
-            onCreate={() => void generateKnowledge()}
-            onSearch={setSearchText}
-            placeholder="搜索模块、来源或版本"
-            selectedCount={selectedCount}
-            title="项目知识库列表"
-          />
-        )}
-        <div className="overflow-hidden rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    aria-label="选择全部知识库"
-                    checked={
-                      isCompanyKnowledge
-                        ? allCompanySelected || (partiallyCompanySelected ? "indeterminate" : false)
-                        : allSelected || (partiallySelected ? "indeterminate" : false)
-                    }
-                    onCheckedChange={(checked) =>
-                      isCompanyKnowledge ? toggleAllCompany(Boolean(checked)) : toggleAll(Boolean(checked))
-                    }
-                  />
-                </TableHead>
-                <TableHead>{isCompanyKnowledge ? "知识名称" : "构建编号"}</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>{isCompanyKnowledge ? "知识类型" : "来源"}</TableHead>
-                <TableHead>更新时间</TableHead>
-                <TableHead className="w-16">操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isCompanyKnowledge
-                ? filteredCompanyRows.map((item) => (
-                    <TableRow data-state={selectedCompanyIds.includes(item.id) ? "selected" : undefined} key={item.id}>
-                      <TableCell>
-                        <Checkbox
-                          aria-label={`选择 ${item.id}`}
-                          checked={selectedCompanyIds.includes(item.id)}
-                          onCheckedChange={(checked) => toggleOneCompany(item.id, Boolean(checked))}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <button
-                          className="text-left font-medium hover:underline"
-                          onClick={() => void openCompanyDoc(item.id)}
-                          type="button"
-                        >
-                          {item.name}
-                        </button>
-                        <div className="text-muted-foreground text-xs">
-                          {item.version || "未生成版本"} · {item.scope}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            item.status === "available"
-                              ? "secondary"
-                              : item.status === "conversion_failed"
-                                ? "destructive"
-                                : "outline"
-                          }
-                        >
-                          {item.status_label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{item.knowledge_type_label}</TableCell>
-                      <TableCell>{formatDateTime(item.updated_at)}</TableCell>
-                      <TableCell>
-                        <RowActions
-                          actions={[
-                            { label: "查看", icon: Eye, onSelect: () => void openCompanyDoc(item.id) },
-                            {
-                              label: "新增版本",
-                              icon: FilePlus2,
-                              disabled: item.status === "archived" || running,
-                              onSelect: () => {
-                                void openCompanyDoc(item.id);
-                                setCompanyForm({ ...emptyCompanyForm, version: "" });
-                                setCompanyFiles(null);
-                                setVersionDialogOpen(true);
-                              },
-                            },
-                            {
-                              label: "废弃",
-                              icon: Archive,
-                              disabled: item.status === "archived" || running,
-                              destructive: true,
-                              onSelect: () => void archiveCompanyDoc(item.id),
-                            },
-                          ]}
-                          label="打开操作菜单"
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))
-                : filteredRows.map((item) => (
-                    <TableRow data-state={selectedIds.includes(item.id) ? "selected" : undefined} key={item.id}>
-                      <TableCell>
-                        <Checkbox
-                          aria-label={`选择 ${item.id}`}
-                          checked={selectedIds.includes(item.id)}
-                          onCheckedChange={(checked) => toggleOne(item.id, Boolean(checked))}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <button
-                          className="text-left font-medium hover:underline"
-                          onClick={() => projectId && void openBuild(projectId, item.id)}
-                          type="button"
-                        >
-                          {item.build_no}
-                        </button>
-                        <div className="text-muted-foreground text-xs">{item.summary}</div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            item.status === "published"
-                              ? "secondary"
-                              : item.status === "blocked"
-                                ? "destructive"
-                                : "outline"
-                          }
-                        >
-                          {item.status_label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {item.source_document_version_ids.length} 个需求版本 / {item.exploration_run_ids.length} 个探索
-                      </TableCell>
-                      <TableCell>{formatDateTime(item.updated_at)}</TableCell>
-                      <TableCell>
-                        <RowActions
-                          actions={[
-                            {
-                              label: "查看",
-                              icon: Eye,
-                              onSelect: () => projectId && void openBuild(projectId, item.id),
-                            },
-                            {
-                              label: "发布",
-                              icon: Rocket,
-                              disabled: item.status !== "draft" || running,
-                              onSelect: () => void publishKnowledge(item.id),
-                            },
-                          ]}
-                          label="打开操作菜单"
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-              {(isCompanyKnowledge ? filteredCompanyRows.length : filteredRows.length) === 0 ? (
+          <div className="overflow-hidden rounded-lg border">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
-                    {isCompanyKnowledge
-                      ? loading
-                        ? "正在加载公司知识库。"
-                        : "暂无公司知识。管理员可上传测试规范、模板、术语或流程。"
-                      : loading
-                        ? "正在加载项目知识库。"
-                        : "暂无项目知识库。选择具体项目后点击生成知识库。"}
-                  </TableCell>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      aria-label="选择全部知识库"
+                      checked={allCompanySelected || (partiallyCompanySelected ? "indeterminate" : false)}
+                      onCheckedChange={(checked) => toggleAllCompany(Boolean(checked))}
+                    />
+                  </TableHead>
+                  <TableHead>知识名称</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>知识类型</TableHead>
+                  <TableHead>更新时间</TableHead>
+                  <TableHead className="w-16">操作</TableHead>
                 </TableRow>
-              ) : null}
-            </TableBody>
-          </Table>
-        </div>
-        {error ? <p className="mt-3 text-destructive text-sm">{error}</p> : null}
-      </ShellSection>
+              </TableHeader>
+              <TableBody>
+                {filteredCompanyRows.map((item) => (
+                  <TableRow data-state={selectedCompanyIds.includes(item.id) ? "selected" : undefined} key={item.id}>
+                    <TableCell>
+                      <Checkbox
+                        aria-label={`选择 ${item.id}`}
+                        checked={selectedCompanyIds.includes(item.id)}
+                        onCheckedChange={(checked) => toggleOneCompany(item.id, Boolean(checked))}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <button
+                        className="text-left font-medium hover:underline"
+                        onClick={() => void openCompanyDoc(item.id)}
+                        type="button"
+                      >
+                        {item.name}
+                      </button>
+                      <div className="text-muted-foreground text-xs">
+                        {item.version || "未生成版本"} · {item.scope}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          item.status === "available"
+                            ? "secondary"
+                            : item.status === "conversion_failed"
+                              ? "destructive"
+                              : "outline"
+                        }
+                      >
+                        {item.status_label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{item.knowledge_type_label}</TableCell>
+                    <TableCell>{formatDateTime(item.updated_at)}</TableCell>
+                    <TableCell>
+                      <RowActions
+                        actions={[
+                          { label: "查看", icon: Eye, onSelect: () => void openCompanyDoc(item.id) },
+                          {
+                            label: "新增版本",
+                            icon: FilePlus2,
+                            disabled: item.status === "archived" || running,
+                            onSelect: () => {
+                              void openCompanyDoc(item.id);
+                              setCompanyForm({ ...emptyCompanyForm, version: "" });
+                              setCompanyFiles(null);
+                              setVersionDialogOpen(true);
+                            },
+                          },
+                          {
+                            label: "废弃",
+                            icon: Archive,
+                            disabled: item.status === "archived" || running,
+                            destructive: true,
+                            onSelect: () => void archiveCompanyDoc(item.id),
+                          },
+                        ]}
+                        label="打开操作菜单"
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {filteredCompanyRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
+                      {loading ? "正在加载公司知识库。" : "暂无公司知识。管理员可上传测试规范、模板、术语或流程。"}
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+              </TableBody>
+            </Table>
+          </div>
+          {error ? <p className="mt-3 text-destructive text-sm">{error}</p> : null}
+        </ShellSection>
+      ) : (
+        <ProjectKnowledgeWorkspace
+          activeConversationId={activeProjectConversationId}
+          conversations={projectConversations}
+          error={error}
+          form={projectBuildForm}
+          loading={loading}
+          messages={projectMessages}
+          onConversationOpen={(conversationId) => projectId && void openProjectConversation(projectId, conversationId)}
+          onConversationCreate={createProjectConversation}
+          onConversationDelete={(conversationId) => void deleteProjectConversation(conversationId)}
+          onFormChange={setProjectBuildForm}
+          onSubmit={(question) => void queryProjectKnowledge(question)}
+          projectSelected={Boolean(projectId)}
+          running={running}
+          value={projectChatDraft}
+          onValueChange={setProjectChatDraft}
+        />
+      )}
       {isCompanyKnowledge && selectedCompanyDoc ? (
         <ShellSection className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="min-w-0 space-y-3">
@@ -581,62 +586,6 @@ export default function Page() {
           </aside>
         </ShellSection>
       ) : null}
-      {!isCompanyKnowledge && selectedBuild ? (
-        <ShellSection className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <div className="min-w-0 space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <BookOpen className="size-4 text-muted-foreground" />
-              <h2 className="font-medium text-sm">{selectedBuild.build.build_no} 页面</h2>
-              <Badge variant="outline">{selectedBuild.pages.length} 页</Badge>
-            </div>
-            <div className="grid gap-2 md:grid-cols-2">
-              {selectedBuild.pages.map((page) => (
-                <div className="rounded-lg border p-3" key={page.id}>
-                  <div className="font-medium text-sm">{page.title}</div>
-                  <div className="mt-1 text-muted-foreground text-xs">{page.relative_path}</div>
-                  <p className="mt-2 line-clamp-2 text-muted-foreground text-xs">
-                    {page.summary || "模块化 wiki 页面。"}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-          <aside className="space-y-3">
-            <div>
-              <h3 className="font-medium text-sm">构建摘要</h3>
-              <p className="mt-1 text-muted-foreground text-xs">{selectedBuild.build.change_summary}</p>
-            </div>
-            <div>
-              <h3 className="font-medium text-sm">阻塞项</h3>
-              <div className="mt-2 space-y-2">
-                {selectedBuild.build.blockers.length ? (
-                  selectedBuild.build.blockers.map((blocker) => (
-                    <div className="rounded-md border border-destructive/30 p-2 text-destructive text-xs" key={blocker}>
-                      {blocker}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-muted-foreground text-xs">无阻塞项。</p>
-                )}
-              </div>
-            </div>
-            <div>
-              <h3 className="font-medium text-sm">质量检查</h3>
-              <div className="mt-2 space-y-2">
-                {selectedBuild.lint_issues.map((issue) => (
-                  <div className="rounded-md border p-2 text-xs" key={issue.id}>
-                    <span className="font-medium">{issue.title}</span>
-                    <p className="mt-1 text-muted-foreground">{issue.detail}</p>
-                  </div>
-                ))}
-                {selectedBuild.lint_issues.length === 0 ? (
-                  <p className="text-muted-foreground text-xs">暂无 lint 问题。</p>
-                ) : null}
-              </div>
-            </div>
-          </aside>
-        </ShellSection>
-      ) : null}
       <CompanyKnowledgeDialog
         files={companyFiles}
         form={companyForm}
@@ -660,6 +609,310 @@ export default function Page() {
         running={running}
       />
     </PageShell>
+  );
+}
+
+function projectMessageFromApi(message: ApiKnowledgeConversationMessage): ProjectChatMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    body: message.content,
+    sourceRefs: message.source_refs,
+    usedRequirementVersions: message.used_requirement_versions,
+    usedExplorationRuns: message.used_exploration_runs,
+  };
+}
+
+function upsertConversation(
+  conversations: ApiKnowledgeConversation[],
+  conversation: ApiKnowledgeConversation,
+): ApiKnowledgeConversation[] {
+  return [conversation, ...conversations.filter((item) => item.id !== conversation.id)];
+}
+
+function ProjectKnowledgeWorkspace({
+  activeConversationId,
+  conversations,
+  error,
+  form,
+  loading,
+  messages,
+  onConversationCreate,
+  onConversationDelete,
+  onConversationOpen,
+  onFormChange,
+  onSubmit,
+  projectSelected,
+  running,
+  value,
+  onValueChange,
+}: {
+  activeConversationId: string | null;
+  conversations: ApiKnowledgeConversation[];
+  error: string;
+  form: typeof emptyProjectBuildForm;
+  loading: boolean;
+  messages: ProjectChatMessage[];
+  onConversationCreate: () => void;
+  onConversationDelete: (conversationId: string) => void;
+  onConversationOpen: (conversationId: string) => void;
+  onFormChange: (form: typeof emptyProjectBuildForm) => void;
+  onSubmit: (instruction: string) => void;
+  projectSelected: boolean;
+  running: boolean;
+  value: string;
+  onValueChange: (value: string) => void;
+}) {
+  const hasConversation = messages.length > 0 || running;
+  const [historyOpen, setHistoryOpen] = useState(true);
+
+  return (
+    <ShellSection className="min-h-[42rem] p-0">
+      <div
+        className={
+          historyOpen
+            ? "grid min-h-[42rem] overflow-hidden rounded-lg border bg-background lg:grid-cols-[17rem_minmax(0,1fr)]"
+            : "grid min-h-[42rem] overflow-hidden rounded-lg border bg-background lg:grid-cols-[3.5rem_minmax(0,1fr)]"
+        }
+      >
+        <aside
+          className={
+            historyOpen
+              ? "flex min-h-0 flex-col border-b bg-muted/20 lg:border-r lg:border-b-0"
+              : "flex min-h-0 flex-col items-center border-b bg-muted/20 p-2 lg:border-r lg:border-b-0"
+          }
+        >
+          {!historyOpen ? (
+            <>
+              <Button onClick={() => setHistoryOpen(true)} size="icon" title="展开对话历史" variant="ghost">
+                <PanelLeftOpen className="size-4" />
+              </Button>
+              <Button
+                className="mt-2"
+                disabled={!projectSelected || running}
+                onClick={onConversationCreate}
+                size="icon"
+                title="新建对话"
+                variant="ghost"
+              >
+                <Plus className="size-4" />
+              </Button>
+            </>
+          ) : null}
+          {historyOpen ? (
+            <>
+              <div className="flex items-center justify-between gap-2 border-b p-3">
+                <div className="flex items-center gap-2 font-medium text-sm">
+                  <MessageSquare className="size-4 text-primary" />
+                  对话
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button onClick={() => setHistoryOpen(false)} size="icon" title="收起对话历史" variant="ghost">
+                    <PanelLeftClose className="size-4" />
+                  </Button>
+                  <Button
+                    disabled={!projectSelected || running}
+                    onClick={onConversationCreate}
+                    size="icon"
+                    title="新建对话"
+                    variant="outline"
+                  >
+                    <Plus className="size-4" />
+                  </Button>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 space-y-1 overflow-auto p-2">
+                {loading ? <div className="px-2 py-3 text-muted-foreground text-sm">正在加载对话。</div> : null}
+                {!loading && conversations.length === 0 ? (
+                  <div className="px-2 py-3 text-muted-foreground text-sm">暂无历史对话。</div>
+                ) : null}
+                {conversations.map((conversation) => {
+                  const active = conversation.id === activeConversationId;
+                  return (
+                    <div className="group flex items-center gap-1" key={conversation.id}>
+                      <button
+                        className={
+                          active
+                            ? "min-w-0 flex-1 rounded-md bg-primary/10 px-2.5 py-2 text-left text-primary text-sm"
+                            : "min-w-0 flex-1 rounded-md px-2.5 py-2 text-left text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
+                        }
+                        disabled={running}
+                        onClick={() => onConversationOpen(conversation.id)}
+                        type="button"
+                      >
+                        <div className="truncate font-medium">{conversation.title}</div>
+                        <div className="mt-0.5 truncate text-[11px] opacity-70">
+                          {formatDateTime(conversation.updated_at)}
+                        </div>
+                      </button>
+                      <button
+                        className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-70 transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40 lg:opacity-0 lg:group-hover:opacity-100"
+                        disabled={running}
+                        onClick={() => onConversationDelete(conversation.id)}
+                        title="删除对话"
+                        type="button"
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
+        </aside>
+
+        {!hasConversation ? (
+          <div className="flex min-h-[42rem] flex-col items-center justify-center overflow-hidden bg-background px-4 py-10">
+            <div className="mb-8 text-center">
+              <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
+                <Command className="size-10" />
+              </div>
+              <h2 className="font-serif text-3xl text-foreground tracking-tight sm:text-4xl">项目知识库</h2>
+              <p className="mt-3 text-muted-foreground text-sm">查询最终需求文档和探索记录，答案会附带来源依据。</p>
+            </div>
+            <KnowledgeChatInput
+              disabled={!projectSelected}
+              includeExplorations={form.includeExplorations}
+              includeRequirements={form.includeRequirements}
+              loading={running}
+              onSourceChange={(next) => onFormChange({ ...form, ...next })}
+              onSubmit={onSubmit}
+              onValueChange={onValueChange}
+              value={value}
+            />
+            <div className="mt-4 flex max-w-2xl flex-wrap justify-center gap-2 px-4">
+              {projectKnowledgeQuickPrompts.map(({ icon: Icon, label, prompt }) => (
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-full border bg-transparent px-3 py-1.5 text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!projectSelected || running}
+                  key={label}
+                  onClick={() => onSubmit(prompt)}
+                  type="button"
+                >
+                  <Icon className="size-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
+            {error ? (
+              <div className="mt-4 max-w-2xl rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive text-sm">
+                {error}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex min-h-[42rem] min-w-0 flex-col overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b p-3">
+              <div className="flex items-center gap-2">
+                <Bot className="size-4 text-primary" />
+                <h2 className="font-medium text-sm">项目知识库 AI</h2>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
+                <Badge variant={form.includeRequirements ? "secondary" : "outline"}>最终需求文档</Badge>
+                <Badge variant={form.includeExplorations ? "secondary" : "outline"}>探索记录</Badge>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-muted/20 p-4">
+              {messages.map((message) => (
+                <ChatMessage
+                  body={message.body}
+                  icon={message.role === "user" ? User : Bot}
+                  key={message.id}
+                  title={message.role === "user" ? "你" : "项目知识库 AI"}
+                  tone={message.role === "user" ? "user" : "assistant"}
+                >
+                  {message.sourceRefs?.length ? (
+                    <div className="mt-3 space-y-2 border-t pt-3">
+                      <div className="font-medium text-muted-foreground text-xs">来源引用</div>
+                      {message.sourceRefs.slice(0, 6).map((ref) => (
+                        <div
+                          className="rounded-md border bg-muted/30 p-2 text-xs"
+                          key={`${ref.source_type}-${ref.source_id}-${ref.location}-${ref.excerpt}`}
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline">{ref.source_type === "requirement" ? "需求" : "探索"}</Badge>
+                            <span className="font-medium">{ref.source_title}</span>
+                          </div>
+                          {ref.location ? <div className="mt-1 text-muted-foreground">{ref.location}</div> : null}
+                          {ref.excerpt ? (
+                            <p className="mt-1 line-clamp-2 text-muted-foreground">{ref.excerpt}</p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </ChatMessage>
+              ))}
+              {running ? (
+                <ChatMessage
+                  body="正在读取最终需求文档和探索记录，并执行 agentic search。"
+                  icon={RefreshCw}
+                  loading
+                  title="项目知识库 AI"
+                  tone="assistant"
+                />
+              ) : null}
+              {error ? <ChatMessage body={error} icon={TriangleAlert} title="查询失败" tone="warning" /> : null}
+            </div>
+            <div className="bg-background p-4">
+              <KnowledgeChatInput
+                disabled={!projectSelected}
+                includeExplorations={form.includeExplorations}
+                includeRequirements={form.includeRequirements}
+                loading={running}
+                onSourceChange={(next) => onFormChange({ ...form, ...next })}
+                onSubmit={onSubmit}
+                onValueChange={onValueChange}
+                value={value}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </ShellSection>
+  );
+}
+
+function ChatMessage({
+  body,
+  children,
+  icon: Icon,
+  loading = false,
+  title,
+  tone,
+}: {
+  body: string;
+  children?: React.ReactNode;
+  icon: React.ComponentType<{ className?: string }>;
+  loading?: boolean;
+  title: string;
+  tone: "assistant" | "user" | "warning";
+}) {
+  const isUser = tone === "user";
+  return (
+    <div className={isUser ? "flex justify-end" : "flex justify-start"}>
+      <div className={isUser ? "max-w-[82%]" : "max-w-[88%]"}>
+        <div className={isUser ? "flex flex-row-reverse items-center gap-2" : "flex items-center gap-2"}>
+          <div className="flex size-7 items-center justify-center rounded-lg border bg-background">
+            <Icon className={loading ? "size-4 animate-spin" : "size-4"} />
+          </div>
+          <div className="font-medium text-muted-foreground text-xs">{title}</div>
+        </div>
+        <div
+          className={
+            isUser
+              ? "mt-2 rounded-lg bg-primary p-3 text-primary-foreground text-sm"
+              : tone === "warning"
+                ? "mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-destructive text-sm"
+                : "mt-2 rounded-lg border bg-background p-3 text-sm"
+          }
+        >
+          <p className="whitespace-pre-wrap leading-6">{body}</p>
+          {children}
+        </div>
+      </div>
+    </div>
   );
 }
 

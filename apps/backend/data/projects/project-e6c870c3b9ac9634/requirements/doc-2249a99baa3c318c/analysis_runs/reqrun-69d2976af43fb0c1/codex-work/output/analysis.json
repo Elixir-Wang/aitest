@@ -1,0 +1,311 @@
+{
+  "status": "CONDITIONAL_PASS",
+  "analysis_summary": "主需求已明确官网统一认证中心 SSO 接入的目标、职责边界、核心链路和产品侧任务；辅助文件补充了邀请制进入状态接口、首次接入确认、登出定义与安全规范。当前仍需确认亦庄具体产品模式、SLO 范围、正式接口契约、账号绑定冲突策略和异常落页后才能作为完整开发测试依据。",
+  "preliminary_requirement_markdown": "# 百系产品接入官网统一认证中心总说明v1.0\n\n适用对象：百系产品研发团队、产品负责人\n\n文档定位：本文档是总览 / 首读材料。本文档不替代接口契约，也不替代产品侧开发指南。正式开发接入时，请继续阅读后续专项文档。\n\n## 阅读建议\n\n如果你是产品后端研发，请务必继续阅读：\n\n- [请至钉钉文档查看附件《产品接入配置表》。](https://alidocs.dingtalk.com/i/nodes/dxXB52LJqwOlvPGaTMwmBMPOWqjMp697?doc_type=wiki_doc&iframeQuery=anchorId%3DX02mpb8c7yftiyum1g5pnc&rnd=0.46687305236416)（接入前需要填写）\n- [《SSO 接口文档（对外发布版）v1.0》](https://alidocs.dingtalk.com/i/nodes/0eMKjyp81MqNm07lT4zgNoXv8xAZB1Gv)— 接口规范\n- [《百系产品接入官网统一认证中心接口契约 v1.2》](https://alidocs.dingtalk.com/i/nodes/Amq4vjg89Z9qyj61CP6kP1woW3kdP0wQ?utm_scene=team_space&sideCollapsed=true&iframeQuery=utm_source%253Dportal%2526utm_medium%253Dportal_new_tab_open&corpId=ding6edcd346b15043ddffe93478753d9884)\n\n## 一、背景\n\n新版官网统一认证中心（br-auth-center）已完成首期核心能力建设，支持手机号/邮箱注册登录、统一 UID 管理、SSO 票据颁发与校验、业务上下文透传、限流防重放等安全能力。\n\n本文档旨在帮助各百系产品团队了解：接入范围是什么、产品侧需要做什么、认证中心提供什么、不提供什么。\n\n## 二、首期目标\n\n| 目标 | 说明 |\n| --- | --- |\n| 官网统一身份入口 | 用户在新版官网完成注册/登录后，可跳转进入任意百系产品 |\n| 统一 UID | 每个官网用户拥有全局唯一 unified_uid，作为跨产品身份锚点 |\n| SSO 票据链路 | 官网颁发 login_ticket，产品后端校验换取 UserInfo |\n| biz_context 透传 | 产品预注册业务上下文（邀请码/推荐码/场景标记），用户登录后原样回传 |\n| 安全加固 | 限流、nonce 防重放、审计脱敏 |\n\n## 三、接入范围\n\n本期认证中心 SSO 能力主要承接以下场景：\n\n- 用户从新版官网入口点击进入百系产品\n- 用户在官网完成注册/登录后，由官网引导跳转到产品\n- 产品希望通过新增导流入口（落地页、推广链接、活动页）接入官网统一登录也可支持（可选）\n- 产品通过预注册邀请链接/推荐链接业务上下文（可选）\n- 产品的深链场景（面试任务、项目协作、专家入驻等）选择通过官网认证中心完成身份核验（可选）\n\n## 四、不接入范围（首期）\n\n以下场景首期不要求迁移到官网统一认证中心：\n\n- 已有企业客户正在使用的产品后台登录入口\n- 小程序、App、PC 客户端等既有登录入口\n- 企业管理员分发账号后员工使用的内部入口\n- 有复杂租户审批、邀请码校验、企业邮箱校验的现有入口\n- 存量客户已收藏的产品后台地址\n\n重要原则：首期不要求产品将原有登录入口全部迁移到官网。原入口可继续保留，认证中心提供的是新增链路能力。\n\n## 五、核心链路\n\n```mermaid\nflowchart TD\n    A[用户访问新版官网] --> B[用户完成官网登录]\n    B --> C[可选 产品后端预注册 context_id 并携带 biz_context]\n    C --> D[用户点击产品入口]\n    D --> E[官网服务端调用 ticket create 生成 login_ticket]\n    E --> F[官网跳转至产品 sso_entry_url 并携带 login_ticket 和 state]\n    F --> G[产品后端调用认证中心 ticket verify]\n    G --> H[认证中心返回 UserInfo account_status return_url 和 biz_context]\n    H --> I[产品侧查询本地映射并处理老用户绑定 新用户处理 B 端权限判断]\n    I --> J[产品侧建立本地 Session]\n    J --> K[用户进入产品或进入产品侧准入提示页]\n```\n\n补充说明：\n\n- 有邀请码、推荐码、活动业务上下文时，建议产品后端先调用 context/register。\n- 从官网标准入口进入且无产品侧业务上下文则可跳过预注册。\n- ticket/create 由官网侧发起，产品侧通常不直接调用。\n\n## 六、产品侧要做什么\n\n| 任务 | 说明 | 是否必须 |\n| --- | --- | --- |\n| 提供 sso_entry_url | 接收 login_ticket + state 的 HTTP GET 回调地址 | 必须 |\n| 调用 ticket/verify | 后端调用认证中心校验 ticket，换取 UserInfo | 必须 |\n| 维护 unified_uid ↔ local_user_id 映射 | 产品自己的账号映射表 | 必须 |\n| 建立产品本地 Session | 产品自己颁发和管理 JWT/Cookie | 必须 |\n| 处理 return_url 跳转 | 登录成功后跳转到正确页面 | 必须 |\n| 处理 biz_context | 从 verify 响应中读取并处理业务上下文 | 视产品需求 |\n| 处理 B 端权限判断 | 查询本地账号是否有 B 端准入权限 | 端产品必须 |\n| 处理老用户绑定 | unified_uid 与已有账号的关联策略 | 视产品情况 |\n| 调用 context/register | 预注册 biz_context | 有业务上下文时使用 |\n| 保护 product_access_key | 只存后端，不入前端、不入日志 | 必须 |\n\n## 七、认证中心提供什么\n\n| 能力 | 说明 |\n| --- | --- |\n| 注册/登录 | 手机号、邮箱注册与登录 |\n| 统一 UID | 全局唯一 unified_uid |\n| login_ticket | 一次性、短时效（5 分钟）的 SSO 票据 |\n| ticket 校验 | 产品后端用 product_access_key 换取 UserInfo |\n| UserInfo | unified_uid、user_type、脱敏手机号/邮箱、account_status、注册来源 |\n| biz_context 透传 | 预注册的业务上下文原样透传，不解析 |\n| account_status | ACTIVE / DISABLED / CANCELLED |\n| context/register | 支持产品预注册业务上下文，返回 context_id |\n| 限流保护 | 5 类接口按分钟桶限流（HTTP 429） |\n| nonce 防重放 | ticket verify 防止重放攻击 |\n| 审计日志 | 认证侧事件审计，敏感字段脱敏 |\n\n## 八、认证中心不做什么\n\n| 不做的事 | 说明 | 谁来做 |\n| --- | --- | --- |\n| 创建产品本地账号 | 不在认证中心建产品账号表 | 产品侧 |\n| 维护 UID ↔ 本地账号映射 | 不存 local_user_id | 产品侧 |\n| 建立产品 Session | 不颁发产品 JWT/Cookie | 产品侧 |\n| 校验邀请码/推荐码有效性 | 只透传，不校验业务含义 | 产品侧 |\n| 校验企业邮箱/企业代码 | 不验证企业身份 | 产品侧 |\n| 维护租户/组织/角色/权限 | 认证中心无此模型 | 产品侧 |\n| 判断是否有产品使用权限 | 只返回身份信息 | 产品侧 |\n| 实现 OAuth2/OIDC | 首期不实现 | 后续增强 |\n| 全局登出 | 首期不强制 | 后续增强 |\n| 第三方登录 | 首期不实现 | 后续增强 |\n\n## 九、产品接入模式分类\n\nproduct_user_mode 枚举说明：\n\n| 接口枚举值 | 业务展示值 | 说明 |\n| --- | --- | --- |\n| C | C | 面向个人用户 |\n| B | B | 面向企业用户 |\n| B_PLUS_C | B+C | 同时支持个人和企业 |\n| INVITE_ONLY | 邀请制 | 邀请码 / 灰度准入 |\n\n接口响应中 product_context.product_user_mode 返回接口枚举值（如 B_PLUS_C）。本文档中的“B+C”为业务展示值，代码判断请使用枚举值。\n\nuser_type 说明\n\nuser_type 表示认证中心侧识别到的身份线索，取值为：\n\n- UNKNOWN：未知或暂未识别；\n- PERSONAL：个人身份线索；\n- ENTERPRISE_MEMBER：企业成员身份线索。\n\n注意：\n\n- user_type 不代表用户拥有某产品的 B 端权限。\n- 产品是否允许用户进入 B 端后台，由产品侧根据本地账号、企业租户、角色权限自行判断。\n- 产品用户模式（C/B/B+C/邀请制）由 product_context.product_user_mode 表示，与 user_type 是不同维度。\n\n### 9.1 C 端产品\n\n典型产品：百智个人场景（部分）\n\n特点：\n\n- 官网注册用户可尝试进入\n- 产品侧按 unified_uid 查映射，无映射可自动创建本地账号\n- 原登录入口首期可继续保留\n\n推荐策略：\n\n```mermaid\nflowchart TD\n    A[ticket verify] --> B[查映射]\n    B --> C[有映射建 Session]\n    B --> D[无映射查手机号匹配]\n    D --> E[命中自动绑定]\n    D --> F[无命中且允许自动创建]\n    F --> G[创建本地账号建 Session]\n```\n\n### 9.2 B 端产品\n\n典型产品：百才（HR 后台）、百察、百灵\n\n核心原则：官网注册登录 ≠ 自动开通 B 端产品权限\n\n特点：\n\n- ticket verify 成功后，还需查询本地是否有账号和 B 端权限\n- 无账号用户不应直接进入产品后台\n- 应引导至留资/申请试用/联系管理员\n\n推荐策略：\n\n```mermaid\nflowchart TD\n    A[ticket verify] --> B[查本地账号]\n    B --> C[有账号有权限建 Session]\n    B --> D[有账号无权限提示未开通或联系管理员]\n    B --> E[无账号引导留资或申请试用]\n```\n\n### 9.3 B+C 混合产品\n\n典型产品：百智、百工（B+C 场景）\n\n特点：\n\n- 同一产品同时支持个人用户和企业用户\n- 产品根据 UID 和 biz_context 决定走个人空间还是企业空间\n- 可通过 biz_context 传递用户的进入场景标记\n\n推荐策略：\n\n```mermaid\nflowchart TD\n    A[ticket verify] --> B[查 biz_context 中的 scene 或 user_intent]\n    B --> C[判断 B C 分流]\n    C --> D[B 流程 查企业归属和权限]\n    C --> E[C 流程 查个人映射]\n    D --> F[企业空间]\n    E --> G[个人空间]\n```\n\n### 9.4 INVITE_ONLY（邀请制/灰度产品）\n\n典型场景：百工邀请制灰度开放\n\n特点：\n\n- 通过 biz_context 携带邀请码（invite_code）\n- 认证中心只透传邀请码，不校验邀请码有效性\n- 产品后端收到邀请码后，自行校验是否有效\n\n推荐策略：\n\n```mermaid\nflowchart TD\n    A[context register 预注册 invite_code] --> B[用户登录]\n    B --> C[ticket verify]\n    C --> D[从 biz_context 获取 invite_code]\n    D --> E[产品后端校验邀请码]\n    E --> F[有效建 Session]\n    E --> G[无效提示邀请码无效]\n```\n\n## 十、原产品登录入口保留原则\n\n- 首期不要求迁移，原入口可继续保留。\n- 官网统一认证中心主要承接新增链路（官网导流、活动、邀请、深链）。\n- 存量用户正在使用的产品后台登录入口，首期无需改动。\n- 产品完成联调验收后，可按自身节奏逐步扩大接入范围。\n- 认证中心不强制要求任何产品立即迁移全量登录入口。\n\n## 十一、接入路径选择\n\n```mermaid\nflowchart TD\n    A[产品完成登记表] --> B[认证中心侧配置 product_code sso_entry_url allowed_redirect_domains]\n    B --> C[认证中心侧提供联调环境 product_access_key]\n    C --> D[产品后端实现 sso_entry_url 接收逻辑和 ticket verify 调用]\n    D --> E[联调验证]\n    E --> F[通过验收清单]\n    F --> G[生产上线]\n```\n\n补充说明：\n\n- product_access_key 通过安全渠道交付。\n- 生产密钥单独分发。\n\n## 十二、联调流程\n\n联调流程要点：\n\n- 双方确认联调环境地址和 product_access_key\n- 先验证 context/register → ticket/create → ticket/verify 正向链路\n- 验证 B 端/邀请制等特殊场景\n- 验证异常场景（票据已用、state 不符、nonce 重放等）\n- 验证审计日志不含明文敏感信息\n\n## 十三、安全要求\n\n| 要求 | 说明 |\n| --- | --- |\n| product_access_key 仅后端 | 不入前端代码、不入 URL、不入日志 |\n| login_ticket 不作登录态 | 只用于换取 UserInfo，不存长期 |\n| nonce 每次唯一 | 每次 ticket/verify 生成新的随机 nonce |\n| HTTPS 调用认证中心 | 生产环境禁止 HTTP |\n| 产品建立本地 Session | 不依赖 login_ticket 作为登录凭证 |\n\n## 十四、验收标准\n\n核心验收项：\n\n- 正向链路：context/register → login → ticket/create → ticket/verify → 建立 Session → return_url 跳转\n- 异常链路：票据重用、state 不符、nonce 重放、product_access_key 无效\n- 审计日志无敏感明文\n\n## 十五、当前统一认证中心已自测验证了的能力\n\n| 能力 | 状态 |\n| --- | --- |\n| 手机号/邮箱注册登录 | 已验证 |\n| context/register | 已验证 |\n| ticket/create（带 context_id） | 已验证 |\n| ticket/verify（返回 UserInfo + biz_context） | 已验证 |\n| mock-product-server 完整 E2E 链路 | 已验证 |\n| nonce 防重放 | 已验证 |\n| 限流（5 类接口） | 已验证 |\n| 审计日志脱敏 | 已验证 |\n| Actuator 最小暴露 | 已验证 |\n| product_access_key 认证 | 已验证 |\n\n## 辅助文件已明确补充内容\n\n### 邀请制产品进入状态与首次接入确认\n\n来源：input/auxiliary/001-docmap-61c21d14f536f4fe-SSO 产品进入状态接口 v1.0.md\n\n- 前端在用户点击进入产品时，可调用 `GET /api/sso/product-entry/status?product_code={product_code}`，使用官网登录 `session_token` 鉴权，判断是否需要展示邀请码弹窗。\n- 当产品配置 `require_invite_code=false` 时，返回动作应为 `CREATE_TICKET_DIRECTLY`。\n- 当产品配置 `require_invite_code=true` 且当前用户已有 `CONNECTED` 记录时，返回动作应为 `CREATE_TICKET_DIRECTLY`。\n- 当产品配置 `require_invite_code=true` 且当前用户无 `CONNECTED` 记录时，返回动作应为 `SHOW_INVITE_DIALOG`。\n- 产品后端在用户完成有效首次接入后，调用 `POST /api/sso/product-entry/confirm`，使用 `product_access_key` 鉴权，写入 `access_status=CONNECTED`。\n- 认证中心只维护首次接入状态，不存储邀请码、`local_user_id`、`local_tenant_id` 或权限数据。\n\n### 登出与安全规范\n\n来源：input/auxiliary/002-docmap-628c0769aca79344-百融统一登录认证授权中心产品需求说明书.pdf\n\n- 本地登出仅退出当前产品，不影响官网及其他产品登录状态。\n- 全局登出退出统一认证中心，同时清理官网及接入产品登录状态；但该点与主需求“全局登出首期不强制，后续增强”存在范围冲突，需人工确认是否纳入本次。\n- 所有 `redirect_uri` 必须统一白名单管理。\n- 所有授权请求必须校验 `state`，防止 CSRF。\n- `access_token` / `refresh_token` 禁止暴露于前端或 URL。\n- `client_secret` 仅允许服务端保存。\n- 生产环境必须全链路 HTTPS。\n- 日志必须脱敏处理，不记录敏感信息。",
+  "analysis_report_markdown": "# 亦庄登录 SSO 需求分析报告\n\n## 分析结论\n\n本需求当前可作为“官网统一认证中心接入总览/首读材料”，但还不能单独作为开发与测试的完整契约。主需求已明确接入目标、职责边界、核心链路、产品侧必做事项、安全要求和验收方向；辅助文件进一步补充了邀请制产品进入状态查询、首次接入确认接口、状态表、登出与安全规范。\n\n综合评估为“有条件通过”：可进入接入方案设计和联调准备，但进入开发排期前应确认 SLO 是否属于首期范围、亦庄具体产品模式与准入规则、接口契约细节、异常处理页面、账号绑定冲突策略和运行指标。\n\n## 第一阶段：需求评审发现\n\n### 已明确内容\n\n- 统一认证中心承接新版官网进入百系产品的注册、登录、统一 UID、SSO 票据、UserInfo、biz_context 透传、限流、防重放和审计脱敏能力。\n- 产品侧必须提供 `sso_entry_url`，后端调用 `ticket/verify`，维护 `unified_uid` 与 `local_user_id` 映射，建立本地 Session，处理 `return_url`，保护 `product_access_key`。\n- 认证中心不创建产品本地账号、不维护产品租户/角色/权限、不校验邀请码业务含义、不建立产品 Session。\n- 首期原有产品登录入口可保留，官网统一认证中心主要承接新增链路。\n- C、B、B+C、INVITE_ONLY 四类产品模式已有推荐策略。\n- 联调验收需覆盖正向链路、票据重用、`state` 不符、`nonce` 重放、`product_access_key` 无效和审计日志脱敏。\n\n### 主要缺口\n\n- “亦庄登录 sso”的具体接入产品、`product_code`、产品模式、入口 URL、回跳域名和环境信息未在主需求中给出。\n- 主需求引用的正式接口契约和产品接入配置表未随输入提供，接口字段、签名、错误码、限流阈值和返回结构仍需以契约为准。\n- B 端、邀请制和 B+C 场景的产品侧准入、账号绑定、冲突处理、提示页与留资链路没有形成可执行验收标准。\n- 全局登出/SLO 在主需求中写为“首期不强制/后续增强”，但辅助产品需求说明书写入标准输出能力和验收标准，存在范围冲突。\n- 性能、可用性、监控告警、灰度发布、回滚和数据迁移规则仍不完整。\n\n## 第二阶段：测试场景补充\n\n### 核心正向场景\n\n- 官网已登录用户从标准入口进入 C 端产品：创建 `login_ticket`，跳转产品 `sso_entry_url`，产品校验票据，按 `unified_uid` 找到或创建本地账号，建立本地 Session，并跳转 `return_url`。\n- B 端用户从官网进入产品：票据校验成功后，产品侧查询本地账号、租户、角色和权限；有权限则进入后台，无权限或无账号则进入未开通/申请试用/联系管理员提示页。\n- B+C 产品根据 `biz_context.scene` 或 `user_intent` 分流个人空间或企业空间，并分别执行对应账号映射与权限判断。\n- 邀请制产品携带 `invite_code` 进入：产品侧从 `biz_context` 读取邀请码，自行校验有效性，有效后创建/绑定本地账号并建立 Session。\n- 已完成首次接入的邀请制用户再次点击进入产品：进入状态接口返回 `CREATE_TICKET_DIRECTLY`，不再弹邀请码。\n\n### 边界与异常场景\n\n- `login_ticket` 过期、重复使用、无效或与产品不匹配时，产品不得建立 Session。\n- `state` 缺失、不匹配或被篡改时，必须拒绝回调并记录安全事件。\n- `nonce` 重放时，`ticket/verify` 应拒绝并返回可识别错误。\n- `product_access_key` 错误、泄露到前端、出现在 URL 或日志中均不符合安全验收。\n- `product_code` 为空、不存在、禁用时，进入状态接口应返回对应错误。\n- 邀请码无效、过期、已使用、与产品不匹配时，认证中心只透传，产品侧负责拒绝进入并展示业务提示。\n- `account_status` 为 `DISABLED` 或 `CANCELLED` 时，产品侧不得创建有效登录态。\n- `return_url` 不在允许域名白名单、跨域跳转或包含危险参数时，应拒绝或降级到安全默认页。\n- 审计日志不得记录手机号、邮箱、邀请码、`session_token`、`product_access_key`、`login_ticket` 等敏感明文。\n\n## 辅助文件已消解的问题\n\n- 邀请制产品首次进入前是否需要弹邀请码：由“SSO 产品进入状态接口 v1.0”补充，前端可调用 `GET /api/sso/product-entry/status` 判断 `action`。\n- 邀请制产品如何记录用户已完成首次接入：由“SSO 产品进入状态接口 v1.0”补充，产品后端在有效接入后调用 `POST /api/sso/product-entry/confirm` 写入 `CONNECTED`。\n- 首次接入状态由谁维护、是否存储邀请码和产品权限：由“SSO 产品进入状态接口 v1.0”补充，认证中心只维护 `CONNECTED / NOT_CONNECTED` 轻量状态，不存邀请码、本地用户、租户或权限。\n- 本地登出与全局登出的定义：由“百融统一登录认证授权中心产品需求说明书”补充，本地登出仅退出当前产品，全局登出退出统一认证中心并清理官网及接入产品登录状态。\n- 安全规范的基础验收项：由“百融统一登录认证授权中心产品需求说明书”补充，包括 `redirect_uri` 白名单、`state` 校验、Token/密钥服务端保存、HTTPS 和日志脱敏。\n\n## 仍需人工确认\n\n1. 亦庄本次要接入的具体产品、`product_code`、产品模式是 C、B、B+C 还是 INVITE_ONLY？\n2. 本次范围是否包含全局登出/SLO？若包含，产品侧 `logout_uri`、会话清理方式和验收链路是什么？\n3. 正式接口契约中 `context/register`、`ticket/create`、`ticket/verify` 的完整请求字段、响应字段、错误码、签名/鉴权方式、限流阈值和票据有效期是否以主需求引用的 v1.2 契约为准？\n4. 产品侧老用户绑定规则是什么：按手机号/邮箱自动绑定、人工确认绑定，还是必须由用户登录原产品账号后绑定？\n5. 当手机号或邮箱匹配多个本地账号、已绑定其他 `unified_uid`、账号状态异常时，产品侧应如何处理？\n6. B 端或邀请制用户无权限、无账号、邀请码无效、企业身份不满足时，应跳转到哪个提示页或留资流程？\n7. `return_url` 的允许域名、默认回跳页、深链保留规则和非法地址降级策略是什么？\n8. 生产环境的性能、可用性、监控告警、灰度发布、回滚策略和审计日志留存周期要求是什么？\n\n## 冲突项\n\n- 主需求明确“全局登出首期不强制，后续增强”；辅助产品需求说明书将 SLO/全局登出列为标准输出能力、产品接入要求和功能验收项。需要确认本次“亦庄登录 sso”是否纳入 SLO。\n- 主需求称首期不实现 OAuth2/OIDC，并使用 `product_access_key`、`login_ticket`、`sso_entry_url` 等术语；辅助产品需求说明书出现 `client_id`、`client_secret`、`redirect_uri`、`access_token`、`refresh_token` 等 OAuth 风格术语。需要确认正式开发以 SSO 票据契约为准，还是存在后续 OAuth 化接口。\n\n## 覆盖审计\n\n- 身份入口：已覆盖官网注册登录、官网登录后进入产品、产品直接访问回跳场景，但亦庄具体入口未明确。\n- 账号映射：已覆盖 `unified_uid` 与本地账号映射职责，但冲突绑定和自动创建条件未明确。\n- 权限边界：已覆盖认证中心不维护产品权限，B 端权限由产品侧判断，但产品侧规则未明确。\n- 邀请制：辅助文件已覆盖状态查询、弹窗判断、首次接入确认和表结构，但邀请码业务规则未明确。\n- 安全：已覆盖 `state`、`nonce`、HTTPS、密钥保护和日志脱敏，缺少密钥轮换、告警和留存周期。\n- 测试：已覆盖核心正向链路和关键异常链路，缺少亦庄产品专属数据准备和环境配置。\n\n## 质量门禁\n\n- 当前质量评级：有条件通过。\n- 进入开发前必须确认范围冲突、接口契约、亦庄产品模式、账号绑定策略和异常落页。\n- 进入测试前必须补齐可执行测试数据、联调环境、密钥交付方式、白名单配置和验收责任人。\n",
+  "applied_supplements": [
+    {
+      "source_file": "input/auxiliary/001-docmap-61c21d14f536f4fe-SSO 产品进入状态接口 v1.0.md",
+      "applied_to": "邀请制产品进入状态判断、邀请码弹窗动作、首次接入确认接口、首次接入状态表与职责边界",
+      "evidence": "该文件定义 GET /api/sso/product-entry/status、POST /api/sso/product-entry/confirm、auth_product_user_access 表，并说明认证中心只维护 CONNECTED/NOT_CONNECTED 状态，不存储邀请码、本地账号、租户或权限。"
+    },
+    {
+      "source_file": "input/auxiliary/002-docmap-628c0769aca79344-百融统一登录认证授权中心产品需求说明书.pdf",
+      "applied_to": "本地登出、全局登出、安全规范、统一认证中心职责边界",
+      "evidence": "该文件定义本地登出与全局登出，列出 redirect_uri 白名单、state 校验、Token/secret 安全、HTTPS、日志脱敏，并再次说明产品侧负责本地账号、Session、租户、角色、菜单、数据权限和业务权限。"
+    }
+  ],
+  "maturity_assessment": {
+    "overall_level": "中等成熟，有条件可进入方案设计",
+    "overall_score": 72,
+    "dimensions": [
+      {
+        "name": "完整性",
+        "score": 70,
+        "notes": "总览充分，但缺少亦庄具体配置、正式接口契约和产品侧策略。"
+      },
+      {
+        "name": "清晰度",
+        "score": 78,
+        "notes": "职责边界清楚，少量范围术语存在冲突。"
+      },
+      {
+        "name": "一致性",
+        "score": 65,
+        "notes": "SLO 范围和 OAuth 风格术语与首期 SSO 票据方案存在差异。"
+      },
+      {
+        "name": "可测试性",
+        "score": 72,
+        "notes": "已有核心验收方向和异常链路，缺少可执行数据、环境和通过条件。"
+      },
+      {
+        "name": "可追踪性",
+        "score": 76,
+        "notes": "目标、任务和验收链路基本可追踪，但正式接口契约未随输入提供。"
+      },
+      {
+        "name": "可行性",
+        "score": 72,
+        "notes": "技术路径可行，需确认产品侧账号、权限和回跳实现细节。"
+      }
+    ]
+  },
+  "key_gaps": [
+    "亦庄本次接入的具体产品、product_code、产品模式、sso_entry_url、allowed_redirect_domains 和环境信息未明确。",
+    "正式接口契约未随输入提供，context/register、ticket/create、ticket/verify 的字段、错误码、签名/鉴权和限流阈值仍需确认。",
+    "老用户绑定、账号冲突、无权限、邀请码无效等产品侧处理策略未明确。",
+    "SLO/全局登出是否纳入首期存在文档冲突。",
+    "性能、可用性、监控告警、灰度发布、回滚和日志留存要求不完整。"
+  ],
+  "assumptions": [
+    "认证中心首期以主需求描述的 login_ticket + ticket/verify SSO 票据链路为主。",
+    "产品侧负责本地账号、Session、租户、角色和权限判断。",
+    "辅助文件中能直接证明的补充已并入初步需求；证据不足或冲突内容保留为待确认或冲突项。"
+  ],
+  "modules": [
+    {
+      "name": "官网统一登录入口",
+      "scope": "手机号/邮箱注册登录、官网登录态、从官网进入产品。",
+      "rules": [
+        "用户在官网完成注册或登录后可进入接入产品。",
+        "标准入口无业务上下文时可跳过 context/register。"
+      ],
+      "open_points": [
+        "亦庄具体官网入口和产品入口配置未明确。"
+      ]
+    },
+    {
+      "name": "SSO 票据链路",
+      "scope": "login_ticket 创建、跳转、ticket verify、UserInfo 换取。",
+      "rules": [
+        "login_ticket 一次性、短时效，主需求写明 5 分钟。",
+        "ticket/create 通常由官网侧发起，产品侧后端调用 ticket/verify。",
+        "产品不得将 login_ticket 作为长期登录态。"
+      ],
+      "open_points": [
+        "正式接口字段、错误码、签名和限流阈值需以契约确认。"
+      ]
+    },
+    {
+      "name": "产品侧账号与权限",
+      "scope": "unified_uid 与 local_user_id 映射、本地账号创建/绑定、本地 Session、B 端权限判断。",
+      "rules": [
+        "认证中心不维护产品本地账号和权限。",
+        "B 端产品必须由产品侧判断本地账号、租户、角色和准入权限。"
+      ],
+      "open_points": [
+        "老用户绑定和冲突处理策略未明确。"
+      ]
+    },
+    {
+      "name": "业务上下文与邀请制",
+      "scope": "context/register、biz_context 透传、邀请制进入状态、首次接入确认。",
+      "rules": [
+        "认证中心透传 biz_context，不校验邀请码业务含义。",
+        "邀请制产品可通过进入状态接口判断是否弹邀请码。",
+        "产品后端在有效首次接入后调用 confirm 写入 CONNECTED。"
+      ],
+      "open_points": [
+        "邀请码有效性、过期、重复使用和错误提示由产品侧确认。"
+      ]
+    },
+    {
+      "name": "登出机制",
+      "scope": "本地登出和全局登出/SLO。",
+      "rules": [
+        "本地登出仅退出当前产品。",
+        "辅助文件定义全局登出会清理统一认证中心、官网及接入产品登录状态。"
+      ],
+      "open_points": [
+        "主需求称全局登出首期不强制，需确认本次是否纳入。"
+      ]
+    },
+    {
+      "name": "安全与审计",
+      "scope": "state、nonce、HTTPS、密钥保护、日志脱敏、限流、防重放。",
+      "rules": [
+        "product_access_key 仅后端保存，不入前端、URL 或日志。",
+        "生产环境必须 HTTPS。",
+        "日志不得记录敏感明文。"
+      ],
+      "open_points": [
+        "密钥轮换、监控告警和审计日志留存周期未明确。"
+      ]
+    }
+  ],
+  "clarification_questions": [
+    {
+      "id": "CQ-001",
+      "question": "亦庄本次要接入的具体产品、product_code、产品模式是 C、B、B+C 还是 INVITE_ONLY？",
+      "priority": "HIGH",
+      "source": "requirement-review + test-scenarios",
+      "recommended_options": [
+        {
+          "label": "明确为一个具体产品模式",
+          "answer_markdown": "本次亦庄 SSO 接入产品为：{产品名称}；product_code 为：{product_code}；产品模式为：{C/B/B+C/INVITE_ONLY}。产品侧按该模式执行账号映射、权限判断和进入策略。"
+        }
+      ]
+    },
+    {
+      "id": "CQ-002",
+      "question": "本次范围是否包含全局登出/SLO？若包含，产品侧 logout_uri、会话清理方式和验收链路是什么？",
+      "priority": "HIGH",
+      "source": "conflict-resolution",
+      "recommended_options": [
+        {
+          "label": "首期不包含 SLO",
+          "answer_markdown": "本次亦庄 SSO 首期不包含全局登出/SLO，仅要求产品支持本地登出；全局登出作为后续增强项另行设计和验收。"
+        },
+        {
+          "label": "首期包含 SLO",
+          "answer_markdown": "本次亦庄 SSO 包含全局登出/SLO。产品需提供 logout_uri，接收统一认证中心登出通知后清理本地 Session，并在验收中覆盖官网、认证中心和产品侧会话同时失效链路。"
+        }
+      ]
+    },
+    {
+      "id": "CQ-003",
+      "question": "正式接口契约中 context/register、ticket/create、ticket/verify 的完整请求字段、响应字段、错误码、签名/鉴权方式、限流阈值和票据有效期是否以主需求引用的 v1.2 契约为准？",
+      "priority": "HIGH",
+      "source": "requirement-review",
+      "recommended_options": [
+        {
+          "label": "以 v1.2 契约为准",
+          "answer_markdown": "本次接口实现与测试以《百系产品接入官网统一认证中心接口契约 v1.2》为准，包含 context/register、ticket/create、ticket/verify 的请求字段、响应字段、错误码、鉴权方式、限流阈值和票据有效期。"
+        }
+      ]
+    },
+    {
+      "id": "CQ-004",
+      "question": "产品侧老用户绑定规则是什么：按手机号/邮箱自动绑定、人工确认绑定，还是必须由用户登录原产品账号后绑定？",
+      "priority": "HIGH",
+      "source": "requirement-review + test-scenarios",
+      "recommended_options": [
+        {
+          "label": "自动绑定",
+          "answer_markdown": "产品侧老用户绑定规则为：当 UserInfo 中脱敏前可验证的手机号或邮箱唯一命中本地账号时，自动建立 unified_uid 与 local_user_id 映射；未唯一命中时进入冲突处理流程。"
+        },
+        {
+          "label": "人工确认绑定",
+          "answer_markdown": "产品侧老用户绑定规则为：首次命中本地账号时需用户确认后建立 unified_uid 与 local_user_id 映射；无法确认或存在冲突时不建立绑定。"
+        }
+      ]
+    },
+    {
+      "id": "CQ-005",
+      "question": "当手机号或邮箱匹配多个本地账号、已绑定其他 unified_uid、账号状态异常时，产品侧应如何处理？",
+      "priority": "HIGH",
+      "source": "test-scenarios",
+      "recommended_options": [
+        {
+          "label": "拒绝自动绑定",
+          "answer_markdown": "当手机号或邮箱匹配多个本地账号、已绑定其他 unified_uid 或本地账号状态异常时，产品侧不得自动绑定或建立 Session，应进入账号冲突提示页并引导人工处理。"
+        }
+      ]
+    },
+    {
+      "id": "CQ-006",
+      "question": "B 端或邀请制用户无权限、无账号、邀请码无效、企业身份不满足时，应跳转到哪个提示页或留资流程？",
+      "priority": "MEDIUM",
+      "source": "test-scenarios",
+      "recommended_options": [
+        {
+          "label": "统一准入提示页",
+          "answer_markdown": "B 端或邀请制用户无权限、无账号、邀请码无效或企业身份不满足时，产品侧跳转至统一准入提示页，展示未开通/申请试用/联系管理员/邀请码无效等明确原因，不建立本地 Session。"
+        }
+      ]
+    },
+    {
+      "id": "CQ-007",
+      "question": "return_url 的允许域名、默认回跳页、深链保留规则和非法地址降级策略是什么？",
+      "priority": "MEDIUM",
+      "source": "requirement-review + test-scenarios",
+      "recommended_options": [
+        {
+          "label": "白名单加默认页",
+          "answer_markdown": "return_url 必须命中产品配置的允许域名白名单；合法深链登录后原样保留并跳转；缺失或非法 return_url 降级到产品默认首页或安全提示页。"
+        }
+      ]
+    },
+    {
+      "id": "CQ-008",
+      "question": "生产环境的性能、可用性、监控告警、灰度发布、回滚策略和审计日志留存周期要求是什么？",
+      "priority": "MEDIUM",
+      "source": "requirement-review",
+      "recommended_options": [
+        {
+          "label": "补充运行要求",
+          "answer_markdown": "生产环境需补充 SSO 核心接口性能目标、可用性目标、错误率告警、密钥异常告警、灰度发布方案、回滚方案和审计日志留存周期，并纳入上线验收。"
+        }
+      ]
+    }
+  ],
+  "conflicts": [
+    {
+      "id": "CF-001",
+      "topic": "全局登出/SLO 首期范围",
+      "description": "主需求明确“全局登出首期不强制，后续增强”；辅助产品需求说明书将 SLO/全局登出列为标准输出能力、产品接入要求和功能验收项。",
+      "sources": [
+        "input/primary.md",
+        "input/auxiliary/002-docmap-628c0769aca79344-百融统一登录认证授权中心产品需求说明书.pdf"
+      ],
+      "resolution_needed": "确认本次亦庄登录 SSO 是否必须实现并验收 SLO。"
+    },
+    {
+      "id": "CF-002",
+      "topic": "SSO 票据契约与 OAuth 风格术语",
+      "description": "主需求称首期不实现 OAuth2/OIDC，并使用 product_access_key、login_ticket、sso_entry_url；辅助产品需求说明书出现 client_id、client_secret、redirect_uri、access_token、refresh_token 等 OAuth 风格术语。",
+      "sources": [
+        "input/primary.md",
+        "input/auxiliary/002-docmap-628c0769aca79344-百融统一登录认证授权中心产品需求说明书.pdf"
+      ],
+      "resolution_needed": "确认正式开发以 SSO 票据契约为准，还是同时存在 OAuth 化接口或术语映射。"
+    }
+  ],
+  "coverage_audit": {
+    "covered": [
+      "官网统一身份入口",
+      "统一 UID",
+      "SSO 票据链路",
+      "biz_context 透传",
+      "产品侧本地账号映射与 Session",
+      "C/B/B+C/INVITE_ONLY 产品模式",
+      "邀请制进入状态查询与首次接入确认",
+      "关键安全要求与异常链路"
+    ],
+    "partial": [
+      "亦庄具体接入配置",
+      "正式接口契约字段",
+      "产品侧账号绑定冲突处理",
+      "B 端准入提示与留资链路",
+      "全局登出/SLO",
+      "运行指标与上线保障"
+    ],
+    "missing": [
+      "明确的 product_code 与环境配置",
+      "正式接口契约附件内容",
+      "可直接执行的测试数据和账号样本",
+      "监控告警、灰度和回滚验收标准"
+    ]
+  },
+  "quality_gate": {
+    "decision": "有条件通过",
+    "pass": false,
+    "blocking_items": [
+      "确认 SLO 是否纳入本次范围",
+      "补齐正式接口契约或指定契约版本",
+      "明确亦庄接入产品模式和产品侧准入规则",
+      "明确账号绑定冲突和异常落页策略"
+    ],
+    "non_blocking_items": [
+      "补充性能和可用性目标",
+      "补充监控告警、审计留存、灰度发布和回滚策略"
+    ]
+  },
+  "next_actions": [
+    "由产品负责人确认亦庄具体接入产品、product_code、产品模式和接入范围。",
+    "由认证中心负责人确认正式接口契约版本及 SLO/OAuth 术语冲突处理。",
+    "由产品后端负责人补充本地账号绑定、权限准入、异常提示页和 return_url 策略。",
+    "由测试负责人基于确认后的规则补齐正向、边界、异常、安全和回归测试用例。"
+  ]
+}

@@ -156,10 +156,7 @@ type ExplorationPlanItem = {
   capability_type: string;
   title: string;
   steps: string[];
-  expected_evidence: string[];
-  risk_level: string;
-  execution_policy: string;
-  status: string;
+  exploration_points: string[];
 };
 
 type DocumentEditResponse = {
@@ -326,19 +323,6 @@ const capabilityTypeLabels: Record<string, string> = {
   empty_state: "空状态",
   module_discovery: "模块采集",
   custom: "人工补充",
-};
-
-const riskLevelLabels: Record<string, string> = {
-  low: "低风险",
-  medium: "中风险",
-  high: "高风险",
-};
-
-const executionPolicyLabels: Record<string, string> = {
-  auto: "自动执行",
-  confirm_before_submit: "提交前确认",
-  confirm_external_call: "外部调用前确认",
-  manual: "人工确认",
 };
 
 const loginStrategyLabels: Record<string, string> = {
@@ -748,6 +732,40 @@ function parsePlanItemsDraft(draft: string): ExplorationPlanItem[] {
   return parsed.map((item, index) => normalizePlanDraftItem(item, index));
 }
 
+function normalizeExplorationRunDetail(data: ExplorationRunDetail): ExplorationRunDetail {
+  return {
+    ...data,
+    exploration_plan: normalizeExplorationPlan(data.exploration_plan),
+  };
+}
+
+function normalizeExplorationPlan(plan: ExplorationPlan | undefined): ExplorationPlan | undefined {
+  if (!plan) {
+    return undefined;
+  }
+  const items = Array.isArray(plan.items)
+    ? plan.items
+        .filter((item): item is ExplorationPlanItem => Boolean(item) && typeof item === "object")
+        .map((item, index) => normalizePlanDisplayItem(item, index))
+    : [];
+  return {
+    ...plan,
+    items,
+  };
+}
+
+function normalizePlanDisplayItem(item: ExplorationPlanItem, index: number): ExplorationPlanItem {
+  const record = item as Record<string, unknown>;
+  return {
+    id: optionalPlanText(record.id) || `plan-item-${index + 1}`,
+    business_module: optionalPlanText(record.business_module) || "未命名模块",
+    capability_type: optionalPlanText(record.capability_type) || "custom",
+    title: optionalPlanText(record.title) || "未命名计划项",
+    steps: planTextList(record.steps),
+    exploration_points: planTextList(record.exploration_points),
+  };
+}
+
 function normalizePlanDraftItem(item: unknown, index: number): ExplorationPlanItem {
   if (!item || typeof item !== "object" || Array.isArray(item)) {
     throw new Error(`第 ${index + 1} 个计划项必须是对象。`);
@@ -762,10 +780,7 @@ function normalizePlanDraftItem(item: unknown, index: number): ExplorationPlanIt
     capability_type: capabilityType,
     title,
     steps: planTextList(record.steps),
-    expected_evidence: planTextList(record.expected_evidence),
-    risk_level: optionalPlanText(record.risk_level) || "low",
-    execution_policy: optionalPlanText(record.execution_policy) || "auto",
-    status: optionalPlanText(record.status) || "pending",
+    exploration_points: planTextList(record.exploration_points),
   };
 }
 
@@ -898,9 +913,10 @@ export default function Page() {
         const data = await apiRequest<ExplorationRunDetail>(
           `/projects/${params.projectId}/exploration-runs/${params.runId}/detail`,
         );
-        setDetail(data);
-        setStreamDetail(data);
-        setRun(data.run);
+        const normalizedData = normalizeExplorationRunDetail(data);
+        setDetail(normalizedData);
+        setStreamDetail(normalizedData);
+        setRun(normalizedData.run);
       } catch (requestError) {
         setError(requestError instanceof Error ? requestError.message : "探索任务加载失败");
       } finally {
@@ -1080,8 +1096,9 @@ export default function Page() {
   }
 
   function applyExplorationPlan(plan: ExplorationPlan) {
-    setDetail((current) => (current ? { ...current, exploration_plan: plan } : current));
-    setStreamDetail((current) => (current ? { ...current, exploration_plan: plan } : current));
+    const normalizedPlan = normalizeExplorationPlan(plan);
+    setDetail((current) => (current ? { ...current, exploration_plan: normalizedPlan } : current));
+    setStreamDetail((current) => (current ? { ...current, exploration_plan: normalizedPlan } : current));
   }
 
   function clearGeneratedExplorationPlanModules() {
@@ -1168,9 +1185,9 @@ export default function Page() {
     }
   }
 
-  async function confirmExplorationPlan() {
+  async function confirmExplorationPlan(): Promise<boolean> {
     if (!run) {
-      return;
+      return false;
     }
     setPlanAction("confirm");
     try {
@@ -1180,6 +1197,7 @@ export default function Page() {
       );
       applyExplorationPlan(plan);
       toast.success("探索计划已确认，可以按计划开始探索");
+      return true;
     } catch (requestError) {
       reportApiError(requestError, {
         fallbackMessage: "探索计划确认失败",
@@ -1187,6 +1205,7 @@ export default function Page() {
         method: "POST",
         path: `/projects/${run.project_id}/exploration-runs/${run.id}/plan/confirm`,
       });
+      return false;
     } finally {
       setPlanAction("");
     }
@@ -1673,7 +1692,7 @@ function ExplorationTaskPanel({
   canGeneratePlan: boolean;
   canStartFirstDiscovery: boolean;
   canStartFromPlan: boolean;
-  onConfirmPlan: () => Promise<void> | void;
+  onConfirmPlan: () => Promise<boolean>;
   onGeneratePlan: () => Promise<void> | void;
   onSavePlanItems: (items: ExplorationPlanItem[]) => Promise<boolean>;
   onStart: () => Promise<void> | void;
@@ -1688,15 +1707,28 @@ function ExplorationTaskPanel({
   const planStatus = plan?.plan_status ?? "not_generated";
   const planStatusLabel = explorationPlanStatusLabels[planStatus];
   const canGenerateDiscoveryPlan = canEdit && canGeneratePlan && !planAction;
-  const canConfirmPlan = canEdit && !planAction && Boolean(plan?.items.length) && planStatus !== "confirmed";
+  const canConfirmAndPreparePlan = canEdit && !planAction && Boolean(plan?.items.length) && planStatus !== "confirmed";
   const [editingPlan, setEditingPlan] = useState(false);
   const [editingPlanWithAi, setEditingPlanWithAi] = useState(false);
+  const [readyToStartConfirmedPlan, setReadyToStartConfirmedPlan] = useState(false);
   const [planDraft, setPlanDraft] = useState(formatPlanItemsDraft(plan?.items ?? []));
   const [planDraftError, setPlanDraftError] = useState("");
   const generatingPlan = planAction === "generate";
   const generatingPlanElapsed =
     generatingPlan && planActionStartedAt ? formatElapsedDuration(planActionNow - planActionStartedAt) : "";
   const canEditPlanWithAi = canEdit && (plan?.items.length ?? 0) > 0 && !editingPlanWithAi && !planAction;
+  const confirmAndStartDisabled =
+    planStatus === "confirmed" ? !canStartFromPlan || starting : !canConfirmAndPreparePlan;
+  const confirmAndStartLabel =
+    planAction === "confirm"
+      ? "确认中"
+      : starting
+        ? "启动中"
+        : readyToStartConfirmedPlan
+          ? "再次点击开始探索"
+          : planStatus === "confirmed"
+            ? "按计划开始探索"
+            : "确认计划并准备探索";
 
   useEffect(() => {
     if (!editingPlan) {
@@ -1704,6 +1736,12 @@ function ExplorationTaskPanel({
       setPlanDraftError("");
     }
   }, [editingPlan, plan]);
+
+  useEffect(() => {
+    if (planStatus !== "confirmed") {
+      setReadyToStartConfirmedPlan(false);
+    }
+  }, [planStatus]);
 
   async function savePlanDraft() {
     setPlanDraftError("");
@@ -1731,7 +1769,7 @@ function ExplorationTaskPanel({
           content: formatPlanItemsDraft(plan.items),
           instruction: [
             "请只修改下面的探索计划项 JSON 数组，并返回修改后的完整 JSON 数组。",
-            "必须保留字段：id、business_module、capability_type、title、steps、expected_evidence、risk_level、execution_policy、status。",
+            "必须保留字段：id、business_module、capability_type、title、steps、exploration_points。",
             instruction,
           ].join("\n"),
         }),
@@ -1755,6 +1793,22 @@ function ExplorationTaskPanel({
     } finally {
       setEditingPlanWithAi(false);
     }
+  }
+
+  async function confirmPlanThenStart() {
+    if (planStatus !== "confirmed") {
+      const confirmed = await onConfirmPlan();
+      if (confirmed) {
+        setReadyToStartConfirmedPlan(true);
+      }
+      return;
+    }
+    if (!readyToStartConfirmedPlan) {
+      setReadyToStartConfirmedPlan(true);
+      return;
+    }
+    setReadyToStartConfirmedPlan(false);
+    await onStart();
   }
 
   return (
@@ -1821,16 +1875,12 @@ function ExplorationTaskPanel({
               </>
             ) : (
               <>
-                <Button
-                  disabled={!canStartFirstDiscovery || starting}
-                  onClick={() => void onStart()}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  <Play className="size-4" />
-                  首次探索采集
-                </Button>
+                {canStartFirstDiscovery ? (
+                  <Button disabled={starting} onClick={() => void onStart()} size="sm" type="button" variant="outline">
+                    <Play className="size-4" />
+                    首次探索采集
+                  </Button>
+                ) : null}
                 <Button
                   disabled={generatingPlan || !canGenerateDiscoveryPlan}
                   onClick={() => void onGeneratePlan()}
@@ -1860,17 +1910,13 @@ function ExplorationTaskPanel({
                   手动修改探索计划
                 </Button>
                 <Button
-                  disabled={!canConfirmPlan}
-                  onClick={() => void onConfirmPlan()}
+                  disabled={confirmAndStartDisabled}
+                  onClick={() => void confirmPlanThenStart()}
                   size="sm"
                   type="button"
-                  variant="outline"
                 >
-                  确认计划
-                </Button>
-                <Button disabled={!canStartFromPlan || starting} onClick={() => void onStart()} size="sm" type="button">
                   <Play className="size-4" />
-                  按计划开始探索
+                  {confirmAndStartLabel}
                 </Button>
               </>
             )}
@@ -1915,16 +1961,12 @@ function ExplorationTaskPanel({
                       </Badge>
                       <span className="font-medium">{item.title}</span>
                     </div>
-                    <div className="text-muted-foreground text-xs">
-                      {item.business_module} · {riskLevelLabels[item.risk_level] ?? item.risk_level} ·{" "}
-                      {executionPolicyLabels[item.execution_policy] ?? item.execution_policy}
-                    </div>
+                    <div className="text-muted-foreground text-xs">{item.business_module}</div>
                   </div>
-                  <Badge variant="secondary">{item.status}</Badge>
                 </div>
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
                   <PlanList title="探索动作" values={item.steps} />
-                  <PlanList title="预期证据" values={item.expected_evidence} />
+                  <PlanList title="探索点" values={item.exploration_points} />
                 </div>
               </div>
             ))}
@@ -1939,12 +1981,13 @@ function ExplorationTaskPanel({
   );
 }
 
-function PlanList({ title, values }: { title: string; values: string[] }) {
+function PlanList({ title, values }: { title: string; values?: string[] }) {
+  const listValues = Array.isArray(values) ? values : [];
   return (
     <div className="space-y-1">
       <div className="font-medium text-xs">{title}</div>
       <ul className="space-y-1 text-muted-foreground text-xs">
-        {values.length ? values.map((value) => <li key={value}>{value}</li>) : <li>未设置</li>}
+        {listValues.length ? listValues.map((value) => <li key={value}>{value}</li>) : <li>未设置</li>}
       </ul>
     </div>
   );

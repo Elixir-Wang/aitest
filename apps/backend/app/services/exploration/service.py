@@ -1079,44 +1079,42 @@ def _normalize_ai_exploration_plan(
     scope_constraints: dict | None = None,
 ) -> dict:
     boundary = _plan_business_boundary(run)
-    items = []
+    items = _dom_group_plan_items(boundary, page_facts)
     skipped_modules = []
     scope_constraints = scope_constraints or _plan_scope_constraints(run, page_facts)
+    used_capability_types = {str(item.get("capability_type") or "") for item in items}
     for index, module in enumerate(output.modules, start=1):
         module_name = module.module_name.strip()
         if not module_name:
             continue
+        capability_type = _capability_type_from_module_name(module_name)
+        if capability_type in used_capability_types:
+            continue
         if not _module_matches_plan_scope(module, scope_constraints):
             skipped_modules.append(module_name)
             continue
+        if capability_type == "custom":
+            continue
         steps = module.steps or [
-            f"进入{module_name}模块",
-            "查看主要页面、状态和关键入口",
-            "记录操作入口、表单、跳转和阻塞原因",
-        ]
-        expected_evidence = module.expected_evidence or [
-            f"{module_name}模块入口可追溯",
-            "页面状态和关键动作已记录",
+            f"基于真实 DOM 入口探索{module_name}",
+            "记录该功能内的操作结果和页面变化",
         ]
         item = _normalize_plan_item(
             {
                 "id": f"plan-ai-module-{index:02d}",
-                "business_module": module_name,
-                "capability_type": "module_discovery",
-                "title": f"探索{module_name}模块",
+                "business_module": boundary,
+                "capability_type": capability_type,
+                "title": module_name,
                 "steps": steps,
-                "expected_evidence": expected_evidence,
-                "risk_level": module.risk_level,
-                "execution_policy": module.execution_policy,
-                "status": "pending",
+                "exploration_points": [module.reason, module.entry_hint],
                 "entry_path": str(page_facts.get("normalized_url") or page_facts.get("url") or ""),
-                "discovery_evidence": [module.reason, module.entry_hint],
             },
             index,
-            module_name,
+            boundary,
         )
         items.append(item)
-    summary = f"AI 已根据探索范围生成 {len(items)} 个模块计划项，等待人工确认或补充。"
+        used_capability_types.add(capability_type)
+    summary = f"AI 已根据探索范围和 DOM 元素分组生成 {len(items)} 个功能计划项，等待人工确认或补充。"
     if skipped_modules:
         summary = f"{summary} 已过滤范围外模块：{'、'.join(skipped_modules)}。"
     return {
@@ -1127,6 +1125,141 @@ def _normalize_ai_exploration_plan(
         "summary": summary,
         "items": items,
     }
+
+
+def _capability_type_from_module_name(module_name: str) -> str:
+    text = str(module_name or "").lower()
+    if _contains_any(text, ("搜索", "查询", "筛选", "过滤", "排序", "标签", "search", "filter", "sort")):
+        return "query_filter"
+    if _contains_any(text, ("导入", "导出", "上传", "下载", "模板", "import", "export", "upload", "download")):
+        return "import_export"
+    if _contains_any(text, ("批量", "全选", "多选", "batch", "select all")):
+        return "batch_operation"
+    if _contains_any(text, ("新增", "新建", "创建", "查看", "详情", "编辑", "删除", "保存", "crud", "create", "detail", "edit", "delete")):
+        return "crud"
+    if _contains_any(text, ("卡片", "列表", "表格", "展示", "内容", "card", "list", "table")):
+        return "content_display"
+    return "custom"
+
+
+def _dom_group_plan_items(boundary: str, page_facts: dict) -> list[dict]:
+    groups = _classify_plan_dom_groups(page_facts)
+    entry_path = str(page_facts.get("normalized_url") or page_facts.get("url") or "")
+    items: list[dict] = []
+    for definition in _dom_plan_definitions():
+        capability_type = definition["capability_type"]
+        sources = groups.get(capability_type, [])
+        if not sources:
+            continue
+        index = len(items) + 1
+        items.append(
+            _normalize_plan_item(
+                {
+                    "id": f"plan-dom-{capability_type}-{index:02d}",
+                    "business_module": boundary,
+                    "capability_type": capability_type,
+                    "title": definition["title"],
+                    "steps": definition["steps"],
+                    "exploration_points": [
+                        f"来源 DOM：{_format_dom_sources(sources)}",
+                        *definition["exploration_points"],
+                    ],
+                    "entry_path": entry_path,
+                },
+                index,
+                boundary,
+            )
+        )
+    return items
+
+
+def _classify_plan_dom_groups(page_facts: dict) -> dict[str, list[str]]:
+    groups: dict[str, list[str]] = {}
+    for element in page_facts.get("elements") if isinstance(page_facts.get("elements"), list) else []:
+        if not isinstance(element, dict):
+            continue
+        text = _plan_element_text(element)
+        if not text:
+            continue
+        for capability_type in _capability_types_for_element(element, text):
+            groups.setdefault(capability_type, [])
+            if text not in groups[capability_type]:
+                groups[capability_type].append(text)
+    return groups
+
+
+def _capability_types_for_element(element: dict, text: str) -> list[str]:
+    haystack = f"{text} {element.get('role') or ''} {element.get('action_type') or ''}".lower()
+    role = str(element.get("role") or "").lower()
+    action_type = str(element.get("action_type") or "").lower()
+    types: list[str] = []
+    if role in {"textbox", "searchbox", "combobox", "select", "tab"} or action_type == "fill":
+        if _contains_any(haystack, ("搜索", "查询", "筛选", "过滤", "排序", "类型", "状态", "日期", "重置", "全部", "search", "query", "filter", "sort", "status", "date", "reset")):
+            types.append("query_filter")
+    if _contains_any(haystack, ("搜索", "查询", "筛选", "过滤", "排序", "重置", "search", "query", "filter", "sort", "reset")):
+        types.append("query_filter")
+    if _contains_any(haystack, ("卡片", "列表", "表格", "统计", "缩略图", "card", "list", "table", "row")):
+        types.append("content_display")
+    if _contains_any(haystack, ("新增", "新建", "创建", "查看", "详情", "编辑", "修改", "删除", "保存", "取消", "确认", "create", "new", "add", "view", "detail", "edit", "update", "delete", "save", "cancel", "confirm")):
+        types.append("crud")
+    if _contains_any(haystack, ("导入", "导出", "上传", "下载", "模板", "文件", "import", "export", "upload", "download", "template", "file")):
+        types.append("import_export")
+    if role in {"checkbox"} or _contains_any(haystack, ("批量", "全选", "多选", "选择", "batch", "select all", "checkbox")):
+        types.append("batch_operation")
+    return _unique_preserve_order(types)
+
+
+def _plan_element_text(element: dict) -> str:
+    readable = str(element.get("name") or element.get("text") or "").strip()
+    if readable:
+        return re.sub(r"\s+", " ", readable).strip()[:80]
+    candidates = [element.get("id")]
+    text = " ".join(str(item).strip() for item in candidates if str(item or "").strip())
+    return re.sub(r"\s+", " ", text).strip()[:80]
+
+
+def _format_dom_sources(sources: list[str]) -> str:
+    return "、".join(sources[:8])
+
+
+def _dom_plan_definitions() -> list[dict]:
+    return [
+        {
+            "capability_type": "query_filter",
+            "title": "查询筛选功能",
+            "steps": ["检查查询类控件的默认条件", "执行单条件与组合条件筛选", "验证重置、排序或标签切换后的内容变化"],
+            "exploration_points": ["默认值、单条件、组合条件、重置行为", "筛选后数据展示变化"],
+        },
+        {
+            "capability_type": "content_display",
+            "title": "内容展示功能",
+            "steps": ["梳理卡片、列表或表格的展示字段", "检查字段含义、状态标识和内容排列", "验证详情、分页或加载更多入口"],
+            "exploration_points": ["展示字段、状态标识、数据排列方式", "详情入口、分页或加载更多"],
+        },
+        {
+            "capability_type": "crud",
+            "title": "CRUD 功能",
+            "steps": ["识别新增、查看、编辑、删除等真实入口", "探索已出现入口对应的表单、确认框或详情内容", "记录提交、取消或删除后的页面变化"],
+            "exploration_points": ["只覆盖真实出现的新增、查看、编辑、删除子能力", "表单字段、校验、确认与操作结果"],
+        },
+        {
+            "capability_type": "import_export",
+            "title": "导入导出功能",
+            "steps": ["检查导入、导出、上传或下载入口", "验证模板、文件类型和上传校验", "记录导入或导出结果回显"],
+            "exploration_points": ["模板下载、文件格式限制、上传校验", "导入结果、导出内容或失败提示"],
+        },
+        {
+            "capability_type": "batch_operation",
+            "title": "批量操作功能",
+            "steps": ["检查单选、多选和全选规则", "验证批量按钮或批量菜单的可用条件", "记录批量操作确认与结果变化"],
+            "exploration_points": ["选择规则、批量操作条件", "批量确认与操作后数据变化"],
+        },
+    ]
+
+
+def _contains_any(value: str, needles: tuple[str, ...]) -> bool:
+    text = str(value or "").lower()
+    return any(needle.lower() in text for needle in needles)
 
 
 def _plan_scope_constraints(run, page_facts: dict | None = None) -> dict:
@@ -1205,7 +1338,6 @@ def _module_matches_plan_scope(module: ExplorationPlanModule, scope_constraints:
                 module.reason,
                 module.entry_hint,
                 " ".join(module.steps),
-                " ".join(module.expected_evidence),
             ]
         )
     )
@@ -1274,12 +1406,12 @@ def _module_plan_item(module: dict, index: int) -> dict:
         f"按首次探索采集结果复核页面：{sampled_pages}",
         "补充遗漏入口、关键页面状态和阻塞原因",
     ]
-    expected_evidence = [
+    exploration_points = [
         f"覆盖{name}模块已采集的 {int(module.get('page_count') or 0)} 个页面/状态",
         f"记录模块动作、表单和跳转证据（已发现 {int(module.get('action_count') or 0)} 个动作）",
     ]
     if int(module.get("blocked_count") or 0):
-        expected_evidence.append(f"复核 {int(module.get('blocked_count') or 0)} 个阻塞页面并记录处理建议")
+        exploration_points.append(f"复核 {int(module.get('blocked_count') or 0)} 个阻塞页面并记录处理建议")
     return _normalize_plan_item(
         {
             "id": f"plan-module-{index:02d}",
@@ -1287,10 +1419,7 @@ def _module_plan_item(module: dict, index: int) -> dict:
             "capability_type": "module_discovery",
             "title": f"探索{name}模块",
             "steps": steps,
-            "expected_evidence": expected_evidence,
-            "risk_level": "medium" if int(module.get("blocked_count") or 0) else "low",
-            "execution_policy": "auto",
-            "status": "pending",
+            "exploration_points": exploration_points,
         },
         index,
         name,
@@ -1300,15 +1429,15 @@ def _module_plan_item(module: dict, index: int) -> dict:
 def _build_default_exploration_plan(run) -> dict:
     boundary = _plan_business_boundary(run)
     items = [
-        _plan_item(boundary, "access", "访问边界首页", ["进入指定探索边界", "确认主内容区、导航和核心入口出现"], ["页面可访问", "保留页面截图和 accessibility snapshot"], "low", "auto", 1),
-        _plan_item(boundary, "search", f"搜索{boundary}内容", ["定位搜索框", "输入关键词并观察结果区变化"], ["搜索框可输入", "结果区刷新或出现空状态"], "low", "auto", 2),
-        _plan_item(boundary, "filter", f"筛选{boundary}内容", ["识别类型、范围、状态等筛选控件", "至少展开一个筛选项"], ["筛选控件可展开", "筛选条件有回显或结果区变化"], "low", "auto", 3),
-        _plan_item(boundary, "sort", f"排序{boundary}列表", ["识别排序控件", "切换排序条件"], ["排序条件可选择", "排序条件有回显"], "low", "auto", 4),
-        _plan_item(boundary, "create", f"打开{boundary}新建入口", ["点击创建或新增入口", "检查弹窗或创建页字段", "取消提交并返回"], ["新建入口可打开", "必填字段或表单结构可记录"], "medium", "confirm_before_submit", 5),
-        _plan_item(boundary, "import", f"检查{boundary}导入入口", ["点击导入入口", "检查上传控件、模板或格式限制", "关闭弹窗"], ["导入入口可打开", "上传限制和模板入口可记录"], "medium", "confirm_before_submit", 6),
-        _plan_item(boundary, "detail", f"查看{boundary}详情", ["点击一条列表、卡片或业务对象", "记录详情页、抽屉或弹窗内容"], ["详情入口可进入", "详情字段和返回路径可记录"], "low", "auto", 7),
-        _plan_item(boundary, "agent_usage", f"验证{boundary}智能体使用入口", ["识别使用、试用、运行或对话入口", "进入入口并记录状态", "遇到扣费、发布或外部调用时停止"], ["智能体使用入口可定位", "运行前状态和阻塞原因可记录"], "medium", "confirm_external_call", 8),
-        _plan_item(boundary, "empty_state", f"检查{boundary}空状态", ["观察无数据状态", "记录空状态文案和主按钮"], ["空状态文案可记录", "空状态引导入口可定位"], "low", "auto", 9),
+        _plan_item(boundary, "access", "访问边界首页", ["进入指定探索边界", "确认主内容区、导航和核心入口出现"], ["页面访问", "导航与主内容"], 1),
+        _plan_item(boundary, "search", f"搜索{boundary}内容", ["定位搜索框", "输入关键词并观察结果区变化"], ["搜索入口", "结果区状态"], 2),
+        _plan_item(boundary, "filter", f"筛选{boundary}内容", ["识别类型、范围、状态等筛选控件", "至少展开一个筛选项"], ["筛选入口", "筛选项与回显"], 3),
+        _plan_item(boundary, "sort", f"排序{boundary}列表", ["识别排序控件", "切换排序条件"], ["排序入口", "排序回显"], 4),
+        _plan_item(boundary, "create", f"打开{boundary}新建入口", ["点击创建或新增入口", "检查弹窗或创建页字段", "取消提交并返回"], ["新建入口", "表单结构"], 5),
+        _plan_item(boundary, "import", f"检查{boundary}导入入口", ["点击导入入口", "检查上传控件、模板或格式限制", "关闭弹窗"], ["导入入口", "上传限制和模板入口"], 6),
+        _plan_item(boundary, "detail", f"查看{boundary}详情", ["点击一条列表、卡片或业务对象", "记录详情页、抽屉或弹窗内容"], ["详情入口", "详情字段和返回路径"], 7),
+        _plan_item(boundary, "agent_usage", f"验证{boundary}智能体使用入口", ["识别使用、试用、运行或对话入口", "进入入口并记录状态", "遇到扣费、发布或外部调用时停止"], ["智能体使用入口", "运行前状态和阻塞原因"], 8),
+        _plan_item(boundary, "empty_state", f"检查{boundary}空状态", ["观察无数据状态", "记录空状态文案和主按钮"], ["空状态文案", "空状态引导入口"], 9),
     ]
     return {
         "artifact_schema_version": 1,
@@ -1325,9 +1454,7 @@ def _plan_item(
     capability_type: str,
     title: str,
     steps: list[str],
-    expected_evidence: list[str],
-    risk_level: str,
-    execution_policy: str,
+    exploration_points: list[str],
     index: int,
 ) -> dict:
     return _normalize_plan_item(
@@ -1337,10 +1464,7 @@ def _plan_item(
             "capability_type": capability_type,
             "title": title,
             "steps": steps,
-            "expected_evidence": expected_evidence,
-            "risk_level": risk_level,
-            "execution_policy": execution_policy,
-            "status": "pending",
+            "exploration_points": exploration_points,
         },
         index,
         boundary,
@@ -1355,17 +1479,11 @@ def _normalize_plan_item(raw: dict, index: int, boundary: str) -> dict:
         "capability_type": capability_type,
         "title": str(raw.get("title") or f"{boundary}探索计划项"),
         "steps": _string_list(raw.get("steps")),
-        "expected_evidence": _string_list(raw.get("expected_evidence")),
-        "risk_level": str(raw.get("risk_level") or "low"),
-        "execution_policy": str(raw.get("execution_policy") or "auto"),
-        "status": str(raw.get("status") or "pending"),
+        "exploration_points": _string_list(raw.get("exploration_points")),
     }
     entry_path = str(raw.get("entry_path") or "").strip()
     if entry_path:
         item["entry_path"] = entry_path
-    discovery_evidence = _string_list(raw.get("discovery_evidence"))
-    if discovery_evidence:
-        item["discovery_evidence"] = discovery_evidence
     return item
 
 

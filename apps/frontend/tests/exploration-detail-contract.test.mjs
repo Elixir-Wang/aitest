@@ -75,7 +75,7 @@ test("exploration detail supports first discovery before confirmed plan runs", (
     /plan_status: "not_generated" \| "draft" \| "confirmed" \| "running" \| "completed" \| "blocked";/,
   );
   assert.match(pageSource, /async function generateExplorationPlan\(\)/);
-  assert.match(pageSource, /async function confirmExplorationPlan\(\)/);
+  assert.match(pageSource, /async function confirmExplorationPlan\(\): Promise<boolean>/);
   assert.match(
     pageSource,
     /const hasFirstDiscoveryArtifacts = activeDetail[\s\S]*\? activeDetail\.modules\.some\(\(module\) => !hasNoModuleArtifacts\(module\)\)[\s\S]*: false;/,
@@ -85,10 +85,20 @@ test("exploration detail supports first discovery before confirmed plan runs", (
     pageSource,
     /const canStartFromPlan = explorationPlan\?\.plan_status === "confirmed" && Boolean\(run\) && canStart;/,
   );
+  assert.match(pageSource, /\{canStartFirstDiscovery \? \(/);
   assert.match(pageSource, />\s*首次探索采集\s*<\/Button>/);
   assert.match(pageSource, /\{generatingPlan \? "生成中" : "生成探索计划"\}/);
-  assert.match(pageSource, />\s*确认计划\s*<\/Button>/);
-  assert.match(pageSource, />\s*按计划开始探索\s*<\/Button>/);
+  assert.match(pageSource, /async function confirmPlanThenStart\(\)/);
+  assert.match(pageSource, /const confirmed = await onConfirmPlan\(\);/);
+  assert.match(pageSource, /setReadyToStartConfirmedPlan\(true\);/);
+  assert.match(pageSource, /if \(!readyToStartConfirmedPlan\) \{/);
+  assert.match(pageSource, /await onStart\(\);/);
+  assert.match(pageSource, /确认计划并准备探索/);
+  assert.match(pageSource, /再次点击开始探索/);
+  assert.match(pageSource, /按计划开始探索/);
+  assert.match(pageSource, /\{confirmAndStartLabel\}/);
+  assert.doesNotMatch(pageSource, />\s*确认计划\s*<\/Button>/);
+  assert.doesNotMatch(pageSource, />\s*按计划开始探索\s*<\/Button>/);
   assert.doesNotMatch(pageSource, />\s*\{startLabel\}\s*<\/Button>/);
 });
 

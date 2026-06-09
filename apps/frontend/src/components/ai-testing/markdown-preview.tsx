@@ -87,6 +87,7 @@ function MermaidDiagram({ source }: MermaidDiagramProps) {
 
 function MermaidSvgDiagram({ source }: MermaidDiagramProps) {
   const reactId = useId();
+  const isDarkMode = useDarkMode();
   const [svg, setSvg] = useState("");
   const [error, setError] = useState("");
 
@@ -106,16 +107,7 @@ function MermaidSvgDiagram({ source }: MermaidDiagramProps) {
             rankSpacing: 60,
             useMaxWidth: true,
           },
-          themeVariables: {
-            primaryColor: "#eef2ff",
-            primaryTextColor: "#172033",
-            primaryBorderColor: "#7c8db5",
-            lineColor: "#667085",
-            secondaryColor: "#f6f8fb",
-            tertiaryColor: "#ffffff",
-            fontFamily: '"Noto Sans SC", Arial, sans-serif',
-            fontSize: "14px",
-          },
+          themeVariables: getMermaidThemeVariables(isDarkMode),
         });
         const id = `mermaid-${reactId.replace(/[^a-zA-Z0-9_-]/g, "")}`;
         const result = await mermaid.render(id, source);
@@ -136,7 +128,7 @@ function MermaidSvgDiagram({ source }: MermaidDiagramProps) {
     return () => {
       cancelled = true;
     };
-  }, [reactId, source]);
+  }, [isDarkMode, reactId, source]);
 
   if (error) {
     return (
@@ -271,6 +263,42 @@ function SimpleFlowchartDiagram({ chart, source }: { chart: SimpleFlowchart; sou
       </div>
     </div>
   );
+}
+
+function useDarkMode() {
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const syncTheme = () => {
+      setIsDarkMode(root.classList.contains("dark"));
+    };
+    syncTheme();
+
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(root, { attributeFilter: ["class"], attributes: true });
+
+    return () => observer.disconnect();
+  }, []);
+
+  return isDarkMode;
+}
+
+function getMermaidThemeVariables(isDarkMode: boolean) {
+  return {
+    background: isDarkMode ? "#18181b" : "#ffffff",
+    mainBkg: isDarkMode ? "#1f2937" : "#eef2ff",
+    primaryColor: isDarkMode ? "#1f2937" : "#eef2ff",
+    primaryTextColor: isDarkMode ? "#f8fafc" : "#172033",
+    primaryBorderColor: isDarkMode ? "#64748b" : "#7c8db5",
+    secondaryColor: isDarkMode ? "#172033" : "#f6f8fb",
+    tertiaryColor: isDarkMode ? "#111827" : "#ffffff",
+    lineColor: isDarkMode ? "#94a3b8" : "#667085",
+    textColor: isDarkMode ? "#f8fafc" : "#172033",
+    nodeTextColor: isDarkMode ? "#f8fafc" : "#172033",
+    fontFamily: '"Noto Sans SC", Arial, sans-serif',
+    fontSize: "14px",
+  };
 }
 
 function MermaidSvg({ className, svg }: { className: string; svg: string }) {

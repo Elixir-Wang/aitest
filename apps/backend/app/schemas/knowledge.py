@@ -19,10 +19,23 @@ class KnowledgeExplorationInput(BaseModel):
     modules: list[dict] = Field(default_factory=list)
 
 
-class KnowledgeBuildInput(BaseModel):
+class KnowledgeQueryRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=12000)
+    include_requirements: bool = True
+    include_explorations: bool = True
+    conversation_id: str | None = None
+
+
+class KnowledgeConversationHistoryMessage(BaseModel):
+    role: Literal["assistant", "user"]
+    content: str
+
+
+class KnowledgeQueryInput(BaseModel):
     project_id: str
     project_name: str
-    build_no: str
+    question: str
+    conversation_history: list[KnowledgeConversationHistoryMessage] = Field(default_factory=list)
     source_documents: list[KnowledgeSourceDocumentInput] = Field(default_factory=list)
     explorations: list[KnowledgeExplorationInput] = Field(default_factory=list)
 
@@ -35,38 +48,33 @@ class KnowledgeSourceRef(BaseModel):
     excerpt: str = ""
 
 
-class WikiPageOutput(BaseModel):
-    page_id: str
-    title: str
-    relative_path: str
-    page_type: Literal["index", "overview", "module", "map", "quality", "testing", "build", "log"]
-    module_key: str = ""
-    summary: str = ""
-    markdown_content: str
+class KnowledgeQueryOutput(BaseModel):
+    answer: str
     source_refs: list[KnowledgeSourceRef] = Field(default_factory=list)
+    used_requirement_versions: list[str] = Field(default_factory=list)
+    used_exploration_runs: list[str] = Field(default_factory=list)
 
 
-class KnowledgeItemOutput(BaseModel):
-    module_key: str
-    module_name: str
-    knowledge_type: Literal["requirement_fact", "page_fact", "merged_fact", "test_focus"]
+class KnowledgeConversation(BaseModel):
+    id: str
+    project_id: str
+    title: str
+    created_by: str
+    created_at: str
+    updated_at: str
+
+
+class KnowledgeConversationMessage(BaseModel):
+    id: str
+    conversation_id: str
+    role: Literal["assistant", "user"]
     content: str
     source_refs: list[KnowledgeSourceRef] = Field(default_factory=list)
+    used_requirement_versions: list[str] = Field(default_factory=list)
+    used_exploration_runs: list[str] = Field(default_factory=list)
+    created_at: str
 
 
-class WikiLintIssueOutput(BaseModel):
-    severity: Literal["info", "warning", "error"]
-    title: str
-    detail: str
-    page_id: str = ""
-
-
-class KnowledgeBuildOutput(BaseModel):
-    status: Literal["blocked", "draft"]
-    summary: str
-    change_summary: str
-    affected_modules: list[str] = Field(default_factory=list)
-    blockers: list[str] = Field(default_factory=list)
-    pages: list[WikiPageOutput] = Field(default_factory=list)
-    knowledge_items: list[KnowledgeItemOutput] = Field(default_factory=list)
-    lint_issues: list[WikiLintIssueOutput] = Field(default_factory=list)
+class KnowledgeConversationDetail(BaseModel):
+    conversation: KnowledgeConversation
+    messages: list[KnowledgeConversationMessage] = Field(default_factory=list)

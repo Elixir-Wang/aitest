@@ -427,7 +427,9 @@ export default function DocumentDetailPage() {
   const analysisReportMarkdown = analysisResult?.output.analysis_report_markdown ?? "";
   const clarificationQuestions = analysisResult?.output.clarification_questions ?? [];
   const analysisConflicts = analysisResult?.output.conflicts ?? [];
-  const pendingAnalysisItems: RequirementAnalysisPendingItem[] = [...clarificationQuestions, ...analysisConflicts];
+  const pendingAnalysisItems: RequirementAnalysisPendingItem[] = [...clarificationQuestions, ...analysisConflicts].filter(
+    (item) => item.answer?.apply_status !== "not_applicable",
+  );
   const visiblePendingAnalysisItems = pendingAnalysisItems.filter((item) => !deferredPendingItemIds.includes(item.id));
   const deferredPendingAnalysisItems = pendingAnalysisItems.filter((item) => deferredPendingItemIds.includes(item.id));
   const isBlocked =
@@ -472,7 +474,9 @@ export default function DocumentDetailPage() {
     reviewLoading ||
     REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRequirementAnalysisRunStatus) ||
     Boolean(overview?.document.status === "pending_review" && !analysisResult && !latestRequirementAnalysisRunStatus);
-  const requirementReviewPassed = Boolean(analysisResult?.status === "completed" && !isBlocked);
+  const requirementReviewPassed = Boolean(
+    analysisResult?.status && ["completed", "needs_clarification"].includes(analysisResult.status) && !isBlocked,
+  );
   const requirementProgressSteps: RequirementProgressStep[] = [
     {
       id: "raw",
@@ -486,7 +490,7 @@ export default function DocumentDetailPage() {
     },
     {
       id: "review",
-      title: "需求评审",
+      title: "需求分析",
       status: requirementReviewRunning ? "running" : requirementReviewPassed ? "completed" : "upcoming",
     },
     {
@@ -1630,9 +1634,12 @@ export default function DocumentDetailPage() {
                       const itemNumber = pendingItemNumber(
                         pendingAnalysisItems.findIndex((pendingItem) => pendingItem.id === item.id),
                       );
+                      const isAppliedAnswer = item.answer?.apply_status === "applied";
+                      const savedCustomAnswer =
+                        isAppliedAnswer && item.answer?.answer_type === "custom" ? item.answer.answer_markdown : "";
                       const draft = pendingAnswerDrafts[item.id] ?? {
                         selectedOptionId: item.answer?.selected_option_id ?? "",
-                        customAnswer: "",
+                        customAnswer: savedCustomAnswer,
                         answerType: item.answer?.answer_type ?? "recommended_option",
                       };
                       const isSaving = savingClarificationId === item.id;
@@ -1650,16 +1657,6 @@ export default function DocumentDetailPage() {
                                 {pendingSeverityLabels[item.severity] ?? item.severity}
                               </Badge>
                               <span className="font-medium text-foreground text-sm">{item.module_name}</span>
-                              {"issue_type" in item ? (
-                                <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground text-xs">
-                                  {item.issue_type}
-                                </span>
-                              ) : null}
-                              {item.answer ? (
-                                <Badge variant={item.answer.apply_status === "applied" ? "default" : "outline"}>
-                                  {clarificationAnswerStatusLabel(item.answer)}
-                                </Badge>
-                              ) : null}
                             </div>
                             <div className="mt-3 text-foreground text-sm leading-6">{item.question}</div>
                             {item.impact ? (
@@ -1744,6 +1741,7 @@ export default function DocumentDetailPage() {
                                   onFocus={() =>
                                     updatePendingAnswerDraft(item.id, {
                                       answerType: "custom",
+                                      customAnswer: draft.customAnswer,
                                     })
                                   }
                                   placeholder={draft.answerType === "custom" ? "" : "手动补充确认口径"}
@@ -1752,19 +1750,10 @@ export default function DocumentDetailPage() {
                               </div>
                             </div>
 
-                            {item.answer?.answer_markdown ? (
-                              <div className="mt-3 rounded-md bg-muted/40 p-3 text-xs">
-                                <div className="font-medium">当前答复</div>
-                                <div className="mt-1 whitespace-pre-wrap text-muted-foreground">
-                                  {item.answer.answer_markdown}
-                                </div>
-                              </div>
-                            ) : null}
-
                             <div className="mt-3 flex items-center justify-end gap-1.5">
                               <Button
                                 className="h-7 px-2 text-xs"
-                                disabled={isSaving || isFinalized}
+                                disabled={isSaving || isFinalized || isAppliedAnswer}
                                 onClick={() => deferPendingItem(item.id)}
                                 type="button"
                                 variant="outline"
@@ -2030,7 +2019,7 @@ function RequirementProgressSteps({ steps }: { steps: RequirementProgressStep[] 
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-medium text-sm">需求处理进度</h2>
-          <p className="mt-1 text-muted-foreground text-xs">按原始需求、标准需求、需求评审、最终需求推进。</p>
+          <p className="mt-1 text-muted-foreground text-xs">按原始需求、标准需求、需求分析、最终需求推进。</p>
         </div>
       </div>
       <div className="relative">
@@ -2145,16 +2134,6 @@ function displayFilename(filename: string) {
 function standardMarkdownFilename(filename: string) {
   const displayName = displayFilename(filename);
   return displayName.replace(/\.[^.]+$/, "");
-}
-
-function clarificationAnswerStatusLabel(answer: RequirementClarificationAnswer) {
-  if (answer.apply_status === "applied") {
-    return "已应用";
-  }
-  if (answer.apply_status === "not_applicable") {
-    return "暂不处理";
-  }
-  return "应用失败";
 }
 
 function isConfirmRequired(error: unknown) {

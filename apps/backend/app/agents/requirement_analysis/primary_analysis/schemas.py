@@ -95,7 +95,6 @@ class RequirementUnresolvedFinding(BaseModel):
     module_key: str
     module_name: str
     issue_type: Literal[
-        "missing_answer",
         "conflict",
         "out_of_scope",
         "weak_evidence",

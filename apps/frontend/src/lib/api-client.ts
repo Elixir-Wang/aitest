@@ -158,53 +158,46 @@ export type ApiAvailableAction = {
   confirm_required: boolean;
 };
 
-export type ApiKnowledgeBuild = {
+export type ApiKnowledgeSourceRef = {
+  source_type: "requirement" | "exploration" | "manual";
+  source_id: string;
+  source_title: string;
+  location: string;
+  excerpt: string;
+};
+
+export type ApiKnowledgeQueryResult = {
+  conversation: ApiKnowledgeConversation;
+  messages: ApiKnowledgeConversationMessage[];
+  answer: string;
+  source_refs: ApiKnowledgeSourceRef[];
+  used_requirement_versions: string[];
+  used_exploration_runs: string[];
+};
+
+export type ApiKnowledgeConversation = {
   id: string;
-  project_id: string | null;
-  build_no: string;
-  status: "building" | "blocked" | "draft" | "published";
-  status_label: string;
-  build_type: string;
-  summary: string;
-  change_summary: string;
-  source_document_version_ids: string[];
-  exploration_run_ids: string[];
-  blockers: string[];
-  affected_modules: string[];
-  output_dir: string;
-  page_count: number;
-  item_count: number;
-  lint_count: number;
+  project_id: string;
+  title: string;
   created_by: string;
   created_at: string;
   updated_at: string;
-  published_at: string | null;
-  available_actions: ApiAvailableAction[];
 };
 
-export type ApiWikiPage = {
+export type ApiKnowledgeConversationMessage = {
   id: string;
-  title: string;
-  relative_path: string;
-  page_type: string;
-  module_key: string;
-  summary: string;
-  source_refs: unknown[];
+  conversation_id: string;
+  role: "assistant" | "user";
+  content: string;
+  source_refs: ApiKnowledgeSourceRef[];
+  used_requirement_versions: string[];
+  used_exploration_runs: string[];
   created_at: string;
 };
 
-export type ApiKnowledgeBuildDetail = {
-  build: ApiKnowledgeBuild;
-  pages: ApiWikiPage[];
-  lint_issues: Array<{ id: string; severity: string; title: string; detail: string; page_id: string }>;
-  source_refs: Array<{
-    id: string;
-    source_type: string;
-    source_id: string;
-    source_title: string;
-    location: string;
-    excerpt: string;
-  }>;
+export type ApiKnowledgeConversationDetail = {
+  conversation: ApiKnowledgeConversation;
+  messages: ApiKnowledgeConversationMessage[];
 };
 
 export type ApiTaskStatusGroup = "running" | "waiting" | "failed" | "completed";

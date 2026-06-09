@@ -1219,9 +1219,9 @@ async def test_failed_requirement_review_run_restores_previous_final_requirement
         ).fetchone()
 
     assert run["status"] == "failed"
-    assert run["summary"] == "需求评审失败。"
+    assert run["summary"] == "需求分析失败。"
     assert "model unavailable" in run["failure_reason"]
-    assert failure_log["summary"] == "需求评审失败。"
+    assert failure_log["summary"] == "需求分析失败。"
     assert "model unavailable" not in failure_log["summary"]
     assert "model unavailable" in failure_log["failure_reason"]
     assert document["status"] == "versioned"

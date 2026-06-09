@@ -4,7 +4,6 @@ from sqlite3 import Connection, Row
 PROJECT_ASSET_TABLES = (
     "source_documents",
     "exploration_runs",
-    "knowledge_builds",
     "test_cases",
     "automation_cases",
     "automation_runs",

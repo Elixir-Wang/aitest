@@ -278,9 +278,9 @@ def start_requirement_review_run(project_id: str, document_id: str, actor) -> di
 
         primary_file = document_repo.find_primary_file_mapping(db, document_id)
         if not primary_file:
-            raise api_error(409, "DOCUMENT_PRIMARY_FILE_REQUIRED", "请先选择主需求文件后再进行需求评审。")
+            raise api_error(409, "DOCUMENT_PRIMARY_FILE_REQUIRED", "请先选择主需求文件后再进行需求分析。")
         if primary_file["conversion_status"] not in {CONVERSION_SUCCESS_STATUS, "warning"} or not primary_file["markdown_file_path"]:
-            raise api_error(409, "DOCUMENT_PRIMARY_FILE_NOT_READY", "请先完成主需求标准文件转换后再进行需求评审。")
+            raise api_error(409, "DOCUMENT_PRIMARY_FILE_NOT_READY", "请先完成主需求标准文件转换后再进行需求分析。")
 
         active_run = requirement_analysis_run_repo.find_active_by_document(db, document_id)
         if active_run:
@@ -296,7 +296,7 @@ def start_requirement_review_run(project_id: str, document_id: str, actor) -> di
             document_id=document_id,
             primary_mapping_id=primary_file["id"],
             status="queued",
-            summary="需求评审已提交，等待智能体分析。",
+            summary="需求分析已提交，等待智能体分析。",
             created_by=actor_data["id"],
         )
 
@@ -305,7 +305,7 @@ def start_requirement_review_run(project_id: str, document_id: str, actor) -> di
         actor_data,
         action="submit_requirement_analysis",
         result="success",
-        summary="需求评审已提交，等待智能体分析。",
+        summary="需求分析已提交，等待智能体分析。",
         status="queued",
         after={
             "status": "queued",
@@ -323,12 +323,12 @@ def start_requirement_review_run(project_id: str, document_id: str, actor) -> di
         "project_id": project_id,
         "project_name": "",
         "module": "requirement",
-        "module_label": "需求评审",
+        "module_label": "需求分析",
         "title": document["name"],
         "status": "queued",
         "status_label": "排队中",
         "status_group": "running",
-        "summary": "需求评审已提交，等待智能体分析。",
+        "summary": "需求分析已提交，等待智能体分析。",
         "created_at": "",
         "updated_at": "",
         "detail_url": f"/projects/{project_id}/requirements/{document_id}",
@@ -347,7 +347,7 @@ async def execute_requirement_review_run(run_id: str, actor) -> None:
             db,
             run_id,
             status="running",
-            summary="需求评审智能体正在分析。",
+            summary="需求分析智能体正在分析。",
         )
         project_id = run["project_id"]
         document_id = run["document_id"]
@@ -357,7 +357,7 @@ async def execute_requirement_review_run(run_id: str, actor) -> None:
         actor_data,
         action="start_requirement_analysis",
         result="success",
-        summary="需求评审智能体正在分析。",
+        summary="需求分析智能体正在分析。",
         status="running",
     )
 
@@ -381,7 +381,7 @@ async def execute_requirement_review_run(run_id: str, actor) -> None:
                 db,
                 run_id,
                 status="failed",
-                summary="需求评审失败。",
+                summary="需求分析失败。",
                 failure_reason=failure_reason,
             )
         _record_requirement_review_task_event(
@@ -389,7 +389,7 @@ async def execute_requirement_review_run(run_id: str, actor) -> None:
             actor_data,
             action="fail_requirement_analysis",
             result="failed",
-            summary="需求评审失败。",
+            summary="需求分析失败。",
             status="failed",
             failure_reason=failure_reason,
         )
@@ -409,7 +409,7 @@ async def execute_requirement_review_run(run_id: str, actor) -> None:
                 db,
                 run_id,
                 status="failed",
-                summary="需求评审失败。",
+                summary="需求分析失败。",
                 failure_reason=failure_reason,
             )
         _record_requirement_review_task_event(
@@ -417,7 +417,7 @@ async def execute_requirement_review_run(run_id: str, actor) -> None:
             actor_data,
             action="fail_requirement_analysis",
             result="failed",
-            summary="需求评审失败。",
+            summary="需求分析失败。",
             status="failed",
             failure_reason=failure_reason,
         )
@@ -425,13 +425,13 @@ async def execute_requirement_review_run(run_id: str, actor) -> None:
 
     status = result["status"]
     if status == "needs_clarification":
-        summary = result["analysis_summary"] or "需求评审完成，存在待确认问题。"
+        summary = result["analysis_summary"] or "需求分析完成，存在待确认问题。"
         log_result = "partial_success"
     elif status == "blocked":
-        summary = result["analysis_summary"] or "需求评审阻塞。"
+        summary = result["analysis_summary"] or "需求分析阻塞。"
         log_result = "partial_success"
     else:
-        summary = result["analysis_summary"] or "需求评审完成。"
+        summary = result["analysis_summary"] or "需求分析完成。"
         log_result = "success"
 
     with connect() as db:
@@ -457,9 +457,9 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
 
         primary_file = document_repo.find_primary_file_mapping(db, document_id)
         if not primary_file:
-            raise api_error(409, "DOCUMENT_PRIMARY_FILE_REQUIRED", "请先选择主需求文件后再进行需求评审。")
+            raise api_error(409, "DOCUMENT_PRIMARY_FILE_REQUIRED", "请先选择主需求文件后再进行需求分析。")
         if primary_file["conversion_status"] not in {CONVERSION_SUCCESS_STATUS, "warning"} or not primary_file["markdown_file_path"]:
-            raise api_error(409, "DOCUMENT_PRIMARY_FILE_NOT_READY", "请先完成主需求标准文件转换后再进行需求评审。")
+            raise api_error(409, "DOCUMENT_PRIMARY_FILE_NOT_READY", "请先完成主需求标准文件转换后再进行需求分析。")
 
         markdown_path = resolve_stored_path(primary_file["markdown_file_path"]) or Path(primary_file["markdown_file_path"])
         if not markdown_path.exists():
@@ -600,7 +600,7 @@ def _exception_message(exc: Exception) -> str:
 
 
 def _requirement_review_timeout_message() -> str:
-    return f"需求评审运行超过 {REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES} 分钟，已自动标记为失败。"
+    return f"需求分析运行超过 {REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES} 分钟，已自动标记为失败。"
 
 
 def get_latest_requirement_analysis(project_id: str, document_id: str, actor) -> dict:

@@ -98,19 +98,27 @@ def test_requirement_analysis_codex_prompt_orders_review_scenarios_auxiliary_ans
 
     review_index = prompt.index("第一阶段：使用 requirement-review")
     scenarios_index = prompt.index("第二阶段：使用 test-scenarios")
-    auxiliary_index = prompt.index("第三阶段：使用辅助文件")
-    assert review_index < scenarios_index < auxiliary_index
+    assert review_index < scenarios_index
     assert "需求分析智能体" in prompt
     assert "Codex CLI 需求分析智能体" not in prompt
     assert "非交互式批处理任务" in prompt
     assert "不要只回复确认" in prompt
-    assert "如果辅助文件能回答待确认问题" in prompt
-    assert "删除对应待确认条目" in prompt
-    assert "写入 preliminary_requirement_markdown" in prompt
+    assert "不读取、不引用、不推测任何辅助文档" in prompt
+    assert "辅助文档增强由后续 RequirementAuxiliaryEnhancementAgent 处理" in prompt
+    assert "applied_supplements 必须为空数组" in prompt
     assert "output/analysis.json" in prompt
     assert "output/analysis.md" in prompt
     assert "analysis_report_markdown" in prompt
     assert "待确认需求 tab 后面的分析报告 tab" in prompt
+    assert "分析报告只写分析摘要、成熟度、关键缺口分类、测试场景补充视角、质量门禁和下一步建议" in prompt
+    assert "分析报告不要出现“待确认问题”“待人工确认”“澄清问题”等面向人工答复的章节、标题、统计或问题清单" in prompt
+    assert "关键缺口只做归类和影响说明，不要写成可答复的问题清单" in prompt
+    assert "测试场景补充视角只说明测试覆盖影响，不要展开具体待人工答复事项" in prompt
+    assert "分析报告不要重复、统计或摘要 clarification_questions/conflicts；这些内容只进入结构化字段" in prompt
+    assert "需要人工回答或裁决的内容必须进入 clarification_questions/conflicts" in prompt
+    assert "status 只能是 completed、needs_clarification、blocked" in prompt
+    assert "quality_gate.result，只能是 passed、warning、blocked" in prompt
+    assert "coverage_audit 必须是数组" in prompt
 
 
 def test_requirement_analysis_codex_command_resolves_windows_cmd_shim(monkeypatch):
@@ -131,7 +139,9 @@ def test_requirement_analysis_codex_default_command_uses_backend_runner():
     from app.core import settings
 
     assert settings.REQUIREMENT_ANALYSIS_CODEX_RUNNER_DIR.name == "codex"
-    assert settings.REQUIREMENT_ANALYSIS_CODEX_COMMAND.endswith(r"runners\codex\node_modules\.bin\codex.cmd")
+    assert "runners" in settings.REQUIREMENT_ANALYSIS_CODEX_COMMAND
+    assert "codex" in settings.REQUIREMENT_ANALYSIS_CODEX_COMMAND
+    assert "node_modules" in settings.REQUIREMENT_ANALYSIS_CODEX_COMMAND
 
 
 def test_requirement_analysis_codex_command_uses_assigned_model_config(monkeypatch):
@@ -182,7 +192,7 @@ def test_requirement_analysis_codex_reports_process_failure_as_agent_failure(tmp
 
     with pytest.raises(RuntimeError, match="需求分析智能体执行失败，退出码：1"):
         runner._run_codex_process(
-            [runner.os.environ.get("COMSPEC", "cmd"), "/c", "echo unauthorized 1>&2 && exit /b 1"],
+            ["/bin/sh", "-c", "echo unauthorized 1>&2; exit 1"],
             tmp_path,
             runner.os.environ.copy(),
         )
@@ -195,6 +205,90 @@ def test_requirement_analysis_codex_reports_missing_analysis_output(tmp_path):
 
     with pytest.raises(ValueError, match="需求分析智能体未生成 output/analysis.json"):
         runner._read_analysis_output(tmp_path)
+
+
+def test_requirement_analysis_codex_normalizes_legacy_agent_output(tmp_path):
+    from app.agents.requirement_analysis_codex import runner
+
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    (output_dir / "analysis.md").write_text("# 分析报告\n\n有条件通过。", encoding="utf-8")
+    (output_dir / "analysis.json").write_text(
+        runner.json.dumps(
+            {
+                "status": "CONDITIONAL_PASS",
+                "analysis_summary": "需求基本清晰，但仍有待确认项。",
+                "preliminary_requirement_markdown": "# 主需求",
+                "analysis_report_markdown": "",
+                "applied_supplements": [
+                    {
+                        "source_file": "input/auxiliary/001-aux-1-supporting.md",
+                        "applied_to": "验证码有效期",
+                        "evidence": "辅助文档说明验证码有效期为 5 分钟。",
+                    }
+                ],
+                "maturity_assessment": {
+                    "overall_level": "中等成熟，有条件可进入方案设计",
+                    "dimensions": [{"name": "完整性", "notes": "缺少异常路径。"}],
+                },
+                "key_gaps": ["缺少异常路径。"],
+                "assumptions": ["验证码登录为本期范围。"],
+                "modules": [{"name": "登录模块", "scope": "验证码登录。", "rules": ["验证码有效期 5 分钟。"]}],
+                "clarification_questions": [
+                    {
+                        "id": "CQ-001",
+                        "question": "验证码错误次数上限是多少？",
+                        "priority": "HIGH",
+                        "recommended_options": [
+                            {
+                                "label": "5 次",
+                                "answer_markdown": "验证码连续错误 5 次后锁定 10 分钟。",
+                            }
+                        ],
+                    }
+                ],
+                "conflicts": [
+                    {
+                        "id": "CF-001",
+                        "topic": "验证码有效期",
+                        "description": "主需求未说明，辅助文档说明为 5 分钟。",
+                        "sources": ["input/primary.md", "input/auxiliary/001-aux-1-supporting.md"],
+                        "resolution_needed": "确认验证码有效期是否为 5 分钟。",
+                    }
+                ],
+                "coverage_audit": {
+                    "covered": ["登录主流程"],
+                    "partial": ["异常路径"],
+                    "missing": ["错误次数上限"],
+                },
+                "quality_gate": {
+                    "decision": "有条件通过",
+                    "pass": False,
+                    "blocking_items": ["确认验证码错误次数上限"],
+                    "non_blocking_items": ["补充性能指标"],
+                },
+                "next_actions": ["由产品确认验证码错误次数上限。"],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    output = runner._read_analysis_output(tmp_path)
+
+    assert output.status == "needs_clarification"
+    assert output.quality_gate.result == "warning"
+    assert output.quality_gate.blocking_issues == ["确认验证码错误次数上限"]
+    assert output.analysis_report_markdown == "# 分析报告\n\n有条件通过。"
+    assert output.applied_supplements == []
+    assert output.maturity_assessment.level == "RA2"
+    assert output.key_gaps[0].category == "other"
+    assert output.assumptions[0].validation_needed == "需要业务负责人确认。"
+    assert output.modules[0].module_name == "登录模块"
+    assert output.clarification_questions[0].dimension == "other"
+    assert output.clarification_questions[0].recommended_options[0].id == "OPT-001"
+    assert output.conflicts[0].issue_type == "conflict"
+    assert len(output.coverage_audit) == 3
 
 
 @pytest.mark.anyio

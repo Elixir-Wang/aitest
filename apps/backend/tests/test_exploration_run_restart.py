@@ -52,7 +52,6 @@ def _confirm_plan(run_id: str, monkeypatch: pytest.MonkeyPatch) -> None:
                 reason="页面事实中出现首页内容。",
                 entry_hint="当前页面",
                 steps=["进入首页模块", "记录页面状态"],
-                expected_evidence=["首页入口可追溯", "首页状态已记录"],
             )
         ],
     )
@@ -68,7 +67,13 @@ def _mark_run_completed(run_id: str) -> None:
         )
 
 
-def _mock_ai_plan_generation(monkeypatch: pytest.MonkeyPatch, modules: list[ExplorationPlanModule]) -> None:
+def _mock_ai_plan_generation(
+    monkeypatch: pytest.MonkeyPatch,
+    modules: list[ExplorationPlanModule],
+    elements: list[dict] | None = None,
+) -> None:
+    if elements is None:
+        elements = [{"id": "search", "role": "textbox", "name": "搜索", "action_type": "fill"}]
     monkeypatch.setattr(
         exploration_service,
         "_collect_scope_plan_facts",
@@ -77,7 +82,7 @@ def _mock_ai_plan_generation(monkeypatch: pytest.MonkeyPatch, modules: list[Expl
             "normalized_url": "https://example.test",
             "title": "测试页面",
             "page_text_summary": "测试页面内容",
-            "elements": [],
+            "elements": elements,
         },
     )
 
@@ -264,7 +269,6 @@ def test_generate_confirmed_plan_before_starting_run(monkeypatch: pytest.MonkeyP
                 reason="页面事实中出现工作台导航和内容。",
                 entry_hint="工作台入口",
                 steps=["进入工作台模块", "查看主要页面和状态"],
-                expected_evidence=["工作台入口可追溯", "工作台状态已记录"],
             )
         ],
     )
@@ -273,7 +277,7 @@ def test_generate_confirmed_plan_before_starting_run(monkeypatch: pytest.MonkeyP
 
     assert generated["plan_status"] == "draft"
     assert generated["business_boundary"] == "工作台"
-    assert {item["capability_type"] for item in generated["items"]} == {"module_discovery"}
+    assert {item["capability_type"] for item in generated["items"]} == {"query_filter"}
 
     confirmed = exploration_service.confirm_project_run_plan("project-1", created["id"], ACTOR)
 
@@ -307,31 +311,37 @@ def test_generate_plan_uses_ai_modules_from_current_scope_facts(
         monkeypatch,
         [
             ExplorationPlanModule(
-                module_name="工作台",
-                reason="页面事实中出现工作台模块入口。",
-                entry_hint="工作台导航",
-                steps=["进入工作台模块", "查看工作台主要状态"],
-                expected_evidence=["工作台入口可追溯", "工作台关键动作已记录"],
+                module_name="查询筛选功能",
+                reason="页面事实中出现搜索框、状态筛选和重置按钮。",
+                entry_hint="搜索框、状态筛选、重置按钮",
+                steps=["检查默认筛选条件", "验证组合筛选和重置行为"],
             ),
             ExplorationPlanModule(
                 module_name="资源库",
                 reason="页面事实中出现资源库入口。",
                 entry_hint="资源库导航",
                 steps=["进入资源库模块", "查看资源列表和筛选入口"],
-                expected_evidence=["资源库入口可追溯", "资源库页面状态已记录"],
             ),
+        ],
+        elements=[
+            {"id": "keyword", "role": "textbox", "name": "搜索", "action_type": "fill"},
+            {"id": "status", "role": "combobox", "name": "状态 全部", "action_type": "click"},
+            {"id": "reset", "role": "button", "name": "重置", "action_type": "click"},
+            {"id": "create", "role": "button", "name": "新增智能体", "action_type": "click"},
+            {"id": "import", "role": "button", "name": "导入", "action_type": "click"},
         ],
     )
 
     generated = exploration_service.generate_project_run_plan("project-1", created["id"], ACTOR)
 
     assert generated["plan_status"] == "draft"
-    assert generated["summary"] == "AI 已根据探索范围生成 1 个模块计划项，等待人工确认或补充。 已过滤范围外模块：资源库。"
-    assert [item["business_module"] for item in generated["items"]] == ["工作台"]
-    assert {item["capability_type"] for item in generated["items"]} == {"module_discovery"}
-    assert generated["items"][0]["discovery_evidence"] == ["页面事实中出现工作台模块入口。", "工作台导航"]
+    assert generated["summary"] == "AI 已根据探索范围和 DOM 元素分组生成 3 个功能计划项，等待人工确认或补充。 已过滤范围外模块：资源库。"
+    assert [item["business_module"] for item in generated["items"]] == ["工作台", "工作台", "工作台"]
+    assert [item["capability_type"] for item in generated["items"]] == ["query_filter", "crud", "import_export"]
+    assert [item["title"] for item in generated["items"]] == ["查询筛选功能", "CRUD 功能", "导入导出功能"]
+    assert generated["items"][0]["exploration_points"][0] == "来源 DOM：搜索、状态 全部、重置"
     assert generated["items"][0]["entry_path"] == "https://example.test"
-    assert not {"search", "filter", "sort", "create", "import"} & {
+    assert not {"search", "filter", "sort", "create", "import", "empty_state"} & {
         item["capability_type"] for item in generated["items"]
     }
 
@@ -354,7 +364,7 @@ def test_generate_plan_requires_ai_identified_modules(monkeypatch: pytest.Monkey
         ),
         ACTOR,
     )
-    _mock_ai_plan_generation(monkeypatch, [])
+    _mock_ai_plan_generation(monkeypatch, [], elements=[])
 
     with pytest.raises(Exception) as missing_modules_error:
         exploration_service.generate_project_run_plan("project-1", created["id"], ACTOR)

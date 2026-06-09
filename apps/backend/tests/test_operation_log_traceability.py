@@ -52,11 +52,11 @@ def test_operation_log_keyword_search_includes_trace_task_and_object_id(
         action="run",
         object_type="requirement_analysis_run",
         object_id="reqrun-1",
-        object_name="需求评审",
+        object_name="需求分析",
         actor_id="u-admin",
         actor_name="管理员",
         source="web",
-        summary="需求评审已提交。",
+        summary="需求分析已提交。",
         task_id="reqrun-1",
         request_id="trace_search123",
     )

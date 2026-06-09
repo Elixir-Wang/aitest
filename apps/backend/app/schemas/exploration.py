@@ -69,10 +69,7 @@ class ExplorationPlanItemIn(BaseModel):
     capability_type: str = Field(min_length=1)
     title: str = Field(min_length=1)
     steps: list[str] = Field(default_factory=list)
-    expected_evidence: list[str] = Field(default_factory=list)
-    risk_level: str = "low"
-    execution_policy: str = "auto"
-    status: str = "pending"
+    exploration_points: list[str] = Field(default_factory=list)
 
 
 class ExplorationPlanUpdateIn(BaseModel):

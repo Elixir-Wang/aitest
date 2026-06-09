@@ -30,9 +30,9 @@ AI_CAPABILITIES: tuple[AiCapability, ...] = (
         description="使用 Playwright CLI 探索 Web 站点，生成页面事实、模块覆盖、locator 和探索文档。",
     ),
     AiCapability(
-        id="knowledge_builder",
-        name="知识库构建智能体",
-        description="基于已确认需求版本和已完成探索结果，生成 Karpathy llm-wiki 风格的项目知识库。",
+        id="knowledge_query",
+        name="项目知识库查询智能体",
+        description="直接读取最终需求文档和探索记录，使用 Codex agentic search 返回带来源引用的项目知识库答案。",
     ),
 )
 
