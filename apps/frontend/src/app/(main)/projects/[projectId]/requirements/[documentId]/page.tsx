@@ -1008,7 +1008,7 @@ export default function DocumentDetailPage() {
       return;
     }
     const draft = pendingAnswerDrafts[item.id] ?? {
-      selectedOptionId: item.answer?.selected_option_id ?? item.recommended_options?.[0]?.id ?? "",
+      selectedOptionId: item.answer?.selected_option_id ?? "",
       customAnswer: "",
       answerType: item.answer?.answer_type ?? "recommended_option",
     };
@@ -1620,49 +1620,59 @@ export default function DocumentDetailPage() {
                         pendingAnalysisItems.findIndex((pendingItem) => pendingItem.id === item.id),
                       );
                       const draft = pendingAnswerDrafts[item.id] ?? {
-                        selectedOptionId: item.answer?.selected_option_id ?? item.recommended_options?.[0]?.id ?? "",
+                        selectedOptionId: item.answer?.selected_option_id ?? "",
                         customAnswer: "",
                         answerType: item.answer?.answer_type ?? "recommended_option",
                       };
                       const isSaving = savingClarificationId === item.id;
                       return (
-                        <div className="rounded-lg border bg-background p-4" key={item.id}>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="inline-flex h-6 min-w-8 items-center justify-center rounded-md border bg-muted/40 px-1.5 font-medium text-[11px] text-muted-foreground tabular-nums">
-                              #{itemNumber}
-                            </span>
-                            <Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>
-                              {pendingSeverityLabels[item.severity] ?? item.severity}
-                            </Badge>
-                            <span className="font-medium text-sm">{item.module_name}</span>
-                            {"issue_type" in item ? (
-                              <span className="text-muted-foreground text-xs">{item.issue_type}</span>
-                            ) : null}
-                            {item.answer ? (
-                              <Badge variant={item.answer.apply_status === "applied" ? "default" : "outline"}>
-                                {clarificationAnswerStatusLabel(item.answer)}
+                        <div
+                          className="overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-sm dark:shadow-none"
+                          key={item.id}
+                        >
+                          <div className="p-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="inline-flex h-6 min-w-7 items-center justify-center rounded-md border border-border bg-muted/50 px-1.5 font-medium text-[11px] text-muted-foreground tabular-nums">
+                                {itemNumber}
+                              </span>
+                              <Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>
+                                {pendingSeverityLabels[item.severity] ?? item.severity}
                               </Badge>
+                              <span className="font-medium text-foreground text-sm">{item.module_name}</span>
+                              {"issue_type" in item ? (
+                                <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground text-xs">
+                                  {item.issue_type}
+                                </span>
+                              ) : null}
+                              {item.answer ? (
+                                <Badge variant={item.answer.apply_status === "applied" ? "default" : "outline"}>
+                                  {clarificationAnswerStatusLabel(item.answer)}
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <div className="mt-3 text-foreground text-sm leading-6">{item.question}</div>
+                            {item.impact ? (
+                              <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800 text-xs dark:text-amber-200">
+                                影响：{item.impact}
+                              </div>
                             ) : null}
-                          </div>
-                          <div className="mt-3 text-sm">{item.question}</div>
-                          {item.impact ? (
-                            <div className="mt-2 text-muted-foreground text-xs">影响：{item.impact}</div>
-                          ) : null}
-                          <div className="mt-4 space-y-2 border-t pt-3">
-                            {item.recommended_options?.length ? (
-                              <div className="space-y-1">
-                                <div className="font-medium text-xs">推荐处理</div>
-                                <div className="space-y-px">
+
+                            <div className="mt-4 rounded-lg border border-border bg-muted/35 p-3 dark:bg-muted/20">
+                              <div className="mb-2 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
+                                推荐处理
+                              </div>
+                              {item.recommended_options?.length ? (
+                                <div className="space-y-2">
                                   {item.recommended_options.slice(0, 2).map((option, index) => {
                                     const selected =
                                       draft.answerType === "recommended_option" && draft.selectedOptionId === option.id;
                                     return (
                                       <button
                                         className={cn(
-                                          "-mx-2 flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+                                          "grid w-full grid-cols-[28px_1fr] items-start gap-2 rounded-md border bg-background px-3 py-2.5 text-left text-sm transition-all dark:bg-input/20",
                                           selected
-                                            ? "bg-primary/10 text-foreground"
-                                            : "text-foreground hover:bg-muted/60",
+                                            ? "border-primary/45 shadow-sm ring-1 ring-primary/15 dark:bg-primary/10 dark:shadow-none dark:ring-primary/25"
+                                            : "border-transparent hover:border-border hover:bg-muted/30 hover:shadow-sm dark:hover:bg-input/35 dark:hover:shadow-none",
                                         )}
                                         disabled={isSaving || isFinalized}
                                         key={option.id}
@@ -1676,57 +1686,63 @@ export default function DocumentDetailPage() {
                                       >
                                         <span
                                           className={cn(
-                                            "inline-flex h-5 min-w-5 items-center justify-center rounded border px-1 font-medium text-xs",
+                                            "inline-flex h-6 w-6 items-center justify-center rounded-full border font-medium text-xs",
                                             selected
                                               ? "border-primary bg-primary text-primary-foreground"
-                                              : "border-border text-muted-foreground",
+                                              : "border-border bg-muted/50 text-muted-foreground",
                                           )}
                                         >
                                           {optionBadge(index)}
                                         </span>
-                                        <span className="min-w-0 text-sm">
-                                          <span>{option.label}</span>
-                                          <span className="ml-2 text-muted-foreground">{option.answer_markdown}</span>
+                                        <span className="min-w-0 text-muted-foreground leading-6">
+                                          {option.answer_markdown}
                                         </span>
                                       </button>
                                     );
                                   })}
                                 </div>
-                              </div>
-                            ) : null}
+                              ) : null}
 
-                            <div className="flex max-w-3xl items-start gap-2 pt-1">
-                              <span
-                                className={cn(
-                                  "mt-1 inline-flex h-5 min-w-5 items-center justify-center rounded border px-1 font-medium text-xs",
-                                  draft.answerType === "custom" && draft.customAnswer.trim()
-                                    ? "border-primary bg-primary text-primary-foreground"
-                                    : "border-border text-muted-foreground",
-                                )}
+                                <div
+                                  className={cn(
+                                    "mt-2 grid w-full grid-cols-[28px_1fr] items-start gap-2 rounded-md border bg-background px-3 py-2.5 transition-all dark:bg-input/20",
+                                    draft.answerType === "custom"
+                                      ? "border-primary/45 shadow-sm ring-1 ring-primary/15 dark:bg-primary/10 dark:shadow-none dark:ring-primary/25"
+                                      : "border-transparent hover:border-border hover:bg-muted/30 dark:hover:bg-input/35",
+                                  )}
                               >
-                                {optionBadge(item.recommended_options?.slice(0, 2).length ?? 0)}
-                              </span>
-                              <Textarea
-                                className="min-h-8 flex-1 resize-y py-1.5 text-sm"
-                                disabled={isSaving || isFinalized}
-                                onChange={(event) =>
-                                  updatePendingAnswerDraft(item.id, {
-                                    answerType: "custom",
-                                    customAnswer: event.target.value,
-                                  })
-                                }
-                                onFocus={() =>
-                                  updatePendingAnswerDraft(item.id, {
-                                    answerType: "custom",
-                                  })
-                                }
-                                placeholder="手动补充确认口径"
-                                value={draft.customAnswer}
-                              />
+                                <span
+                                  className={cn(
+                                    "inline-flex h-6 w-6 items-center justify-center rounded-full border font-medium text-xs",
+                                    draft.answerType === "custom"
+                                      ? "border-primary bg-primary text-primary-foreground"
+                                      : "border-border bg-muted/50 text-muted-foreground",
+                                  )}
+                                >
+                                  {optionBadge(item.recommended_options?.slice(0, 2).length ?? 0)}
+                                </span>
+                                <Textarea
+                                  className="min-h-6 w-full resize-none border-0 bg-transparent p-0 text-sm leading-6 shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent dark:disabled:bg-transparent"
+                                  disabled={isSaving || isFinalized}
+                                  onChange={(event) =>
+                                    updatePendingAnswerDraft(item.id, {
+                                      answerType: "custom",
+                                      customAnswer: event.target.value,
+                                    })
+                                  }
+                                  onFocus={() =>
+                                    updatePendingAnswerDraft(item.id, {
+                                      answerType: "custom",
+                                    })
+                                  }
+                                  placeholder={draft.answerType === "custom" ? "" : "手动补充确认口径"}
+                                  value={draft.customAnswer}
+                                />
+                              </div>
                             </div>
 
                             {item.answer?.answer_markdown ? (
-                              <div className="rounded-md bg-muted/40 p-3 text-xs">
+                              <div className="mt-3 rounded-md bg-muted/40 p-3 text-xs">
                                 <div className="font-medium">当前答复</div>
                                 <div className="mt-1 whitespace-pre-wrap text-muted-foreground">
                                   {item.answer.answer_markdown}
@@ -1734,28 +1750,26 @@ export default function DocumentDetailPage() {
                               </div>
                             ) : null}
 
-                            <div className="flex items-center justify-end gap-1.5">
-                              <div className="flex items-center gap-1.5">
-                                <Button
-                                  className="h-7 px-2 text-xs"
-                                  disabled={isSaving || isFinalized}
-                                  onClick={() => deferPendingItem(item.id)}
-                                  type="button"
-                                  variant="outline"
-                                >
-                                  <SkipForward className="size-4" />
-                                  暂不处理
-                                </Button>
-                                <Button
-                                  className="h-7 px-2.5 text-xs"
-                                  disabled={isSaving || isFinalized}
-                                  onClick={() => void saveClarificationAnswer(item)}
-                                  type="button"
-                                >
-                                  {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                                  保存答复
-                                </Button>
-                              </div>
+                            <div className="mt-3 flex items-center justify-end gap-1.5">
+                              <Button
+                                className="h-7 px-2 text-xs"
+                                disabled={isSaving || isFinalized}
+                                onClick={() => deferPendingItem(item.id)}
+                                type="button"
+                                variant="outline"
+                              >
+                                <SkipForward className="size-4" />
+                                暂不处理
+                              </Button>
+                              <Button
+                                className="h-7 px-2.5 text-xs"
+                                disabled={isSaving || isFinalized}
+                                onClick={() => void saveClarificationAnswer(item)}
+                                type="button"
+                              >
+                                {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                                保存答复
+                              </Button>
                             </div>
                           </div>
                         </div>
