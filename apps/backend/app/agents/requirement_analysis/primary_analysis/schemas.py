@@ -7,9 +7,17 @@ class RequirementAnalysisInput(BaseModel):
     project_id: str
     document_id: str
     document_name: str
+    run_id: str = ""
     primary_mapping_id: str = ""
     primary_filename: str = ""
     primary_markdown_content: str = ""
+    auxiliary_documents: list["RequirementAnalysisAuxiliaryDocument"] = Field(default_factory=list)
+
+
+class RequirementAnalysisAuxiliaryDocument(BaseModel):
+    mapping_id: str
+    filename: str
+    markdown_content: str
 
 
 class RequirementAnalysisModule(BaseModel):
@@ -164,6 +172,7 @@ class RequirementAnalysisOutput(BaseModel):
     status: Literal["completed", "needs_clarification", "blocked"]
     analysis_summary: str
     preliminary_requirement_markdown: str = ""
+    analysis_report_markdown: str = ""
     applied_supplements: list[RequirementAppliedSupplement] = Field(default_factory=list)
     maturity_assessment: RequirementMaturityAssessment | None = None
     key_gaps: list[RequirementGapItem] = Field(default_factory=list)
@@ -178,6 +187,7 @@ class RequirementAnalysisOutput(BaseModel):
 
 __all__ = [
     "RequirementAnalysisInput",
+    "RequirementAnalysisAuxiliaryDocument",
     "RequirementAnalysisModule",
     "RequirementAnalysisOutput",
     "RequirementAppliedSupplement",

@@ -1,8 +1,7 @@
 import json
 from typing import Any
 
-from app.agents.model_selection import build_agent_model, resolve_model_selection
-from app.agents.requirement_analysis.primary_analysis.agent import primary_analysis_agent
+from app.agents.requirement_analysis_codex.runner import run_requirement_analysis_with_codex
 from app.agents.requirement_analysis.primary_analysis.schemas import RequirementAnalysisInput, RequirementAnalysisOutput
 
 
@@ -10,29 +9,12 @@ CAPABILITY_ID = "requirement_analysis"
 
 
 async def analyze_requirement(input_data: RequirementAnalysisInput) -> RequirementAnalysisOutput:
-    selection = resolve_model_selection(CAPABILITY_ID)
-    model = build_agent_model(selection)
-    agent = primary_analysis_agent(model)
-    result = await agent.ainvoke(
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": _build_requirement_analysis_input(input_data),
-                }
-            ]
-        }
-    )
-    output = result.get("structured_response")
-    if output is None:
-        raise ValueError("需求分析智能体未返回结构化结果。")
-    if output.applied_supplements:
-        output.applied_supplements = []
+    output = await run_requirement_analysis_with_codex(input_data)
     primary_markdown = input_data.primary_markdown_content.strip()
     if not primary_markdown:
         raise ValueError("主需求标准文件为空，无法生成初步需求。")
-    # 初步需求是主需求标准文件原文；智能体只负责按技能产出分析字段。
-    output.preliminary_requirement_markdown = primary_markdown
+    if not output.preliminary_requirement_markdown.strip():
+        output.preliminary_requirement_markdown = primary_markdown
     return output
 
 

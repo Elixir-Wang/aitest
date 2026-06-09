@@ -188,6 +188,7 @@ async def test_review_primary_requirement_file_generates_preliminary_analysis_wi
         status = "completed"
         analysis_summary = "需求分析完成，补强 1 项。"
         quality_gate = FakeQualityGate()
+        analysis_report_markdown = "# 分析报告\n\n已使用辅助文件补充验证码有效期。"
         preliminary_requirement_markdown = (
             "# 主需求\n\n用户可以使用验证码登录。\n\n"
             "> 辅助补强\n"
@@ -200,6 +201,7 @@ async def test_review_primary_requirement_file_generates_preliminary_analysis_wi
                 "status": "completed",
                 "analysis_summary": "需求分析完成，补强 1 项。",
                 "preliminary_requirement_markdown": self.preliminary_requirement_markdown,
+                "analysis_report_markdown": self.analysis_report_markdown,
                 "applied_supplements": [
                     {
                         "id": "SUP-001",
@@ -234,7 +236,9 @@ async def test_review_primary_requirement_file_generates_preliminary_analysis_wi
     async def fake_analyze_requirement(input_data):
         assert input_data.primary_filename == "main.md"
         assert "用户可以使用验证码登录" in input_data.primary_markdown_content
-        assert "auxiliary_documents" not in type(input_data).model_fields
+        assert len(input_data.auxiliary_documents) == 1
+        assert input_data.auxiliary_documents[0].filename == "supporting.md"
+        assert "验证码有效期为 5 分钟" in input_data.auxiliary_documents[0].markdown_content
         return FakeAnalysisOutput()
 
     monkeypatch.setattr("app.services.document.file_service.convert_to_markdown", fake_convert_to_markdown)
@@ -264,6 +268,7 @@ async def test_review_primary_requirement_file_generates_preliminary_analysis_wi
     latest = document_service.get_latest_requirement_analysis("project-1", result["document"]["id"], ACTOR)
     assert latest["analysis"]["id"] == review["id"]
     assert latest["analysis"]["output"]["preliminary_requirement_markdown"] == FakeAnalysisOutput.preliminary_requirement_markdown
+    assert latest["analysis"]["output"]["analysis_report_markdown"] == FakeAnalysisOutput.analysis_report_markdown
 
 
 @pytest.mark.anyio

@@ -19,6 +19,7 @@ from app.repositories import document_repo, requirement_analysis_run_repo, requi
 from app.schemas.document import RequirementAnalysisFinalizeIn, RequirementClarificationAnswerIn, SourceDocumentUpdateIn
 from app.schemas.requirement_analysis import (
     RequirementAnalysisInput,
+    RequirementAnalysisAuxiliaryDocument,
     RequirementAuxiliaryArticleForEnhancement,
     RequirementAuxiliaryDocument,
     RequirementAuxiliaryEnhancementInput,
@@ -465,14 +466,24 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
             raise api_error(404, "DOCUMENT_MARKDOWN_MISSING", "主需求标准文件不存在。")
 
         primary_markdown_content = markdown_path.read_text(encoding="utf-8")
+        auxiliary_documents = [
+            RequirementAnalysisAuxiliaryDocument(
+                mapping_id=document.mapping_id,
+                filename=document.filename,
+                markdown_content=document.markdown_content,
+            )
+            for document in _collect_auxiliary_documents(db, document_id, primary_file["id"])
+        ]
 
     analysis_input = RequirementAnalysisInput(
         project_id=project_id,
         document_id=document_id,
         document_name=document["name"],
+        run_id=task_id or "",
         primary_mapping_id=primary_file["id"],
         primary_filename=primary_file["original_filename"],
         primary_markdown_content=primary_markdown_content,
+        auxiliary_documents=auxiliary_documents,
     )
     try:
         analysis_output = await analyze_requirement_with_agent(analysis_input)
@@ -485,6 +496,7 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
 
     analysis_id = f"reqana-{secrets.token_hex(8)}"
     output_data = analysis_output.model_dump()
+    output_data.setdefault("analysis_report_markdown", "")
     pending_count = len(output_data.get("clarification_questions", [])) + len(output_data.get("conflicts", []))
     supplement_count = len(output_data.get("applied_supplements", []))
     draft_content_hash = _content_hash(preliminary_markdown)

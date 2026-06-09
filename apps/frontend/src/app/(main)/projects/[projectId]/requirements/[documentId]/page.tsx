@@ -251,6 +251,7 @@ type RequirementAnalysisResult = {
     status: "completed" | "needs_clarification" | "blocked";
     analysis_summary: string;
     preliminary_requirement_markdown: string;
+    analysis_report_markdown: string;
     applied_supplements: unknown[];
     modules: Array<{
       module_key: string;
@@ -423,6 +424,7 @@ export default function DocumentDetailPage() {
   );
   const initialMarkdownContent = overview?.initial_markdown_content ?? "";
   const preliminaryMarkdown = analysisResult?.output.preliminary_requirement_markdown ?? "";
+  const analysisReportMarkdown = analysisResult?.output.analysis_report_markdown ?? "";
   const clarificationQuestions = analysisResult?.output.clarification_questions ?? [];
   const analysisConflicts = analysisResult?.output.conflicts ?? [];
   const pendingAnalysisItems: RequirementAnalysisPendingItem[] = [...clarificationQuestions, ...analysisConflicts];
@@ -496,6 +498,9 @@ export default function DocumentDetailPage() {
   const analysisEmptyText = reviewLoading
     ? "需求分析中，分析完成后会在这里展示初步需求。"
     : "尚未生成初步需求，请先在主需求标准文件中执行需求分析。";
+  const analysisReportEmptyText = reviewLoading
+    ? "需求分析中，分析完成后会在这里展示分析报告。"
+    : "尚未生成分析报告，请先执行需求分析。";
   const finalRequirementEmptyText = reviewLoading
     ? "需求分析中，当前最终需求已清空，分析完成并转为最终需求后会在这里展示。"
     : "尚未生成最终需求，请先在初步需求中点击“转为最终需求”。";
@@ -1228,7 +1233,9 @@ export default function DocumentDetailPage() {
 
   const showRequirementToc =
     (activeTab === "standard" && !editingStandard && Boolean(currentStandardPreview?.markdownContent.trim())) ||
-    (activeTab === "analysis" && analysisTab === "preliminary" && Boolean(preliminaryMarkdown.trim())) ||
+    (activeTab === "analysis" &&
+      ((analysisTab === "preliminary" && Boolean(preliminaryMarkdown.trim())) ||
+        (analysisTab === "report" && Boolean(analysisReportMarkdown.trim())))) ||
     (activeTab === "final" && Boolean(overview.initial_markdown_content.trim()));
   const requirementTocRefreshKey = [
     activeTab,
@@ -1236,6 +1243,7 @@ export default function DocumentDetailPage() {
     selectedFile?.id ?? "",
     currentStandardPreview?.markdownContent.length ?? 0,
     preliminaryMarkdown.length,
+    analysisReportMarkdown.length,
     initialMarkdownContent.length,
     analysisResult?.finalized_version_id ?? "",
   ].join(":");
@@ -1243,7 +1251,9 @@ export default function DocumentDetailPage() {
     activeTab === "standard"
       ? `#${STANDARD_FILE_SECTION_ID} .requirement-document-preview`
       : activeTab === "analysis"
-        ? `#${PRELIMINARY_REQUIREMENT_SECTION_ID} .requirement-document-preview`
+        ? analysisTab === "report"
+          ? `#analysis-report-section .requirement-document-preview`
+          : `#${PRELIMINARY_REQUIREMENT_SECTION_ID} .requirement-document-preview`
         : `#${FINAL_REQUIREMENT_SECTION_ID} .requirement-document-preview`;
   return (
     <PageShell
@@ -1558,6 +1568,7 @@ export default function DocumentDetailPage() {
                 <TabsList>
                   <TabsTrigger value="preliminary">初步需求</TabsTrigger>
                   <TabsTrigger value="pending">待确认问题</TabsTrigger>
+                  <TabsTrigger value="report">分析报告</TabsTrigger>
                 </TabsList>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   {analysisTab === "pending" ? (
@@ -1703,13 +1714,13 @@ export default function DocumentDetailPage() {
                                 </div>
                               ) : null}
 
-                                <div
-                                  className={cn(
-                                    "mt-2 grid w-full grid-cols-[28px_1fr] items-start gap-2 rounded-md border bg-background px-3 py-2.5 transition-all dark:bg-input/20",
-                                    draft.answerType === "custom"
-                                      ? "border-primary/45 shadow-sm ring-1 ring-primary/15 dark:bg-primary/10 dark:shadow-none dark:ring-primary/25"
-                                      : "border-transparent hover:border-border hover:bg-muted/30 dark:hover:bg-input/35",
-                                  )}
+                              <div
+                                className={cn(
+                                  "mt-2 grid w-full grid-cols-[28px_1fr] items-start gap-2 rounded-md border bg-background px-3 py-2.5 transition-all dark:bg-input/20",
+                                  draft.answerType === "custom"
+                                    ? "border-primary/45 shadow-sm ring-1 ring-primary/15 dark:bg-primary/10 dark:shadow-none dark:ring-primary/25"
+                                    : "border-transparent hover:border-border hover:bg-muted/30 dark:hover:bg-input/35",
+                                )}
                               >
                                 <span
                                   className={cn(
@@ -1785,6 +1796,14 @@ export default function DocumentDetailPage() {
                       : "尚未执行需求分析，完成分析后会在这里展示待确认问题。"}
                   </div>
                 )}
+              </TabsContent>
+              <TabsContent id="analysis-report-section" value="report">
+                <MarkdownPreview
+                  className="requirement-document-preview"
+                  content={analysisReportMarkdown}
+                  emptyClassName="flex items-center justify-center text-center"
+                  emptyText={analysisReportEmptyText}
+                />
               </TabsContent>
             </Tabs>
           </ShellSection>
