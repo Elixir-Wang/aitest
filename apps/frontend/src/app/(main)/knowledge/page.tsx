@@ -163,7 +163,7 @@ export default function Page() {
   const effectiveKnowledgeScope = globalProjectScope === "project" && activeCurrentProject ? "project" : knowledgeScope;
   const effectiveProjectId =
     globalProjectScope === "project"
-      ? activeCurrentProject?.id ?? null
+      ? (activeCurrentProject?.id ?? null)
       : effectiveKnowledgeScope === "project"
         ? knowledgeProjectId
         : null;
@@ -177,7 +177,7 @@ export default function Page() {
       locked: globalProjectScope === "project" && project.id === activeCurrentProject?.id,
     })),
   ];
-  const selectedProjectScope = effectiveKnowledgeScope === "project" ? effectiveProjectId ?? "" : "all";
+  const selectedProjectScope = effectiveKnowledgeScope === "project" ? (effectiveProjectId ?? "") : "all";
 
   useEffect(() => {
     hydrate();
@@ -443,7 +443,9 @@ export default function Page() {
       const headers = apiAuthHeaders();
       headers.set("Content-Type", "application/json");
       const streamPath =
-        submittedKnowledgeScope === "all" ? "/knowledge/query/stream" : `/projects/${submittedProjectId}/knowledge/query/stream`;
+        submittedKnowledgeScope === "all"
+          ? "/knowledge/query/stream"
+          : `/projects/${submittedProjectId}/knowledge/query/stream`;
       const response = await fetch(`${API_BASE_URL}${streamPath}`, {
         method: "POST",
         headers,
@@ -743,7 +745,9 @@ export default function Page() {
           modelProviders={knowledgeModelProviders}
           modelSaving={knowledgeModelSaving}
           onConversationOpen={(conversationId) =>
-            effectiveKnowledgeScope === "project" && projectId && void openProjectConversation(projectId, conversationId)
+            effectiveKnowledgeScope === "project" &&
+            projectId &&
+            void openProjectConversation(projectId, conversationId)
           }
           onConversationCreate={createProjectConversation}
           onConversationDelete={(conversationId) => void deleteProjectConversation(conversationId)}
@@ -935,7 +939,9 @@ function ProjectKnowledgeWorkspace({
 }) {
   const hasConversation = messages.length > 0 || running;
   const [historyOpen, setHistoryOpen] = useState(false);
-  const projectScopeDisabled = projectScopeOptions.some((option) => option.value === selectedProjectScope && option.locked);
+  const projectScopeDisabled = projectScopeOptions.some(
+    (option) => option.value === selectedProjectScope && option.locked,
+  );
   const projectHistoryOpen = projectConversationEnabled && historyOpen;
 
   useEffect(() => {
@@ -1123,7 +1129,7 @@ function ProjectKnowledgeWorkspace({
               ))}
               {error ? <ChatMessage body={error} icon={TriangleAlert} title="查询失败" tone="warning" /> : null}
             </div>
-            <div className="border-t bg-background p-4">
+            <div className="bg-background p-4">
               <KnowledgeChatInput
                 compact
                 disabled={!projectSelected}
@@ -1160,18 +1166,19 @@ function KnowledgeChatTopControls({
   projectConversationEnabled: boolean;
   running: boolean;
 }) {
+  const controlDisabledReason = !projectConversationEnabled ? "请选择具体项目后使用对话历史" : "查询中";
+  const historyTitle = projectConversationEnabled && !running ? "展开对话历史" : controlDisabledReason;
+  const createTitle = projectConversationEnabled && !running ? "新建对话" : controlDisabledReason;
+
   return (
-    <div className="pointer-events-none absolute top-4 left-4 z-20 flex items-center gap-3">
-      <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-        <Bot className="size-5" />
-      </div>
+    <div className="pointer-events-none absolute top-4 left-4 z-50 flex items-center gap-3">
       <div className="pointer-events-auto flex h-10 items-center gap-1 rounded-lg border bg-background/95 px-2 shadow-sm backdrop-blur">
         <button
           aria-label="展开对话历史"
           className="inline-flex size-8 items-center justify-center rounded-md text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45"
           disabled={!projectConversationEnabled || running}
           onClick={onHistoryOpen}
-          title="展开对话历史"
+          title={historyTitle}
           type="button"
         >
           <PanelLeftOpen className="size-4" />
@@ -1181,7 +1188,7 @@ function KnowledgeChatTopControls({
           className="inline-flex size-8 items-center justify-center rounded-md text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45"
           disabled={!projectConversationEnabled || running}
           onClick={onConversationCreate}
-          title="新建对话"
+          title={createTitle}
           type="button"
         >
           <Plus className="size-4" />

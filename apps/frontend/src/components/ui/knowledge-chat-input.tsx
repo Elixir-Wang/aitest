@@ -2,10 +2,11 @@
 
 import * as React from "react";
 
-import { Archive, ArrowUp, Check, ChevronDown, FileText, X } from "lucide-react";
+import { Archive, ArrowUp, FileText, X } from "lucide-react";
 
 import type { ApiModelProvider } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type PastedContent = {
   id: string;
@@ -49,11 +50,9 @@ export function KnowledgeChatInput({
   onSubmit,
   onValueChange,
 }: KnowledgeChatInputProps) {
-  const [modelOpen, setModelOpen] = React.useState(false);
   const [isDragging, setIsDragging] = React.useState(false);
   const [pastedContents, setPastedContents] = React.useState<PastedContent[]>([]);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const dropdownRef = React.useRef<HTMLDivElement | null>(null);
 
   const selectedModelProvider = modelProviders.find((provider) => provider.id === selectedModelProviderId) ?? null;
   const modelLabel = selectedModelProvider
@@ -74,16 +73,6 @@ export function KnowledgeChatInput({
     textareaRef.current.style.height = "auto";
     textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 260)}px`;
   }, [value]);
-
-  React.useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setModelOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   function submit() {
     if (!hasContent || disabled || loading) {
@@ -185,64 +174,73 @@ export function KnowledgeChatInput({
             </div>
           </div>
 
-          <div className={cn("flex w-full items-center gap-2 border-t", compact ? "pt-1.5" : "pt-2")}>
+          <div className={cn("flex w-full items-center gap-2", compact ? "pt-1.5" : "pt-2")}>
             <div className="flex min-w-0 flex-1 items-center gap-1">
-              <select
-                aria-label="选择知识检索项目"
-                className={cn(
-                  "max-w-full min-w-0 appearance-none truncate rounded-md border bg-background font-medium text-muted-foreground shadow-sm outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-60",
-                  compact ? "h-7 px-2 pr-7 text-xs" : "h-8 px-2.5 pr-8 text-sm",
-                )}
+              <Select
                 disabled={projectScopeSelectorDisabled}
-                onChange={(event) => onProjectScopeChange(event.target.value)}
-                title={selectedProjectScopeOption?.locked ? "跟随右上角项目上下文" : selectedProjectScopeOption?.label}
+                onValueChange={onProjectScopeChange}
                 value={selectedProjectScope}
               >
-                {projectScopeOptions.map((option) => (
-                  <option disabled={option.locked} key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  aria-label="选择知识检索项目"
+                  className={cn(
+                    "max-w-full min-w-0 gap-2 bg-background shadow-sm **:data-[slot=select-value]:truncate",
+                    compact ? "h-7 px-2 text-xs" : "h-8 px-2.5 text-sm",
+                  )}
+                  size={compact ? "sm" : "default"}
+                  title={selectedProjectScopeOption?.locked ? "跟随右上角项目上下文" : selectedProjectScopeOption?.label}
+                >
+                  <SelectValue placeholder="选择知识库" />
+                </SelectTrigger>
+                <SelectContent
+                  align="start"
+                  className="w-max min-w-(--radix-select-trigger-width)"
+                  position="popper"
+                  side="top"
+                  viewportClassName="w-max"
+                >
+                  {projectScopeOptions.map((option) => (
+                    <SelectItem className="whitespace-nowrap" disabled={option.locked} key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex min-w-0 items-center gap-1">
-              <div className="relative shrink-0 p-1 -m-1" ref={dropdownRef}>
-                <button
-                  className={cn(
-                    "inline-flex max-w-56 min-w-28 items-center justify-center gap-1 rounded-md font-medium text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-foreground",
-                    compact ? "h-7 px-2 text-xs" : "h-8 px-2.5 text-sm",
-                  )}
+              <div className="min-w-0 shrink-0">
+                <Select
                   disabled={disabled || loading || modelLoading || modelSaving || modelProviders.length === 0}
-                  onClick={() => setModelOpen((open) => !open)}
-                  type="button"
+                  onValueChange={onModelProviderChange}
+                  value={selectedModelProviderId}
                 >
-                  <span className="truncate">{modelSaving ? "保存中" : modelLabel}</span>
-                  <ChevronDown className={cn("size-4 opacity-75 transition-transform", modelOpen && "rotate-180")} />
-                </button>
-                {modelOpen ? (
-                  <div className="absolute right-0 bottom-full z-50 mb-2 flex w-64 origin-bottom-right flex-col overflow-hidden rounded-lg border bg-popover p-1.5 text-popover-foreground shadow-2xl">
+                  <SelectTrigger
+                    aria-label="选择知识库查询模型"
+                    className={cn(
+                      "max-w-56 min-w-28 gap-2 bg-background shadow-sm **:data-[slot=select-value]:truncate",
+                      compact ? "h-7 px-2 text-xs" : "h-8 px-2.5 text-sm",
+                    )}
+                    size={compact ? "sm" : "default"}
+                  >
+                    <SelectValue placeholder={modelSaving ? "保存中" : modelLabel} />
+                  </SelectTrigger>
+                  <SelectContent
+                    align="end"
+                    className="w-64 min-w-(--radix-select-trigger-width)"
+                    position="popper"
+                    side="top"
+                  >
                     {modelProviders.map((provider) => (
-                      <button
-                        className="flex w-full items-start justify-between rounded-md px-3 py-2.5 text-left transition-colors hover:bg-muted"
-                        key={provider.id}
-                        onClick={() => {
-                          onModelProviderChange(provider.id);
-                          setModelOpen(false);
-                        }}
-                        type="button"
-                      >
-                        <span>
-                          <span className="block font-semibold text-sm">{provider.model}</span>
-                          <span className="block text-muted-foreground text-xs">{provider.provider}</span>
+                      <SelectItem className="py-2.5" key={provider.id} value={provider.id}>
+                        <span className="flex min-w-0 flex-col items-start">
+                          <span className="max-w-48 truncate font-semibold">{provider.model}</span>
+                          <span className="max-w-48 truncate text-muted-foreground text-xs">{provider.provider}</span>
                         </span>
-                        {selectedModelProviderId === provider.id ? (
-                          <Check className="mt-1 size-4 text-primary" />
-                        ) : null}
-                      </button>
+                      </SelectItem>
                     ))}
-                  </div>
-                ) : null}
+                  </SelectContent>
+                </Select>
               </div>
 
               <button
