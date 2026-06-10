@@ -193,14 +193,19 @@ export function KnowledgeChatInput({
                   <SelectValue placeholder="选择知识库" />
                 </SelectTrigger>
                 <SelectContent
-                  align="start"
-                  className="w-max min-w-(--radix-select-trigger-width)"
+                  align="center"
+                  className="w-max min-w-0"
                   position="popper"
                   side="top"
                   viewportClassName="w-max"
                 >
                   {projectScopeOptions.map((option) => (
-                    <SelectItem className="whitespace-nowrap" disabled={option.locked} key={option.value} value={option.value}>
+                    <SelectItem
+                      className={cn("whitespace-nowrap", compact ? "text-xs" : "text-sm")}
+                      disabled={option.locked}
+                      key={option.value}
+                      value={option.value}
+                    >
                       {option.label}
                     </SelectItem>
                   ))}
@@ -223,19 +228,26 @@ export function KnowledgeChatInput({
                     )}
                     size={compact ? "sm" : "default"}
                   >
-                    <SelectValue placeholder={modelSaving ? "保存中" : modelLabel} />
+                    <SelectValue placeholder={modelSaving ? "保存中" : modelLabel}>
+                      <span className="truncate">{modelSaving ? "保存中" : modelLabel}</span>
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent
-                    align="end"
-                    className="w-64 min-w-(--radix-select-trigger-width)"
+                    align="center"
+                    className="w-max min-w-0"
                     position="popper"
                     side="top"
+                    viewportClassName="w-max"
                   >
                     {modelProviders.map((provider) => (
-                      <SelectItem className="py-2.5" key={provider.id} value={provider.id}>
-                        <span className="flex min-w-0 flex-col items-start">
-                          <span className="max-w-48 truncate font-semibold">{provider.model}</span>
-                          <span className="max-w-48 truncate text-muted-foreground text-xs">{provider.provider}</span>
+                      <SelectItem
+                        className={cn("whitespace-nowrap py-1.5", compact ? "text-xs" : "text-sm")}
+                        key={provider.id}
+                        value={provider.id}
+                      >
+                        <span className="flex min-w-0 items-baseline gap-2">
+                          <span className="max-w-40 truncate">{provider.model}</span>
+                          <span className="max-w-28 truncate text-muted-foreground">{provider.provider}</span>
                         </span>
                       </SelectItem>
                     ))}

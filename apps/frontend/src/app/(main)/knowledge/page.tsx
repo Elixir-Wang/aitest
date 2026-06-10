@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
   Archive,
@@ -487,9 +487,10 @@ export default function Page() {
             }
           } else if (event.type === "metadata") {
             finalResult = event.result;
-            if (isCurrentProjectQueryScope() && submittedKnowledgeScope === "project" && event.result.conversation) {
-              setActiveProjectConversationId(event.result.conversation.id);
-              setProjectConversations((items) => upsertConversation(items, event.result.conversation));
+            const conversation = event.result.conversation;
+            if (isCurrentProjectQueryScope() && submittedKnowledgeScope === "project" && conversation) {
+              setActiveProjectConversationId(conversation.id);
+              setProjectConversations((items) => upsertConversation(items, conversation));
             }
             if (isCurrentProjectQueryScope()) {
               setProjectMessages((messages) =>
@@ -939,16 +940,40 @@ function ProjectKnowledgeWorkspace({
 }) {
   const hasConversation = messages.length > 0 || running;
   const [historyOpen, setHistoryOpen] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const latestMessage = messages[messages.length - 1];
+  const latestMessageSourceCount = latestMessage?.sourceRefs?.length ?? 0;
+  const projectHistoryOpen = historyOpen;
+  const latestMessageScrollKey = [
+    messages.length,
+    latestMessage?.id,
+    latestMessage?.body,
+    latestMessageSourceCount,
+    error,
+    projectHistoryOpen,
+    running,
+  ].join("|");
   const projectScopeDisabled = projectScopeOptions.some(
     (option) => option.value === selectedProjectScope && option.locked,
   );
-  const projectHistoryOpen = projectConversationEnabled && historyOpen;
+
+  useLayoutEffect(() => {
+    if (!hasConversation || latestMessageScrollKey.length === 0) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ block: "end" });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [hasConversation, latestMessageScrollKey]);
 
   useEffect(() => {
-    if (!projectConversationEnabled) {
+    if (!projectSelected) {
       setHistoryOpen(false);
     }
-  }, [projectConversationEnabled]);
+  }, [projectSelected]);
 
   return (
     <ShellSection className="h-[clamp(30rem,calc(100dvh-14rem),42rem)] p-0">
@@ -963,12 +988,13 @@ function ProjectKnowledgeWorkspace({
           <KnowledgeChatTopControls
             onConversationCreate={onConversationCreate}
             onHistoryOpen={() => {
-              if (!projectConversationEnabled || running) {
+              if (!projectSelected || running) {
                 return;
               }
               setHistoryOpen(true);
             }}
             projectConversationEnabled={projectConversationEnabled}
+            projectSelected={projectSelected}
             running={running}
           />
         ) : null}
@@ -984,7 +1010,7 @@ function ProjectKnowledgeWorkspace({
                   <PanelLeftClose className="size-4" />
                 </Button>
                 <Button
-                  disabled={!projectConversationEnabled || running}
+                  disabled={!projectSelected || running}
                   onClick={onConversationCreate}
                   size="icon"
                   title="新建对话"
@@ -995,8 +1021,13 @@ function ProjectKnowledgeWorkspace({
               </div>
             </div>
             <div className="min-h-0 flex-1 space-y-1 overflow-auto p-2">
-              {loading ? <div className="px-2 py-3 text-muted-foreground text-sm">正在加载对话。</div> : null}
-              {!loading && conversations.length === 0 ? (
+              {!projectConversationEnabled ? (
+                <div className="px-2 py-3 text-muted-foreground text-sm">
+                  全部项目知识库暂不保存历史对话，可切换到具体项目查看项目对话历史。
+                </div>
+              ) : loading ? (
+                <div className="px-2 py-3 text-muted-foreground text-sm">正在加载对话。</div>
+              ) : conversations.length === 0 ? (
                 <div className="px-2 py-3 text-muted-foreground text-sm">暂无历史对话。</div>
               ) : null}
               {conversations.map((conversation) => {
@@ -1128,8 +1159,9 @@ function ProjectKnowledgeWorkspace({
                 </ChatMessage>
               ))}
               {error ? <ChatMessage body={error} icon={TriangleAlert} title="查询失败" tone="warning" /> : null}
+              <div ref={messagesEndRef} />
             </div>
-            <div className="bg-background p-4">
+            <div className="bg-muted/20 p-4">
               <KnowledgeChatInput
                 compact
                 disabled={!projectSelected}
@@ -1159,16 +1191,23 @@ function KnowledgeChatTopControls({
   onConversationCreate,
   onHistoryOpen,
   projectConversationEnabled,
+  projectSelected,
   running,
 }: {
   onConversationCreate: () => void;
   onHistoryOpen: () => void;
   projectConversationEnabled: boolean;
+  projectSelected: boolean;
   running: boolean;
 }) {
-  const controlDisabledReason = !projectConversationEnabled ? "请选择具体项目后使用对话历史" : "查询中";
-  const historyTitle = projectConversationEnabled && !running ? "展开对话历史" : controlDisabledReason;
-  const createTitle = projectConversationEnabled && !running ? "新建对话" : controlDisabledReason;
+  const controlDisabledReason = !projectSelected ? "请选择知识库后使用对话" : "查询中";
+  const historyTitle =
+    projectSelected && !running
+      ? projectConversationEnabled
+        ? "展开对话历史"
+        : "查看全部项目对话状态"
+      : controlDisabledReason;
+  const createTitle = projectSelected && !running ? "新建对话" : controlDisabledReason;
 
   return (
     <div className="pointer-events-none absolute top-4 left-4 z-50 flex items-center gap-3">
@@ -1176,7 +1215,7 @@ function KnowledgeChatTopControls({
         <button
           aria-label="展开对话历史"
           className="inline-flex size-8 items-center justify-center rounded-md text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45"
-          disabled={!projectConversationEnabled || running}
+          disabled={!projectSelected || running}
           onClick={onHistoryOpen}
           title={historyTitle}
           type="button"
@@ -1186,7 +1225,7 @@ function KnowledgeChatTopControls({
         <button
           aria-label="新建对话"
           className="inline-flex size-8 items-center justify-center rounded-md text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45"
-          disabled={!projectConversationEnabled || running}
+          disabled={!projectSelected || running}
           onClick={onConversationCreate}
           title={createTitle}
           type="button"
