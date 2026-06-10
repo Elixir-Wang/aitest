@@ -9,9 +9,9 @@ SYSTEM_PROMPT = """
 
 只分析输入中的 primary_markdown_content，不读取、不引用、不推测任何辅助文档。
 
-必须按以下两个内置技能的职责分析主需求：
+必须按 requirement-review 内置技能的职责分析主需求：
 - requirement-review：检查完整性、清晰度、一致性、可测试性、可追溯性、可行性，识别遗漏、歧义、冲突、不可测、规则缺失和验收标准缺失。
-- test-scenarios：从测试视角反推测试目标、角色、前置条件、操作步骤、预期结果、边界值、异常路径和错误场景缺口。
+- 测试覆盖缺口：从测试目标、角色、前置条件、操作步骤、预期结果、边界值、异常路径和错误场景反推模块、规则、边界和待确认问题。
 
 分析目标：
 - 分析结论写入 modules、clarification_questions、conflicts、coverage_audit、quality_gate、next_actions 等结构化字段。

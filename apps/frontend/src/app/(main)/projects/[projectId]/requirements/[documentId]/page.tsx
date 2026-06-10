@@ -1730,7 +1730,7 @@ export default function DocumentDetailPage() {
                                   {optionBadge(item.recommended_options?.slice(0, 2).length ?? 0)}
                                 </span>
                                 <Textarea
-                                  className="min-h-6 w-full resize-none border-0 bg-transparent p-0 text-sm leading-6 shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent dark:disabled:bg-transparent"
+                                  className="min-h-6 w-full resize-none border-0 bg-transparent p-0 text-muted-foreground text-sm leading-6 shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent dark:disabled:bg-transparent"
                                   disabled={isSaving || isFinalized}
                                   onChange={(event) =>
                                     updatePendingAnswerDraft(item.id, {

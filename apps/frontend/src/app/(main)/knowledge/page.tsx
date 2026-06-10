@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   Archive,
@@ -11,7 +11,6 @@ import {
   Eye,
   FilePlus2,
   FolderKanban,
-  Lightbulb,
   MapIcon,
   MessageSquare,
   PanelLeftClose,
@@ -19,7 +18,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  ShieldCheck,
   Trash2,
   TriangleAlert,
   Upload,
@@ -46,8 +44,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import {
+  API_BASE_URL,
   type ApiGlobalKnowledgeDetail,
   type ApiGlobalKnowledgeDocument,
   type ApiGlobalKnowledgeList,
@@ -55,6 +53,10 @@ import {
   type ApiKnowledgeConversationDetail,
   type ApiKnowledgeConversationMessage,
   type ApiKnowledgeQueryResult,
+  type ApiModelAssignment,
+  type ApiModelProvider,
+  type ApiProject,
+  apiAuthHeaders,
   apiFormRequest,
   apiRequest,
   formatDateTime,
@@ -84,15 +86,16 @@ const emptyCompanyForm = {
   description: "",
   change_summary: "",
 };
-const emptyProjectBuildForm = {
-  includeRequirements: true,
-  includeExplorations: true,
-};
+const KNOWLEDGE_QUERY_CAPABILITY_ID = "knowledge_query";
 const projectKnowledgeQuickPrompts = [
   { icon: Search, label: "查需求", prompt: "帮我查询当前项目最终需求文档中的核心业务规则。" },
   { icon: MapIcon, label: "看探索", prompt: "帮我总结当前项目探索记录覆盖了哪些页面和模块。" },
-  { icon: ShieldCheck, label: "找风险", prompt: "结合最终需求和探索记录，列出测试设计需要关注的风险点。" },
-  { icon: Lightbulb, label: "补缺口", prompt: "帮我找出需求文档和探索记录之间还缺少哪些确认信息。" },
+  { icon: Archive, label: "查来源", prompt: "帮我追踪当前项目关键结论的来源依据，包括需求版本、探索记录和对应位置。" },
+  {
+    icon: BookOpen,
+    label: "看模块",
+    prompt: "帮我按知识库模块梳理当前项目的业务域、页面事实、规则条目和模块之间的关系。",
+  },
 ] as const;
 
 type ProjectChatMessage = {
@@ -104,10 +107,16 @@ type ProjectChatMessage = {
   usedExplorationRuns?: string[];
 };
 
+type ProjectKnowledgeStreamEvent =
+  | { type: "message_delta"; delta: string }
+  | { type: "metadata"; result: ApiKnowledgeQueryResult }
+  | { type: "done" }
+  | { type: "error"; message: string };
+
 export default function Page() {
   const [activeScope, setActiveScope] = useState<(typeof knowledgeScopes)[number]["value"]>("project");
   const [searchText, setSearchText] = useState("");
-  const { currentProjectId, hydrate, scope } = useProjectContextStore();
+  const { currentProjectId, hydrate, scope: globalProjectScope } = useProjectContextStore();
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
@@ -116,11 +125,21 @@ export default function Page() {
   const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
   const [companyForm, setCompanyForm] = useState(emptyCompanyForm);
-  const [projectBuildForm, setProjectBuildForm] = useState(emptyProjectBuildForm);
   const [projectChatDraft, setProjectChatDraft] = useState("");
+  const [knowledgeScope, setKnowledgeScope] = useState<"all" | "project">("all");
+  const [knowledgeProjectId, setKnowledgeProjectId] = useState<string | null>(null);
+  const [knowledgeModelProviders, setKnowledgeModelProviders] = useState<ApiModelProvider[]>([]);
+  const [selectedKnowledgeModelProviderId, setSelectedKnowledgeModelProviderId] = useState("");
+  const [knowledgeModelLoading, setKnowledgeModelLoading] = useState(true);
+  const [knowledgeModelSaving, setKnowledgeModelSaving] = useState(false);
+  const [projects, setProjects] = useState<ApiProject[]>([]);
   const [projectMessages, setProjectMessages] = useState<ProjectChatMessage[]>([]);
   const [projectConversations, setProjectConversations] = useState<ApiKnowledgeConversation[]>([]);
   const [activeProjectConversationId, setActiveProjectConversationId] = useState<string | null>(null);
+  const projectQueryRunIdRef = useRef(0);
+  const latestProjectQueryScopeRef = useRef("");
+  const projectConversationLoadRunIdRef = useRef(0);
+  const projectConversationOpenRunIdRef = useRef(0);
   const [companyFiles, setCompanyFiles] = useState<FileList | null>(null);
   const {
     allSelected: allCompanySelected,
@@ -138,61 +157,185 @@ export default function Page() {
     ),
   );
   const isCompanyKnowledge = activeScope === "company";
-  const projectId = scope === "project" ? currentProjectId : null;
-  const projectResetKey = `${scope}:${currentProjectId ?? ""}`;
+  const activeProjects = projects.filter((project) => project.status !== "archived");
+  const activeProjectIdsKey = activeProjects.map((project) => project.id).join("|");
+  const activeCurrentProject = activeProjects.find((project) => project.id === currentProjectId) ?? null;
+  const effectiveKnowledgeScope = globalProjectScope === "project" && activeCurrentProject ? "project" : knowledgeScope;
+  const effectiveProjectId =
+    globalProjectScope === "project"
+      ? activeCurrentProject?.id ?? null
+      : effectiveKnowledgeScope === "project"
+        ? knowledgeProjectId
+        : null;
+  const projectId = effectiveProjectId;
+  const projectResetKey = `${effectiveKnowledgeScope}:${effectiveProjectId ?? ""}`;
+  const knowledgeProjectScopeOptions = [
+    { value: "all", label: "全部项目知识库" },
+    ...activeProjects.map((project) => ({
+      value: project.id,
+      label: project.name,
+      locked: globalProjectScope === "project" && project.id === activeCurrentProject?.id,
+    })),
+  ];
+  const selectedProjectScope = effectiveKnowledgeScope === "project" ? effectiveProjectId ?? "" : "all";
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
   useEffect(() => {
+    if (globalProjectScope === "project") {
+      return;
+    }
+    const activeProjectIds = new Set(activeProjectIdsKey ? activeProjectIdsKey.split("|") : []);
+    if (knowledgeScope === "project" && knowledgeProjectId && !activeProjectIds.has(knowledgeProjectId)) {
+      setKnowledgeScope("all");
+      setKnowledgeProjectId(null);
+    }
+  }, [activeProjectIdsKey, globalProjectScope, knowledgeProjectId, knowledgeScope]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadProjects() {
+      try {
+        const nextProjects = await apiRequest<ApiProject[]>("/projects");
+        if (!ignore) {
+          setProjects(nextProjects);
+        }
+      } catch {
+        if (!ignore) {
+          setProjects([]);
+        }
+      }
+    }
+
+    void loadProjects();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const loadKnowledgeQueryModelAssignment = useCallback(async () => {
+    setKnowledgeModelLoading(true);
+    try {
+      const [assignmentRows, providerRows] = await Promise.all([
+        apiRequest<ApiModelAssignment[]>("/model-assignments"),
+        apiRequest<ApiModelProvider[]>("/models/providers"),
+      ]);
+      const enabledProviders = providerRows.filter((provider) => provider.status === "enabled");
+      const assignment = assignmentRows.find((item) => item.capability_id === KNOWLEDGE_QUERY_CAPABILITY_ID);
+      setKnowledgeModelProviders(enabledProviders);
+      setSelectedKnowledgeModelProviderId(assignment?.model_provider_id ?? "");
+    } catch (nextError) {
+      setKnowledgeModelProviders([]);
+      setSelectedKnowledgeModelProviderId("");
+      setError(nextError instanceof Error ? nextError.message : "加载项目知识库模型配置失败。");
+    } finally {
+      setKnowledgeModelLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadKnowledgeQueryModelAssignment();
+  }, [loadKnowledgeQueryModelAssignment]);
+
+  async function updateKnowledgeQueryModelProvider(modelProviderId: string) {
+    setSelectedKnowledgeModelProviderId(modelProviderId);
+    setKnowledgeModelSaving(true);
+    setError("");
+    try {
+      const assignment = await apiRequest<ApiModelAssignment>(`/model-assignments/${KNOWLEDGE_QUERY_CAPABILITY_ID}`, {
+        body: JSON.stringify({ model_provider_id: modelProviderId }),
+        method: "PUT",
+      });
+      setSelectedKnowledgeModelProviderId(assignment.model_provider_id ?? "");
+      await loadKnowledgeQueryModelAssignment();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "保存项目知识库模型配置失败。");
+      await loadKnowledgeQueryModelAssignment();
+    } finally {
+      setKnowledgeModelSaving(false);
+    }
+  }
+
+  useEffect(() => {
     void projectResetKey;
+    projectQueryRunIdRef.current += 1;
+    projectConversationLoadRunIdRef.current += 1;
+    projectConversationOpenRunIdRef.current += 1;
+    latestProjectQueryScopeRef.current = projectResetKey;
     setProjectMessages([]);
     setProjectChatDraft("");
     setProjectConversations([]);
     setActiveProjectConversationId(null);
     setError("");
+    setLoading(false);
+    setRunning(false);
   }, [projectResetKey]);
 
   const loadProjectConversations = useCallback(async (targetProjectId: string) => {
+    const conversationLoadRunId = projectConversationLoadRunIdRef.current + 1;
+    projectConversationLoadRunIdRef.current = conversationLoadRunId;
+    const isCurrentConversationLoad = () =>
+      projectConversationLoadRunIdRef.current === conversationLoadRunId &&
+      latestProjectQueryScopeRef.current === `project:${targetProjectId}`;
     setLoading(true);
     setError("");
     try {
       const conversations = await apiRequest<ApiKnowledgeConversation[]>(
         `/projects/${targetProjectId}/knowledge/conversations`,
       );
-      setProjectConversations(conversations);
+      if (isCurrentConversationLoad()) {
+        setProjectConversations(conversations);
+      }
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "加载项目知识库对话失败。");
-      setProjectConversations([]);
+      if (isCurrentConversationLoad()) {
+        setError(nextError instanceof Error ? nextError.message : "加载项目知识库对话失败。");
+        setProjectConversations([]);
+      }
     } finally {
-      setLoading(false);
+      if (isCurrentConversationLoad()) {
+        setLoading(false);
+      }
     }
   }, []);
 
   const openProjectConversation = useCallback(async (targetProjectId: string, conversationId: string) => {
+    const conversationOpenRunId = projectConversationOpenRunIdRef.current + 1;
+    projectConversationOpenRunIdRef.current = conversationOpenRunId;
+    const isCurrentConversationOpen = () =>
+      projectConversationOpenRunIdRef.current === conversationOpenRunId &&
+      latestProjectQueryScopeRef.current === `project:${targetProjectId}`;
     setLoading(true);
     setError("");
     try {
       const detail = await apiRequest<ApiKnowledgeConversationDetail>(
         `/projects/${targetProjectId}/knowledge/conversations/${conversationId}`,
       );
-      setActiveProjectConversationId(detail.conversation.id);
-      setProjectMessages(detail.messages.map(projectMessageFromApi));
-      setProjectChatDraft("");
+      if (isCurrentConversationOpen()) {
+        setActiveProjectConversationId(detail.conversation.id);
+        setProjectMessages(detail.messages.map(projectMessageFromApi));
+        setProjectChatDraft("");
+      }
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "打开项目知识库对话失败。");
+      if (isCurrentConversationOpen()) {
+        setError(nextError instanceof Error ? nextError.message : "打开项目知识库对话失败。");
+      }
     } finally {
-      setLoading(false);
+      if (isCurrentConversationOpen()) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (isCompanyKnowledge || !projectId) {
+    if (isCompanyKnowledge || effectiveKnowledgeScope !== "project" || !effectiveProjectId) {
       return;
     }
-    void loadProjectConversations(projectId);
-  }, [isCompanyKnowledge, loadProjectConversations, projectId]);
+    void loadProjectConversations(effectiveProjectId);
+  }, [effectiveKnowledgeScope, effectiveProjectId, isCompanyKnowledge, loadProjectConversations]);
 
   function createProjectConversation() {
     setActiveProjectConversationId(null);
@@ -201,8 +344,18 @@ export default function Page() {
     setError("");
   }
 
+  function changeKnowledgeProjectScope(value: string) {
+    if (value === "all") {
+      setKnowledgeScope("all");
+      setKnowledgeProjectId(null);
+      return;
+    }
+    setKnowledgeScope("project");
+    setKnowledgeProjectId(value);
+  }
+
   async function deleteProjectConversation(conversationId: string) {
-    if (!projectId) {
+    if (effectiveKnowledgeScope !== "project" || !projectId) {
       return;
     }
     setRunning(true);
@@ -254,7 +407,7 @@ export default function Page() {
   }, [isCompanyKnowledge, loadCompanyDocs]);
 
   async function queryProjectKnowledge(question: string) {
-    if (!projectId) {
+    if (effectiveKnowledgeScope === "project" && !effectiveProjectId) {
       setError("请先在顶部选择具体项目。");
       return;
     }
@@ -262,40 +415,104 @@ export default function Page() {
     if (!trimmedQuestion) {
       return;
     }
-    if (!projectBuildForm.includeRequirements && !projectBuildForm.includeExplorations) {
-      setError("请至少选择需求文件或探索文件作为知识库来源。");
-      return;
-    }
+    const submittedKnowledgeScope = effectiveKnowledgeScope;
+    const submittedProjectId = effectiveProjectId;
+    const submittedConversationId = activeProjectConversationId;
+    const submittedQueryScopeKey = `${submittedKnowledgeScope}:${submittedProjectId ?? ""}`;
+    const queryRunId = projectQueryRunIdRef.current + 1;
+    projectQueryRunIdRef.current = queryRunId;
+    latestProjectQueryScopeRef.current = submittedQueryScopeKey;
+    const isCurrentProjectQueryScope = () =>
+      projectQueryRunIdRef.current === queryRunId && latestProjectQueryScopeRef.current === submittedQueryScopeKey;
     const userMessage: ProjectChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
       body: trimmedQuestion,
     };
-    setProjectMessages((messages) => [...messages, userMessage]);
+    const assistantMessageId = crypto.randomUUID();
+    const assistantMessage: ProjectChatMessage = {
+      id: assistantMessageId,
+      role: "assistant",
+      body: "",
+    };
+    setProjectMessages((messages) => [...messages, userMessage, assistantMessage]);
+    setProjectChatDraft("");
     setRunning(true);
     setError("");
-    notifyAiTaskStarted();
     try {
-      const result = await apiRequest<ApiKnowledgeQueryResult>(`/projects/${projectId}/knowledge/query`, {
+      const headers = apiAuthHeaders();
+      headers.set("Content-Type", "application/json");
+      const streamPath =
+        submittedKnowledgeScope === "all" ? "/knowledge/query/stream" : `/projects/${submittedProjectId}/knowledge/query/stream`;
+      const response = await fetch(`${API_BASE_URL}${streamPath}`, {
         method: "POST",
+        headers,
         body: JSON.stringify({
           question: trimmedQuestion,
-          include_requirements: projectBuildForm.includeRequirements,
-          include_explorations: projectBuildForm.includeExplorations,
-          conversation_id: activeProjectConversationId,
+          include_requirements: true,
+          include_explorations: true,
+          conversation_id: submittedKnowledgeScope === "project" ? submittedConversationId : null,
         }),
       });
-      setActiveProjectConversationId(result.conversation.id);
-      setProjectConversations((items) => upsertConversation(items, result.conversation));
-      setProjectMessages((messages) => [
-        ...messages,
-        ...result.messages.filter((message) => message.role === "assistant").map(projectMessageFromApi),
-      ]);
-      setProjectChatDraft("");
+      if (!response.ok || !response.body) {
+        throw new Error("项目知识库流式查询失败。");
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      let finalResult: ApiKnowledgeQueryResult | null = null;
+
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() || "";
+        for (const chunk of chunks) {
+          const event = parseProjectKnowledgeStreamEvent(chunk);
+          if (!event) {
+            continue;
+          }
+          if (event.type === "message_delta") {
+            if (isCurrentProjectQueryScope()) {
+              setProjectMessages((messages) =>
+                messages.map((message) =>
+                  message.id === assistantMessageId ? { ...message, body: message.body + event.delta } : message,
+                ),
+              );
+            }
+          } else if (event.type === "metadata") {
+            finalResult = event.result;
+            if (isCurrentProjectQueryScope() && submittedKnowledgeScope === "project" && event.result.conversation) {
+              setActiveProjectConversationId(event.result.conversation.id);
+              setProjectConversations((items) => upsertConversation(items, event.result.conversation));
+            }
+            if (isCurrentProjectQueryScope()) {
+              setProjectMessages((messages) =>
+                messages.map((message) =>
+                  message.id === assistantMessageId ? mergeAssistantStreamResult(message, event.result) : message,
+                ),
+              );
+            }
+          } else if (event.type === "error") {
+            throw new Error(event.message || "查询项目知识库失败。");
+          }
+        }
+      }
+      if (!finalResult) {
+        throw new Error("项目知识库流式查询未返回最终结果。");
+      }
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "查询项目知识库失败。");
+      if (isCurrentProjectQueryScope()) {
+        setError(nextError instanceof Error ? nextError.message : "查询项目知识库失败。");
+        setProjectMessages((messages) => messages.filter((message) => message.id !== assistantMessageId));
+      }
     } finally {
-      setRunning(false);
+      if (isCurrentProjectQueryScope()) {
+        setRunning(false);
+      }
     }
   }
 
@@ -520,16 +737,25 @@ export default function Page() {
           activeConversationId={activeProjectConversationId}
           conversations={projectConversations}
           error={error}
-          form={projectBuildForm}
           loading={loading}
           messages={projectMessages}
-          onConversationOpen={(conversationId) => projectId && void openProjectConversation(projectId, conversationId)}
+          modelLoading={knowledgeModelLoading}
+          modelProviders={knowledgeModelProviders}
+          modelSaving={knowledgeModelSaving}
+          onConversationOpen={(conversationId) =>
+            effectiveKnowledgeScope === "project" && projectId && void openProjectConversation(projectId, conversationId)
+          }
           onConversationCreate={createProjectConversation}
           onConversationDelete={(conversationId) => void deleteProjectConversation(conversationId)}
-          onFormChange={setProjectBuildForm}
+          onModelProviderChange={(modelProviderId) => void updateKnowledgeQueryModelProvider(modelProviderId)}
+          onProjectScopeChange={changeKnowledgeProjectScope}
           onSubmit={(question) => void queryProjectKnowledge(question)}
-          projectSelected={Boolean(projectId)}
+          projectScopeOptions={knowledgeProjectScopeOptions}
+          projectSelected={effectiveKnowledgeScope === "all" || Boolean(projectId)}
+          projectConversationEnabled={effectiveKnowledgeScope === "project" && Boolean(projectId)}
           running={running}
+          selectedModelProviderId={selectedKnowledgeModelProviderId}
+          selectedProjectScope={selectedProjectScope}
           value={projectChatDraft}
           onValueChange={setProjectChatDraft}
         />
@@ -623,6 +849,36 @@ function projectMessageFromApi(message: ApiKnowledgeConversationMessage): Projec
   };
 }
 
+function mergeAssistantStreamResult(message: ProjectChatMessage, result: ApiKnowledgeQueryResult): ProjectChatMessage {
+  const assistant = result.messages.find((item) => item.role === "assistant");
+  return {
+    ...message,
+    body: message.body || assistant?.content || result.answer,
+    sourceRefs: result.source_refs,
+    usedRequirementVersions: result.used_requirement_versions,
+    usedExplorationRuns: result.used_exploration_runs,
+  };
+}
+
+function parseProjectKnowledgeStreamEvent(chunk: string): ProjectKnowledgeStreamEvent | null {
+  const dataLine = chunk
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.startsWith("data:"));
+  if (!dataLine) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(dataLine.slice(5).trim()) as ProjectKnowledgeStreamEvent;
+    if (!payload || typeof payload !== "object" || !("type" in payload)) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 function upsertConversation(
   conversations: ApiKnowledgeConversation[],
   conversation: ApiKnowledgeConversation,
@@ -634,160 +890,184 @@ function ProjectKnowledgeWorkspace({
   activeConversationId,
   conversations,
   error,
-  form,
   loading,
   messages,
+  modelLoading,
+  modelProviders,
+  modelSaving,
   onConversationCreate,
   onConversationDelete,
   onConversationOpen,
-  onFormChange,
+  onModelProviderChange,
+  onProjectScopeChange,
   onSubmit,
+  projectConversationEnabled,
+  projectScopeOptions,
   projectSelected,
   running,
+  selectedModelProviderId,
+  selectedProjectScope,
   value,
   onValueChange,
 }: {
   activeConversationId: string | null;
   conversations: ApiKnowledgeConversation[];
   error: string;
-  form: typeof emptyProjectBuildForm;
   loading: boolean;
   messages: ProjectChatMessage[];
+  modelLoading: boolean;
+  modelProviders: ApiModelProvider[];
+  modelSaving: boolean;
   onConversationCreate: () => void;
   onConversationDelete: (conversationId: string) => void;
   onConversationOpen: (conversationId: string) => void;
-  onFormChange: (form: typeof emptyProjectBuildForm) => void;
+  onModelProviderChange: (modelProviderId: string) => void;
+  onProjectScopeChange: (value: string) => void;
   onSubmit: (instruction: string) => void;
+  projectConversationEnabled: boolean;
+  projectScopeOptions: Array<{ value: string; label: string; locked?: boolean }>;
   projectSelected: boolean;
   running: boolean;
+  selectedModelProviderId: string;
+  selectedProjectScope: string;
   value: string;
   onValueChange: (value: string) => void;
 }) {
   const hasConversation = messages.length > 0 || running;
-  const [historyOpen, setHistoryOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const projectScopeDisabled = projectScopeOptions.some((option) => option.value === selectedProjectScope && option.locked);
+  const projectHistoryOpen = projectConversationEnabled && historyOpen;
+
+  useEffect(() => {
+    if (!projectConversationEnabled) {
+      setHistoryOpen(false);
+    }
+  }, [projectConversationEnabled]);
 
   return (
-    <ShellSection className="min-h-[42rem] p-0">
+    <ShellSection className="h-[clamp(30rem,calc(100dvh-14rem),42rem)] p-0">
       <div
         className={
-          historyOpen
-            ? "grid min-h-[42rem] overflow-hidden rounded-lg border bg-background lg:grid-cols-[17rem_minmax(0,1fr)]"
-            : "grid min-h-[42rem] overflow-hidden rounded-lg border bg-background lg:grid-cols-[3.5rem_minmax(0,1fr)]"
+          projectHistoryOpen
+            ? "grid h-full overflow-hidden rounded-lg border bg-background lg:grid-cols-[18rem_minmax(0,1fr)]"
+            : "relative grid h-full overflow-hidden rounded-lg border bg-background"
         }
       >
-        <aside
-          className={
-            historyOpen
-              ? "flex min-h-0 flex-col border-b bg-muted/20 lg:border-r lg:border-b-0"
-              : "flex min-h-0 flex-col items-center border-b bg-muted/20 p-2 lg:border-r lg:border-b-0"
-          }
-        >
-          {!historyOpen ? (
-            <>
-              <Button onClick={() => setHistoryOpen(true)} size="icon" title="展开对话历史" variant="ghost">
-                <PanelLeftOpen className="size-4" />
-              </Button>
-              <Button
-                className="mt-2"
-                disabled={!projectSelected || running}
-                onClick={onConversationCreate}
-                size="icon"
-                title="新建对话"
-                variant="ghost"
-              >
-                <Plus className="size-4" />
-              </Button>
-            </>
-          ) : null}
-          {historyOpen ? (
-            <>
-              <div className="flex items-center justify-between gap-2 border-b p-3">
-                <div className="flex items-center gap-2 font-medium text-sm">
-                  <MessageSquare className="size-4 text-primary" />
-                  对话
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button onClick={() => setHistoryOpen(false)} size="icon" title="收起对话历史" variant="ghost">
-                    <PanelLeftClose className="size-4" />
-                  </Button>
-                  <Button
-                    disabled={!projectSelected || running}
-                    onClick={onConversationCreate}
-                    size="icon"
-                    title="新建对话"
-                    variant="outline"
-                  >
-                    <Plus className="size-4" />
-                  </Button>
-                </div>
+        {!projectHistoryOpen ? (
+          <KnowledgeChatTopControls
+            onConversationCreate={onConversationCreate}
+            onHistoryOpen={() => {
+              if (!projectConversationEnabled || running) {
+                return;
+              }
+              setHistoryOpen(true);
+            }}
+            projectConversationEnabled={projectConversationEnabled}
+            running={running}
+          />
+        ) : null}
+        {projectHistoryOpen ? (
+          <aside className="flex min-h-0 flex-col border-b bg-muted/20 lg:border-r lg:border-b-0">
+            <div className="flex items-center justify-between gap-2 border-b bg-muted/30 p-3">
+              <div className="flex items-center gap-2 font-medium text-sm">
+                <MessageSquare className="size-4 text-primary" />
+                对话
               </div>
-              <div className="min-h-0 flex-1 space-y-1 overflow-auto p-2">
-                {loading ? <div className="px-2 py-3 text-muted-foreground text-sm">正在加载对话。</div> : null}
-                {!loading && conversations.length === 0 ? (
-                  <div className="px-2 py-3 text-muted-foreground text-sm">暂无历史对话。</div>
-                ) : null}
-                {conversations.map((conversation) => {
-                  const active = conversation.id === activeConversationId;
-                  return (
-                    <div className="group flex items-center gap-1" key={conversation.id}>
-                      <button
-                        className={
-                          active
-                            ? "min-w-0 flex-1 rounded-md bg-primary/10 px-2.5 py-2 text-left text-primary text-sm"
-                            : "min-w-0 flex-1 rounded-md px-2.5 py-2 text-left text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
-                        }
-                        disabled={running}
-                        onClick={() => onConversationOpen(conversation.id)}
-                        type="button"
-                      >
-                        <div className="truncate font-medium">{conversation.title}</div>
-                        <div className="mt-0.5 truncate text-[11px] opacity-70">
-                          {formatDateTime(conversation.updated_at)}
-                        </div>
-                      </button>
-                      <button
-                        className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-70 transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40 lg:opacity-0 lg:group-hover:opacity-100"
-                        disabled={running}
-                        onClick={() => onConversationDelete(conversation.id)}
-                        title="删除对话"
-                        type="button"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </div>
-                  );
-                })}
+              <div className="flex items-center gap-1">
+                <Button onClick={() => setHistoryOpen(false)} size="icon" title="收起对话历史" variant="ghost">
+                  <PanelLeftClose className="size-4" />
+                </Button>
+                <Button
+                  disabled={!projectConversationEnabled || running}
+                  onClick={onConversationCreate}
+                  size="icon"
+                  title="新建对话"
+                  variant="outline"
+                >
+                  <Plus className="size-4" />
+                </Button>
               </div>
-            </>
-          ) : null}
-        </aside>
+            </div>
+            <div className="min-h-0 flex-1 space-y-1 overflow-auto p-2">
+              {loading ? <div className="px-2 py-3 text-muted-foreground text-sm">正在加载对话。</div> : null}
+              {!loading && conversations.length === 0 ? (
+                <div className="px-2 py-3 text-muted-foreground text-sm">暂无历史对话。</div>
+              ) : null}
+              {conversations.map((conversation) => {
+                const active = conversation.id === activeConversationId;
+                return (
+                  <div className="group flex items-center gap-1" key={conversation.id}>
+                    <button
+                      className={
+                        active
+                          ? "min-w-0 flex-1 rounded-md bg-primary px-2.5 py-2 text-left text-primary-foreground text-sm shadow-sm"
+                          : "min-w-0 flex-1 rounded-md px-2.5 py-2 text-left text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
+                      }
+                      disabled={!projectConversationEnabled || running}
+                      onClick={() => onConversationOpen(conversation.id)}
+                      type="button"
+                    >
+                      <div className="truncate font-medium">{conversation.title}</div>
+                      <div className="mt-0.5 truncate text-[11px] opacity-70">
+                        {formatDateTime(conversation.updated_at)}
+                      </div>
+                    </button>
+                    <button
+                      className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-70 transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40 lg:opacity-0 lg:group-hover:opacity-100"
+                      disabled={!projectConversationEnabled || running}
+                      onClick={() => onConversationDelete(conversation.id)}
+                      title="删除对话"
+                      type="button"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </aside>
+        ) : null}
 
         {!hasConversation ? (
-          <div className="flex min-h-[42rem] flex-col items-center justify-center overflow-hidden bg-background px-4 py-10">
-            <div className="mb-8 text-center">
-              <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-                <Command className="size-10" />
+          <div className="relative flex min-h-0 flex-col items-center justify-center overflow-hidden px-4 py-6 min-[900px]:py-10">
+            <div className="relative mb-5 text-center min-[900px]:mb-8">
+              <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-lg border bg-primary text-primary-foreground shadow-sm min-[900px]:mb-6 min-[900px]:size-20">
+                <Command className="size-8 min-[900px]:size-10" />
               </div>
-              <h2 className="font-serif text-3xl text-foreground tracking-tight sm:text-4xl">项目知识库</h2>
-              <p className="mt-3 text-muted-foreground text-sm">查询最终需求文档和探索记录，答案会附带来源依据。</p>
+              <div className="mb-2 flex items-center justify-center gap-2 font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.18em] min-[900px]:mb-3 min-[900px]:text-xs">
+                <span className="h-px w-8 bg-border" />
+                Source-backed QA
+                <span className="h-px w-8 bg-border" />
+              </div>
+              <h2 className="font-heading text-3xl text-foreground tracking-normal min-[900px]:text-5xl">项目知识库</h2>
+              <p className="mx-auto mt-2 max-w-xl text-muted-foreground text-sm leading-6 min-[900px]:mt-3">
+                查询最终需求文档和探索记录，把业务规则、页面事实和测试风险串成可追溯答案。
+              </p>
             </div>
             <KnowledgeChatInput
+              compact
               disabled={!projectSelected}
-              includeExplorations={form.includeExplorations}
-              includeRequirements={form.includeRequirements}
               loading={running}
-              onSourceChange={(next) => onFormChange({ ...form, ...next })}
+              modelLoading={modelLoading}
+              modelProviders={modelProviders}
+              modelSaving={modelSaving}
+              onModelProviderChange={onModelProviderChange}
+              onProjectScopeChange={onProjectScopeChange}
               onSubmit={onSubmit}
               onValueChange={onValueChange}
+              projectScopeDisabled={projectScopeDisabled}
+              projectScopeOptions={projectScopeOptions}
+              selectedModelProviderId={selectedModelProviderId}
+              selectedProjectScope={selectedProjectScope}
               value={value}
             />
-            <div className="mt-4 flex max-w-2xl flex-wrap justify-center gap-2 px-4">
+            <div className="relative mt-4 flex max-w-2xl flex-wrap justify-center gap-2 px-4 min-[900px]:mt-5">
               {projectKnowledgeQuickPrompts.map(({ icon: Icon, label, prompt }) => (
                 <button
-                  className="inline-flex items-center gap-1.5 rounded-full border bg-transparent px-3 py-1.5 text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1.5 text-muted-foreground text-xs shadow-sm transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 min-[900px]:px-3 min-[900px]:text-sm"
                   disabled={!projectSelected || running}
                   key={label}
-                  onClick={() => onSubmit(prompt)}
+                  onClick={() => onValueChange(prompt)}
                   type="button"
                 >
                   <Icon className="size-4" />
@@ -796,24 +1076,20 @@ function ProjectKnowledgeWorkspace({
               ))}
             </div>
             {error ? (
-              <div className="mt-4 max-w-2xl rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive text-sm">
+              <div className="relative mt-4 max-w-2xl rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive text-sm">
                 {error}
               </div>
             ) : null}
           </div>
         ) : (
-          <div className="flex min-h-[42rem] min-w-0 flex-col overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b p-3">
-              <div className="flex items-center gap-2">
-                <Bot className="size-4 text-primary" />
-                <h2 className="font-medium text-sm">项目知识库 AI</h2>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
-                <Badge variant={form.includeRequirements ? "secondary" : "outline"}>最终需求文档</Badge>
-                <Badge variant={form.includeExplorations ? "secondary" : "outline"}>探索记录</Badge>
-              </div>
-            </div>
-            <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-muted/20 p-4">
+          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+            <div
+              className={
+                projectHistoryOpen
+                  ? "min-h-0 flex-1 space-y-4 overflow-auto bg-muted/20 p-4"
+                  : "min-h-0 flex-1 space-y-4 overflow-auto bg-muted/20 px-4 pt-16 pb-4"
+              }
+            >
               {messages.map((message) => (
                 <ChatMessage
                   body={message.body}
@@ -832,6 +1108,7 @@ function ProjectKnowledgeWorkspace({
                         >
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="outline">{ref.source_type === "requirement" ? "需求" : "探索"}</Badge>
+                            {ref.project_name ? <Badge variant="secondary">{ref.project_name}</Badge> : null}
                             <span className="font-medium">{ref.source_title}</span>
                           </div>
                           {ref.location ? <div className="mt-1 text-muted-foreground">{ref.location}</div> : null}
@@ -844,26 +1121,24 @@ function ProjectKnowledgeWorkspace({
                   ) : null}
                 </ChatMessage>
               ))}
-              {running ? (
-                <ChatMessage
-                  body="正在读取最终需求文档和探索记录，并执行 agentic search。"
-                  icon={RefreshCw}
-                  loading
-                  title="项目知识库 AI"
-                  tone="assistant"
-                />
-              ) : null}
               {error ? <ChatMessage body={error} icon={TriangleAlert} title="查询失败" tone="warning" /> : null}
             </div>
-            <div className="bg-background p-4">
+            <div className="border-t bg-background p-4">
               <KnowledgeChatInput
+                compact
                 disabled={!projectSelected}
-                includeExplorations={form.includeExplorations}
-                includeRequirements={form.includeRequirements}
                 loading={running}
-                onSourceChange={(next) => onFormChange({ ...form, ...next })}
+                modelLoading={modelLoading}
+                modelProviders={modelProviders}
+                modelSaving={modelSaving}
+                onModelProviderChange={onModelProviderChange}
+                onProjectScopeChange={onProjectScopeChange}
                 onSubmit={onSubmit}
                 onValueChange={onValueChange}
+                projectScopeDisabled={projectScopeDisabled}
+                projectScopeOptions={projectScopeOptions}
+                selectedModelProviderId={selectedModelProviderId}
+                selectedProjectScope={selectedProjectScope}
                 value={value}
               />
             </div>
@@ -871,6 +1146,48 @@ function ProjectKnowledgeWorkspace({
         )}
       </div>
     </ShellSection>
+  );
+}
+
+function KnowledgeChatTopControls({
+  onConversationCreate,
+  onHistoryOpen,
+  projectConversationEnabled,
+  running,
+}: {
+  onConversationCreate: () => void;
+  onHistoryOpen: () => void;
+  projectConversationEnabled: boolean;
+  running: boolean;
+}) {
+  return (
+    <div className="pointer-events-none absolute top-4 left-4 z-20 flex items-center gap-3">
+      <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+        <Bot className="size-5" />
+      </div>
+      <div className="pointer-events-auto flex h-10 items-center gap-1 rounded-lg border bg-background/95 px-2 shadow-sm backdrop-blur">
+        <button
+          aria-label="展开对话历史"
+          className="inline-flex size-8 items-center justify-center rounded-md text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45"
+          disabled={!projectConversationEnabled || running}
+          onClick={onHistoryOpen}
+          title="展开对话历史"
+          type="button"
+        >
+          <PanelLeftOpen className="size-4" />
+        </button>
+        <button
+          aria-label="新建对话"
+          className="inline-flex size-8 items-center justify-center rounded-md text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45"
+          disabled={!projectConversationEnabled || running}
+          onClick={onConversationCreate}
+          title="新建对话"
+          type="button"
+        >
+          <Plus className="size-4" />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -894,7 +1211,7 @@ function ChatMessage({
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div className={isUser ? "max-w-[82%]" : "max-w-[88%]"}>
         <div className={isUser ? "flex flex-row-reverse items-center gap-2" : "flex items-center gap-2"}>
-          <div className="flex size-7 items-center justify-center rounded-lg border bg-background">
+          <div className="flex size-7 items-center justify-center rounded-md border bg-background">
             <Icon className={loading ? "size-4 animate-spin" : "size-4"} />
           </div>
           <div className="font-medium text-muted-foreground text-xs">{title}</div>
@@ -902,10 +1219,10 @@ function ChatMessage({
         <div
           className={
             isUser
-              ? "mt-2 rounded-lg bg-primary p-3 text-primary-foreground text-sm"
+              ? "mt-2 rounded-lg bg-primary p-3 text-primary-foreground text-sm shadow-sm"
               : tone === "warning"
                 ? "mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-destructive text-sm"
-                : "mt-2 rounded-lg border bg-background p-3 text-sm"
+                : "mt-2 rounded-lg border bg-background p-3 text-foreground text-sm shadow-sm"
           }
         >
           <p className="whitespace-pre-wrap leading-6">{body}</p>

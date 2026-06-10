@@ -65,7 +65,7 @@ def list_messages(db: Connection, conversation_id: str) -> list[Row]:
         """
         SELECT * FROM knowledge_conversation_messages
         WHERE conversation_id = ?
-        ORDER BY created_at ASC, id ASC
+        ORDER BY created_at ASC, rowid ASC
         """,
         (conversation_id,),
     ).fetchall()

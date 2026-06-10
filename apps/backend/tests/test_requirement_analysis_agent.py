@@ -1,3 +1,4 @@
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -74,7 +75,7 @@ def test_requirement_analysis_input_contract_only_contains_primary_fields():
     }
 
 
-def test_requirement_analysis_codex_prompt_orders_review_scenarios_auxiliary_answers_and_report():
+def test_requirement_analysis_codex_prompt_uses_requirement_review_with_testability_view():
     from app.agents.requirement_analysis_codex.runner import _build_codex_prompt
     from app.schemas.requirement_analysis import RequirementAnalysisAuxiliaryDocument, RequirementAnalysisInput
 
@@ -96,9 +97,9 @@ def test_requirement_analysis_codex_prompt_orders_review_scenarios_auxiliary_ans
         )
     )
 
-    review_index = prompt.index("第一阶段：使用 requirement-review")
-    scenarios_index = prompt.index("第二阶段：使用 test-scenarios")
-    assert review_index < scenarios_index
+    assert "使用 requirement-review skill 对 input/primary.md 做需求分析" in prompt
+    assert "test-scenarios" not in prompt
+    assert "测试目标、角色、前置条件、操作步骤、预期结果、边界值、异常路径和错误场景缺口" in prompt
     assert "需求分析智能体" in prompt
     assert "Codex CLI 需求分析智能体" not in prompt
     assert "非交互式批处理任务" in prompt
@@ -110,10 +111,10 @@ def test_requirement_analysis_codex_prompt_orders_review_scenarios_auxiliary_ans
     assert "output/analysis.md" in prompt
     assert "analysis_report_markdown" in prompt
     assert "待确认需求 tab 后面的分析报告 tab" in prompt
-    assert "分析报告只写分析摘要、成熟度、关键缺口分类、测试场景补充视角、质量门禁和下一步建议" in prompt
+    assert "分析报告只写分析摘要、成熟度、关键缺口分类、测试覆盖缺口、质量门禁和下一步建议" in prompt
     assert "分析报告不要出现“待确认问题”“待人工确认”“澄清问题”等面向人工答复的章节、标题、统计或问题清单" in prompt
     assert "关键缺口只做归类和影响说明，不要写成可答复的问题清单" in prompt
-    assert "测试场景补充视角只说明测试覆盖影响，不要展开具体待人工答复事项" in prompt
+    assert "测试覆盖缺口只说明测试覆盖影响，不要展开具体待人工答复事项" in prompt
     assert "分析报告不要重复、统计或摘要 clarification_questions/conflicts；这些内容只进入结构化字段" in prompt
     assert "需要人工回答或裁决的内容必须进入 clarification_questions/conflicts" in prompt
     assert "status 只能是 completed、needs_clarification、blocked" in prompt
@@ -192,7 +193,7 @@ def test_requirement_analysis_codex_reports_process_failure_as_agent_failure(tmp
 
     with pytest.raises(RuntimeError, match="需求分析智能体执行失败，退出码：1"):
         runner._run_codex_process(
-            ["/bin/sh", "-c", "echo unauthorized 1>&2; exit 1"],
+            [sys.executable, "-c", "import sys; print('unauthorized', file=sys.stderr); sys.exit(1)"],
             tmp_path,
             runner.os.environ.copy(),
         )

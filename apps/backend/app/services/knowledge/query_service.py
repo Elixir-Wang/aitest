@@ -1,4 +1,4 @@
-from app.schemas.knowledge import KnowledgeQueryInput, KnowledgeQueryOutput
+from app.agents.knowledge_chat.schemas import KnowledgeQueryInput, KnowledgeQueryOutput
 from app.services.knowledge.codex_query import run_knowledge_query_with_codex
 
 

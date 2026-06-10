@@ -14,7 +14,7 @@ from app.core.settings import (
     KNOWLEDGE_QUERY_CODEX_TIMEOUT_SECONDS,
     PROJECT_FILE_STORAGE_ROOT,
 )
-from app.schemas.knowledge import KnowledgeQueryInput, KnowledgeQueryOutput
+from app.agents.knowledge_chat.schemas import KnowledgeQueryInput, KnowledgeQueryOutput
 
 
 CAPABILITY_ID = "knowledge_query"

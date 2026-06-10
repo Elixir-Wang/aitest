@@ -1131,6 +1131,12 @@ def _capability_type_from_module_name(module_name: str) -> str:
     text = str(module_name or "").lower()
     if _contains_any(text, ("搜索", "查询", "筛选", "过滤", "排序", "标签", "search", "filter", "sort")):
         return "query_filter"
+    if _contains_any(text, ("视图", "宫格", "网格", "列表视图", "布局", "view", "grid", "layout")):
+        return "view_switch"
+    if _contains_any(text, ("卡片", "更多菜单", "主操作", "对话历史", "日志查询", "复制", "下线", "card", "menu")):
+        return "card_action"
+    if _contains_any(text, ("创建导入", "创建", "新增", "新建", "导入", "上传", "create", "new", "add", "import", "upload")):
+        return "create_import"
     if _contains_any(text, ("导入", "导出", "上传", "下载", "模板", "import", "export", "upload", "download")):
         return "import_export"
     if _contains_any(text, ("批量", "全选", "多选", "batch", "select all")):
@@ -1159,9 +1165,9 @@ def _dom_group_plan_items(boundary: str, page_facts: dict) -> list[dict]:
                     "business_module": boundary,
                     "capability_type": capability_type,
                     "title": definition["title"],
-                    "steps": definition["steps"],
+                    "steps": [step.replace("当前模块", boundary) for step in definition["steps"]],
                     "exploration_points": [
-                        f"来源 DOM：{_format_dom_sources(sources)}",
+                        f"已发现入口：{_format_dom_sources(sources)}",
                         *definition["exploration_points"],
                     ],
                     "entry_path": entry_path,
@@ -1185,7 +1191,44 @@ def _classify_plan_dom_groups(page_facts: dict) -> dict[str, list[str]]:
             groups.setdefault(capability_type, [])
             if text not in groups[capability_type]:
                 groups[capability_type].append(text)
+    _merge_card_menu_sources(groups)
     return groups
+
+
+def _merge_card_menu_sources(groups: dict[str, list[str]]) -> None:
+    card_sources = groups.get("card_action", [])
+    if not card_sources:
+        return
+    display_sources = groups.get("content_display", [])
+    card_display_sources = [source for source in display_sources if _contains_any(source, ("卡片", "card"))]
+    for source in card_display_sources:
+        if source not in card_sources:
+            card_sources.append(source)
+    groups["content_display"] = [source for source in display_sources if source not in card_display_sources]
+    if not groups["content_display"]:
+        groups.pop("content_display", None)
+    has_menu_context = any(
+        _contains_any(source, ("更多", "日志查询", "更新发布平台", "复制", "下线", "对话历史"))
+        for source in card_sources
+    )
+    if not has_menu_context:
+        return
+    query_sources = groups.get("query_filter", [])
+    menu_query_sources = [source for source in query_sources if _contains_any(source, ("日志查询",))]
+    for source in menu_query_sources:
+        if source not in card_sources:
+            card_sources.append(source)
+    groups["query_filter"] = [source for source in query_sources if source not in menu_query_sources]
+    if not groups["query_filter"]:
+        groups.pop("query_filter", None)
+    import_sources = groups.get("import_export", [])
+    menu_export_sources = [source for source in import_sources if _contains_any(source, ("导出", "下载"))]
+    for source in menu_export_sources:
+        if source not in card_sources:
+            card_sources.append(source)
+    groups["import_export"] = [source for source in import_sources if source not in menu_export_sources]
+    if not groups["import_export"]:
+        groups.pop("import_export", None)
 
 
 def _capability_types_for_element(element: dict, text: str) -> list[str]:
@@ -1198,11 +1241,34 @@ def _capability_types_for_element(element: dict, text: str) -> list[str]:
             types.append("query_filter")
     if _contains_any(haystack, ("搜索", "查询", "筛选", "过滤", "排序", "重置", "search", "query", "filter", "sort", "reset")):
         types.append("query_filter")
-    if _contains_any(haystack, ("卡片", "列表", "表格", "统计", "缩略图", "card", "list", "table", "row")):
+    if _contains_any(haystack, ("视图", "宫格", "网格", "列表视图", "布局", "view", "grid", "layout")):
+        types.append("view_switch")
+    if _contains_any(
+        haystack,
+        (
+            "卡片",
+            "分析",
+            "使用",
+            "对话历史",
+            "更多",
+            "日志查询",
+            "更新发布平台",
+            "复制",
+            "下线",
+            "card",
+            "history",
+            "more",
+            "copy",
+        ),
+    ):
+        types.append("card_action")
+    if _contains_any(haystack, ("创建", "新增", "新建", "导入", "上传", "create", "new", "add", "import", "upload")):
+        types.append("create_import")
+    if not _contains_any(haystack, ("视图", "view")) and _contains_any(haystack, ("卡片", "列表", "表格", "统计", "缩略图", "card", "list", "table", "row")):
         types.append("content_display")
-    if _contains_any(haystack, ("新增", "新建", "创建", "查看", "详情", "编辑", "修改", "删除", "保存", "取消", "确认", "create", "new", "add", "view", "detail", "edit", "update", "delete", "save", "cancel", "confirm")):
+    if _contains_any(haystack, ("查看", "详情", "编辑", "修改", "删除", "保存", "取消", "确认", "view", "detail", "edit", "update", "delete", "save", "cancel", "confirm")):
         types.append("crud")
-    if _contains_any(haystack, ("导入", "导出", "上传", "下载", "模板", "文件", "import", "export", "upload", "download", "template", "file")):
+    if _contains_any(haystack, ("导出", "下载", "模板", "文件", "export", "download", "template", "file")):
         types.append("import_export")
     if role in {"checkbox"} or _contains_any(haystack, ("批量", "全选", "多选", "选择", "batch", "select all", "checkbox")):
         types.append("batch_operation")
@@ -1227,32 +1293,50 @@ def _dom_plan_definitions() -> list[dict]:
         {
             "capability_type": "query_filter",
             "title": "查询筛选功能",
-            "steps": ["检查查询类控件的默认条件", "执行单条件与组合条件筛选", "验证重置、排序或标签切换后的内容变化"],
-            "exploration_points": ["默认值、单条件、组合条件、重置行为", "筛选后数据展示变化"],
+            "steps": ["完整探索当前模块中的查询、筛选、搜索、排序能力，记录可操作项、交互结果、数据变化和过程中发现的问题。"],
+            "exploration_points": [],
+        },
+        {
+            "capability_type": "view_switch",
+            "title": "视图切换功能",
+            "steps": ["完整探索当前模块中的视图切换能力，记录可切换视图、切换结果、信息展示变化和过程中发现的问题。"],
+            "exploration_points": [],
         },
         {
             "capability_type": "content_display",
             "title": "内容展示功能",
-            "steps": ["梳理卡片、列表或表格的展示字段", "检查字段含义、状态标识和内容排列", "验证详情、分页或加载更多入口"],
-            "exploration_points": ["展示字段、状态标识、数据排列方式", "详情入口、分页或加载更多"],
+            "steps": ["完整探索当前模块中的内容展示能力，记录字段展示、状态标识、入口操作、信息展示变化和过程中发现的问题。"],
+            "exploration_points": [],
+        },
+        {
+            "capability_type": "card_action",
+            "title": "卡片功能",
+            "steps": ["完整探索当前模块中卡片的信息展示、主操作按钮和更多菜单，记录卡片字段、按钮入口、菜单项、交互结果和过程中发现的问题。"],
+            "exploration_points": [],
+        },
+        {
+            "capability_type": "create_import",
+            "title": "创建导入功能",
+            "steps": ["完整探索当前模块中的创建和导入入口，记录入口位置、打开结果、流程边界、可操作项和过程中发现的问题。"],
+            "exploration_points": [],
         },
         {
             "capability_type": "crud",
             "title": "CRUD 功能",
-            "steps": ["识别新增、查看、编辑、删除等真实入口", "探索已出现入口对应的表单、确认框或详情内容", "记录提交、取消或删除后的页面变化"],
-            "exploration_points": ["只覆盖真实出现的新增、查看、编辑、删除子能力", "表单字段、校验、确认与操作结果"],
+            "steps": ["完整探索当前模块中真实出现的新增、查看、编辑、删除等操作入口，记录流程边界、可操作项、交互结果和过程中发现的问题。"],
+            "exploration_points": [],
         },
         {
             "capability_type": "import_export",
             "title": "导入导出功能",
-            "steps": ["检查导入、导出、上传或下载入口", "验证模板、文件类型和上传校验", "记录导入或导出结果回显"],
-            "exploration_points": ["模板下载、文件格式限制、上传校验", "导入结果、导出内容或失败提示"],
+            "steps": ["完整探索当前模块中的导入、导出、上传或下载入口，记录入口位置、打开结果、流程边界、可操作项和过程中发现的问题。"],
+            "exploration_points": [],
         },
         {
             "capability_type": "batch_operation",
             "title": "批量操作功能",
-            "steps": ["检查单选、多选和全选规则", "验证批量按钮或批量菜单的可用条件", "记录批量操作确认与结果变化"],
-            "exploration_points": ["选择规则、批量操作条件", "批量确认与操作后数据变化"],
+            "steps": ["完整探索当前模块中的批量选择和批量操作能力，记录选择规则、可用条件、确认结果和过程中发现的问题。"],
+            "exploration_points": [],
         },
     ]
 

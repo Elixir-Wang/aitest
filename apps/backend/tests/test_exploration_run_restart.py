@@ -327,6 +327,16 @@ def test_generate_plan_uses_ai_modules_from_current_scope_facts(
             {"id": "keyword", "role": "textbox", "name": "搜索", "action_type": "fill"},
             {"id": "status", "role": "combobox", "name": "状态 全部", "action_type": "click"},
             {"id": "reset", "role": "button", "name": "重置", "action_type": "click"},
+            {"id": "grid", "role": "button", "name": "宫格视图", "action_type": "click"},
+            {"id": "list", "role": "button", "name": "列表视图", "action_type": "click"},
+            {"id": "analysis", "role": "button", "name": "分析", "action_type": "click"},
+            {"id": "use", "role": "button", "name": "使用", "action_type": "click"},
+            {"id": "history", "role": "button", "name": "对话历史", "action_type": "click"},
+            {"id": "more", "role": "button", "name": "更多", "action_type": "click"},
+            {"id": "log", "role": "menuitem", "name": "日志查询", "action_type": "click"},
+            {"id": "export", "role": "menuitem", "name": "导出", "action_type": "click"},
+            {"id": "copy", "role": "menuitem", "name": "复制", "action_type": "click"},
+            {"id": "offline", "role": "menuitem", "name": "下线", "action_type": "click"},
             {"id": "create", "role": "button", "name": "新增智能体", "action_type": "click"},
             {"id": "import", "role": "button", "name": "导入", "action_type": "click"},
         ],
@@ -335,13 +345,22 @@ def test_generate_plan_uses_ai_modules_from_current_scope_facts(
     generated = exploration_service.generate_project_run_plan("project-1", created["id"], ACTOR)
 
     assert generated["plan_status"] == "draft"
-    assert generated["summary"] == "AI 已根据探索范围和 DOM 元素分组生成 3 个功能计划项，等待人工确认或补充。 已过滤范围外模块：资源库。"
-    assert [item["business_module"] for item in generated["items"]] == ["工作台", "工作台", "工作台"]
-    assert [item["capability_type"] for item in generated["items"]] == ["query_filter", "crud", "import_export"]
-    assert [item["title"] for item in generated["items"]] == ["查询筛选功能", "CRUD 功能", "导入导出功能"]
-    assert generated["items"][0]["exploration_points"][0] == "来源 DOM：搜索、状态 全部、重置"
+    assert generated["summary"] == "AI 已根据探索范围和 DOM 元素分组生成 4 个功能计划项，等待人工确认或补充。 已过滤范围外模块：资源库。"
+    assert [item["business_module"] for item in generated["items"]] == ["工作台", "工作台", "工作台", "工作台"]
+    assert [item["capability_type"] for item in generated["items"]] == [
+        "query_filter",
+        "view_switch",
+        "card_action",
+        "create_import",
+    ]
+    assert [item["title"] for item in generated["items"]] == ["查询筛选功能", "视图切换功能", "卡片功能", "创建导入功能"]
+    assert generated["items"][0]["steps"] == [
+        "完整探索工作台中的查询、筛选、搜索、排序能力，记录可操作项、交互结果、数据变化和过程中发现的问题。"
+    ]
+    assert generated["items"][0]["exploration_points"][0] == "已发现入口：搜索、状态 全部、重置"
+    assert generated["items"][2]["exploration_points"][0] == "已发现入口：分析、使用、对话历史、更多、日志查询、复制、下线、导出"
     assert generated["items"][0]["entry_path"] == "https://example.test"
-    assert not {"search", "filter", "sort", "create", "import", "empty_state"} & {
+    assert not {"search", "filter", "sort", "create", "import", "empty_state", "import_export"} & {
         item["capability_type"] for item in generated["items"]
     }
 

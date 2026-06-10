@@ -1,0 +1,9 @@
+{"type":"thread.started","thread_id":"019eb0be-326c-7560-b4b7-9951e1262914"}
+{"type":"turn.started"}
+{"type":"error","message":"Reconnecting... 1/5 (unexpected status 404 Not Found: Unknown error, url: https://api.deepseek.com/responses)"}
+{"type":"error","message":"Reconnecting... 2/5 (unexpected status 404 Not Found: Unknown error, url: https://api.deepseek.com/responses)"}
+{"type":"error","message":"Reconnecting... 3/5 (unexpected status 404 Not Found: Unknown error, url: https://api.deepseek.com/responses)"}
+{"type":"error","message":"Reconnecting... 4/5 (unexpected status 404 Not Found: Unknown error, url: https://api.deepseek.com/responses)"}
+{"type":"error","message":"Reconnecting... 5/5 (unexpected status 404 Not Found: Unknown error, url: https://api.deepseek.com/responses)"}
+{"type":"error","message":"unexpected status 404 Not Found: Unknown error, url: https://api.deepseek.com/responses"}
+{"type":"turn.failed","error":{"message":"unexpected status 404 Not Found: Unknown error, url: https://api.deepseek.com/responses"}}

@@ -22,7 +22,7 @@ def _build_requirement_analysis_input(input_data: RequirementAnalysisInput) -> s
     return "\n".join(
         [
             "请只基于主需求执行需求分析，返回 RequirementAnalysisOutput。",
-            "必须按 requirement-review 与 test-scenarios 两个技能分析。",
+            "必须按 requirement-review 技能分析，并包含测试覆盖缺口视角。",
             "只输出分析结论；不要生成、优化、摘要或改写需求正文。",
             "preliminary_requirement_markdown 可返回空字符串，系统会直接使用 primary_markdown_content 原文作为初步需求。",
             "分析发现的问题写入结构化字段。",

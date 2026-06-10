@@ -311,20 +311,6 @@ const explorationPlanStatusLabels: Record<ExplorationPlanStatus, string> = {
   blocked: "有阻塞",
 };
 
-const capabilityTypeLabels: Record<string, string> = {
-  access: "页面访问",
-  search: "搜索",
-  filter: "筛选",
-  sort: "排序",
-  create: "新建",
-  import: "导入",
-  detail: "详情查看",
-  agent_usage: "智能体使用",
-  empty_state: "空状态",
-  module_discovery: "模块采集",
-  custom: "人工补充",
-};
-
 const loginStrategyLabels: Record<string, string> = {
   account_password: "账号密码",
   skip_login: "无需登录",
@@ -1770,6 +1756,7 @@ function ExplorationTaskPanel({
           instruction: [
             "请只修改下面的探索计划项 JSON 数组，并返回修改后的完整 JSON 数组。",
             "必须保留字段：id、business_module、capability_type、title、steps、exploration_points。",
+            "title 使用中文功能名，steps 保持模块级探索内容，exploration_points 记录已发现入口或补充线索；不要把 capability_type 当作用户可见标题。",
             instruction,
           ].join("\n"),
         }),
@@ -1846,9 +1833,7 @@ function ExplorationTaskPanel({
               <Badge variant={planStatus === "confirmed" ? "default" : "secondary"}>{planStatusLabel}</Badge>
             </div>
             <p className="text-muted-foreground text-xs">
-              {generatingPlan
-                ? "正在当前页面生成探索计划，请等待请求完成；这一步不是后台任务，不会显示在任务中心。"
-                : plan?.summary || "访问探索范围并由 AI 根据页面事实生成模块化探索计划。"}
+              {plan?.summary || "访问探索范围并由 AI 根据页面事实生成模块化探索计划。"}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1930,9 +1915,6 @@ function ExplorationTaskPanel({
               <span className="font-medium text-foreground">探索计划正在生成</span>
               {generatingPlanElapsed ? <span>已等待 {generatingPlanElapsed}</span> : null}
             </div>
-            <p className="mt-1 text-xs">
-              生成期间会暂时锁定确认、手动修改和按计划开始探索，避免当前计划被并发修改。请求完成后按钮会自动恢复。
-            </p>
           </div>
         ) : null}
 
@@ -1955,23 +1937,18 @@ function ExplorationTaskPanel({
               <div className="rounded-lg border bg-background p-3" key={item.id}>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">
-                        {capabilityTypeLabels[item.capability_type] ?? item.capability_type}
-                      </Badge>
-                      <span className="font-medium">{item.title}</span>
-                    </div>
-                    <div className="text-muted-foreground text-xs">{item.business_module}</div>
+                    <div className="font-medium">{item.title}</div>
+                    <div className="text-muted-foreground text-xs">所属模块：{item.business_module}</div>
                   </div>
                 </div>
-                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  <PlanList title="探索动作" values={item.steps} />
-                  <PlanList title="探索点" values={item.exploration_points} />
+                <div className="mt-3 space-y-3">
+                  <PlanList title="探索内容" values={item.steps} />
+                  <PlanList title="已发现入口" values={item.exploration_points} />
                 </div>
               </div>
             ))}
           </div>
-        ) : (
+        ) : generatingPlan ? null : (
           <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground text-sm">
             暂无探索计划。请点击生成探索计划，由 AI 访问探索范围并分析模块。
           </div>

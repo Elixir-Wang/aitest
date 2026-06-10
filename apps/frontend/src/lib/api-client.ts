@@ -159,6 +159,8 @@ export type ApiAvailableAction = {
 };
 
 export type ApiKnowledgeSourceRef = {
+  project_id: string | null;
+  project_name: string | null;
   source_type: "requirement" | "exploration" | "manual";
   source_id: string;
   source_title: string;
@@ -167,12 +169,13 @@ export type ApiKnowledgeSourceRef = {
 };
 
 export type ApiKnowledgeQueryResult = {
-  conversation: ApiKnowledgeConversation;
+  conversation: ApiKnowledgeConversation | null;
   messages: ApiKnowledgeConversationMessage[];
   answer: string;
   source_refs: ApiKnowledgeSourceRef[];
   used_requirement_versions: string[];
   used_exploration_runs: string[];
+  knowledge_queried: boolean;
 };
 
 export type ApiKnowledgeConversation = {

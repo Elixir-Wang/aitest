@@ -117,7 +117,17 @@ test("regenerating an exploration plan clears stale generated modules and plan i
 test("plan generation exposes local in-page progress instead of implying a task-center job", () => {
   assert.match(pageSource, /const generatingPlan = planAction === "generate";/);
   assert.match(pageSource, /formatElapsedDuration\(planActionNow - planActionStartedAt\)/);
-  assert.match(pageSource, /这一步不是后台任务，不会显示在任务中心/);
+  assert.doesNotMatch(pageSource, /这一步不是后台任务，不会显示在任务中心/);
+  assert.doesNotMatch(pageSource, /生成期间会暂时锁定确认、手动修改和按计划开始探索/);
   assert.match(pageSource, /\{generatingPlan \? "生成中" : "生成探索计划"\}/);
   assert.match(pageSource, /探索计划正在生成/);
+  assert.match(pageSource, /\) : generatingPlan \? null : \(/);
+});
+
+test("exploration plan renders module-level content without visible capability ids", () => {
+  assert.doesNotMatch(pageSource, /capabilityTypeLabels/);
+  assert.doesNotMatch(pageSource, /item\.capability_type\]\s*\?\?\s*item\.capability_type/);
+  assert.match(pageSource, /所属模块：\{item\.business_module\}/);
+  assert.match(pageSource, /<PlanList title="探索内容" values=\{item\.steps\} \/>/);
+  assert.match(pageSource, /<PlanList title="已发现入口" values=\{item\.exploration_points\} \/>/);
 });

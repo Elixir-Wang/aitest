@@ -45,8 +45,8 @@ def _build_codex_prompt(input_data: RequirementAnalysisInput) -> str:
             "不要只回复确认、承诺或后续会处理；最终回答可以简短，但落盘文件必须先生成。",
             "",
             "请按以下固定流程执行，不要跳步：",
-            "第一阶段：使用 requirement-review skill 对 input/primary.md 做第一次需求分析，生成待确认问题。",
-            "第二阶段：使用 test-scenarios skill 对 input/primary.md 做第二次需求分析，从测试场景角度补充模块、规则、边界、异常路径和待确认问题。",
+            "使用 requirement-review skill 对 input/primary.md 做需求分析，生成待确认问题。",
+            "必须包含测试覆盖缺口视角：从测试目标、角色、前置条件、操作步骤、预期结果、边界值、异常路径和错误场景缺口反推模块、规则、边界和待确认问题。",
             "本阶段只分析主需求，不读取、不引用、不推测任何辅助文档。",
             "辅助文档增强由后续 RequirementAuxiliaryEnhancementAgent 处理，本阶段不得代替它回答待确认问题。",
             "",
@@ -54,10 +54,10 @@ def _build_codex_prompt(input_data: RequirementAnalysisInput) -> str:
             "- 必须生成 output/analysis.json，内容必须符合 RequirementAnalysisOutput。",
             "- 必须生成 output/analysis.md，作为待确认需求 tab 后面的分析报告 tab 展示内容。",
             "- analysis.json.analysis_report_markdown 必须等于 output/analysis.md 的正文。",
-            "- 分析报告只写分析摘要、成熟度、关键缺口分类、测试场景补充视角、质量门禁和下一步建议。",
+            "- 分析报告只写分析摘要、成熟度、关键缺口分类、测试覆盖缺口、质量门禁和下一步建议。",
             "- 分析报告不要出现“待确认问题”“待人工确认”“澄清问题”等面向人工答复的章节、标题、统计或问题清单。",
             "- 分析报告中的关键缺口只做归类和影响说明，不要写成可答复的问题清单。",
-            "- 分析报告中的测试场景补充视角只说明测试覆盖影响，不要展开具体待人工答复事项。",
+            "- 分析报告中的测试覆盖缺口只说明测试覆盖影响，不要展开具体待人工答复事项。",
             "- 分析报告不要重复、统计或摘要 clarification_questions/conflicts；这些内容只进入结构化字段。",
             "- 需要人工回答或裁决的内容必须进入 clarification_questions/conflicts，由待确认问题 tab 展示。",
             "- preliminary_requirement_markdown 可为空字符串；如果为空，系统会使用主需求原文作为初步需求。",
@@ -72,7 +72,7 @@ def _build_codex_prompt(input_data: RequirementAnalysisInput) -> str:
             "",
             "输入文件：",
             "- 主需求：input/primary.md",
-            "- skill：skills/requirement-review/SKILL.md 与 skills/test-scenarios/SKILL.md",
+            "- skill：skills/requirement-review/SKILL.md",
             "",
             "RequirementAnalysisOutput 字段提醒：",
             "status, analysis_summary, preliminary_requirement_markdown, analysis_report_markdown, applied_supplements,",
@@ -184,7 +184,6 @@ def _write_inputs(workdir: Path, input_data: RequirementAnalysisInput, prompt: s
     )
     (workdir / "prompt.md").write_text(prompt, encoding="utf-8")
     _copy_skill("requirement-review", workdir / "skills" / "requirement-review")
-    _copy_skill("test-scenarios", workdir / "skills" / "test-scenarios")
 
 
 def _copy_skill(skill_name: str, target: Path) -> None:
