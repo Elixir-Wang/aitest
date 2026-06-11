@@ -1,16 +1,19 @@
 # 主需求锚定的需求分析前后端改造 Spec
 
+> 状态：已被 `2026-06-07-requirement-analysis-two-stage-agent-spec.md` 收敛。
+> 本文中“一次分析同时读取辅助文档并补入初步需求”的设计不再作为实现依据。当前实现边界是：阶段一只分析主需求；阶段二通过独立的辅助文档增强入口处理辅助文档。
+
 ## 背景
 
 当前需求详情页已经有 `需求澄清` tab、`/review` 和 `/analysis` 接口，以及旧的 `requirement_analysis` 能力。现有链路更像“主需求标准文件 -> 生成最终需求版本 -> 运行需求分析 -> 展示澄清问题”。这和新的产品目标不一致：
 
 1. 用户希望顶层入口叫 `需求分析`，不再把核心体验定位为“澄清问题列表”。
 2. 用户希望 `requirement-review` 和 `test-scenarios` 作为后台分析能力，而不是单独展示一份分析报告。
-3. 用户希望分析主需求后，如果问题能在辅助需求文件中找到明确答案，就把答案补入 `初步需求`。
-4. 找不到答案或发现冲突时，问题进入 `待确认问题`。
+3. 用户希望先快速看到主需求自身的分析结果和待确认问题。
+4. 辅助需求文件找答案应作为独立增强阶段，不阻塞主需求分析结果。
 5. 不能回到“需求归并智能体”：辅助文档不能主动扩大主需求范围，也不能无锚点合并。
 
-本规范将需求分析调整为“主需求锚定 + 辅助文档补证 + 初步需求产出”的流程。
+本规范原先尝试把“主需求锚定 + 辅助文档补证 + 初步需求产出”放在一次分析中；该设计已被拆分为两阶段。
 
 ## 目标
 
@@ -18,13 +21,12 @@
 - 在 `需求分析` 下提供两个子 tab：
   - `初步需求`
   - `待确认问题`
-- `初步需求` 展示主需求内容，以及由辅助文档明确回答后补入的内容。
-- `待确认问题` 展示辅助文档无法回答、证据冲突、来源不明或需要人工确认的问题。
+- `初步需求` 展示主需求分析产出的草稿。
+- `待确认问题` 展示主需求自身无法确认、证据冲突、来源不明或需要人工确认的问题。
 - 使用 `requirement-review` 思路识别主需求缺陷，包括遗漏、歧义、冲突、不可测、规则缺失、验收标准缺失。
 - 使用 `test-scenarios` 思路反推测试前置条件、边界值、异常路径、预期结果和验收标准缺口。
-- 后端 LangChain agent 通过 DeepAgents `SkillsMiddleware` 按需加载 repo-local 的 `requirement-review` 和 `test-scenarios` skill。
-- 只有被主需求问题锚定的辅助文档内容，才允许补入 `初步需求`。
-- 补入内容必须保留来源文件、来源片段、补入位置和问题 ID。
+- 阶段一不读取辅助文档、不调用辅助文档搜索、不生成辅助补强。
+- 辅助文档只通过独立的 `analysis/{analysis_id}/enhance` 增强入口处理。
 - 后端返回结构化结果，前端不解析自由文本来判断业务状态。
 
 ## 非目标
@@ -41,28 +43,12 @@
 
 ```text
 主需求 = 分析对象和范围边界
-辅助文档 = 证据库
-需求分析 = 找问题、查证据、补初步需求、输出待确认
+辅助文档 = 阶段二证据库
+需求分析 = 主需求找问题、输出初步需求和待确认
 初步需求 != 最终需求
 ```
 
-允许补入 `初步需求` 的内容必须同时满足：
-
-1. 主需求中存在明确锚点，例如功能、流程、字段、状态、权限、验收点。
-2. `requirement-review` 或 `test-scenarios` 先识别出问题。
-3. 辅助文档能直接回答该问题。
-4. 辅助文档内容与主需求不冲突。
-5. 能记录来源文件、来源段落或摘录。
-6. 不是辅助文档主动扩展出的新范围。
-
-以下内容必须进入 `待确认问题`，不得补入 `初步需求`：
-
-- 辅助文档找不到答案。
-- 辅助文档与主需求冲突。
-- 辅助文档有内容，但主需求没有锚点。
-- 辅助文档只描述技术实现，不能证明业务规则。
-- 辅助文档来源不明、版本不明或证据不足。
-- 智能体只能推测，无法直接引用证据。
+阶段一不得补入任何来自辅助文档的内容。辅助文档能否回答问题、是否冲突、是否可补强，只能在阶段二增强中裁决。
 
 ## 用户流程
 
@@ -70,12 +56,9 @@
 1. 用户在标准文件中设置主需求文件
 2. 用户点击“需求分析”
 3. 后端读取主需求标准 Markdown
-4. 后端读取同需求文档下的辅助标准 Markdown
-5. 智能体只分析主需求，先生成问题清单
-6. 智能体围绕问题清单查辅助文档证据
-7. 能明确回答的问题补入初步需求
-8. 找不到答案或冲突的问题进入待确认问题
-9. 前端默认打开“需求分析 / 初步需求”
+4. 智能体只分析主需求，生成初步需求、分析报告和待确认问题
+5. 前端默认打开“需求分析 / 初步需求”
+6. 如存在辅助文件，用户可另行触发“从辅助文档找答案”
 ```
 
 ## 页面结构
@@ -121,16 +104,11 @@
 - 问题类型。
 - 关联模块。
 - 问题描述。
-- 为什么无法补入初步需求。
+- 为什么需要人工确认。
 - 主需求摘录。
-- 辅助文档证据状态。
 - 需要人工确认的问题。
 
-空态：
-
-```text
-暂无待确认问题。当前辅助文档已能回答本次分析识别出的可补强问题。
-```
+空态：暂无待确认问题。
 
 未执行分析空态：
 
@@ -169,15 +147,9 @@ GET  /api/v1/projects/{project_id}/requirements/{document_id}/analysis
 
 ### 输入 Schema
 
-扩展 `RequirementAnalysisInput`：
+阶段一 `RequirementAnalysisInput` 只保留主需求字段：
 
 ```python
-class RequirementAuxiliaryDocument(BaseModel):
-    mapping_id: str
-    filename: str
-    markdown_content: str
-
-
 class RequirementAnalysisInput(BaseModel):
     project_id: str
     document_id: str
@@ -185,13 +157,12 @@ class RequirementAnalysisInput(BaseModel):
     primary_mapping_id: str
     primary_filename: str
     primary_markdown_content: str
-    auxiliary_documents: list[RequirementAuxiliaryDocument] = Field(default_factory=list)
 ```
 
 说明：
 
 - `primary_markdown_content` 是唯一分析对象。
-- `auxiliary_documents` 只用于围绕问题查证据。
+- 阶段一不接收 `auxiliary_documents`。
 - 不再要求先生成 `current_version_id` 才能分析。
 
 ### 输出 Schema
@@ -255,65 +226,18 @@ class RequirementAnalysisOutput(BaseModel):
 
 ### Agent 与 Skills 设计
 
-`agent.py` 使用 LangChain `create_agent` 创建单 agent，并通过 DeepAgents middleware 加载技能。
+阶段一不再使用 DeepAgents `FilesystemMiddleware`、`SkillsMiddleware`、`SummarizationMiddleware` 或辅助搜索工具。当前实现由 Codex runner 在隔离工作目录中执行：
 
-第一版不使用 deepagents 子智能体。这里使用的是 middleware，不是 subagent 拓扑。
-
-推荐结构：
-
-```python
-from pathlib import Path
-
-from deepagents.backends import StateBackend
-from deepagents.middleware import FilesystemMiddleware, SkillsMiddleware, SummarizationMiddleware
-from langchain.agents import create_agent
-from langchain.agents.structured_output import ToolStrategy
-
-from app.agents.requirement_analysis.schemas import RequirementAnalysisOutput
-
-
-SKILLS_DIR = Path(__file__).parent / "skills"
-
-
-SYSTEM_PROMPT = """
-你是主需求锚定的需求分析智能体。
-你必须使用可用 skills 中的 requirement-review 和 test-scenarios 完成分析。
-primary_markdown_content 是唯一分析对象。
-auxiliary_documents 只作为证据库。
-不得生成归并需求。
-""".strip()
-
-
-def requirement_analysis_agent(model):
-    backend = StateBackend()
-    return create_agent(
-        model=model,
-        tools=[],
-        system_prompt=SYSTEM_PROMPT,
-        middleware=[
-            FilesystemMiddleware(
-                backend=backend,
-                system_prompt="只使用文件系统读取已加载的技能说明和中间上下文，不要把结果写入持久文件。",
-            ),
-            SkillsMiddleware(
-                backend=backend,
-                sources=[str(SKILLS_DIR)],
-            ),
-            SummarizationMiddleware(model=model, backend=backend),
-        ],
-        response_format=ToolStrategy(RequirementAnalysisOutput),
-    )
+```text
+input/primary.md
+skills/requirement-review/SKILL.md
+output/analysis.json
+output/analysis.md
 ```
 
-middleware 角色：
+阶段一只允许读取工作目录内的主需求和 `requirement-review` skill，不读取辅助文档，也不注册 `search_auxiliary_documents`。测试场景视角通过 prompt 中的短 checklist 表达，不再把 `test-scenarios` 作为运行时 skill 读入。
 
-| Middleware | 用途 |
-| --- | --- |
-| `SkillsMiddleware` | 把 `skills/` 下的 skill 元数据注入 agent，让 agent 按需读取 `SKILL.md` |
-| `FilesystemMiddleware` | 提供 `read_file` 能力，使 agent 能读取被 SkillsMiddleware 暴露的 skill 文件 |
-| `SummarizationMiddleware` | 长需求或多辅助文档时压缩上下文，降低超上下文风险 |
-
-不建议使用 `MemoryMiddleware` 作为第一版能力，因为需求分析应只依赖本次输入的主需求、辅助文档和 repo-local skills，不应读取用户机器上的长期记忆或旧项目知识。
+辅助文档增强由独立的 `RequirementAuxiliaryEnhancementAgent` 负责，输入为阶段一问题列表和辅助文章 Markdown。
 
 ### Skill 内容边界
 
@@ -347,13 +271,10 @@ Prompt 必须包含：
 
 ```text
 你是主需求锚定的需求分析智能体。
-你必须先读取 requirement-review skill，再读取 test-scenarios skill。
 你只能把 primary_markdown_content 作为分析对象。
-auxiliary_documents 只作为证据库。
-你必须先识别主需求中的缺陷和不可测点，再围绕这些问题查辅助文档。
-没有主需求锚点的辅助内容不得补入初步需求。
-辅助文档与主需求冲突时不得补入初步需求。
-补入初步需求的每一段都必须包含来源文件和证据摘录。
+本阶段不得读取、引用或推测任何辅助文档。
+你必须识别主需求中的缺陷和不可测点。
+applied_supplements 必须为空数组。
 不得生成归并需求，不得把辅助文档全量合并。
 ```
 
@@ -374,9 +295,8 @@ auxiliary_documents 只作为证据库。
    - 边界值。
    - 异常路径。
    - 验收标准。
-3. 对问题逐条查辅助文档。
-4. 能直接回答的问题，补入 `preliminary_requirement_markdown`。
-5. 无法回答或冲突的问题，进入 `clarification_questions` 或 `conflicts`。
+3. 生成 `preliminary_requirement_markdown`、`analysis_report_markdown`、`clarification_questions`、`conflicts` 和 `quality_gate`。
+4. 无法由主需求自身确认的问题，进入 `clarification_questions` 或 `conflicts`。
 
 ### Service 设计
 
@@ -385,28 +305,19 @@ auxiliary_documents 只作为证据库。
 ```text
 读取主需求 mapping
   -> 读取主需求标准 Markdown
-  -> 读取同 document 下非 primary 且已转换成功的辅助标准 Markdown
   -> 构造 RequirementAnalysisInput
   -> 调用 requirement_analysis.service.analyze_requirement(...)
   -> 保存 requirement_analysis 记录
-  -> 如果 preliminary_requirement_markdown 非空，则写入一个 source_document_versions 版本
-  -> current_version_id 指向该初步需求版本
+  -> 不写入 source_document_versions
+  -> 不更新 current_version_id
   -> 返回分析结果
 ```
-
-版本写入规则：
-
-- `source_action = "requirement_analysis"`
-- `change_summary = "需求分析生成初步需求"`
-- `diff_summary` 记录补强数量和待确认数量。
-- 文件路径继续使用 `versions/v{version_no}.md`。
-- 不再使用“最终需求”文案描述该版本。
 
 注意：
 
 - 如果分析失败，不创建新版本。
-- 如果没有辅助文件，仍生成基于主需求的初步需求，问题进入待确认。
-- 如果辅助文件全部未转换完成，只使用主需求分析，提示辅助文件不可用。
+- 阶段一无论是否存在辅助文件，都只生成基于主需求的初步需求和待确认问题。
+- 只有 `finalize_requirement_analysis` 才能把初步需求写成最终版本。
 
 ### Repository
 
@@ -580,12 +491,11 @@ apps/backend/tests/test_ai_agent_model_assignments.py
 
 - 主需求分析不再要求已有 `current_version_id`。
 - `review_primary_requirement_file` 读取 primary mapping 作为主需求。
-- 辅助文件只包含同 document 下非 primary 且转换成功的标准 Markdown。
-- 没有辅助文件时仍生成初步需求和待确认问题。
-- 辅助文档能回答问题时，输出 `applied_supplements` 并写入初步需求 Markdown。
-- 辅助文档冲突时，不写入初步需求，进入 `conflicts`。
+- 阶段一 input 不包含 `auxiliary_documents`。
+- 阶段一不读取辅助标准 Markdown。
+- 阶段一输出 `applied_supplements=[]`。
 - 分析失败时不创建新版本。
-- 创建版本时 `source_action="requirement_analysis"`。
+- 分析完成时不创建最终需求版本。
 - `output_json` 保存完整结构化分析结果。
 
 ### 前端验证
@@ -621,12 +531,11 @@ npm --prefix ..\frontend run typecheck
 - 用户看到的是 `需求分析`，不是 `需求澄清`。
 - `需求分析` 下只有 `初步需求` 和 `待确认问题` 两个子 tab。
 - `requirement-review` 和 `test-scenarios` 作为后台分析维度，不作为独立报告 tab。
-- 主需求中的问题如果能由辅助文档明确回答，会补入 `初步需求`。
-- 补入内容带来源文件和证据摘录。
-- 辅助文档无法回答、证据冲突、无主需求锚点的内容进入 `待确认问题`。
-- 辅助文档不会全量合并进初步需求。
+- 阶段一只分析主需求，不读取辅助文档。
+- 辅助文档只能通过独立增强入口回答阶段一问题。
+- 阶段一不会把辅助文档补入初步需求。
 - 分析结果会保存为 `requirement_analyses.output_json`。
-- 初步需求 Markdown 会作为当前版本内容展示，但文案不再称为“最终需求”。
+- 初步需求 Markdown 不会自动成为当前最终版本。
 - 旧的 `clarification` 路由参数和历史分析数据仍能展示。
 
 ## 风险与处理
@@ -635,9 +544,9 @@ npm --prefix ..\frontend run typecheck
 
 处理：
 
-- Prompt 中明确辅助文档没有主动写入权。
-- 输出中每个补强项必须绑定 `source_question_id`。
-- 后端测试覆盖“辅助文档有内容但主需求无锚点时不得补入”。
+- 阶段一 schema 删除 `auxiliary_documents`。
+- 阶段一 service 不收集辅助文档。
+- 辅助文档增强使用独立 API 和独立输出 delta。
 
 ### 风险：初步需求被误认为最终需求
 
@@ -655,10 +564,10 @@ npm --prefix ..\frontend run typecheck
 - 默认展示初步需求正文。
 - 待确认问题只展示需要人工处理的问题。
 
-### 风险：辅助证据不稳定
+### 风险：辅助增强证据不稳定
 
 处理：
 
-- 补强项必须包含来源文件名和摘录。
-- 无摘录不得补入初步需求。
+- 辅助增强项必须包含来源文件名和摘录。
+- 无摘录不得在阶段二生成补强项。
 - 置信度只允许 `high` 或 `medium`，不展示伪精确分数。
