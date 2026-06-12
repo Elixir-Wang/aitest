@@ -919,3 +919,30 @@ html {
 .disable-transitions * {
   transition: none !important;
 }
+
+/* 增强版需求文档样式 - 高亮自动补充的内容 */
+.markdown-enhanced blockquote {
+  background-color: hsl(var(--muted) / 0.3);
+  border-left: 4px solid hsl(var(--border));
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.markdown-enhanced blockquote:has(strong:first-child) {
+  background-color: hsl(48 100% 85% / 1);
+  border-left-color: hsl(45 93% 47% / 1);
+}
+
+.dark .markdown-enhanced blockquote:has(strong:first-child) {
+  background-color: hsl(48 100% 15% / 0.3);
+  border-left-color: hsl(45 93% 57% / 1);
+}
+
+.markdown-enhanced blockquote strong:first-child {
+  color: hsl(24 100% 50% / 1);
+  font-weight: 600;
+}
+
+.dark .markdown-enhanced blockquote strong:first-child {
+  color: hsl(30 100% 60% / 1);
+}

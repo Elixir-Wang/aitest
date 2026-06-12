@@ -88,7 +88,6 @@ import { useAuthStore } from "@/stores/auth-store";
 
 const STANDARD_FILE_SECTION_ID = "standard-file-section";
 const ORIGINAL_FILE_SECTION_ID = "original-file-section";
-const PRELIMINARY_REQUIREMENT_SECTION_ID = "preliminary-requirement-section";
 const FINAL_REQUIREMENT_SECTION_ID = "final-requirement-section";
 const REQUIREMENT_DOCUMENT_TOC_SELECTOR =
   '[data-state="active"] .requirement-document-preview h1, [data-state="active"] .requirement-document-preview h2, [data-state="active"] .requirement-document-preview h3, [data-state="active"] .requirement-document-preview h4, [data-state="active"] .requirement-document-preview [data-toc]';
@@ -252,6 +251,8 @@ type RequirementAnalysisResult = {
     analysis_summary: string;
     preliminary_requirement_markdown: string;
     analysis_report_markdown: string;
+    clarification_report_markdown?: string;
+    quality_assurance_report_markdown?: string;
     applied_supplements: unknown[];
     modules: Array<{
       module_key: string;
@@ -348,7 +349,7 @@ export default function DocumentDetailPage() {
   const [error, setError] = useState("");
   const [overview, setOverview] = useState<RequirementOverviewResponse | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
-  const [analysisTab, setAnalysisTab] = useState("preliminary");
+  const [analysisTab, setAnalysisTab] = useState("analysis-report");
   const [selectedFileId, setSelectedFileId] = useState("");
   const [originalPreview, setOriginalPreview] = useState<OriginalPreview | null>(null);
   const [standardPreview, setStandardPreview] = useState<StandardPreview | null>(null);
@@ -425,11 +426,14 @@ export default function DocumentDetailPage() {
   const initialMarkdownContent = overview?.initial_markdown_content ?? "";
   const preliminaryMarkdown = analysisResult?.output.preliminary_requirement_markdown ?? "";
   const analysisReportMarkdown = analysisResult?.output.analysis_report_markdown ?? "";
+  const qualityAssuranceMarkdown = analysisResult?.output.quality_assurance_report_markdown ?? "";
+  const enhancedRequirementMarkdown = analysisResult?.output.enhanced_requirement_markdown ?? "";
   const clarificationQuestions = analysisResult?.output.clarification_questions ?? [];
   const analysisConflicts = analysisResult?.output.conflicts ?? [];
-  const pendingAnalysisItems: RequirementAnalysisPendingItem[] = [...clarificationQuestions, ...analysisConflicts].filter(
-    (item) => item.answer?.apply_status !== "not_applicable",
-  );
+  const pendingAnalysisItems: RequirementAnalysisPendingItem[] = [
+    ...clarificationQuestions,
+    ...analysisConflicts,
+  ].filter((item) => item.answer?.apply_status !== "not_applicable");
   const visiblePendingAnalysisItems = pendingAnalysisItems.filter((item) => !deferredPendingItemIds.includes(item.id));
   const deferredPendingAnalysisItems = pendingAnalysisItems.filter((item) => deferredPendingItemIds.includes(item.id));
   const isBlocked =
@@ -499,12 +503,9 @@ export default function DocumentDetailPage() {
       status: finalizingRequirement ? "running" : isFinalized && hasFinalRequirementContent ? "completed" : "upcoming",
     },
   ];
-  const analysisEmptyText = reviewLoading
-    ? "需求分析中，分析完成后会在这里展示初步需求。"
-    : "尚未生成初步需求，请先在主需求标准文件中执行需求分析。";
   const analysisReportEmptyText = reviewLoading
-    ? "需求分析中，分析完成后会在这里展示分析报告。"
-    : "尚未生成分析报告，请先执行需求分析。";
+    ? "需求分析中，分析完成后会在这里展示需求分析报告。"
+    : "尚未生成需求分析报告，请先执行需求分析。";
   const finalRequirementEmptyText = reviewLoading
     ? "需求分析中，当前最终需求已清空，分析完成并转为最终需求后会在这里展示。"
     : "尚未生成最终需求，请先在初步需求中点击“转为最终需求”。";
@@ -666,8 +667,10 @@ export default function DocumentDetailPage() {
     const queryTab = searchParams.get("tab");
     if (queryTab === "initial") {
       setActiveTab("analysis");
+      setAnalysisTab("analysis-report");
     } else if (queryTab === "clarification") {
       setActiveTab("analysis");
+      setAnalysisTab("clarification");
     } else if (queryTab && ["overview", "original", "standard", "analysis", "final", "versions"].includes(queryTab)) {
       setActiveTab(queryTab);
     }
@@ -1051,7 +1054,7 @@ export default function DocumentDetailPage() {
     } catch (requestError) {
       reportError(requestError, {
         fallbackMessage: "保存答复失败",
-        actionLabel: "保存待确认问题答复",
+        actionLabel: "保存待澄清答复",
         method: "POST",
         path: analysisResult
           ? `/projects/${projectId}/requirements/${documentId}/analysis/${analysisResult.id}/clarification-answers`
@@ -1238,16 +1241,18 @@ export default function DocumentDetailPage() {
   const showRequirementToc =
     (activeTab === "standard" && !editingStandard && Boolean(currentStandardPreview?.markdownContent.trim())) ||
     (activeTab === "analysis" &&
-      ((analysisTab === "preliminary" && Boolean(preliminaryMarkdown.trim())) ||
-        (analysisTab === "report" && Boolean(analysisReportMarkdown.trim())))) ||
+      ((analysisTab === "analysis-report" && Boolean(analysisReportMarkdown.trim())) ||
+        (analysisTab === "quality" && Boolean(qualityAssuranceMarkdown.trim())) ||
+        (analysisTab === "enhanced" && Boolean(enhancedRequirementMarkdown.trim())))) ||
     (activeTab === "final" && Boolean(overview.initial_markdown_content.trim()));
   const requirementTocRefreshKey = [
     activeTab,
     analysisTab,
     selectedFile?.id ?? "",
     currentStandardPreview?.markdownContent.length ?? 0,
-    preliminaryMarkdown.length,
     analysisReportMarkdown.length,
+    qualityAssuranceMarkdown.length,
+    enhancedRequirementMarkdown.length,
     initialMarkdownContent.length,
     analysisResult?.finalized_version_id ?? "",
   ].join(":");
@@ -1255,9 +1260,11 @@ export default function DocumentDetailPage() {
     activeTab === "standard"
       ? `#${STANDARD_FILE_SECTION_ID} .requirement-document-preview`
       : activeTab === "analysis"
-        ? analysisTab === "report"
-          ? `#analysis-report-section .requirement-document-preview`
-          : `#${PRELIMINARY_REQUIREMENT_SECTION_ID} .requirement-document-preview`
+        ? analysisTab === "quality"
+          ? `#quality-assurance-section .requirement-document-preview`
+          : analysisTab === "enhanced"
+            ? `#enhanced-requirement-section .requirement-document-preview`
+            : `#analysis-report-section .requirement-document-preview`
         : `#${FINAL_REQUIREMENT_SECTION_ID} .requirement-document-preview`;
   return (
     <PageShell
@@ -1570,12 +1577,13 @@ export default function DocumentDetailPage() {
             <Tabs className="space-y-4" onValueChange={setAnalysisTab} value={analysisTab}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <TabsList>
-                  <TabsTrigger value="preliminary">初步需求</TabsTrigger>
-                  <TabsTrigger value="pending">待确认问题</TabsTrigger>
-                  <TabsTrigger value="report">分析报告</TabsTrigger>
+                  <TabsTrigger value="analysis-report">需求分析</TabsTrigger>
+                  <TabsTrigger value="clarification">待澄清</TabsTrigger>
+                  <TabsTrigger value="quality">质量保证</TabsTrigger>
+                  <TabsTrigger value="enhanced">初步需求</TabsTrigger>
                 </TabsList>
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  {analysisTab === "pending" ? (
+                  {analysisTab === "clarification" ? (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button disabled={!deferredPendingAnalysisItems.length} type="button" variant="outline">
@@ -1619,15 +1627,15 @@ export default function DocumentDetailPage() {
                   </Button>
                 </div>
               </div>
-              <TabsContent id={PRELIMINARY_REQUIREMENT_SECTION_ID} value="preliminary">
+              <TabsContent id="analysis-report-section" value="analysis-report">
                 <MarkdownPreview
                   className="requirement-document-preview"
-                  content={preliminaryMarkdown}
+                  content={analysisReportMarkdown}
                   emptyClassName="flex items-center justify-center text-center"
-                  emptyText={analysisEmptyText}
+                  emptyText={analysisReportEmptyText}
                 />
               </TabsContent>
-              <TabsContent value="pending">
+              <TabsContent value="clarification">
                 {visiblePendingAnalysisItems.length ? (
                   <div className="space-y-3">
                     {visiblePendingAnalysisItems.map((item) => {
@@ -1780,18 +1788,34 @@ export default function DocumentDetailPage() {
                   <div className="flex min-h-[280px] items-center justify-center rounded-lg border bg-muted/20 text-center text-muted-foreground text-sm">
                     {analysisResult
                       ? deferredPendingAnalysisItems.length
-                        ? "待确认问题已暂不处理，可通过右上角恢复。"
-                        : "暂无待确认问题。"
-                      : "尚未执行需求分析，完成分析后会在这里展示待确认问题。"}
+                        ? "待澄清事项已暂不处理，可通过右上角恢复。"
+                        : "暂无待澄清事项。"
+                      : "尚未执行需求分析，完成分析后会在这里展示待澄清事项。"}
                   </div>
                 )}
               </TabsContent>
-              <TabsContent id="analysis-report-section" value="report">
+              <TabsContent id="quality-assurance-section" value="quality">
                 <MarkdownPreview
                   className="requirement-document-preview"
-                  content={analysisReportMarkdown}
+                  content={qualityAssuranceMarkdown}
                   emptyClassName="flex items-center justify-center text-center"
-                  emptyText={analysisReportEmptyText}
+                  emptyText={
+                    reviewLoading
+                      ? "需求分析中，完成后会在这里展示质量保证报告。"
+                      : "尚未生成质量保证报告，请先执行需求分析。"
+                  }
+                />
+              </TabsContent>
+              <TabsContent id="enhanced-requirement-section" value="enhanced">
+                <MarkdownPreview
+                  className="requirement-document-preview markdown-enhanced"
+                  content={enhancedRequirementMarkdown}
+                  emptyClassName="flex items-center justify-center text-center"
+                  emptyText={
+                    reviewLoading
+                      ? "需求分析中，完成后会在这里展示增强版需求文档。"
+                      : "尚未生成增强版需求文档，请先执行需求分析。"
+                  }
                 />
               </TabsContent>
             </Tabs>
@@ -1960,7 +1984,7 @@ export default function DocumentDetailPage() {
               <AlertDialogDescription>
                 {hasFinalRequirementContent
                   ? "当前已有最终需求内容。重新执行需求分析会清空需求分析和最终需求 tab 内容，分析完成后需要重新转为最终需求。是否继续？"
-                  : "将基于当前主需求标准文件生成初步需求、待确认问题和质量评审结果。分析开始后会清空旧的需求分析和最终需求内容。"}
+                  : "将基于当前主需求标准文件生成需求分析、待澄清事项和质量保证结果。分析开始后会清空旧的需求分析和最终需求内容。"}
               </AlertDialogDescription>
             </div>
           </AlertDialogHeader>
@@ -1983,7 +2007,7 @@ export default function DocumentDetailPage() {
           <DialogHeader>
             <DialogTitle>转为最终需求</DialogTitle>
             <DialogDescription>
-              当前初步需求仍存在待确认问题或质量警告。转为最终需求后会生成新的最终需求版本，后续可继续通过版本记录追溯。是否继续？
+              当前需求分析仍存在待澄清事项或质量警告。转为最终需求后会生成新的最终需求版本，后续可继续通过版本记录追溯。是否继续？
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
