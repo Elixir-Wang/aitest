@@ -9,7 +9,7 @@ from app.agents.requirement_exploration.service import generate_exploration_plan
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
-from app.repositories import project_repo, requirement_analysis_repo
+from app.repositories import project_repo, requirement_analysis_run_repo
 
 
 def generate_exploration_plan_from_requirement(
@@ -37,7 +37,7 @@ def generate_exploration_plan_from_requirement(
             raise api_error(404, "NOT_FOUND", "项目不存在。")
 
         # 2. 获取需求分析结果
-        analysis_run = requirement_analysis_repo.find_run_by_id(db, run_id)
+        analysis_run = requirement_analysis_run_repo.find_run_by_id(db, run_id)
         if not analysis_run:
             raise api_error(404, "NOT_FOUND", "需求分析运行不存在。")
 
@@ -118,7 +118,7 @@ def get_exploration_plan_from_requirement(
         if not project:
             raise api_error(404, "NOT_FOUND", "项目不存在。")
 
-        analysis_run = requirement_analysis_repo.find_run_by_id(db, run_id)
+        analysis_run = requirement_analysis_run_repo.find_run_by_id(db, run_id)
         if not analysis_run:
             raise api_error(404, "NOT_FOUND", "需求分析运行不存在。")
 
