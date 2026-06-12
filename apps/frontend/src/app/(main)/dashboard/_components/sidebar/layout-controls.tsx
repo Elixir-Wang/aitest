@@ -116,7 +116,7 @@ export function LayoutControls() {
                 <SelectTrigger size="sm" className="w-full text-xs">
                   <SelectValue placeholder="Preset" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent position="popper" sideOffset={4}>
                   <SelectGroup>
                     {THEME_PRESET_OPTIONS.map((preset) => (
                       <SelectItem key={preset.value} className="text-xs" value={preset.value}>
