@@ -35,6 +35,14 @@ export const THEME_PRESET_OPTIONS = [
     },
   },
   {
+    label: "Sunset Glow",
+    value: "sunset-glow",
+    primary: {
+      light: "oklch(0.62 0.19 35)",
+      dark: "oklch(0.68 0.18 40)",
+    },
+  },
+  {
     label: "Tangerine",
     value: "tangerine",
     primary: {
