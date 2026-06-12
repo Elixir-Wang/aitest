@@ -8,6 +8,11 @@
 
 /* Theme preset styles: these override CSS variables based on the selected data-theme-preset */
 @import "../styles/presets/brutalist.css";
+@import "../styles/presets/burgundy.css";
+@import "../styles/presets/cherry-blossom.css";
+@import "../styles/presets/lavender-dusk.css";
+@import "../styles/presets/peach-cream.css";
+@import "../styles/presets/rose-gold.css";
 @import "../styles/presets/soft-pop.css";
 @import "../styles/presets/sunset-glow.css";
 @import "../styles/presets/tangerine.css";

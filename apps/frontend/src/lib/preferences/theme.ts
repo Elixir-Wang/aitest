@@ -27,6 +27,46 @@ export const THEME_PRESET_OPTIONS = [
     },
   },
   {
+    label: "Burgundy",
+    value: "burgundy",
+    primary: {
+      light: "oklch(0.42 0.16 10)",
+      dark: "oklch(0.58 0.18 12)",
+    },
+  },
+  {
+    label: "Cherry Blossom",
+    value: "cherry-blossom",
+    primary: {
+      light: "oklch(0.65 0.15 350)",
+      dark: "oklch(0.7 0.16 348)",
+    },
+  },
+  {
+    label: "Lavender Dusk",
+    value: "lavender-dusk",
+    primary: {
+      light: "oklch(0.62 0.14 310)",
+      dark: "oklch(0.7 0.15 312)",
+    },
+  },
+  {
+    label: "Peach Cream",
+    value: "peach-cream",
+    primary: {
+      light: "oklch(0.68 0.13 40)",
+      dark: "oklch(0.73 0.14 42)",
+    },
+  },
+  {
+    label: "Rose Gold",
+    value: "rose-gold",
+    primary: {
+      light: "oklch(0.58 0.12 15)",
+      dark: "oklch(0.68 0.13 18)",
+    },
+  },
+  {
     label: "Soft Pop",
     value: "soft-pop",
     primary: {

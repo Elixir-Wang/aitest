@@ -1,0 +1,89 @@
+/*
+label: Cherry Blossom
+value: cherry-blossom
+*/
+
+:root[data-theme-preset="cherry-blossom"] {
+  --radius: 0.875rem;
+  --card: oklch(0.99 0.01 340);
+  --card-foreground: oklch(0.32 0.02 340);
+  --popover: oklch(0.99 0.01 340);
+  --popover-foreground: oklch(0.32 0.02 340);
+  --primary: oklch(0.65 0.15 350);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.97 0.02 345);
+  --secondary-foreground: oklch(0.42 0.07 340);
+  --muted: oklch(0.98 0.012 342);
+  --muted-foreground: oklch(0.52 0.04 345);
+  --accent: oklch(0.91 0.06 348);
+  --accent-foreground: oklch(0.36 0.1 340);
+  --destructive: oklch(0.6 0.22 15);
+  --border: oklch(0.91 0.018 342);
+  --input: oklch(0.95 0.02 345);
+  --ring: oklch(0.65 0.15 350);
+  --chart-1: oklch(0.68 0.12 350);
+  --chart-2: oklch(0.73 0.1 345);
+  --chart-3: oklch(0.62 0.14 355);
+  --chart-4: oklch(0.7 0.11 340);
+  --chart-5: oklch(0.58 0.16 348);
+  --sidebar: oklch(0.985 0.01 342);
+  --sidebar-foreground: oklch(0.32 0.02 340);
+  --sidebar-primary: oklch(0.65 0.15 350);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.91 0.06 348);
+  --sidebar-accent-foreground: oklch(0.36 0.1 340);
+  --sidebar-border: oklch(0.93 0.015 342);
+  --sidebar-ring: oklch(0.65 0.15 350);
+  --background: oklch(0.99 0.008 343);
+  --foreground: oklch(0.3 0.02 340);
+  --shadow-2xs: 0px 1px 3px 0px hsl(340 35% 20% / 0.04);
+  --shadow-xs: 0px 1px 3px 0px hsl(340 35% 20% / 0.05);
+  --shadow-sm: 0px 1px 3px 0px hsl(340 35% 20% / 0.07), 0px 1px 2px -1px hsl(340 35% 20% / 0.07);
+  --shadow: 0px 1px 3px 0px hsl(340 35% 20% / 0.08), 0px 1px 2px -1px hsl(340 35% 20% / 0.08);
+  --shadow-md: 0px 1px 3px 0px hsl(340 35% 20% / 0.09), 0px 2px 4px -1px hsl(340 35% 20% / 0.09);
+  --shadow-lg: 0px 1px 3px 0px hsl(340 35% 20% / 0.11), 0px 4px 6px -1px hsl(340 35% 20% / 0.09);
+  --shadow-xl: 0px 1px 3px 0px hsl(340 35% 20% / 0.13), 0px 8px 10px -1px hsl(340 35% 20% / 0.09);
+  --shadow-2xl: 0px 1px 3px 0px hsl(340 35% 20% / 0.2);
+}
+
+.dark:root[data-theme-preset="cherry-blossom"] {
+  --background: oklch(0.23 0.03 340);
+  --foreground: oklch(0.95 0.01 345);
+  --card: oklch(0.29 0.04 342);
+  --card-foreground: oklch(0.95 0.01 345);
+  --popover: oklch(0.26 0.035 341);
+  --popover-foreground: oklch(0.95 0.01 345);
+  --primary: oklch(0.7 0.16 348);
+  --primary-foreground: oklch(0.15 0.02 340);
+  --secondary: oklch(0.31 0.04 343);
+  --secondary-foreground: oklch(0.95 0.01 345);
+  --muted: oklch(0.31 0.04 343);
+  --muted-foreground: oklch(0.7 0.018 345);
+  --accent: oklch(0.38 0.08 345);
+  --accent-foreground: oklch(0.93 0.06 348);
+  --destructive: oklch(0.64 0.22 18);
+  --border: oklch(0.37 0.042 342);
+  --input: oklch(0.37 0.042 342);
+  --ring: oklch(0.7 0.16 348);
+  --chart-1: oklch(0.68 0.12 350);
+  --chart-2: oklch(0.73 0.1 345);
+  --chart-3: oklch(0.62 0.14 355);
+  --chart-4: oklch(0.7 0.11 340);
+  --chart-5: oklch(0.58 0.16 348);
+  --sidebar: oklch(0.27 0.037 341);
+  --sidebar-foreground: oklch(0.95 0.01 345);
+  --sidebar-primary: oklch(0.7 0.16 348);
+  --sidebar-primary-foreground: oklch(0.15 0.02 340);
+  --sidebar-accent: oklch(0.38 0.08 345);
+  --sidebar-accent-foreground: oklch(0.93 0.06 348);
+  --sidebar-border: oklch(0.37 0.042 342);
+  --sidebar-ring: oklch(0.7 0.16 348);
+  --shadow-2xs: 0px 1px 3px 0px hsl(0 0% 0% / 0.18);
+  --shadow-xs: 0px 1px 3px 0px hsl(0 0% 0% / 0.2);
+  --shadow-sm: 0px 1px 3px 0px hsl(0 0% 0% / 0.24), 0px 1px 2px -1px hsl(0 0% 0% / 0.24);
+  --shadow: 0px 1px 3px 0px hsl(0 0% 0% / 0.26), 0px 1px 2px -1px hsl(0 0% 0% / 0.26);
+  --shadow-md: 0px 1px 3px 0px hsl(0 0% 0% / 0.3), 0px 2px 4px -1px hsl(0 0% 0% / 0.3);
+  --shadow-lg: 0px 1px 3px 0px hsl(0 0% 0% / 0.34), 0px 4px 6px -1px hsl(0 0% 0% / 0.32);
+  --shadow-xl: 0px 1px 3px 0px hsl(0 0% 0% / 0.38), 0px 8px 10px -1px hsl(0 0% 0% / 0.34);
+  --shadow-2xl: 0px 1px 3px 0px hsl(0 0% 0% / 0.48);
+}
