@@ -120,14 +120,16 @@ export function LayoutControls() {
                   <SelectGroup>
                     {THEME_PRESET_OPTIONS.map((preset) => (
                       <SelectItem key={preset.value} className="text-xs" value={preset.value}>
-                        <span
-                          className="size-2.5 rounded-full"
-                          style={{
-                            backgroundColor:
-                              (resolvedThemeMode ?? "light") === "dark" ? preset.primary.dark : preset.primary.light,
-                          }}
-                        />
-                        {preset.label}
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="size-2.5 rounded-full shrink-0"
+                            style={{
+                              backgroundColor:
+                                (resolvedThemeMode ?? "light") === "dark" ? preset.primary.dark : preset.primary.light,
+                            }}
+                          />
+                          <span className="truncate">{preset.label}</span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectGroup>
