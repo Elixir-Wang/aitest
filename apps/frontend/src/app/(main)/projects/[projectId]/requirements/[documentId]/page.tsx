@@ -374,6 +374,8 @@ export default function DocumentDetailPage() {
   const [deferredPendingItemIds, setDeferredPendingItemIds] = useState<string[]>([]);
   const [finalizeConfirmOpen, setFinalizeConfirmOpen] = useState(false);
   const [reviewClearConfirmOpen, setReviewClearConfirmOpen] = useState(false);
+  const [generatingExplorationPlan, setGeneratingExplorationPlan] = useState(false);
+  const [explorationPlan, setExplorationPlan] = useState<any>(null);
   const token = useAuthStore((state) => state.token);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
@@ -937,6 +939,33 @@ export default function DocumentDetailPage() {
       });
     } finally {
       setFinalizingRequirement(false);
+    }
+  }
+
+  async function generateExplorationPlan() {
+    if (!analysisResult) {
+      toast.error("尚未完成需求分析");
+      return;
+    }
+    setGeneratingExplorationPlan(true);
+    try {
+      const plan = await apiRequest<any>(
+        `/projects/${projectId}/requirements/${documentId}/analysis-runs/${analysisResult.id}/exploration-plan/generate`,
+        {
+          method: "POST",
+        },
+      );
+      setExplorationPlan(plan);
+      toast.success(`已生成探索计划，包含 ${plan.items?.length || 0} 个探索项`);
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "生成探索计划失败",
+        actionLabel: "生成探索计划",
+        method: "POST",
+        path: `/projects/${projectId}/requirements/${documentId}/analysis-runs/${analysisResult.id}/exploration-plan/generate`,
+      });
+    } finally {
+      setGeneratingExplorationPlan(false);
     }
   }
 
@@ -1807,6 +1836,23 @@ export default function DocumentDetailPage() {
                 />
               </TabsContent>
               <TabsContent id="enhanced-requirement-section" value="enhanced">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium">增强版需求文档</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      原始需求 + 自动补充的内容
+                    </p>
+                  </div>
+                  {enhancedRequirementMarkdown && (
+                    <Button
+                      size="sm"
+                      onClick={generateExplorationPlan}
+                      disabled={generatingExplorationPlan}
+                    >
+                      {generatingExplorationPlan ? "生成中..." : "生成探索计划"}
+                    </Button>
+                  )}
+                </div>
                 <MarkdownPreview
                   className="requirement-document-preview markdown-enhanced"
                   content={enhancedRequirementMarkdown}
@@ -1817,6 +1863,48 @@ export default function DocumentDetailPage() {
                       : "尚未生成增强版需求文档，请先执行需求分析。"
                   }
                 />
+                {explorationPlan && (
+                  <div className="mt-6 rounded-lg border p-4">
+                    <h4 className="mb-3 text-sm font-medium">探索计划预览</h4>
+                    <div className="space-y-3">
+                      <div>
+                        <span className="text-xs text-muted-foreground">业务边界：</span>
+                        <span className="ml-2 text-sm">{explorationPlan.business_boundary}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-muted-foreground">计划摘要：</span>
+                        <span className="ml-2 text-sm">{explorationPlan.summary}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-muted-foreground">探索项数量：</span>
+                        <span className="ml-2 text-sm">{explorationPlan.items?.length || 0} 个</span>
+                      </div>
+                      {explorationPlan.items && explorationPlan.items.length > 0 && (
+                        <div className="mt-4">
+                          <h5 className="mb-2 text-xs font-medium text-muted-foreground">探索项列表：</h5>
+                          <div className="space-y-2">
+                            {explorationPlan.items.map((item: any, index: number) => (
+                              <div key={item.id || index} className="rounded border p-3 text-sm">
+                                <div className="font-medium">{item.title}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {item.business_module} · {item.capability_type}
+                                </div>
+                                {item.ui_elements && item.ui_elements.length > 0 && (
+                                  <div className="mt-2 text-xs text-muted-foreground">
+                                    UI元素: {item.ui_elements.map((el: any) => el.element_name).join(", ")}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="mt-4 text-xs text-muted-foreground">
+                        提示：探索计划已保存，可在探索模块中导入使用。
+                      </div>
+                    </div>
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </ShellSection>
