@@ -35,31 +35,6 @@ class FakeAgent:
         return {"structured_response": self.response}
 
 
-def test_requirement_analysis_input_includes_primary_and_optional_auxiliary_documents():
-    from app.schemas.requirement_analysis import RequirementAnalysisAuxiliaryDocument, RequirementAnalysisInput
-
-    input_data = RequirementAnalysisInput(
-        project_id="project-1",
-        document_id="doc-1",
-        document_name="登录需求",
-        primary_mapping_id="main-1",
-        primary_filename="main.md",
-        primary_markdown_content="# 主需求\n\n用户可以使用验证码登录。",
-        auxiliary_documents=[
-            RequirementAnalysisAuxiliaryDocument(
-                mapping_id="aux-1",
-                filename="辅助.md",
-                markdown_content="# 辅助\n\n验证码有效期为 5 分钟。",
-            )
-        ],
-    )
-
-    assert input_data.primary_markdown_content.startswith("# 主需求")
-    assert len(input_data.auxiliary_documents) == 1
-    assert input_data.auxiliary_documents[0].filename == "辅助.md"
-    assert "验证码有效期为 5 分钟" in input_data.auxiliary_documents[0].markdown_content
-
-
 def test_requirement_analysis_input_contract_only_contains_primary_fields():
     from app.schemas.requirement_analysis import RequirementAnalysisInput
 
@@ -71,13 +46,12 @@ def test_requirement_analysis_input_contract_only_contains_primary_fields():
         "primary_mapping_id",
         "primary_filename",
         "primary_markdown_content",
-        "auxiliary_documents",
     }
 
 
-def test_requirement_analysis_codex_prompt_uses_requirement_review_with_testability_view():
+def test_requirement_analysis_codex_prompt_uses_requirement_analysis_with_testability_view():
     from app.agents.requirement_analysis_codex.runner import _build_codex_prompt
-    from app.schemas.requirement_analysis import RequirementAnalysisAuxiliaryDocument, RequirementAnalysisInput
+    from app.schemas.requirement_analysis import RequirementAnalysisInput
 
     prompt = _build_codex_prompt(
         RequirementAnalysisInput(
@@ -87,17 +61,10 @@ def test_requirement_analysis_codex_prompt_uses_requirement_review_with_testabil
             primary_mapping_id="main-1",
             primary_filename="main.md",
             primary_markdown_content="# 主需求\n\n用户可以使用验证码登录。",
-            auxiliary_documents=[
-                RequirementAnalysisAuxiliaryDocument(
-                    mapping_id="aux-1",
-                    filename="辅助.md",
-                    markdown_content="# 辅助\n\n验证码有效期为 5 分钟。",
-                )
-            ],
         )
     )
 
-    assert "使用 requirement-review skill 对 input/primary.md 做需求分析" in prompt
+    assert "使用 requirement-analysis skill 对 input/primary.md 做需求分析" in prompt
     assert "test-scenarios" not in prompt
     assert "测试目标、角色、前置条件、操作步骤、预期结果、边界值、异常路径和错误场景缺口" in prompt
     assert "需求分析智能体" in prompt
@@ -109,17 +76,90 @@ def test_requirement_analysis_codex_prompt_uses_requirement_review_with_testabil
     assert "applied_supplements 必须为空数组" in prompt
     assert "output/analysis.json" in prompt
     assert "output/analysis.md" in prompt
+    assert "output/clarification.md" in prompt
+    assert "output/quality.md" in prompt
     assert "analysis_report_markdown" in prompt
-    assert "待确认需求 tab 后面的分析报告 tab" in prompt
+    assert "clarification_report_markdown" in prompt
+    assert "quality_assurance_report_markdown" in prompt
+    assert "待澄清 Markdown 必须使用可解析格式" in prompt
+    assert "作为“需求分析”子 tab 展示内容" in prompt
     assert "分析报告只写分析摘要、成熟度、关键缺口分类、测试覆盖缺口、质量门禁和下一步建议" in prompt
     assert "分析报告不要出现“待确认问题”“待人工确认”“澄清问题”等面向人工答复的章节、标题、统计或问题清单" in prompt
     assert "关键缺口只做归类和影响说明，不要写成可答复的问题清单" in prompt
     assert "测试覆盖缺口只说明测试覆盖影响，不要展开具体待人工答复事项" in prompt
     assert "分析报告不要重复、统计或摘要 clarification_questions/conflicts；这些内容只进入结构化字段" in prompt
-    assert "需要人工回答或裁决的内容必须进入 clarification_questions/conflicts" in prompt
+    assert "需要人工回答或裁决的内容必须进入 clarification_questions/conflicts，由待澄清 tab 展示" in prompt
     assert "status 只能是 completed、needs_clarification、blocked" in prompt
     assert "quality_gate.result，只能是 passed、warning、blocked" in prompt
     assert "coverage_audit 必须是数组" in prompt
+
+
+def test_requirement_analysis_reads_three_markdown_reports(tmp_path):
+    from app.agents.requirement_analysis_codex.output_parser import read_analysis_output
+
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    (output_dir / "analysis.json").write_text(
+        """
+        {
+          "status": "needs_clarification",
+          "analysis_summary": "已完成主需求分析。",
+          "preliminary_requirement_markdown": "# 初步需求",
+          "applied_supplements": [],
+          "clarification_questions": [],
+          "conflicts": [],
+          "coverage_audit": [],
+          "quality_gate": {
+            "result": "warning",
+            "testability_score": 70,
+            "blocking_issues": [],
+            "warning_issues": ["待澄清项影响测试覆盖"],
+            "passed_checks": ["主流程已识别"]
+          },
+          "next_actions": []
+        }
+        """,
+        encoding="utf-8",
+    )
+    (output_dir / "analysis.md").write_text("# 需求分析\n\n主流程已识别。", encoding="utf-8")
+    (output_dir / "clarification.md").write_text(
+        """
+        # 待澄清
+
+        ## CQ-001 登录
+        - 模块Key：login
+        - 类型：clarification
+        - 维度：validation_rule
+        - 严重级别：major
+        - 问题：验证码连续输错达到多少次后应锁定登录尝试？
+        - 影响：不确认会影响登录异常路径和自动化用例断言。
+        - 来源：需求只说明“验证码登录”，未说明错误次数限制。
+        - 选项A：3 次后锁定 15 分钟。|登录验证码连续输错 3 次后，系统应锁定该账号的验证码登录尝试 15 分钟。
+        - 选项B：5 次后锁定 15 分钟。|登录验证码连续输错 5 次后，系统应锁定该账号的验证码登录尝试 15 分钟。
+
+        ## CF-001 登录
+        - 模块Key：login
+        - 类型：conflict
+        - 严重级别：blocker
+        - 问题：短信验证码和邮箱验证码是否都属于本期登录方式？
+        - 影响：不确认会导致认证入口、测试数据和通知通道设计分歧。
+        - 来源：标题写验证码登录，正文同时出现短信和邮箱。
+        """.strip(),
+        encoding="utf-8",
+    )
+    (output_dir / "quality.md").write_text("# 质量保证\n\n可测试性 70 分。", encoding="utf-8")
+
+    output = read_analysis_output(tmp_path)
+
+    assert output.analysis_report_markdown == "# 需求分析\n\n主流程已识别。"
+    assert output.clarification_report_markdown.startswith("# 待澄清")
+    assert output.quality_assurance_report_markdown == "# 质量保证\n\n可测试性 70 分。"
+    assert output.clarification_questions[0].id == "CQ-001"
+    assert output.clarification_questions[0].module_key == "login"
+    assert output.clarification_questions[0].dimension == "validation_rule"
+    assert output.clarification_questions[0].recommended_options[0].answer_markdown.startswith("登录验证码连续输错 3 次")
+    assert output.conflicts[0].id == "CF-001"
+    assert output.conflicts[0].issue_type == "conflict"
 
 
 def test_requirement_analysis_codex_command_resolves_windows_cmd_shim(monkeypatch):
@@ -197,6 +237,20 @@ def test_requirement_analysis_codex_reports_process_failure_as_agent_failure(tmp
             tmp_path,
             runner.os.environ.copy(),
         )
+
+
+def test_requirement_analysis_codex_env_uses_isolated_codex_home(monkeypatch, tmp_path):
+    from app.agents.requirement_analysis_codex import runner
+
+    monkeypatch.setenv("CODEX_HOME", r"C:\Users\tester\.codex")
+
+    env = runner._codex_env(SimpleNamespace(api_key="test-key", base_url="https://assigned.example/v1"), tmp_path)
+
+    assert env["CODEX_API_KEY"] == "test-key"
+    assert env["OPENAI_API_KEY"] == "test-key"
+    assert env["OPENAI_BASE_URL"] == "https://assigned.example/v1"
+    assert env["CODEX_HOME"] == str((tmp_path / ".codex-home").resolve())
+    assert (tmp_path / ".codex-home").is_dir()
 
 
 def test_requirement_analysis_codex_reports_missing_analysis_output(tmp_path):
@@ -326,11 +380,56 @@ async def test_requirement_analysis_codex_runner_runs_blocking_cli_in_thread(mon
     assert calls["args"] == (input_data,)
 
 
+def test_requirement_analysis_codex_runner_builds_env_for_workdir(monkeypatch, tmp_path):
+    from app.agents.requirement_analysis_codex import runner
+    from app.schemas.requirement_analysis import RequirementAnalysisInput, RequirementAnalysisOutput, RequirementQualityGate
+
+    calls = {}
+    input_data = RequirementAnalysisInput(
+        project_id="project-1",
+        document_id="doc-1",
+        document_name="登录需求",
+        run_id="run-1",
+        primary_mapping_id="main-1",
+        primary_filename="main.md",
+        primary_markdown_content="# 主需求",
+    )
+
+    monkeypatch.setattr(runner, "_prepare_workdir", lambda value: tmp_path)
+    monkeypatch.setattr(runner, "_write_inputs", lambda workdir, value, prompt: None)
+    monkeypatch.setattr(runner, "_build_codex_prompt", lambda value: "run analysis")
+    monkeypatch.setattr(runner, "resolve_model_selection", lambda capability_id: SimpleNamespace(model="assigned-model", base_url="", api_key="test-key"))
+    monkeypatch.setattr(runner, "_codex_command", lambda workdir, selection, prompt: ["codex"])
+
+    def fake_codex_env(selection, workdir):
+        calls["env_workdir"] = workdir
+        return {"CODEX_HOME": str(workdir / ".codex-home")}
+
+    monkeypatch.setattr(runner, "_codex_env", fake_codex_env)
+    monkeypatch.setattr(runner, "_run_codex_process", lambda command, workdir, env, run_id="": calls.update({"run_id": run_id, "env": env}))
+    monkeypatch.setattr(
+        runner,
+        "_read_analysis_output",
+        lambda workdir: RequirementAnalysisOutput(
+            status="completed",
+            analysis_summary="完成。",
+            preliminary_requirement_markdown="# 主需求",
+            quality_gate=RequirementQualityGate(result="passed", testability_score=90),
+        ),
+    )
+
+    output = runner._run_codex_requirement_analysis(input_data)
+
+    assert output.status == "completed"
+    assert calls["env_workdir"] == tmp_path
+    assert calls["env"]["CODEX_HOME"] == str(tmp_path / ".codex-home")
+    assert calls["run_id"] == "run-1"
+
+
 @pytest.mark.anyio
 async def test_requirement_analysis_service_uses_codex_cli_runner(monkeypatch):
-    from app.agents.requirement_analysis.primary_analysis import service
+    from app.agents.requirement_analysis_codex import service
     from app.schemas.requirement_analysis import (
-        RequirementAnalysisAuxiliaryDocument,
         RequirementAnalysisInput,
         RequirementAnalysisOutput,
         RequirementQualityGate,
@@ -343,7 +442,7 @@ async def test_requirement_analysis_service_uses_codex_cli_runner(monkeypatch):
         return RequirementAnalysisOutput(
             status="completed",
             analysis_summary="Codex 分析完成。",
-            preliminary_requirement_markdown=input_data.primary_markdown_content + "\n\n## 辅助补充\n\n验证码有效期为 5 分钟。",
+            preliminary_requirement_markdown=input_data.primary_markdown_content + "\n\n## 分析补充\n\n请确认验证码有效期。",
             quality_gate=RequirementQualityGate(result="passed", testability_score=92),
         )
 
@@ -357,24 +456,17 @@ async def test_requirement_analysis_service_uses_codex_cli_runner(monkeypatch):
             primary_mapping_id="main-1",
             primary_filename="main.md",
             primary_markdown_content="# 主需求\n\n用户可以使用验证码登录。",
-            auxiliary_documents=[
-                RequirementAnalysisAuxiliaryDocument(
-                    mapping_id="aux-1",
-                    filename="辅助.md",
-                    markdown_content="# 辅助\n\n验证码有效期为 5 分钟。",
-                )
-            ],
         )
     )
 
     assert output.analysis_summary == "Codex 分析完成。"
-    assert "辅助补充" in output.preliminary_requirement_markdown
+    assert "分析补充" in output.preliminary_requirement_markdown
     assert captured["input"].document_name == "登录需求"
 
 
 @pytest.mark.anyio
 async def test_requirement_analysis_service_delegates_to_codex_runner(monkeypatch):
-    from app.agents.requirement_analysis.primary_analysis import service
+    from app.agents.requirement_analysis_codex import service
     from app.schemas.requirement_analysis import RequirementAnalysisInput, RequirementAnalysisOutput, RequirementQualityGate
 
     response = RequirementAnalysisOutput(
@@ -408,7 +500,7 @@ async def test_requirement_analysis_service_delegates_to_codex_runner(monkeypatc
 
 @pytest.mark.anyio
 async def test_requirement_analysis_service_uses_primary_markdown_as_preliminary_requirement(monkeypatch):
-    from app.agents.requirement_analysis.primary_analysis import service
+    from app.agents.requirement_analysis_codex import service
     from app.schemas.requirement_analysis import RequirementAnalysisInput, RequirementAnalysisOutput, RequirementQualityGate
 
     response = RequirementAnalysisOutput(
@@ -437,46 +529,9 @@ async def test_requirement_analysis_service_uses_primary_markdown_as_preliminary
     assert output.preliminary_requirement_markdown == primary_markdown.strip()
 
 
-def test_primary_analysis_agent_uses_tool_strategy(monkeypatch):
-    from langchain.agents.structured_output import ToolStrategy
-
-    from app.agents.requirement_analysis.primary_analysis.agent import primary_analysis_agent
-    from app.schemas.requirement_analysis import RequirementAnalysisOutput
-
-    calls = {}
-
-    def fake_create_agent(model, tools, *, system_prompt, response_format):
-        calls.update(
-            {
-                "model": model,
-                "tools": tools,
-                "system_prompt": system_prompt,
-                "response_format": response_format,
-            }
-        )
-        return "agent"
-
-    monkeypatch.setattr(
-        "app.agents.requirement_analysis.primary_analysis.agent.create_agent",
-        fake_create_agent,
-    )
-
-    agent = primary_analysis_agent("model")
-
-    assert agent == "agent"
-    assert calls["model"] == "model"
-    assert calls["tools"] == []
-    assert isinstance(calls["response_format"], ToolStrategy)
-    assert calls["response_format"].schema is RequirementAnalysisOutput
-    assert calls["response_format"].handle_errors is True
-    assert "主需求分析智能体" in calls["system_prompt"]
-    assert "不要拆出“当前缺口”“缺失说明”等额外字段或解释段" in calls["system_prompt"]
-    assert "写入 impact" in calls["system_prompt"]
-
-
 @pytest.mark.anyio
 async def test_requirement_analysis_service_rejects_missing_structured_response(monkeypatch):
-    from app.agents.requirement_analysis.primary_analysis import service
+    from app.agents.requirement_analysis_codex import service
     from app.schemas.requirement_analysis import RequirementAnalysisInput
 
     async def missing_output(input_data):
@@ -498,7 +553,7 @@ async def test_requirement_analysis_service_rejects_missing_structured_response(
 
 
 def test_auxiliary_enhancement_input_contains_questions_and_articles():
-    from app.agents.requirement_analysis.auxiliary_enhancement.service import _build_auxiliary_enhancement_input
+    from app.agents.requirement_auxiliary_enhancement.service import _build_auxiliary_enhancement_input
     from app.schemas.requirement_analysis import (
         RequirementAuxiliaryArticleForEnhancement,
         RequirementAuxiliaryEnhancementInput,
@@ -539,7 +594,7 @@ def test_auxiliary_enhancement_input_contains_questions_and_articles():
 
 @pytest.mark.anyio
 async def test_auxiliary_enhancement_service_uses_direct_structured_model(monkeypatch):
-    from app.agents.requirement_analysis.auxiliary_enhancement import service
+    from app.agents.requirement_auxiliary_enhancement import service
     from app.schemas.requirement_analysis import (
         RequirementAuxiliaryArticleForEnhancement,
         RequirementAuxiliaryEnhancementInput,
@@ -582,7 +637,7 @@ async def test_auxiliary_enhancement_service_uses_direct_structured_model(monkey
 def test_auxiliary_enhancement_agent_uses_tool_strategy(monkeypatch):
     from langchain.agents.structured_output import ToolStrategy
 
-    from app.agents.requirement_analysis.auxiliary_enhancement.agent import auxiliary_enhancement_agent
+    from app.agents.requirement_auxiliary_enhancement.agent import auxiliary_enhancement_agent
     from app.schemas.requirement_analysis import RequirementAuxiliaryEnhancementOutput
 
     calls = {}
@@ -599,7 +654,7 @@ def test_auxiliary_enhancement_agent_uses_tool_strategy(monkeypatch):
         return "agent"
 
     monkeypatch.setattr(
-        "app.agents.requirement_analysis.auxiliary_enhancement.agent.create_agent",
+        "app.agents.requirement_auxiliary_enhancement.agent.create_agent",
         fake_create_agent,
     )
 

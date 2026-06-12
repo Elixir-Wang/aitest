@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pytest
 from fastapi import HTTPException
@@ -24,6 +25,17 @@ def _seed_project() -> None:
     with core_db.connect() as db:
         db.execute(
             "INSERT INTO projects (id, name, status, description) VALUES ('project-1', '测试项目', 'active', '')"
+        )
+
+
+def _seed_requirement_document(document_id: str = "doc-1") -> None:
+    with core_db.connect() as db:
+        db.execute(
+            """
+            INSERT INTO source_documents (id, project_id, name, document_type, status, created_by)
+            VALUES (?, 'project-1', '登录需求', 'PRD', 'uploaded', ?)
+            """,
+            (document_id, ACTOR["id"]),
         )
 
 
@@ -99,6 +111,55 @@ def test_get_version_detail_and_switch_current_final_requirement_version(
     assert overview["document"]["current_version_id"] == "docver-1"
     assert overview["initial_markdown_content"] == "# 最终需求 v1\n\n登录支持验证码。"
     assert current_detail["is_current"] is True
+
+
+def test_list_requirement_analysis_runs_marks_importable_preliminary_requirement(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+    _seed_requirement_document("doc-1")
+    with core_db.connect() as db:
+        db.execute(
+            """
+            INSERT INTO requirement_analyses
+              (id, project_id, document_id, status, analysis_summary, output_json, quality_result, created_by)
+            VALUES (?, ?, ?, 'completed', ?, ?, 'passed', ?)
+            """,
+            (
+                "analysis-1",
+                "project-1",
+                "doc-1",
+                "需求分析完成。",
+                json.dumps({"preliminary_requirement_markdown": "# 初步需求\n\n登录。"}, ensure_ascii=False),
+                ACTOR["id"],
+            ),
+        )
+        db.execute(
+            """
+            INSERT INTO requirement_analysis_runs
+              (id, project_id, document_id, analysis_id, status, summary, created_by)
+            VALUES (?, ?, ?, ?, 'completed', ?, ?)
+            """,
+            ("reqrun-1", "project-1", "doc-1", "analysis-1", "需求分析完成。", ACTOR["id"]),
+        )
+
+    runs = document_service.list_requirement_analysis_runs("project-1", "doc-1", ACTOR)
+
+    assert runs == [
+        {
+            "id": "reqrun-1",
+            "project_id": "project-1",
+            "document_id": "doc-1",
+            "analysis_id": "analysis-1",
+            "status": "completed",
+            "summary": "需求分析完成。",
+            "failure_reason": "",
+            "created_at": runs[0]["created_at"],
+            "updated_at": runs[0]["updated_at"],
+            "has_enhanced_requirement": True,
+        }
+    ]
 
 
 @pytest.mark.anyio
@@ -236,9 +297,7 @@ async def test_review_primary_requirement_file_generates_preliminary_analysis_wi
     async def fake_analyze_requirement(input_data):
         assert input_data.primary_filename == "main.md"
         assert "用户可以使用验证码登录" in input_data.primary_markdown_content
-        assert len(input_data.auxiliary_documents) == 1
-        assert input_data.auxiliary_documents[0].filename == "supporting.md"
-        assert "验证码有效期为 5 分钟" in input_data.auxiliary_documents[0].markdown_content
+        assert not hasattr(input_data, "auxiliary_documents")
         return FakeAnalysisOutput()
 
     monkeypatch.setattr("app.services.document.file_service.convert_to_markdown", fake_convert_to_markdown)
@@ -1226,3 +1285,50 @@ async def test_failed_requirement_review_run_restores_previous_final_requirement
     assert "model unavailable" in failure_log["failure_reason"]
     assert document["status"] == "versioned"
     assert document["current_version_id"] == "docver-final"
+
+
+@pytest.mark.anyio
+async def test_stop_queued_requirement_review_run_cancels_and_cleans_artifacts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+
+    async def fake_convert_to_markdown(filename, raw_bytes=None, *, source_path=None, assets_dir=None):
+        return "# 主需求\n\n用户可以使用验证码登录。\n", "已生成主需求标准 Markdown。"
+
+    async def fake_analyze_requirement(input_data):
+        raise AssertionError("queued stop should cancel before agent execution")
+
+    monkeypatch.setattr("app.services.document.file_service.convert_to_markdown", fake_convert_to_markdown)
+    monkeypatch.setattr("app.services.document.service.analyze_requirement_with_agent", fake_analyze_requirement)
+
+    result = await document_service.upload_documents(
+        "project-1",
+        [_upload_file("main.md", "# main")],
+        ACTOR,
+        document_name="登录需求",
+    )
+    document_id = result["document"]["id"]
+    mapping_id = result["files"][0]["id"]
+    await document_service.convert_pending_file_mappings([mapping_id])
+
+    task = document_service.start_requirement_review_run("project-1", document_id, ACTOR)
+    stopped = document_service.stop_requirement_analysis_run("project-1", document_id, task["source_id"], ACTOR)
+
+    assert stopped["status"] == "cancelled"
+
+    await document_service.execute_requirement_review_run(task["source_id"], ACTOR)
+
+    run_dir = tmp_path / "data" / "projects" / "project-1" / "requirements" / document_id / "analysis_runs" / task["source_id"]
+    with core_db.connect() as db:
+        run = db.execute("SELECT * FROM requirement_analysis_runs WHERE id = ?", (task["source_id"],)).fetchone()
+        analyses = db.execute(
+            "SELECT COUNT(*) AS count FROM requirement_analyses WHERE document_id = ?",
+            (document_id,),
+        ).fetchone()
+
+    assert run["status"] == "cancelled"
+    assert run["summary"] == "用户已停止需求分析。"
+    assert analyses["count"] == 0
+    assert not run_dir.exists()

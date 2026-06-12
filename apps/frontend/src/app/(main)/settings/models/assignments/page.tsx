@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { type ApiModelAssignment, type ApiModelProvider, apiRequest } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
@@ -17,7 +17,6 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
   const [savingCapabilityId, setSavingCapabilityId] = useState("");
   const enabledProviders = providers.filter((provider) => provider.status === "enabled");
-  const visibleAssignments = assignments.filter((assignment) => assignment.capability_id !== "document_editor");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -93,7 +92,7 @@ export default function Page() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {visibleAssignments.map((assignment) => {
+                {assignments.map((assignment) => {
                   const selectedProviderId = selectedProviderIds[assignment.capability_id] ?? "";
                   const saving = savingCapabilityId === assignment.capability_id;
                   return (
@@ -104,20 +103,18 @@ export default function Page() {
                       </TableCell>
                       <TableCell>
                         <Select
+                          aria-label={`${assignment.capability_name} 模型配置`}
+                          className="w-full min-w-0"
                           disabled={loading || saving || enabledProviders.length === 0}
+                          placeholder={saving ? "保存中" : "空"}
+                          setValue={(value) => void updateSelectedProvider(assignment.capability_id, value)}
                           value={selectedProviderId}
-                          onValueChange={(value) => void updateSelectedProvider(assignment.capability_id, value)}
                         >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder={saving ? "保存中" : "空"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {enabledProviders.map((provider) => (
-                              <SelectItem key={provider.id} value={provider.id}>
-                                {provider.provider} / {provider.model}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
+                          {enabledProviders.map((provider) => (
+                            <SelectOption key={provider.id} value={provider.id}>
+                              {`${provider.provider} / ${provider.model}`}
+                            </SelectOption>
+                          ))}
                         </Select>
                       </TableCell>
                     </TableRow>

@@ -4,6 +4,7 @@
 # Editor / local workspace
 .idea/
 .vscode/
+.claude
 *.swp
 *.swo
 
@@ -67,3 +68,8 @@ __pycache__/
 # Backend SQLite database
 *.db
 !apps/backend/data/ai_testing.db
+
+# Backend runtime data / Codex working directories
+apps/backend/data/codex-*-probe-*/
+apps/backend/data/**/codex-work/
+apps/backend/data/**/.codex-home/

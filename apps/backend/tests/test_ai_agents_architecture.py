@@ -24,8 +24,16 @@ def test_old_llm_tasks_root_removed() -> None:
 
 def test_new_agents_do_not_use_old_prompt_or_runner_modules() -> None:
     forbidden = [
-        *NEW_AGENTS_ROOT.glob("**/prompts.py"),
-        *NEW_AGENTS_ROOT.glob("**/runner.py"),
+        *(
+            path
+            for path in NEW_AGENTS_ROOT.glob("**/prompts.py")
+            if path.parts[-2] != "requirement_analysis_codex"
+        ),
+        *(
+            path
+            for path in NEW_AGENTS_ROOT.glob("**/runner.py")
+            if path.parts[-2] != "requirement_analysis_codex"
+        ),
         *NEW_AGENTS_ROOT.glob("**/*_agent.py"),
     ]
     assert [str(path.relative_to(BACKEND_APP.parent)) for path in sorted(forbidden)] == []
@@ -34,7 +42,12 @@ def test_new_agents_do_not_use_old_prompt_or_runner_modules() -> None:
 def test_business_agent_packages_have_agent_entrypoint() -> None:
     missing: list[str] = []
     for package in sorted(path for path in NEW_AGENTS_ROOT.iterdir() if path.is_dir()):
-        if package.name.startswith("_") or package.name in {"shared", "requirement_analysis", "site_exploration"}:
+        if package.name.startswith("_") or package.name in {
+            "shared",
+            "requirement_analysis_codex",
+            "requirement_auxiliary_enhancement",
+            "site_exploration",
+        }:
             continue
         has_agent_entrypoint = (package / "agent.py").exists()
         if not has_agent_entrypoint:
@@ -89,35 +102,36 @@ def test_site_exploration_services_use_child_agents() -> None:
     assert "app.agents.site_exploration.execution_decision" in agentic_orchestrator_path.read_text(encoding="utf-8")
 
 
-def test_requirement_analysis_agent_owns_its_schemas() -> None:
-    package = NEW_AGENTS_ROOT / "requirement_analysis"
+def test_requirement_analysis_codex_agent_owns_its_schemas() -> None:
+    package = NEW_AGENTS_ROOT / "requirement_analysis_codex"
+    assert not (NEW_AGENTS_ROOT / "requirement_analysis").exists()
     assert not (package / "agent.py").exists()
-    assert not (package / "service.py").exists()
-    assert not (package / "schemas.py").exists()
     assert not (package / "tools.py").exists()
-    assert (package / "primary_analysis" / "agent.py").exists()
-    assert (package / "primary_analysis" / "service.py").exists()
-    assert (package / "primary_analysis" / "schemas.py").exists()
-    assert (package / "primary_analysis" / "skills").exists()
-    assert (package / "auxiliary_enhancement" / "agent.py").exists()
-    assert (package / "auxiliary_enhancement" / "service.py").exists()
-    assert (package / "auxiliary_enhancement" / "schemas.py").exists()
-    assert not (package / "skills").exists()
+    assert (package / "service.py").exists()
+    assert (package / "runner.py").exists()
+    assert (package / "schemas.py").exists()
+    assert (package / "skills" / "requirement-analysis" / "SKILL.md").exists()
 
-    from app.agents.requirement_analysis.auxiliary_enhancement import schemas as auxiliary_schemas
-    from app.agents.requirement_analysis.primary_analysis import schemas as primary_schemas
+    auxiliary_package = NEW_AGENTS_ROOT / "requirement_auxiliary_enhancement"
+    assert (auxiliary_package / "agent.py").exists()
+    assert (auxiliary_package / "service.py").exists()
+    assert (auxiliary_package / "schemas.py").exists()
+
+    from app.agents.requirement_analysis_codex import schemas as codex_schemas
+    from app.agents.requirement_auxiliary_enhancement import schemas as auxiliary_schemas
     from app.schemas import requirement_analysis as compatibility_schemas
 
-    assert compatibility_schemas.RequirementAnalysisOutput is primary_schemas.RequirementAnalysisOutput
+    assert compatibility_schemas.RequirementAnalysisOutput is codex_schemas.RequirementAnalysisOutput
     assert compatibility_schemas.RequirementAuxiliaryEnhancementOutput is auxiliary_schemas.RequirementAuxiliaryEnhancementOutput
 
 
-def test_requirement_analysis_service_uses_child_agents() -> None:
+def test_requirement_analysis_service_uses_codex_agent_directly() -> None:
     service_path = BACKEND_APP / "services" / "document" / "service.py"
     text = service_path.read_text(encoding="utf-8")
 
-    assert "app.agents.requirement_analysis.primary_analysis.service" in text
-    assert "app.agents.requirement_analysis.auxiliary_enhancement.service" in text
+    assert "app.agents.requirement_analysis_codex.service" in text
+    assert "app.agents.requirement_auxiliary_enhancement.service" in text
+    assert "app.agents.requirement_analysis.primary_analysis" not in text
 
 
 def test_deterministic_requirement_file_conversion_lives_outside_agent_package() -> None:

@@ -37,6 +37,8 @@ REQUIREMENT_FILE_STATUS = {
 REQUIREMENT_ANALYSIS_STATUS = {
     "queued": (RUNNING_GROUP, "排队中"),
     "running": (RUNNING_GROUP, "分析中"),
+    "stopping": (RUNNING_GROUP, "停止中"),
+    "cancelled": (COMPLETED_GROUP, "已取消"),
     "completed": (COMPLETED_GROUP, "已完成"),
     "needs_clarification": (WAITING_GROUP, "等待澄清"),
     "blocked": (FAILED_GROUP, "分析阻塞"),

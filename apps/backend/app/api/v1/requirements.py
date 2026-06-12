@@ -104,6 +104,21 @@ def review_requirement(
     return task
 
 
+@router.post("/{document_id}/analysis-runs/{run_id}/stop")
+def stop_requirement_analysis_run(
+    project_id: str,
+    document_id: str,
+    run_id: str,
+    actor=Depends(current_user),
+) -> dict:
+    return document_service.stop_requirement_analysis_run(project_id, document_id, run_id, actor)
+
+
+@router.get("/{document_id}/analysis-runs")
+def list_requirement_analysis_runs(project_id: str, document_id: str, actor=Depends(current_user)) -> list[dict]:
+    return document_service.list_requirement_analysis_runs(project_id, document_id, actor)
+
+
 @router.get("/{document_id}/analysis")
 def get_requirement_analysis(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
     return document_service.get_latest_requirement_analysis(project_id, document_id, actor)

@@ -34,6 +34,8 @@ async def run_knowledge_chat(
 async def stream_knowledge_chat(
     input_data: KnowledgeQueryInput,
     search_project_knowledge: SearchProjectKnowledge,
+    *,
+    show_thinking: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     selection = resolve_model_selection(CAPABILITY_ID)
     model = build_agent_model(selection)
@@ -62,19 +64,41 @@ async def stream_knowledge_chat(
     output: KnowledgeQueryOutput | None = None
     streamed_answer = ""
     structured_json_buffer = ""
+    think_filter = _ThinkBlockFilter(emit_thinking=show_thinking)
     try:
         async for chunk in agent.astream(payload, stream_mode=["messages", "values"]):
             mode, data = _stream_chunk_parts(chunk)
             if mode == "messages":
+                reasoning_delta = _message_reasoning_delta(data)
+                if show_thinking and reasoning_delta:
+                    yield {"type": "thinking_delta", "delta": reasoning_delta}
                 delta = _message_delta(data)
                 if delta:
                     if structured_json_buffer or _looks_like_structured_output_delta(delta):
                         structured_json_buffer += delta
                         continue
-                    streamed_answer += delta
-                    yield {"type": "message_delta", "delta": delta}
+                    visible_delta, thinking_delta = think_filter.feed(delta)
+                    if show_thinking and thinking_delta:
+                        yield {"type": "thinking_delta", "delta": thinking_delta}
+                    if not visible_delta:
+                        continue
+                    if not streamed_answer:
+                        visible_delta = visible_delta.lstrip()
+                        if not visible_delta:
+                            continue
+                    streamed_answer += visible_delta
+                    yield {"type": "message_delta", "delta": visible_delta}
             elif mode == "values":
                 output = _stream_output_from_result(data, last_tool_output, streamed_answer)
+        final_delta, final_thinking_delta = think_filter.flush()
+        if show_thinking and final_thinking_delta:
+            yield {"type": "thinking_delta", "delta": final_thinking_delta}
+        if final_delta:
+            if not streamed_answer:
+                final_delta = final_delta.lstrip()
+            if final_delta:
+                streamed_answer += final_delta
+                yield {"type": "message_delta", "delta": final_delta}
     except Exception:
         if not streamed_answer:
             raise
@@ -152,7 +176,7 @@ def _output_from_streamed_answer(
     streamed_answer: str,
     tool_output: KnowledgeQueryOutput | None,
 ) -> KnowledgeQueryOutput:
-    answer = streamed_answer.strip()
+    answer = _strip_think_blocks(streamed_answer).strip()
     if not answer and tool_output is not None:
         return _merge_tool_output(tool_output, tool_output)
     return _merge_tool_output(
@@ -171,7 +195,7 @@ def _output_from_final_message(
     if not isinstance(messages, list):
         return None
     for message in reversed(messages):
-        answer = _message_delta(message).strip()
+        answer = _strip_think_blocks(_message_delta(message)).strip()
         if answer:
             structured_output = _output_from_structured_json_text(answer, tool_output)
             if structured_output is not None:
@@ -220,6 +244,25 @@ def _message_delta(data: Any) -> str:
     return ""
 
 
+def _message_reasoning_delta(data: Any) -> str:
+    message = data[0] if isinstance(data, tuple) and data else data
+    if isinstance(message, dict):
+        reasoning = message.get("reasoning_content")
+        if isinstance(reasoning, str) and reasoning:
+            return reasoning
+        additional_kwargs = message.get("additional_kwargs")
+    else:
+        reasoning = getattr(message, "reasoning_content", "")
+        if isinstance(reasoning, str) and reasoning:
+            return reasoning
+        additional_kwargs = getattr(message, "additional_kwargs", None)
+    if isinstance(additional_kwargs, dict):
+        reasoning = additional_kwargs.get("reasoning_content")
+        if isinstance(reasoning, str):
+            return reasoning
+    return ""
+
+
 def _looks_like_structured_output_delta(delta: str) -> bool:
     stripped = delta.lstrip()
     return stripped.startswith("{") or stripped.startswith(
@@ -231,6 +274,81 @@ def _looks_like_structured_output_delta(delta: str) -> bool:
             '"used_exploration_runs"',
         )
     )
+
+
+class _ThinkBlockFilter:
+    _OPEN_TAG = "<think>"
+    _CLOSE_TAG = "</think>"
+
+    def __init__(self, *, emit_thinking: bool = False) -> None:
+        self._inside_think = False
+        self._emit_thinking = emit_thinking
+        self._pending = ""
+
+    def feed(self, text: str) -> tuple[str, str]:
+        data = self._pending + text
+        self._pending = ""
+        output: list[str] = []
+        thinking: list[str] = []
+        index = 0
+        lower_data = data.lower()
+
+        while index < len(data):
+            if self._inside_think:
+                close_index = lower_data.find(self._CLOSE_TAG, index)
+                if close_index == -1:
+                    think_text = data[index:]
+                    self._pending = _partial_tag_suffix(think_text, self._CLOSE_TAG)
+                    if self._pending:
+                        think_text = think_text[: -len(self._pending)]
+                    if self._emit_thinking:
+                        thinking.append(think_text)
+                    return "".join(output), "".join(thinking)
+                if self._emit_thinking:
+                    thinking.append(data[index:close_index])
+                self._inside_think = False
+                index = close_index + len(self._CLOSE_TAG)
+                continue
+
+            open_index = lower_data.find(self._OPEN_TAG, index)
+            if open_index == -1:
+                visible = data[index:]
+                self._pending = _partial_tag_suffix(visible, self._OPEN_TAG)
+                if self._pending:
+                    visible = visible[: -len(self._pending)]
+                output.append(visible)
+                return "".join(output), "".join(thinking)
+
+            output.append(data[index:open_index])
+            self._inside_think = True
+            index = open_index + len(self._OPEN_TAG)
+
+        return "".join(output), "".join(thinking)
+
+    def flush(self) -> tuple[str, str]:
+        if self._inside_think:
+            self._pending = ""
+            return "", ""
+        pending = self._pending
+        self._pending = ""
+        return pending, ""
+
+
+def _strip_think_blocks(text: str) -> str:
+    think_filter = _ThinkBlockFilter()
+    visible, _thinking = think_filter.feed(text)
+    final_visible, _final_thinking = think_filter.flush()
+    return visible + final_visible
+
+
+def _partial_tag_suffix(text: str, tag: str) -> str:
+    max_length = min(len(text), len(tag) - 1)
+    lower_text = text.lower()
+    for length in range(max_length, 0, -1):
+        suffix = lower_text[-length:]
+        if tag.startswith(suffix):
+            return text[-length:]
+    return ""
 
 
 def _merge_tool_output(output: KnowledgeQueryOutput, tool_output: KnowledgeQueryOutput | None) -> KnowledgeQueryOutput:

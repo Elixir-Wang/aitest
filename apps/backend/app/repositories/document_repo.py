@@ -404,6 +404,16 @@ def find_requirement_analysis(db: Connection, analysis_id: str) -> Row | None:
     ).fetchone()
 
 
+def delete_requirement_analysis(db: Connection, analysis_id: str) -> None:
+    db.execute(
+        """
+        DELETE FROM requirement_analyses
+        WHERE id = ?
+        """,
+        (analysis_id,),
+    )
+
+
 def find_latest_requirement_analysis(db: Connection, document_id: str) -> Row | None:
     return db.execute(
         """

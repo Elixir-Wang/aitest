@@ -1,7 +1,7 @@
 from sqlite3 import Connection, Row
 
 
-ACTIVE_STATUSES = {"queued", "running"}
+ACTIVE_STATUSES = {"queued", "running", "stopping"}
 
 
 def create_run(
@@ -14,14 +14,15 @@ def create_run(
     status: str,
     summary: str,
     created_by: str,
+    previous_current_version_id: str | None = None,
 ) -> None:
     db.execute(
         """
         INSERT INTO requirement_analysis_runs
-          (id, project_id, document_id, primary_mapping_id, status, summary, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+          (id, project_id, document_id, primary_mapping_id, status, summary, created_by, previous_current_version_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (run_id, project_id, document_id, primary_mapping_id, status, summary, created_by),
+        (run_id, project_id, document_id, primary_mapping_id, status, summary, created_by, previous_current_version_id),
     )
 
 
@@ -39,12 +40,29 @@ def find_run(db: Connection, run_id: str) -> Row | None:
     ).fetchone()
 
 
+def find_run_by_id(db: Connection, run_id: str) -> Row | None:
+    return find_run(db, run_id)
+
+
+def list_by_document(db: Connection, document_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT r.*, a.output_json AS analysis_output_json
+        FROM requirement_analysis_runs r
+        LEFT JOIN requirement_analyses a ON a.id = r.analysis_id
+        WHERE r.document_id = ?
+        ORDER BY r.created_at DESC, r.id DESC
+        """,
+        (document_id,),
+    ).fetchall()
+
+
 def find_active_by_document(db: Connection, document_id: str) -> Row | None:
     return db.execute(
         """
         SELECT *
         FROM requirement_analysis_runs
-        WHERE document_id = ? AND status IN ('queued', 'running')
+        WHERE document_id = ? AND status IN ('queued', 'running', 'stopping')
         ORDER BY created_at DESC, id DESC
         LIMIT 1
         """,
@@ -62,7 +80,7 @@ def list_active_runs(db: Connection, *, project_id: str | None = None) -> list[R
         SELECT r.*, d.name AS document_name
         FROM requirement_analysis_runs r
         JOIN source_documents d ON d.id = r.document_id
-        WHERE r.status IN ('queued', 'running')
+        WHERE r.status IN ('queued', 'running', 'stopping')
           {project_filter}
         ORDER BY r.updated_at ASC, r.id ASC
         """,
@@ -121,3 +139,45 @@ def attach_analysis(db: Connection, run_id: str, analysis_id: str) -> None:
         """,
         (analysis_id, run_id),
     )
+
+
+def clear_analysis(db: Connection, run_id: str) -> None:
+    db.execute(
+        """
+        UPDATE requirement_analysis_runs
+        SET analysis_id = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (run_id,),
+    )
+
+
+def try_mark_running(db: Connection, run_id: str) -> bool:
+    cursor = db.execute(
+        """
+        UPDATE requirement_analysis_runs
+        SET status = 'running',
+            summary = '需求分析智能体正在分析。',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'queued'
+        """,
+        (run_id,),
+    )
+    return cursor.rowcount > 0
+
+
+def try_mark_stopping(db: Connection, run_id: str, *, from_statuses: tuple[str, ...]) -> bool:
+    if not from_statuses:
+        return False
+    placeholders = ", ".join("?" for _ in from_statuses)
+    cursor = db.execute(
+        f"""
+        UPDATE requirement_analysis_runs
+        SET status = 'stopping',
+            summary = '正在停止需求分析。',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status IN ({placeholders})
+        """,
+        (run_id, *from_statuses),
+    )
+    return cursor.rowcount > 0

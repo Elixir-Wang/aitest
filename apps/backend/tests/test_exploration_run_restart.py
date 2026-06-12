@@ -2,11 +2,12 @@ from pathlib import Path
 import asyncio
 
 import pytest
+from fastapi import HTTPException
 
 from app.core import db as core_db
 from app.core import storage
 from app.api.v1 import exploration as exploration_api
-from app.schemas.exploration import ExplorationRunCreateIn
+from app.schemas.exploration import ExplorationRunCreateIn, ExplorationRunUpdateIn
 from app.seed.init_db import init_db
 from app.agents.site_exploration.planning.schemas import ExplorationPlanModule, ExplorationPlanOutput
 from app.services.exploration import service as exploration_service
@@ -40,6 +41,17 @@ def _seed_project_and_environment() -> None:
             VALUES (?, ?, ?, ?, 'skip_login', ?)
             """,
             ("env-1", "project-1", "测试环境", "https://example.test", ACTOR["id"]),
+        )
+
+
+def _seed_requirement_document(document_id: str = "doc-1", project_id: str = "project-1", name: str = "登录需求") -> None:
+    with core_db.connect() as db:
+        db.execute(
+            """
+            INSERT INTO source_documents (id, project_id, name, document_type, status, created_by)
+            VALUES (?, ?, ?, 'PRD', 'uploaded', ?)
+            """,
+            (document_id, project_id, name, ACTOR["id"]),
         )
 
 
@@ -237,6 +249,77 @@ def test_create_run_has_no_execution_mode_columns(monkeypatch: pytest.MonkeyPatc
     assert "execution_mode" not in columns
     assert "interaction_mode" not in columns
     assert "agent_turn_count" not in columns
+
+
+def test_create_and_update_run_can_link_requirement_document(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_and_environment()
+    _seed_requirement_document()
+
+    created = exploration_service.create_project_run(
+        "project-1",
+        ExplorationRunCreateIn(
+            environment_id="env-1",
+            requirement_doc_id="doc-1",
+            title="首页探索",
+            scope="首页",
+            forbidden_paths="",
+            goal="",
+            notes="",
+            max_pages=10,
+            max_actions=20,
+            timeout_minutes=5,
+        ),
+        ACTOR,
+    )
+
+    assert created["requirement_doc_id"] == "doc-1"
+    assert created["requirement_doc_title"] == "登录需求"
+
+    updated = exploration_service.update_project_run(
+        "project-1",
+        created["id"],
+        ExplorationRunUpdateIn(requirement_doc_id=""),
+        ACTOR,
+    )
+
+    assert updated["requirement_doc_id"] == ""
+    assert updated["requirement_doc_title"] == ""
+
+
+def test_create_run_rejects_requirement_document_from_other_project(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_and_environment()
+    with core_db.connect() as db:
+        db.execute(
+            "INSERT INTO projects (id, name, status, description) VALUES (?, ?, 'active', '')",
+            ("project-2", "其他项目"),
+        )
+    _seed_requirement_document(document_id="doc-2", project_id="project-2", name="其他需求")
+
+    with pytest.raises(HTTPException) as exc_info:
+        exploration_service.create_project_run(
+            "project-1",
+            ExplorationRunCreateIn(
+                environment_id="env-1",
+                requirement_doc_id="doc-2",
+                title="首页探索",
+                scope="首页",
+                forbidden_paths="",
+                goal="",
+                notes="",
+                max_pages=10,
+                max_actions=20,
+                timeout_minutes=5,
+            ),
+            ACTOR,
+        )
+
+    assert exc_info.value.detail["code"] == "INVALID_REQUIREMENT_DOCUMENT"
 
 
 def test_generate_confirmed_plan_before_starting_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

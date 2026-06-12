@@ -17,6 +17,7 @@ import {
   RotateCcw,
   Save,
   SkipForward,
+  Square,
   Trash2,
   Upload,
   X,
@@ -91,7 +92,7 @@ const ORIGINAL_FILE_SECTION_ID = "original-file-section";
 const FINAL_REQUIREMENT_SECTION_ID = "final-requirement-section";
 const REQUIREMENT_DOCUMENT_TOC_SELECTOR =
   '[data-state="active"] .requirement-document-preview h1, [data-state="active"] .requirement-document-preview h2, [data-state="active"] .requirement-document-preview h3, [data-state="active"] .requirement-document-preview h4, [data-state="active"] .requirement-document-preview [data-toc]';
-const REQUIREMENT_REVIEW_ACTIVE_STATUSES = new Set(["queued", "running"]);
+const REQUIREMENT_REVIEW_ACTIVE_STATUSES = new Set(["queued", "running", "stopping"]);
 const REQUIREMENT_REVIEW_POLL_INTERVAL_MS = 2000;
 const REQUIREMENT_REVIEW_MAX_POLLS = 90;
 const pendingSeverityLabels: Record<"blocker" | "major" | "minor", string> = {
@@ -253,6 +254,7 @@ type RequirementAnalysisResult = {
     analysis_report_markdown: string;
     clarification_report_markdown?: string;
     quality_assurance_report_markdown?: string;
+    enhanced_requirement_markdown?: string;
     applied_supplements: unknown[];
     modules: Array<{
       module_key: string;
@@ -368,6 +370,9 @@ export default function DocumentDetailPage() {
   const [selectedRequirementVersionLoading, setSelectedRequirementVersionLoading] = useState(false);
   const [switchingRequirementVersionId, setSwitchingRequirementVersionId] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [activeReviewRunId, setActiveReviewRunId] = useState("");
+  const [stoppingReview, setStoppingReview] = useState(false);
+  const [reviewStopConfirmOpen, setReviewStopConfirmOpen] = useState(false);
   const [finalizingRequirement, setFinalizingRequirement] = useState(false);
   const [savingClarificationId, setSavingClarificationId] = useState("");
   const [pendingAnswerDrafts, setPendingAnswerDrafts] = useState<Record<string, PendingAnswerDraft>>({});
@@ -467,7 +472,6 @@ export default function DocumentDetailPage() {
     }
     return "";
   })();
-  const finalizeButtonLabel = isFinalized ? "已转为最终需求" : finalizingRequirement ? "转换中" : "转为最终需求";
   const hasRunningConversions = Boolean(
     overview?.files.some((file) => ["pending", "processing"].includes(file.conversion_status)),
   );
@@ -480,9 +484,19 @@ export default function DocumentDetailPage() {
     reviewLoading ||
     REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRequirementAnalysisRunStatus) ||
     Boolean(overview?.document.status === "pending_review" && !analysisResult && !latestRequirementAnalysisRunStatus);
+  const requirementAnalysisDisabledReason = (() => {
+    if (!currentPrimaryFile) {
+      return "请先设置主需求文件";
+    }
+    if (!["success", "warning"].includes(currentPrimaryFile.conversion_status)) {
+      return "主需求标准文件未生成";
+    }
+    return "";
+  })();
   const requirementReviewPassed = Boolean(
     analysisResult?.status && ["completed", "needs_clarification"].includes(analysisResult.status) && !isBlocked,
   );
+  const canFinalizeRequirement = Boolean(requirementReviewPassed && !finalizeDisabledReason);
   const requirementProgressSteps: RequirementProgressStep[] = [
     {
       id: "raw",
@@ -815,8 +829,12 @@ export default function DocumentDetailPage() {
   }
 
   async function reviewPrimaryRequirement() {
-    if (selectedFile?.file_role !== "primary") {
-      toast.error("请先选择主需求标准文件");
+    if (!currentPrimaryFile) {
+      toast.error("请先设置主需求文件");
+      return;
+    }
+    if (!["success", "warning"].includes(currentPrimaryFile.conversion_status)) {
+      toast.error("主需求标准文件未生成");
       return;
     }
     setReviewClearConfirmOpen(true);
@@ -853,6 +871,7 @@ export default function DocumentDetailPage() {
         method: "POST",
       });
       runId = task.source_id;
+      setActiveReviewRunId(runId);
       notifyAiTaskStarted();
       toast.success("需求分析已提交，正在分析中");
       setActiveTab("analysis");
@@ -882,6 +901,44 @@ export default function DocumentDetailPage() {
       });
     } finally {
       setReviewLoading(false);
+      setActiveReviewRunId("");
+    }
+  }
+
+  async function stopRequirementAnalysis() {
+    const runId = activeReviewRunId || overview?.document.latest_requirement_analysis_run?.id || "";
+    if (!runId) {
+      toast.error("当前没有可停止的需求分析任务");
+      return;
+    }
+
+    setStoppingReview(true);
+    setReviewStopConfirmOpen(false);
+    try {
+      const stoppedTask = await apiRequest<ApiTaskItem>(
+        `/projects/${projectId}/requirements/${documentId}/analysis-runs/${runId}/stop`,
+        { method: "POST" },
+      );
+      if (stoppedTask.status === "cancelled") {
+        toast.success("需求分析已停止");
+      } else {
+        toast.success("已请求停止需求分析");
+        await waitForRequirementReviewTask(runId);
+      }
+      clearRequirementAnalysisTabs();
+      await loadOverview({ silent: true });
+      await loadLatestAnalysis();
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "停止需求分析失败",
+        actionLabel: "停止需求分析",
+        method: "POST",
+        path: `/projects/${projectId}/requirements/${documentId}/analysis-runs/${runId}/stop`,
+      });
+    } finally {
+      setStoppingReview(false);
+      setReviewLoading(false);
+      setActiveReviewRunId("");
     }
   }
 
@@ -1541,24 +1598,7 @@ export default function DocumentDetailPage() {
                       <Pencil className="size-4" />
                       修改
                     </Button>
-                    {selectedFile?.file_role === "primary" ? (
-                      <Button
-                        disabled={
-                          reviewLoading ||
-                          !selectedFile ||
-                          !["success", "warning"].includes(selectedFile.conversion_status)
-                        }
-                        onClick={reviewPrimaryRequirement}
-                        type="button"
-                      >
-                        {reviewLoading ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <FileSearch className="size-4" />
-                        )}
-                        {reviewLoading ? "分析中" : "需求分析"}
-                      </Button>
-                    ) : (
+                    {selectedFile?.file_role !== "primary" ? (
                       <Button
                         disabled={
                           !selectedFile ||
@@ -1575,7 +1615,7 @@ export default function DocumentDetailPage() {
                         )}
                         设为主需求
                       </Button>
-                    )}
+                    ) : null}
                   </>
                 )}
               </div>
@@ -1645,15 +1685,41 @@ export default function DocumentDetailPage() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   ) : null}
-                  <Button
-                    disabled={Boolean(finalizeDisabledReason) || finalizingRequirement}
-                    onClick={() => void finalizePreliminaryRequirement()}
-                    title={finalizeDisabledReason || undefined}
-                    type="button"
-                  >
-                    {finalizingRequirement ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-                    {finalizeButtonLabel}
-                  </Button>
+                  {requirementReviewRunning ? (
+                    <Button
+                      disabled={stoppingReview}
+                      onClick={() => setReviewStopConfirmOpen(true)}
+                      type="button"
+                      variant="destructive"
+                    >
+                      {stoppingReview ? <Loader2 className="size-4 animate-spin" /> : <Square className="size-4" />}
+                      {stoppingReview ? "停止中" : "停止分析"}
+                    </Button>
+                  ) : (
+                    <Button
+                      disabled={Boolean(requirementAnalysisDisabledReason)}
+                      onClick={reviewPrimaryRequirement}
+                      title={requirementAnalysisDisabledReason || undefined}
+                      type="button"
+                    >
+                      <FileSearch className="size-4" />
+                      {reviewLoading ? "分析中" : "需求分析"}
+                    </Button>
+                  )}
+                  {canFinalizeRequirement ? (
+                    <Button
+                      disabled={finalizingRequirement}
+                      onClick={() => void finalizePreliminaryRequirement()}
+                      type="button"
+                    >
+                      {finalizingRequirement ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Check className="size-4" />
+                      )}
+                      {finalizingRequirement ? "转换中" : "转为最终需求"}
+                    </Button>
+                  ) : null}
                 </div>
               </div>
               <TabsContent id="analysis-report-section" value="analysis-report">
@@ -1839,16 +1905,10 @@ export default function DocumentDetailPage() {
                 <div className="mb-4 flex items-center justify-between">
                   <div>
                     <h3 className="text-sm font-medium">增强版需求文档</h3>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      原始需求 + 自动补充的内容
-                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">原始需求 + 自动补充的内容</p>
                   </div>
                   {enhancedRequirementMarkdown && (
-                    <Button
-                      size="sm"
-                      onClick={generateExplorationPlan}
-                      disabled={generatingExplorationPlan}
-                    >
+                    <Button size="sm" onClick={generateExplorationPlan} disabled={generatingExplorationPlan}>
                       {generatingExplorationPlan ? "生成中..." : "生成探索计划"}
                     </Button>
                   )}
@@ -2058,6 +2118,38 @@ export default function DocumentDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <AlertDialog onOpenChange={setReviewStopConfirmOpen} open={reviewStopConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div
+              aria-hidden="true"
+              className="flex size-12 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive ring-1 ring-destructive/15"
+            >
+              <Square className="size-5" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <AlertDialogTitle>停止需求分析？</AlertDialogTitle>
+              <AlertDialogDescription>
+                停止后将终止 AI 分析，并删除本次分析产生的模型调用记录与工作区产物。需求分析 run
+                记录会保留，但分析报告、待澄清事项和增强版需求等内容不会保留。
+              </AlertDialogDescription>
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="sm:justify-center">
+            <AlertDialogCancel disabled={stoppingReview}>继续分析</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              disabled={stoppingReview}
+              onClick={() => {
+                void stopRequirementAnalysis();
+              }}
+            >
+              {stoppingReview ? <Loader2 className="size-4 animate-spin" /> : <Square className="size-4" />}
+              停止分析
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog onOpenChange={setReviewClearConfirmOpen} open={reviewClearConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

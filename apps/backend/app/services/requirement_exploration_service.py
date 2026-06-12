@@ -8,8 +8,8 @@ from app.agents.requirement_exploration.schemas import (
 from app.agents.requirement_exploration.service import generate_exploration_plan_from_requirement_sync
 from app.core.db import connect
 from app.core.exceptions import api_error
-from app.core.storage import resolve_stored_path
-from app.repositories import project_repo, requirement_analysis_run_repo
+from app.core.storage import project_requirement_dir
+from app.repositories import document_repo, project_repo, requirement_analysis_run_repo
 
 
 def generate_exploration_plan_from_requirement(
@@ -47,23 +47,22 @@ def generate_exploration_plan_from_requirement(
         if analysis_run["status"] != "completed":
             raise api_error(409, "ANALYSIS_NOT_COMPLETED", "需求分析尚未完成，无法生成探索计划。")
 
-        # 3. 读取分析结果
-        result_path = resolve_stored_path(analysis_run["result_path"])
-        if not result_path.exists():
-            raise api_error(404, "RESULT_NOT_FOUND", "需求分析结果文件不存在。")
+        if not analysis_run["analysis_id"]:
+            raise api_error(409, "ANALYSIS_RESULT_MISSING", "需求分析运行没有关联分析结果。")
+        analysis = document_repo.find_requirement_analysis(db, analysis_run["analysis_id"])
+        if not analysis:
+            raise api_error(404, "RESULT_NOT_FOUND", "需求分析结果不存在。")
 
-        with open(result_path, "r", encoding="utf-8") as f:
-            analysis_result = json.load(f)
-
-        enhanced_requirement = analysis_result.get("output", {}).get("enhanced_requirement_markdown", "")
+        analysis_output = json.loads(analysis["output_json"])
+        enhanced_requirement = str(analysis_output.get("preliminary_requirement_markdown") or "").strip()
         if not enhanced_requirement:
-            raise api_error(409, "NO_ENHANCED_REQUIREMENT", "需求分析结果中没有增强版需求文档。")
+            raise api_error(409, "NO_ENHANCED_REQUIREMENT", "需求分析结果中没有可导入的初步需求。")
 
         # 4. 获取项目上下文
         project_context = {
             "project_id": project_id,
-            "project_name": project.get("name", ""),
-            "project_description": project.get("description", ""),
+            "project_name": project["name"] if "name" in project.keys() else "",
+            "project_description": project["description"] if "description" in project.keys() else "",
             "document_id": document_id,
             "analysis_run_id": run_id,
         }
@@ -147,5 +146,9 @@ def _save_exploration_plan(analysis_run: dict, plan: dict) -> None:
 
 def _get_exploration_plan_path(analysis_run: dict) -> Path:
     """获取探索计划文件路径"""
-    artifact_root = resolve_stored_path(analysis_run["artifact_root"])
-    return artifact_root / "exploration-plan.json"
+    return (
+        project_requirement_dir(analysis_run["project_id"], analysis_run["document_id"])
+        / "analysis_runs"
+        / analysis_run["id"]
+        / "exploration-plan.json"
+    )

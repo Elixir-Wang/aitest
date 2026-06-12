@@ -8,11 +8,15 @@ const pageSource = readFileSync(
 );
 const alertDialogSource = readFileSync(new URL("../src/components/ui/alert-dialog.tsx", import.meta.url), "utf8");
 
-test("requirement detail exposes the new requirement analysis tab contract", () => {
+test("requirement detail exposes the three requirement analysis subtabs", () => {
   assert.match(pageSource, /<TabsTrigger value="analysis">需求分析<\/TabsTrigger>/);
   assert.match(pageSource, /<TabsTrigger value="final">最终需求<\/TabsTrigger>/);
-  assert.match(pageSource, /<TabsTrigger value="preliminary">初步需求<\/TabsTrigger>/);
-  assert.match(pageSource, /<TabsTrigger value="pending">待确认问题<\/TabsTrigger>/);
+  assert.match(pageSource, /<TabsTrigger value="analysis-report">需求分析<\/TabsTrigger>/);
+  assert.match(pageSource, /<TabsTrigger value="clarification">待澄清<\/TabsTrigger>/);
+  assert.match(pageSource, /<TabsTrigger value="quality">质量保证<\/TabsTrigger>/);
+  assert.doesNotMatch(pageSource, /<TabsTrigger value="preliminary">初步需求<\/TabsTrigger>/);
+  assert.doesNotMatch(pageSource, /<TabsTrigger value="pending">待确认问题<\/TabsTrigger>/);
+  assert.doesNotMatch(pageSource, /<TabsTrigger value="report">分析报告<\/TabsTrigger>/);
   assert.doesNotMatch(pageSource, />需求澄清</);
 });
 
@@ -65,9 +69,16 @@ test("overview uses requirement progress steps instead of summary metric cards",
   assert.doesNotMatch(pageSource, /<SummaryMetric\s+label="最终需求"/);
 });
 
-test("review action is presented as requirement analysis", () => {
+test("review action is presented inside the requirement analysis tab", () => {
   assert.match(pageSource, /toast\.success\("需求分析已提交，正在分析中"\)/);
-  assert.match(pageSource, /reviewLoading \? "分析中" : "需求分析"/);
+  assert.match(pageSource, /<TabsContent value="analysis">[\s\S]*reviewLoading \? "分析中" : "需求分析"/);
+  assert.match(pageSource, /function reviewPrimaryRequirement\(\) \{[\s\S]*if \(!currentPrimaryFile\)/);
+  assert.match(pageSource, /currentPrimaryFile\.conversion_status/);
+  assert.doesNotMatch(pageSource, /if \(selectedFile\?\.file_role !== "primary"\)/);
+  assert.doesNotMatch(
+    pageSource,
+    /<TabsContent value="standard">[\s\S]*reviewLoading \? "分析中" : "需求分析"[\s\S]*<TabsContent value="analysis">/,
+  );
   assert.match(pageSource, /setActiveTab\("analysis"\)/);
 });
 
@@ -77,7 +88,7 @@ test("starting requirement analysis clears analysis and final tabs with confirma
   assert.match(pageSource, /setAnalysisResult\(null\)/);
   assert.match(pageSource, /initial_markdown_content: ""/);
   assert.match(pageSource, /当前已有最终需求内容。重新执行需求分析会清空需求分析和最终需求\s+tab\s+内容/);
-  assert.match(pageSource, /需求分析中，分析完成后会在这里展示初步需求。/);
+  assert.match(pageSource, /需求分析中，分析完成后会在这里展示需求分析报告。/);
   assert.match(pageSource, /需求分析中，当前最终需求已清空/);
 });
 
@@ -101,13 +112,36 @@ test("preliminary requirement can be finalized into the final requirement tab", 
   assert.match(pageSource, /REQUIREMENT_ANALYSIS_CONFIRM_REQUIRED/);
   assert.match(pageSource, /toast\.success\("已转为最终需求"\)/);
   assert.match(pageSource, /setActiveTab\("final"\)/);
+  assert.match(pageSource, /const canFinalizeRequirement = Boolean\(/);
+  assert.match(pageSource, /\{canFinalizeRequirement \? \([\s\S]*转为最终需求[\s\S]*\) : null\}/);
   assert.match(pageSource, /尚未生成最终需求，请先在初步需求中点击“转为最终需求”。/);
+});
+
+test("clarification tab keeps the clickable answer structure", () => {
+  assert.match(pageSource, /value="clarification"/);
+  assert.match(pageSource, /visiblePendingAnalysisItems\.map/);
+  assert.match(pageSource, /saveClarificationAnswer\(item\)/);
+  assert.match(pageSource, /deferPendingItem\(item\.id\)/);
+  assert.match(pageSource, /恢复暂不处理/);
+  assert.match(pageSource, /保存答复/);
+  assert.match(pageSource, /待澄清/);
+  assert.doesNotMatch(pageSource, /待确认问题/);
+});
+
+test("quality assurance tab renders only the markdown report", () => {
+  assert.match(pageSource, /quality_assurance_report_markdown/);
+  assert.match(pageSource, /<TabsContent id="quality-assurance-section" value="quality">/);
+  assert.match(pageSource, /content=\{qualityAssuranceMarkdown\}/);
+  assert.match(pageSource, /尚未生成质量保证报告，请先执行需求分析。/);
+  assert.doesNotMatch(pageSource, /const qualityGate = analysisResult\?\.output\.quality_gate/);
+  assert.doesNotMatch(pageSource, /const coverageAudit = analysisResult\?\.output\.coverage_audit \?\? \[\]/);
+  assert.doesNotMatch(pageSource, /function QualityIssueList/);
 });
 
 test("saved clarification answers stay visible while deferred questions are hidden", () => {
   assert.match(
     pageSource,
-    /const pendingAnalysisItems: RequirementAnalysisPendingItem\[\] = \[\.\.\.clarificationQuestions, \.\.\.analysisConflicts\]\.filter\(\s*\(item\) => item\.answer\?\.apply_status !== "not_applicable",\s*\)/,
+    /const pendingAnalysisItems: RequirementAnalysisPendingItem\[\] = \[\s*\.\.\.clarificationQuestions,\s*\.\.\.analysisConflicts,\s*\]\.filter\(\(item\) => item\.answer\?\.apply_status !== "not_applicable"\)/,
   );
   assert.doesNotMatch(pageSource, />当前答复</);
   assert.doesNotMatch(pageSource, />已保存答复</);

@@ -52,12 +52,21 @@ type ProjectEnvironment = {
   available_actions: string[];
 };
 
+type RequirementDocument = {
+  id: string;
+  name: string;
+  status: string;
+  created_at: string;
+};
+
 type ExplorationRun = {
   id: string;
   project_id: string;
   project_name: string;
   environment_id: string;
   environment_name: string;
+  requirement_doc_id: string;
+  requirement_doc_title: string;
   title: string;
   status: string;
   scope: string;
@@ -107,6 +116,7 @@ type ExplorationForm = {
   title: string;
   projectId: string;
   environmentId: string;
+  requirementDocId: string;
   scope: string;
   forbiddenPaths: string;
   goal: string;
@@ -132,6 +142,7 @@ const emptyExplorationForm: ExplorationForm = {
   title: "",
   projectId: "",
   environmentId: "",
+  requirementDocId: "",
   scope: "",
   forbiddenPaths: "",
   goal: "",
@@ -202,6 +213,7 @@ const captchaStrategyOptions = ["none", "ai_letter", "manual"];
 const reuseAuthStateOptions = ["enabled", "disabled"];
 
 const explorationTabs = ["探索列表", "探索环境"];
+const NO_REQUIREMENT_VALUE = "__none__";
 const STOPPABLE_EXPLORATION_STATUSES = new Set(["queued", "running"]);
 const LOADING_EXPLORATION_STATUSES = new Set(["queued", "running", "stopping"]);
 const ACTIVE_MANUAL_AUTH_SESSION_STATUSES = new Set(["waiting_human"]);
@@ -296,10 +308,12 @@ export function ExplorationWorkspace({
   const [stoppingExplorationId, setStoppingExplorationId] = useState("");
   const [explorationLoading, setExplorationLoading] = useState(true);
   const [environmentLoading, setEnvironmentLoading] = useState(true);
+  const [requirementLoading, setRequirementLoading] = useState(false);
   const [projectLoading, setProjectLoading] = useState(projectScope === "all");
   const [error, setError] = useState("");
   const [searchText, setSearchText] = useState("");
   const [projects, setProjects] = useState<ApiProject[]>([]);
+  const [requirements, setRequirements] = useState<RequirementDocument[]>([]);
   const [form, setForm] = useState<EnvironmentForm>({ ...emptyForm, projectId: projectId ?? "" });
   const [explorationForm, setExplorationForm] = useState<ExplorationForm>({
     ...emptyExplorationForm,
@@ -317,6 +331,7 @@ export function ExplorationWorkspace({
     toggleAll,
     toggleOne,
   } = useLocalTableSelection<ProjectEnvironment>([]);
+  const selectedProjectId = projectScope === "project" ? (projectId ?? "") : explorationForm.projectId;
 
   useEffect(() => {
     setForm((current) => ({ ...current, projectId: projectId ?? current.projectId }));
@@ -415,6 +430,50 @@ export function ExplorationWorkspace({
     };
   }, [projectId, projectScope, explorationSelection.setRows]);
 
+  useEffect(() => {
+    let ignore = false;
+    const targetProjectId = selectedProjectId;
+    if (!targetProjectId) {
+      setRequirements([]);
+      setRequirementLoading(false);
+      return;
+    }
+
+    async function loadRequirements() {
+      setRequirementLoading(true);
+      try {
+        const data = await apiRequest<RequirementDocument[]>(`/projects/${targetProjectId}/requirements`);
+        if (!ignore) {
+          setRequirements(data);
+          setExplorationForm((current) => ({
+            ...current,
+            requirementDocId: data.some((item) => item.id === current.requirementDocId) ? current.requirementDocId : "",
+          }));
+        }
+      } catch (requestError) {
+        if (!ignore) {
+          setRequirements([]);
+          reportError(requestError, {
+            fallbackMessage: "需求列表加载失败",
+            actionLabel: "加载需求",
+            method: "GET",
+            path: `/projects/${targetProjectId}/requirements`,
+          });
+        }
+      } finally {
+        if (!ignore) {
+          setRequirementLoading(false);
+        }
+      }
+    }
+
+    void loadRequirements();
+
+    return () => {
+      ignore = true;
+    };
+  }, [selectedProjectId]);
+
   const filteredRows = useMemo(
     () =>
       rows.filter((item) =>
@@ -439,6 +498,7 @@ export function ExplorationWorkspace({
           item.title,
           item.project_name,
           item.environment_name,
+          item.requirement_doc_title,
           statusLabels[item.status] ?? item.status,
           item.scope,
           item.goal,
@@ -479,8 +539,15 @@ export function ExplorationWorkspace({
   const showManualAuthControls =
     savedManualAuthEnabled && selectedManualCaptcha && formMatchesSavedManualAuthConfig(editingEnvironment, form);
   const manualAuthSessionActive = isActiveManualAuthSession(manualAuthSession);
-  const selectedProjectId = projectScope === "project" ? (projectId ?? "") : explorationForm.projectId;
   const availableEnvironments = rows.filter((environment) => environment.project_id === selectedProjectId);
+  const availableRequirements = useMemo(
+    () => requirements.filter((requirement) => requirement.status !== "archived"),
+    [requirements],
+  );
+  const selectedRequirementLabel = useMemo(() => {
+    const selected = availableRequirements.find((item) => item.id === explorationForm.requirementDocId);
+    return selected?.name ?? "";
+  }, [availableRequirements, explorationForm.requirementDocId]);
   const canCreateExploration = selectedProjectId.length > 0 && explorationForm.environmentId.length > 0;
   const explorationProjectSelectDisabled = [
     projectScope === "project",
@@ -649,6 +716,7 @@ export function ExplorationWorkspace({
       title: run.title,
       projectId: run.project_id,
       environmentId: run.environment_id,
+      requirementDocId: run.requirement_doc_id,
       scope: run.scope,
       forbiddenPaths: run.forbidden_paths,
       goal: run.goal,
@@ -770,6 +838,7 @@ export function ExplorationWorkspace({
     try {
       const payload = {
         environment_id: explorationForm.environmentId,
+        requirement_doc_id: explorationForm.requirementDocId,
         title: explorationForm.title,
         scope: explorationForm.scope,
         forbidden_paths: explorationForm.forbiddenPaths,
@@ -1028,6 +1097,7 @@ export function ExplorationWorkspace({
                   <TableHead>任务名称</TableHead>
                   <TableHead>项目</TableHead>
                   <TableHead>关联环境</TableHead>
+                  <TableHead>关联需求</TableHead>
                   <TableHead>任务状态</TableHead>
                   <TableHead>登录策略</TableHead>
                   <TableHead>更新时间</TableHead>
@@ -1054,6 +1124,7 @@ export function ExplorationWorkspace({
                     </TableCell>
                     <TableCell>{item.project_name}</TableCell>
                     <TableCell>{item.environment_name}</TableCell>
+                    <TableCell>{item.requirement_doc_title || "-"}</TableCell>
                     <TableCell>
                       <ExplorationStatusBadge status={item.status} />
                     </TableCell>
@@ -1095,11 +1166,11 @@ export function ExplorationWorkspace({
                   </TableRow>
                 ))}
                 {explorationLoading && filteredExplorationRows.length === 0 ? (
-                  <TableLoadingRow colSpan={8} label="探索任务加载中" />
+                  <TableLoadingRow colSpan={9} label="探索任务加载中" />
                 ) : null}
                 {!explorationLoading && filteredExplorationRows.length === 0 ? (
                   <TableRow>
-                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={8}>
+                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={9}>
                       暂无探索任务。选择环境并创建探索任务后，系统会生成页面结构与探索报告。
                     </TableCell>
                   </TableRow>
@@ -1531,6 +1602,7 @@ export function ExplorationWorkspace({
                     ...current,
                     projectId: value,
                     environmentId: firstEnvironment?.id ?? "",
+                    requirementDocId: "",
                   }));
                 }}
                 value={explorationProjectValue}
@@ -1560,6 +1632,30 @@ export function ExplorationWorkspace({
                   </SelectOption>
                 ))}
               </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="exploration-requirement">需求</FieldLabel>
+              <Select
+                id="exploration-requirement"
+                placeholder={requirementLoading ? "加载需求中..." : "选择需求或留空"}
+                setValue={(value) =>
+                  setExplorationForm((current) => ({
+                    ...current,
+                    requirementDocId: value === NO_REQUIREMENT_VALUE ? "" : value,
+                  }))
+                }
+                value={explorationForm.requirementDocId || NO_REQUIREMENT_VALUE}
+              >
+                <SelectOption value={NO_REQUIREMENT_VALUE}>不关联需求</SelectOption>
+                {availableRequirements.map((requirement) => (
+                  <SelectOption key={requirement.id} value={requirement.id}>
+                    {requirement.name}
+                  </SelectOption>
+                ))}
+              </Select>
+              {selectedRequirementLabel ? (
+                <p className="text-muted-foreground text-xs">已关联：{selectedRequirementLabel}</p>
+              ) : null}
             </Field>
             <Field className="sm:col-span-2">
               <FieldLabel htmlFor="exploration-scope">探索范围</FieldLabel>

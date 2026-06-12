@@ -206,7 +206,7 @@ def test_all_project_knowledge_query_collects_active_project_sources(monkeypatch
 
     captured_project_names: list[list[str]] = []
 
-    async def fake_stream_knowledge_chat(input_data, search_project_knowledge):
+    async def fake_stream_knowledge_chat(input_data, search_project_knowledge, **_kwargs):
         assert input_data.project_name == "全部项目"
         output = await search_project_knowledge(input_data.question)
         yield {"type": "message_delta", "delta": output.answer}
@@ -314,7 +314,7 @@ def test_all_project_knowledge_query_tolerates_partial_missing_files(monkeypatch
 
     captured_project_names: list[list[str]] = []
 
-    async def fake_stream_knowledge_chat(input_data, search_project_knowledge):
+    async def fake_stream_knowledge_chat(input_data, search_project_knowledge, **_kwargs):
         output = await search_project_knowledge(input_data.question)
         yield {"type": "metadata", "output": output}
 
@@ -352,3 +352,41 @@ def test_all_project_knowledge_query_tolerates_partial_missing_files(monkeypatch
     assert result["conversation"] is None
     assert result["used_requirement_versions"] == ["version-1", "version-valid"]
     assert events[-1] == {"type": "done"}
+
+
+def test_all_project_knowledge_query_forwards_visible_thinking(monkeypatch, tmp_path) -> None:
+    from app.schemas.knowledge import KnowledgeQueryOutput
+    from app.services.knowledge import service
+
+    _use_temp_db(monkeypatch, tmp_path)
+
+    captured_show_thinking: list[bool] = []
+
+    async def fake_stream_knowledge_chat(input_data, _search_project_knowledge, *, show_thinking=False):
+        assert input_data.project_name == "全部项目"
+        captured_show_thinking.append(show_thinking)
+        yield {"type": "thinking_delta", "delta": "先判断是否需要查询。"}
+        yield {"type": "metadata", "output": KnowledgeQueryOutput(answer="不需要查询。", knowledge_queried=False)}
+
+    monkeypatch.setattr(service.knowledge_chat_service, "stream_knowledge_chat", fake_stream_knowledge_chat)
+    actor = {
+        "id": "u-admin",
+        "username": "admin",
+        "nickname": "平台管理员",
+        "role": "admin",
+        "project_scope": "全部项目",
+    }
+
+    events = asyncio.run(
+        _collect_async_events(
+            service.stream_all_project_knowledge_query(
+                actor,
+                service.KnowledgeQueryRequest(question="你好", show_thinking=True),
+            )
+        )
+    )
+
+    assert captured_show_thinking == [True]
+    assert events[0] == {"type": "thinking_delta", "delta": "先判断是否需要查询。"}
+    assert events[1]["type"] == "metadata"
+    assert events[1]["result"]["answer"] == "不需要查询。"

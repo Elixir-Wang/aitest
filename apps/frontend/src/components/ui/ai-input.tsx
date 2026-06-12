@@ -4,9 +4,9 @@ import React from "react";
 import { Sparkle } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 
-import { Button } from "@/components/ui/button";
+import { Button, type buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { cn } from "@/lib/utils";
+import { type VariantProps } from "class-variance-authority";
 
 const SPEED_FACTOR = 1;
 const FORM_WIDTH = 360;
@@ -18,6 +18,8 @@ type AiEditInputProps = {
   label?: string;
   title?: string;
   placeholder?: string;
+  size?: VariantProps<typeof buttonVariants>["size"];
+  variant?: VariantProps<typeof buttonVariants>["variant"];
   onSubmit: (instruction: string) => Promise<void> | void;
 };
 
@@ -27,6 +29,8 @@ export function AiEditInput({
   label = "AI修改",
   title = "AI文档修改",
   placeholder = "描述你希望如何修改当前文档...",
+  size,
+  variant,
   onSubmit,
 }: AiEditInputProps) {
   const wrapperRef = React.useRef<HTMLDivElement>(null);
@@ -76,7 +80,7 @@ export function AiEditInput({
 
   return (
     <div className="relative flex items-center" ref={wrapperRef}>
-      <Button disabled={disabled} onClick={triggerOpen} type="button">
+      <Button disabled={disabled} onClick={triggerOpen} size={size} type="button" variant={variant}>
         {loading ? <Spinner className="size-4" /> : <Sparkle className="size-4" />}
         {loading ? "AI修改中" : label}
       </Button>
@@ -84,12 +88,12 @@ export function AiEditInput({
       <AnimatePresence>
         {showForm ? (
           <motion.form
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="absolute top-[calc(100%+8px)] right-0 z-50 flex flex-col rounded-[14px] border bg-background p-3 shadow-lg"
-            exit={{ opacity: 0, scale: 0.98, y: -4 }}
-            initial={{ opacity: 0, scale: 0.98, y: -4 }}
+            animate={{ opacity: 1, scale: 1, x: "-50%", y: 0 }}
+            className="absolute top-[calc(100%+8px)] left-1/2 z-50 flex flex-col rounded-[14px] border bg-background p-3 shadow-lg"
+            exit={{ opacity: 0, scale: 0.98, x: "-50%", y: -4 }}
+            initial={{ opacity: 0, scale: 0.98, x: "-50%", y: -4 }}
             onSubmit={handleSubmit}
-            style={{ width: FORM_WIDTH, height: FORM_HEIGHT }}
+            style={{ width: FORM_WIDTH, height: FORM_HEIGHT, transformOrigin: "top center" }}
             transition={{
               type: "spring",
               stiffness: 550 / SPEED_FACTOR,

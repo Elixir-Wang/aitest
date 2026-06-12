@@ -189,7 +189,15 @@ test("knowledge page guards stale stream deltas and lifecycle writes", () => {
     streamSource,
     /setProjectMessages\(\(messages\) => messages\.filter\(\(message\) => message\.id !== assistantMessageId\)\)/,
   );
-  assert.match(streamSource, /finally \{\s+if \(isCurrentProjectQueryScope\(\)\) \{\s+setRunning\(false\)/);
+  assert.match(streamSource, /finally \{\s+if \(isCurrentProjectQueryScope\(\)\) \{[\s\S]*?setRunning\(false\)/);
+});
+
+test("knowledge assistant messages render markdown while user messages stay plain text", () => {
+  assert.match(pageSource, /import \{ MarkdownPreview \} from "@\/components\/ai-testing\/markdown-preview"/);
+  const chatMessageSource = sourceAfter("function ChatMessage");
+  assert.match(chatMessageSource, /tone === "assistant" \? \(/);
+  assert.match(chatMessageSource, /<MarkdownPreview className="knowledge-chat-markdown" content=\{body\} emptyText="" \/>/);
+  assert.match(chatMessageSource, /<p className="whitespace-pre-wrap leading-6">\{body\}<\/p>/);
 });
 
 test("knowledge page resets async lifecycle state when project scope changes", () => {
@@ -262,12 +270,22 @@ test("knowledge chat input consumes project scope selector props", () => {
   assert.doesNotMatch(inputSource, /void selectedProjectScope/);
 });
 
-test("knowledge chat input keeps removed fake/deep-thinking/context controls out", () => {
+test("knowledge chat input keeps removed fake context controls out", () => {
   assert.doesNotMatch(inputSource, /Clock/);
-  assert.doesNotMatch(inputSource, /thinkingEnabled/);
-  assert.doesNotMatch(inputSource, /aria-label="深度思考"/);
   assert.doesNotMatch(inputSource, /添加上下文/);
   assert.doesNotMatch(inputSource, /\bPlus\b/);
+});
+
+test("knowledge chat supports real visible thinking toggle", () => {
+  assert.match(inputSource, /showThinking: boolean/);
+  assert.match(inputSource, /onShowThinkingChange: \(value: boolean\) => void/);
+  assert.match(inputSource, /aria-label="深度思考"/);
+  assert.match(pageSource, /const \[showProjectThinking, setShowProjectThinking\] = useState\(false\)/);
+  assert.match(pageSource, /show_thinking: submittedShowThinking/);
+  assert.match(pageSource, /\| \{ type: "thinking_delta"; delta: string \}/);
+  assert.match(pageSource, /thinking: `\$\{message\.thinking \?\? ""\}\$\{event\.delta\}`/);
+  assert.match(pageSource, /thinking=\{message\.thinking\}/);
+  assert.match(pageSource, /深度思考/);
 });
 
 test("knowledge chat collapsed model label hides provider while dropdown still shows it", () => {

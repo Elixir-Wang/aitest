@@ -164,9 +164,13 @@ async def stream_project_knowledge_query(
         output.knowledge_queried = True
         return output
 
-    async for event in knowledge_chat_service.stream_knowledge_chat(chat_input, search_project_knowledge):
+    async for event in knowledge_chat_service.stream_knowledge_chat(
+        chat_input,
+        search_project_knowledge,
+        show_thinking=request.show_thinking,
+    ):
         event_type = event.get("type")
-        if event_type == "message_delta":
+        if event_type in {"message_delta", "thinking_delta"}:
             yield event
         elif event_type == "metadata":
             final_output = event["output"]
@@ -264,9 +268,13 @@ async def stream_all_project_knowledge_query(
         output.knowledge_queried = True
         return output
 
-    async for event in knowledge_chat_service.stream_knowledge_chat(chat_input, search_all_project_knowledge):
+    async for event in knowledge_chat_service.stream_knowledge_chat(
+        chat_input,
+        search_all_project_knowledge,
+        show_thinking=request.show_thinking,
+    ):
         event_type = event.get("type")
-        if event_type == "message_delta":
+        if event_type in {"message_delta", "thinking_delta"}:
             yield event
         elif event_type == "metadata":
             final_output = event["output"]

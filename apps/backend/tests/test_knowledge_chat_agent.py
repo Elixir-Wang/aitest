@@ -194,6 +194,94 @@ def test_knowledge_chat_service_streams_model_message_chunks(monkeypatch: pytest
     ]
 
 
+def test_knowledge_chat_service_filters_streamed_think_blocks(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.agents.knowledge_chat import service
+
+    class FakeAgent:
+        async def astream(self, _payload, **_kwargs):
+            yield ("messages", ({"content": "<think>The user is greeting me."}, {}))
+            yield ("messages", ({"content": "</think>\n\n你好，我是项目知识库 AI。"}, {}))
+            yield ("values", {"messages": [{"content": "<think>hidden</think>你好，我是项目知识库 AI。"}]})
+
+        async def ainvoke(self, _payload):
+            raise AssertionError("流式自然语言可用时不应回退到 ainvoke。")
+
+    monkeypatch.setattr(service, "resolve_model_selection", lambda capability_id: "selection")
+    monkeypatch.setattr(service, "build_agent_model", lambda selection: "model")
+    monkeypatch.setattr(service, "knowledge_chat_agent", lambda model, tools, **_kwargs: FakeAgent())
+
+    async def fake_search_project_knowledge(_question):
+        raise AssertionError("普通对话不应调用知识库查询工具。")
+
+    async def collect_events():
+        events = []
+        async for event in service.stream_knowledge_chat(
+            KnowledgeQueryInput(project_id="project-1", project_name="测试项目", question="你好"),
+            fake_search_project_knowledge,
+        ):
+            events.append(event)
+        return events
+
+    events = asyncio.run(collect_events())
+
+    assert events == [
+        {"type": "message_delta", "delta": "你好，我是项目知识库 AI。"},
+        {
+            "type": "metadata",
+            "output": KnowledgeQueryOutput(answer="你好，我是项目知识库 AI。", knowledge_queried=False),
+        },
+        {"type": "done"},
+    ]
+
+
+def test_knowledge_chat_service_can_stream_visible_thinking(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.agents.knowledge_chat import service
+
+    class FakeChunk:
+        content = "你好，我是项目知识库 AI。"
+        additional_kwargs = {"reasoning_content": "I should answer politely. "}
+
+    class FakeAgent:
+        async def astream(self, _payload, **_kwargs):
+            yield ("messages", ({"content": "<think>The user is greeting me."}, {}))
+            yield ("messages", ({"content": "</think>\n\n"}, {}))
+            yield ("messages", (FakeChunk(), {}))
+            yield ("values", {"messages": [{"content": "<think>hidden</think>你好，我是项目知识库 AI。"}]})
+
+        async def ainvoke(self, _payload):
+            raise AssertionError("流式自然语言可用时不应回退到 ainvoke。")
+
+    monkeypatch.setattr(service, "resolve_model_selection", lambda capability_id: "selection")
+    monkeypatch.setattr(service, "build_agent_model", lambda selection: "model")
+    monkeypatch.setattr(service, "knowledge_chat_agent", lambda model, tools, **_kwargs: FakeAgent())
+
+    async def fake_search_project_knowledge(_question):
+        raise AssertionError("普通对话不应调用知识库查询工具。")
+
+    async def collect_events():
+        events = []
+        async for event in service.stream_knowledge_chat(
+            KnowledgeQueryInput(project_id="project-1", project_name="测试项目", question="你好"),
+            fake_search_project_knowledge,
+            show_thinking=True,
+        ):
+            events.append(event)
+        return events
+
+    events = asyncio.run(collect_events())
+
+    assert events == [
+        {"type": "thinking_delta", "delta": "The user is greeting me."},
+        {"type": "thinking_delta", "delta": "I should answer politely. "},
+        {"type": "message_delta", "delta": "你好，我是项目知识库 AI。"},
+        {
+            "type": "metadata",
+            "output": KnowledgeQueryOutput(answer="你好，我是项目知识库 AI。", knowledge_queried=False),
+        },
+        {"type": "done"},
+    ]
+
+
 def test_knowledge_chat_service_streams_plain_text_without_second_invoke(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

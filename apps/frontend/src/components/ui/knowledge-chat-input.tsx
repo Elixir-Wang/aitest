@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { Archive, ArrowUp, FileText, X } from "lucide-react";
+import { Archive, ArrowUp, Brain, FileText, Square, X } from "lucide-react";
 
 import type { ApiModelProvider } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -27,8 +27,11 @@ type KnowledgeChatInputProps = {
   projectScopeDisabled?: boolean;
   selectedModelProviderId: string;
   selectedProjectScope: string;
+  showThinking: boolean;
   onModelProviderChange: (modelProviderId: string) => void;
   onProjectScopeChange: (value: string) => void;
+  onShowThinkingChange: (value: boolean) => void;
+  onStop?: () => void;
   onSubmit: (instruction: string) => void;
   onValueChange: (value: string) => void;
 };
@@ -45,8 +48,11 @@ export function KnowledgeChatInput({
   projectScopeDisabled = false,
   selectedModelProviderId,
   selectedProjectScope,
+  showThinking,
   onModelProviderChange,
   onProjectScopeChange,
+  onShowThinkingChange,
+  onStop,
   onSubmit,
   onValueChange,
 }: KnowledgeChatInputProps) {
@@ -211,64 +217,81 @@ export function KnowledgeChatInput({
                   ))}
                 </SelectContent>
               </Select>
+
+              <Select
+                disabled={disabled || loading || modelLoading || modelSaving || modelProviders.length === 0}
+                onValueChange={onModelProviderChange}
+                value={selectedModelProviderId}
+              >
+                <SelectTrigger
+                  aria-label="选择知识库查询模型"
+                  className={cn(
+                    "max-w-56 min-w-28 gap-2 bg-background shadow-sm **:data-[slot=select-value]:truncate",
+                    compact ? "h-7 px-2 text-xs" : "h-8 px-2.5 text-sm",
+                  )}
+                  size={compact ? "sm" : "default"}
+                >
+                  <SelectValue placeholder={modelSaving ? "保存中" : modelLabel}>
+                    <span className="truncate">{modelSaving ? "保存中" : modelLabel}</span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent
+                  align="center"
+                  className="w-max min-w-0"
+                  position="popper"
+                  side="top"
+                  viewportClassName="w-max"
+                >
+                  {modelProviders.map((provider) => (
+                    <SelectItem
+                      className={cn("whitespace-nowrap py-1.5", compact ? "text-xs" : "text-sm")}
+                      key={provider.id}
+                      value={provider.id}
+                    >
+                      <span className="flex min-w-0 items-baseline gap-2">
+                        <span className="max-w-40 truncate">{provider.model}</span>
+                        <span className="max-w-28 truncate text-muted-foreground">{provider.provider}</span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            <div className="flex min-w-0 items-center gap-1">
-              <div className="min-w-0 shrink-0">
-                <Select
-                  disabled={disabled || loading || modelLoading || modelSaving || modelProviders.length === 0}
-                  onValueChange={onModelProviderChange}
-                  value={selectedModelProviderId}
-                >
-                  <SelectTrigger
-                    aria-label="选择知识库查询模型"
-                    className={cn(
-                      "max-w-56 min-w-28 gap-2 bg-background shadow-sm **:data-[slot=select-value]:truncate",
-                      compact ? "h-7 px-2 text-xs" : "h-8 px-2.5 text-sm",
-                    )}
-                    size={compact ? "sm" : "default"}
-                  >
-                    <SelectValue placeholder={modelSaving ? "保存中" : modelLabel}>
-                      <span className="truncate">{modelSaving ? "保存中" : modelLabel}</span>
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent
-                    align="center"
-                    className="w-max min-w-0"
-                    position="popper"
-                    side="top"
-                    viewportClassName="w-max"
-                  >
-                    {modelProviders.map((provider) => (
-                      <SelectItem
-                        className={cn("whitespace-nowrap py-1.5", compact ? "text-xs" : "text-sm")}
-                        key={provider.id}
-                        value={provider.id}
-                      >
-                        <span className="flex min-w-0 items-baseline gap-2">
-                          <span className="max-w-40 truncate">{provider.model}</span>
-                          <span className="max-w-28 truncate text-muted-foreground">{provider.provider}</span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
+            <div className="flex shrink-0 items-center gap-1">
               <button
-                aria-label="发送消息"
+                aria-label="深度思考"
+                aria-pressed={showThinking}
+                className={cn(
+                  "inline-flex shrink-0 items-center justify-center rounded-md border transition-colors",
+                  compact ? "size-7" : "size-8",
+                  showThinking
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+                disabled={disabled || loading}
+                onClick={() => onShowThinkingChange(!showThinking)}
+                title={showThinking ? "关闭深度思考显示" : "显示深度思考内容"}
+                type="button"
+              >
+                <Brain className="size-4" />
+              </button>
+              <button
+                aria-label={loading ? "停止生成" : "发送消息"}
                 className={cn(
                   "inline-flex shrink-0 items-center justify-center rounded-md transition-colors active:scale-95",
                   compact ? "size-7" : "size-8",
-                  hasContent && !disabled && !loading
+                  loading
+                    ? "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
+                    : hasContent && !disabled
                     ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
                     : "cursor-default bg-muted text-muted-foreground",
                 )}
-                disabled={!hasContent || disabled || loading}
-                onClick={submit}
+                disabled={loading ? disabled || !onStop : !hasContent || disabled}
+                onClick={loading ? onStop : submit}
                 type="button"
               >
-                <ArrowUp className="size-4" />
+                {loading ? <Square className="size-3 fill-current" /> : <ArrowUp className="size-4" />}
               </button>
             </div>
           </div>

@@ -350,5 +350,7 @@ def test_is_active_task_status_matches_running_indicator_contract() -> None:
     assert task_service.is_active_task_status("exploration_run", "completed") is False
     assert task_service.is_active_task_status("requirement_analysis_run", "queued") is True
     assert task_service.is_active_task_status("requirement_analysis_run", "running") is True
+    assert task_service.is_active_task_status("requirement_analysis_run", "stopping") is True
+    assert task_service.is_active_task_status("requirement_analysis_run", "cancelled") is False
     assert task_service.is_active_task_status("requirement_analysis_run", "needs_clarification") is False
     assert task_service.is_active_task_status("requirement_analysis_run", "completed") is False

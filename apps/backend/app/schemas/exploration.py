@@ -8,6 +8,8 @@ class ExplorationRunOut(BaseModel):
     environment_id: str
     environment_name: str
     environment_site_url: str = ""
+    requirement_doc_id: str = ""
+    requirement_doc_title: str = ""
     title: str
     status: str
     scope: str
@@ -35,6 +37,7 @@ class ExplorationRunCreateIn(BaseModel):
 
     project_id: str | None = None
     environment_id: str = Field(min_length=1)
+    requirement_doc_id: str = ""
     title: str = Field(min_length=1)
     scope: str = ""
     forbidden_paths: str = ""
@@ -50,6 +53,7 @@ class ExplorationRunUpdateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     environment_id: str | None = Field(default=None, min_length=1)
+    requirement_doc_id: str | None = None
     title: str | None = Field(default=None, min_length=1)
     scope: str | None = None
     forbidden_paths: str | None = None

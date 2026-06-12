@@ -6,6 +6,7 @@ import {
   Archive,
   BookOpen,
   Bot,
+  Brain,
   Building2,
   Command,
   Eye,
@@ -24,6 +25,7 @@ import {
   User,
 } from "lucide-react";
 
+import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +42,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { KnowledgeChatInput } from "@/components/ui/knowledge-chat-input";
 import { Label } from "@/components/ui/label";
+import PulsatingDots from "@/components/ui/pulsating-loader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -102,6 +105,7 @@ type ProjectChatMessage = {
   id: string;
   role: "assistant" | "user";
   body: string;
+  thinking?: string;
   sourceRefs?: ApiKnowledgeQueryResult["source_refs"];
   usedRequirementVersions?: string[];
   usedExplorationRuns?: string[];
@@ -109,6 +113,7 @@ type ProjectChatMessage = {
 
 type ProjectKnowledgeStreamEvent =
   | { type: "message_delta"; delta: string }
+  | { type: "thinking_delta"; delta: string }
   | { type: "metadata"; result: ApiKnowledgeQueryResult }
   | { type: "done" }
   | { type: "error"; message: string };
@@ -126,6 +131,7 @@ export default function Page() {
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
   const [companyForm, setCompanyForm] = useState(emptyCompanyForm);
   const [projectChatDraft, setProjectChatDraft] = useState("");
+  const [showProjectThinking, setShowProjectThinking] = useState(false);
   const [knowledgeScope, setKnowledgeScope] = useState<"all" | "project">("all");
   const [knowledgeProjectId, setKnowledgeProjectId] = useState<string | null>(null);
   const [knowledgeModelProviders, setKnowledgeModelProviders] = useState<ApiModelProvider[]>([]);
@@ -138,6 +144,7 @@ export default function Page() {
   const [activeProjectConversationId, setActiveProjectConversationId] = useState<string | null>(null);
   const projectQueryRunIdRef = useRef(0);
   const latestProjectQueryScopeRef = useRef("");
+  const projectQueryAbortControllerRef = useRef<AbortController | null>(null);
   const projectConversationLoadRunIdRef = useRef(0);
   const projectConversationOpenRunIdRef = useRef(0);
   const [companyFiles, setCompanyFiles] = useState<FileList | null>(null);
@@ -262,6 +269,8 @@ export default function Page() {
 
   useEffect(() => {
     void projectResetKey;
+    projectQueryAbortControllerRef.current?.abort();
+    projectQueryAbortControllerRef.current = null;
     projectQueryRunIdRef.current += 1;
     projectConversationLoadRunIdRef.current += 1;
     projectConversationOpenRunIdRef.current += 1;
@@ -274,6 +283,10 @@ export default function Page() {
     setLoading(false);
     setRunning(false);
   }, [projectResetKey]);
+
+  function stopProjectKnowledgeQuery() {
+    projectQueryAbortControllerRef.current?.abort();
+  }
 
   const loadProjectConversations = useCallback(async (targetProjectId: string) => {
     const conversationLoadRunId = projectConversationLoadRunIdRef.current + 1;
@@ -418,10 +431,14 @@ export default function Page() {
     const submittedKnowledgeScope = effectiveKnowledgeScope;
     const submittedProjectId = effectiveProjectId;
     const submittedConversationId = activeProjectConversationId;
+    const submittedShowThinking = showProjectThinking;
     const submittedQueryScopeKey = `${submittedKnowledgeScope}:${submittedProjectId ?? ""}`;
     const queryRunId = projectQueryRunIdRef.current + 1;
     projectQueryRunIdRef.current = queryRunId;
     latestProjectQueryScopeRef.current = submittedQueryScopeKey;
+    projectQueryAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    projectQueryAbortControllerRef.current = abortController;
     const isCurrentProjectQueryScope = () =>
       projectQueryRunIdRef.current === queryRunId && latestProjectQueryScopeRef.current === submittedQueryScopeKey;
     const userMessage: ProjectChatMessage = {
@@ -453,8 +470,10 @@ export default function Page() {
           question: trimmedQuestion,
           include_requirements: true,
           include_explorations: true,
+          show_thinking: submittedShowThinking,
           conversation_id: submittedKnowledgeScope === "project" ? submittedConversationId : null,
         }),
+        signal: abortController.signal,
       });
       if (!response.ok || !response.body) {
         throw new Error("项目知识库流式查询失败。");
@@ -485,6 +504,16 @@ export default function Page() {
                 ),
               );
             }
+          } else if (event.type === "thinking_delta") {
+            if (isCurrentProjectQueryScope()) {
+              setProjectMessages((messages) =>
+                messages.map((message) =>
+                  message.id === assistantMessageId
+                    ? { ...message, thinking: `${message.thinking ?? ""}${event.delta}` }
+                    : message,
+                ),
+              );
+            }
           } else if (event.type === "metadata") {
             finalResult = event.result;
             const conversation = event.result.conversation;
@@ -509,11 +538,25 @@ export default function Page() {
       }
     } catch (nextError) {
       if (isCurrentProjectQueryScope()) {
-        setError(nextError instanceof Error ? nextError.message : "查询项目知识库失败。");
-        setProjectMessages((messages) => messages.filter((message) => message.id !== assistantMessageId));
+        if (nextError instanceof DOMException && nextError.name === "AbortError") {
+          setProjectMessages((messages) =>
+            messages.flatMap((message) => {
+              if (message.id !== assistantMessageId) {
+                return [message];
+              }
+              return message.body.length > 0 || (message.thinking?.length ?? 0) > 0 ? [message] : [];
+            }),
+          );
+        } else {
+          setError(nextError instanceof Error ? nextError.message : "查询项目知识库失败。");
+          setProjectMessages((messages) => messages.filter((message) => message.id !== assistantMessageId));
+        }
       }
     } finally {
       if (isCurrentProjectQueryScope()) {
+        if (projectQueryAbortControllerRef.current === abortController) {
+          projectQueryAbortControllerRef.current = null;
+        }
         setRunning(false);
       }
     }
@@ -754,6 +797,8 @@ export default function Page() {
           onConversationDelete={(conversationId) => void deleteProjectConversation(conversationId)}
           onModelProviderChange={(modelProviderId) => void updateKnowledgeQueryModelProvider(modelProviderId)}
           onProjectScopeChange={changeKnowledgeProjectScope}
+          onShowThinkingChange={setShowProjectThinking}
+          onStop={stopProjectKnowledgeQuery}
           onSubmit={(question) => void queryProjectKnowledge(question)}
           projectScopeOptions={knowledgeProjectScopeOptions}
           projectSelected={effectiveKnowledgeScope === "all" || Boolean(projectId)}
@@ -761,6 +806,7 @@ export default function Page() {
           running={running}
           selectedModelProviderId={selectedKnowledgeModelProviderId}
           selectedProjectScope={selectedProjectScope}
+          showThinking={showProjectThinking}
           value={projectChatDraft}
           onValueChange={setProjectChatDraft}
         />
@@ -905,6 +951,8 @@ function ProjectKnowledgeWorkspace({
   onConversationOpen,
   onModelProviderChange,
   onProjectScopeChange,
+  onShowThinkingChange,
+  onStop,
   onSubmit,
   projectConversationEnabled,
   projectScopeOptions,
@@ -912,6 +960,7 @@ function ProjectKnowledgeWorkspace({
   running,
   selectedModelProviderId,
   selectedProjectScope,
+  showThinking,
   value,
   onValueChange,
 }: {
@@ -928,6 +977,8 @@ function ProjectKnowledgeWorkspace({
   onConversationOpen: (conversationId: string) => void;
   onModelProviderChange: (modelProviderId: string) => void;
   onProjectScopeChange: (value: string) => void;
+  onShowThinkingChange: (value: boolean) => void;
+  onStop: () => void;
   onSubmit: (instruction: string) => void;
   projectConversationEnabled: boolean;
   projectScopeOptions: Array<{ value: string; label: string; locked?: boolean }>;
@@ -935,6 +986,7 @@ function ProjectKnowledgeWorkspace({
   running: boolean;
   selectedModelProviderId: string;
   selectedProjectScope: string;
+  showThinking: boolean;
   value: string;
   onValueChange: (value: string) => void;
 }) {
@@ -1090,12 +1142,15 @@ function ProjectKnowledgeWorkspace({
               modelSaving={modelSaving}
               onModelProviderChange={onModelProviderChange}
               onProjectScopeChange={onProjectScopeChange}
+              onShowThinkingChange={onShowThinkingChange}
+              onStop={onStop}
               onSubmit={onSubmit}
               onValueChange={onValueChange}
               projectScopeDisabled={projectScopeDisabled}
               projectScopeOptions={projectScopeOptions}
               selectedModelProviderId={selectedModelProviderId}
               selectedProjectScope={selectedProjectScope}
+              showThinking={showThinking}
               value={value}
             />
             <div className="relative mt-4 flex max-w-2xl flex-wrap justify-center gap-2 px-4 min-[900px]:mt-5">
@@ -1132,6 +1187,13 @@ function ProjectKnowledgeWorkspace({
                   body={message.body}
                   icon={message.role === "user" ? User : Bot}
                   key={message.id}
+                  loading={
+                    running &&
+                    message.role === "assistant" &&
+                    message.body.length === 0 &&
+                    (message.thinking?.length ?? 0) === 0
+                  }
+                  thinking={message.thinking}
                   title={message.role === "user" ? "你" : "项目知识库 AI"}
                   tone={message.role === "user" ? "user" : "assistant"}
                 >
@@ -1171,12 +1233,15 @@ function ProjectKnowledgeWorkspace({
                 modelSaving={modelSaving}
                 onModelProviderChange={onModelProviderChange}
                 onProjectScopeChange={onProjectScopeChange}
+                onShowThinkingChange={onShowThinkingChange}
+                onStop={onStop}
                 onSubmit={onSubmit}
                 onValueChange={onValueChange}
                 projectScopeDisabled={projectScopeDisabled}
                 projectScopeOptions={projectScopeOptions}
                 selectedModelProviderId={selectedModelProviderId}
                 selectedProjectScope={selectedProjectScope}
+                showThinking={showThinking}
                 value={value}
               />
             </div>
@@ -1242,6 +1307,7 @@ function ChatMessage({
   children,
   icon: Icon,
   loading = false,
+  thinking = "",
   title,
   tone,
 }: {
@@ -1249,10 +1315,12 @@ function ChatMessage({
   children?: React.ReactNode;
   icon: React.ComponentType<{ className?: string }>;
   loading?: boolean;
+  thinking?: string;
   title: string;
   tone: "assistant" | "user" | "warning";
 }) {
   const isUser = tone === "user";
+  const showThinking = tone === "assistant" && thinking.trim().length > 0;
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div className={isUser ? "max-w-[82%]" : "max-w-[88%]"}>
@@ -1266,12 +1334,29 @@ function ChatMessage({
           className={
             isUser
               ? "mt-2 rounded-lg bg-primary p-3 text-primary-foreground text-sm shadow-sm"
-              : tone === "warning"
+              : loading && body.length === 0
+                ? "mt-2 px-1 py-2 text-foreground text-sm"
+                : tone === "warning"
                 ? "mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-destructive text-sm"
                 : "mt-2 rounded-lg border bg-background p-3 text-foreground text-sm shadow-sm"
           }
         >
-          <p className="whitespace-pre-wrap leading-6">{body}</p>
+          {showThinking ? (
+            <details className="mb-3 rounded-md border bg-muted/30 p-2 text-muted-foreground text-xs" open={loading}>
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 font-medium text-foreground">
+                <Brain className="size-3.5" />
+                深度思考
+              </summary>
+              <p className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap leading-5">{thinking.trim()}</p>
+            </details>
+          ) : null}
+          {loading && body.length === 0 ? (
+            <PulsatingDots className="min-h-6 justify-start px-0.5" />
+          ) : tone === "assistant" ? (
+            <MarkdownPreview className="knowledge-chat-markdown" content={body} emptyText="" />
+          ) : (
+            <p className="whitespace-pre-wrap leading-6">{body}</p>
+          )}
           {children}
         </div>
       </div>

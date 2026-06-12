@@ -20,11 +20,13 @@ from app.agents.site_exploration.planning.schemas import (
     ExplorationPlanOutput,
 )
 from app.presentation.serializers import serialize_exploration_run
-from app.repositories import environment_repo, exploration_repo, project_repo
+from app.repositories import document_repo, environment_repo, exploration_repo, project_repo
 from app.schemas.exploration import ExplorationPlanUpdateIn, ExplorationRunCreateIn, ExplorationRunUpdateIn
+from app.schemas.requirement_exploration import RequirementPlanImportIn
 from app.services import operation_log_service
 from app.services.exploration import artifact_service as exploration_artifact_service
 from app.services.exploration.browser_session import BrowserSessionError, PlaywrightBrowserSession
+from app.services import requirement_exploration_service
 
 STATUSES = {"pending", "queued", "running", "stopping", "cancelled", "partial", "completed", "blocked"}
 LOGIN_STRATEGIES = {"account_password", "skip_login"}
@@ -572,6 +574,8 @@ def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) 
         environment = environment_repo.find_by_id(db, payload.environment_id)
         if not environment or environment["project_id"] != project_id:
             raise api_error(400, "INVALID_ENVIRONMENT", "请选择当前项目下的环境。")
+        requirement_doc_id = payload.requirement_doc_id.strip()
+        _ensure_requirement_document_in_project(db, project_id, requirement_doc_id)
 
         _validate_execution_limits(
             max_pages=payload.max_pages,
@@ -583,6 +587,7 @@ def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) 
             run_id=run_id,
             project_id=project_id,
             environment_id=payload.environment_id,
+            requirement_doc_id=requirement_doc_id,
             title=payload.title.strip(),
             scope=payload.scope.strip(),
             forbidden_paths=payload.forbidden_paths.strip(),
@@ -629,6 +634,9 @@ def update_project_run(project_id: str, run_id: str, payload: ExplorationRunUpda
             environment = environment_repo.find_by_id(db, updates["environment_id"])
             if not environment or environment["project_id"] != project_id:
                 raise api_error(400, "INVALID_ENVIRONMENT", "请选择当前项目下的环境。")
+        if "requirement_doc_id" in updates:
+            updates["requirement_doc_id"] = str(updates["requirement_doc_id"] or "").strip()
+            _ensure_requirement_document_in_project(db, project_id, updates["requirement_doc_id"])
         _validate_execution_limits(
             max_pages=updates.get("max_pages"),
             max_actions=updates.get("max_actions"),
@@ -762,6 +770,60 @@ def confirm_project_run_plan(project_id: str, run_id: str, actor) -> dict:
         plan["plan_status"] = "confirmed"
         plan["summary"] = f"已确认 {len(plan['items'])} 个探索计划项，可按计划开始探索。"
         _write_exploration_plan(existing, plan)
+        return plan
+
+
+def import_plan_from_requirement(project_id: str, run_id: str, payload: RequirementPlanImportIn, actor) -> dict:
+    """从需求分析导入探索计划到探索任务"""
+    from app.services import requirement_exploration_service
+
+    with connect() as db:
+        existing = exploration_repo.find_by_id(db, run_id)
+        if not existing or existing["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "探索任务不存在。")
+        _ensure_project_visible(existing, actor)
+        if existing["status"] in {"queued", "running", "stopping"}:
+            raise api_error(409, "RUNNING_EXPLORATION", "探索任务执行中，不能修改探索计划。")
+        current = _load_exploration_plan(existing)
+        if current["plan_status"] in {"running", "completed", "blocked"}:
+            raise api_error(409, "EXPLORATION_PLAN_LOCKED", "探索计划已进入执行阶段，不能修改。")
+
+        # 获取需求探索计划
+        req_plan = requirement_exploration_service.get_exploration_plan_from_requirement(
+            project_id=project_id,
+            document_id=payload.requirement_doc_id,
+            run_id=payload.requirement_run_id,
+            actor=actor,
+        )
+
+        # 转换为探索模块的计划格式
+        business_boundary = req_plan.get("business_boundary", "")
+        items = []
+        for req_item in req_plan.get("items", []):
+            # 转换为探索模块的item格式
+            item = {
+                "id": req_item.get("id", ""),
+                "business_module": req_item.get("business_module", ""),
+                "capability_type": req_item.get("capability_type", ""),
+                "title": req_item.get("title", ""),
+                "steps": req_item.get("steps", []),
+                "exploration_points": req_item.get("exploration_points", []),
+            }
+            items.append(item)
+
+        if not items:
+            raise api_error(400, "EMPTY_REQUIREMENT_PLAN", "需求探索计划为空，无法导入。")
+
+        # 更新探索计划
+        plan = {
+            **current,
+            "plan_status": "draft",
+            "business_boundary": business_boundary,
+            "items": items,
+            "summary": f"已从需求分析导入 {len(items)} 个探索计划项，等待确认。",
+        }
+        _write_exploration_plan(existing, plan)
+
         return plan
 
 
@@ -1616,6 +1678,14 @@ def _ensure_project_visible(project, actor) -> None:
     raise api_error(403, "PERMISSION_DENIED", "无权访问该项目。")
 
 
+def _ensure_requirement_document_in_project(db, project_id: str, requirement_doc_id: str) -> None:
+    if not requirement_doc_id:
+        return
+    document = document_repo.find_by_project_and_id(db, project_id, requirement_doc_id)
+    if not document:
+        raise api_error(400, "INVALID_REQUIREMENT_DOCUMENT", "请选择当前项目下的需求。")
+
+
 def _status_to_completion(status: str) -> str:
     if status == "completed":
         return "completed"
@@ -1642,6 +1712,7 @@ def _normalize_page_display_status(status: str | None) -> str:
 def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
     field_map = {
         "environment_id": "environment_id",
+        "requirement_doc_id": "requirement_doc_id",
         "title": "title",
         "scope": "scope",
         "forbidden_paths": "forbidden_paths",
@@ -1829,6 +1900,8 @@ def _run_snapshot(run) -> dict:
         "title": run["title"],
         "status": run["status"],
         "environment_id": run["environment_id"],
+        "requirement_doc_id": _snapshot_value(run, "requirement_doc_id", ""),
+        "requirement_doc_title": _snapshot_value(run, "requirement_doc_title", ""),
         "scope": run["scope"],
         "forbidden_paths": run["forbidden_paths"],
         "login_strategy": login_strategy,

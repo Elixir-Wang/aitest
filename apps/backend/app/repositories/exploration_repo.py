@@ -7,10 +7,12 @@ SELECT er.*, p.name AS project_name, pe.name AS environment_name, pe.site_url AS
        pe.captcha_strategy AS environment_captcha_strategy,
        pe.reuse_auth_state AS environment_reuse_auth_state,
        pe.username AS environment_username,
-       CASE WHEN pe.password_encrypted != '' THEN 1 ELSE 0 END AS environment_has_password
+       CASE WHEN pe.password_encrypted != '' THEN 1 ELSE 0 END AS environment_has_password,
+       rd.name AS requirement_doc_title
 FROM exploration_runs er
 JOIN projects p ON p.id = er.project_id
 JOIN project_environments pe ON pe.id = er.environment_id
+LEFT JOIN source_documents rd ON rd.id = er.requirement_doc_id
 """
 
 
@@ -129,6 +131,7 @@ def create(
     run_id: str,
     project_id: str,
     environment_id: str,
+    requirement_doc_id: str,
     title: str,
     scope: str,
     forbidden_paths: str,
@@ -143,14 +146,15 @@ def create(
     db.execute(
         """
         INSERT INTO exploration_runs
-          (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, goal, notes,
+          (id, project_id, environment_id, requirement_doc_id, title, status, scope, forbidden_paths, login_strategy, goal, notes,
            max_pages, max_actions, timeout_minutes, created_by)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run_id,
             project_id,
             environment_id,
+            requirement_doc_id,
             title,
             scope,
             forbidden_paths,

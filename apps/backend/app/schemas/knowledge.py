@@ -16,6 +16,7 @@ class KnowledgeQueryRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=12000)
     include_requirements: bool = True
     include_explorations: bool = True
+    show_thinking: bool = False
     conversation_id: str | None = None
 
 

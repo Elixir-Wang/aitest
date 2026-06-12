@@ -161,9 +161,10 @@ def init_db() -> None:
               document_id TEXT NOT NULL,
               primary_mapping_id TEXT,
               analysis_id TEXT,
-              status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'needs_clarification', 'blocked', 'failed')),
+              status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'stopping', 'cancelled', 'completed', 'needs_clarification', 'blocked', 'failed')),
               summary TEXT NOT NULL DEFAULT '',
               failure_reason TEXT NOT NULL DEFAULT '',
+              previous_current_version_id TEXT,
               created_by TEXT NOT NULL,
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -229,6 +230,7 @@ def init_db() -> None:
               id TEXT PRIMARY KEY,
               project_id TEXT NOT NULL,
               environment_id TEXT NOT NULL,
+              requirement_doc_id TEXT NOT NULL DEFAULT '',
               title TEXT NOT NULL,
               status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
               scope TEXT NOT NULL DEFAULT '',
@@ -486,11 +488,13 @@ def init_db() -> None:
         _ensure_column(db, "exploration_runs", "max_pages", "INTEGER NOT NULL DEFAULT 50")
         _ensure_column(db, "exploration_runs", "max_actions", "INTEGER NOT NULL DEFAULT 1000")
         _ensure_column(db, "exploration_runs", "timeout_minutes", "INTEGER NOT NULL DEFAULT 120")
+        _ensure_column(db, "exploration_runs", "requirement_doc_id", "TEXT NOT NULL DEFAULT ''")
         _backfill_environment_login_strategies(db)
         _migrate_exploration_run_statuses(db)
         _migrate_source_documents(db)
         _migrate_file_mappings(db)
         _migrate_requirement_analyses(db)
+        _migrate_requirement_analysis_run_statuses(db)
         _migrate_agent_model_assignments(db)
         _migrate_knowledge_query_model_assignment(db)
         _migrate_stored_paths(db)
@@ -590,6 +594,7 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
     result_summary_expr = "result_summary" if "result_summary" in columns else "''"
     started_at_expr = "started_at" if "started_at" in columns else "NULL"
     finished_at_expr = "finished_at" if "finished_at" in columns else "NULL"
+    requirement_doc_id_expr = "requirement_doc_id" if "requirement_doc_id" in columns else "''"
 
     db.execute("PRAGMA foreign_keys=off")
     db.executescript(
@@ -599,6 +604,7 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
           id TEXT PRIMARY KEY,
           project_id TEXT NOT NULL,
           environment_id TEXT NOT NULL,
+          requirement_doc_id TEXT NOT NULL DEFAULT '',
           title TEXT NOT NULL,
           status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
           scope TEXT NOT NULL DEFAULT '',
@@ -624,10 +630,10 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
     db.execute(
         f"""
         INSERT OR IGNORE INTO exploration_runs_new
-          (id, project_id, environment_id, title, status, scope, forbidden_paths, login_strategy, goal, notes,
+          (id, project_id, environment_id, requirement_doc_id, title, status, scope, forbidden_paths, login_strategy, goal, notes,
            max_pages, max_actions, timeout_minutes, artifact_root, result_summary, created_by, created_at, updated_at,
            started_at, finished_at)
-        SELECT id, project_id, environment_id, title,
+        SELECT id, project_id, environment_id, {requirement_doc_id_expr}, title,
                CASE
                  WHEN status = 'queued' AND {started_at_expr} IS NULL THEN 'pending'
                  WHEN status = 'waiting_human' THEN 'partial'
@@ -739,6 +745,66 @@ def _migrate_file_mappings(db: sqlite3.Connection) -> None:
             file_format = CASE WHEN file_format = '' THEN 'unknown' ELSE file_format END
         """
     )
+
+
+def _migrate_requirement_analysis_run_statuses(db: sqlite3.Connection) -> None:
+    table = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'requirement_analysis_runs'",
+    ).fetchone()
+    if not table:
+        return
+    columns = {row["name"] for row in db.execute("PRAGMA table_info(requirement_analysis_runs)").fetchall()}
+    if "'stopping'" in table["sql"] and "previous_current_version_id" in columns:
+        return
+
+    source_count = db.execute("SELECT COUNT(*) AS count FROM requirement_analysis_runs").fetchone()["count"]
+    previous_version_expr = (
+        "previous_current_version_id" if "previous_current_version_id" in columns else "NULL"
+    )
+
+    db.execute("PRAGMA foreign_keys=off")
+    db.executescript(
+        f"""
+        DROP TABLE IF EXISTS requirement_analysis_runs_new;
+        CREATE TABLE IF NOT EXISTS requirement_analysis_runs_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          document_id TEXT NOT NULL,
+          primary_mapping_id TEXT,
+          analysis_id TEXT,
+          status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'stopping', 'cancelled', 'completed', 'needs_clarification', 'blocked', 'failed')),
+          summary TEXT NOT NULL DEFAULT '',
+          failure_reason TEXT NOT NULL DEFAULT '',
+          previous_current_version_id TEXT,
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
+          FOREIGN KEY(primary_mapping_id) REFERENCES source_document_file_mappings(id) ON DELETE SET NULL,
+          FOREIGN KEY(analysis_id) REFERENCES requirement_analyses(id) ON DELETE SET NULL
+        );
+        INSERT INTO requirement_analysis_runs_new
+          (id, project_id, document_id, primary_mapping_id, analysis_id, status, summary, failure_reason,
+           previous_current_version_id, created_by, created_at, updated_at)
+        SELECT
+          id, project_id, document_id, primary_mapping_id, analysis_id, status, summary, failure_reason,
+          {previous_version_expr}, created_by, created_at, updated_at
+        FROM requirement_analysis_runs;
+        """
+    )
+    migrated_count = db.execute("SELECT COUNT(*) AS count FROM requirement_analysis_runs_new").fetchone()["count"]
+    if migrated_count != source_count:
+        db.execute("DROP TABLE IF EXISTS requirement_analysis_runs_new")
+        db.execute("PRAGMA foreign_keys=on")
+        return
+    db.executescript(
+        """
+        DROP TABLE requirement_analysis_runs;
+        ALTER TABLE requirement_analysis_runs_new RENAME TO requirement_analysis_runs;
+        """
+    )
+    db.execute("PRAGMA foreign_keys=on")
 
 
 def _migrate_requirement_analyses(db: sqlite3.Connection) -> None:

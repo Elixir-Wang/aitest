@@ -59,6 +59,8 @@ type ExplorationRun = {
   environment_id: string;
   environment_name: string;
   environment_site_url: string;
+  requirement_doc_id: string;
+  requirement_doc_title: string;
   title: string;
   status: string;
   scope: string;
@@ -248,9 +250,17 @@ type ProjectEnvironment = {
   name: string;
 };
 
+type RequirementDocument = {
+  id: string;
+  name: string;
+  status: string;
+  created_at: string;
+};
+
 type ExplorationForm = {
   title: string;
   environmentId: string;
+  requirementDocId: string;
   scope: string;
   forbiddenPaths: string;
   goal: string;
@@ -371,9 +381,11 @@ const explorationPlaceholders = {
   forbiddenPaths: "填写禁止进入或点击的路径/动作，例如删除、支付、外发、批量通知、退出登录。",
   goal: "填写本次探索要验证的目标，例如遍历元素和链接，检查 401/403、登录跳转和异常页。",
 };
+const NO_REQUIREMENT_VALUE = "__none__";
 const emptyExplorationForm: ExplorationForm = {
   title: "",
   environmentId: "",
+  requirementDocId: "",
   scope: "",
   forbiddenPaths: "",
   goal: "",
@@ -886,6 +898,8 @@ export default function Page() {
   const [saving, setSaving] = useState(false);
   const [environments, setEnvironments] = useState<ProjectEnvironment[]>([]);
   const [environmentLoading, setEnvironmentLoading] = useState(false);
+  const [requirements, setRequirements] = useState<RequirementDocument[]>([]);
+  const [requirementLoading, setRequirementLoading] = useState(false);
   const [explorationForm, setExplorationForm] = useState<ExplorationForm>(emptyExplorationForm);
   const [durationNow, setDurationNow] = useState(() => Date.now());
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -1161,7 +1175,7 @@ export default function Page() {
       // 先生成探索计划
       await apiRequest(
         `/projects/${run.project_id}/requirements/${requirementDocId}/analysis-runs/${requirementRunId}/exploration-plan/generate`,
-        { method: "POST" }
+        { method: "POST" },
       );
 
       // 然后导入到当前探索任务
@@ -1173,7 +1187,7 @@ export default function Page() {
             requirement_doc_id: requirementDocId,
             requirement_run_id: requirementRunId,
           }),
-        }
+        },
       );
 
       applyExplorationPlan(plan);
@@ -1185,6 +1199,46 @@ export default function Page() {
         actionLabel: "导入探索计划",
         method: "POST",
         path: `/projects/${run.project_id}/exploration-runs/${run.id}/plan/import-from-requirement`,
+      });
+    } finally {
+      setImportingFromRequirement(false);
+    }
+  }
+
+  async function loadLatestImportableRequirementRun(requirementDocId: string): Promise<string | null> {
+    if (!run) {
+      return null;
+    }
+    const runs = await apiRequest<RequirementAnalysisRun[]>(
+      `/projects/${run.project_id}/requirements/${requirementDocId}/analysis-runs`,
+    );
+    return runs.find((item) => item.status === "completed" && item.has_enhanced_requirement)?.id ?? null;
+  }
+
+  async function importFromLinkedRequirementOrOpenDialog() {
+    if (!run) {
+      return;
+    }
+    const requirementDocId = run.requirement_doc_id.trim();
+    if (!requirementDocId) {
+      setImportDialogOpen(true);
+      return;
+    }
+
+    setImportingFromRequirement(true);
+    try {
+      const requirementRunId = await loadLatestImportableRequirementRun(requirementDocId);
+      if (!requirementRunId) {
+        toast.error("关联需求没有可导入的已完成分析记录");
+        return;
+      }
+      await importPlanFromRequirement(requirementDocId, requirementRunId);
+    } catch (requestError) {
+      reportApiError(requestError, {
+        fallbackMessage: "加载关联需求分析记录失败",
+        actionLabel: "加载需求分析记录",
+        method: "GET",
+        path: `/projects/${run.project_id}/requirements/${requirementDocId}/analysis-runs`,
       });
     } finally {
       setImportingFromRequirement(false);
@@ -1286,6 +1340,27 @@ export default function Page() {
     }
   }
 
+  async function loadRequirements() {
+    setRequirementLoading(true);
+    try {
+      const data = await apiRequest<RequirementDocument[]>(`/projects/${params.projectId}/requirements`);
+      setRequirements(data);
+      setExplorationForm((current) => ({
+        ...current,
+        requirementDocId: data.some((item) => item.id === current.requirementDocId) ? current.requirementDocId : "",
+      }));
+    } catch (requestError) {
+      reportApiError(requestError, {
+        fallbackMessage: "需求列表加载失败",
+        actionLabel: "加载需求",
+        method: "GET",
+        path: `/projects/${params.projectId}/requirements`,
+      });
+    } finally {
+      setRequirementLoading(false);
+    }
+  }
+
   function openEditDialog() {
     if (!run) {
       return;
@@ -1293,6 +1368,7 @@ export default function Page() {
     setExplorationForm({
       title: run.title,
       environmentId: run.environment_id,
+      requirementDocId: run.requirement_doc_id,
       scope: run.scope,
       forbiddenPaths: run.forbidden_paths,
       goal: run.goal,
@@ -1304,6 +1380,9 @@ export default function Page() {
     setEditDialogOpen(true);
     if (environments.length === 0) {
       void loadEnvironments();
+    }
+    if (requirements.length === 0) {
+      void loadRequirements();
     }
   }
 
@@ -1329,6 +1408,7 @@ export default function Page() {
         method: "PATCH",
         body: JSON.stringify({
           environment_id: explorationForm.environmentId,
+          requirement_doc_id: explorationForm.requirementDocId,
           title: explorationForm.title,
           scope: explorationForm.scope,
           forbidden_paths: explorationForm.forbiddenPaths,
@@ -1360,6 +1440,9 @@ export default function Page() {
   const canStop = run ? stoppableStatuses.has(run.status) : false;
   const canEdit = run ? !["queued", "running", "stopping"].includes(run.status) : false;
   const saveDisabled = !explorationForm.title.trim() || !explorationForm.environmentId || saving;
+  const availableRequirements = requirements.filter((requirement) => requirement.status !== "archived");
+  const selectedRequirementLabel =
+    availableRequirements.find((item) => item.id === explorationForm.requirementDocId)?.name ?? "";
   const activeDetail = streamDetail ?? detail;
   const explorationPlan = activeDetail?.exploration_plan;
   const hasFirstDiscoveryArtifacts = activeDetail
@@ -1431,6 +1514,8 @@ export default function Page() {
           canStartFromPlan={canStartFromPlan}
           onConfirmPlan={confirmExplorationPlan}
           onGeneratePlan={generateExplorationPlan}
+          importingFromRequirement={importingFromRequirement}
+          onImportFromRequirement={() => void importFromLinkedRequirementOrOpenDialog()}
           onSavePlanItems={saveExplorationPlanItems}
           onStart={startExploration}
           plan={explorationPlan}
@@ -1582,6 +1667,34 @@ export default function Page() {
                 </SelectContent>
               </Select>
             </Field>
+            <Field>
+              <FieldLabel htmlFor="exploration-requirement">需求</FieldLabel>
+              <Select
+                disabled={requirementLoading}
+                onValueChange={(value) =>
+                  setExplorationForm((current) => ({
+                    ...current,
+                    requirementDocId: value === NO_REQUIREMENT_VALUE ? "" : value,
+                  }))
+                }
+                value={explorationForm.requirementDocId || NO_REQUIREMENT_VALUE}
+              >
+                <SelectTrigger className="w-full" id="exploration-requirement">
+                  <SelectValue placeholder={requirementLoading ? "需求加载中" : "选择需求或留空"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_REQUIREMENT_VALUE}>不关联需求</SelectItem>
+                  {availableRequirements.map((requirement) => (
+                    <SelectItem key={requirement.id} value={requirement.id}>
+                      {requirement.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedRequirementLabel ? (
+                <p className="text-muted-foreground text-xs">已关联：{selectedRequirementLabel}</p>
+              ) : null}
+            </Field>
             <Field className="sm:col-span-2">
               <FieldLabel htmlFor="exploration-scope">探索范围</FieldLabel>
               <Textarea
@@ -1717,8 +1830,10 @@ function ExplorationTaskPanel({
   canGeneratePlan,
   canStartFirstDiscovery,
   canStartFromPlan,
+  importingFromRequirement,
   onConfirmPlan,
   onGeneratePlan,
+  onImportFromRequirement,
   onSavePlanItems,
   onStart,
   plan,
@@ -1732,8 +1847,10 @@ function ExplorationTaskPanel({
   canGeneratePlan: boolean;
   canStartFirstDiscovery: boolean;
   canStartFromPlan: boolean;
+  importingFromRequirement: boolean;
   onConfirmPlan: () => Promise<boolean>;
   onGeneratePlan: () => Promise<void> | void;
+  onImportFromRequirement: () => void;
   onSavePlanItems: (items: ExplorationPlanItem[]) => Promise<boolean>;
   onStart: () => Promise<void> | void;
   plan?: ExplorationPlan;
@@ -1858,6 +1975,7 @@ function ExplorationTaskPanel({
         <div className="grid gap-3 md:grid-cols-2">
           <InfoRow label="所属项目" value={displayValue(run?.project_name)} />
           <InfoRow label="探索环境" value={displayValue(run?.environment_name)} />
+          <InfoRow label="关联需求" value={displayValue(run?.requirement_doc_title)} />
           <InfoRow label="登录策略" value={loginStrategy} />
           <InfoRow label="站点地址" value={displayValue(run?.environment_site_url)} />
         </div>
@@ -1890,7 +2008,7 @@ function ExplorationTaskPanel({
               {plan?.summary || "访问探索范围并由 AI 根据页面事实生成模块化探索计划。"}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {editingPlan ? (
               <>
                 <Button disabled={planAction === "save"} onClick={() => void savePlanDraft()} size="sm" type="button">
@@ -1931,23 +2049,19 @@ function ExplorationTaskPanel({
                   {generatingPlan ? "生成中" : "生成探索计划"}
                 </Button>
                 <Button
-                  disabled={!canEdit || Boolean(planAction)}
-                  onClick={() => setImportDialogOpen(true)}
+                  disabled={!canEdit || Boolean(planAction) || importingFromRequirement}
+                  onClick={onImportFromRequirement}
                   size="sm"
                   type="button"
                   variant="outline"
                 >
-                  <Download className="size-4" />
-                  从需求导入
+                  {importingFromRequirement ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Download className="size-4" />
+                  )}
+                  {importingFromRequirement ? "导入中" : "从需求导入"}
                 </Button>
-                <AiEditInput
-                  disabled={!canEditPlanWithAi}
-                  label="AI 修改当前计划"
-                  loading={editingPlanWithAi}
-                  onSubmit={editPlanWithAi}
-                  placeholder="描述你希望如何修改当前探索计划..."
-                  title="AI 修改探索计划"
-                />
                 <Button
                   disabled={!canEdit || !plan || Boolean(planAction)}
                   onClick={() => setEditingPlan(true)}
@@ -1958,6 +2072,16 @@ function ExplorationTaskPanel({
                   <Pencil className="size-4" />
                   手动修改探索计划
                 </Button>
+                <AiEditInput
+                  disabled={!canEditPlanWithAi}
+                  label="AI 修改当前计划"
+                  loading={editingPlanWithAi}
+                  onSubmit={editPlanWithAi}
+                  placeholder="描述你希望如何修改当前探索计划..."
+                  size="sm"
+                  title="AI 修改探索计划"
+                  variant="outline"
+                />
                 <Button
                   disabled={confirmAndStartDisabled}
                   onClick={() => void confirmPlanThenStart()}
@@ -3032,13 +3156,6 @@ function TimelineItem({ active, label, value }: { active: boolean; label: string
   );
 }
 
-type RequirementDocument = {
-  id: string;
-  title: string;
-  status: string;
-  created_at: string;
-};
-
 type RequirementAnalysisRun = {
   id: string;
   status: string;
@@ -3066,26 +3183,7 @@ function RequirementImportDialog({
   const [selectedRunId, setSelectedRunId] = useState("");
   const [loadingRuns, setLoadingRuns] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      loadDocuments();
-    } else {
-      setSelectedDocId("");
-      setSelectedRunId("");
-      setAnalysisRuns([]);
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (selectedDocId) {
-      loadAnalysisRuns(selectedDocId);
-    } else {
-      setAnalysisRuns([]);
-      setSelectedRunId("");
-    }
-  }, [selectedDocId]);
-
-  async function loadDocuments() {
+  const loadDocuments = useCallback(async () => {
     setLoading(true);
     try {
       const docs = await apiRequest<RequirementDocument[]>(`/projects/${projectId}/requirements`);
@@ -3096,28 +3194,49 @@ function RequirementImportDialog({
     } finally {
       setLoading(false);
     }
-  }
+  }, [projectId]);
 
-  async function loadAnalysisRuns(docId: string) {
-    setLoadingRuns(true);
-    setSelectedRunId("");
-    try {
-      const runs = await apiRequest<RequirementAnalysisRun[]>(
-        `/projects/${projectId}/requirements/${docId}/analysis-runs`
-      );
-      // 只显示已完成且有增强版需求的分析运行
-      const validRuns = runs.filter((run) => run.status === "completed" && run.has_enhanced_requirement);
-      setAnalysisRuns(validRuns);
-      if (validRuns.length === 1) {
-        setSelectedRunId(validRuns[0].id);
+  const loadAnalysisRuns = useCallback(
+    async (docId: string) => {
+      setLoadingRuns(true);
+      setSelectedRunId("");
+      try {
+        const runs = await apiRequest<RequirementAnalysisRun[]>(
+          `/projects/${projectId}/requirements/${docId}/analysis-runs`,
+        );
+        const validRuns = runs.filter((run) => run.status === "completed" && run.has_enhanced_requirement);
+        setAnalysisRuns(validRuns);
+        if (validRuns.length === 1) {
+          setSelectedRunId(validRuns[0].id);
+        }
+      } catch (error) {
+        toast.error("加载需求分析记录失败");
+        console.error(error);
+      } finally {
+        setLoadingRuns(false);
       }
-    } catch (error) {
-      toast.error("加载需求分析记录失败");
-      console.error(error);
-    } finally {
-      setLoadingRuns(false);
+    },
+    [projectId],
+  );
+
+  useEffect(() => {
+    if (open) {
+      void loadDocuments();
+    } else {
+      setSelectedDocId("");
+      setSelectedRunId("");
+      setAnalysisRuns([]);
     }
-  }
+  }, [loadDocuments, open]);
+
+  useEffect(() => {
+    if (selectedDocId) {
+      void loadAnalysisRuns(selectedDocId);
+    } else {
+      setAnalysisRuns([]);
+      setSelectedRunId("");
+    }
+  }, [loadAnalysisRuns, selectedDocId]);
 
   async function handleImport() {
     if (!selectedDocId || !selectedRunId) {
@@ -3127,7 +3246,7 @@ function RequirementImportDialog({
     await onImport(selectedDocId, selectedRunId);
   }
 
-  const canImport = !importingFromRequirement && selectedDocId && selectedRunId;
+  const canImport = !importingFromRequirement && Boolean(selectedDocId) && Boolean(selectedRunId);
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -3138,7 +3257,7 @@ function RequirementImportDialog({
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="requirement-doc-select">
+            <label className="font-medium text-sm" htmlFor="requirement-doc-select">
               需求文档
             </label>
             {loading ? (
@@ -3156,7 +3275,7 @@ function RequirementImportDialog({
                 <SelectContent>
                   {documents.map((doc) => (
                     <SelectItem key={doc.id} value={doc.id}>
-                      {doc.title}
+                      {doc.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -3166,7 +3285,7 @@ function RequirementImportDialog({
 
           {selectedDocId && (
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="analysis-run-select">
+              <label className="font-medium text-sm" htmlFor="analysis-run-select">
                 需求分析记录
               </label>
               {loadingRuns ? (
@@ -3194,7 +3313,12 @@ function RequirementImportDialog({
           )}
         </div>
         <DialogFooter>
-          <Button disabled={importingFromRequirement} onClick={() => onOpenChange(false)} type="button" variant="outline">
+          <Button
+            disabled={importingFromRequirement}
+            onClick={() => onOpenChange(false)}
+            type="button"
+            variant="outline"
+          >
             取消
           </Button>
           <Button disabled={!canImport} onClick={() => void handleImport()} type="button">
@@ -3210,9 +3334,5 @@ function RequirementImportDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-      </div>
-    </div>
   );
 }

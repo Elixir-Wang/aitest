@@ -1,4 +1,4 @@
-# 百系产品接入官网统一认证中心总说明v1.0
+# 百系产品接入官网统一认证中心总说明v1.1
 
 适用对象：百系产品研发团队、产品负责人
 
@@ -129,7 +129,7 @@ product_user_mode 枚举说明：
 | B_PLUS_C | B+C | 同时支持个人和企业 |
 | INVITE_ONLY | 邀请制 | 邀请码 / 灰度准入 |
 
-接口响应中 product_context.product_user_mode 返回接口枚举值（如 B_PLUS_C）。本文档中的“B+C”为业务展示值，代码判断请使用枚举值。
+接口响应中 product_context.product_user_mode 返回接口枚举值（如 B_PLUS_C）。本文档中的"B+C"为业务展示值，代码判断请使用枚举值。
 
 user_type 说明
 

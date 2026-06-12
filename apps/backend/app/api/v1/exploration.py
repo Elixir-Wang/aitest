@@ -14,6 +14,7 @@ from app.schemas.exploration import (
     ExplorationRunOut,
     ExplorationRunUpdateIn,
 )
+from app.schemas.requirement_exploration import RequirementPlanImportIn
 from app.services.exploration import event_bus as exploration_event_bus
 from app.services.exploration import service as exploration_service
 from app.services.exploration import site_orchestrator as site_exploration_orchestrator
@@ -151,6 +152,17 @@ def update_project_run_plan(
 @router.post("/{project_id}/exploration-runs/{run_id}/plan/confirm")
 def confirm_project_run_plan(project_id: str, run_id: str, actor=Depends(require_admin)) -> dict:
     return exploration_service.confirm_project_run_plan(project_id, run_id, actor)
+
+
+@router.post("/{project_id}/exploration-runs/{run_id}/plan/import-from-requirement")
+def import_plan_from_requirement(
+    project_id: str,
+    run_id: str,
+    payload: RequirementPlanImportIn,
+    actor=Depends(require_admin),
+) -> dict:
+    """从需求分析导入探索计划到探索任务"""
+    return exploration_service.import_plan_from_requirement(project_id, run_id, payload, actor)
 
 
 @router.post("/{project_id}/exploration-runs/{run_id}/start", response_model=ExplorationRunOut)

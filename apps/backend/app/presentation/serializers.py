@@ -163,6 +163,8 @@ def serialize_exploration_run(row: Row, actor_role: str) -> dict:
         "environment_id": row["environment_id"],
         "environment_name": row["environment_name"],
         "environment_site_url": row["environment_site_url"] if "environment_site_url" in row.keys() else "",
+        "requirement_doc_id": _row_value(row, "requirement_doc_id", "") or "",
+        "requirement_doc_title": _row_value(row, "requirement_doc_title", "") or "",
         "title": row["title"],
         "status": row["status"],
         "scope": row["scope"],

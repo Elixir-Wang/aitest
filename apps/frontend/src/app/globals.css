@@ -473,6 +473,88 @@ These serve as the fallback; there is no separate default.css file. */
     font-size: 0.9rem;
   }
 
+  .knowledge-chat-markdown {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
+    font-size: 0.875rem;
+    line-height: 1.75;
+    padding: 0;
+  }
+
+  .knowledge-chat-markdown:hover {
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  .knowledge-chat-markdown h1 {
+    margin: 0 0 0.85rem;
+    width: auto;
+    padding-bottom: 0;
+    text-align: left;
+    font-size: 1.05rem;
+  }
+
+  .knowledge-chat-markdown h1::after {
+    display: none;
+  }
+
+  .knowledge-chat-markdown h1:hover,
+  .knowledge-chat-markdown h2:hover,
+  .knowledge-chat-markdown h3:hover,
+  .knowledge-chat-markdown h4:hover,
+  .knowledge-chat-markdown pre:hover,
+  .knowledge-chat-markdown blockquote:hover {
+    transform: none;
+  }
+
+  .knowledge-chat-markdown h2 {
+    margin: 1rem 0 0.55rem;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    padding: 0.18rem 0.5rem;
+    box-shadow: none;
+  }
+
+  .knowledge-chat-markdown h2:hover {
+    box-shadow: none;
+  }
+
+  .knowledge-chat-markdown h3 {
+    margin: 0.85rem 0 0.4rem;
+    font-size: 0.92rem;
+  }
+
+  .knowledge-chat-markdown h4 {
+    margin: 0.75rem 0 0.35rem;
+    font-size: 0.88rem;
+  }
+
+  .knowledge-chat-markdown p {
+    margin: 0.45rem 0;
+  }
+
+  .knowledge-chat-markdown p,
+  .knowledge-chat-markdown li,
+  .knowledge-chat-markdown table {
+    font-size: 0.875rem;
+  }
+
+  .knowledge-chat-markdown ul,
+  .knowledge-chat-markdown ol {
+    margin: 0.4rem 0 0.75rem;
+  }
+
+  .knowledge-chat-markdown blockquote,
+  .knowledge-chat-markdown pre,
+  .knowledge-chat-markdown .markdown-table-scroll,
+  .knowledge-chat-markdown .markdown-mermaid-card,
+  .knowledge-chat-markdown .markdown-mermaid-loading {
+    margin: 0.7rem 0;
+  }
+
   .markdown-preview ul,
   .markdown-preview ol {
     margin: 0.5rem 0 1rem;

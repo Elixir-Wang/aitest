@@ -7,6 +7,13 @@ import threading
 import time
 from pathlib import Path, PurePath
 
+from app.agents.requirement_analysis_codex.errors import RequirementAnalysisCancelledError
+from app.agents.requirement_analysis_codex.process_registry import (
+    cancel_requested,
+    kill_process_tree,
+    register,
+    unregister,
+)
 from app.core.settings import REQUIREMENT_ANALYSIS_CODEX_COMMAND, REQUIREMENT_ANALYSIS_CODEX_TIMEOUT_SECONDS
 
 
@@ -68,72 +75,89 @@ def resolve_codex_command_path() -> str:
     )
 
 
-def codex_env(selection) -> dict[str, str]:
+def codex_env(selection, workdir: Path | None = None) -> dict[str, str]:
     env = os.environ.copy()
     env["CODEX_API_KEY"] = selection.api_key
     env["OPENAI_API_KEY"] = selection.api_key
+    if workdir is not None:
+        codex_home = workdir / ".codex-home"
+        codex_home.mkdir(parents=True, exist_ok=True)
+        env["CODEX_HOME"] = str(codex_home.resolve())
     if selection.base_url:
         env["OPENAI_BASE_URL"] = selection.base_url
     return env
 
 
-def run_codex_process(command: list[str], workdir: Path, env: dict[str, str]) -> None:
+def run_codex_process(command: list[str], workdir: Path, env: dict[str, str], *, run_id: str = "") -> None:
+    process: subprocess.Popen | None = None
     try:
-        process = subprocess.Popen(
-            command,
-            cwd=workdir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            env=env,
-        )
-    except OSError as error:
-        raise RuntimeError(f"需求分析智能体启动失败：{error}") from error
-    stdout_queue: queue.Queue[str | None] = queue.Queue()
-    stdout_lines: list[str] = []
-    reader = threading.Thread(target=enqueue_output_lines, args=(process.stdout, stdout_queue), daemon=True)
-    reader.start()
-    started_at = time.monotonic()
-    while process.poll() is None:
+        try:
+            process = subprocess.Popen(
+                command,
+                cwd=workdir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                env=env,
+                start_new_session=True,
+            )
+        except OSError as error:
+            raise RuntimeError(f"需求分析智能体启动失败：{error}") from error
+        if run_id:
+            register(run_id, process)
+        stdout_queue: queue.Queue[str | None] = queue.Queue()
+        stdout_lines: list[str] = []
+        reader = threading.Thread(target=enqueue_output_lines, args=(process.stdout, stdout_queue), daemon=True)
+        reader.start()
+        started_at = time.monotonic()
+        while process.poll() is None:
+            drain_codex_stdout(workdir, stdout_queue, stdout_lines)
+            if run_id and cancel_requested(run_id):
+                kill_process_tree(process)
+                reader.join(timeout=1)
+                stderr = process.stderr.read() if process.stderr else ""
+                write_process_logs(workdir, stdout_lines, stderr)
+                raise RequirementAnalysisCancelledError("用户已停止需求分析。")
+            if time.monotonic() - started_at > REQUIREMENT_ANALYSIS_CODEX_TIMEOUT_SECONDS:
+                kill_process_tree(process)
+                reader.join(timeout=1)
+                stderr = process.stderr.read() if process.stderr else ""
+                write_process_logs(workdir, stdout_lines, stderr)
+                raise subprocess.TimeoutExpired(command, REQUIREMENT_ANALYSIS_CODEX_TIMEOUT_SECONDS, output="\n".join(stdout_lines), stderr=stderr)
+            time.sleep(0.2)
+        process.wait()
+        reader.join(timeout=1)
+        stderr = process.stderr.read() if process.stderr else ""
         drain_codex_stdout(workdir, stdout_queue, stdout_lines)
-        if time.monotonic() - started_at > REQUIREMENT_ANALYSIS_CODEX_TIMEOUT_SECONDS:
-            process.kill()
-            process.wait()
-            reader.join(timeout=1)
-            stderr = process.stderr.read() if process.stderr else ""
-            write_process_logs(workdir, stdout_lines, stderr)
-            raise subprocess.TimeoutExpired(command, REQUIREMENT_ANALYSIS_CODEX_TIMEOUT_SECONDS, output="\n".join(stdout_lines), stderr=stderr)
-        time.sleep(0.2)
-    process.wait()
-    reader.join(timeout=1)
-    stderr = process.stderr.read() if process.stderr else ""
-    drain_codex_stdout(workdir, stdout_queue, stdout_lines)
-    write_process_logs(workdir, stdout_lines, stderr)
-    if process.returncode != 0:
-        # 尝试从 stdout 中提取错误信息
-        error_detail = ""
-        for line in stdout_lines:
-            if '"type":"error"' in line or '"type":"turn.failed"' in line:
-                try:
-                    import json
-                    event = json.loads(line)
-                    if event.get("type") == "error":
-                        error_detail = event.get("message", "")
-                        break
-                    elif event.get("type") == "turn.failed":
-                        error_detail = event.get("error", {}).get("message", "")
-                        break
-                except:
-                    pass
+        write_process_logs(workdir, stdout_lines, stderr)
+        if run_id and cancel_requested(run_id):
+            raise RequirementAnalysisCancelledError("用户已停止需求分析。")
+        if process.returncode != 0:
+            error_detail = ""
+            for line in stdout_lines:
+                if '"type":"error"' in line or '"type":"turn.failed"' in line:
+                    try:
+                        event = json.loads(line)
+                        if event.get("type") == "error":
+                            error_detail = event.get("message", "")
+                            break
+                        if event.get("type") == "turn.failed":
+                            error_detail = event.get("error", {}).get("message", "")
+                            break
+                    except json.JSONDecodeError:
+                        pass
 
-        error_msg = f"需求分析智能体执行失败，退出码：{process.returncode}。"
-        if error_detail:
-            error_msg += f"\n错误详情：{error_detail}"
-        elif stderr.strip():
-            error_msg += f"{stderr.strip()}"
+            error_msg = f"需求分析智能体执行失败，退出码：{process.returncode}。"
+            if error_detail:
+                error_msg += f"\n错误详情：{error_detail}"
+            elif stderr.strip():
+                error_msg += f"{stderr.strip()}"
 
-        raise RuntimeError(error_msg)
+            raise RuntimeError(error_msg)
+    finally:
+        if run_id:
+            unregister(run_id)
 
 
 def enqueue_output_lines(pipe, output_queue: queue.Queue[str | None]) -> None:
