@@ -5,7 +5,7 @@ from app.agents.requirement_exploration.schemas import (
     RequirementExplorationInput,
     RequirementExplorationPlan,
 )
-from app.core.llm import get_model
+from app.agents.model_selection import resolve_model_selection, build_agent_model
 
 
 async def generate_exploration_plan_from_requirement(
@@ -20,7 +20,8 @@ async def generate_exploration_plan_from_requirement(
     Returns:
         RequirementExplorationPlan: 生成的探索计划
     """
-    model = get_model()
+    selection = resolve_model_selection("requirement_exploration")
+    model = build_agent_model(selection)
     agent = requirement_exploration_agent(model)
 
     # 构造agent输入
