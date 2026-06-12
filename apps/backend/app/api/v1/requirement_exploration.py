@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import get_current_actor
+from app.dependencies.auth import current_user
 from app.services import requirement_exploration_service
 
 router = APIRouter()
@@ -16,7 +16,7 @@ def generate_exploration_plan_from_requirement(
     project_id: str,
     document_id: str,
     run_id: str,
-    actor: Annotated[dict, Depends(get_current_actor)],
+    actor: Annotated[dict, Depends(current_user)],
 ):
     """
     基于需求分析的最终需求文档，生成探索计划。
@@ -46,7 +46,7 @@ def get_exploration_plan_from_requirement(
     project_id: str,
     document_id: str,
     run_id: str,
-    actor: Annotated[dict, Depends(get_current_actor)],
+    actor: Annotated[dict, Depends(current_user)],
 ):
     """
     获取已生成的探索计划。

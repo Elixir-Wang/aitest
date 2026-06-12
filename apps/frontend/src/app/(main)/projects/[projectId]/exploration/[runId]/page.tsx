@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  Download,
   Eye,
   FileText,
   Loader2,
@@ -887,6 +888,8 @@ export default function Page() {
   const [environmentLoading, setEnvironmentLoading] = useState(false);
   const [explorationForm, setExplorationForm] = useState<ExplorationForm>(emptyExplorationForm);
   const [durationNow, setDurationNow] = useState(() => Date.now());
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importingFromRequirement, setImportingFromRequirement] = useState(false);
 
   const loadRun = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -1142,6 +1145,49 @@ export default function Page() {
     } finally {
       setPlanAction("");
       setPlanActionStartedAt(null);
+    }
+  }
+
+  async function importPlanFromRequirement(requirementDocId: string, requirementRunId: string) {
+    if (!run) {
+      return;
+    }
+    setImportingFromRequirement(true);
+    clearGeneratedExplorationPlanModules();
+    clearStaleExplorationPlan();
+    try {
+      toast.info("正在从需求文档生成并导入探索计划...");
+
+      // 先生成探索计划
+      await apiRequest(
+        `/projects/${run.project_id}/requirements/${requirementDocId}/analysis-runs/${requirementRunId}/exploration-plan/generate`,
+        { method: "POST" }
+      );
+
+      // 然后导入到当前探索任务
+      const plan = await apiRequest<ExplorationPlan>(
+        `/projects/${run.project_id}/exploration-runs/${run.id}/plan/import-from-requirement`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            requirement_doc_id: requirementDocId,
+            requirement_run_id: requirementRunId,
+          }),
+        }
+      );
+
+      applyExplorationPlan(plan);
+      setImportDialogOpen(false);
+      toast.success("探索计划已从需求导入，请确认或补充后再开始探索");
+    } catch (requestError) {
+      reportApiError(requestError, {
+        fallbackMessage: "从需求导入探索计划失败",
+        actionLabel: "导入探索计划",
+        method: "POST",
+        path: `/projects/${run.project_id}/exploration-runs/${run.id}/plan/import-from-requirement`,
+      });
+    } finally {
+      setImportingFromRequirement(false);
     }
   }
 
@@ -1654,6 +1700,14 @@ export default function Page() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <RequirementImportDialog
+        importingFromRequirement={importingFromRequirement}
+        onImport={importPlanFromRequirement}
+        onOpenChange={setImportDialogOpen}
+        open={importDialogOpen}
+        projectId={params.projectId}
+      />
     </PageShell>
   );
 }
@@ -1875,6 +1929,16 @@ function ExplorationTaskPanel({
                 >
                   {generatingPlan ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
                   {generatingPlan ? "生成中" : "生成探索计划"}
+                </Button>
+                <Button
+                  disabled={!canEdit || Boolean(planAction)}
+                  onClick={() => setImportDialogOpen(true)}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  <Download className="size-4" />
+                  从需求导入
                 </Button>
                 <AiEditInput
                   disabled={!canEditPlanWithAi}
@@ -2963,6 +3027,191 @@ function TimelineItem({ active, label, value }: { active: boolean; label: string
       <div className="min-w-0">
         <div className="font-medium">{label}</div>
         <div className="text-muted-foreground text-xs">{value}</div>
+      </div>
+    </div>
+  );
+}
+
+type RequirementDocument = {
+  id: string;
+  title: string;
+  status: string;
+  created_at: string;
+};
+
+type RequirementAnalysisRun = {
+  id: string;
+  status: string;
+  created_at: string;
+  has_enhanced_requirement: boolean;
+};
+
+function RequirementImportDialog({
+  importingFromRequirement,
+  onImport,
+  onOpenChange,
+  open,
+  projectId,
+}: {
+  importingFromRequirement: boolean;
+  onImport: (requirementDocId: string, requirementRunId: string) => Promise<void>;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  projectId: string;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [documents, setDocuments] = useState<RequirementDocument[]>([]);
+  const [selectedDocId, setSelectedDocId] = useState("");
+  const [analysisRuns, setAnalysisRuns] = useState<RequirementAnalysisRun[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState("");
+  const [loadingRuns, setLoadingRuns] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      loadDocuments();
+    } else {
+      setSelectedDocId("");
+      setSelectedRunId("");
+      setAnalysisRuns([]);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (selectedDocId) {
+      loadAnalysisRuns(selectedDocId);
+    } else {
+      setAnalysisRuns([]);
+      setSelectedRunId("");
+    }
+  }, [selectedDocId]);
+
+  async function loadDocuments() {
+    setLoading(true);
+    try {
+      const docs = await apiRequest<RequirementDocument[]>(`/projects/${projectId}/requirements`);
+      setDocuments(docs);
+    } catch (error) {
+      toast.error("加载需求文档列表失败");
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadAnalysisRuns(docId: string) {
+    setLoadingRuns(true);
+    setSelectedRunId("");
+    try {
+      const runs = await apiRequest<RequirementAnalysisRun[]>(
+        `/projects/${projectId}/requirements/${docId}/analysis-runs`
+      );
+      // 只显示已完成且有增强版需求的分析运行
+      const validRuns = runs.filter((run) => run.status === "completed" && run.has_enhanced_requirement);
+      setAnalysisRuns(validRuns);
+      if (validRuns.length === 1) {
+        setSelectedRunId(validRuns[0].id);
+      }
+    } catch (error) {
+      toast.error("加载需求分析记录失败");
+      console.error(error);
+    } finally {
+      setLoadingRuns(false);
+    }
+  }
+
+  async function handleImport() {
+    if (!selectedDocId || !selectedRunId) {
+      toast.error("请选择需求文档和分析记录");
+      return;
+    }
+    await onImport(selectedDocId, selectedRunId);
+  }
+
+  const canImport = !importingFromRequirement && selectedDocId && selectedRunId;
+
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>从需求导入探索计划</DialogTitle>
+          <DialogDescription>选择已完成分析的需求文档，将自动生成探索计划并导入到当前任务。</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium" htmlFor="requirement-doc-select">
+              需求文档
+            </label>
+            {loading ? (
+              <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                <Loader2 className="size-4 animate-spin" />
+                加载中...
+              </div>
+            ) : documents.length === 0 ? (
+              <p className="text-muted-foreground text-sm">当前项目没有需求文档</p>
+            ) : (
+              <Select onValueChange={setSelectedDocId} value={selectedDocId}>
+                <SelectTrigger id="requirement-doc-select">
+                  <SelectValue placeholder="选择需求文档" />
+                </SelectTrigger>
+                <SelectContent>
+                  {documents.map((doc) => (
+                    <SelectItem key={doc.id} value={doc.id}>
+                      {doc.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {selectedDocId && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="analysis-run-select">
+                需求分析记录
+              </label>
+              {loadingRuns ? (
+                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                  <Loader2 className="size-4 animate-spin" />
+                  加载中...
+                </div>
+              ) : analysisRuns.length === 0 ? (
+                <p className="text-muted-foreground text-sm">该需求文档没有已完成的分析记录</p>
+              ) : (
+                <Select onValueChange={setSelectedRunId} value={selectedRunId}>
+                  <SelectTrigger id="analysis-run-select">
+                    <SelectValue placeholder="选择分析记录" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {analysisRuns.map((run) => (
+                      <SelectItem key={run.id} value={run.id}>
+                        {formatDateTime(parseApiTimestamp(run.created_at))}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button disabled={importingFromRequirement} onClick={() => onOpenChange(false)} type="button" variant="outline">
+            取消
+          </Button>
+          <Button disabled={!canImport} onClick={() => void handleImport()} type="button">
+            {importingFromRequirement ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                导入中...
+              </>
+            ) : (
+              "导入"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
       </div>
     </div>
   );
