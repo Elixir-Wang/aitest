@@ -17,6 +17,10 @@ from app.agents.requirement_analysis.schemas_v2 import (
     RequirementAnalysisResultV2,
 )
 from app.agents.requirement_analysis.utils.report_generator import generate_analysis_report
+from app.agents.requirement_analysis.utils.requirement_enhancer import (
+    generate_enhanced_requirement,
+    get_auto_resolved_items,
+)
 
 
 # ============================================================================
@@ -614,13 +618,20 @@ async def run_requirement_analysis_v2(
         clarification_result,
     )
 
+    # 生成增强版需求文档
+    auto_resolved_items = get_auto_resolved_items(clarification_result.items)
+    enhanced_requirement = generate_enhanced_requirement(
+        original_markdown=primary_markdown_content,
+        auto_resolved_items=auto_resolved_items,
+    )
+
     return RequirementAnalysisResultV2(
         status=status,
         understanding=understanding_result,
         quality_assessment=quality_assessment_result,
         clarification=clarification_result,
         analysis_report_markdown=analysis_report,
-        preliminary_requirement_markdown="",  # 可选：生成修正后的需求文档
+        enhanced_requirement_markdown=enhanced_requirement,
         metadata={
             "version": "2.0",
             "config": config or {},

@@ -266,8 +266,137 @@ class TestReportGenerator:
         assert "# 需求分析报告" in report
         assert "质量评分" in report
         assert "73/100" in report
-        assert "conditional" in report
+        assert "CONDITIONAL" in report  # 大写格式
         assert "测试模块" in report
+
+
+class TestRequirementEnhancer:
+    """测试需求增强器"""
+
+    def test_generate_enhanced_requirement(self):
+        """测试生成增强版需求"""
+        from app.agents.requirement_analysis.utils.requirement_enhancer import (
+            generate_enhanced_requirement,
+        )
+
+        original = "# 订单管理\n\n用户可以创建订单。"
+
+        auto_resolved = [
+            ClarificationItem(
+                item_id="CLR-001",
+                source="completeness",
+                module_key="order",
+                module_name="订单管理",
+                question="响应时间要求是什么？",
+                impact="无法评估性能",
+                severity="major",
+                current_text="系统应当快速",
+                suggested_fix="响应时间 < 2秒",
+                resolution_status="auto_resolved",
+                evidence=[],
+            )
+        ]
+
+        enhanced = generate_enhanced_requirement(original, auto_resolved)
+
+        # 验证增强版文档包含必要内容
+        assert "# 增强版需求文档" in enhanced
+        assert "原始需求内容" in enhanced
+        assert "自动补充的内容" in enhanced
+        assert "订单管理" in enhanced
+        assert "响应时间 < 2秒" in enhanced
+        assert "[自动补充]" in enhanced
+
+    def test_get_auto_resolved_items(self):
+        """测试提取 auto_resolved 项"""
+        from app.agents.requirement_analysis.utils.requirement_enhancer import (
+            get_auto_resolved_items,
+        )
+
+        items = [
+            ClarificationItem(
+                item_id="1",
+                source="completeness",
+                module_key="test",
+                module_name="测试",
+                question="Q1",
+                impact="I1",
+                severity="major",
+                resolution_status="auto_resolved",
+            ),
+            ClarificationItem(
+                item_id="2",
+                source="completeness",
+                module_key="test",
+                module_name="测试",
+                question="Q2",
+                impact="I2",
+                severity="major",
+                resolution_status="needs_manual",
+            ),
+            ClarificationItem(
+                item_id="3",
+                source="completeness",
+                module_key="test",
+                module_name="测试",
+                question="Q3",
+                impact="I3",
+                severity="minor",
+                resolution_status="auto_resolved",
+            ),
+        ]
+
+        auto_resolved = get_auto_resolved_items(items)
+
+        assert len(auto_resolved) == 2
+        assert all(item.resolution_status == "auto_resolved" for item in auto_resolved)
+
+    def test_get_pending_items(self):
+        """测试提取待处理项"""
+        from app.agents.requirement_analysis.utils.requirement_enhancer import (
+            get_pending_items,
+        )
+
+        items = [
+            ClarificationItem(
+                item_id="1",
+                source="completeness",
+                module_key="test",
+                module_name="测试",
+                question="Q1",
+                impact="I1",
+                severity="major",
+                resolution_status="auto_resolved",
+            ),
+            ClarificationItem(
+                item_id="2",
+                source="completeness",
+                module_key="test",
+                module_name="测试",
+                question="Q2",
+                impact="I2",
+                severity="major",
+                resolution_status="needs_manual",
+            ),
+            ClarificationItem(
+                item_id="3",
+                source="completeness",
+                module_key="test",
+                module_name="测试",
+                question="Q3",
+                impact="I3",
+                severity="minor",
+                resolution_status="has_suggestions",
+            ),
+        ]
+
+        pending = get_pending_items(items)
+
+        assert len(pending) == 2
+        assert all(
+            item.resolution_status in ["needs_manual", "has_suggestions"]
+            for item in pending
+        )
 
 
 class TestServiceV2:

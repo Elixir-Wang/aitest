@@ -431,9 +431,9 @@ class RequirementAnalysisResultV2(BaseModel):
         description="完整的分析报告（Markdown格式）"
     )
 
-    preliminary_requirement_markdown: str = Field(
+    enhanced_requirement_markdown: str = Field(
         default="",
-        description="初步需求文档（可选：应用建议修正后的版本）"
+        description="增强版需求文档：原始需求 + 辅助文档自动补充的内容（标记补充部分）"
     )
 
     # 元数据

@@ -60,6 +60,12 @@ from .service_v2 import (
 
 from .router_v2 import router as router_v2
 
+from .utils import (
+    generate_enhanced_requirement,
+    get_auto_resolved_items,
+    get_pending_items,
+)
+
 __version__ = "2.0.0"
 
 __all__ = [
@@ -93,4 +99,9 @@ __all__ = [
 
     # Router
     "router_v2",
+
+    # Utils
+    "generate_enhanced_requirement",
+    "get_auto_resolved_items",
+    "get_pending_items",
 ]
