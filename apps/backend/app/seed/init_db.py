@@ -210,6 +210,70 @@ def init_db() -> None:
               UNIQUE(project_id, stat_date)
             );
 
+            CREATE TABLE IF NOT EXISTS test_case_sets (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              requirement_doc_id TEXT NOT NULL,
+              exploration_run_id TEXT NOT NULL DEFAULT '',
+              include_company_knowledge INTEGER NOT NULL DEFAULT 1,
+              generation_scope_type TEXT NOT NULL CHECK(generation_scope_type IN ('all', 'specified')),
+              generation_scope_text TEXT NOT NULL DEFAULT '',
+              notes TEXT NOT NULL DEFAULT '',
+              status TEXT NOT NULL CHECK(status IN ('generating', 'ready_for_review', 'failed', 'archived')) DEFAULT 'generating',
+              case_count INTEGER NOT NULL DEFAULT 0,
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+              FOREIGN KEY(requirement_doc_id) REFERENCES source_documents(id) ON DELETE RESTRICT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_test_case_sets_project_updated
+              ON test_case_sets(project_id, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_test_case_sets_requirement
+              ON test_case_sets(requirement_doc_id);
+
+            CREATE TABLE IF NOT EXISTS test_case_generation_runs (
+              id TEXT PRIMARY KEY,
+              test_case_set_id TEXT NOT NULL,
+              task_id TEXT NOT NULL,
+              status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed')) DEFAULT 'queued',
+              input_json TEXT NOT NULL DEFAULT '{}',
+              error_message TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              finished_at TEXT,
+              FOREIGN KEY(test_case_set_id) REFERENCES test_case_sets(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_test_case_generation_runs_set
+              ON test_case_generation_runs(test_case_set_id, created_at);
+
+            CREATE TABLE IF NOT EXISTS test_cases (
+              id TEXT PRIMARY KEY,
+              test_case_set_id TEXT NOT NULL,
+              project_id TEXT NOT NULL,
+              case_no TEXT NOT NULL,
+              title TEXT NOT NULL,
+              module_name TEXT NOT NULL DEFAULT '',
+              scenario_type TEXT NOT NULL DEFAULT '',
+              priority TEXT NOT NULL DEFAULT 'P1',
+              risk_level TEXT NOT NULL DEFAULT 'medium',
+              preconditions TEXT NOT NULL DEFAULT '',
+              steps_json TEXT NOT NULL DEFAULT '[]',
+              expected_results TEXT NOT NULL DEFAULT '',
+              source_refs_json TEXT NOT NULL DEFAULT '[]',
+              automation_feasibility TEXT NOT NULL DEFAULT 'needs_review',
+              review_status TEXT NOT NULL DEFAULT 'pending_review',
+              version_no INTEGER NOT NULL DEFAULT 1,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(test_case_set_id) REFERENCES test_case_sets(id) ON DELETE CASCADE,
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+              UNIQUE(project_id, case_no)
+            );
+
             CREATE TABLE IF NOT EXISTS project_environments (
               id TEXT PRIMARY KEY,
               project_id TEXT NOT NULL,
