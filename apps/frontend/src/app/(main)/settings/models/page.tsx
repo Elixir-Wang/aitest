@@ -156,7 +156,16 @@ export default function Page() {
   }
 
   async function testModel(id: string) {
+    // Immediately update UI to show testing status
+    setRows((current) =>
+      current.map((row) =>
+        row.id === id
+          ? { ...row, health_status: "testing" as const }
+          : row
+      )
+    );
     setTestingModelId(id);
+
     try {
       const result = await apiRequest<{ success: boolean; message: string; response: string | null }>(
         `/models/providers/${id}/test`,
@@ -167,6 +176,8 @@ export default function Page() {
       } else {
         toast.error(result.message);
       }
+      // Reload to get updated status from server
+      await loadProviders();
     } catch (error) {
       reportError(error, {
         fallbackMessage: "模型测试失败",
@@ -174,6 +185,8 @@ export default function Page() {
         method: "POST",
         path: `/models/providers/${id}/test`,
       });
+      // Reload to get actual status from server
+      await loadProviders();
     } finally {
       setTestingModelId(null);
     }
@@ -262,13 +275,8 @@ export default function Page() {
                                 : "bg-gray-400"
                         }`}
                       />
-                      <span className="text-sm">
+                      <span className="text-sm text-muted-foreground">
                         {healthStatusToLabel(item.health_status)}
-                        {item.last_test_at && item.health_status !== "unknown" && (
-                          <span className="ml-1 text-xs text-muted-foreground">
-                            ({formatDateTime(item.last_test_at)})
-                          </span>
-                        )}
                       </span>
                     </div>
                   </TableCell>
