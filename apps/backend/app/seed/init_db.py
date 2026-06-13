@@ -41,6 +41,9 @@ def init_db() -> None:
               api_key TEXT NOT NULL DEFAULT '',
               description TEXT NOT NULL DEFAULT '',
               status TEXT NOT NULL CHECK(status IN ('enabled', 'disabled')),
+              health_status TEXT NOT NULL DEFAULT 'unknown' CHECK(health_status IN ('unknown', 'healthy', 'unhealthy', 'testing')),
+              last_test_at TEXT,
+              last_test_message TEXT NOT NULL DEFAULT '',
               created_by TEXT NOT NULL,
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -435,6 +438,54 @@ def init_db() -> None:
               FOREIGN KEY(global_knowledge_version_id) REFERENCES global_knowledge_versions(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS global_knowledge_bases (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL UNIQUE,
+              description TEXT NOT NULL DEFAULT '',
+              status TEXT NOT NULL CHECK(status IN ('processing', 'available', 'conversion_failed')) DEFAULT 'available',
+              root_folder_id TEXT,
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS global_knowledge_folders (
+              id TEXT PRIMARY KEY,
+              knowledge_base_id TEXT NOT NULL,
+              parent_id TEXT,
+              name TEXT NOT NULL,
+              sort_order INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(knowledge_base_id) REFERENCES global_knowledge_bases(id) ON DELETE CASCADE,
+              FOREIGN KEY(parent_id) REFERENCES global_knowledge_folders(id) ON DELETE CASCADE,
+              UNIQUE(knowledge_base_id, parent_id, name)
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_global_knowledge_root_folder_name
+            ON global_knowledge_folders(knowledge_base_id, name)
+            WHERE parent_id IS NULL;
+
+            CREATE TABLE IF NOT EXISTS global_knowledge_vault_files (
+              id TEXT PRIMARY KEY,
+              knowledge_base_id TEXT NOT NULL,
+              folder_id TEXT NOT NULL,
+              original_filename TEXT NOT NULL,
+              display_name TEXT NOT NULL,
+              file_type TEXT NOT NULL DEFAULT '',
+              file_size INTEGER NOT NULL DEFAULT 0,
+              raw_path TEXT NOT NULL DEFAULT '',
+              markdown_path TEXT NOT NULL DEFAULT '',
+              markdown_content TEXT NOT NULL DEFAULT '',
+              conversion_status TEXT NOT NULL CHECK(conversion_status IN ('queued', 'running', 'success', 'failed')) DEFAULT 'success',
+              conversion_summary TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(knowledge_base_id) REFERENCES global_knowledge_bases(id) ON DELETE CASCADE,
+              FOREIGN KEY(folder_id) REFERENCES global_knowledge_folders(id) ON DELETE CASCADE,
+              UNIQUE(folder_id, display_name)
+            );
+
             CREATE TABLE IF NOT EXISTS knowledge_conversations (
               id TEXT PRIMARY KEY,
               project_id TEXT NOT NULL,
@@ -466,12 +517,18 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_documents_status ON global_knowledge_documents(status, updated_at);
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_documents_type ON global_knowledge_documents(knowledge_type, updated_at);
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_versions_document ON global_knowledge_versions(document_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_global_knowledge_bases_updated ON global_knowledge_bases(updated_at);
+            CREATE INDEX IF NOT EXISTS idx_global_knowledge_folders_base_parent ON global_knowledge_folders(knowledge_base_id, parent_id, sort_order);
+            CREATE INDEX IF NOT EXISTS idx_global_knowledge_vault_files_folder ON global_knowledge_vault_files(folder_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_knowledge_conversations_project_updated ON knowledge_conversations(project_id, created_by, updated_at);
             CREATE INDEX IF NOT EXISTS idx_knowledge_conversation_messages_conversation_created ON knowledge_conversation_messages(conversation_id, created_at);
             """
         )
         _ensure_column(db, "model_providers", "description", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "model_providers", "api_key", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(db, "model_providers", "health_status", "TEXT NOT NULL DEFAULT 'unknown'")
+        _ensure_column(db, "model_providers", "last_test_at", "TEXT")
+        _ensure_column(db, "model_providers", "last_test_message", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "projects", "code", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "projects", "default_site_url", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(db, "projects", "created_by", "TEXT NOT NULL DEFAULT 'system'")

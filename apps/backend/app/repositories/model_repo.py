@@ -51,6 +51,23 @@ def update_provider(
     )
 
 
+def update_provider_health(
+    db: Connection,
+    *,
+    provider_id: str,
+    health_status: str,
+    last_test_message: str,
+) -> None:
+    db.execute(
+        """
+        UPDATE model_providers
+        SET health_status = ?, last_test_at = CURRENT_TIMESTAMP, last_test_message = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (health_status, last_test_message, provider_id),
+    )
+
+
 def delete_provider(db: Connection, provider_id: str) -> None:
     db.execute("DELETE FROM model_providers WHERE id = ?", (provider_id,))
 

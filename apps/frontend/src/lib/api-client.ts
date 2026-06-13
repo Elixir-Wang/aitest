@@ -64,6 +64,9 @@ export type ApiModelProvider = {
   api_key: string;
   description: string;
   status: ApiStatus;
+  health_status: "unknown" | "healthy" | "unhealthy" | "testing";
+  last_test_at: string | null;
+  last_test_message: string;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -581,5 +584,18 @@ export function operationLogModuleToLabel(module: string) {
         user: "用户",
       } as Record<string, string>
     )[module] ?? module
+  );
+}
+
+export function healthStatusToLabel(healthStatus: string) {
+  return (
+    (
+      {
+        unknown: "未知",
+        healthy: "健康",
+        unhealthy: "异常",
+        testing: "测试中",
+      } as Record<string, string>
+    )[healthStatus] ?? healthStatus
   );
 }

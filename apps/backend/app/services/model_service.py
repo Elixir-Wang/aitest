@@ -228,6 +228,15 @@ def test_model_provider(provider_id: str, actor) -> dict:
         if not provider["api_key"]:
             raise api_error(400, "NO_API_KEY", "模型配置未保存 API Key，无法测试。")
 
+        # Update status to testing
+        model_repo.update_provider_health(
+            db,
+            provider_id=provider_id,
+            health_status="testing",
+            last_test_message="测试中...",
+        )
+        db.commit()
+
     try:
         llm = ChatOpenAI(
             model=provider["model"],
@@ -239,20 +248,43 @@ def test_model_provider(provider_id: str, actor) -> dict:
         response = llm.invoke("hi")
         response_content = response.content if hasattr(response, 'content') else str(response)
 
-        if response_content and len(response_content.strip()) > 0:
-            return {
-                "success": True,
-                "message": "模型测试成功",
-                "response": response_content[:200],
-            }
-        else:
-            return {
-                "success": False,
-                "message": "模型响应为空",
-                "response": None,
-            }
+        with connect() as db:
+            if response_content and len(response_content.strip()) > 0:
+                model_repo.update_provider_health(
+                    db,
+                    provider_id=provider_id,
+                    health_status="healthy",
+                    last_test_message="模型响应正常",
+                )
+                db.commit()
+                return {
+                    "success": True,
+                    "message": "模型测试成功",
+                    "response": response_content[:200],
+                }
+            else:
+                model_repo.update_provider_health(
+                    db,
+                    provider_id=provider_id,
+                    health_status="unhealthy",
+                    last_test_message="模型响应为空",
+                )
+                db.commit()
+                return {
+                    "success": False,
+                    "message": "模型响应为空",
+                    "response": None,
+                }
     except Exception as e:
         error_message = str(e)
+        with connect() as db:
+            model_repo.update_provider_health(
+                db,
+                provider_id=provider_id,
+                health_status="unhealthy",
+                last_test_message=error_message[:200],
+            )
+            db.commit()
         return {
             "success": False,
             "message": f"模型测试失败: {error_message[:200]}",

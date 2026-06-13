@@ -21,7 +21,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { type ApiModelProvider, apiRequest, formatDateTime } from "@/lib/api-client";
+import { type ApiModelProvider, apiRequest, formatDateTime, healthStatusToLabel } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -216,6 +216,7 @@ export default function Page() {
                 <TableHead>模型提供商</TableHead>
                 <TableHead>模型</TableHead>
                 <TableHead>Base URL</TableHead>
+                <TableHead>最近状态</TableHead>
                 <TableHead>更新时间</TableHead>
                 <TableHead className="w-16">操作</TableHead>
               </TableRow>
@@ -248,6 +249,29 @@ export default function Page() {
                   </TableCell>
                   <TableCell>{item.model}</TableCell>
                   <TableCell className="max-w-md truncate text-muted-foreground">{item.base_url}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex h-2 w-2 rounded-full ${
+                          item.health_status === "healthy"
+                            ? "bg-green-500"
+                            : item.health_status === "unhealthy"
+                              ? "bg-red-500"
+                              : item.health_status === "testing"
+                                ? "bg-yellow-500 animate-pulse"
+                                : "bg-gray-400"
+                        }`}
+                      />
+                      <span className="text-sm">
+                        {healthStatusToLabel(item.health_status)}
+                        {item.last_test_at && item.health_status !== "unknown" && (
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            ({formatDateTime(item.last_test_at)})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  </TableCell>
                   <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                   <TableCell>
                     <RowActions
@@ -270,10 +294,10 @@ export default function Page() {
                   </TableCell>
                 </TableRow>
               ))}
-              {loading && filteredRows.length === 0 ? <TableLoadingRow colSpan={6} label="模型列表加载中" /> : null}
+              {loading && filteredRows.length === 0 ? <TableLoadingRow colSpan={7} label="模型列表加载中" /> : null}
               {!loading && filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={7}>
                     暂无模型配置。添加模型后，可分配给需求分析、探索和测试生成等能力。
                   </TableCell>
                 </TableRow>
