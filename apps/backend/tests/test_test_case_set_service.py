@@ -173,3 +173,26 @@ def test_list_test_case_sets_returns_latest_generation_run(
     assert items[0]["generation_scope_type"] == "specified"
     assert items[0]["generation_scope_text"] == "这个需求中登录部分的测试用例"
     assert items[0]["generation_run"]["task_id"] == created["generation_run"]["task_id"]
+
+
+def test_test_case_generation_run_appears_in_task_center(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+
+    tasks = task_service.list_running_tasks(ACTOR, project_id="project-1")
+
+    assert any(
+        task["source_type"] == "test_case_generation_run"
+        and task["source_id"] == created["generation_run"]["id"]
+        and task["title"] == "登录需求测试用例集"
+        and task["status_label"] == "排队中"
+        for task in tasks
+    )
