@@ -64,7 +64,7 @@ export type ApiModelProvider = {
   api_key: string;
   description: string;
   status: ApiStatus;
-  health_status: "unknown" | "healthy" | "unhealthy" | "testing";
+  health_status: "unknown" | "healthy" | "unhealthy" | "timeout" | "testing";
   last_test_at: string | null;
   last_test_message: string;
   created_by: string;
@@ -304,6 +304,62 @@ export type ApiGlobalKnowledgeDetail = {
     created_at: string;
   }>;
   available_actions: ApiAvailableAction[];
+};
+
+export type ApiCompanyKnowledgeBase = {
+  id: string;
+  name: string;
+  description: string;
+  status: "processing" | "available" | "conversion_failed";
+  status_label: string;
+  root_folder_id: string;
+  file_count: number;
+  created_at: string;
+  updated_at: string;
+  available_actions: ApiAvailableAction[];
+};
+
+export type ApiCompanyKnowledgeFile = {
+  id: string;
+  type: "file";
+  knowledge_base_id: string;
+  folder_id: string;
+  name: string;
+  original_filename: string;
+  display_name: string;
+  file_type: string;
+  file_size: number;
+  conversion_status: "queued" | "running" | "success" | "failed";
+  conversion_summary: string;
+  markdown_content?: string;
+  raw_path?: string;
+  markdown_path?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiCompanyKnowledgeFolder = {
+  id: string;
+  type: "folder";
+  name: string;
+  parent_id: string | null;
+  is_root: boolean;
+  children: ApiCompanyKnowledgeTreeNode[];
+};
+
+export type ApiCompanyKnowledgeTreeNode = ApiCompanyKnowledgeFolder | ApiCompanyKnowledgeFile;
+
+export type ApiCompanyKnowledgeBaseList = {
+  items: ApiCompanyKnowledgeBase[];
+};
+
+export type ApiCompanyKnowledgeTree = {
+  base: ApiCompanyKnowledgeBase;
+  root: ApiCompanyKnowledgeFolder;
+};
+
+export type ApiCompanyKnowledgeUploadResult = {
+  files: ApiCompanyKnowledgeFile[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -591,9 +647,10 @@ export function healthStatusToLabel(healthStatus: string) {
   return (
     (
       {
-        unknown: "未知",
-        healthy: "健康",
-        unhealthy: "异常",
+        unknown: "未测试",
+        healthy: "通过",
+        unhealthy: "失败",
+        timeout: "超时",
         testing: "测试中",
       } as Record<string, string>
     )[healthStatus] ?? healthStatus

@@ -244,6 +244,7 @@ def test_model_provider(provider_id: str, actor) -> dict:
             base_url=provider["base_url"] or None,
             temperature=0,
             timeout=30,
+            request_timeout=30,
         )
         response = llm.invoke("hi")
         response_content = response.content if hasattr(response, 'content') else str(response)
@@ -259,7 +260,7 @@ def test_model_provider(provider_id: str, actor) -> dict:
                 db.commit()
                 return {
                     "success": True,
-                    "message": "模型测试成功",
+                    "message": "模型测试通过",
                     "response": response_content[:200],
                 }
             else:
@@ -272,21 +273,26 @@ def test_model_provider(provider_id: str, actor) -> dict:
                 db.commit()
                 return {
                     "success": False,
-                    "message": "模型响应为空",
+                    "message": "模型测试失败：响应为空",
                     "response": None,
                 }
     except Exception as e:
         error_message = str(e)
+        # Check if it's a timeout error
+        is_timeout = any(keyword in error_message.lower() for keyword in ['timeout', 'timed out', 'time out'])
+
         with connect() as db:
             model_repo.update_provider_health(
                 db,
                 provider_id=provider_id,
-                health_status="unhealthy",
+                health_status="timeout" if is_timeout else "unhealthy",
                 last_test_message=error_message[:200],
             )
             db.commit()
+
+        status_label = "超时" if is_timeout else "失败"
         return {
             "success": False,
-            "message": f"模型测试失败: {error_message[:200]}",
+            "message": f"模型测试{status_label}: {error_message[:200]}",
             "response": None,
         }

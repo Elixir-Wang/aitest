@@ -41,7 +41,7 @@ def init_db() -> None:
               api_key TEXT NOT NULL DEFAULT '',
               description TEXT NOT NULL DEFAULT '',
               status TEXT NOT NULL CHECK(status IN ('enabled', 'disabled')),
-              health_status TEXT NOT NULL DEFAULT 'unknown' CHECK(health_status IN ('unknown', 'healthy', 'unhealthy', 'testing')),
+              health_status TEXT NOT NULL DEFAULT 'unknown' CHECK(health_status IN ('unknown', 'healthy', 'unhealthy', 'timeout', 'testing')),
               last_test_at TEXT,
               last_test_message TEXT NOT NULL DEFAULT '',
               created_by TEXT NOT NULL,

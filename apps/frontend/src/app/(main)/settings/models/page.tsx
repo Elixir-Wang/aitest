@@ -6,7 +6,8 @@ import { Eye, EyeOff, Pencil, Trash2, TestTube } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
-import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
+import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -159,10 +160,8 @@ export default function Page() {
     // Immediately update UI to show testing status
     setRows((current) =>
       current.map((row) =>
-        row.id === id
-          ? { ...row, health_status: "testing" as const }
-          : row
-      )
+        row.id === id ? { ...row, health_status: "testing" as const } : row,
+      ),
     );
     setTestingModelId(id);
 
@@ -190,6 +189,22 @@ export default function Page() {
     } finally {
       setTestingModelId(null);
     }
+  }
+
+  function getBadgeVariant(healthStatus: string) {
+    if (healthStatus === "healthy") {
+      return "default"; // Green
+    }
+    if (healthStatus === "unhealthy") {
+      return "destructive"; // Red
+    }
+    if (healthStatus === "timeout") {
+      return "destructive"; // Red
+    }
+    if (healthStatus === "testing") {
+      return "secondary"; // Gray with animation
+    }
+    return "outline"; // Gray outline for unknown
   }
 
   return (
@@ -263,22 +278,13 @@ export default function Page() {
                   <TableCell>{item.model}</TableCell>
                   <TableCell className="max-w-md truncate text-muted-foreground">{item.base_url}</TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`inline-flex h-2 w-2 rounded-full ${
-                          item.health_status === "healthy"
-                            ? "bg-green-500"
-                            : item.health_status === "unhealthy"
-                              ? "bg-red-500"
-                              : item.health_status === "testing"
-                                ? "bg-yellow-500 animate-pulse"
-                                : "bg-gray-400"
-                        }`}
-                      />
-                      <span className="text-sm text-muted-foreground">
-                        {healthStatusToLabel(item.health_status)}
-                      </span>
-                    </div>
+                    <Badge variant={getBadgeVariant(item.health_status)}>
+                      {item.health_status === "testing" ? (
+                        <ProcessingState label={healthStatusToLabel(item.health_status)} />
+                      ) : (
+                        healthStatusToLabel(item.health_status)
+                      )}
+                    </Badge>
                   </TableCell>
                   <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                   <TableCell>
