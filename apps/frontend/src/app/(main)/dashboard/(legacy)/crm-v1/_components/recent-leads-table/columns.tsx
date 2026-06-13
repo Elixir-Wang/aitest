@@ -4,7 +4,8 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import { EllipsisVertical } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge-2";
+import { StatusBadge, englishStatusTone } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -61,7 +62,7 @@ export const recentLeadsColumns: ColumnDef<RecentLeadRow>[] = [
   {
     accessorKey: "status",
     header: "Status",
-    cell: ({ row }) => <Badge variant="secondary">{row.original.status}</Badge>,
+    cell: ({ row }) => <StatusBadge tone={englishStatusTone(row.original.status)}>{row.original.status}</StatusBadge>,
   },
   {
     accessorKey: "source",
@@ -83,7 +84,7 @@ export const recentLeadsColumns: ColumnDef<RecentLeadRow>[] = [
             <span className="sr-only">Open menu</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-32">
+        <DropdownMenuContent align="center" className="w-32">
           <DropdownMenuGroup>
             <DropdownMenuItem>View</DropdownMenuItem>
             <DropdownMenuItem>Assign</DropdownMenuItem>

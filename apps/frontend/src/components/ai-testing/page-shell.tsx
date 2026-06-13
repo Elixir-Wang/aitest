@@ -243,7 +243,7 @@ export function RowActions({ label, actions }: { label: string; actions: RowActi
           <Ellipsis className="size-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-max">
+      <DropdownMenuContent align="center" className="w-max">
         {actions.map((action, index) => (
           <div key={`${action.label}-${action.href ?? "action"}`}>
             {action.destructive && index > 0 && <DropdownMenuSeparator />}

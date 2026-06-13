@@ -4,9 +4,9 @@
 封装搜索 Agent，提供统一的服务接口
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List
 
-from app.agents.requirement_analysis.v3.agents.search_agent import create_auxiliary_search_agent
+from app.agents.requirement_analysis.v3.agents.search import create_auxiliary_search_agent
 
 
 async def search_for_answer(
@@ -75,8 +75,8 @@ async def search_for_answer(
 
     # 评估置信度
     if found:
-        # 答案长度 > 50 且有明确来源 → high
-        if len(answer) > 50 and source:
+        # 有明确来源 → high
+        if source:
             confidence = "high"
         # 答案长度 > 20 → medium
         elif len(answer) > 20:
@@ -89,10 +89,9 @@ async def search_for_answer(
     # 提取搜索步骤（关键词列表）
     search_steps = []
     for step in result.get("intermediate_steps", []):
-        if isinstance(step, dict) and "action_input" in step:
-            query = step["action_input"].get("query", "")
-            if query:
-                search_steps.append(query)
+        query = _extract_search_query(step)
+        if query:
+            search_steps.append(query)
 
     return {
         "found": found,
@@ -101,6 +100,23 @@ async def search_for_answer(
         "confidence": confidence,
         "search_steps": search_steps
     }
+
+
+def _extract_search_query(step: Any) -> str:
+    if isinstance(step, dict):
+        action_input = step.get("action_input", {})
+        if isinstance(action_input, dict):
+            return action_input.get("query", "")
+        return str(action_input) if action_input else ""
+
+    if isinstance(step, tuple) and step:
+        action = step[0]
+        tool_input = getattr(action, "tool_input", None)
+        if isinstance(tool_input, dict):
+            return tool_input.get("query", "")
+        return str(tool_input) if tool_input else ""
+
+    return ""
 
 
 __all__ = ["search_for_answer"]

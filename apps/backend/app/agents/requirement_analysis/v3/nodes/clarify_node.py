@@ -7,7 +7,8 @@
 from typing import List, Dict
 from app.agents.requirement_analysis.v3.state import RequirementAnalysisState
 from app.agents.requirement_analysis.v3.services.auxiliary_search_service import search_for_answer
-from app.agents.requirement_analysis.schemas_v2 import (
+from app.agents.model_selection import build_agent_model, resolve_model_selection
+from app.agents.requirement_analysis.schemas import (
     ClarificationOutput,
     ClarificationItem,
     ClarificationOption,
@@ -26,12 +27,8 @@ async def clarify_node(state: RequirementAnalysisState) -> RequirementAnalysisSt
     Returns:
         更新后的状态（添加 clarification 结果）
     """
-    # 获取 LLM 模型
-    from app.core.llm import build_agent_model
-    from app.repositories.model_selection_repo import resolve_model_selection
-
-    model_selection = resolve_model_selection("requirement_analysis")
-    model = build_agent_model(model_selection)
+    selection = resolve_model_selection("requirement_analysis")
+    model = build_agent_model(selection)
 
     # 1. 从质量评估中提取问题
     questions = _extract_questions_from_quality(state["quality"])

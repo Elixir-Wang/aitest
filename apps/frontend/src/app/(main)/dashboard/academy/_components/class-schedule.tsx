@@ -1,7 +1,7 @@
 import { format } from "date-fns";
 import { ArrowRight } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, classScheduleStatusTone } from "@/components/ui/status-badge";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function ClassSchedule() {
@@ -31,12 +31,9 @@ export function ClassSchedule() {
               <div className="truncate text-muted-foreground text-xs leading-none">Grade 11A • Room 2.14</div>
             </div>
 
-            <Badge
-              variant="secondary"
-              className="shrink-0 rounded-md border-green-600/50 bg-green-50 px-2.5 py-1 font-medium text-[10px] text-green-600 dark:border-green-800/50 dark:bg-green-500/10 dark:text-green-400"
-            >
+            <StatusBadge className="shrink-0 rounded-md px-2.5 py-1 font-medium text-[10px]" tone={classScheduleStatusTone("In Progress")}>
               In Progress
-            </Badge>
+            </StatusBadge>
           </div>
 
           <div className="grid grid-cols-1 gap-3 bg-card py-3 transition-colors hover:bg-muted/30 sm:grid-cols-[10rem_1fr_auto] sm:items-center">
@@ -53,12 +50,9 @@ export function ClassSchedule() {
               <div className="truncate text-muted-foreground text-xs leading-none">Grade 11B • Seminar Room 3</div>
             </div>
 
-            <Badge
-              variant="secondary"
-              className="shrink-0 rounded-md border-yellow-600/50 bg-yellow-50 px-2.5 py-1 font-medium text-[10px] text-yellow-700 dark:border-yellow-800/50 dark:bg-yellow-500/10 dark:text-yellow-300"
-            >
+            <StatusBadge className="shrink-0 rounded-md px-2.5 py-1 font-medium text-[10px]" tone={classScheduleStatusTone("Upcoming")}>
               Upcoming
-            </Badge>
+            </StatusBadge>
           </div>
 
           <div className="grid grid-cols-1 gap-3 bg-card py-3 transition-colors hover:bg-muted/30 sm:grid-cols-[10rem_1fr_auto] sm:items-center">
@@ -75,12 +69,9 @@ export function ClassSchedule() {
               <div className="truncate text-muted-foreground text-xs leading-none">Grade 11C • Physics Lab</div>
             </div>
 
-            <Badge
-              variant="secondary"
-              className="shrink-0 rounded-md border-yellow-600/50 bg-yellow-50 px-2.5 py-1 font-medium text-[10px] text-yellow-700 dark:border-yellow-800/50 dark:bg-yellow-500/10 dark:text-yellow-300"
-            >
+            <StatusBadge className="shrink-0 rounded-md px-2.5 py-1 font-medium text-[10px]" tone={classScheduleStatusTone("Upcoming")}>
               Upcoming
-            </Badge>
+            </StatusBadge>
           </div>
 
           <div className="grid grid-cols-1 gap-3 bg-card py-3 transition-colors hover:bg-muted/30 sm:grid-cols-[10rem_1fr_auto] sm:items-center">
@@ -97,12 +88,9 @@ export function ClassSchedule() {
               <div className="truncate text-muted-foreground text-xs leading-none">Grade 11A • Room 1.08</div>
             </div>
 
-            <Badge
-              variant="secondary"
-              className="shrink-0 rounded-md border-destructive/50 bg-destructive/10 px-2.5 py-1 font-medium text-[10px] text-destructive dark:border-destructive/50 dark:bg-destructive/20"
-            >
+            <StatusBadge className="shrink-0 rounded-md px-2.5 py-1 font-medium text-[10px]" tone={classScheduleStatusTone("Cancelled")}>
               Cancelled
-            </Badge>
+            </StatusBadge>
           </div>
 
           <div className="grid grid-cols-1 gap-3 bg-card py-3 transition-colors hover:bg-muted/30 sm:grid-cols-[10rem_1fr_auto] sm:items-center">
@@ -119,12 +107,9 @@ export function ClassSchedule() {
               <div className="truncate text-muted-foreground text-xs leading-none">Grade 11B • Computing Lab</div>
             </div>
 
-            <Badge
-              variant="secondary"
-              className="shrink-0 rounded-md border-yellow-600/50 bg-yellow-50 px-2.5 py-1 font-medium text-[10px] text-yellow-700 dark:border-yellow-800/50 dark:bg-yellow-500/10 dark:text-yellow-300"
-            >
+            <StatusBadge className="shrink-0 rounded-md px-2.5 py-1 font-medium text-[10px]" tone={classScheduleStatusTone("Upcoming")}>
               Upcoming
-            </Badge>
+            </StatusBadge>
           </div>
         </div>
       </CardContent>

@@ -1,0 +1,67 @@
+<h2>测试用例集生成入口设计</h2>
+<p class="subtitle">从“测试用例”页面右上角新建，只选择一个需求；关联探索自动选中但可调整；公司知识库默认开启。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A. 单弹窗表单</div>
+        <div class="mockup-body">
+          <div class="mock-nav">测试用例 <button class="mock-button">新建测试用例集</button></div>
+          <div class="placeholder" style="height: 34px;">用例集名称</div>
+          <div class="placeholder" style="height: 34px;">选择需求</div>
+          <div class="placeholder" style="height: 34px;">关联探索：已自动选择，可修改</div>
+          <div class="placeholder" style="height: 34px;">公司知识库：开启</div>
+          <div class="placeholder" style="height: 58px;">生成范围：全部 / 指定范围 + 输入框</div>
+          <button class="mock-button">生成测试用例</button>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>单弹窗表单</h3>
+      <p>最快落地，适合字段少的第一版。所有配置一次完成。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B. 分步向导</div>
+        <div class="mockup-body">
+          <div class="mock-nav">1 选择需求 → 2 选择上下文 → 3 生成范围</div>
+          <div class="placeholder" style="height: 42px;">Step 1: 选择一个需求</div>
+          <div class="placeholder" style="height: 42px;">Step 2: 自动带出关联探索 + 公司知识库</div>
+          <div class="placeholder" style="height: 58px;">Step 3: 全部需求 / 指定范围</div>
+          <button class="mock-button">开始生成</button>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>分步向导</h3>
+      <p>更清晰，适合后续扩展预检、冲突提示、生成预览。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C. 右侧抽屉</div>
+        <div class="mockup-body">
+          <div style="display:flex; gap:12px;">
+            <div class="placeholder" style="height:150px; flex:1;">用例列表保持可见</div>
+            <div class="placeholder" style="height:150px; width:170px;">右侧配置抽屉</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>右侧抽屉</h3>
+      <p>能保留列表上下文，但表单较长时容易拥挤。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>我的推荐</h3>
+  <p>推荐 B：分步向导。因为这个功能不是普通新增表单，而是一次 AI 生成任务，需要把“需求、探索、公司知识库、生成范围”按因果顺序讲清楚，后续也方便加预检和任务状态。</p>
+</div>

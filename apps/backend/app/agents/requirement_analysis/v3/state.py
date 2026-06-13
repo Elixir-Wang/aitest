@@ -5,7 +5,7 @@ LangGraph 状态定义
 """
 
 from typing import TypedDict, Optional, List, Dict
-from app.agents.requirement_analysis.schemas_v2 import (
+from app.agents.requirement_analysis.schemas import (
     RequirementUnderstandingOutput,
     QualityAssessmentOutput,
     ClarificationOutput,

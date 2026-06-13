@@ -7,7 +7,7 @@ import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, healthStatusTone } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -191,19 +191,6 @@ export default function Page() {
     }
   }
 
-  function getBadgeVariant(healthStatus: string): { variant: "success" | "destructive" | "secondary" | "outline"; appearance?: "default" | "light" | "outline" } {
-    if (healthStatus === "healthy") {
-      return { variant: "success", appearance: "outline" }; // Green outline
-    }
-    if (healthStatus === "unhealthy" || healthStatus === "timeout") {
-      return { variant: "destructive", appearance: "outline" }; // Red outline
-    }
-    if (healthStatus === "testing") {
-      return { variant: "secondary", appearance: "outline" }; // Gray outline with animation
-    }
-    return { variant: "outline" }; // Default outline for unknown
-  }
-
   return (
     <PageShell
       breadcrumbs={["系统管理", "模型配置"]}
@@ -275,13 +262,13 @@ export default function Page() {
                   <TableCell>{item.model}</TableCell>
                   <TableCell className="max-w-md truncate text-muted-foreground">{item.base_url}</TableCell>
                   <TableCell>
-                    <Badge {...getBadgeVariant(item.health_status)}>
+                    <StatusBadge tone={healthStatusTone(item.health_status)}>
                       {item.health_status === "testing" ? (
                         <ProcessingState label={healthStatusToLabel(item.health_status)} />
                       ) : (
                         healthStatusToLabel(item.health_status)
                       )}
-                    </Badge>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                   <TableCell>

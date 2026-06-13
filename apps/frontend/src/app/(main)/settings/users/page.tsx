@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, userStatusTone } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -271,9 +271,9 @@ export default function Page() {
                   <TableCell>{roleToLabel(item.role)}</TableCell>
                   <TableCell>{item.project_scope}</TableCell>
                   <TableCell>
-                    <Badge variant={item.status === "disabled" ? "outline" : "secondary"}>
+                    <StatusBadge tone={userStatusTone(item.status)}>
                       {statusToLabel(item.status)}
-                    </Badge>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell>{formatDateTime(item.last_login_at)}</TableCell>
                   <TableCell>

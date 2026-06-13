@@ -5,7 +5,8 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { addMinutes, differenceInCalendarDays, endOfToday, format, parseISO } from "date-fns";
 import { CircleAlertIcon, CircleCheckIcon, Clock3Icon, LoaderIcon, UserRound } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge-2";
+import { StatusBadge, englishStatusTone } from "@/components/ui/status-badge";
 import { Checkbox } from "@/components/ui/checkbox";
 
 import type { RecentCustomerRow } from "./schema";
@@ -78,11 +79,7 @@ export const recentCustomersColumns: ColumnDef<RecentCustomerRow>[] = [
     accessorKey: "status",
     header: "Status",
     filterFn: "equalsString",
-    cell: ({ row }) => (
-      <Badge variant="outline" className="px-1.5 text-muted-foreground">
-        {row.original.status}
-      </Badge>
-    ),
+    cell: ({ row }) => <StatusBadge tone={englishStatusTone(row.original.status)}>{row.original.status}</StatusBadge>,
   },
   {
     accessorKey: "billing",

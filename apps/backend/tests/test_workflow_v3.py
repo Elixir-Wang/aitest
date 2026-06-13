@@ -3,8 +3,8 @@
 """
 
 import pytest
-from app.agents.requirement_analysis.schemas_v2 import (
-    RequirementAnalysisInputV2,
+from app.agents.requirement_analysis.schemas import (
+    RequirementAnalysisWorkflowInput,
     AuxiliaryDocument,
 )
 
@@ -14,7 +14,7 @@ async def test_requirement_analysis_v3_end_to_end(monkeypatch):
     """端到端测试：v3.0 完整流程"""
 
     # Mock LLM 和各个 Agent（避免实际调用 API）
-    from app.agents.requirement_analysis.schemas_v2 import (
+    from app.agents.requirement_analysis.schemas import (
         RequirementUnderstandingOutput,
         QualityAssessmentOutput,
         QualityScores,
@@ -103,7 +103,7 @@ async def test_requirement_analysis_v3_end_to_end(monkeypatch):
     )
 
     # 准备测试输入
-    input_data = RequirementAnalysisInputV2(
+    input_data = RequirementAnalysisWorkflowInput(
         project_id="test-project",
         document_id="test-doc",
         document_name="登录需求",
@@ -155,7 +155,7 @@ async def test_requirement_analysis_v3_end_to_end(monkeypatch):
 async def test_requirement_analysis_v3_skip_clarification(monkeypatch):
     """测试高质量需求跳过澄清阶段"""
 
-    from app.agents.requirement_analysis.schemas_v2 import (
+    from app.agents.requirement_analysis.schemas import (
         RequirementUnderstandingOutput,
         QualityAssessmentOutput,
         QualityScores,
@@ -209,7 +209,7 @@ async def test_requirement_analysis_v3_skip_clarification(monkeypatch):
     )
 
     # 准备输入
-    input_data = RequirementAnalysisInputV2(
+    input_data = RequirementAnalysisWorkflowInput(
         project_id="test-project",
         document_id="test-doc",
         document_name="完善的需求",

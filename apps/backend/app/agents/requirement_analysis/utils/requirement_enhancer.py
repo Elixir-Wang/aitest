@@ -5,7 +5,7 @@
 """
 
 from typing import List, Optional
-from ..schemas_v2 import ClarificationItem
+from ..schemas import ClarificationItem
 
 
 def generate_enhanced_requirement(
@@ -103,7 +103,7 @@ def _build_enhancement_block(item: ClarificationItem) -> str:
     elif item.recommended_options:
         lines.append("> **建议选项**:")
         for opt in item.recommended_options:
-            lines.append(f">   - {opt.option_text}")
+            lines.append(f">   - {opt.label}: {opt.answer_markdown}")
             if opt.rationale:
                 lines.append(f">     - 理由: {opt.rationale}")
     lines.append(">")
@@ -112,7 +112,7 @@ def _build_enhancement_block(item: ClarificationItem) -> str:
     if item.evidence:
         sources = set()
         for ev in item.evidence:
-            sources.add(f"{ev.document_name}")
+            sources.add(ev.filename)
         lines.append(f"> **来源**: {', '.join(sources)}")
         lines.append(">")
 

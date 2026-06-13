@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, requirementAnalysisStatusTone } from "@/components/ui/status-badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiRequest, formatDateTime } from "@/lib/api-client";
@@ -73,13 +73,13 @@ function requirementDisplayStatus(item: RequirementRow) {
     return {
       isProcessing: ["queued", "running"].includes(latestRun.status),
       label: requirementAnalysisRunStatusLabels[latestRun.status] ?? latestRun.status,
-      variant: latestRun.status === "failed" || latestRun.status === "blocked" ? "destructive" : "secondary",
+      tone: requirementAnalysisStatusTone(latestRun.status),
     } as const;
   }
   return {
     isProcessing: item.status === "parsing",
     label: statusLabels[item.status] ?? item.status,
-    variant: item.status === "parsing" ? "outline" : "secondary",
+    tone: requirementAnalysisStatusTone(item.status),
   } as const;
 }
 
@@ -245,13 +245,13 @@ export function RequirementsPage({
                     </TableCell>
                     <TableCell>{item.file_count}</TableCell>
                     <TableCell>
-                      <Badge variant={displayStatus.variant}>
+                      <StatusBadge tone={displayStatus.tone}>
                         {displayStatus.isProcessing ? (
                           <ProcessingState label={displayStatus.label} />
                         ) : (
                           displayStatus.label
                         )}
-                      </Badge>
+                      </StatusBadge>
                     </TableCell>
                     <TableCell>{item.current_version ? `v${item.current_version.version_no}` : "-"}</TableCell>
                     <TableCell>{formatDateTime(item.updated_at)}</TableCell>

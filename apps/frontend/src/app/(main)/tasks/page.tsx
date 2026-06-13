@@ -6,7 +6,7 @@ import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Eye, Li
 
 import { ListToolbar, MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { ProcessingState } from "@/components/ai-testing/table-loading-row";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, taskStatusGroupTone } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Button as PaginationButton } from "@/components/ui/button-1";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,23 +16,13 @@ import { type ApiTaskItem, type ApiTaskList, apiRequest, formatDateTime } from "
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
-function getBadgeVariant(statusGroup: ApiTaskItem["status_group"]) {
-  if (statusGroup === "failed") {
-    return "destructive";
-  }
-  if (statusGroup === "waiting") {
-    return "outline";
-  }
-  return "secondary";
-}
-
 function TaskStatusBadge({ task }: { task: ApiTaskItem }) {
   const isRunning = task.status_group === "running";
 
   return (
-    <Badge variant={getBadgeVariant(task.status_group)}>
+    <StatusBadge tone={taskStatusGroupTone(task.status_group)}>
       {isRunning || task.status === "processing" ? <ProcessingState label={task.status_label} /> : task.status_label}
-    </Badge>
+    </StatusBadge>
   );
 }
 

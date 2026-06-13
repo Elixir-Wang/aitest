@@ -14,7 +14,7 @@ import {
   SoonPage,
 } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, chineseCompletionTone } from "@/components/ui/status-badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -84,7 +84,7 @@ export default function Page() {
                     </TableCell>
                     <TableCell>{item.title}</TableCell>
                     <TableCell>
-                      <Badge variant={item.status === "通过" ? "secondary" : "outline"}>{item.status}</Badge>
+                      <StatusBadge tone={chineseCompletionTone(item.status)}>{item.status}</StatusBadge>
                     </TableCell>
                     <TableCell>{item.suite}</TableCell>
                     <TableCell>{item.updated}</TableCell>

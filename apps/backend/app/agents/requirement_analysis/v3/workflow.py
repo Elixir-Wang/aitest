@@ -14,9 +14,9 @@ from app.agents.requirement_analysis.v3.nodes.understand_node import understand_
 from app.agents.requirement_analysis.v3.nodes.quality_node import quality_node
 from app.agents.requirement_analysis.v3.nodes.clarify_node import clarify_node
 from app.agents.requirement_analysis.v3.nodes.enhance_node import enhance_node
-from app.agents.requirement_analysis.schemas_v2 import (
-    RequirementAnalysisInputV2,
-    RequirementAnalysisResultV2,
+from app.agents.requirement_analysis.schemas import (
+    RequirementAnalysisResult,
+    RequirementAnalysisWorkflowInput,
 )
 
 
@@ -77,8 +77,8 @@ def build_requirement_analysis_workflow() -> StateGraph:
 
 
 async def run_requirement_analysis_v3(
-    input_data: RequirementAnalysisInputV2
-) -> RequirementAnalysisResultV2:
+    input_data: RequirementAnalysisWorkflowInput
+) -> RequirementAnalysisResult:
     """
     运行需求分析 v3.0（LangChain + Agentic Search）
 
@@ -86,7 +86,7 @@ async def run_requirement_analysis_v3(
         input_data: 需求分析输入
 
     Returns:
-        RequirementAnalysisResultV2: 完整的分析结果
+        RequirementAnalysisResult: 完整的分析结果
     """
     start_time = time.time()
 
@@ -135,7 +135,7 @@ async def run_requirement_analysis_v3(
     execution_time_ms = int((time.time() - start_time) * 1000)
 
     # 构建最终结果
-    result = RequirementAnalysisResultV2(
+    result = RequirementAnalysisResult(
         status=final_state["status"],
         understanding=final_state["understanding"],
         quality_assessment=final_state["quality"],

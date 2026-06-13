@@ -5,7 +5,8 @@
 """
 
 from app.agents.requirement_analysis.v3.state import RequirementAnalysisState
-from app.agents.requirement_analysis.agent_v2 import run_understanding_agent
+from app.agents.requirement_analysis.v3.agents.analysis import run_understanding_agent
+from app.agents.model_selection import build_agent_model, resolve_model_selection
 
 
 async def understand_node(state: RequirementAnalysisState) -> RequirementAnalysisState:
@@ -18,12 +19,8 @@ async def understand_node(state: RequirementAnalysisState) -> RequirementAnalysi
     Returns:
         更新后的状态（添加 understanding 结果）
     """
-    # 获取 LLM 模型（从 config 或使用默认）
-    from app.core.llm import build_agent_model
-    from app.repositories.model_selection_repo import resolve_model_selection
-
-    model_selection = resolve_model_selection("requirement_analysis")
-    model = build_agent_model(model_selection)
+    selection = resolve_model_selection("requirement_analysis")
+    model = build_agent_model(selection)
 
     # 执行需求理解
     understanding_result = await run_understanding_agent(

@@ -51,8 +51,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { BadgeDot, Badge as RequirementRoleBadge } from "@/components/ui/badge-2";
+import { StatusBadge, fileConversionTone, severityTone } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -1427,16 +1427,16 @@ export default function DocumentDetailPage() {
                       </TableCell>
                       <TableCell>{formatDateTime(file.created_at)}</TableCell>
                       <TableCell>
-                        <StatusBadge
+                        <ConversionStatusBadge
                           loading={["pending", "processing"].includes(file.conversion_status)}
                           status={file.conversion_status}
                           statusLabels={conversionLabels}
                         />
                       </TableCell>
                       <TableCell>
-                        <Badge variant={file.file_role === "primary" ? "default" : "secondary"}>
+                        <RequirementRoleBadge appearance="light" variant={file.file_role === "primary" ? "info" : "secondary"}>
                           {fileRoleLabels[file.file_role] ?? file.file_role}
-                        </Badge>
+                        </RequirementRoleBadge>
                       </TableCell>
                       <TableCell>
                         <RowActions
@@ -1756,9 +1756,9 @@ export default function DocumentDetailPage() {
                               <span className="inline-flex h-6 min-w-7 items-center justify-center rounded-md border border-border bg-muted/50 px-1.5 font-medium text-[11px] text-muted-foreground tabular-nums">
                                 {itemNumber}
                               </span>
-                              <Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>
+                              <StatusBadge tone={severityTone(item.severity)}>
                                 {pendingSeverityLabels[item.severity] ?? item.severity}
-                              </Badge>
+                              </StatusBadge>
                               <span className="font-medium text-foreground text-sm">{item.module_name}</span>
                             </div>
                             <div className="mt-3 text-foreground text-sm leading-6">{item.question}</div>
@@ -2289,7 +2289,7 @@ function FileRoleBadge({ file }: { file: SourceFile }) {
   );
 }
 
-function StatusBadge({
+function ConversionStatusBadge({
   loading = false,
   status,
   statusLabels,
@@ -2299,10 +2299,10 @@ function StatusBadge({
   statusLabels: Record<string, string>;
 }) {
   return (
-    <Badge className="gap-1.5" variant={status === "failed" ? "destructive" : "secondary"}>
+    <StatusBadge className="gap-1.5" tone={fileConversionTone(status)}>
       {loading ? <Loader2 className="size-3 animate-spin" /> : null}
       {statusLabels[status] ?? status}
-    </Badge>
+    </StatusBadge>
   );
 }
 

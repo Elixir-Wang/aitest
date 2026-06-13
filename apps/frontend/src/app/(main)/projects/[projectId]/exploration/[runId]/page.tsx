@@ -28,7 +28,12 @@ import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/pag
 import { useProjectName } from "@/components/ai-testing/use-project-name";
 import { AgentPlan, type AgentPlanStatus, type AgentPlanTask } from "@/components/ui/agent-plan";
 import { AiEditInput } from "@/components/ui/ai-input";
-import { Badge } from "@/components/ui/badge";
+import {
+  StatusBadge,
+  explorationPlanStatusTone,
+  goalValidationStatusTone,
+  logLevelTone,
+} from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Button as PaginationButton } from "@/components/ui/button-1";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -2002,7 +2007,7 @@ function ExplorationTaskPanel({
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-medium">计划状态</span>
-              <Badge variant={planStatus === "confirmed" ? "default" : "secondary"}>{planStatusLabel}</Badge>
+              <StatusBadge tone={explorationPlanStatusTone(planStatus)}>{planStatusLabel}</StatusBadge>
             </div>
             <p className="text-muted-foreground text-xs">
               {plan?.summary || "访问探索范围并由 AI 根据页面事实生成模块化探索计划。"}
@@ -2177,14 +2182,6 @@ function GoalValidationSection({ detail, run }: { detail: ExplorationRunDetail |
   const stats = validation?.stats ?? {};
   const statText = (key: string) => formatUnknownCount(stats[key]);
   const statusLabel = goalValidationStatusLabels[status] ?? status;
-  const statusClassName =
-    status === "passed"
-      ? "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300"
-      : status === "failed"
-        ? "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300"
-        : status === "partial"
-          ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
-          : "bg-muted text-muted-foreground";
 
   return (
     <ShellSection>
@@ -2193,7 +2190,7 @@ function GoalValidationSection({ detail, run }: { detail: ExplorationRunDetail |
           <h2 className="font-medium text-sm">目标验证</h2>
           <p className="text-muted-foreground text-xs">区分页面采集完成和探索目标是否达成</p>
         </div>
-        <span className={cn("rounded px-2 py-1 text-xs", statusClassName)}>{statusLabel}</span>
+        <StatusBadge tone={goalValidationStatusTone(status)}>{statusLabel}</StatusBadge>
       </div>
       <div className="grid gap-3 text-sm md:grid-cols-2">
         <InfoRow label="探索目标" value={displayValue(goal)} />
@@ -2647,7 +2644,7 @@ function LogEntryRows({ entry, onOpen }: { entry: ParsedLogEntry; onOpen: () => 
         {pageLabel}
       </TableCell>
       <TableCell>
-        <Badge variant={entry.level === "error" ? "destructive" : "outline"}>{logLevelLabels[entry.level]}</Badge>
+        <StatusBadge tone={logLevelTone(entry.level)}>{logLevelLabels[entry.level]}</StatusBadge>
       </TableCell>
       <TableCell className="truncate" title={summary}>
         {summary}

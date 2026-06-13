@@ -44,6 +44,7 @@ def test_business_agent_packages_have_agent_entrypoint() -> None:
     for package in sorted(path for path in NEW_AGENTS_ROOT.iterdir() if path.is_dir()):
         if package.name.startswith("_") or package.name in {
             "shared",
+            "requirement_analysis",
             "requirement_analysis_codex",
             "requirement_auxiliary_enhancement",
             "site_exploration",
@@ -104,7 +105,6 @@ def test_site_exploration_services_use_child_agents() -> None:
 
 def test_requirement_analysis_codex_agent_owns_its_schemas() -> None:
     package = NEW_AGENTS_ROOT / "requirement_analysis_codex"
-    assert not (NEW_AGENTS_ROOT / "requirement_analysis").exists()
     assert not (package / "agent.py").exists()
     assert not (package / "tools.py").exists()
     assert (package / "service.py").exists()
@@ -125,13 +125,54 @@ def test_requirement_analysis_codex_agent_owns_its_schemas() -> None:
     assert compatibility_schemas.RequirementAuxiliaryEnhancementOutput is auxiliary_schemas.RequirementAuxiliaryEnhancementOutput
 
 
-def test_requirement_analysis_service_uses_codex_agent_directly() -> None:
+def test_requirement_analysis_package_only_contains_v3_runtime() -> None:
+    package = NEW_AGENTS_ROOT / "requirement_analysis"
+    assert (package / "v3").exists()
+    assert (package / "schemas.py").exists()
+    assert not (package / "agent_v2.py").exists()
+    assert not (package / "service_v2.py").exists()
+    assert not (package / "router_v2.py").exists()
+    assert not (package / "schemas_v2.py").exists()
+    assert not (package / "__init___v2.py").exists()
+    assert (package / "skills" / "requirement-analysis" / "SKILL.md").exists()
+    assert not (package / "skills" / "requirement-analysis-v2").exists()
+    assert not (package / "primary_analysis").exists()
+    assert not (package / "auxiliary_enhancement").exists()
+
+    for path in _python_files(package):
+        text = path.read_text(encoding="utf-8")
+        assert "agent_v2" not in text
+        assert "schemas_v2" not in text
+        assert "service_v2" not in text
+        assert "router_v2" not in text
+
+
+def test_requirement_analysis_does_not_depend_on_codex_agent_files() -> None:
+    checked_paths = [
+        *(NEW_AGENTS_ROOT / "requirement_analysis").rglob("*.py"),
+        BACKEND_APP / "schemas" / "requirement_analysis.py",
+        NEW_AGENTS_ROOT / "requirement_auxiliary_enhancement" / "schemas.py",
+        BACKEND_APP / "services" / "document" / "service.py",
+    ]
+
+    offenders: list[str] = []
+    for path in checked_paths:
+        if "__pycache__" in path.parts:
+            continue
+        if "app.agents.requirement_analysis_codex" in path.read_text(encoding="utf-8"):
+            offenders.append(str(path.relative_to(BACKEND_APP.parent)))
+
+    assert offenders == []
+
+
+def test_requirement_analysis_service_uses_v3_workflow_directly() -> None:
     service_path = BACKEND_APP / "services" / "document" / "service.py"
     text = service_path.read_text(encoding="utf-8")
 
-    assert "app.agents.requirement_analysis_codex.service" in text
+    assert "app.agents.requirement_analysis.v3.workflow" in text
     assert "app.agents.requirement_auxiliary_enhancement.service" in text
     assert "app.agents.requirement_analysis.primary_analysis" not in text
+    assert "app.agents.requirement_analysis.auxiliary_enhancement" not in text
 
 
 def test_deterministic_requirement_file_conversion_lives_outside_agent_package() -> None:

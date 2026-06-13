@@ -7,7 +7,7 @@ import { Activity, ClipboardList, Eye, FileClock } from "lucide-react";
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { ProcessingState } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, chineseCompletionTone } from "@/components/ui/status-badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -85,9 +85,9 @@ export default function Page() {
                   <TableCell>{report.project}</TableCell>
                   <TableCell>{report.name}</TableCell>
                   <TableCell>
-                    <Badge variant={report.status === "完成" ? "secondary" : "outline"}>
+                    <StatusBadge tone={chineseCompletionTone(report.status)}>
                       {report.status === "处理中" ? <ProcessingState label={report.status} /> : report.status}
-                    </Badge>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell>{report.updated}</TableCell>
                   <TableCell>

@@ -11,7 +11,7 @@ import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/a
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, projectStatusTone } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -240,9 +240,9 @@ export default function Page() {
                     <OverflowTooltipText value={project.description} />
                   </TableCell>
                   <TableCell>
-                    <Badge variant={project.status === "archived" ? "outline" : "secondary"}>
+                    <StatusBadge tone={projectStatusTone(project.status)}>
                       {statusToLabel(project.status)}
-                    </Badge>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell>{formatDateTime(project.updated_at)}</TableCell>
                   <TableCell>

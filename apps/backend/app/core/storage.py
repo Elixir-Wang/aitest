@@ -11,6 +11,14 @@ def global_knowledge_version_dir(document_id: str, version_id: str) -> Path:
     return PROJECT_FILE_STORAGE_ROOT.parent / "global-knowledge" / "documents" / document_id / "versions" / version_id
 
 
+def global_knowledge_base_dir(base_id: str) -> Path:
+    return PROJECT_FILE_STORAGE_ROOT.parent / "global-knowledge" / "bases" / base_id
+
+
+def global_knowledge_folder_dir(base_id: str, folder_id: str) -> Path:
+    return global_knowledge_base_dir(base_id) / "folders" / folder_id
+
+
 def resolve_stored_path(path_value: str | None) -> Path | None:
     if not path_value:
         return None

@@ -11,11 +11,14 @@ from fastapi import UploadFile
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir, resolve_stored_path, store_path
-from app.agents.requirement_analysis_codex.errors import RequirementAnalysisCancelledError
-from app.agents.requirement_analysis_codex.process_registry import terminate as terminate_requirement_analysis_process
-from app.agents.requirement_analysis.auxiliary_enhancement.service import enhance_requirement_with_auxiliary_articles
+from app.agents.requirement_analysis.errors import RequirementAnalysisCancelledError
+from app.agents.requirement_analysis.process_registry import terminate as terminate_requirement_analysis_process
+from app.agents.requirement_auxiliary_enhancement.service import enhance_requirement_with_auxiliary_articles
 from app.agents.requirement_analysis.v3.workflow import run_requirement_analysis_v3
-from app.agents.requirement_analysis.schemas_v2 import RequirementAnalysisInputV2, AuxiliaryDocument
+from app.agents.requirement_analysis.schemas import (
+    AuxiliaryDocument,
+    RequirementAnalysisWorkflowInput,
+)
 from app.repositories import document_repo, requirement_analysis_run_repo, requirement_clarification_answer_repo
 from app.schemas.document import RequirementAnalysisFinalizeIn, RequirementClarificationAnswerIn, SourceDocumentUpdateIn
 from app.schemas.requirement_analysis import (
@@ -523,7 +526,7 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
     if task_id:
         _ensure_requirement_analysis_run_not_stopping(task_id)
 
-    analysis_input = RequirementAnalysisInputV2(
+    analysis_input = RequirementAnalysisWorkflowInput(
         project_id=project_id,
         document_id=document_id,
         document_name=document["name"],

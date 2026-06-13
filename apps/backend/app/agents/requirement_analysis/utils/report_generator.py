@@ -4,7 +4,7 @@
 用于生成需求分析报告（Markdown 格式）
 """
 
-from app.agents.requirement_analysis.schemas_v2 import (
+from app.agents.requirement_analysis.schemas import (
     RequirementUnderstandingOutput,
     QualityAssessmentOutput,
     ClarificationOutput,

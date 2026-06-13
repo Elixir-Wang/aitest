@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.agents.requirement_analysis_codex.schemas import (
+from app.agents.requirement_analysis.schemas import (
     RequirementAppliedSupplement,
     RequirementClarificationOption,
     RequirementEvidenceReference,
