@@ -12,9 +12,7 @@ from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir, resolve_stored_path, store_path
 from app.agents.requirement_analysis.auxiliary_enhancement.service import enhance_requirement_with_auxiliary_articles
-from app.agents.requirement_analysis.primary_analysis.service import (
-    analyze_requirement as analyze_requirement_with_agent,
-)
+from app.agents.requirement_analysis.service_adapter import analyze_requirement as analyze_requirement_with_agent
 from app.repositories import document_repo, requirement_analysis_run_repo, requirement_clarification_answer_repo
 from app.schemas.document import RequirementAnalysisFinalizeIn, RequirementClarificationAnswerIn, SourceDocumentUpdateIn
 from app.schemas.requirement_analysis import (
