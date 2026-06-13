@@ -14,7 +14,8 @@ from app.core.storage import project_requirement_dir, resolve_stored_path, store
 from app.agents.requirement_analysis_codex.errors import RequirementAnalysisCancelledError
 from app.agents.requirement_analysis_codex.process_registry import terminate as terminate_requirement_analysis_process
 from app.agents.requirement_analysis.auxiliary_enhancement.service import enhance_requirement_with_auxiliary_articles
-from app.agents.requirement_analysis.service_adapter import analyze_requirement as analyze_requirement_with_agent
+from app.agents.requirement_analysis.v3.workflow import run_requirement_analysis_v3
+from app.agents.requirement_analysis.schemas_v2 import RequirementAnalysisInputV2, AuxiliaryDocument
 from app.repositories import document_repo, requirement_analysis_run_repo, requirement_clarification_answer_repo
 from app.schemas.document import RequirementAnalysisFinalizeIn, RequirementClarificationAnswerIn, SourceDocumentUpdateIn
 from app.schemas.requirement_analysis import (
@@ -522,7 +523,7 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
     if task_id:
         _ensure_requirement_analysis_run_not_stopping(task_id)
 
-    analysis_input = RequirementAnalysisInput(
+    analysis_input = RequirementAnalysisInputV2(
         project_id=project_id,
         document_id=document_id,
         document_name=document["name"],
@@ -530,9 +531,11 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
         primary_mapping_id=primary_file["id"],
         primary_filename=primary_file["original_filename"],
         primary_markdown_content=primary_markdown_content,
+        auxiliary_documents=[],
+        config={},
     )
     try:
-        analysis_output = await analyze_requirement_with_agent(analysis_input)
+        analysis_output = await run_requirement_analysis_v3(analysis_input)
     except RequirementAnalysisCancelledError:
         raise
     except Exception as exc:
@@ -541,15 +544,53 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
     if task_id:
         _ensure_requirement_analysis_run_not_stopping(task_id)
 
-    preliminary_markdown = analysis_output.preliminary_requirement_markdown.strip()
+    # v3 返回 enhanced_requirement_markdown
+    preliminary_markdown = (analysis_output.enhanced_requirement_markdown or primary_markdown_content).strip()
     if not preliminary_markdown:
         raise api_error(502, "REQUIREMENT_ANALYSIS_EMPTY_DRAFT", "需求分析智能体未返回初步需求。")
 
     analysis_id = f"reqana-{secrets.token_hex(8)}"
-    output_data = analysis_output.model_dump()
-    output_data.setdefault("analysis_report_markdown", "")
-    pending_count = len(output_data.get("clarification_questions", [])) + len(output_data.get("conflicts", []))
-    supplement_count = len(output_data.get("applied_supplements", []))
+
+    # 转换 v3 格式到旧格式
+    clarification_questions = [
+        {
+            "id": item.item_id,
+            "question": item.question,
+            "priority": "HIGH" if item.severity == "blocker" else "MEDIUM",
+            "dimension": item.source,
+            "impact": item.impact,
+            "recommended_options": [
+                {
+                    "id": opt.option_id,
+                    "label": opt.label,
+                    "answer_markdown": opt.answer_markdown,
+                }
+                for opt in item.recommended_options
+            ],
+        }
+        for item in analysis_output.clarification.items
+    ]
+
+    output_data = {
+        "status": analysis_output.status,
+        "analysis_summary": analysis_output.quality_assessment.assessment_summary,
+        "preliminary_requirement_markdown": preliminary_markdown,
+        "analysis_report_markdown": analysis_output.analysis_report_markdown or "",
+        "applied_supplements": [],
+        "maturity_assessment": analysis_output.quality_assessment.scores.model_dump(),
+        "clarification_questions": clarification_questions,
+        "conflicts": [],
+        "quality_gate": {
+            "result": analysis_output.quality_assessment.decision.result,
+            "testability_score": analysis_output.quality_assessment.scores.testability,
+            "blocking_issues": analysis_output.quality_assessment.decision.blocking_issues,
+            "warnings": [],
+        },
+        "metadata": analysis_output.metadata,
+    }
+
+    pending_count = len(clarification_questions)
+    supplement_count = 0
     draft_content_hash = _content_hash(preliminary_markdown)
 
     with connect() as db:
@@ -561,10 +602,10 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
             version_id=None,
             primary_mapping_id=primary_file["id"],
             status=analysis_output.status,
-            analysis_summary=analysis_output.analysis_summary,
+            analysis_summary=analysis_output.quality_assessment.assessment_summary,
             output_json=output_data,
-            quality_result=analysis_output.quality_gate.result,
-            testability_score=analysis_output.quality_gate.testability_score,
+            quality_result=analysis_output.quality_assessment.decision.result,
+            testability_score=analysis_output.quality_assessment.scores.testability,
             draft_content_hash=draft_content_hash,
             created_by=actor["id"],
         )
@@ -575,8 +616,8 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
         "document_id": document_id,
         "version_id": None,
         "primary_mapping_id": primary_file["id"],
-        "quality_result": analysis_output.quality_gate.result,
-        "testability_score": analysis_output.quality_gate.testability_score,
+        "quality_result": analysis_output.quality_assessment.decision.result,
+        "testability_score": analysis_output.quality_assessment.scores.testability,
         "created_by": actor["id"],
         "created_at": "",
         "draft_content_hash": draft_content_hash,
@@ -599,7 +640,7 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
         summary=f"执行需求分析：{document['name']}",
         after={
             "status": analysis_output.status,
-            "quality_result": analysis_output.quality_gate.result,
+            "quality_result": analysis_output.quality_assessment.decision.result,
             "supplement_count": supplement_count,
             "pending_count": pending_count,
         },
