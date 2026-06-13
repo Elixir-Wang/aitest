@@ -11,6 +11,9 @@ class ModelProviderOut(BaseModel):
     api_key: str
     description: str
     status: Status
+    health_status: str
+    last_test_at: str | None
+    last_test_message: str
     created_by: str
     created_at: str
     updated_at: str
