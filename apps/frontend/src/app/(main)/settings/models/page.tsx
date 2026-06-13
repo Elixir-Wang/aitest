@@ -191,20 +191,17 @@ export default function Page() {
     }
   }
 
-  function getBadgeVariant(healthStatus: string) {
+  function getBadgeVariant(healthStatus: string): { variant: "success" | "destructive" | "secondary" | "outline"; appearance?: "default" | "light" | "outline" } {
     if (healthStatus === "healthy") {
-      return "default"; // Green
+      return { variant: "success", appearance: "outline" }; // Green outline
     }
-    if (healthStatus === "unhealthy") {
-      return "destructive"; // Red
-    }
-    if (healthStatus === "timeout") {
-      return "destructive"; // Red
+    if (healthStatus === "unhealthy" || healthStatus === "timeout") {
+      return { variant: "destructive", appearance: "outline" }; // Red outline
     }
     if (healthStatus === "testing") {
-      return "secondary"; // Gray with animation
+      return { variant: "secondary", appearance: "outline" }; // Gray outline with animation
     }
-    return "outline"; // Gray outline for unknown
+    return { variant: "outline" }; // Default outline for unknown
   }
 
   return (
@@ -278,7 +275,7 @@ export default function Page() {
                   <TableCell>{item.model}</TableCell>
                   <TableCell className="max-w-md truncate text-muted-foreground">{item.base_url}</TableCell>
                   <TableCell>
-                    <Badge variant={getBadgeVariant(item.health_status)}>
+                    <Badge {...getBadgeVariant(item.health_status)}>
                       {item.health_status === "testing" ? (
                         <ProcessingState label={healthStatusToLabel(item.health_status)} />
                       ) : (
