@@ -89,3 +89,87 @@ def test_create_test_case_set_defaults_company_knowledge_and_related_exploration
     assert created["case_count"] == 0
     assert created["generation_run"]["status"] == "queued"
     assert created["generation_run"]["input_snapshot"]["company_knowledge_role"] == "testing_guidance_only"
+
+
+def test_create_test_case_set_requires_specified_scope_text(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+
+    with pytest.raises(ValueError):
+        TestCaseSetCreateIn(
+            name="登录需求测试用例集",
+            requirement_doc_id="doc-1",
+            generation_scope_type="specified",
+            generation_scope_text="",
+        )
+
+
+def test_create_test_case_set_rejects_requirement_from_other_project(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    with core_db.connect() as db:
+        db.execute(
+            "INSERT INTO projects (id, name, status, description, created_by) VALUES (?, ?, 'active', '', ?)",
+            ("project-2", "其他项目", ACTOR["id"]),
+        )
+        db.execute(
+            """
+            INSERT INTO source_documents (id, project_id, name, document_type, status, created_by)
+            VALUES (?, ?, ?, 'PRD', 'finalized', ?)
+            """,
+            ("doc-2", "project-2", "其他需求", ACTOR["id"]),
+        )
+
+    with pytest.raises(HTTPException) as exc_info:
+        test_case_service.create_test_case_set(
+            "project-1",
+            TestCaseSetCreateIn(name="非法用例集", requirement_doc_id="doc-2"),
+            ACTOR,
+        )
+
+    assert exc_info.value.detail["code"] == "INVALID_REQUIREMENT_DOCUMENT"
+
+
+def test_guest_cannot_create_test_case_set(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+
+    with pytest.raises(HTTPException) as exc_info:
+        test_case_service.create_test_case_set(
+            "project-1",
+            TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
+            GUEST,
+        )
+
+    assert exc_info.value.status_code == 403
+
+
+def test_list_test_case_sets_returns_latest_generation_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(
+            name="登录部分测试用例集",
+            requirement_doc_id="doc-1",
+            generation_scope_type="specified",
+            generation_scope_text="这个需求中登录部分的测试用例",
+        ),
+        ACTOR,
+    )
+
+    items = test_case_service.list_project_test_case_sets("project-1", ACTOR)
+
+    assert [item["id"] for item in items] == [created["id"]]
+    assert items[0]["generation_scope_type"] == "specified"
+    assert items[0]["generation_scope_text"] == "这个需求中登录部分的测试用例"
+    assert items[0]["generation_run"]["task_id"] == created["generation_run"]["task_id"]
