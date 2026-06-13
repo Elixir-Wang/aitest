@@ -1,12 +1,13 @@
 """
 LangGraph 工作流编排
 
-使用 LangGraph 构建需求分析工作流
+使用 LangGraph 1.2+ 构建需求分析工作流
 """
 
 import time
 from datetime import datetime
-from langgraph.graph import StateGraph, END
+from typing import Literal
+from langgraph.graph import StateGraph, END, START
 
 from app.agents.requirement_analysis.v3.state import RequirementAnalysisState
 from app.agents.requirement_analysis.v3.nodes.understand_node import understand_node
@@ -19,9 +20,23 @@ from app.agents.requirement_analysis.schemas_v2 import (
 )
 
 
+def should_skip_clarification(state: RequirementAnalysisState) -> Literal["clarify", "enhance"]:
+    """
+    条件路由：决定是否跳过澄清阶段
+
+    条件：质量评分 >= 95 且决策为 approved
+    """
+    quality = state.get("quality")
+    if quality and \
+       quality.scores.overall >= 95 and \
+       quality.decision.result == "approved":
+        return "enhance"  # 跳过澄清
+    return "clarify"  # 需要澄清
+
+
 def build_requirement_analysis_workflow() -> StateGraph:
     """
-    构建需求分析工作流
+    构建需求分析工作流（LangGraph 1.2+）
 
     流程：
     1. 需求理解
@@ -31,6 +46,7 @@ def build_requirement_analysis_workflow() -> StateGraph:
        - 其他 → 澄清（Agentic Search）
     4. 增强和报告生成
     """
+    # 使用 StateGraph
     workflow = StateGraph(RequirementAnalysisState)
 
     # 添加节点
@@ -39,26 +55,11 @@ def build_requirement_analysis_workflow() -> StateGraph:
     workflow.add_node("clarify", clarify_node)
     workflow.add_node("enhance", enhance_node)
 
-    # 设置入口点
-    workflow.set_entry_point("understand")
-
-    # 串行连接
+    # 设置边
+    workflow.add_edge(START, "understand")
     workflow.add_edge("understand", "assess_quality")
 
-    # 条件路由：根据质量决定是否跳过澄清
-    def should_skip_clarification(state: RequirementAnalysisState) -> str:
-        """
-        决定是否跳过澄清阶段
-
-        条件：质量评分 >= 95 且决策为 approved
-        """
-        quality = state.get("quality")
-        if quality and \
-           quality.scores.overall >= 95 and \
-           quality.decision.result == "approved":
-            return "enhance"  # 跳过澄清
-        return "clarify"  # 需要澄清
-
+    # 条件路由
     workflow.add_conditional_edges(
         "assess_quality",
         should_skip_clarification,
@@ -68,10 +69,8 @@ def build_requirement_analysis_workflow() -> StateGraph:
         }
     )
 
-    # 澄清后进入增强
+    # 串行连接
     workflow.add_edge("clarify", "enhance")
-
-    # 增强后结束
     workflow.add_edge("enhance", END)
 
     return workflow
