@@ -1,5 +1,8 @@
 import secrets
 
+from pydantic import SecretStr
+from langchain_openai import ChatOpenAI
+
 from app.agents.capabilities import get_ai_capability, list_ai_capabilities
 from app.core.db import connect
 from app.core.exceptions import api_error
@@ -213,3 +216,45 @@ def _assignment_snapshot(row) -> dict:
         "base_url": row["base_url"],
         "model_status": row["model_status"],
     }
+
+
+def test_model_provider(provider_id: str, actor) -> dict:
+    with connect() as db:
+        provider = model_repo.find_provider_by_id(db, provider_id)
+        if not provider:
+            raise api_error(404, "NOT_FOUND", "模型配置不存在。")
+        if provider["status"] != "enabled":
+            raise api_error(400, "MODEL_DISABLED", "模型配置未启用，无法测试。")
+        if not provider["api_key"]:
+            raise api_error(400, "NO_API_KEY", "模型配置未保存 API Key，无法测试。")
+
+    try:
+        llm = ChatOpenAI(
+            model=provider["model"],
+            api_key=SecretStr(provider["api_key"]),
+            base_url=provider["base_url"] or None,
+            temperature=0,
+            timeout=30,
+        )
+        response = llm.invoke("hi")
+        response_content = response.content if hasattr(response, 'content') else str(response)
+
+        if response_content and len(response_content.strip()) > 0:
+            return {
+                "success": True,
+                "message": "模型测试成功",
+                "response": response_content[:200],
+            }
+        else:
+            return {
+                "success": False,
+                "message": "模型响应为空",
+                "response": None,
+            }
+    except Exception as e:
+        error_message = str(e)
+        return {
+            "success": False,
+            "message": f"模型测试失败: {error_message[:200]}",
+            "response": None,
+        }

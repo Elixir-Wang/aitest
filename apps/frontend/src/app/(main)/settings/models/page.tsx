@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Pencil, Trash2, TestTube } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
@@ -46,6 +46,7 @@ export default function Page() {
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
+  const [testingModelId, setTestingModelId] = useState<string | null>(null);
   const filteredRows = rows.filter((provider) =>
     [provider.provider, provider.model, provider.base_url, provider.description, provider.updated_at].some((value) =>
       value.toLowerCase().includes(searchText.trim().toLowerCase()),
@@ -154,6 +155,30 @@ export default function Page() {
     }
   }
 
+  async function testModel(id: string) {
+    setTestingModelId(id);
+    try {
+      const result = await apiRequest<{ success: boolean; message: string; response: string | null }>(
+        `/models/providers/${id}/test`,
+        { method: "POST" },
+      );
+      if (result.success) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      reportError(error, {
+        fallbackMessage: "模型测试失败",
+        actionLabel: "测试模型",
+        method: "POST",
+        path: `/models/providers/${id}/test`,
+      });
+    } finally {
+      setTestingModelId(null);
+    }
+  }
+
   return (
     <PageShell
       breadcrumbs={["系统管理", "模型配置"]}
@@ -227,12 +252,18 @@ export default function Page() {
                   <TableCell>
                     <RowActions
                       actions={[
+                        {
+                          label: "测试",
+                          icon: TestTube,
+                          onSelect: () => testModel(item.id),
+                          disabled: testingModelId === item.id,
+                        },
                         { label: "编辑", icon: Pencil, onSelect: () => openEditDialog(item) },
                         { label: "删除", destructive: true, icon: Trash2, onSelect: () => deleteProviders([item.id]) },
                       ].map((action) => ({
                         ...action,
-                        disabled: !canWrite,
-                        onSelect: canWrite ? action.onSelect : undefined,
+                        disabled: action.disabled || (!canWrite && action.label !== "测试"),
+                        onSelect: canWrite || action.label === "测试" ? action.onSelect : undefined,
                       }))}
                       label={`打开 ${item.provider} 操作菜单`}
                     />

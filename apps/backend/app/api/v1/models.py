@@ -25,3 +25,8 @@ def update_model_provider(provider_id: str, payload: ModelProviderIn, actor=Depe
 @router.delete("/providers/{provider_id}")
 def delete_model_provider(provider_id: str, actor=Depends(require_admin)) -> dict:
     return model_service.delete_model_provider(provider_id, actor)
+
+
+@router.post("/providers/{provider_id}/test")
+def test_model_provider(provider_id: str, actor=Depends(current_user)) -> dict:
+    return model_service.test_model_provider(provider_id, actor)
