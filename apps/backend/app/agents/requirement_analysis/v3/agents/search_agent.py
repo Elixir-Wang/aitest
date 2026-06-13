@@ -1,74 +1,117 @@
 """
-搜索 Agent - 使用 ReAct 模式智能搜索辅助文档
+搜索 Agent - 使用简化的工具调用模式搜索辅助文档
 
-ReAct = Reasoning + Acting
-Agent 自主决定搜索策略，多轮迭代优化
+使用 LangChain 的 bind_tools 和结构化输出
 """
 
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain_core.prompts import PromptTemplate
-from typing import List, Dict
+from typing import List, Dict, Optional
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain_core.tools import tool
 
 from app.agents.requirement_analysis.v3.tools.search_auxiliary import search_auxiliary_docs
 
 
-SEARCH_AGENT_PROMPT = PromptTemplate.from_template("""
-你是需求分析系统的搜索助手。
+class AuxiliarySearchAgent:
+    """辅助文档搜索 Agent（简化版本）"""
 
-## 任务
+    def __init__(self, model, auxiliary_documents: List[Dict]):
+        """
+        初始化搜索 Agent
 
-根据质量问题，在辅助文档中搜索答案。
+        Args:
+            model: LLM 模型（支持工具调用）
+            auxiliary_documents: 辅助文档列表
+        """
+        self.model = model
+        self.auxiliary_documents = auxiliary_documents
+        # 注入文档到工具
+        search_auxiliary_docs._auxiliary_documents = auxiliary_documents
 
-## 可用工具
+        # 绑定工具到模型
+        self.model_with_tools = model.bind_tools([search_auxiliary_docs])
 
-{tools}
+    async def ainvoke(self, input_dict: dict) -> dict:
+        """
+        异步执行搜索
 
-## 搜索策略
+        Args:
+            input_dict: {"input": "搜索问题"}
 
-1. **提取关键词**：从问题中提取核心关键词
-2. **执行搜索**：使用 search_auxiliary_docs 搜索
-3. **评估结果**：判断是否找到答案
-4. **迭代优化**：如果没找到，换关键词再试（最多3次）
+        Returns:
+            {"output": "答案", "intermediate_steps": [...]}
+        """
+        question = input_dict.get("input", "")
+        messages = [
+            HumanMessage(content=f"""你是需求分析系统的搜索助手。
 
-## 示例
+任务：在辅助文档中搜索答案来回答下面的问题。
 
-### 场景1：直接找到
-问题：验证码有效期是多少？
-- 第1次搜索："验证码有效期" → 找到！
-- 答案："验证码有效期为 5 分钟"
+搜索策略：
+1. 提取关键词
+2. 使用 search_auxiliary_docs 工具搜索
+3. 如果没找到，换关键词再试（最多3次）
+4. 返回最终答案
 
-### 场景2：迭代搜索
-问题：审批超时后如何处理？
-- 第1次搜索："审批超时" → 未找到
-- 第2次搜索："超时处理" → 找到！
-- 答案："超时后自动转至上级审批"
+问题：{question}
 
-### 场景3：未找到
-问题：系统支持哪些支付方式？
-- 第1次搜索："支付方式" → 未找到
-- 第2次搜索："支付" → 未找到
-- 第3次搜索："payment" → 未找到
-- 答案："未找到答案"
+请开始搜索。""")
+        ]
 
-## 注意
+        intermediate_steps = []
+        max_iterations = 3
 
-- 如果搜索3次都没找到，返回 "未找到答案"
-- 答案必须引用原文，不要改写
-- 必须注明来源文档
+        for i in range(max_iterations):
+            # LLM 决定是否调用工具
+            response = await self.model_with_tools.ainvoke(messages)
+            messages.append(response)
 
----
+            # 检查是否有工具调用
+            if hasattr(response, 'tool_calls') and response.tool_calls:
+                for tool_call in response.tool_calls:
+                    # 执行工具
+                    tool_name = tool_call['name']
+                    tool_args = tool_call['args']
 
-## 当前问题
+                    if tool_name == 'search_auxiliary_docs':
+                        result = search_auxiliary_docs.invoke(tool_args)
 
-{input}
+                        # 记录中间步骤
+                        intermediate_steps.append({
+                            'action': tool_name,
+                            'action_input': tool_args,
+                            'observation': result
+                        })
 
----
+                        # 添加工具结果到消息
+                        messages.append(ToolMessage(
+                            content=result,
+                            tool_call_id=tool_call['id']
+                        ))
 
-{agent_scratchpad}
-""")
+                        # 如果找到答案，让 LLM 总结
+                        if "未找到" not in result:
+                            final_response = await self.model.ainvoke(
+                                messages + [HumanMessage(content="请基于搜索结果回答原问题。")]
+                            )
+                            return {
+                                "output": final_response.content,
+                                "intermediate_steps": intermediate_steps
+                            }
+            else:
+                # 没有工具调用，直接返回 LLM 的回答
+                return {
+                    "output": response.content,
+                    "intermediate_steps": intermediate_steps
+                }
+
+        # 达到最大迭代次数
+        return {
+            "output": "未找到答案",
+            "intermediate_steps": intermediate_steps
+        }
 
 
-def create_auxiliary_search_agent(model, auxiliary_documents: List[Dict]) -> AgentExecutor:
+def create_auxiliary_search_agent(model, auxiliary_documents: List[Dict]) -> AuxiliarySearchAgent:
     """
     创建辅助文档搜索 Agent
 
@@ -78,26 +121,9 @@ def create_auxiliary_search_agent(model, auxiliary_documents: List[Dict]) -> Age
             格式: [{"filename": "...", "markdown_content": "..."}, ...]
 
     Returns:
-        AgentExecutor: 可执行的搜索 Agent
+        AuxiliarySearchAgent: 可执行的搜索 Agent
     """
-    # 注入辅助文档到工具
-    search_auxiliary_docs._auxiliary_documents = auxiliary_documents
-
-    # 创建 ReAct Agent
-    agent = create_react_agent(
-        llm=model,
-        tools=[search_auxiliary_docs],
-        prompt=SEARCH_AGENT_PROMPT
-    )
-
-    return AgentExecutor(
-        agent=agent,
-        tools=[search_auxiliary_docs],
-        max_iterations=3,  # 最多搜索3次
-        verbose=True,
-        handle_parsing_errors=True,
-        return_intermediate_steps=True  # 返回搜索路径
-    )
+    return AuxiliarySearchAgent(model, auxiliary_documents)
 
 
 __all__ = ["create_auxiliary_search_agent"]

@@ -89,8 +89,8 @@ async def search_for_answer(
     # 提取搜索步骤（关键词列表）
     search_steps = []
     for step in result.get("intermediate_steps", []):
-        if len(step) >= 1 and hasattr(step[0], 'tool_input'):
-            query = step[0].tool_input.get("query", "")
+        if isinstance(step, dict) and "action_input" in step:
+            query = step["action_input"].get("query", "")
             if query:
                 search_steps.append(query)
 
