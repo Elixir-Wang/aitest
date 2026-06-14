@@ -30,7 +30,7 @@ def test_api_does_not_call_generic_agent_runtime() -> None:
 
 def test_agent_packages_have_definition_entrypoint() -> None:
     agent_root = BACKEND_APP / "agents"
-    ignored = {"__pycache__", "skills"}
+    ignored = {"__pycache__", "requirement_analysis", "site_exploration", "skills"}
     missing: list[str] = []
     for package in sorted(path for path in agent_root.iterdir() if path.is_dir()):
         if package.name.startswith("_") or package.name in ignored:

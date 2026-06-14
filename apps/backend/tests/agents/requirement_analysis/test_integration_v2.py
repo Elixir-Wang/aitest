@@ -54,16 +54,10 @@ async def test_full_workflow():
 
     注意：此测试需要配置真实的 LLM 模型才能运行
     """
-    from app.agents.requirement_analysis.service import (
-        RequirementAnalysisService,
-    )
+    from app.agents.requirement_analysis.workflow import run_requirement_analysis
 
     # TODO: 替换为真实的 LLM 模型
     # from app.core.llm import get_llm_model
-    # model = get_llm_model()
-    model = None
-
-    service = RequirementAnalysisService(model=model)
 
     input_data = RequirementAnalysisInputV2(
         project_id="test-project",
@@ -83,7 +77,7 @@ async def test_full_workflow():
         ],
     )
 
-    result = await service.analyze(input_data)
+    result = await run_requirement_analysis(input_data)
 
     # 验证输出结构
     assert result.status in ["completed", "needs_clarification", "blocked"]
@@ -192,30 +186,6 @@ def test_output_structure():
     # 验证可以正确反序列化
     result2 = RequirementAnalysisResultV2.model_validate_json(json_data)
     assert result2.status == "needs_clarification"
-
-
-def test_config_merge():
-    """测试配置合并"""
-    from app.agents.requirement_analysis.service import (
-        RequirementAnalysisService,
-        DEFAULT_CONFIG,
-    )
-
-    custom_config = {
-        "quality_thresholds": {
-            "approved": 85,  # 覆盖默认值 90
-        }
-    }
-
-    service = RequirementAnalysisService(model=None, config=custom_config)
-    config = service.get_config()
-
-    # 验证自定义配置已应用
-    assert config["quality_thresholds"]["approved"] == 85
-
-    # 验证其他默认配置仍然存在
-    assert config["quality_thresholds"]["conditional"] == 75
-    assert config["dimension_weights"]["completeness"] == 0.30
 
 
 # 运行测试

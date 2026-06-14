@@ -740,7 +740,7 @@ except Exception as e:
 - 三块核心架构（理解、评估、澄清）
 - NFR 评估（6 大类）
 - 行内修正建议（suggested_fix）
-- 自动辅助文档增强
+- 辅助文档查询集成到待澄清阶段
 - 7 级优先级排序
 
 ### Changed

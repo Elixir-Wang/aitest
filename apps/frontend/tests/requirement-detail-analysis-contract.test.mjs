@@ -13,7 +13,7 @@ test("requirement detail exposes the three requirement analysis subtabs", () => 
   assert.match(pageSource, /<TabsTrigger value="final">最终需求<\/TabsTrigger>/);
   assert.match(pageSource, /<TabsTrigger value="analysis-report">需求分析<\/TabsTrigger>/);
   assert.match(pageSource, /<TabsTrigger value="clarification">待澄清<\/TabsTrigger>/);
-  assert.match(pageSource, /<TabsTrigger value="quality">质量保证<\/TabsTrigger>/);
+  assert.match(pageSource, /<TabsTrigger value="quality">质量保障<\/TabsTrigger>/);
   assert.doesNotMatch(pageSource, /<TabsTrigger value="preliminary">初步需求<\/TabsTrigger>/);
   assert.doesNotMatch(pageSource, /<TabsTrigger value="pending">待确认问题<\/TabsTrigger>/);
   assert.doesNotMatch(pageSource, /<TabsTrigger value="report">分析报告<\/TabsTrigger>/);
@@ -119,29 +119,66 @@ test("preliminary requirement can be finalized into the final requirement tab", 
 
 test("clarification tab keeps the clickable answer structure", () => {
   assert.match(pageSource, /value="clarification"/);
-  assert.match(pageSource, /visiblePendingAnalysisItems\.map/);
+  assert.match(pageSource, /isPendingItemOpen\(item\) \|\| Boolean\(pendingAnswerDrafts\[item\.id\]\)/);
   assert.match(pageSource, /saveClarificationAnswer\(item\)/);
-  assert.match(pageSource, /deferPendingItem\(item\.id\)/);
-  assert.match(pageSource, /恢复暂不处理/);
+  assert.match(pageSource, /saveClarificationAnswer\(item, "defer"\)/);
+  assert.match(pageSource, /已处理项/);
+  assert.match(
+    pageSource,
+    /<Dialog onOpenChange=\{setHandledClarificationDialogOpen\} open=\{handledClarificationDialogOpen\}>/,
+  );
+  assert.match(pageSource, /<DialogTitle>管理已处理<\/DialogTitle>/);
+  assert.doesNotMatch(pageSource, /将条目移回待澄清列表后，在本页重新编辑并保存/);
+  assert.match(pageSource, /setHandledClarificationFilter/);
+  assert.match(pageSource, /filteredHandledPendingAnalysisItems\.map/);
+  assert.match(pageSource, /setActiveRestoredPendingItemId\(item\.id\)/);
+  assert.doesNotMatch(pageSource, /scrollIntoView/);
+  assert.match(pageSource, /isDeferredAnswer \? "移回处理" : "移回修改"/);
+  assert.match(pageSource, /澄清：/);
+  assert.doesNotMatch(pageSource, /暂未写入初步需求，移回后可选择推荐口径或填写自定义答复/);
   assert.match(pageSource, /保存答复/);
   assert.match(pageSource, /待澄清/);
   assert.doesNotMatch(pageSource, /待确认问题/);
+  assert.doesNotMatch(pageSource, /修改中/);
+});
+
+test("clarification questions do not render prompt prefixes or guessed fallback answers", () => {
+  assert.match(pageSource, /function normalizePendingQuestionText\(question: string\)/);
+  assert.match(pageSource, /\.replace\(\/\^以下细节需要确认/);
+  assert.match(pageSource, /const questionBody = normalizePendingQuestionText\(item\.question\)/);
+  assert.match(pageSource, /<div className="text-foreground text-sm leading-6">\{questionBody\}<\/div>/);
+  assert.match(pageSource, /return \[\];\s*\}/);
+  assert.doesNotMatch(pageSource, /function inferPendingLikelyAnswers/);
+  assert.doesNotMatch(pageSource, /候选答案 A/);
+  assert.doesNotMatch(pageSource, /候选答案 B/);
+  assert.doesNotMatch(pageSource, /安全指标：所有接口必须经过身份认证/);
 });
 
 test("quality assurance tab renders only the markdown report", () => {
   assert.match(pageSource, /quality_assurance_report_markdown/);
   assert.match(pageSource, /<TabsContent id="quality-assurance-section" value="quality">/);
   assert.match(pageSource, /content=\{qualityAssuranceMarkdown\}/);
-  assert.match(pageSource, /尚未生成质量保证报告，请先执行需求分析。/);
+  assert.match(pageSource, /尚未生成质量保障报告，请先执行需求分析。/);
   assert.doesNotMatch(pageSource, /const qualityGate = analysisResult\?\.output\.quality_gate/);
   assert.doesNotMatch(pageSource, /const coverageAudit = analysisResult\?\.output\.coverage_audit \?\? \[\]/);
   assert.doesNotMatch(pageSource, /function QualityIssueList/);
 });
 
-test("saved clarification answers stay visible while deferred questions are hidden", () => {
+test("handled clarification answers move behind the managed handled menu", () => {
   assert.match(
     pageSource,
-    /const pendingAnalysisItems: RequirementAnalysisPendingItem\[\] = \[\s*\.\.\.clarificationQuestions,\s*\.\.\.analysisConflicts,\s*\]\.filter\(\(item\) => item\.answer\?\.apply_status !== "not_applicable"\)/,
+    /const pendingAnalysisItems: RequirementAnalysisPendingItem\[\] = \[\.\.\.clarificationQuestions, \.\.\.analysisConflicts\]/,
+  );
+  assert.match(pageSource, /const visiblePendingAnalysisItems = pendingAnalysisItems\.filter\(isPendingItemOpen\)/);
+  assert.match(pageSource, /isPendingItemHandled\(item\) && !pendingAnswerDrafts\[item\.id\]/);
+  assert.match(pageSource, /const filteredHandledPendingAnalysisItems = handledPendingAnalysisItems\.filter/);
+  assert.match(
+    pageSource,
+    /function isPendingItemOpen\(item: RequirementAnalysisPendingItem\)[\s\S]*!\["applied", "not_applicable"\]\.includes\(pendingItemAnswerStatus\(item\)\)/,
+  );
+  assert.match(
+    pageSource,
+    /function isPendingItemHandled\(item: RequirementAnalysisPendingItem\)[\s\S]*\["applied", "not_applicable"\]\.includes\(pendingItemAnswerStatus\(item\)\)/,
   );
   assert.doesNotMatch(pageSource, />当前答复</);
   assert.doesNotMatch(pageSource, />已保存答复</);

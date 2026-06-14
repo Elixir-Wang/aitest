@@ -2,7 +2,11 @@
 工具函数模块
 """
 
-from .report_generator import generate_analysis_report
+from .report_generator import (
+    generate_analysis_report,
+    generate_clarification_report,
+    generate_quality_assurance_report,
+)
 from .priority_sorter import sort_clarification_items
 from .requirement_enhancer import (
     generate_enhanced_requirement,
@@ -12,6 +16,8 @@ from .requirement_enhancer import (
 
 __all__ = [
     "generate_analysis_report",
+    "generate_clarification_report",
+    "generate_quality_assurance_report",
     "sort_clarification_items",
     "generate_enhanced_requirement",
     "get_auto_resolved_items",

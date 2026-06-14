@@ -15,6 +15,7 @@ from app.agents.requirement_analysis.schemas import (
     ConsistencyAssessment,
     ClarificationOutput,
     ClarificationItem,
+    ClarificationOption,
     ClarificationSummary,
     NFRGap,
     FuzzyTerm,
@@ -94,6 +95,51 @@ class TestSchemas:
 
         assert item.severity == "blocker"
         assert item.resolution_status == "needs_manual"
+        assert item.clarification_bucket == "risk"
+        assert item.affected_surfaces == []
+
+    def test_clarification_item_supports_test_decision_fields(self):
+        """测试待澄清项支持测试裁决字段，同时保持旧字段兼容"""
+        item = ClarificationItem(
+            item_id="CLR-001",
+            source="testability",
+            module_key="order_create",
+            module_name="订单创建",
+            clarification_bucket="blocker",
+            decision_point="重复提交是否幂等",
+            source_excerpt="用户提交订单后生成订单记录并扣减库存。",
+            current_gap="当前需求未说明重复提交是否创建多笔订单。",
+            test_impact="无法断言订单数量、库存扣减次数和重复请求响应。",
+            risk_scenario=(
+                "Given 用户已提交一次有效订单请求\n"
+                "When 相同请求再次提交\n"
+                "Then 系统应按确认规则返回可观察结果"
+            ),
+            affected_surfaces=["api", "data_consistency", "regression"],
+            decision_options=[
+                ClarificationOption(
+                    option_id="decision-1",
+                    label="按幂等处理",
+                    answer_markdown="重复请求返回首次创建结果。",
+                    confidence="low",
+                    source="测试视角推理",
+                )
+            ],
+            recommended_decision="推荐优先确认幂等规则。该判断来自测试推理，需业务确认。",
+            human_question="请确认重复提交同一业务请求时如何处理？",
+            draft_acceptance_tests=["首次提交成功", "重复提交不产生重复业务结果"],
+            question="请确认重复提交同一业务请求时如何处理？",
+            impact="无法断言订单数量、库存扣减次数和重复请求响应。",
+            severity="blocker",
+            current_text="用户提交订单后生成订单记录并扣减库存。",
+            resolution_status="needs_manual",
+        )
+
+        assert item.question == item.human_question
+        assert item.current_text == item.source_excerpt
+        assert item.clarification_bucket == "blocker"
+        assert item.affected_surfaces == ["api", "data_consistency", "regression"]
+        assert item.decision_options[0].label == "按幂等处理"
 
     def test_clarification_summary(self):
         """测试澄清内容汇总"""
@@ -210,6 +256,8 @@ class TestReportGenerator:
         """测试生成分析报告"""
         from app.agents.requirement_analysis.utils.report_generator import (
             generate_analysis_report,
+            generate_clarification_report,
+            generate_quality_assurance_report,
         )
 
         # 准备测试数据
@@ -260,14 +308,65 @@ class TestReportGenerator:
         )
 
         # 生成报告
-        report = generate_analysis_report(understanding, quality, clarification)
+        report = generate_analysis_report(understanding)
+        quality_report = generate_quality_assurance_report(quality, clarification)
+        clarification_report = generate_clarification_report(clarification)
 
         # 验证报告内容
         assert "# 需求分析报告" in report
-        assert "质量评分" in report
-        assert "73/100" in report
-        assert "CONDITIONAL" in report  # 大写格式
         assert "测试模块" in report
+        assert "```mermaid" in report
+        assert "质量评分" not in report
+        assert "质量分数" not in report
+        assert "待澄清问题" not in report
+        assert "## 3. 待澄清内容" not in report
+        assert "73/100" not in report
+        assert "# 质量保障报告" in quality_report
+        assert "完整性" in quality_report
+        assert "清晰度" in quality_report
+        assert "可测试性" in quality_report
+        assert "一致性" in quality_report
+        assert "# 待澄清内容" in clarification_report
+
+    def test_generate_clarification_report_groups_test_decision_items(self):
+        """待澄清报告应按测试裁决分组展示"""
+        from app.agents.requirement_analysis.utils.report_generator import generate_clarification_report
+
+        clarification = ClarificationOutput(
+            items=[
+                ClarificationItem(
+                    item_id="CLR-001",
+                    source="testability",
+                    module_key="order_create",
+                    module_name="订单创建",
+                    clarification_bucket="blocker",
+                    decision_point="重复提交是否幂等",
+                    source_excerpt="用户提交订单后生成订单记录并扣减库存。",
+                    current_gap="当前需求未说明重复提交是否创建多笔订单。",
+                    test_impact="无法断言订单数量、库存扣减次数和重复请求响应。",
+                    risk_scenario="Given 已提交一次有效请求\nWhen 相同请求再次提交\nThen 系统应按确认规则返回可观察结果",
+                    affected_surfaces=["api", "data_consistency", "regression"],
+                    human_question="请确认重复提交同一业务请求时如何处理？",
+                    draft_acceptance_tests=["首次提交成功", "重复提交不产生重复业务结果"],
+                    question="请确认重复提交同一业务请求时如何处理？",
+                    impact="无法断言订单数量、库存扣减次数和重复请求响应。",
+                    severity="blocker",
+                    resolution_status="needs_manual",
+                )
+            ],
+            summary=ClarificationSummary(total=1, auto_resolved=0, has_suggestions=0, needs_manual=1),
+            clarification_summary_text="共1个问题",
+        )
+
+        report = generate_clarification_report(clarification)
+
+        assert "### 阻塞项" in report
+        assert "### 风险项" in report
+        assert "### 验收项" in report
+        assert "**当前缺口**" in report
+        assert "**测试影响**" in report
+        assert "**风险场景**" in report
+        assert "**验收用例草案**" in report
 
 
 class TestRequirementEnhancer:
@@ -397,30 +496,6 @@ class TestRequirementEnhancer:
             item.resolution_status in ["needs_manual", "has_suggestions"]
             for item in pending
         )
-
-
-class TestService:
-    """测试服务层"""
-
-    def test_default_config(self):
-        """测试默认配置"""
-        from app.agents.requirement_analysis.service import DEFAULT_CONFIG
-
-        assert "quality_thresholds" in DEFAULT_CONFIG
-        assert DEFAULT_CONFIG["quality_thresholds"]["approved"] == 90
-        assert DEFAULT_CONFIG["dimension_weights"]["completeness"] == 0.30
-
-    def test_service_initialization(self):
-        """测试服务初始化"""
-        from app.agents.requirement_analysis.service import (
-            RequirementAnalysisService,
-        )
-
-        service = RequirementAnalysisService(model=None)
-        config = service.get_config()
-
-        assert "quality_thresholds" in config
-        assert config["quality_thresholds"]["approved"] == 90
 
 
 # 运行测试

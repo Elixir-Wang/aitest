@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, AlertCircle, CheckCircle2, Clock3, Loader2 } from "lucide-react";
 
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { AI_TASK_STARTED_EVENT } from "@/lib/ai-task-events";
+import { AI_TASK_STARTED_EVENT, notifyAiRunningTasksChanged } from "@/lib/ai-task-events";
 import { type ApiTaskItem, apiRequest, formatDateTime } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
@@ -17,6 +17,8 @@ const TASK_START_GRACE_MS = 8_000;
 
 type RunningTaskItem = {
   id: string;
+  sourceType: string;
+  sourceId: string;
   projectId: string | null;
   projectName: string;
   title: string;
@@ -33,6 +35,8 @@ function getTaskStatusLabel(task: RunningTaskItem) {
 function toRunningTask(item: ApiTaskItem): RunningTaskItem {
   return {
     id: item.id,
+    sourceType: item.source_type,
+    sourceId: item.source_id,
     projectId: item.project_id,
     projectName: item.project_name,
     title: item.title,
@@ -83,6 +87,14 @@ export function TaskRunningIndicator() {
         return;
       }
       setTasks(nextTasks);
+      notifyAiRunningTasksChanged({
+        tasks: nextTasks.map((task) => ({
+          sourceType: task.sourceType,
+          sourceId: task.sourceId,
+          projectId: task.projectId,
+          status: task.status,
+        })),
+      });
       if (nextTasks.length > 0) {
         setTracking(true);
       } else if (Date.now() - trackingStartedAtRef.current > TASK_START_GRACE_MS) {

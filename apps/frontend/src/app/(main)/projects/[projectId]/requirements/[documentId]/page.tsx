@@ -63,18 +63,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { DynamicIslandTOC } from "@/components/ui/dynamic-island-toc";
 import FileUpload1 from "@/components/ui/file-upload-1";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { notifyAiTaskStarted } from "@/lib/ai-task-events";
+import {
+  AI_RUNNING_TASKS_CHANGED_EVENT,
+  type AiRunningTasksChangedDetail,
+  notifyAiTaskStarted,
+} from "@/lib/ai-task-events";
 import {
   ApiRequestError,
   type ApiTaskItem,
@@ -115,6 +113,19 @@ function pendingItemNumber(index: number) {
   return index >= 0 ? String(index + 1).padStart(2, "0") : "--";
 }
 
+function normalizePendingQuestionText(question: string) {
+  return question
+    .replace(/^缺少功能[：:]\s*/, "")
+    .replace(/^缺少非功能需求[：:]\s*/, "")
+    .replace(/^以下细节需要确认[：:]\s*/, "")
+    .replace(/^缺失细节[：:]\s*/, "")
+    .replace(/^缺失说明[：:]\s*/, "")
+    .replace(/^当前缺口[：:]\s*/, "")
+    .replace(/^请确认测试覆盖缺口[：:]\s*/, "")
+    .replace(/^请确认[“"](.+?)[”"]的验收标准。?$/, "$1")
+    .trim();
+}
+
 function pendingIssueType(item: RequirementAnalysisPendingItem): RequirementAnalysisIssueType {
   return item.issue_type === "missing" ||
     item.issue_type === "confirmation" ||
@@ -131,12 +142,7 @@ function pendingItemTitle(item: RequirementAnalysisPendingItem) {
   if (title && !genericTitles.has(title)) {
     return title;
   }
-  const questionTitle = item.question
-    ?.replace(/^缺少功能[：:]\s*/, "")
-    .replace(/^以下细节需要确认[：:]\s*/, "")
-    .replace(/^请确认测试覆盖缺口[：:]\s*/, "")
-    .replace(/^请确认[“"](.+?)[”"]的验收标准。?$/, "$1")
-    .trim();
+  const questionTitle = item.question ? normalizePendingQuestionText(item.question) : "";
   if (questionTitle) {
     return questionTitle;
   }
@@ -150,6 +156,12 @@ function pendingItemTitle(item: RequirementAnalysisPendingItem) {
   return pendingIssueTypeLabels[issueType] ?? "待确认项";
 }
 
+function pendingItemHeading(item: RequirementAnalysisPendingItem) {
+  const title = pendingItemTitle(item);
+  const questionText = item.question ? normalizePendingQuestionText(item.question) : "";
+  return questionText && questionText !== title ? `${title}：${questionText}` : title;
+}
+
 function pendingItemSourceExcerpt(item: RequirementAnalysisPendingItem) {
   if ("primary_excerpt" in item && item.primary_excerpt?.trim()) {
     return item.primary_excerpt.trim();
@@ -158,59 +170,29 @@ function pendingItemSourceExcerpt(item: RequirementAnalysisPendingItem) {
 }
 
 function pendingRecommendedOptions(item: RequirementAnalysisPendingItem): RequirementClarificationOption[] {
+  if (item.decision_options?.length) {
+    return item.decision_options;
+  }
   if (item.recommended_options?.length) {
     return item.recommended_options;
   }
-  const title = pendingItemTitle(item);
-  const text = [title, item.question, item.impact, item.module_name, item.module_key].join(" ").toLowerCase();
-  const likelyAnswers = inferPendingLikelyAnswers(text, title);
-  return [
-    {
-      id: "__fallback_answer_a",
-      label: "候选答案 A",
-      answer_markdown: likelyAnswers[0],
-      rationale: "旧分析结果缺少候选答案时，基于问题类型和上下文生成的最可能答案。",
-      confidence: "low",
-    },
-    {
-      id: "__fallback_answer_b",
-      label: "候选答案 B",
-      answer_markdown: likelyAnswers[1],
-      rationale: "旧分析结果缺少候选答案时，基于问题类型和上下文生成的另一个可能答案。",
-      confidence: "low",
-    },
-  ];
+  return [];
 }
 
-function inferPendingLikelyAnswers(text: string, title: string): [string, string] {
-  if (text.includes("performance") || text.includes("性能") || text.includes("响应") || text.includes("并发")) {
-    return [
-      "性能指标：核心页面和核心接口 P95 响应时间不超过 2 秒，P99 不超过 5 秒；支持 1,000 并发用户；接口错误率不超过 0.1%。",
-      "性能指标：核心交易类操作 P95 响应时间不超过 3 秒，批量或报表任务 60 秒内完成；系统支持峰值 QPS 200，并可水平扩展。",
-    ];
-  }
-  if (text.includes("security") || text.includes("安全") || text.includes("权限") || text.includes("加密")) {
-    return [
-      "安全指标：所有接口必须经过身份认证和权限校验，敏感数据传输和存储需加密，关键操作记录审计日志。",
-      "安全指标：登录态超时自动失效，连续失败操作触发限制；普通用户不得访问越权数据，管理员操作必须可追溯。",
-    ];
-  }
-  if (text.includes("验收") || text.includes("acceptance")) {
-    return [
-      `验收标准：${title}应覆盖正常流程、异常输入、权限限制和结果可见性；用户操作后系统必须给出明确成功或失败反馈。`,
-      `验收标准：${title}采用 Given-When-Then 描述，至少包含前置条件、操作步骤、预期结果、错误提示和边界条件。`,
-    ];
-  }
-  if (text.includes("字段") || text.includes("格式") || text.includes("参数")) {
-    return [
-      `${title}格式：必填，使用字符串格式，长度 1-128 个字符，仅允许字母、数字、下划线和短横线。`,
-      `${title}格式：可选；为空时系统使用默认值，非空时必须通过格式校验，校验失败返回明确错误提示。`,
-    ];
-  }
-  return [
-    `${title}纳入本期范围，按主流程实现，并补充输入、处理规则、输出结果和异常提示。`,
-    `${title}仅覆盖核心场景，边界条件、异常流程和扩展规则按后续需求单独补充。`,
-  ];
+function pendingItemAnswerStatus(item: RequirementAnalysisPendingItem) {
+  return item.answer?.apply_status ?? "";
+}
+
+function isPendingItemOpen(item: RequirementAnalysisPendingItem) {
+  return !["applied", "not_applicable"].includes(pendingItemAnswerStatus(item));
+}
+
+function isPendingItemHandled(item: RequirementAnalysisPendingItem) {
+  return ["applied", "not_applicable"].includes(pendingItemAnswerStatus(item));
+}
+
+function handledPendingItemLabel(item: RequirementAnalysisPendingItem) {
+  return item.answer?.apply_status === "not_applicable" ? "暂不处理" : "已写入";
 }
 
 function extractMarkdownSection(content: string, heading: string) {
@@ -227,11 +209,14 @@ function extractMarkdownSection(content: string, heading: string) {
   const sectionStart = startMatch.index;
   const afterHeadingIndex = sectionStart + startMatch[0].length;
   const nextSectionMatch = markdown.slice(afterHeadingIndex).match(/^---$|^##\s+/m);
-  const sectionEnd = nextSectionMatch?.index === undefined ? markdown.length : afterHeadingIndex + nextSectionMatch.index;
+  const sectionEnd =
+    nextSectionMatch?.index === undefined ? markdown.length : afterHeadingIndex + nextSectionMatch.index;
   return markdown.slice(sectionStart, sectionEnd).trim();
 }
 
-function latestRequirementAnalysisRunFromTask(task: ApiTaskItem): RequirementOverviewResponse["document"]["latest_requirement_analysis_run"] {
+function latestRequirementAnalysisRunFromTask(
+  task: ApiTaskItem,
+): RequirementOverviewResponse["document"]["latest_requirement_analysis_run"] {
   return {
     id: task.source_id,
     status: task.status,
@@ -312,6 +297,16 @@ type RequirementAnalysisQuestion = {
   dimension: string;
   severity: "blocker" | "major" | "minor";
   source_excerpt: string;
+  clarification_bucket?: "blocker" | "risk" | "acceptance";
+  decision_point?: string;
+  current_gap?: string;
+  test_impact?: string;
+  risk_scenario?: string;
+  affected_surfaces?: string[];
+  decision_options?: RequirementClarificationOption[];
+  recommended_decision?: string;
+  human_question?: string;
+  draft_acceptance_tests?: string[];
   recommended_options?: RequirementClarificationOption[];
   answer?: RequirementClarificationAnswer;
 };
@@ -327,6 +322,16 @@ type RequirementAnalysisConflict = {
   severity: "blocker" | "major" | "minor";
   primary_excerpt: string;
   source_excerpt?: string;
+  clarification_bucket?: "blocker" | "risk" | "acceptance";
+  decision_point?: string;
+  current_gap?: string;
+  test_impact?: string;
+  risk_scenario?: string;
+  affected_surfaces?: string[];
+  decision_options?: RequirementClarificationOption[];
+  recommended_decision?: string;
+  human_question?: string;
+  draft_acceptance_tests?: string[];
   evidence?: Array<{
     mapping_id: string;
     filename: string;
@@ -514,12 +519,14 @@ export default function DocumentDetailPage() {
   const [finalizingRequirement, setFinalizingRequirement] = useState(false);
   const [savingClarificationId, setSavingClarificationId] = useState("");
   const [pendingAnswerDrafts, setPendingAnswerDrafts] = useState<Record<string, PendingAnswerDraft>>({});
-  const [deferredPendingItemIds, setDeferredPendingItemIds] = useState<string[]>([]);
   const [sourceExcerptItem, setSourceExcerptItem] = useState<RequirementAnalysisPendingItem | null>(null);
+  const [handledClarificationDialogOpen, setHandledClarificationDialogOpen] = useState(false);
+  const [handledClarificationFilter, setHandledClarificationFilter] = useState<"all" | "applied" | "not_applicable">(
+    "all",
+  );
+  const [activeRestoredPendingItemId, setActiveRestoredPendingItemId] = useState("");
   const [finalizeConfirmOpen, setFinalizeConfirmOpen] = useState(false);
   const [reviewClearConfirmOpen, setReviewClearConfirmOpen] = useState(false);
-  const [generatingExplorationPlan, setGeneratingExplorationPlan] = useState(false);
-  const [explorationPlan, setExplorationPlan] = useState<any>(null);
   const token = useAuthStore((state) => state.token);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
@@ -575,16 +582,22 @@ export default function DocumentDetailPage() {
   const qualityAssuranceMarkdown =
     analysisResult?.output.quality_assurance_report_markdown?.trim() ||
     extractMarkdownSection(analysisReportMarkdown, "质量评估");
-  const enhancedRequirementMarkdown =
-    analysisResult?.output.enhanced_requirement_markdown?.trim() || preliminaryMarkdown;
   const clarificationQuestions = analysisResult?.output.clarification_questions ?? [];
   const analysisConflicts = analysisResult?.output.conflicts ?? [];
-  const pendingAnalysisItems: RequirementAnalysisPendingItem[] = [
-    ...clarificationQuestions,
-    ...analysisConflicts,
-  ].filter((item) => item.answer?.apply_status !== "not_applicable");
-  const visiblePendingAnalysisItems = pendingAnalysisItems.filter((item) => !deferredPendingItemIds.includes(item.id));
-  const deferredPendingAnalysisItems = pendingAnalysisItems.filter((item) => deferredPendingItemIds.includes(item.id));
+  const pendingAnalysisItems: RequirementAnalysisPendingItem[] = [...clarificationQuestions, ...analysisConflicts];
+  const visiblePendingAnalysisItems = pendingAnalysisItems.filter(isPendingItemOpen);
+  const handledPendingAnalysisItems = pendingAnalysisItems.filter(
+    (item) => isPendingItemHandled(item) && !pendingAnswerDrafts[item.id],
+  );
+  const appliedPendingAnalysisCount = handledPendingAnalysisItems.filter(
+    (item) => item.answer?.apply_status === "applied",
+  ).length;
+  const deferredPendingAnalysisCount = handledPendingAnalysisItems.filter(
+    (item) => item.answer?.apply_status === "not_applicable",
+  ).length;
+  const filteredHandledPendingAnalysisItems = handledPendingAnalysisItems.filter((item) =>
+    handledClarificationFilter === "all" ? true : item.answer?.apply_status === handledClarificationFilter,
+  );
   const isBlocked =
     analysisResult?.status === "blocked" ||
     analysisResult?.quality_result === "blocked" ||
@@ -622,6 +635,7 @@ export default function DocumentDetailPage() {
     overview && overview.stats.conversion_success + overview.stats.conversion_warning > 0,
   );
   const latestRequirementAnalysisRunStatus = overview?.document.latest_requirement_analysis_run?.status ?? "";
+  const latestRequirementAnalysisRunId = overview?.document.latest_requirement_analysis_run?.id ?? "";
   const requirementReviewRunning =
     reviewLoading ||
     REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRequirementAnalysisRunStatus) ||
@@ -884,6 +898,96 @@ export default function DocumentDetailPage() {
     }
     requirementReviewRunningRef.current = requirementReviewRunning;
   }, [analysisResult, requirementReviewRunning]);
+
+  useEffect(() => {
+    if (
+      !latestRequirementAnalysisRunId ||
+      !REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRequirementAnalysisRunStatus)
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const refreshRequirementAnalysis = async () => {
+      const latestOverview = await loadOverview({ silent: true });
+      if (cancelled) {
+        return;
+      }
+      const latestRunStatus = latestOverview?.document.latest_requirement_analysis_run?.status ?? "";
+      const latestAnalysis = await loadLatestAnalysis();
+      if (cancelled) {
+        return;
+      }
+      if (!REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRunStatus) && latestAnalysis) {
+        setActiveTab("analysis");
+        setAnalysisTab("analysis-report");
+      }
+    };
+
+    const timer = window.setInterval(() => {
+      void refreshRequirementAnalysis();
+    }, REQUIREMENT_REVIEW_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [latestRequirementAnalysisRunId, latestRequirementAnalysisRunStatus, loadLatestAnalysis, loadOverview]);
+
+  useEffect(() => {
+    if (
+      !requirementReviewRunning &&
+      !activeReviewRunId &&
+      !REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRequirementAnalysisRunStatus)
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const refreshRequirementAnalysis = async () => {
+      const latestOverview = await loadOverview({ silent: true });
+      if (cancelled) {
+        return;
+      }
+      const latestAnalysis = await loadLatestAnalysis();
+      if (cancelled) {
+        return;
+      }
+      const latestRunStatus = latestOverview?.document.latest_requirement_analysis_run?.status ?? "";
+      if (!REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRunStatus) && latestAnalysis) {
+        setActiveTab("analysis");
+        setAnalysisTab("analysis-report");
+      }
+    };
+
+    function handleRunningTasksChanged(event: Event) {
+      const detail = (event as CustomEvent<AiRunningTasksChangedDetail>).detail;
+      const runningRequirementRunIds = new Set(
+        (detail?.tasks ?? [])
+          .filter((task) => task.sourceType === "requirement_analysis_run" && task.projectId === projectId)
+          .map((task) => task.sourceId),
+      );
+      const trackedRunId = activeReviewRunId || latestRequirementAnalysisRunId;
+      if (!trackedRunId || runningRequirementRunIds.has(trackedRunId)) {
+        return;
+      }
+      void refreshRequirementAnalysis();
+    }
+
+    window.addEventListener(AI_RUNNING_TASKS_CHANGED_EVENT, handleRunningTasksChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(AI_RUNNING_TASKS_CHANGED_EVENT, handleRunningTasksChanged);
+    };
+  }, [
+    activeReviewRunId,
+    latestRequirementAnalysisRunId,
+    latestRequirementAnalysisRunStatus,
+    loadLatestAnalysis,
+    loadOverview,
+    projectId,
+    requirementReviewRunning,
+  ]);
 
   function handleDetailTabChange(nextTab: string) {
     setActiveTab(nextTab);
@@ -1173,33 +1277,6 @@ export default function DocumentDetailPage() {
     }
   }
 
-  async function generateExplorationPlan() {
-    if (!analysisResult) {
-      toast.error("尚未完成需求分析");
-      return;
-    }
-    setGeneratingExplorationPlan(true);
-    try {
-      const plan = await apiRequest<any>(
-        `/projects/${projectId}/requirements/${documentId}/analysis-runs/${analysisResult.id}/exploration-plan/generate`,
-        {
-          method: "POST",
-        },
-      );
-      setExplorationPlan(plan);
-      toast.success(`已生成探索计划，包含 ${plan.items?.length || 0} 个探索项`);
-    } catch (requestError) {
-      reportError(requestError, {
-        fallbackMessage: "生成探索计划失败",
-        actionLabel: "生成探索计划",
-        method: "POST",
-        path: `/projects/${projectId}/requirements/${documentId}/analysis-runs/${analysisResult.id}/exploration-plan/generate`,
-      });
-    } finally {
-      setGeneratingExplorationPlan(false);
-    }
-  }
-
   async function openRequirementVersionDetail(version: RequirementVersion) {
     setSelectedRequirementVersion(version);
     setSelectedRequirementVersionLoading(true);
@@ -1261,20 +1338,21 @@ export default function DocumentDetailPage() {
     });
   }
 
-  function deferPendingItem(itemId: string) {
-    setDeferredPendingItemIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
-    setPendingAnswerDrafts((current) => {
-      const next = { ...current };
-      delete next[itemId];
-      return next;
-    });
+  function restoreHandledPendingItem(item: RequirementAnalysisPendingItem) {
+    setPendingAnswerDrafts((current) => ({
+      ...current,
+      [item.id]: {
+        selectedOptionId: item.answer?.selected_option_id ?? "",
+        customAnswer: item.answer?.answer_type === "custom" ? item.answer.answer_markdown : "",
+        answerType: item.answer?.answer_type === "custom" ? "custom" : "recommended_option",
+      },
+    }));
+    setActiveRestoredPendingItemId(item.id);
+    setAnalysisTab("clarification");
+    toast.info("已移回待澄清列表，关闭弹窗后可编辑");
   }
 
-  function restorePendingItem(itemId: string) {
-    setDeferredPendingItemIds((current) => current.filter((id) => id !== itemId));
-  }
-
-  async function saveClarificationAnswer(item: RequirementAnalysisPendingItem) {
+  async function saveClarificationAnswer(item: RequirementAnalysisPendingItem, forcedAnswerType?: "defer") {
     if (!analysisResult) {
       toast.error("尚未生成需求分析结果");
       return;
@@ -1288,7 +1366,7 @@ export default function DocumentDetailPage() {
     const selectedFallbackOption = pendingRecommendedOptions(item).find(
       (option) => option.id === draft.selectedOptionId && option.id.startsWith("__fallback_"),
     );
-    const answerType = customAnswer || selectedFallbackOption ? "custom" : draft.answerType;
+    const answerType = forcedAnswerType ?? (customAnswer || selectedFallbackOption ? "custom" : draft.answerType);
     if (answerType === "recommended_option" && !draft.selectedOptionId) {
       toast.error("请选择推荐选项，或填写自定义说明");
       return;
@@ -1303,7 +1381,12 @@ export default function DocumentDetailPage() {
             question_id: item.id,
             answer_type: answerType,
             selected_option_id: answerType === "recommended_option" ? draft.selectedOptionId : "",
-            custom_answer: selectedFallbackOption ? selectedFallbackOption.answer_markdown : customAnswer,
+            custom_answer:
+              answerType === "defer"
+                ? ""
+                : selectedFallbackOption
+                  ? selectedFallbackOption.answer_markdown
+                  : customAnswer,
           }),
         },
       );
@@ -1313,6 +1396,7 @@ export default function DocumentDetailPage() {
         delete next[item.id];
         return next;
       });
+      setActiveRestoredPendingItemId("");
       toast.success(answerType === "defer" ? "已标记暂不处理" : "答复已写入初步需求");
     } catch (requestError) {
       reportError(requestError, {
@@ -1506,7 +1590,7 @@ export default function DocumentDetailPage() {
     (activeTab === "analysis" &&
       ((analysisTab === "analysis-report" && Boolean(analysisReportMarkdown.trim())) ||
         (analysisTab === "quality" && Boolean(qualityAssuranceMarkdown.trim())) ||
-        (analysisTab === "enhanced" && Boolean(enhancedRequirementMarkdown.trim())))) ||
+        (analysisTab === "enhanced" && Boolean(preliminaryMarkdown.trim())))) ||
     (activeTab === "final" && Boolean(overview.initial_markdown_content.trim()));
   const requirementTocRefreshKey = [
     activeTab,
@@ -1515,7 +1599,7 @@ export default function DocumentDetailPage() {
     currentStandardPreview?.markdownContent.length ?? 0,
     analysisReportMarkdown.length,
     qualityAssuranceMarkdown.length,
-    enhancedRequirementMarkdown.length,
+    preliminaryMarkdown.length,
     initialMarkdownContent.length,
     analysisResult?.finalized_version_id ?? "",
   ].join(":");
@@ -1825,42 +1909,18 @@ export default function DocumentDetailPage() {
                 <TabsList>
                   <TabsTrigger value="analysis-report">需求分析</TabsTrigger>
                   <TabsTrigger value="clarification">待澄清</TabsTrigger>
-                  <TabsTrigger value="quality">质量保证</TabsTrigger>
+                  <TabsTrigger value="quality">质量保障</TabsTrigger>
                   <TabsTrigger value="enhanced">初步需求</TabsTrigger>
                 </TabsList>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   {analysisTab === "clarification" ? (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button disabled={!deferredPendingAnalysisItems.length} type="button" variant="outline">
-                          <RotateCcw className="size-4" />
-                          恢复暂不处理
-                          {deferredPendingAnalysisItems.length ? `(${deferredPendingAnalysisItems.length})` : ""}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="max-w-96">
-                        {deferredPendingAnalysisItems.map((item) => {
-                          const itemNumber = pendingItemNumber(
-                            pendingAnalysisItems.findIndex((pendingItem) => pendingItem.id === item.id),
-                          );
-                          return (
-                            <DropdownMenuItem
-                              className="items-start gap-2"
-                              key={item.id}
-                              onSelect={() => restorePendingItem(item.id)}
-                            >
-                              <span className="mt-0.5 inline-flex h-5 min-w-7 items-center justify-center rounded border bg-muted/50 px-1 font-medium text-[11px] text-muted-foreground tabular-nums">
-                                #{itemNumber}
-                              </span>
-                              <div className="min-w-0">
-                                <div className="truncate font-medium text-sm">{item.module_name}</div>
-                                <div className="line-clamp-2 text-muted-foreground text-xs">{item.question}</div>
-                              </div>
-                            </DropdownMenuItem>
-                          );
-                        })}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <Button className="gap-2" onClick={() => setHandledClarificationDialogOpen(true)} type="button">
+                      <History className="size-4" />
+                      已处理项
+                      <RequirementRoleBadge shape="circle" size="xs" variant="destructive">
+                        {handledPendingAnalysisItems.length}
+                      </RequirementRoleBadge>
+                    </Button>
                   ) : null}
                   {requirementReviewRunning ? (
                     <Button
@@ -1908,183 +1968,207 @@ export default function DocumentDetailPage() {
                 />
               </TabsContent>
               <TabsContent value="clarification">
-                {visiblePendingAnalysisItems.length ? (
+                {visiblePendingAnalysisItems.length || Object.keys(pendingAnswerDrafts).length ? (
                   <div className="space-y-3">
-                    {visiblePendingAnalysisItems.map((item) => {
-                      const itemNumber = pendingItemNumber(
-                        pendingAnalysisItems.findIndex((pendingItem) => pendingItem.id === item.id),
-                      );
-                      const isAppliedAnswer = item.answer?.apply_status === "applied";
-                      const savedCustomAnswer =
-                        isAppliedAnswer && item.answer?.answer_type === "custom" ? item.answer.answer_markdown : "";
-                      const draft = pendingAnswerDrafts[item.id] ?? {
-                        selectedOptionId: item.answer?.selected_option_id ?? "",
-                        customAnswer: savedCustomAnswer,
-                        answerType: item.answer?.answer_type ?? "recommended_option",
-                      };
-                      const isSaving = savingClarificationId === item.id;
-                      const issueType = pendingIssueType(item);
-                      const sourceExcerpt = pendingItemSourceExcerpt(item);
-                      const itemTitle = pendingItemTitle(item);
-                      const showQuestionBody = item.question.trim() && item.question.trim() !== itemTitle;
-                      const recommendedOptions = pendingRecommendedOptions(item);
-                      return (
-                        <div
-                          className="overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-sm dark:shadow-none"
-                          key={item.id}
-                        >
-                          <div className="p-4">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                <span className="inline-flex h-6 min-w-7 items-center justify-center rounded-md border border-border bg-muted/50 px-1.5 font-medium text-[11px] text-muted-foreground tabular-nums">
-                                  {itemNumber}
-                                </span>
-                                <Badge variant="outline">{pendingIssueTypeLabels[issueType]}</Badge>
-                                <Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>
-                                  {pendingSeverityLabels[item.severity] ?? item.severity}
-                                </Badge>
-                                <span className="min-w-0 font-medium text-foreground text-base leading-6">
-                                  {itemTitle}
-                                </span>
+                    {pendingAnalysisItems
+                      .filter((item) => isPendingItemOpen(item) || Boolean(pendingAnswerDrafts[item.id]))
+                      .map((item) => {
+                        const itemNumber = pendingItemNumber(
+                          pendingAnalysisItems.findIndex((pendingItem) => pendingItem.id === item.id),
+                        );
+                        const isAppliedAnswer = item.answer?.apply_status === "applied";
+                        const savedCustomAnswer =
+                          isAppliedAnswer && item.answer?.answer_type === "custom" ? item.answer.answer_markdown : "";
+                        const isEditingHandledAnswer = Boolean(pendingAnswerDrafts[item.id]);
+                        const draft = pendingAnswerDrafts[item.id] ?? {
+                          selectedOptionId: item.answer?.selected_option_id ?? "",
+                          customAnswer: savedCustomAnswer,
+                          answerType: item.answer?.answer_type ?? "recommended_option",
+                        };
+                        const isSaving = savingClarificationId === item.id;
+                        const issueType = pendingIssueType(item);
+                        const sourceExcerpt = pendingItemSourceExcerpt(item);
+                        const itemHeading = pendingItemHeading(item);
+                        const questionBody = normalizePendingQuestionText(item.question);
+                        const recommendedOptions = pendingRecommendedOptions(item);
+                        return (
+                          <div
+                            className={cn(
+                              "overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm transition-colors dark:shadow-none",
+                              activeRestoredPendingItemId === item.id
+                                ? "border-primary/50 ring-2 ring-primary/15"
+                                : "border-border",
+                            )}
+                            data-pending-item-id={item.id}
+                            key={item.id}
+                          >
+                            <div className="bg-muted/20 px-4 py-3">
+                              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                                <div className="grid min-w-0 grid-cols-[auto_auto_auto_minmax(0,1fr)] items-center gap-2">
+                                  <span className="inline-flex h-7 min-w-8 items-center justify-center rounded-md border border-border bg-background px-2 font-medium text-[11px] text-muted-foreground tabular-nums">
+                                    {itemNumber}
+                                  </span>
+                                  <Badge variant="outline">{pendingIssueTypeLabels[issueType]}</Badge>
+                                  <Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>
+                                    {pendingSeverityLabels[item.severity] ?? item.severity}
+                                  </Badge>
+                                  <span className="min-w-0 break-words font-medium text-foreground text-sm leading-6">
+                                    {itemHeading}
+                                  </span>
+                                </div>
+                                <Button
+                                  className="h-8 shrink-0 px-2.5 text-xs"
+                                  disabled={!sourceExcerpt}
+                                  onClick={() => setSourceExcerptItem(item)}
+                                  type="button"
+                                  variant="outline"
+                                >
+                                  <Eye className="size-3.5" />
+                                  查看原文
+                                </Button>
                               </div>
-                              <Button
-                                className="h-7 px-2 text-xs"
-                                disabled={!sourceExcerpt}
-                                onClick={() => setSourceExcerptItem(item)}
-                                type="button"
-                                variant="outline"
-                              >
-                                <Eye className="size-3.5" />
-                                查看原文
-                              </Button>
                             </div>
-                            {showQuestionBody ? (
-                              <div className="mt-3 text-foreground text-sm leading-6">{item.question}</div>
-                            ) : null}
-                            {item.impact ? (
-                              <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800 text-xs dark:text-amber-200">
-                                影响：{item.impact}
-                              </div>
-                            ) : null}
-
-                            <div className="mt-4 rounded-lg border border-border bg-muted/35 p-3 dark:bg-muted/20">
-                              <div className="mb-2 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
-                                推荐处理
-                              </div>
-                              {recommendedOptions.length ? (
-                                <div className="space-y-2">
-                                  {recommendedOptions.slice(0, 2).map((option, index) => {
-                                    const selected =
-                                      draft.answerType === "recommended_option" && draft.selectedOptionId === option.id;
-                                    return (
-                                      <button
-                                        className={cn(
-                                          "grid w-full grid-cols-[28px_1fr] items-start gap-2 rounded-md border bg-background px-3 py-2.5 text-left text-sm transition-all dark:bg-input/20",
-                                          selected
-                                            ? "border-primary/45 shadow-sm ring-1 ring-primary/15 dark:bg-primary/10 dark:shadow-none dark:ring-primary/25"
-                                            : "border-transparent hover:border-border hover:bg-muted/30 hover:shadow-sm dark:hover:bg-input/35 dark:hover:shadow-none",
-                                        )}
-                                        disabled={isSaving || isFinalized}
-                                        key={option.id}
-                                        onClick={() =>
-                                          updatePendingAnswerDraft(item.id, {
-                                            answerType: "recommended_option",
-                                            selectedOptionId: option.id,
-                                          })
-                                        }
-                                        type="button"
-                                      >
-                                        <span
-                                          className={cn(
-                                            "inline-flex h-6 w-6 items-center justify-center rounded-full border font-medium text-xs",
-                                            selected
-                                              ? "border-primary bg-primary text-primary-foreground"
-                                              : "border-border bg-muted/50 text-muted-foreground",
-                                          )}
-                                        >
-                                          {optionBadge(index)}
-                                        </span>
-                                        <span className="min-w-0 text-muted-foreground leading-6">
-                                          {option.answer_markdown}
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
+                            <div className="space-y-3 px-4 pt-2 pb-4">
+                              {item.impact ? (
+                                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800 text-xs leading-5 dark:text-amber-200">
+                                  <span className="font-medium">影响</span>
+                                  <span className="mx-1 text-amber-700/70 dark:text-amber-200/70">/</span>
+                                  {item.impact}
                                 </div>
                               ) : null}
 
-                              <div
-                                className={cn(
-                                  "mt-2 grid w-full grid-cols-[28px_1fr] items-start gap-2 rounded-md border bg-background px-3 py-2.5 transition-all dark:bg-input/20",
-                                  draft.answerType === "custom"
-                                    ? "border-primary/45 shadow-sm ring-1 ring-primary/15 dark:bg-primary/10 dark:shadow-none dark:ring-primary/25"
-                                    : "border-transparent hover:border-border hover:bg-muted/30 dark:hover:bg-input/35",
-                                )}
-                              >
-                                <span
+                              {questionBody ? (
+                                <div className="rounded-md border border-border bg-background px-3 py-2 dark:bg-input/20">
+                                  <div className="text-foreground text-sm leading-6">{questionBody}</div>
+                                </div>
+                              ) : null}
+
+                              <div className="rounded-md border border-border bg-muted/25 p-3 dark:bg-muted/15">
+                                <div className="mb-2 font-medium text-[11px] text-muted-foreground">推荐处理</div>
+                                {recommendedOptions.length ? (
+                                  <div className="space-y-2">
+                                    {recommendedOptions.slice(0, 2).map((option, index) => {
+                                      const selected =
+                                        draft.answerType === "recommended_option" &&
+                                        draft.selectedOptionId === option.id;
+                                      return (
+                                        <button
+                                          className={cn(
+                                            "grid w-full grid-cols-[28px_1fr] items-start gap-2 rounded-md border bg-background px-3 py-2.5 text-left text-sm transition-all dark:bg-input/20",
+                                            selected
+                                              ? "border-primary/45 shadow-sm ring-1 ring-primary/15 dark:bg-primary/10 dark:shadow-none dark:ring-primary/25"
+                                              : "border-transparent hover:border-border hover:bg-muted/30 hover:shadow-sm dark:hover:bg-input/35 dark:hover:shadow-none",
+                                          )}
+                                          disabled={isSaving || isFinalized}
+                                          key={option.id}
+                                          onClick={() =>
+                                            updatePendingAnswerDraft(item.id, {
+                                              answerType: "recommended_option",
+                                              selectedOptionId: option.id,
+                                            })
+                                          }
+                                          type="button"
+                                        >
+                                          <span
+                                            className={cn(
+                                              "inline-flex h-6 w-6 items-center justify-center rounded-full border font-medium text-xs",
+                                              selected
+                                                ? "border-primary bg-primary text-primary-foreground"
+                                                : "border-border bg-muted/50 text-muted-foreground",
+                                            )}
+                                          >
+                                            {optionBadge(index)}
+                                          </span>
+                                          <span className="min-w-0 text-muted-foreground leading-6">
+                                            {option.answer_markdown}
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                ) : null}
+
+                                <div
                                   className={cn(
-                                    "inline-flex h-6 w-6 items-center justify-center rounded-full border font-medium text-xs",
+                                    "mt-2 grid w-full grid-cols-[28px_1fr] items-start gap-2 rounded-md border bg-background px-3 py-2.5 transition-all dark:bg-input/20",
                                     draft.answerType === "custom"
-                                      ? "border-primary bg-primary text-primary-foreground"
-                                      : "border-border bg-muted/50 text-muted-foreground",
+                                      ? "border-primary/45 shadow-sm ring-1 ring-primary/15 dark:bg-primary/10 dark:shadow-none dark:ring-primary/25"
+                                      : "border-transparent hover:border-border hover:bg-muted/30 dark:hover:bg-input/35",
                                   )}
                                 >
-                                  {optionBadge(recommendedOptions.slice(0, 2).length)}
-                                </span>
-                                <Textarea
-                                  className="min-h-6 w-full resize-none border-0 bg-transparent p-0 text-muted-foreground text-sm leading-6 shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent dark:disabled:bg-transparent"
+                                  <span
+                                    className={cn(
+                                      "inline-flex h-6 w-6 items-center justify-center rounded-full border font-medium text-xs",
+                                      draft.answerType === "custom"
+                                        ? "border-primary bg-primary text-primary-foreground"
+                                        : "border-border bg-muted/50 text-muted-foreground",
+                                    )}
+                                  >
+                                    {optionBadge(recommendedOptions.slice(0, 2).length)}
+                                  </span>
+                                  <Textarea
+                                    className="min-h-6 w-full resize-none border-0 bg-transparent p-0 text-muted-foreground text-sm leading-6 shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent dark:disabled:bg-transparent"
+                                    disabled={isSaving || isFinalized}
+                                    onChange={(event) =>
+                                      updatePendingAnswerDraft(item.id, {
+                                        answerType: "custom",
+                                        customAnswer: event.target.value,
+                                      })
+                                    }
+                                    onFocus={() =>
+                                      updatePendingAnswerDraft(item.id, {
+                                        answerType: "custom",
+                                        customAnswer: draft.customAnswer,
+                                      })
+                                    }
+                                    placeholder={draft.answerType === "custom" ? "" : "手动补充确认口径"}
+                                    value={draft.customAnswer}
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t pt-3">
+                                <Button
+                                  className="h-8 px-3 text-xs"
+                                  disabled={isSaving || isFinalized || (isAppliedAnswer && !isEditingHandledAnswer)}
+                                  onClick={() => void saveClarificationAnswer(item, "defer")}
+                                  type="button"
+                                  variant="outline"
+                                >
+                                  <SkipForward className="size-4" />
+                                  暂不处理
+                                </Button>
+                                <Button
+                                  className="h-8 px-3 text-xs"
                                   disabled={isSaving || isFinalized}
-                                  onChange={(event) =>
-                                    updatePendingAnswerDraft(item.id, {
-                                      answerType: "custom",
-                                      customAnswer: event.target.value,
-                                    })
-                                  }
-                                  onFocus={() =>
-                                    updatePendingAnswerDraft(item.id, {
-                                      answerType: "custom",
-                                      customAnswer: draft.customAnswer,
-                                    })
-                                  }
-                                  placeholder={draft.answerType === "custom" ? "" : "手动补充确认口径"}
-                                  value={draft.customAnswer}
-                                />
+                                  onClick={() => void saveClarificationAnswer(item)}
+                                  type="button"
+                                >
+                                  {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                                  保存答复
+                                </Button>
                               </div>
                             </div>
-
-                            <div className="mt-3 flex items-center justify-end gap-1.5">
-                              <Button
-                                className="h-7 px-2 text-xs"
-                                disabled={isSaving || isFinalized || isAppliedAnswer}
-                                onClick={() => deferPendingItem(item.id)}
-                                type="button"
-                                variant="outline"
-                              >
-                                <SkipForward className="size-4" />
-                                暂不处理
-                              </Button>
-                              <Button
-                                className="h-7 px-2.5 text-xs"
-                                disabled={isSaving || isFinalized}
-                                onClick={() => void saveClarificationAnswer(item)}
-                                type="button"
-                              >
-                                {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                                保存答复
-                              </Button>
-                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
                   </div>
                 ) : (
-                  <div className="flex min-h-[280px] items-center justify-center rounded-lg border bg-muted/20 text-center text-muted-foreground text-sm">
-                    {analysisResult
-                      ? deferredPendingAnalysisItems.length
-                        ? "待澄清事项已暂不处理，可通过右上角恢复。"
-                        : "暂无待澄清事项。"
-                      : "尚未执行需求分析，完成分析后会在这里展示待澄清事项。"}
+                  <div className="flex min-h-[280px] flex-col items-center justify-center rounded-lg border border-dashed bg-muted/15 text-center text-muted-foreground text-sm">
+                    <div className="font-medium text-foreground">
+                      {analysisResult
+                        ? handledPendingAnalysisItems.length
+                          ? "当前没有待处理澄清项"
+                          : "暂无待澄清事项"
+                        : "尚未执行需求分析"}
+                    </div>
+                    <div className="mt-1">
+                      {analysisResult
+                        ? handledPendingAnalysisItems.length
+                          ? "已写入和暂不处理的条目可在“已处理项”中修改。"
+                          : "完成分析后会在这里展示需要确认的内容。"
+                        : "完成分析后会在这里展示待澄清事项。"}
+                    </div>
                   </div>
                 )}
               </TabsContent>
@@ -2095,26 +2179,15 @@ export default function DocumentDetailPage() {
                   emptyClassName="flex items-center justify-center text-center"
                   emptyText={
                     reviewLoading
-                      ? "需求分析中，完成后会在这里展示质量保证报告。"
-                      : "尚未生成质量保证报告，请先执行需求分析。"
+                      ? "需求分析中，完成后会在这里展示质量保障报告。"
+                      : "尚未生成质量保障报告，请先执行需求分析。"
                   }
                 />
               </TabsContent>
               <TabsContent id="enhanced-requirement-section" value="enhanced">
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-medium">增强版需求文档</h3>
-                    <p className="mt-1 text-xs text-muted-foreground">原始需求 + 自动补充的内容</p>
-                  </div>
-                  {enhancedRequirementMarkdown && (
-                    <Button size="sm" onClick={generateExplorationPlan} disabled={generatingExplorationPlan}>
-                      {generatingExplorationPlan ? "生成中..." : "生成探索计划"}
-                    </Button>
-                  )}
-                </div>
                 <MarkdownPreview
                   className="requirement-document-preview markdown-enhanced"
-                  content={enhancedRequirementMarkdown}
+                  content={preliminaryMarkdown}
                   emptyClassName="flex items-center justify-center text-center"
                   emptyText={
                     reviewLoading
@@ -2122,48 +2195,6 @@ export default function DocumentDetailPage() {
                       : "尚未生成增强版需求文档，请先执行需求分析。"
                   }
                 />
-                {explorationPlan && (
-                  <div className="mt-6 rounded-lg border p-4">
-                    <h4 className="mb-3 text-sm font-medium">探索计划预览</h4>
-                    <div className="space-y-3">
-                      <div>
-                        <span className="text-xs text-muted-foreground">业务边界：</span>
-                        <span className="ml-2 text-sm">{explorationPlan.business_boundary}</span>
-                      </div>
-                      <div>
-                        <span className="text-xs text-muted-foreground">计划摘要：</span>
-                        <span className="ml-2 text-sm">{explorationPlan.summary}</span>
-                      </div>
-                      <div>
-                        <span className="text-xs text-muted-foreground">探索项数量：</span>
-                        <span className="ml-2 text-sm">{explorationPlan.items?.length || 0} 个</span>
-                      </div>
-                      {explorationPlan.items && explorationPlan.items.length > 0 && (
-                        <div className="mt-4">
-                          <h5 className="mb-2 text-xs font-medium text-muted-foreground">探索项列表：</h5>
-                          <div className="space-y-2">
-                            {explorationPlan.items.map((item: any, index: number) => (
-                              <div key={item.id || index} className="rounded border p-3 text-sm">
-                                <div className="font-medium">{item.title}</div>
-                                <div className="mt-1 text-xs text-muted-foreground">
-                                  {item.business_module} · {item.capability_type}
-                                </div>
-                                {item.ui_elements && item.ui_elements.length > 0 && (
-                                  <div className="mt-2 text-xs text-muted-foreground">
-                                    UI元素: {item.ui_elements.map((el: any) => el.element_name).join(", ")}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      <div className="mt-4 text-xs text-muted-foreground">
-                        提示：探索计划已保存，可在探索模块中导入使用。
-                      </div>
-                    </div>
-                  </div>
-                )}
               </TabsContent>
             </Tabs>
           </ShellSection>
@@ -2279,6 +2310,101 @@ export default function DocumentDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
+      <Dialog onOpenChange={setHandledClarificationDialogOpen} open={handledClarificationDialogOpen}>
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="shrink-0 gap-3 border-b bg-muted/10 py-5 pr-24 pl-6">
+            <DialogTitle>管理已处理</DialogTitle>
+            <Tabs
+              className="w-fit"
+              onValueChange={(value) => setHandledClarificationFilter(value as "all" | "applied" | "not_applicable")}
+              value={handledClarificationFilter}
+            >
+              <TabsList>
+                {[
+                  { value: "all", label: "全部", count: handledPendingAnalysisItems.length },
+                  { value: "applied", label: "已写入", count: appliedPendingAnalysisCount },
+                  { value: "not_applicable", label: "暂不处理", count: deferredPendingAnalysisCount },
+                ].map((filter) => (
+                  <TabsTrigger className="min-w-20 px-3" key={filter.value} value={filter.value}>
+                    {filter.label}
+                    <RequirementRoleBadge shape="circle" size="xs" variant="destructive">
+                      {filter.count}
+                    </RequirementRoleBadge>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </DialogHeader>
+          <div className="min-h-0 overflow-y-auto px-6 py-5">
+            {filteredHandledPendingAnalysisItems.length ? (
+              <div className="space-y-2.5">
+                {filteredHandledPendingAnalysisItems.map((item) => {
+                  const itemNumber = pendingItemNumber(
+                    pendingAnalysisItems.findIndex((pendingItem) => pendingItem.id === item.id),
+                  );
+                  const itemHeading = pendingItemHeading(item);
+                  const answerText = item.answer?.answer_markdown?.trim() || item.answer?.user_note?.trim() || "";
+                  const isDeferredAnswer = item.answer?.apply_status === "not_applicable";
+                  return (
+                    <div
+                      className="grid grid-cols-[5px_minmax(0,1fr)] overflow-hidden rounded-md border border-border bg-card text-card-foreground transition-colors hover:border-muted-foreground/30"
+                      key={item.id}
+                    >
+                      <div className={isDeferredAnswer ? "bg-slate-400 dark:bg-slate-500" : "bg-emerald-500"} />
+                      <div className="p-4">
+                        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                          <div className="min-w-0">
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <span className="inline-flex h-7 min-w-8 items-center justify-center rounded-sm border border-border bg-muted/40 px-2 font-medium text-[11px] text-muted-foreground tabular-nums">
+                                {itemNumber}
+                              </span>
+                              <Badge variant={isDeferredAnswer ? "secondary" : "outline"}>
+                                {handledPendingItemLabel(item)}
+                              </Badge>
+                              <Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>
+                                {pendingSeverityLabels[item.severity] ?? item.severity}
+                              </Badge>
+                            </div>
+                            <div className="mt-3 break-words text-foreground text-sm leading-6">{itemHeading}</div>
+                          </div>
+                          <Button
+                            className="h-8 shrink-0 justify-self-end px-3 text-xs"
+                            disabled={isFinalized}
+                            onClick={() => restoreHandledPendingItem(item)}
+                            type="button"
+                            variant={isDeferredAnswer ? "default" : "outline"}
+                          >
+                            <Pencil className="size-3.5" />
+                            {isDeferredAnswer ? "移回处理" : "移回修改"}
+                          </Button>
+                        </div>
+                        {answerText ? (
+                          <div className="mt-3 border-muted-foreground/20 border-l-2 pl-3 text-muted-foreground text-sm leading-6">
+                            <span className="mr-2 font-medium text-foreground">澄清：</span>
+                            {answerText}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex min-h-52 flex-col items-center justify-center rounded-lg border border-dashed bg-muted/15 text-center text-muted-foreground text-sm">
+                <RotateCcw className="mb-3 size-5" />
+                <div className="font-medium text-foreground">
+                  {handledPendingAnalysisItems.length ? "当前筛选下暂无条目" : "暂无已处理条目"}
+                </div>
+                <div className="mt-1">
+                  {handledPendingAnalysisItems.length
+                    ? "切换右上角筛选查看其他处理状态。"
+                    : "保存答复或标记暂不处理后，会在这里集中管理。"}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog
         onOpenChange={(open) => {
           if (!open) {
@@ -2387,7 +2513,7 @@ export default function DocumentDetailPage() {
               <AlertDialogDescription>
                 {hasFinalRequirementContent
                   ? "当前已有最终需求内容。重新执行需求分析会清空需求分析和最终需求 tab 内容，分析完成后需要重新转为最终需求。是否继续？"
-                  : "将基于当前主需求标准文件生成需求分析、待澄清事项和质量保证结果。分析开始后会清空旧的需求分析和最终需求内容。"}
+                  : "将基于当前主需求标准文件生成需求分析、待澄清事项和质量保障结果。分析开始后会清空旧的需求分析和最终需求内容。"}
               </AlertDialogDescription>
             </div>
           </AlertDialogHeader>

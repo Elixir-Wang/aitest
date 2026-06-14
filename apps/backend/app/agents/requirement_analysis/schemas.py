@@ -134,6 +134,14 @@ class NFRGap(BaseModel):
         default="",
         description="建议补充的需求内容"
     )
+    evidence_text: str = Field(
+        default="",
+        description="触发该缺口判断的主需求原文。没有原文依据时不得生成 NFRGap。"
+    )
+    evidence_reason: str = Field(
+        default="",
+        description="说明为什么这段原文需要补充该非功能指标。"
+    )
 
 
 class ClarityAssessment(BaseModel):
@@ -344,6 +352,63 @@ class ClarificationItem(BaseModel):
     # 关联信息
     module_key: str
     module_name: str
+
+    # 测试视角裁决信息
+    clarification_bucket: Literal["blocker", "risk", "acceptance"] = Field(
+        default="risk",
+        description="测试视角分层：阻塞项、风险项、验收项",
+    )
+    decision_point: str = Field(
+        default="",
+        description="需要裁决的业务点，如失败后是否回滚、重复提交是否幂等",
+    )
+    source_excerpt: str = Field(
+        default="",
+        description="主需求原文或模块事实。必须可追溯，不能使用推测文本。",
+    )
+    current_gap: str = Field(
+        default="",
+        description="当前需求缺少什么具体规则，为什么导致不可测或高风险",
+    )
+    test_impact: str = Field(
+        default="",
+        description="不确认会导致哪些测试无法设计、无法断言或无法验收",
+    )
+    risk_scenario: str = Field(
+        default="",
+        description="Given/When/Then 风格的风险触发场景",
+    )
+    affected_surfaces: list[Literal[
+        "api",
+        "state_flow",
+        "data_consistency",
+        "permission",
+        "security",
+        "audit_log",
+        "regression",
+        "migration",
+        "ui_feedback",
+        "async_task",
+        "external_dependency",
+        "non_functional",
+    ]] = Field(default_factory=list)
+    decision_options: list[ClarificationOption] = Field(
+        default_factory=list,
+        max_length=3,
+        description="供人类裁决的互斥选项。来自原文、辅助文档或明确推理。",
+    )
+    recommended_decision: str = Field(
+        default="",
+        description="推荐裁决及理由。必须标明是推理，不得伪装成已确认事实。",
+    )
+    human_question: str = Field(
+        default="",
+        description="只问一个具体决策，不问开放式大问题。",
+    )
+    draft_acceptance_tests: list[str] = Field(
+        default_factory=list,
+        description="确认后应生成的验收用例草案",
+    )
 
     # 问题描述
     question: str = Field(

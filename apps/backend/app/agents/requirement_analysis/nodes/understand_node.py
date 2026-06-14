@@ -5,7 +5,7 @@
 """
 
 from app.agents.requirement_analysis.state import RequirementAnalysisState
-from app.agents.requirement_analysis.agent import run_understanding_agent
+from app.agents.requirement_analysis.agents.understanding import run_understanding_agent
 
 
 async def understand_node(state: RequirementAnalysisState) -> RequirementAnalysisState:

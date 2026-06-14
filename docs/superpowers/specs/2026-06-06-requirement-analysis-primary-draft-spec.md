@@ -1,7 +1,7 @@
 # 主需求锚定的需求分析前后端改造 Spec
 
-> 状态：已被 `2026-06-07-requirement-analysis-two-stage-agent-spec.md` 收敛。
-> 本文中“一次分析同时读取辅助文档并补入初步需求”的设计不再作为实现依据。当前实现边界是：阶段一只分析主需求；阶段二通过独立的辅助文档增强入口处理辅助文档。
+> 状态：历史设计稿，已被当前 LangGraph 需求分析流程取代。
+> 本文中“一次分析同时读取辅助文档并补入初步需求”和“独立辅助增强入口”的设计不再作为实现依据。当前实现边界是：需求分析由 `app.agents.requirement_analysis` 负责，辅助文档查询在待澄清阶段内完成。
 
 ## 背景
 
@@ -26,7 +26,7 @@
 - 使用 `requirement-review` 思路识别主需求缺陷，包括遗漏、歧义、冲突、不可测、规则缺失、验收标准缺失。
 - 使用 `test-scenarios` 思路反推测试前置条件、边界值、异常路径、预期结果和验收标准缺口。
 - 阶段一不读取辅助文档、不调用辅助文档搜索、不生成辅助补强。
-- 辅助文档只通过独立的 `analysis/{analysis_id}/enhance` 增强入口处理。
+- 辅助文档查询不再通过独立增强入口处理。
 - 后端返回结构化结果，前端不解析自由文本来判断业务状态。
 
 ## 非目标
@@ -226,18 +226,7 @@ class RequirementAnalysisOutput(BaseModel):
 
 ### Agent 与 Skills 设计
 
-阶段一不再使用 DeepAgents `FilesystemMiddleware`、`SkillsMiddleware`、`SummarizationMiddleware` 或辅助搜索工具。当前实现由 Codex runner 在隔离工作目录中执行：
-
-```text
-input/primary.md
-skills/requirement-review/SKILL.md
-output/analysis.json
-output/analysis.md
-```
-
-阶段一只允许读取工作目录内的主需求和 `requirement-review` skill，不读取辅助文档，也不注册 `search_auxiliary_documents`。测试场景视角通过 prompt 中的短 checklist 表达，不再把 `test-scenarios` 作为运行时 skill 读入。
-
-辅助文档增强由独立的 `RequirementAuxiliaryEnhancementAgent` 负责，输入为阶段一问题列表和辅助文章 Markdown。
+本文档中的独立 runner 与独立辅助增强设计已废弃。当前需求分析以 `app.agents.requirement_analysis` 的 LangGraph 流程为准，辅助文档查询在“待澄清内容”阶段内完成，不再保留单独的辅助增强 agent 包。
 
 ### Skill 内容边界
 
@@ -546,7 +535,7 @@ npm --prefix ..\frontend run typecheck
 
 - 阶段一 schema 删除 `auxiliary_documents`。
 - 阶段一 service 不收集辅助文档。
-- 辅助文档增强使用独立 API 和独立输出 delta。
+- 辅助文档查询收敛到 LangGraph 待澄清阶段，不再保留独立 API 和独立输出 delta。
 
 ### 风险：初步需求被误认为最终需求
 

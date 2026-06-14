@@ -85,7 +85,7 @@ pytest tests\agents\requirement_analysis\ -v
 - ✅ 三块核心架构（需求理解 + 质量评估 + 待澄清内容）
 - ✅ NFR 评估（6大类）
 - ✅ 行内修正建议（suggested_fix）
-- ✅ 自动辅助文档增强
+- ✅ 辅助文档查询集成到待澄清阶段
 - ✅ 7级优先级排序
 - ✅ 明确的质量决策输出
 - ✅ 完整的 Markdown 报告生成

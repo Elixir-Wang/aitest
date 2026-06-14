@@ -59,7 +59,7 @@ async def test_requirement_analysis_end_to_end(monkeypatch):
                     FuzzyTerm(
                         term="快速",
                         location="登录模块",
-                        current_text="系统需要快速响应",
+                        current_text="用户可以使用验证码快速登录",
                         issue="未定义具体时间",
                         suggested_fix="系统响应时间 < 2秒"
                     )
@@ -106,7 +106,7 @@ async def test_requirement_analysis_end_to_end(monkeypatch):
         }
 
     monkeypatch.setattr(
-        "app.agents.requirement_analysis.nodes.clarify_node.search_for_answer",
+        "app.agents.requirement_analysis.nodes.clarify_node._search_for_answer",
         mock_search
     )
 
@@ -160,7 +160,7 @@ async def test_requirement_analysis_end_to_end(monkeypatch):
 
 
 def test_resolve_primary_source_excerpt_uses_real_primary_paragraph():
-    """查看原文应返回主需求里的相关段落，而不是模型生成的缺口描述。"""
+    """没有原文直接证据时，不用关键词猜一个看似相关的段落。"""
     from app.agents.requirement_analysis.nodes.clarify_node import (
         _resolve_primary_source_excerpt,
     )
@@ -186,8 +186,7 @@ def test_resolve_primary_source_excerpt_uses_real_primary_paragraph():
 
     excerpt = _resolve_primary_source_excerpt(question, primary_content)
 
-    assert "用户可以使用手机号和验证码登录系统。" in excerpt
-    assert "未定义验证码有效期" not in excerpt
+    assert excerpt == ""
 
 
 def test_resolve_primary_source_excerpt_expands_direct_match_to_paragraph():
@@ -217,8 +216,59 @@ def test_resolve_primary_source_excerpt_expands_direct_match_to_paragraph():
     assert "失败时需要展示可理解的错误提示。" in excerpt
 
 
-def test_clarification_item_without_search_result_still_has_recommended_options():
-    """无辅助文档命中时，也应给出可供前端展示和保存的两个候选答案。"""
+def test_nfr_clarification_requires_explicit_primary_evidence():
+    """NFR 缺口没有主需求证据时，不进入澄清问题。"""
+    from app.agents.requirement_analysis.schemas import (
+        QualityAssessmentOutput,
+        QualityScores,
+        QualityDecision,
+        CompletenessAssessment,
+        ClarityAssessment,
+        TestabilityAssessment,
+        ConsistencyAssessment,
+        NFRGap,
+    )
+    from app.agents.requirement_analysis.nodes.clarify_node import (
+        _extract_questions_from_quality,
+    )
+
+    quality = QualityAssessmentOutput(
+        scores=QualityScores(completeness=80, clarity=90, testability=80, consistency=90, overall=85),
+        decision=QualityDecision(result="conditional", rationale="需要补充", blocking_issues=[], recommended_actions=[]),
+        completeness=CompletenessAssessment(
+            score=80,
+            nfr_gaps=[
+                NFRGap(
+                    category="compatibility",
+                    description="未定义浏览器兼容范围",
+                    impact="无法设计兼容性测试",
+                    suggested_requirement="",
+                ),
+                NFRGap(
+                    category="security",
+                    description="未定义会话过期策略",
+                    impact="无法设计登录态失效测试",
+                    suggested_requirement="Session 过期策略需要明确。",
+                    evidence_text="建立产品本地 Session",
+                    evidence_reason="本地会话需要可测试的过期和失效规则。",
+                ),
+            ],
+        ),
+        clarity=ClarityAssessment(score=90),
+        testability=TestabilityAssessment(score=80),
+        consistency=ConsistencyAssessment(score=90),
+        assessment_summary="",
+    )
+
+    questions = _extract_questions_from_quality(quality)
+
+    assert [question["category"] for question in questions] == ["security"]
+    assert "缺少compatibility" not in questions[0]["question"]
+    assert questions[0]["current_text"] == "建立产品本地 Session"
+
+
+def test_clarification_item_without_search_result_does_not_guess_options():
+    """无辅助文档命中时，不生成通用猜测候选答案。"""
     from app.agents.requirement_analysis.nodes.clarify_node import (
         _create_clarification_item,
     )
@@ -244,14 +294,8 @@ def test_clarification_item_without_search_result_still_has_recommended_options(
         },
     )
 
-    assert item.resolution_status == "has_suggestions"
-    assert len(item.recommended_options) == 2
-    assert item.recommended_options[0].option_id == "opt1"
-    assert item.recommended_options[1].option_id == "opt2"
-    assert "P95" in item.recommended_options[0].answer_markdown
-    assert "QPS" in item.recommended_options[1].answer_markdown
-    assert all("请业务确认" not in option.answer_markdown for option in item.recommended_options)
-    assert all("暂不纳入" not in option.answer_markdown for option in item.recommended_options)
+    assert item.resolution_status == "needs_manual"
+    assert item.recommended_options == []
 
 
 @pytest.mark.anyio
@@ -323,7 +367,7 @@ async def test_requirement_analysis_skip_clarification(monkeypatch):
         raise AssertionError("高质量需求应跳过澄清搜索")
 
     monkeypatch.setattr(
-        "app.agents.requirement_analysis.nodes.clarify_node.search_for_answer",
+        "app.agents.requirement_analysis.nodes.clarify_node._search_for_answer",
         fail_if_search_called
     )
 

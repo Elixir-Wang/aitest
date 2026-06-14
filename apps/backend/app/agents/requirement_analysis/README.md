@@ -7,9 +7,8 @@ This package is the canonical LangGraph implementation for requirement analysis.
 ```text
 requirement_analysis/
 ├── __init__.py
-├── agent.py                    # legacy LangChain sub-agent helpers
+├── agents/                     # child agents: understanding, quality, clarification
 ├── schemas.py                  # workflow input/output and node schemas
-├── service.py                  # legacy service wrapper used by tests/tools
 ├── workflow.py                 # LangGraph orchestration entrypoint
 ├── state.py                    # LangGraph state contract
 ├── nodes/                      # understand, quality, clarify, enhance nodes
@@ -41,4 +40,4 @@ flowchart LR
     E --> F
 ```
 
-The separate `app.agents.requirement_auxiliary_enhancement` package remains the canonical auxiliary enhancement agent.
+Auxiliary-document lookup is handled inside the LangGraph clarification flow; the old standalone auxiliary enhancement package has been removed.

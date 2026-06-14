@@ -134,21 +134,6 @@ def finalize_requirement_analysis(
     return document_service.finalize_requirement_analysis(project_id, document_id, payload, actor)
 
 
-@router.post("/{document_id}/analysis/{analysis_id}/enhance")
-async def enhance_requirement_analysis(
-    project_id: str,
-    document_id: str,
-    analysis_id: str,
-    actor=Depends(current_user),
-) -> dict:
-    return await document_service.enhance_requirement_analysis_with_auxiliary_documents(
-        project_id,
-        document_id,
-        analysis_id,
-        actor,
-    )
-
-
 @router.get("/{document_id}/analysis/{analysis_id}/clarification-answers")
 def list_requirement_clarification_answers(
     project_id: str,

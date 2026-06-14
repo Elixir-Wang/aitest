@@ -23,11 +23,7 @@ async def enhance_node(state: RequirementAnalysisState) -> RequirementAnalysisSt
         更新后的状态（添加 enhanced_requirement 和 analysis_report）
     """
     # 1. 生成分析报告
-    analysis_report = generate_analysis_report(
-        state["understanding"],
-        state["quality"],
-        state["clarification"]
-    )
+    analysis_report = generate_analysis_report(state["understanding"])
 
     # 2. 生成增强版需求文档
     auto_resolved_items = get_auto_resolved_items(state["clarification"].items)

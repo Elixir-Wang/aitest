@@ -7,7 +7,6 @@
 import re
 from typing import List, Dict
 from app.agents.requirement_analysis.state import RequirementAnalysisState
-from app.agents.requirement_analysis.services.auxiliary_search_service import search_for_answer
 from app.agents.requirement_analysis.schemas import (
     ClarificationOutput,
     ClarificationItem,
@@ -41,9 +40,11 @@ async def clarify_node(state: RequirementAnalysisState) -> RequirementAnalysisSt
 
     for q in questions:
         q["current_text"] = _resolve_primary_source_excerpt(q, state["primary_content"])
+        if not _is_useful_clarification_question(q):
+            continue
 
         # 🔥 使用 Agentic Search 查找答案
-        search_result = await search_for_answer(
+        search_result = await _search_for_answer(
             model=model,
             question=q["question"],
             auxiliary_documents=state["auxiliary_docs"]
@@ -69,6 +70,17 @@ async def clarify_node(state: RequirementAnalysisState) -> RequirementAnalysisSt
     return state
 
 
+async def _search_for_answer(model, question: str, auxiliary_documents: list[dict]) -> Dict:
+    """Lazy wrapper so pure clarification helpers do not import LangChain search deps."""
+    from app.agents.requirement_analysis.services.auxiliary_search_service import search_for_answer
+
+    return await search_for_answer(
+        model=model,
+        question=question,
+        auxiliary_documents=auxiliary_documents,
+    )
+
+
 def _extract_questions_from_quality(quality_result) -> List[Dict]:
     """从质量评估结果中提取问题"""
     questions = []
@@ -87,17 +99,22 @@ def _extract_questions_from_quality(quality_result) -> List[Dict]:
         })
 
     for nfr_gap in quality_result.completeness.nfr_gaps:
+        evidence_text = str(getattr(nfr_gap, "evidence_text", "") or "").strip()
+        if not evidence_text:
+            continue
+        category_label = _nfr_category_label(nfr_gap.category)
         questions.append({
             "id": f"NFR-{len(questions)+1}",
             "title": "缺失非功能需求",
             "issue_type": "missing",
             "category": nfr_gap.category,
-            "question": f"缺少{nfr_gap.category}需求，需要定义什么指标？",
+            "question": f"请确认“{category_label}”指标：{nfr_gap.description}",
             "impact": nfr_gap.impact,
             "severity": nfr_gap.severity,
             "source": "completeness",
-            "current_text": nfr_gap.description,
+            "current_text": evidence_text,
             "suggested_fix": nfr_gap.suggested_requirement,
+            "evidence_reason": getattr(nfr_gap, "evidence_reason", ""),
         })
 
     for detail in quality_result.completeness.missing_details:
@@ -147,6 +164,7 @@ def _extract_questions_from_quality(quality_result) -> List[Dict]:
             "issue_type": "confirmation",
             "module_key": criteria_gap.module_key,
             "module_name": capability or "验收标准",
+            "criteria_issue": criteria_gap.issue,
             "question": f"请确认“{capability}”的验收标准。",
             "impact": "验收标准不明确会影响测试设计、验收结论和交付范围判断",
             "severity": "major",
@@ -162,6 +180,7 @@ def _extract_questions_from_quality(quality_result) -> List[Dict]:
             "issue_type": "confirmation",
             "module_key": test_gap.module_key,
             "module_name": test_gap.module_key or "测试覆盖",
+            "gap_type": test_gap.gap_type,
             "question": f"请确认测试覆盖缺口：{test_gap.description}",
             "impact": test_gap.impact,
             "severity": "major",
@@ -200,6 +219,88 @@ def _extract_questions_from_quality(quality_result) -> List[Dict]:
     return questions
 
 
+def _is_useful_clarification_question(question: Dict) -> bool:
+    """澄清项准入规则：必须可追溯、可回答、影响测试或交付决策。"""
+    question_text = str(question.get("question") or "").strip()
+    impact = str(question.get("impact") or "").strip()
+    current_text = str(question.get("current_text") or "").strip()
+
+    if not question_text or not impact:
+        return False
+
+    if not _has_delivery_or_test_impact(question):
+        return False
+
+    if question.get("issue_type") == "conflict":
+        return bool(current_text)
+
+    return bool(current_text)
+
+
+def _has_delivery_or_test_impact(question: Dict) -> bool:
+    text = " ".join(
+        str(question.get(key) or "")
+        for key in ("question", "impact", "suggested_fix", "evidence_reason", "source", "issue_type")
+    )
+    valuable_terms = (
+        "设计",
+        "开发",
+        "测试",
+        "验收",
+        "接口",
+        "字段",
+        "状态",
+        "性能",
+        "响应",
+        "时间",
+        "时长",
+        "权限",
+        "认证",
+        "登录",
+        "会话",
+        "数据",
+        "规则",
+        "异常",
+        "边界",
+        "用例",
+        "契约",
+        "交付",
+        "上线",
+        "风险",
+        "断言",
+        "错误",
+        "失败",
+        "成功",
+        "回滚",
+        "补偿",
+        "并发",
+        "重复",
+        "幂等",
+        "审批",
+        "导入",
+        "导出",
+        "任务",
+        "消息",
+        "日志",
+        "审计",
+    )
+    return any(term in text for term in valuable_terms)
+
+
+def _nfr_category_label(category: str) -> str:
+    labels = {
+        "performance": "性能",
+        "security": "安全",
+        "availability": "可用性",
+        "scalability": "可扩展性",
+        "compatibility": "兼容性",
+        "compliance": "合规",
+        "usability": "易用性",
+        "maintainability": "可维护性",
+    }
+    return labels.get(category, category)
+
+
 def _resolve_primary_source_excerpt(question: Dict, primary_content: str) -> str:
     """定位待澄清项在主需求中的相关段落。
 
@@ -223,25 +324,7 @@ def _resolve_primary_source_excerpt(question: Dict, primary_content: str) -> str
         if excerpt:
             return excerpt
 
-    keywords = _extract_excerpt_keywords(question)
-    if not keywords:
-        return ""
-
-    scored: list[tuple[int, int, str]] = []
-    for index, paragraph in enumerate(paragraphs):
-        normalized = paragraph.lower()
-        score = 0
-        for keyword in keywords:
-            if keyword in normalized:
-                score += max(1, min(len(keyword), 12))
-        if score:
-            scored.append((score, -index, paragraph))
-
-    if not scored:
-        return ""
-
-    scored.sort(reverse=True)
-    return scored[0][2]
+    return ""
 
 
 def _split_markdown_paragraphs(markdown_content: str) -> list[str]:
@@ -291,89 +374,6 @@ def _paragraph_containing_text(paragraphs: list[str], text: str) -> str:
     return ""
 
 
-def _extract_excerpt_keywords(question: Dict) -> list[str]:
-    source_text = " ".join(
-        str(question.get(key) or "")
-        for key in (
-            "title",
-            "issue_type",
-            "question",
-            "impact",
-            "current_text",
-            "suggested_fix",
-            "module_key",
-            "module_name",
-            "source",
-        )
-    ).lower()
-    stopwords = {
-        "缺少",
-        "缺失",
-        "功能",
-        "需求",
-        "需要",
-        "请确认",
-        "确认",
-        "以下",
-        "相关",
-        "补充",
-        "影响",
-        "待确认",
-        "模糊",
-        "表述",
-        "验收",
-        "标准",
-        "测试",
-        "覆盖",
-        "问题",
-        "什么",
-        "如何",
-        "是否",
-        "以及",
-        "或者",
-        "如果",
-        "没有",
-        "未定义",
-        "不明确",
-        "会影响",
-        "completeness",
-        "clarity",
-        "testability",
-        "consistency",
-        "missing",
-        "confirmation",
-        "conflict",
-        "ambiguous",
-        "major",
-        "minor",
-        "blocker",
-    }
-    keywords: list[str] = []
-
-    for token in re.findall(r"[a-z0-9_./-]{2,}", source_text):
-        if token not in stopwords:
-            keywords.append(token)
-
-    for segment in re.findall(r"[\u4e00-\u9fff]{2,}", source_text):
-        if segment in stopwords:
-            continue
-        if len(segment) <= 8:
-            keywords.append(segment)
-        for index in range(0, max(len(segment) - 1, 0)):
-            token = segment[index:index + 2]
-            if token not in stopwords:
-                keywords.append(token)
-
-    seen: set[str] = set()
-    unique_keywords: list[str] = []
-    for keyword in keywords:
-        if keyword in seen:
-            continue
-        seen.add(keyword)
-        unique_keywords.append(keyword)
-    return unique_keywords
-
-
 def _normalize_inline_text(text: str) -> str:
     return re.sub(r"\s+", "", text).lower()
 
@@ -383,7 +383,8 @@ def _create_clarification_item(question: Dict, search_result: Dict) -> Clarifica
     title = question.get("title") or "待确认项"
     module_key = question.get("module_key") or question.get("source") or "general"
     module_name = question.get("module_name") or title
-    fallback_options = _build_fallback_recommended_options(question)
+    quality_options = _build_quality_recommended_options(question)
+    decision_fields = _build_test_decision_fields(question, module_name)
 
     # 根据搜索结果决定状态
     if search_result["found"] and search_result["confidence"] == "high":
@@ -395,11 +396,12 @@ def _create_clarification_item(question: Dict, search_result: Dict) -> Clarifica
             source=question["source"],
             module_key=module_key,
             module_name=module_name,
-            question=question["question"],
-            impact=question["impact"],
+            question=decision_fields["human_question"],
+            impact=decision_fields["test_impact"],
             severity=question["severity"],
             current_text=question.get("current_text", ""),
             suggested_fix=search_result["answer"],
+            **decision_fields,
             evidence=[
                 EvidenceReference(
                     mapping_id="",
@@ -423,7 +425,7 @@ def _create_clarification_item(question: Dict, search_result: Dict) -> Clarifica
                 source=search_result["source"]
             )
         ] if search_result["source"] else []
-        recommended_options = _merge_recommended_options(recommended_options, fallback_options)
+        recommended_options = _merge_recommended_options(recommended_options, quality_options)
         return ClarificationItem(
             item_id=question["id"],
             title=title,
@@ -431,12 +433,17 @@ def _create_clarification_item(question: Dict, search_result: Dict) -> Clarifica
             source=question["source"],
             module_key=module_key,
             module_name=module_name,
-            question=question["question"],
-            impact=question["impact"],
+            question=decision_fields["human_question"],
+            impact=decision_fields["test_impact"],
             severity=question["severity"],
             current_text=question.get("current_text", ""),
             suggested_fix=question.get("suggested_fix", ""),
             recommended_options=recommended_options,
+            decision_options=_merge_decision_options(
+                decision_fields["decision_options"],
+                recommended_options,
+            ),
+            **{key: value for key, value in decision_fields.items() if key != "decision_options"},
             evidence=[],
             resolution_status="has_suggestions"
         )
@@ -450,23 +457,319 @@ def _create_clarification_item(question: Dict, search_result: Dict) -> Clarifica
             source=question["source"],
             module_key=module_key,
             module_name=module_name,
-            question=question["question"],
-            impact=question["impact"],
+            question=decision_fields["human_question"],
+            impact=decision_fields["test_impact"],
             severity=question["severity"],
             current_text=question.get("current_text", ""),
             suggested_fix=question.get("suggested_fix", ""),
-            recommended_options=fallback_options,
+            recommended_options=quality_options,
+            **decision_fields,
             evidence=[],
-            resolution_status="has_suggestions" if fallback_options else "needs_manual"
+            resolution_status="has_suggestions" if quality_options else "needs_manual"
         )
 
 
-def _build_fallback_recommended_options(question: Dict) -> list[ClarificationOption]:
-    """无辅助文档命中时，基于上下文推断两个最可能答案。
+def _build_test_decision_fields(question: Dict, module_name: str) -> dict:
+    """把质量事实转换为通用测试裁决字段。"""
+    raw_question = str(question.get("question") or "").strip()
+    description = _decision_description(question)
+    source_excerpt = str(question.get("current_text") or "").strip()
+    impact = str(question.get("impact") or "").strip()
+    surfaces = _infer_affected_surfaces(question)
+    bucket = _infer_clarification_bucket(question, surfaces)
+    decision_point = _build_decision_point(question, description)
+    human_question = _build_human_question(question, decision_point)
+    test_impact = _build_test_impact(impact, surfaces)
+    current_gap = _build_current_gap(question, description)
+    risk_scenario = _build_risk_scenario(module_name, decision_point, surfaces)
+    decision_options = _build_decision_options(surfaces)
+    recommended_decision = _build_recommended_decision(surfaces)
+    draft_tests = _build_draft_acceptance_tests(decision_point, surfaces)
 
-    recommended_options 是给人工确认的候选答案，answer_markdown 必须能直接写入
-    需求文档；不要生成“请业务确认”“暂不纳入本期”这类处理动作。
-    """
+    return {
+        "clarification_bucket": bucket,
+        "decision_point": decision_point,
+        "source_excerpt": source_excerpt,
+        "current_gap": current_gap,
+        "test_impact": test_impact,
+        "risk_scenario": risk_scenario,
+        "affected_surfaces": surfaces,
+        "decision_options": decision_options,
+        "recommended_decision": recommended_decision,
+        "human_question": human_question or raw_question,
+        "draft_acceptance_tests": draft_tests,
+    }
+
+
+def _decision_description(question: Dict) -> str:
+    for key in ("description", "suggested_fix", "question", "current_text"):
+        value = str(question.get(key) or "").strip()
+        if value:
+            return value
+    return "该需求的可测试规则"
+
+
+def _build_decision_point(question: Dict, description: str) -> str:
+    capability = str(question.get("module_name") or question.get("module_key") or "").strip()
+    text = description.strip("。？? ")
+    prefixes = (
+        "请确认",
+        "以下细节需要确认：",
+        "请确认测试覆盖缺口：",
+        "请确认这句话的准确含义：",
+        "发现冲突：",
+    )
+    for prefix in prefixes:
+        if text.startswith(prefix):
+            text = text[len(prefix):].strip("：:，, ")
+    if "，以哪个为准" in text:
+        text = text.split("，以哪个为准", 1)[0]
+    if capability and capability not in text:
+        return f"{capability}的{text}"
+    return text or capability or "待确认规则"
+
+
+def _build_human_question(question: Dict, decision_point: str) -> str:
+    if question.get("issue_type") == "conflict":
+        return f"请确认“{decision_point}”应以哪条规则为准？"
+    if question.get("source") == "testability":
+        return f"请确认“{decision_point}”的预期结果、失败处理和可观察断言是什么？"
+    return f"请确认“{decision_point}”的明确业务规则是什么？"
+
+
+def _build_current_gap(question: Dict, description: str) -> str:
+    if question.get("issue_type") == "conflict":
+        return f"当前需求存在冲突或多种解释：{description}"
+    if question.get("source") == "clarity":
+        return f"当前表述不够明确，存在多种测试解释：{description}"
+    return f"当前需求未明确说明：{description}"
+
+
+def _build_test_impact(impact: str, surfaces: list[str]) -> str:
+    impact_text = impact or "不确认会影响测试设计和验收结论。"
+    if any(term in impact_text for term in ("测试", "验收", "断言", "用例")):
+        return impact_text
+    surface_text = "、".join(_surface_label(surface) for surface in surfaces) or "相关"
+    return f"{impact_text}；同时会导致{surface_text}测试无法形成明确断言。"
+
+
+def _infer_clarification_bucket(question: Dict, surfaces: list[str]) -> str:
+    severity = str(question.get("severity") or "")
+    source = str(question.get("source") or "")
+    blocking_surfaces = {"api", "state_flow", "data_consistency", "permission", "security", "migration"}
+    if severity == "blocker" or question.get("issue_type") == "conflict":
+        return "blocker"
+    if source == "testability" and blocking_surfaces.intersection(surfaces):
+        return "blocker"
+    if source == "testability":
+        return "risk"
+    if severity == "minor":
+        return "acceptance"
+    return "risk"
+
+
+def _infer_affected_surfaces(question: Dict) -> list[str]:
+    text = " ".join(
+        str(question.get(key) or "")
+        for key in (
+            "question",
+            "impact",
+            "suggested_fix",
+            "evidence_reason",
+            "current_text",
+            "module_key",
+            "module_name",
+            "category",
+            "criteria_issue",
+            "gap_type",
+            "issue_type",
+        )
+    ).lower()
+    gap_type = str(question.get("gap_type") or "").lower()
+    surfaces: list[str] = []
+
+    def add(surface: str) -> None:
+        if surface not in surfaces:
+            surfaces.append(surface)
+
+    if any(term in text for term in ("接口", "api", "响应", "错误码", "参数", "字段", "提交", "回调")):
+        add("api")
+    if any(term in text for term in ("状态", "流转", "审批", "撤回", "驳回", "取消", "终态", "初始")):
+        add("state_flow")
+    if any(term in text for term in ("数据", "唯一", "重复", "并发", "幂等", "回滚", "补偿", "库存", "余额", "额度", "映射", "关联", "导入")) or gap_type in {"concurrency", "data_dependency", "boundary_value"}:
+        add("data_consistency")
+    if any(term in text for term in ("权限", "角色", "越权", "租户", "可见", "授权", "未登录")) or gap_type == "permission":
+        add("permission")
+    if any(term in text for term in ("安全", "认证", "敏感", "脱敏", "加密", "隐私")):
+        add("security")
+    if any(term in text for term in ("日志", "审计", "trace", "告警", "留痕")):
+        add("audit_log")
+    if any(term in text for term in ("迁移", "历史", "存量", "回填")):
+        add("migration")
+    if any(term in text for term in ("提示", "页面", "展示", "用户可见", "前端")) or gap_type == "error_message":
+        add("ui_feedback")
+    if any(term in text for term in ("异步", "任务", "消息", "队列", "重试", "超时")):
+        add("async_task")
+    if any(term in text for term in ("第三方", "外部", "依赖", "网络")):
+        add("external_dependency")
+    if any(term in text for term in ("性能", "并发", "吞吐", "容量", "可用", "兼容", "合规", "响应时间")):
+        add("non_functional")
+    if not surfaces:
+        add("regression")
+    elif "regression" not in surfaces:
+        add("regression")
+    return surfaces
+
+
+def _build_risk_scenario(module_name: str, decision_point: str, surfaces: list[str]) -> str:
+    trigger = _scenario_trigger(surfaces)
+    expected = _scenario_expected(surfaces)
+    return (
+        f"Given {module_name}处于可执行前置条件\n"
+        f"When {trigger}：{decision_point}\n"
+        f"Then 系统应按确认后的规则{expected}"
+    )
+
+
+def _scenario_trigger(surfaces: list[str]) -> str:
+    if "state_flow" in surfaces:
+        return "发生状态转换、重复操作或非法流转"
+    if "data_consistency" in surfaces:
+        return "发生重复提交、并发操作或关联数据变化"
+    if "permission" in surfaces or "security" in surfaces:
+        return "发生无权限、越权或敏感操作"
+    if "async_task" in surfaces:
+        return "异步任务执行、失败、重试或超时"
+    if "external_dependency" in surfaces:
+        return "外部依赖成功、失败或超时"
+    return "用户或系统触发该业务场景"
+
+
+def _scenario_expected(surfaces: list[str]) -> str:
+    expected = ["返回可观察结果"]
+    if "api" in surfaces:
+        expected.append("提供明确响应或错误码")
+    if "state_flow" in surfaces:
+        expected.append("更新到明确状态")
+    if "data_consistency" in surfaces:
+        expected.append("保持关联数据一致")
+    if "permission" in surfaces or "security" in surfaces:
+        expected.append("执行权限或安全控制")
+    if "audit_log" in surfaces:
+        expected.append("记录可追溯日志")
+    return "，".join(expected)
+
+
+def _build_decision_options(surfaces: list[str]) -> list[ClarificationOption]:
+    if "data_consistency" in surfaces:
+        options = [
+            ("按幂等处理", "重复或并发请求返回已有结果，不产生重复业务结果。"),
+            ("拒绝重复或非法操作", "重复或非法请求返回明确失败结果，业务数据不变。"),
+            ("允许继续处理", "系统允许生成新的业务结果，并由后续流程处理重复数据。"),
+        ]
+    elif "state_flow" in surfaces:
+        options = [
+            ("拒绝非法流转", "对象处于不允许状态时拒绝操作，并保持原状态。"),
+            ("忽略重复动作", "重复动作返回当前状态，不创建新的流转记录。"),
+            ("开启新流程", "重复或后续动作生成新的流程轮次，并保留历史记录。"),
+        ]
+    elif "permission" in surfaces or "security" in surfaces:
+        options = [
+            ("隐藏入口", "无权限用户不可见入口或敏感数据。"),
+            ("拒绝操作", "无权限或安全校验失败时返回明确失败结果。"),
+            ("允许只读", "无操作权限时仅允许查看授权范围内的数据。"),
+        ]
+    elif "async_task" in surfaces or "external_dependency" in surfaces:
+        options = [
+            ("自动重试", "失败或超时时按约定次数重试，并记录任务状态。"),
+            ("立即失败", "失败或超时时返回明确失败结果，不自动重试。"),
+            ("进入人工处理", "失败或超时时进入待处理状态，由人工补偿。"),
+        ]
+    else:
+        options = [
+            ("明确成功结果", "满足条件时返回可观察的成功结果。"),
+            ("明确失败结果", "不满足条件时返回可观察的失败结果。"),
+            ("补充边界规则", "为边界输入或异常路径补充独立处理规则。"),
+        ]
+
+    return [
+        ClarificationOption(
+            option_id=f"decision-{index}",
+            label=label,
+            answer_markdown=answer,
+            rationale="基于通用测试裁决维度生成的候选裁决，需人工确认。",
+            confidence="low",
+            source="测试视角推理",
+        )
+        for index, (label, answer) in enumerate(options, 1)
+    ]
+
+
+def _merge_decision_options(
+    decision_options: list[ClarificationOption],
+    recommended_options: list[ClarificationOption],
+) -> list[ClarificationOption]:
+    merged: list[ClarificationOption] = []
+    for option in [*decision_options, *recommended_options]:
+        if _contains_same_answer(merged, option.answer_markdown):
+            continue
+        merged.append(option.model_copy(update={"option_id": f"decision-{len(merged) + 1}"}))
+        if len(merged) >= 3:
+            break
+    return merged
+
+
+def _build_recommended_decision(surfaces: list[str]) -> str:
+    if "data_consistency" in surfaces:
+        return "推荐优先确认幂等、拒绝或回滚规则。该判断来自数据一致性测试推理，需业务确认。"
+    if "state_flow" in surfaces:
+        return "推荐优先确认非法流转和重复动作处理规则。该判断来自状态流转测试推理，需业务确认。"
+    if "permission" in surfaces or "security" in surfaces:
+        return "推荐优先确认拒绝策略、可见范围和审计要求。该判断来自权限安全测试推理，需业务确认。"
+    if "async_task" in surfaces or "external_dependency" in surfaces:
+        return "推荐优先确认失败、重试、超时和人工补偿规则。该判断来自异常路径测试推理，需业务确认。"
+    return ""
+
+
+def _build_draft_acceptance_tests(decision_point: str, surfaces: list[str]) -> list[str]:
+    tests = [f"{decision_point}的正常路径应返回明确成功结果"]
+    if "api" in surfaces:
+        tests.append(f"{decision_point}的失败路径应返回明确错误码或错误提示")
+    if "state_flow" in surfaces:
+        tests.append(f"{decision_point}触发后状态应按确认规则流转")
+    if "data_consistency" in surfaces:
+        tests.append(f"{decision_point}在重复或并发场景下不应产生未确认的数据副作用")
+    if "permission" in surfaces or "security" in surfaces:
+        tests.append(f"{decision_point}在无权限或安全校验失败时应被拒绝")
+    if "async_task" in surfaces or "external_dependency" in surfaces:
+        tests.append(f"{decision_point}在失败、重试或超时时应有明确任务状态")
+    if "audit_log" in surfaces:
+        tests.append(f"{decision_point}成功或失败后应记录可追溯日志")
+    if len(tests) == 1:
+        tests.append(f"{decision_point}的异常路径应有明确可观察结果")
+    return tests[:5]
+
+
+def _surface_label(surface: str) -> str:
+    labels = {
+        "api": "接口契约",
+        "state_flow": "状态流转",
+        "data_consistency": "数据一致性",
+        "permission": "权限",
+        "security": "安全",
+        "audit_log": "审计日志",
+        "regression": "回归",
+        "migration": "迁移",
+        "ui_feedback": "用户反馈",
+        "async_task": "异步任务",
+        "external_dependency": "外部依赖",
+        "non_functional": "非功能",
+    }
+    return labels.get(surface, surface)
+
+
+def _build_quality_recommended_options(question: Dict) -> list[ClarificationOption]:
+    """只把质量评估明确给出的修正文案转成候选项，不做业务推断。"""
     suggested_fix = str(question.get("suggested_fix") or "").strip()
 
     options: list[ClarificationOption] = []
@@ -474,31 +777,14 @@ def _build_fallback_recommended_options(question: Dict) -> list[ClarificationOpt
         options.append(
             ClarificationOption(
                 option_id="opt1",
-                label="候选答案 A",
+                label="建议修正",
                 answer_markdown=suggested_fix,
                 rationale="来自质量评估阶段的建议修正，可直接作为候选答案确认。",
                 confidence="medium",
                 source="质量评估建议",
             )
         )
-
-    for answer in _infer_likely_answers(question):
-        if _contains_same_answer(options, answer):
-            continue
-        options.append(
-            ClarificationOption(
-                option_id=f"opt{len(options) + 1}",
-                label=f"候选答案 {chr(64 + len(options) + 1)}",
-                answer_markdown=answer,
-                rationale="未从辅助文档命中明确答案时，基于问题类型和上下文生成的最可能答案。",
-                confidence="low",
-                source="需求分析推断",
-            )
-        )
-        if len(options) >= 2:
-            break
-
-    return options[:2]
+    return options
 
 
 def _merge_recommended_options(
@@ -520,107 +806,6 @@ def _merge_recommended_options(
 def _contains_same_answer(options: list[ClarificationOption], answer: str) -> bool:
     normalized_answer = _normalize_inline_text(answer)
     return any(_normalize_inline_text(option.answer_markdown) == normalized_answer for option in options)
-
-
-def _infer_likely_answers(question: Dict) -> list[str]:
-    issue_type = str(question.get("issue_type") or "")
-    text = " ".join(
-        str(question.get(key) or "")
-        for key in ("category", "question", "current_text", "impact", "module_key", "module_name", "title")
-    ).lower()
-
-    if issue_type == "conflict":
-        conflict_answers = _infer_conflict_answers(question)
-        if conflict_answers:
-            return conflict_answers
-
-    nfr_answers = _infer_non_functional_answers(text)
-    if nfr_answers:
-        return nfr_answers
-
-    if "验收" in text or "acceptance" in text:
-        capability = _extract_capability_name(question) or "该功能"
-        return [
-            f"验收标准：{capability}应覆盖正常流程、异常输入、权限限制和结果可见性；用户操作后系统必须给出明确成功或失败反馈。",
-            f"验收标准：{capability}采用 Given-When-Then 描述，至少包含前置条件、操作步骤、预期结果、错误提示和边界条件。",
-        ]
-
-    if "权限" in text or "permission" in text:
-        return [
-            "权限规则：仅授权角色可访问和操作该功能，未授权用户不可见入口或操作时返回无权限提示，并记录审计日志。",
-            "权限规则：管理员拥有完整操作权限，普通用户仅可查看和操作本人权限范围内的数据，越权访问必须被拒绝。",
-        ]
-
-    if "字段" in text or "格式" in text or "参数" in text:
-        subject = _extract_capability_name(question) or "该字段"
-        return [
-            f"{subject}格式：必填，使用字符串格式，长度 1-128 个字符，仅允许字母、数字、下划线和短横线。",
-            f"{subject}格式：可选；为空时系统使用默认值，非空时必须通过格式校验，校验失败返回明确错误提示。",
-        ]
-
-    subject = _extract_capability_name(question) or "该需求"
-    return [
-        f"{subject}纳入本期范围，按主流程实现，并补充输入、处理规则、输出结果和异常提示。",
-        f"{subject}仅覆盖核心场景，边界条件、异常流程和扩展规则按后续需求单独补充。",
-    ]
-
-
-def _infer_non_functional_answers(text: str) -> list[str]:
-    if "performance" in text or "性能" in text or "响应" in text or "并发" in text:
-        return [
-            "性能指标：核心页面和核心接口 P95 响应时间不超过 2 秒，P99 不超过 5 秒；支持 1,000 并发用户；接口错误率不超过 0.1%。",
-            "性能指标：核心交易类操作 P95 响应时间不超过 3 秒，批量或报表任务 60 秒内完成；系统支持峰值 QPS 200，并可水平扩展。",
-        ]
-    if "security" in text or "安全" in text or "认证" in text or "授权" in text or "加密" in text:
-        return [
-            "安全指标：所有接口必须经过身份认证和权限校验，敏感数据传输和存储需加密，关键操作记录审计日志。",
-            "安全指标：登录态超时自动失效，连续失败操作触发限制；普通用户不得访问越权数据，管理员操作必须可追溯。",
-        ]
-    if "availability" in text or "可用" in text or "sla" in text or "容错" in text:
-        return [
-            "可用性指标：系统月可用性不低于 99.9%，单点故障不影响核心功能，故障恢复时间 RTO 不超过 30 分钟。",
-            "可用性指标：核心服务支持健康检查和自动重试，非核心依赖异常时应降级处理并提示用户稍后重试。",
-        ]
-    if "scalability" in text or "扩展" in text or "增长" in text or "数据量" in text:
-        return [
-            "可扩展性指标：系统支持用户量和数据量按 10 倍增长扩容，核心服务可通过增加实例水平扩展。",
-            "可扩展性指标：数据存储和查询需支持分区、分页和索引优化，单表数据增长不得显著影响核心查询性能。",
-        ]
-    if "compatibility" in text or "兼容" in text or "浏览器" in text or "设备" in text:
-        return [
-            "兼容性指标：支持最新版 Chrome、Edge、Safari 浏览器，页面在 1440px 桌面端和 390px 移动端下布局正常。",
-            "兼容性指标：核心功能需兼容主流桌面浏览器，移动端至少支持查看和基础操作，异常兼容场景需给出明确提示。",
-        ]
-    if "usability" in text or "易用" in text or "可用性" in text:
-        return [
-            "易用性指标：核心任务应在 3 步内完成，表单校验错误需定位到字段并给出可理解的修正提示。",
-            "易用性指标：页面文案、按钮和状态提示保持一致，关键操作需提供确认或撤销机制，避免误操作。",
-        ]
-    return []
-
-
-def _infer_conflict_answers(question: Dict) -> list[str]:
-    current_text = str(question.get("current_text") or "").strip()
-    parts = [part.strip() for part in re.split(r"\n{2,}|[；;]", current_text) if part.strip()]
-    if len(parts) >= 2:
-        return [
-            f"以口径 A 为准：{parts[0]}",
-            f"以口径 B 为准：{parts[1]}",
-        ]
-    return []
-
-
-def _extract_capability_name(question: Dict) -> str:
-    for key in ("module_name", "module_key"):
-        value = str(question.get(key) or "").strip()
-        if value and value not in {"general", "completeness", "clarity", "testability", "consistency"}:
-            return value
-    question_text = str(question.get("question") or "")
-    quoted = re.search(r"[“\"'](.+?)[”\"']", question_text)
-    if quoted:
-        return quoted.group(1).strip()
-    cleaned = re.sub(r"^(缺少功能|以下细节需要确认|请确认测试覆盖缺口|发现冲突)[：:]\s*", "", question_text).strip()
-    return cleaned[:40].strip(" ，。？?：:")
 
 
 def _calculate_summary(items: List[ClarificationItem]) -> ClarificationSummary:

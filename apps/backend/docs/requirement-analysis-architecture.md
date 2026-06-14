@@ -435,16 +435,11 @@ overall_score = sum(score * weight for score, weight in zip(scores, weights.valu
 ### Agent 架构
 
 ```
-RequirementAnalysisCodex
-├─ PrimaryAnalysisAgent（阶段1 + 2）
-│  ├─ 输入：primary_markdown_content
-│  ├─ 技能：requirement-review（质量评估）
-│  └─ 输出：RequirementAnalysisOutput（初版）
-│
-└─ AuxiliaryEnhancementAgent（阶段3）
-   ├─ 输入：clarification_questions + auxiliary_documents
-   ├─ 处理：从辅助文档查找答案
-   └─ 输出：RequirementAuxiliaryEnhancementOutput
+RequirementAnalysis LangGraph
+├─ understand：理解主需求
+├─ assess_quality：质量评估
+├─ clarify：生成待澄清内容，并在流程内查询辅助文档
+└─ enhance：生成增强后的需求草稿和报告
 ```
 
 ### Skill 重构

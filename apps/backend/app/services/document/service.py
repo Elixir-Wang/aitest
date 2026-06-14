@@ -11,21 +11,16 @@ from fastapi import UploadFile
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir, resolve_stored_path, store_path
-from app.agents.requirement_analysis_codex.errors import RequirementAnalysisCancelledError
-from app.agents.requirement_analysis_codex.process_registry import terminate as terminate_requirement_analysis_process
-from app.agents.requirement_auxiliary_enhancement.service import enhance_requirement_with_auxiliary_articles
 from app.agents.requirement_analysis.workflow import run_requirement_analysis
 from app.agents.requirement_analysis.schemas import RequirementAnalysisInputV2, AuxiliaryDocument
-from app.agents.requirement_analysis.utils.report_generator import generate_quality_assurance_report
+from app.agents.requirement_analysis.utils.report_generator import (
+    generate_clarification_report,
+    generate_quality_assurance_report,
+)
 from app.repositories import document_repo, requirement_analysis_run_repo, requirement_clarification_answer_repo
 from app.schemas.document import RequirementAnalysisFinalizeIn, RequirementClarificationAnswerIn, SourceDocumentUpdateIn
 from app.schemas.requirement_analysis import (
     RequirementAnalysisInput,
-    RequirementAuxiliaryArticleForEnhancement,
-    RequirementAuxiliaryDocument,
-    RequirementAuxiliaryEnhancementInput,
-    RequirementAuxiliaryEnhancementOutput,
-    RequirementEnhancementQuestion,
 )
 from app.services import operation_log_service, task_service
 from app.services.document import file_service as document_file_service
@@ -37,7 +32,17 @@ CONVERSION_SUCCESS_STATUS = "success"
 CONVERSION_FAILED_STATUS = "failed"
 REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES = 120
 REQUIREMENT_ANALYSIS_RUN_TIMEOUT_SECONDS = REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES * 60
-REQUIREMENT_AUXILIARY_ENHANCEMENT_ENABLED = False
+REQUIREMENT_ANALYSIS_MARKDOWN_FIELDS = {
+    "analysis_report_markdown",
+    "quality_assurance_report_markdown",
+    "clarification_report_markdown",
+    "preliminary_requirement_markdown",
+    "enhanced_requirement_markdown",
+}
+
+
+class RequirementAnalysisCancelledError(Exception):
+    pass
 
 
 async def analyze_requirement_with_agent(input_data: RequirementAnalysisInputV2):
@@ -63,12 +68,45 @@ def _is_langgraph_requirement_analysis_output(analysis_output) -> bool:
     return hasattr(analysis_output, "quality_assessment") and hasattr(analysis_output, "clarification")
 
 
+def _map_langgraph_quality_result(result: str) -> str:
+    mapping = {
+        "approved": "passed",
+        "conditional": "warning",
+        "rejected": "blocked",
+    }
+    return mapping.get(result, "blocked")
+
+
+def _normalize_markdown_text(value: object) -> str:
+    text = str(value or "")
+    if "\\" in text:
+        text = (
+            text.replace("\\r\\n", "\n")
+            .replace("\\n", "\n")
+            .replace("\\t", "\t")
+            .replace('\\"', '"')
+        )
+    return text.replace("质量保证", "质量保障")
+
+
+def _normalize_requirement_analysis_output_markdown(output: dict) -> dict:
+    normalized = dict(output)
+    for field in REQUIREMENT_ANALYSIS_MARKDOWN_FIELDS:
+        if field in normalized:
+            normalized[field] = _normalize_markdown_text(normalized[field])
+    return normalized
+
+
 def _legacy_output_from_langgraph_result(analysis_output, primary_markdown_content: str) -> tuple[str, dict]:
     preliminary_markdown = (
         analysis_output.enhanced_requirement_markdown
         or primary_markdown_content
     )
-    quality_assurance_report = generate_quality_assurance_report(analysis_output.quality_assessment)
+    quality_assurance_report = generate_quality_assurance_report(
+        analysis_output.quality_assessment,
+        analysis_output.clarification,
+    )
+    clarification_report = generate_clarification_report(analysis_output.clarification)
     clarification_questions = [
         {
             "id": item.item_id,
@@ -81,7 +119,26 @@ def _legacy_output_from_langgraph_result(analysis_output, primary_markdown_conte
             "priority": "HIGH" if item.severity == "blocker" else "MEDIUM",
             "dimension": item.source,
             "impact": item.impact,
-            "source_excerpt": item.current_text,
+            "source_excerpt": item.source_excerpt or item.current_text,
+            "clarification_bucket": item.clarification_bucket,
+            "decision_point": item.decision_point,
+            "current_gap": item.current_gap,
+            "test_impact": item.test_impact,
+            "risk_scenario": item.risk_scenario,
+            "affected_surfaces": item.affected_surfaces,
+            "decision_options": [
+                {
+                    "id": opt.option_id,
+                    "label": opt.label,
+                    "answer_markdown": opt.answer_markdown,
+                    "rationale": opt.rationale,
+                    "confidence": opt.confidence,
+                }
+                for opt in item.decision_options
+            ],
+            "recommended_decision": item.recommended_decision,
+            "human_question": item.human_question,
+            "draft_acceptance_tests": item.draft_acceptance_tests,
             "recommended_options": [
                 {
                     "id": opt.option_id,
@@ -102,19 +159,21 @@ def _legacy_output_from_langgraph_result(analysis_output, primary_markdown_conte
         "enhanced_requirement_markdown": preliminary_markdown,
         "analysis_report_markdown": analysis_output.analysis_report_markdown or "",
         "quality_assurance_report_markdown": quality_assurance_report,
+        "clarification_report_markdown": clarification_report,
         "applied_supplements": [],
         "maturity_assessment": analysis_output.quality_assessment.scores.model_dump(),
         "clarification_questions": clarification_questions,
         "conflicts": [],
         "quality_gate": {
-            "result": analysis_output.quality_assessment.decision.result,
+            "result": _map_langgraph_quality_result(analysis_output.quality_assessment.decision.result),
             "testability_score": analysis_output.quality_assessment.scores.testability,
             "blocking_issues": analysis_output.quality_assessment.decision.blocking_issues,
             "warnings": [],
         },
         "metadata": analysis_output.metadata,
     }
-    return preliminary_markdown, output_data
+    output_data = _normalize_requirement_analysis_output_markdown(output_data)
+    return output_data["preliminary_requirement_markdown"], output_data
 
 
 def _legacy_output_from_requirement_analysis_result(analysis_output, primary_markdown_content: str) -> tuple[str, dict]:
@@ -135,7 +194,8 @@ def _legacy_output_from_requirement_analysis_result(analysis_output, primary_mar
     output_data.setdefault("quality_assurance_report_markdown", "")
     output_data.setdefault("applied_supplements", [])
     output_data.setdefault("metadata", {})
-    return preliminary_markdown, output_data
+    output_data = _normalize_requirement_analysis_output_markdown(output_data)
+    return output_data["preliminary_requirement_markdown"], output_data
 
 
 def list_documents(project_id: str, actor) -> list[dict]:
@@ -469,7 +529,6 @@ def stop_requirement_analysis_run(project_id: str, document_id: str, run_id: str
                 run = requirement_analysis_run_repo.find_run(db, run_id)
         return _requirement_analysis_run_task(run_id, actor_data, run)
 
-    terminate_requirement_analysis_process(run_id)
     _finalize_cancelled_requirement_analysis_run(run_id, actor_data)
 
     with connect() as db:
@@ -898,108 +957,6 @@ def list_requirement_analysis_runs(project_id: str, document_id: str, actor) -> 
         return [_serialize_requirement_analysis_run(row) for row in rows]
 
 
-async def enhance_requirement_analysis_with_auxiliary_documents(
-    project_id: str,
-    document_id: str,
-    analysis_id: str,
-    actor,
-) -> dict:
-    if not REQUIREMENT_AUXILIARY_ENHANCEMENT_ENABLED:
-        raise api_error(
-            409,
-            "REQUIREMENT_AUXILIARY_ENHANCEMENT_DISABLED",
-            "辅助文档增强智能体暂未接入需求分析流程。",
-        )
-
-    with connect() as db:
-        document = document_repo.find_by_project_and_id(db, project_id, document_id)
-        if not document:
-            raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
-
-        analysis = document_repo.find_requirement_analysis(db, analysis_id)
-        if not analysis or analysis["project_id"] != project_id or analysis["document_id"] != document_id:
-            raise api_error(404, "REQUIREMENT_ANALYSIS_NOT_FOUND", "需求分析结果不存在。")
-        if analysis["finalized_version_id"]:
-            raise api_error(409, "REQUIREMENT_ANALYSIS_FINALIZED", "该初步需求已转为最终需求，不能继续增强。")
-
-        primary_mapping_id = analysis["primary_mapping_id"] or ""
-        primary_file = document_repo.find_primary_file_mapping(db, document_id)
-        if primary_mapping_id and (not primary_file or primary_file["id"] != primary_mapping_id):
-            raise api_error(409, "REQUIREMENT_ANALYSIS_PRIMARY_CHANGED", "主需求文件已变更，请重新执行需求分析。")
-
-        output = json.loads(analysis["output_json"])
-        questions = _requirement_enhancement_questions(output)
-        if not questions:
-            raise api_error(409, "REQUIREMENT_ANALYSIS_NO_PENDING_QUESTIONS", "当前需求分析没有可增强的待确认问题。")
-        auxiliary_documents = _collect_auxiliary_documents(db, document_id, primary_mapping_id)
-
-    if not auxiliary_documents:
-        raise api_error(409, "REQUIREMENT_ANALYSIS_NO_AUXILIARY_DOCUMENTS", "当前需求没有可用于增强的辅助文档。")
-
-    enhancement_input = RequirementAuxiliaryEnhancementInput(
-        project_id=project_id,
-        document_id=document_id,
-        analysis_id=analysis_id,
-        primary_mapping_id=primary_mapping_id,
-        primary_filename=primary_file["original_filename"] if primary_file else "",
-        questions=questions,
-        auxiliary_articles=[
-            RequirementAuxiliaryArticleForEnhancement(
-                mapping_id=document.mapping_id,
-                filename=document.filename,
-                markdown_content=document.markdown_content,
-            )
-            for document in auxiliary_documents
-        ],
-    )
-
-    try:
-        enhancement_output = await enhance_requirement_with_auxiliary_articles(enhancement_input)
-    except Exception as exc:
-        raise api_error(502, "REQUIREMENT_AUXILIARY_ENHANCEMENT_FAILED", f"辅助文档增强智能体运行失败：{exc}") from exc
-
-    _validate_auxiliary_enhancement_sources(enhancement_output, enhancement_input.auxiliary_articles)
-    merged_output = _merge_requirement_auxiliary_enhancement(output, enhancement_output)
-    quality_gate = merged_output.get("quality_gate") or {}
-    preliminary_markdown = str(merged_output.get("preliminary_requirement_markdown") or "").strip()
-    draft_content_hash = _content_hash(preliminary_markdown)
-
-    with connect() as db:
-        document_repo.update_requirement_analysis_output(
-            db,
-            analysis_id=analysis_id,
-            status=str(merged_output.get("status") or analysis["status"]),
-            analysis_summary=str(merged_output.get("analysis_summary") or analysis["analysis_summary"]),
-            output_json=merged_output,
-            quality_result=str(quality_gate.get("result") or analysis["quality_result"]),
-            testability_score=int(quality_gate.get("testability_score") or analysis["testability_score"] or 0),
-            draft_content_hash=draft_content_hash,
-        )
-        updated_analysis = document_repo.find_requirement_analysis(db, analysis_id)
-
-    operation_log_service.record_change(
-        log_type="agent",
-        module="requirement",
-        action="enhance_requirement_analysis",
-        object_type="requirement_analysis",
-        object_id=analysis_id,
-        object_name=document["name"],
-        project_id=project_id,
-        actor_id=actor["id"],
-        actor_name=operation_log_service.actor_display_name(actor),
-        source="agent",
-        summary=f"从辅助文档增强需求分析：{document['name']}",
-        before={"analysis_id": analysis_id},
-        after={
-            "applied_supplement_count": len(enhancement_output.applied_supplements),
-            "resolved_question_count": len(enhancement_output.resolved_question_options),
-            "new_conflict_count": len(enhancement_output.new_conflicts),
-        },
-    )
-
-    return {"analysis": _serialize_requirement_analysis(updated_analysis)}
-
-
 def list_requirement_clarification_answers(project_id: str, document_id: str, analysis_id: str, actor) -> dict:
     _ = actor
     with connect() as db:
@@ -1028,7 +985,7 @@ def save_requirement_clarification_answer(
         if analysis["finalized_version_id"]:
             raise api_error(409, "REQUIREMENT_ANALYSIS_FINALIZED", "该初步需求已转为最终需求，不能继续修改。")
 
-        output = json.loads(analysis["output_json"])
+        output = _normalize_requirement_analysis_output_markdown(json.loads(analysis["output_json"]))
         question, question_bucket, question_index = _find_requirement_analysis_question(output, payload.question_id)
         if question is None or question_bucket is None or question_index is None:
             raise api_error(404, "REQUIREMENT_CLARIFICATION_QUESTION_NOT_FOUND", "待确认问题不存在。")
@@ -1048,6 +1005,12 @@ def save_requirement_clarification_answer(
                 answer_markdown=answer_markdown,
             )
             output["preliminary_requirement_markdown"] = preliminary_markdown
+        else:
+            output["preliminary_requirement_markdown"] = _replace_or_remove_clarification_block(
+                preliminary_markdown,
+                payload.question_id,
+                replacement="",
+            )
 
         answer_id = f"reqanswer-{secrets.token_hex(8)}"
         answer_snapshot = {
@@ -1146,7 +1109,7 @@ def finalize_requirement_analysis(
         if latest_run and latest_run["analysis_id"] != analysis["id"]:
             raise api_error(409, "REQUIREMENT_ANALYSIS_STALE", "该需求分析不是最新结果，请刷新后重试。")
 
-        output = json.loads(analysis["output_json"])
+        output = _normalize_requirement_analysis_output_markdown(json.loads(analysis["output_json"]))
         preliminary_markdown = str(output.get("preliminary_requirement_markdown") or "").strip()
         if not preliminary_markdown:
             raise api_error(409, "REQUIREMENT_ANALYSIS_EMPTY_DRAFT", "初步需求为空，不能转为最终需求。")
@@ -1394,142 +1357,8 @@ def delete_document(project_id: str, document_id: str, actor) -> dict:
     return {"success": True}
 
 
-def _collect_auxiliary_documents(db, document_id: str, primary_mapping_id: str) -> list[RequirementAuxiliaryDocument]:
-    auxiliary_documents: list[RequirementAuxiliaryDocument] = []
-    for row in document_repo.list_file_mappings(db, document_id):
-        if row["id"] == primary_mapping_id:
-            continue
-        if row["conversion_status"] not in {CONVERSION_SUCCESS_STATUS, "warning"}:
-            continue
-        markdown_path_value = row["markdown_file_path"]
-        if not markdown_path_value:
-            continue
-        markdown_path = resolve_stored_path(markdown_path_value) or Path(markdown_path_value)
-        if not markdown_path.exists():
-            continue
-        markdown_content = markdown_path.read_text(encoding="utf-8")
-        if not markdown_content.strip():
-            continue
-        auxiliary_documents.append(
-            RequirementAuxiliaryDocument(
-                mapping_id=row["id"],
-                filename=row["original_filename"],
-                markdown_content=markdown_content,
-            )
-        )
-    return auxiliary_documents
-
-
-def _requirement_enhancement_questions(output: dict) -> list[RequirementEnhancementQuestion]:
-    questions: list[RequirementEnhancementQuestion] = []
-    seen_ids: set[str] = set()
-    for bucket in ("clarification_questions", "conflicts"):
-        for index, item in enumerate(output.get(bucket) or []):
-            question_id = str(item.get("id") or f"{bucket}-{index + 1}")
-            if question_id in seen_ids:
-                continue
-            seen_ids.add(question_id)
-            questions.append(
-                RequirementEnhancementQuestion(
-                    id=question_id,
-                    module_key=str(item.get("module_key") or ""),
-                    module_name=str(item.get("module_name") or ""),
-                    question=str(item.get("question") or item.get("description") or ""),
-                    impact=str(item.get("impact") or ""),
-                    severity=str(item.get("severity") or "major"),
-                    primary_excerpt=str(item.get("primary_excerpt") or item.get("source_excerpt") or ""),
-                )
-            )
-    return [question for question in questions if question.question.strip()]
-
-
-def _merge_requirement_auxiliary_enhancement(
-    output: dict,
-    enhancement: RequirementAuxiliaryEnhancementOutput,
-) -> dict:
-    merged = json.loads(json.dumps(output, ensure_ascii=False))
-    merged.setdefault("applied_supplements", [])
-    merged.setdefault("clarification_questions", [])
-    merged.setdefault("conflicts", [])
-    merged.setdefault("next_actions", [])
-
-    existing_supplement_ids = {str(item.get("id") or "") for item in merged["applied_supplements"]}
-    for supplement in enhancement.applied_supplements:
-        item = supplement.model_dump()
-        if item["id"] not in existing_supplement_ids:
-            merged["applied_supplements"].append(item)
-            existing_supplement_ids.add(item["id"])
-
-    question_index = {
-        str(item.get("id") or ""): item
-        for item in [*merged.get("clarification_questions", []), *merged.get("conflicts", [])]
-    }
-    for resolution in enhancement.resolved_question_options:
-        question = question_index.get(resolution.question_id)
-        if not question:
-            continue
-        if resolution.recommended_options:
-            question["recommended_options"] = [option.model_dump() for option in resolution.recommended_options]
-        if resolution.evidence:
-            question["evidence"] = [evidence.model_dump() for evidence in resolution.evidence]
-        question["auxiliary_resolution"] = {
-            "resolution": resolution.resolution,
-            "reason": resolution.reason,
-        }
-
-    existing_conflict_ids = {str(item.get("id") or "") for item in merged["conflicts"]}
-    for conflict in enhancement.new_conflicts:
-        item = conflict.model_dump()
-        if item["id"] not in existing_conflict_ids:
-            merged["conflicts"].append(item)
-            existing_conflict_ids.add(item["id"])
-
-    summary = enhancement.enhancement_summary.strip()
-    if summary:
-        current_summary = str(merged.get("analysis_summary") or "").strip()
-        merged["analysis_summary"] = f"{current_summary}\n\n辅助文档增强：{summary}".strip()
-
-    if enhancement.applied_supplements:
-        merged["next_actions"] = [
-            *merged.get("next_actions", []),
-            f"已从辅助文档增强 {len(enhancement.applied_supplements)} 项，请确认补强内容是否可进入最终需求。",
-        ]
-
-    quality_gate = merged.get("quality_gate") or {}
-    if merged.get("conflicts"):
-        merged["status"] = "blocked" if quality_gate.get("result") == "blocked" else "needs_clarification"
-    elif merged.get("clarification_questions"):
-        merged["status"] = "needs_clarification"
-    else:
-        merged["status"] = "completed"
-    return merged
-
-
-def _validate_auxiliary_enhancement_sources(
-    enhancement: RequirementAuxiliaryEnhancementOutput,
-    articles: list[RequirementAuxiliaryArticleForEnhancement],
-) -> None:
-    mapping_ids = {article.mapping_id for article in articles}
-    filenames = {article.filename for article in articles}
-
-    for evidence in _iter_auxiliary_enhancement_evidence(enhancement):
-        if evidence.mapping_id and evidence.mapping_id not in mapping_ids:
-            raise api_error(502, "REQUIREMENT_AUXILIARY_ENHANCEMENT_INVALID_SOURCE", "辅助文档增强返回了输入之外的来源。")
-        if evidence.filename and evidence.filename not in filenames:
-            raise api_error(502, "REQUIREMENT_AUXILIARY_ENHANCEMENT_INVALID_SOURCE", "辅助文档增强返回了输入之外的来源。")
-
-
-def _iter_auxiliary_enhancement_evidence(enhancement: RequirementAuxiliaryEnhancementOutput):
-    for supplement in enhancement.applied_supplements:
-        yield supplement.evidence
-    for resolution in enhancement.resolved_question_options:
-        yield from resolution.evidence
-    for conflict in enhancement.new_conflicts:
-        yield from conflict.evidence
-
-
 def _serialize_requirement_analysis(row) -> dict:
-    output = json.loads(row["output_json"])
+    output = _normalize_requirement_analysis_output_markdown(json.loads(row["output_json"]))
     return {
         "id": row["id"],
         "project_id": row["project_id"],
@@ -1574,7 +1403,7 @@ def _analysis_run_output(row) -> dict:
         output = json.loads(raw_output)
     except json.JSONDecodeError:
         return {}
-    return output if isinstance(output, dict) else {}
+    return _normalize_requirement_analysis_output_markdown(output) if isinstance(output, dict) else {}
 
 
 def _serialize_requirement_clarification_answer(row) -> dict | None:

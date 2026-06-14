@@ -5,7 +5,7 @@
 """
 
 from app.agents.requirement_analysis.state import RequirementAnalysisState
-from app.agents.requirement_analysis.agent import run_quality_assessment_agent
+from app.agents.requirement_analysis.agents.quality_assessment import run_quality_assessment_agent
 
 
 async def quality_node(state: RequirementAnalysisState) -> RequirementAnalysisState:
