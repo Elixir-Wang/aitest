@@ -83,8 +83,9 @@ def test_requirement_analysis_codex_prompt_uses_requirement_analysis_with_testab
     assert "quality_assurance_report_markdown" in prompt
     assert "待澄清 Markdown 必须使用可解析格式" in prompt
     assert "作为“需求分析”子 tab 展示内容" in prompt
-    assert "分析报告只写分析摘要、成熟度、关键缺口分类、测试覆盖缺口、质量门禁和下一步建议" in prompt
-    assert "分析报告不要出现“待确认问题”“待人工确认”“澄清问题”等面向人工答复的章节、标题、统计或问题清单" in prompt
+    assert "分析报告应包含分析摘要、成熟度、范围边界、模块能力、业务规则、Mermaid 理解图、关键缺口分类、测试覆盖影响、质量门禁摘要和下一步建议" in prompt
+    assert "Mermaid 理解图至少包含一个从主需求抽取的业务流程图" in prompt
+    assert "分析报告不要出现“待确认问题”“待人工确认”“澄清问题”“待澄清内容”等面向人工答复的章节、标题、统计或问题清单" in prompt
     assert "关键缺口只做归类和影响说明，不要写成可答复的问题清单" in prompt
     assert "测试覆盖缺口只说明测试覆盖影响，不要展开具体待人工答复事项" in prompt
     assert "分析报告不要重复、统计或摘要 clarification_questions/conflicts；这些内容只进入结构化字段" in prompt

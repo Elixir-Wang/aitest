@@ -1,6 +1,5 @@
-"""Requirement analysis agent family package.
+"""Requirement analysis LangGraph agent package."""
 
-This package is only a namespace for child agents. Import runnable agents from
-``primary_analysis`` or ``auxiliary_enhancement`` directly.
-"""
+from app.agents.requirement_analysis.workflow import run_requirement_analysis
 
+__all__ = ["run_requirement_analysis"]

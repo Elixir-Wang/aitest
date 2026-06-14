@@ -102,35 +102,42 @@ def test_site_exploration_services_use_child_agents() -> None:
     assert "app.agents.site_exploration.execution_decision" in agentic_orchestrator_path.read_text(encoding="utf-8")
 
 
-def test_requirement_analysis_codex_agent_owns_its_schemas() -> None:
-    package = NEW_AGENTS_ROOT / "requirement_analysis_codex"
-    assert not (NEW_AGENTS_ROOT / "requirement_analysis").exists()
-    assert not (package / "agent.py").exists()
-    assert not (package / "tools.py").exists()
+def test_requirement_analysis_agent_uses_langgraph_package_layout() -> None:
+    package = NEW_AGENTS_ROOT / "requirement_analysis"
+    assert (package / "agent.py").exists()
     assert (package / "service.py").exists()
-    assert (package / "runner.py").exists()
     assert (package / "schemas.py").exists()
-    assert (package / "skills" / "requirement-analysis" / "SKILL.md").exists()
+    assert (package / "workflow.py").exists()
+    assert (package / "state.py").exists()
+    assert (package / "nodes" / "understand_node.py").exists()
+    assert (package / "nodes" / "quality_node.py").exists()
+    assert (package / "nodes" / "clarify_node.py").exists()
+    assert (package / "nodes" / "enhance_node.py").exists()
+    assert (package / "tools" / "search_auxiliary.py").exists()
+    assert not (package / "v3").exists()
+    assert not (package / "agent_v2.py").exists()
+    assert not (package / "service_v2.py").exists()
+    assert not (package / "schemas_v2.py").exists()
+    assert not (package / "router_v2.py").exists()
 
     auxiliary_package = NEW_AGENTS_ROOT / "requirement_auxiliary_enhancement"
     assert (auxiliary_package / "agent.py").exists()
     assert (auxiliary_package / "service.py").exists()
     assert (auxiliary_package / "schemas.py").exists()
 
-    from app.agents.requirement_analysis_codex import schemas as codex_schemas
     from app.agents.requirement_auxiliary_enhancement import schemas as auxiliary_schemas
     from app.schemas import requirement_analysis as compatibility_schemas
 
-    assert compatibility_schemas.RequirementAnalysisOutput is codex_schemas.RequirementAnalysisOutput
     assert compatibility_schemas.RequirementAuxiliaryEnhancementOutput is auxiliary_schemas.RequirementAuxiliaryEnhancementOutput
 
 
-def test_requirement_analysis_service_uses_codex_agent_directly() -> None:
+def test_requirement_analysis_service_uses_langgraph_agent_directly() -> None:
     service_path = BACKEND_APP / "services" / "document" / "service.py"
     text = service_path.read_text(encoding="utf-8")
 
-    assert "app.agents.requirement_analysis_codex.service" in text
+    assert "app.agents.requirement_analysis.workflow" in text
     assert "app.agents.requirement_auxiliary_enhancement.service" in text
+    assert "app.agents.requirement_analysis_codex.service" not in text
     assert "app.agents.requirement_analysis.primary_analysis" not in text
 
 

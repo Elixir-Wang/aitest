@@ -3,7 +3,7 @@ Agentic Search 功能单元测试
 """
 
 import pytest
-from app.agents.requirement_analysis.v3.tools.search_auxiliary import search_auxiliary_docs
+from app.agents.requirement_analysis.tools.search_auxiliary import search_auxiliary_docs
 
 
 def test_search_auxiliary_docs_keyword_match():
@@ -115,7 +115,7 @@ def test_search_auxiliary_docs_empty_documents():
 @pytest.mark.anyio
 async def test_search_for_answer_integration(monkeypatch):
     """集成测试：搜索服务"""
-    from app.agents.requirement_analysis.v3.services.auxiliary_search_service import search_for_answer
+    from app.agents.requirement_analysis.services.auxiliary_search_service import search_for_answer
 
     # Mock LLM 返回
     class FakeAgent:
@@ -131,7 +131,7 @@ async def test_search_for_answer_integration(monkeypatch):
         return FakeAgent()
 
     monkeypatch.setattr(
-        "app.agents.requirement_analysis.v3.services.auxiliary_search_service.create_auxiliary_search_agent",
+        "app.agents.requirement_analysis.services.auxiliary_search_service.create_auxiliary_search_agent",
         fake_create_agent
     )
 
@@ -155,7 +155,7 @@ async def test_search_for_answer_integration(monkeypatch):
 @pytest.mark.anyio
 async def test_search_for_answer_not_found(monkeypatch):
     """集成测试：未找到答案"""
-    from app.agents.requirement_analysis.v3.services.auxiliary_search_service import search_for_answer
+    from app.agents.requirement_analysis.services.auxiliary_search_service import search_for_answer
 
     class FakeAgent:
         async def ainvoke(self, input_dict):
@@ -171,7 +171,7 @@ async def test_search_for_answer_not_found(monkeypatch):
         return FakeAgent()
 
     monkeypatch.setattr(
-        "app.agents.requirement_analysis.v3.services.auxiliary_search_service.create_auxiliary_search_agent",
+        "app.agents.requirement_analysis.services.auxiliary_search_service.create_auxiliary_search_agent",
         fake_create_agent
     )
 

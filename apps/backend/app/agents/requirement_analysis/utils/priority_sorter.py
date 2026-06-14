@@ -5,7 +5,7 @@
 """
 
 from typing import Literal
-from app.agents.requirement_analysis.schemas_v2 import ClarificationItem
+from app.agents.requirement_analysis.schemas import ClarificationItem
 
 
 def sort_clarification_items(

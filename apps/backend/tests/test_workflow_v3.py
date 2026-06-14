@@ -1,20 +1,20 @@
 """
-需求分析 v3.0 端到端集成测试
+需求分析 LangGraph 端到端集成测试
 """
 
 import pytest
-from app.agents.requirement_analysis.schemas_v2 import (
+from app.agents.requirement_analysis.schemas import (
     RequirementAnalysisInputV2,
     AuxiliaryDocument,
 )
 
 
 @pytest.mark.anyio
-async def test_requirement_analysis_v3_end_to_end(monkeypatch):
-    """端到端测试：v3.0 完整流程"""
+async def test_requirement_analysis_end_to_end(monkeypatch):
+    """端到端测试：LangGraph 完整流程"""
 
     # Mock LLM 和各个 Agent（避免实际调用 API）
-    from app.agents.requirement_analysis.schemas_v2 import (
+    from app.agents.requirement_analysis.schemas import (
         RequirementUnderstandingOutput,
         QualityAssessmentOutput,
         QualityScores,
@@ -71,12 +71,20 @@ async def test_requirement_analysis_v3_end_to_end(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "app.agents.requirement_analysis.v3.nodes.understand_node.run_understanding_agent",
+        "app.agents.requirement_analysis.nodes.understand_node.run_understanding_agent",
         mock_understand
     )
     monkeypatch.setattr(
-        "app.agents.requirement_analysis.v3.nodes.quality_node.run_quality_assessment_agent",
+        "app.agents.requirement_analysis.nodes.quality_node.run_quality_assessment_agent",
         mock_quality
+    )
+    monkeypatch.setattr(
+        "app.agents.model_selection.resolve_model_selection",
+        lambda capability_id: object()
+    )
+    monkeypatch.setattr(
+        "app.agents.model_selection.build_agent_model",
+        lambda model_selection: object()
     )
 
     # Mock 搜索服务
@@ -98,7 +106,7 @@ async def test_requirement_analysis_v3_end_to_end(monkeypatch):
         }
 
     monkeypatch.setattr(
-        "app.agents.requirement_analysis.v3.nodes.clarify_node.search_for_answer",
+        "app.agents.requirement_analysis.nodes.clarify_node.search_for_answer",
         mock_search
     )
 
@@ -122,10 +130,10 @@ async def test_requirement_analysis_v3_end_to_end(monkeypatch):
         config={}
     )
 
-    # 执行 v3.0 分析
-    from app.agents.requirement_analysis.v3.workflow import run_requirement_analysis_v3
+    # 执行 LangGraph 分析
+    from app.agents.requirement_analysis.workflow import run_requirement_analysis
 
-    result = await run_requirement_analysis_v3(input_data)
+    result = await run_requirement_analysis(input_data)
 
     # 验证结果
     assert result.status in ["completed", "needs_clarification", "blocked"]
@@ -151,11 +159,106 @@ async def test_requirement_analysis_v3_end_to_end(monkeypatch):
     assert result.metadata["execution_time_ms"] > 0
 
 
+def test_resolve_primary_source_excerpt_uses_real_primary_paragraph():
+    """查看原文应返回主需求里的相关段落，而不是模型生成的缺口描述。"""
+    from app.agents.requirement_analysis.nodes.clarify_node import (
+        _resolve_primary_source_excerpt,
+    )
+
+    primary_content = """
+# 登录需求
+
+用户可以使用手机号和验证码登录系统。
+验证码错误时，系统提示用户重新输入。
+
+## 会话管理
+
+登录成功后系统创建会话。
+""".strip()
+    question = {
+        "title": "缺失非功能需求",
+        "issue_type": "missing",
+        "question": "缺少安全需求，需要定义什么指标？",
+        "impact": "无法确认验证码安全策略",
+        "source": "completeness",
+        "current_text": "未定义验证码有效期、重试次数和锁定策略",
+    }
+
+    excerpt = _resolve_primary_source_excerpt(question, primary_content)
+
+    assert "用户可以使用手机号和验证码登录系统。" in excerpt
+    assert "未定义验证码有效期" not in excerpt
+
+
+def test_resolve_primary_source_excerpt_expands_direct_match_to_paragraph():
+    """质量评估给出短原文时，前端仍能看到完整相关段落。"""
+    from app.agents.requirement_analysis.nodes.clarify_node import (
+        _resolve_primary_source_excerpt,
+    )
+
+    primary_content = """
+# 性能需求
+
+系统需要快速响应，用户提交订单后应立即看到处理结果。
+失败时需要展示可理解的错误提示。
+""".strip()
+    question = {
+        "title": "模糊表述",
+        "issue_type": "ambiguous",
+        "question": "'快速' 的具体定义是什么？",
+        "impact": "无法度量响应时间",
+        "source": "clarity",
+        "current_text": "系统需要快速响应",
+    }
+
+    excerpt = _resolve_primary_source_excerpt(question, primary_content)
+
+    assert "系统需要快速响应，用户提交订单后应立即看到处理结果。" in excerpt
+    assert "失败时需要展示可理解的错误提示。" in excerpt
+
+
+def test_clarification_item_without_search_result_still_has_recommended_options():
+    """无辅助文档命中时，也应给出可供前端展示和保存的两个候选答案。"""
+    from app.agents.requirement_analysis.nodes.clarify_node import (
+        _create_clarification_item,
+    )
+
+    item = _create_clarification_item(
+        {
+            "id": "FG-1",
+            "title": "缺失功能",
+            "issue_type": "missing",
+            "question": "缺少performance需求，需要定义什么指标？",
+            "impact": "无法评估系统是否能满足业务连续性要求",
+            "severity": "major",
+            "source": "completeness",
+            "current_text": "performance需求未定义",
+            "category": "performance",
+        },
+        {
+            "found": False,
+            "answer": "",
+            "source": "",
+            "confidence": "none",
+            "search_steps": [],
+        },
+    )
+
+    assert item.resolution_status == "has_suggestions"
+    assert len(item.recommended_options) == 2
+    assert item.recommended_options[0].option_id == "opt1"
+    assert item.recommended_options[1].option_id == "opt2"
+    assert "P95" in item.recommended_options[0].answer_markdown
+    assert "QPS" in item.recommended_options[1].answer_markdown
+    assert all("请业务确认" not in option.answer_markdown for option in item.recommended_options)
+    assert all("暂不纳入" not in option.answer_markdown for option in item.recommended_options)
+
+
 @pytest.mark.anyio
-async def test_requirement_analysis_v3_skip_clarification(monkeypatch):
+async def test_requirement_analysis_skip_clarification(monkeypatch):
     """测试高质量需求跳过澄清阶段"""
 
-    from app.agents.requirement_analysis.schemas_v2 import (
+    from app.agents.requirement_analysis.schemas import (
         RequirementUnderstandingOutput,
         QualityAssessmentOutput,
         QualityScores,
@@ -200,12 +303,28 @@ async def test_requirement_analysis_v3_skip_clarification(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "app.agents.requirement_analysis.v3.nodes.understand_node.run_understanding_agent",
+        "app.agents.requirement_analysis.nodes.understand_node.run_understanding_agent",
         mock_understand
     )
     monkeypatch.setattr(
-        "app.agents.requirement_analysis.v3.nodes.quality_node.run_quality_assessment_agent",
+        "app.agents.requirement_analysis.nodes.quality_node.run_quality_assessment_agent",
         mock_quality_high
+    )
+    monkeypatch.setattr(
+        "app.agents.model_selection.resolve_model_selection",
+        lambda capability_id: object()
+    )
+    monkeypatch.setattr(
+        "app.agents.model_selection.build_agent_model",
+        lambda model_selection: object()
+    )
+
+    async def fail_if_search_called(model, question, auxiliary_documents):
+        raise AssertionError("高质量需求应跳过澄清搜索")
+
+    monkeypatch.setattr(
+        "app.agents.requirement_analysis.nodes.clarify_node.search_for_answer",
+        fail_if_search_called
     )
 
     # 准备输入
@@ -221,13 +340,17 @@ async def test_requirement_analysis_v3_skip_clarification(monkeypatch):
     )
 
     # 执行
-    from app.agents.requirement_analysis.v3.workflow import run_requirement_analysis_v3
-    result = await run_requirement_analysis_v3(input_data)
+    from app.agents.requirement_analysis.workflow import run_requirement_analysis
+    result = await run_requirement_analysis(input_data)
 
     # 验证：应该跳过澄清阶段（clarification.items 为空或自动生成）
     assert result.status == "completed"
     assert result.quality_assessment.scores.overall >= 95
     assert result.quality_assessment.decision.result == "approved"
+    assert result.clarification is not None
+    assert result.clarification.items == []
+    assert result.clarification.summary.total == 0
+    assert result.clarification.summary.needs_manual == 0
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 """
 
 import pytest
-from app.agents.requirement_analysis.schemas_v2 import (
+from app.agents.requirement_analysis.schemas import (
     RequirementUnderstandingOutput,
     RequirementModule,
     QualityAssessmentOutput,
@@ -399,25 +399,24 @@ class TestRequirementEnhancer:
         )
 
 
-class TestServiceV2:
+class TestService:
     """测试服务层"""
 
     def test_default_config(self):
         """测试默认配置"""
-        from app.agents.requirement_analysis.service_v2 import DEFAULT_CONFIG
+        from app.agents.requirement_analysis.service import DEFAULT_CONFIG
 
         assert "quality_thresholds" in DEFAULT_CONFIG
         assert DEFAULT_CONFIG["quality_thresholds"]["approved"] == 90
         assert DEFAULT_CONFIG["dimension_weights"]["completeness"] == 0.30
 
-    @pytest.mark.asyncio
-    async def test_service_initialization(self):
+    def test_service_initialization(self):
         """测试服务初始化"""
-        from app.agents.requirement_analysis.service_v2 import (
-            RequirementAnalysisServiceV2,
+        from app.agents.requirement_analysis.service import (
+            RequirementAnalysisService,
         )
 
-        service = RequirementAnalysisServiceV2(model=None)
+        service = RequirementAnalysisService(model=None)
         config = service.get_config()
 
         assert "quality_thresholds" in config

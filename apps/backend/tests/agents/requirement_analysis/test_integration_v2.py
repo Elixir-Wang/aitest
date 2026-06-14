@@ -5,7 +5,7 @@
 """
 
 import pytest
-from app.agents.requirement_analysis.schemas_v2 import (
+from app.agents.requirement_analysis.schemas import (
     RequirementAnalysisInputV2,
     AuxiliaryDocument,
 )
@@ -54,8 +54,8 @@ async def test_full_workflow():
 
     注意：此测试需要配置真实的 LLM 模型才能运行
     """
-    from app.agents.requirement_analysis.service_v2 import (
-        RequirementAnalysisServiceV2,
+    from app.agents.requirement_analysis.service import (
+        RequirementAnalysisService,
     )
 
     # TODO: 替换为真实的 LLM 模型
@@ -63,7 +63,7 @@ async def test_full_workflow():
     # model = get_llm_model()
     model = None
 
-    service = RequirementAnalysisServiceV2(model=model)
+    service = RequirementAnalysisService(model=model)
 
     input_data = RequirementAnalysisInputV2(
         project_id="test-project",
@@ -107,28 +107,28 @@ async def test_full_workflow():
     assert result.clarification.summary.total >= 0
 
 
-@pytest.mark.asyncio
-async def test_input_validation():
+def test_input_validation():
     """测试输入验证"""
-    from app.agents.requirement_analysis.schemas_v2 import (
+    from app.agents.requirement_analysis.schemas import (
         RequirementAnalysisInputV2,
     )
 
-    # 测试必填字段
-    with pytest.raises(Exception):
-        RequirementAnalysisInputV2(
-            project_id="",  # 空字符串应该被接受（但业务层应拒绝）
-            document_id="test",
-            document_name="test",
-            primary_mapping_id="test",
-            primary_filename="test",
-            primary_markdown_content="",  # 空内容
-        )
+    input_data = RequirementAnalysisInputV2(
+        project_id="",  # 空字符串由业务层拒绝，schema 只负责结构契约
+        document_id="test",
+        document_name="test",
+        primary_mapping_id="test",
+        primary_filename="test",
+        primary_markdown_content="",
+    )
+
+    assert input_data.project_id == ""
+    assert input_data.primary_markdown_content == ""
 
 
 def test_output_structure():
     """测试输出结构完整性"""
-    from app.agents.requirement_analysis.schemas_v2 import (
+    from app.agents.requirement_analysis.schemas import (
         RequirementAnalysisResultV2,
         RequirementUnderstandingOutput,
         QualityAssessmentOutput,
@@ -196,8 +196,8 @@ def test_output_structure():
 
 def test_config_merge():
     """测试配置合并"""
-    from app.agents.requirement_analysis.service_v2 import (
-        RequirementAnalysisServiceV2,
+    from app.agents.requirement_analysis.service import (
+        RequirementAnalysisService,
         DEFAULT_CONFIG,
     )
 
@@ -207,7 +207,7 @@ def test_config_merge():
         }
     }
 
-    service = RequirementAnalysisServiceV2(model=None, config=custom_config)
+    service = RequirementAnalysisService(model=None, config=custom_config)
     config = service.get_config()
 
     # 验证自定义配置已应用

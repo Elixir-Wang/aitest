@@ -52,6 +52,71 @@ def _upload_file(filename: str, content: str) -> FakeUploadFile:
     return FakeUploadFile(filename, content)
 
 
+def test_langgraph_requirement_analysis_output_keeps_frontend_compatibility() -> None:
+    from app.agents.requirement_analysis.schemas import (
+        ClarificationOutput,
+        ClarificationSummary,
+        ClarityAssessment,
+        CompletenessAssessment,
+        ConsistencyAssessment,
+        QualityAssessmentOutput,
+        QualityDecision,
+        QualityScores,
+        RequirementAnalysisResultV2,
+        RequirementUnderstandingOutput,
+        TestabilityAssessment,
+    )
+
+    analysis_output = RequirementAnalysisResultV2(
+        status="completed",
+        understanding=RequirementUnderstandingOutput(
+            modules=[],
+            dependencies=[],
+            risks=[],
+            assumptions=[],
+            understanding_summary="已识别登录需求。",
+        ),
+        quality_assessment=QualityAssessmentOutput(
+            scores=QualityScores(
+                completeness=80,
+                clarity=82,
+                testability=76,
+                consistency=90,
+                overall=82,
+            ),
+            decision=QualityDecision(
+                result="conditional",
+                rationale="需要补齐验证码边界。",
+                blocking_issues=[],
+                recommended_actions=["补齐验证码错误次数。"],
+            ),
+            completeness=CompletenessAssessment(score=80),
+            clarity=ClarityAssessment(score=82),
+            testability=TestabilityAssessment(score=76),
+            consistency=ConsistencyAssessment(score=90),
+            assessment_summary="质量评估完成。",
+        ),
+        clarification=ClarificationOutput(
+            items=[],
+            summary=ClarificationSummary(total=0, auto_resolved=0, has_suggestions=0, needs_manual=0),
+            clarification_summary_text="无需澄清。",
+        ),
+        analysis_report_markdown="# 需求分析报告\n\n主流程已识别。",
+        enhanced_requirement_markdown="# 增强版需求\n\n用户可以使用验证码登录。",
+    )
+
+    preliminary_markdown, output_data = document_service._legacy_output_from_requirement_analysis_result(
+        analysis_output,
+        "# 主需求\n\n用户可以使用验证码登录。",
+    )
+
+    assert preliminary_markdown == "# 增强版需求\n\n用户可以使用验证码登录。"
+    assert output_data["preliminary_requirement_markdown"] == preliminary_markdown
+    assert output_data["enhanced_requirement_markdown"] == preliminary_markdown
+    assert output_data["quality_assurance_report_markdown"].startswith("# 质量保证报告")
+    assert "可测试性 | 76/100" in output_data["quality_assurance_report_markdown"]
+
+
 def test_get_version_detail_and_switch_current_final_requirement_version(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

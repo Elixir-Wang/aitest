@@ -4,7 +4,7 @@
 用于生成需求分析报告（Markdown 格式）
 """
 
-from app.agents.requirement_analysis.schemas_v2 import (
+from app.agents.requirement_analysis.schemas import (
     RequirementUnderstandingOutput,
     QualityAssessmentOutput,
     ClarificationOutput,
@@ -70,6 +70,14 @@ def generate_analysis_report(
 """
 
     return report.strip()
+
+
+def generate_quality_assurance_report(quality: QualityAssessmentOutput) -> str:
+    """生成质量保证报告（Markdown 格式），用于前端质量保证 Tab 独立展示。"""
+    return f"""# 质量保证报告
+
+{_generate_quality_section(quality)}
+""".strip()
 
 
 def _generate_summary(

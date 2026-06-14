@@ -100,6 +100,12 @@ const pendingSeverityLabels: Record<"blocker" | "major" | "minor", string> = {
   major: "重要",
   minor: "一般",
 };
+const pendingIssueTypeLabels: Record<RequirementAnalysisIssueType, string> = {
+  missing: "缺失",
+  confirmation: "待确认",
+  conflict: "冲突",
+  ambiguous: "模糊",
+};
 
 function optionBadge(index: number) {
   return String.fromCharCode(65 + index);
@@ -107,6 +113,133 @@ function optionBadge(index: number) {
 
 function pendingItemNumber(index: number) {
   return index >= 0 ? String(index + 1).padStart(2, "0") : "--";
+}
+
+function pendingIssueType(item: RequirementAnalysisPendingItem): RequirementAnalysisIssueType {
+  return item.issue_type === "missing" ||
+    item.issue_type === "confirmation" ||
+    item.issue_type === "conflict" ||
+    item.issue_type === "ambiguous"
+    ? item.issue_type
+    : "confirmation";
+}
+
+function pendingItemTitle(item: RequirementAnalysisPendingItem) {
+  const issueType = pendingIssueType(item);
+  const title = item.title?.trim();
+  const genericTitles = new Set(["缺失功能", "缺失非功能需求", "待确认细节", "模糊表述", "歧义表述"]);
+  if (title && !genericTitles.has(title)) {
+    return title;
+  }
+  const questionTitle = item.question
+    ?.replace(/^缺少功能[：:]\s*/, "")
+    .replace(/^以下细节需要确认[：:]\s*/, "")
+    .replace(/^请确认测试覆盖缺口[：:]\s*/, "")
+    .replace(/^请确认[“"](.+?)[”"]的验收标准。?$/, "$1")
+    .trim();
+  if (questionTitle) {
+    return questionTitle;
+  }
+  if (title) {
+    return title;
+  }
+  const moduleName = item.module_name?.trim();
+  if (moduleName) {
+    return moduleName;
+  }
+  return pendingIssueTypeLabels[issueType] ?? "待确认项";
+}
+
+function pendingItemSourceExcerpt(item: RequirementAnalysisPendingItem) {
+  if ("primary_excerpt" in item && item.primary_excerpt?.trim()) {
+    return item.primary_excerpt.trim();
+  }
+  return item.source_excerpt?.trim() ?? "";
+}
+
+function pendingRecommendedOptions(item: RequirementAnalysisPendingItem): RequirementClarificationOption[] {
+  if (item.recommended_options?.length) {
+    return item.recommended_options;
+  }
+  const title = pendingItemTitle(item);
+  const text = [title, item.question, item.impact, item.module_name, item.module_key].join(" ").toLowerCase();
+  const likelyAnswers = inferPendingLikelyAnswers(text, title);
+  return [
+    {
+      id: "__fallback_answer_a",
+      label: "候选答案 A",
+      answer_markdown: likelyAnswers[0],
+      rationale: "旧分析结果缺少候选答案时，基于问题类型和上下文生成的最可能答案。",
+      confidence: "low",
+    },
+    {
+      id: "__fallback_answer_b",
+      label: "候选答案 B",
+      answer_markdown: likelyAnswers[1],
+      rationale: "旧分析结果缺少候选答案时，基于问题类型和上下文生成的另一个可能答案。",
+      confidence: "low",
+    },
+  ];
+}
+
+function inferPendingLikelyAnswers(text: string, title: string): [string, string] {
+  if (text.includes("performance") || text.includes("性能") || text.includes("响应") || text.includes("并发")) {
+    return [
+      "性能指标：核心页面和核心接口 P95 响应时间不超过 2 秒，P99 不超过 5 秒；支持 1,000 并发用户；接口错误率不超过 0.1%。",
+      "性能指标：核心交易类操作 P95 响应时间不超过 3 秒，批量或报表任务 60 秒内完成；系统支持峰值 QPS 200，并可水平扩展。",
+    ];
+  }
+  if (text.includes("security") || text.includes("安全") || text.includes("权限") || text.includes("加密")) {
+    return [
+      "安全指标：所有接口必须经过身份认证和权限校验，敏感数据传输和存储需加密，关键操作记录审计日志。",
+      "安全指标：登录态超时自动失效，连续失败操作触发限制；普通用户不得访问越权数据，管理员操作必须可追溯。",
+    ];
+  }
+  if (text.includes("验收") || text.includes("acceptance")) {
+    return [
+      `验收标准：${title}应覆盖正常流程、异常输入、权限限制和结果可见性；用户操作后系统必须给出明确成功或失败反馈。`,
+      `验收标准：${title}采用 Given-When-Then 描述，至少包含前置条件、操作步骤、预期结果、错误提示和边界条件。`,
+    ];
+  }
+  if (text.includes("字段") || text.includes("格式") || text.includes("参数")) {
+    return [
+      `${title}格式：必填，使用字符串格式，长度 1-128 个字符，仅允许字母、数字、下划线和短横线。`,
+      `${title}格式：可选；为空时系统使用默认值，非空时必须通过格式校验，校验失败返回明确错误提示。`,
+    ];
+  }
+  return [
+    `${title}纳入本期范围，按主流程实现，并补充输入、处理规则、输出结果和异常提示。`,
+    `${title}仅覆盖核心场景，边界条件、异常流程和扩展规则按后续需求单独补充。`,
+  ];
+}
+
+function extractMarkdownSection(content: string, heading: string) {
+  const markdown = content.trim();
+  if (!markdown) {
+    return "";
+  }
+  const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const startPattern = new RegExp(`^##\\s+\\d*\\.?\\s*${escapedHeading}\\s*$`, "m");
+  const startMatch = markdown.match(startPattern);
+  if (!startMatch || startMatch.index === undefined) {
+    return "";
+  }
+  const sectionStart = startMatch.index;
+  const afterHeadingIndex = sectionStart + startMatch[0].length;
+  const nextSectionMatch = markdown.slice(afterHeadingIndex).match(/^---$|^##\s+/m);
+  const sectionEnd = nextSectionMatch?.index === undefined ? markdown.length : afterHeadingIndex + nextSectionMatch.index;
+  return markdown.slice(sectionStart, sectionEnd).trim();
+}
+
+function latestRequirementAnalysisRunFromTask(task: ApiTaskItem): RequirementOverviewResponse["document"]["latest_requirement_analysis_run"] {
+  return {
+    id: task.source_id,
+    status: task.status,
+    summary: task.summary,
+    failure_reason: "",
+    created_at: task.created_at,
+    updated_at: task.updated_at,
+  };
 }
 
 type SourceFile = RequirementSwitcherFile & {
@@ -170,6 +303,8 @@ type DocumentEditResponse = {
 
 type RequirementAnalysisQuestion = {
   id: string;
+  title?: string;
+  issue_type?: RequirementAnalysisIssueType;
   module_key: string;
   module_name: string;
   question: string;
@@ -183,9 +318,10 @@ type RequirementAnalysisQuestion = {
 
 type RequirementAnalysisConflict = {
   id: string;
+  title?: string;
   module_key: string;
   module_name: string;
-  issue_type: string;
+  issue_type: RequirementAnalysisIssueType | string;
   question: string;
   impact: string;
   severity: "blocker" | "major" | "minor";
@@ -200,6 +336,8 @@ type RequirementAnalysisConflict = {
   recommended_options?: RequirementClarificationOption[];
   answer?: RequirementClarificationAnswer;
 };
+
+type RequirementAnalysisIssueType = "missing" | "confirmation" | "conflict" | "ambiguous";
 
 type RequirementAnalysisPendingItem = RequirementAnalysisQuestion | RequirementAnalysisConflict;
 
@@ -377,6 +515,7 @@ export default function DocumentDetailPage() {
   const [savingClarificationId, setSavingClarificationId] = useState("");
   const [pendingAnswerDrafts, setPendingAnswerDrafts] = useState<Record<string, PendingAnswerDraft>>({});
   const [deferredPendingItemIds, setDeferredPendingItemIds] = useState<string[]>([]);
+  const [sourceExcerptItem, setSourceExcerptItem] = useState<RequirementAnalysisPendingItem | null>(null);
   const [finalizeConfirmOpen, setFinalizeConfirmOpen] = useState(false);
   const [reviewClearConfirmOpen, setReviewClearConfirmOpen] = useState(false);
   const [generatingExplorationPlan, setGeneratingExplorationPlan] = useState(false);
@@ -433,8 +572,11 @@ export default function DocumentDetailPage() {
   const initialMarkdownContent = overview?.initial_markdown_content ?? "";
   const preliminaryMarkdown = analysisResult?.output.preliminary_requirement_markdown ?? "";
   const analysisReportMarkdown = analysisResult?.output.analysis_report_markdown ?? "";
-  const qualityAssuranceMarkdown = analysisResult?.output.quality_assurance_report_markdown ?? "";
-  const enhancedRequirementMarkdown = analysisResult?.output.enhanced_requirement_markdown ?? "";
+  const qualityAssuranceMarkdown =
+    analysisResult?.output.quality_assurance_report_markdown?.trim() ||
+    extractMarkdownSection(analysisReportMarkdown, "质量评估");
+  const enhancedRequirementMarkdown =
+    analysisResult?.output.enhanced_requirement_markdown?.trim() || preliminaryMarkdown;
   const clarificationQuestions = analysisResult?.output.clarification_questions ?? [];
   const analysisConflicts = analysisResult?.output.conflicts ?? [];
   const pendingAnalysisItems: RequirementAnalysisPendingItem[] = [
@@ -484,6 +626,7 @@ export default function DocumentDetailPage() {
     reviewLoading ||
     REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRequirementAnalysisRunStatus) ||
     Boolean(overview?.document.status === "pending_review" && !analysisResult && !latestRequirementAnalysisRunStatus);
+  const requirementReviewRunningRef = useRef(false);
   const requirementAnalysisDisabledReason = (() => {
     if (!currentPrimaryFile) {
       return "请先设置主需求文件";
@@ -734,6 +877,14 @@ export default function DocumentDetailPage() {
     };
   }, [originalPreview?.objectUrl]);
 
+  useEffect(() => {
+    if (requirementReviewRunningRef.current && !requirementReviewRunning && analysisResult) {
+      setActiveTab("analysis");
+      setAnalysisTab("analysis-report");
+    }
+    requirementReviewRunningRef.current = requirementReviewRunning;
+  }, [analysisResult, requirementReviewRunning]);
+
   function handleDetailTabChange(nextTab: string) {
     setActiveTab(nextTab);
   }
@@ -872,9 +1023,28 @@ export default function DocumentDetailPage() {
       });
       runId = task.source_id;
       setActiveReviewRunId(runId);
+      setOverview((current) =>
+        current
+          ? {
+              ...current,
+              document: {
+                ...current.document,
+                current_version_id: null,
+                latest_requirement_analysis_run: latestRequirementAnalysisRunFromTask(task),
+                status: "pending_review",
+              },
+              stats: {
+                ...current.stats,
+                initial_requirement_status: "not_generated",
+              },
+              initial_markdown_content: "",
+            }
+          : current,
+      );
       notifyAiTaskStarted();
       toast.success("需求分析已提交，正在分析中");
       setActiveTab("analysis");
+      setAnalysisTab("analysis-report");
     } catch (requestError) {
       reportError(requestError, {
         fallbackMessage: "需求分析提交失败",
@@ -891,7 +1061,11 @@ export default function DocumentDetailPage() {
     try {
       await waitForRequirementReviewTask(runId);
       await loadOverview({ silent: true });
-      await loadLatestAnalysis();
+      const latestAnalysis = await loadLatestAnalysis();
+      if (latestAnalysis) {
+        setActiveTab("analysis");
+        setAnalysisTab("analysis-report");
+      }
     } catch (requestError) {
       reportError(requestError, {
         fallbackMessage: "需求分析状态同步失败",
@@ -1111,7 +1285,10 @@ export default function DocumentDetailPage() {
       answerType: item.answer?.answer_type ?? "recommended_option",
     };
     const customAnswer = draft.customAnswer.trim();
-    const answerType = customAnswer ? "custom" : draft.answerType;
+    const selectedFallbackOption = pendingRecommendedOptions(item).find(
+      (option) => option.id === draft.selectedOptionId && option.id.startsWith("__fallback_"),
+    );
+    const answerType = customAnswer || selectedFallbackOption ? "custom" : draft.answerType;
     if (answerType === "recommended_option" && !draft.selectedOptionId) {
       toast.error("请选择推荐选项，或填写自定义说明");
       return;
@@ -1126,7 +1303,7 @@ export default function DocumentDetailPage() {
             question_id: item.id,
             answer_type: answerType,
             selected_option_id: answerType === "recommended_option" ? draft.selectedOptionId : "",
-            custom_answer: customAnswer,
+            custom_answer: selectedFallbackOption ? selectedFallbackOption.answer_markdown : customAnswer,
           }),
         },
       );
@@ -1746,22 +1923,44 @@ export default function DocumentDetailPage() {
                         answerType: item.answer?.answer_type ?? "recommended_option",
                       };
                       const isSaving = savingClarificationId === item.id;
+                      const issueType = pendingIssueType(item);
+                      const sourceExcerpt = pendingItemSourceExcerpt(item);
+                      const itemTitle = pendingItemTitle(item);
+                      const showQuestionBody = item.question.trim() && item.question.trim() !== itemTitle;
+                      const recommendedOptions = pendingRecommendedOptions(item);
                       return (
                         <div
                           className="overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-sm dark:shadow-none"
                           key={item.id}
                         >
                           <div className="p-4">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="inline-flex h-6 min-w-7 items-center justify-center rounded-md border border-border bg-muted/50 px-1.5 font-medium text-[11px] text-muted-foreground tabular-nums">
-                                {itemNumber}
-                              </span>
-                              <Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>
-                                {pendingSeverityLabels[item.severity] ?? item.severity}
-                              </Badge>
-                              <span className="font-medium text-foreground text-sm">{item.module_name}</span>
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                <span className="inline-flex h-6 min-w-7 items-center justify-center rounded-md border border-border bg-muted/50 px-1.5 font-medium text-[11px] text-muted-foreground tabular-nums">
+                                  {itemNumber}
+                                </span>
+                                <Badge variant="outline">{pendingIssueTypeLabels[issueType]}</Badge>
+                                <Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>
+                                  {pendingSeverityLabels[item.severity] ?? item.severity}
+                                </Badge>
+                                <span className="min-w-0 font-medium text-foreground text-base leading-6">
+                                  {itemTitle}
+                                </span>
+                              </div>
+                              <Button
+                                className="h-7 px-2 text-xs"
+                                disabled={!sourceExcerpt}
+                                onClick={() => setSourceExcerptItem(item)}
+                                type="button"
+                                variant="outline"
+                              >
+                                <Eye className="size-3.5" />
+                                查看原文
+                              </Button>
                             </div>
-                            <div className="mt-3 text-foreground text-sm leading-6">{item.question}</div>
+                            {showQuestionBody ? (
+                              <div className="mt-3 text-foreground text-sm leading-6">{item.question}</div>
+                            ) : null}
                             {item.impact ? (
                               <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800 text-xs dark:text-amber-200">
                                 影响：{item.impact}
@@ -1772,9 +1971,9 @@ export default function DocumentDetailPage() {
                               <div className="mb-2 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
                                 推荐处理
                               </div>
-                              {item.recommended_options?.length ? (
+                              {recommendedOptions.length ? (
                                 <div className="space-y-2">
-                                  {item.recommended_options.slice(0, 2).map((option, index) => {
+                                  {recommendedOptions.slice(0, 2).map((option, index) => {
                                     const selected =
                                       draft.answerType === "recommended_option" && draft.selectedOptionId === option.id;
                                     return (
@@ -1830,7 +2029,7 @@ export default function DocumentDetailPage() {
                                       : "border-border bg-muted/50 text-muted-foreground",
                                   )}
                                 >
-                                  {optionBadge(item.recommended_options?.slice(0, 2).length ?? 0)}
+                                  {optionBadge(recommendedOptions.slice(0, 2).length)}
                                 </span>
                                 <Textarea
                                   className="min-h-6 w-full resize-none border-0 bg-transparent p-0 text-muted-foreground text-sm leading-6 shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent dark:disabled:bg-transparent"
@@ -2056,6 +2255,30 @@ export default function DocumentDetailPage() {
           </ShellSection>
         </TabsContent>
       </Tabs>
+      <Dialog onOpenChange={(open) => !open && setSourceExcerptItem(null)} open={Boolean(sourceExcerptItem)}>
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="shrink-0 gap-2 px-6 pt-6 pb-4">
+            <DialogTitle>{sourceExcerptItem ? pendingItemTitle(sourceExcerptItem) : "需求原文"}</DialogTitle>
+            <DialogDescription>
+              {sourceExcerptItem ? (
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">{pendingIssueTypeLabels[pendingIssueType(sourceExcerptItem)]}</Badge>
+                  <Badge variant={sourceExcerptItem.severity === "blocker" ? "destructive" : "secondary"}>
+                    {pendingSeverityLabels[sourceExcerptItem.severity] ?? sourceExcerptItem.severity}
+                  </Badge>
+                </span>
+              ) : (
+                "查看待澄清项关联的需求原文"
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 overflow-auto px-6 pb-6">
+            <pre className="whitespace-pre-wrap rounded-lg border bg-muted/30 p-4 text-sm leading-6">
+              {sourceExcerptItem ? pendingItemSourceExcerpt(sourceExcerptItem) || "暂无关联原文" : ""}
+            </pre>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog
         onOpenChange={(open) => {
           if (!open) {

@@ -5,7 +5,7 @@
 """
 
 from typing import List, Optional
-from ..schemas_v2 import ClarificationItem
+from ..schemas import ClarificationItem
 
 
 def generate_enhanced_requirement(
@@ -112,7 +112,7 @@ def _build_enhancement_block(item: ClarificationItem) -> str:
     if item.evidence:
         sources = set()
         for ev in item.evidence:
-            sources.add(f"{ev.document_name}")
+            sources.add(ev.filename)
         lines.append(f"> **来源**: {', '.join(sources)}")
         lines.append(">")
 

@@ -13,9 +13,10 @@ from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir, resolve_stored_path, store_path
 from app.agents.requirement_analysis_codex.errors import RequirementAnalysisCancelledError
 from app.agents.requirement_analysis_codex.process_registry import terminate as terminate_requirement_analysis_process
-from app.agents.requirement_analysis.auxiliary_enhancement.service import enhance_requirement_with_auxiliary_articles
-from app.agents.requirement_analysis.v3.workflow import run_requirement_analysis_v3
-from app.agents.requirement_analysis.schemas_v2 import RequirementAnalysisInputV2, AuxiliaryDocument
+from app.agents.requirement_auxiliary_enhancement.service import enhance_requirement_with_auxiliary_articles
+from app.agents.requirement_analysis.workflow import run_requirement_analysis
+from app.agents.requirement_analysis.schemas import RequirementAnalysisInputV2, AuxiliaryDocument
+from app.agents.requirement_analysis.utils.report_generator import generate_quality_assurance_report
 from app.repositories import document_repo, requirement_analysis_run_repo, requirement_clarification_answer_repo
 from app.schemas.document import RequirementAnalysisFinalizeIn, RequirementClarificationAnswerIn, SourceDocumentUpdateIn
 from app.schemas.requirement_analysis import (
@@ -37,6 +38,104 @@ CONVERSION_FAILED_STATUS = "failed"
 REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES = 120
 REQUIREMENT_ANALYSIS_RUN_TIMEOUT_SECONDS = REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES * 60
 REQUIREMENT_AUXILIARY_ENHANCEMENT_ENABLED = False
+
+
+async def analyze_requirement_with_agent(input_data: RequirementAnalysisInputV2):
+    """Compatibility wrapper for tests and callers; runtime still uses LangGraph workflow."""
+    if isinstance(input_data, RequirementAnalysisInputV2):
+        workflow_input = input_data
+    else:
+        workflow_input = RequirementAnalysisInputV2(
+            project_id=input_data.project_id,
+            document_id=input_data.document_id,
+            document_name=input_data.document_name,
+            run_id=input_data.run_id,
+            primary_mapping_id=input_data.primary_mapping_id,
+            primary_filename=input_data.primary_filename,
+            primary_markdown_content=input_data.primary_markdown_content,
+            auxiliary_documents=[],
+            config={},
+        )
+    return await run_requirement_analysis(workflow_input)
+
+
+def _is_langgraph_requirement_analysis_output(analysis_output) -> bool:
+    return hasattr(analysis_output, "quality_assessment") and hasattr(analysis_output, "clarification")
+
+
+def _legacy_output_from_langgraph_result(analysis_output, primary_markdown_content: str) -> tuple[str, dict]:
+    preliminary_markdown = (
+        analysis_output.enhanced_requirement_markdown
+        or primary_markdown_content
+    )
+    quality_assurance_report = generate_quality_assurance_report(analysis_output.quality_assessment)
+    clarification_questions = [
+        {
+            "id": item.item_id,
+            "title": item.title or item.module_name or item.question,
+            "issue_type": item.issue_type,
+            "module_key": item.module_key,
+            "module_name": item.module_name or item.title or "待确认项",
+            "question": item.question,
+            "severity": item.severity,
+            "priority": "HIGH" if item.severity == "blocker" else "MEDIUM",
+            "dimension": item.source,
+            "impact": item.impact,
+            "source_excerpt": item.current_text,
+            "recommended_options": [
+                {
+                    "id": opt.option_id,
+                    "label": opt.label,
+                    "answer_markdown": opt.answer_markdown,
+                    "rationale": opt.rationale,
+                    "confidence": opt.confidence,
+                }
+                for opt in item.recommended_options
+            ],
+        }
+        for item in analysis_output.clarification.items
+    ]
+    output_data = {
+        "status": analysis_output.status,
+        "analysis_summary": analysis_output.quality_assessment.assessment_summary,
+        "preliminary_requirement_markdown": preliminary_markdown,
+        "enhanced_requirement_markdown": preliminary_markdown,
+        "analysis_report_markdown": analysis_output.analysis_report_markdown or "",
+        "quality_assurance_report_markdown": quality_assurance_report,
+        "applied_supplements": [],
+        "maturity_assessment": analysis_output.quality_assessment.scores.model_dump(),
+        "clarification_questions": clarification_questions,
+        "conflicts": [],
+        "quality_gate": {
+            "result": analysis_output.quality_assessment.decision.result,
+            "testability_score": analysis_output.quality_assessment.scores.testability,
+            "blocking_issues": analysis_output.quality_assessment.decision.blocking_issues,
+            "warnings": [],
+        },
+        "metadata": analysis_output.metadata,
+    }
+    return preliminary_markdown, output_data
+
+
+def _legacy_output_from_requirement_analysis_result(analysis_output, primary_markdown_content: str) -> tuple[str, dict]:
+    if _is_langgraph_requirement_analysis_output(analysis_output):
+        return _legacy_output_from_langgraph_result(analysis_output, primary_markdown_content)
+
+    output_data = analysis_output.model_dump()
+    preliminary_markdown = (
+        output_data.get("preliminary_requirement_markdown")
+        or getattr(analysis_output, "preliminary_requirement_markdown", "")
+        or primary_markdown_content
+    )
+    output_data["preliminary_requirement_markdown"] = preliminary_markdown
+    output_data.setdefault("enhanced_requirement_markdown", preliminary_markdown)
+    output_data.setdefault("clarification_questions", [])
+    output_data.setdefault("conflicts", [])
+    output_data.setdefault("analysis_report_markdown", "")
+    output_data.setdefault("quality_assurance_report_markdown", "")
+    output_data.setdefault("applied_supplements", [])
+    output_data.setdefault("metadata", {})
+    return preliminary_markdown, output_data
 
 
 def list_documents(project_id: str, actor) -> list[dict]:
@@ -523,7 +622,7 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
     if task_id:
         _ensure_requirement_analysis_run_not_stopping(task_id)
 
-    analysis_input = RequirementAnalysisInputV2(
+    analysis_input = RequirementAnalysisInput(
         project_id=project_id,
         document_id=document_id,
         document_name=document["name"],
@@ -531,11 +630,9 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
         primary_mapping_id=primary_file["id"],
         primary_filename=primary_file["original_filename"],
         primary_markdown_content=primary_markdown_content,
-        auxiliary_documents=[],
-        config={},
     )
     try:
-        analysis_output = await run_requirement_analysis_v3(analysis_input)
+        analysis_output = await analyze_requirement_with_agent(analysis_input)
     except RequirementAnalysisCancelledError:
         raise
     except Exception as exc:
@@ -544,54 +641,21 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
     if task_id:
         _ensure_requirement_analysis_run_not_stopping(task_id)
 
-    # v3 返回 enhanced_requirement_markdown
-    preliminary_markdown = (analysis_output.enhanced_requirement_markdown or primary_markdown_content).strip()
+    preliminary_markdown, output_data = _legacy_output_from_requirement_analysis_result(
+        analysis_output,
+        primary_markdown_content,
+    )
     if not preliminary_markdown:
         raise api_error(502, "REQUIREMENT_ANALYSIS_EMPTY_DRAFT", "需求分析智能体未返回初步需求。")
 
     analysis_id = f"reqana-{secrets.token_hex(8)}"
 
-    # 转换 v3 格式到旧格式
-    clarification_questions = [
-        {
-            "id": item.item_id,
-            "question": item.question,
-            "priority": "HIGH" if item.severity == "blocker" else "MEDIUM",
-            "dimension": item.source,
-            "impact": item.impact,
-            "recommended_options": [
-                {
-                    "id": opt.option_id,
-                    "label": opt.label,
-                    "answer_markdown": opt.answer_markdown,
-                }
-                for opt in item.recommended_options
-            ],
-        }
-        for item in analysis_output.clarification.items
-    ]
-
-    output_data = {
-        "status": analysis_output.status,
-        "analysis_summary": analysis_output.quality_assessment.assessment_summary,
-        "preliminary_requirement_markdown": preliminary_markdown,
-        "analysis_report_markdown": analysis_output.analysis_report_markdown or "",
-        "applied_supplements": [],
-        "maturity_assessment": analysis_output.quality_assessment.scores.model_dump(),
-        "clarification_questions": clarification_questions,
-        "conflicts": [],
-        "quality_gate": {
-            "result": analysis_output.quality_assessment.decision.result,
-            "testability_score": analysis_output.quality_assessment.scores.testability,
-            "blocking_issues": analysis_output.quality_assessment.decision.blocking_issues,
-            "warnings": [],
-        },
-        "metadata": analysis_output.metadata,
-    }
-
-    pending_count = len(clarification_questions)
+    pending_count = len(output_data.get("clarification_questions") or []) + len(output_data.get("conflicts") or [])
     supplement_count = 0
     draft_content_hash = _content_hash(preliminary_markdown)
+    quality_gate = output_data.get("quality_gate") or {}
+    quality_result = quality_gate.get("result", "warning")
+    testability_score = quality_gate.get("testability_score", 0)
 
     with connect() as db:
         document_repo.create_requirement_analysis(
@@ -602,10 +666,10 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
             version_id=None,
             primary_mapping_id=primary_file["id"],
             status=analysis_output.status,
-            analysis_summary=analysis_output.quality_assessment.assessment_summary,
+            analysis_summary=output_data.get("analysis_summary") or getattr(analysis_output, "analysis_summary", ""),
             output_json=output_data,
-            quality_result=analysis_output.quality_assessment.decision.result,
-            testability_score=analysis_output.quality_assessment.scores.testability,
+            quality_result=quality_result,
+            testability_score=testability_score,
             draft_content_hash=draft_content_hash,
             created_by=actor["id"],
         )
@@ -616,8 +680,8 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
         "document_id": document_id,
         "version_id": None,
         "primary_mapping_id": primary_file["id"],
-        "quality_result": analysis_output.quality_assessment.decision.result,
-        "testability_score": analysis_output.quality_assessment.scores.testability,
+        "quality_result": quality_result,
+        "testability_score": testability_score,
         "created_by": actor["id"],
         "created_at": "",
         "draft_content_hash": draft_content_hash,
@@ -640,7 +704,7 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
         summary=f"执行需求分析：{document['name']}",
         after={
             "status": analysis_output.status,
-            "quality_result": analysis_output.quality_assessment.decision.result,
+            "quality_result": quality_result,
             "supplement_count": supplement_count,
             "pending_count": pending_count,
         },
