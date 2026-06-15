@@ -96,6 +96,86 @@ export type ApiProject = {
   available_actions: string[];
 };
 
+export type ApiRequirementDocument = {
+  id: string;
+  project_id: string;
+  name: string;
+  document_type: string;
+  status: string;
+  current_version_id: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiExplorationRun = {
+  id: string;
+  project_id: string;
+  project_name: string;
+  environment_id: string;
+  environment_name: string;
+  requirement_doc_id: string;
+  requirement_doc_title: string;
+  title: string;
+  status: string;
+  scope: string;
+  forbidden_paths: string;
+  login_strategy: string;
+  goal: string;
+  notes: string;
+  max_pages: number;
+  max_actions: number;
+  timeout_minutes: number;
+  created_at: string;
+  updated_at: string;
+  available_actions: string[];
+};
+
+export type ApiTestCaseGenerationScopeType = "all" | "specified";
+
+export type ApiTestCaseGenerationRun = {
+  id: string;
+  test_case_set_id: string;
+  task_id: string;
+  status: string;
+  input_snapshot: Record<string, unknown>;
+  error_message: string;
+  created_at: string;
+  finished_at: string | null;
+};
+
+export type ApiTestCaseSet = {
+  id: string;
+  project_id: string;
+  project_name: string;
+  name: string;
+  requirement_doc_id: string;
+  requirement_doc_title: string;
+  exploration_run_id: string;
+  exploration_run_title: string;
+  include_company_knowledge: boolean;
+  generation_scope_type: ApiTestCaseGenerationScopeType;
+  generation_scope_text: string;
+  notes: string;
+  status: string;
+  status_label: string;
+  case_count: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  generation_run: ApiTestCaseGenerationRun | null;
+};
+
+export type ApiTestCaseSetCreate = {
+  name: string;
+  requirement_doc_id: string;
+  exploration_run_id: string;
+  include_company_knowledge: boolean;
+  generation_scope_type: ApiTestCaseGenerationScopeType;
+  generation_scope_text: string;
+  notes: string;
+};
+
 export type ApiDashboardMetric = {
   label: string;
   value: string;

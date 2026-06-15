@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import agents, ai, auth, dashboard, documents, environments, exploration, global_knowledge, knowledge, models, operation_logs, projects, requirement_exploration, requirements, tasks, users
+from app.api.v1 import agents, ai, auth, dashboard, documents, environments, exploration, global_knowledge, knowledge, models, operation_logs, projects, requirement_exploration, requirements, tasks, test_cases, users
 
 v1_router = APIRouter()
 v1_router.include_router(auth.router)
@@ -22,6 +22,7 @@ v1_router.include_router(global_knowledge.router)
 v1_router.include_router(requirements.router)
 v1_router.include_router(requirements.file_router)
 v1_router.include_router(requirement_exploration.router)
+v1_router.include_router(test_cases.router)
 v1_router.include_router(tasks.router)
 v1_router.include_router(documents.router)
 v1_router.include_router(agents.router)

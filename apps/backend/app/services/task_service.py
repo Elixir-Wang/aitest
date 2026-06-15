@@ -13,6 +13,7 @@ RUNNING_INDICATOR_SOURCE_TYPES = {
     "exploration_run",
     "requirement_file",
     "requirement_analysis_run",
+    "test_case_generation_run",
 }
 
 EXPLORATION_STATUS = {
@@ -45,10 +46,18 @@ REQUIREMENT_ANALYSIS_STATUS = {
     "failed": (FAILED_GROUP, "分析失败"),
 }
 
+TEST_CASE_GENERATION_STATUS = {
+    "queued": (RUNNING_GROUP, "排队中"),
+    "running": (RUNNING_GROUP, "生成中"),
+    "completed": (COMPLETED_GROUP, "生成完成"),
+    "failed": (FAILED_GROUP, "生成失败"),
+}
+
 STATUS_META_BY_SOURCE_TYPE = {
     "exploration_run": EXPLORATION_STATUS,
     "requirement_file": REQUIREMENT_FILE_STATUS,
     "requirement_analysis_run": REQUIREMENT_ANALYSIS_STATUS,
+    "test_case_generation_run": TEST_CASE_GENERATION_STATUS,
 }
 
 
@@ -107,6 +116,7 @@ def get_task_by_source_for_event(*, source_type: str, source_id: str) -> dict | 
             *_exploration_tasks(db, project_names),
             *_requirement_file_tasks(db, project_names),
             *_requirement_analysis_run_tasks(db, project_names),
+            *_test_case_generation_tasks(db, project_names),
         ]:
             if task["source_type"] == source_type and task["source_id"] == source_id:
                 return task
@@ -225,6 +235,7 @@ def _collect_visible_tasks(actor) -> list[dict]:
             *_exploration_tasks(db, project_names),
             *_requirement_file_tasks(db, project_names),
             *_requirement_analysis_run_tasks(db, project_names),
+            *_test_case_generation_tasks(db, project_names),
         ]
 
 
@@ -339,6 +350,40 @@ def _requirement_analysis_run_tasks(db, project_names: dict[str, str]) -> list[d
     ]
 
 
+def _test_case_generation_tasks(db, project_names: dict[str, str]) -> list[dict]:
+    if not project_names or not _table_exists(db, "test_case_generation_runs"):
+        return []
+    rows = db.execute(
+        """
+        SELECT r.id, r.test_case_set_id, r.task_id, r.status, r.error_message, r.created_at, r.updated_at,
+               s.project_id, s.name AS test_case_set_name
+        FROM test_case_generation_runs r
+        JOIN test_case_sets s ON s.id = r.test_case_set_id
+        WHERE s.project_id IN ({})
+        """.format(_placeholders(project_names)),
+        tuple(project_names),
+    ).fetchall()
+    return [
+        _task(
+            task_id=row["task_id"],
+            source_type="test_case_generation_run",
+            source_id=row["id"],
+            project_id=row["project_id"],
+            project_name=project_names[row["project_id"]],
+            module="test_case",
+            module_label="测试用例",
+            title=row["test_case_set_name"],
+            status=row["status"],
+            status_meta=TEST_CASE_GENERATION_STATUS,
+            summary=row["error_message"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"] or row["created_at"],
+            detail_url=f"/test-cases?set={row['test_case_set_id']}",
+        )
+        for row in rows
+    ]
+
+
 def _task(
     *,
     task_id: str,
@@ -403,3 +448,7 @@ def _filter_tasks(
 
 def _placeholders(values: dict) -> str:
     return ", ".join("?" for _ in values)
+
+
+def _table_exists(db, table: str) -> bool:
+    return db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone() is not None
