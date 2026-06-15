@@ -463,11 +463,6 @@ These serve as the fallback; there is no separate default.css file. */
     transform: none;
   }
 
-  .company-knowledge-document-preview.markdown-preview h2 {
-    display: block;
-    width: fit-content;
-  }
-
   .requirement-artifact-preview h3 {
     margin: 1rem 0 0.45rem;
     font-size: 0.95rem;

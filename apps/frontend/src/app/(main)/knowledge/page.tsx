@@ -1141,7 +1141,7 @@ export default function Page() {
         </ShellSection>
       ) : null}
       {isCompanyKnowledge && companyView === "detail" ? (
-        <ShellSection>
+        <>
           {error ? <p className="mb-3 text-destructive text-sm">{error}</p> : null}
           {companyTree && selectedCompanyBase ? (
             <CompanyKnowledgeVault
@@ -1169,7 +1169,7 @@ export default function Page() {
           ) : (
             <div className="rounded-lg border p-6 text-muted-foreground text-sm">正在加载知识库目录。</div>
           )}
-        </ShellSection>
+        </>
       ) : null}
       {!isCompanyKnowledge ? (
         <ProjectKnowledgeWorkspace
@@ -1846,7 +1846,7 @@ function CompanyReadingTrail({
             className={
               index === items.length - 1
                 ? "truncate font-medium text-foreground"
-                : "truncate text-muted-foreground hover:text-foreground"
+                : "truncate font-medium text-muted-foreground hover:text-foreground"
             }
             onClick={() => onSelect(item)}
             type="button"
@@ -1922,7 +1922,7 @@ function CompanyKnowledgeVault({
     return (
       <div data-toc-ignore id={COMPANY_KNOWLEDGE_PREVIEW_ID}>
         <MarkdownPreview
-          className="company-knowledge-document-preview"
+          className="requirement-document-preview"
           content={content}
           emptyText="暂无 Markdown 内容。"
           onVaultFileClick={(fileId) => {
@@ -1961,7 +1961,7 @@ function CompanyKnowledgeVault({
     >
       {sidebarOpen ? (
         <aside className="flex min-h-0 flex-col border-b bg-muted/20 lg:border-r lg:border-b-0">
-          <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+          <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b px-3">
             <span className="font-medium text-sm">目录</span>
             <div className="flex items-center gap-0.5">
               <CompanyDirectoryAddMenu
@@ -2019,7 +2019,7 @@ function CompanyKnowledgeVault({
       <main className="min-w-0 overflow-hidden">
         {file ? (
           <div className="flex h-full min-h-0 flex-col">
-            <div className="flex min-h-11 items-center gap-2 border-b px-3 py-2">
+            <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
               {!sidebarOpen ? (
                 <Button
                   className="shrink-0"
@@ -2033,39 +2033,20 @@ function CompanyKnowledgeVault({
               ) : null}
               {breadcrumb ? <CompanyReadingTrail items={breadcrumb} onSelect={handleBreadcrumbSelect} /> : null}
             </div>
-            <div
-              className={
-                sidebarOpen
-                  ? "min-h-0 flex-1 overflow-auto bg-[#fafbfc] p-4"
-                  : "min-h-0 flex-1 overflow-auto bg-background"
-              }
-              ref={setPreviewScrollEl}
-            >
-              {sidebarOpen ? (
-                <div className="mx-auto max-w-3xl rounded-lg border bg-background p-4 shadow-sm">
-                  {file.conversion_status === "failed" ? (
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive text-sm">
-                      {file.conversion_summary || "文件转换失败。"}
-                    </div>
-                  ) : (
-                    renderMarkdownPreview(file.markdown_content ?? "")
-                  )}
-                </div>
-              ) : file.conversion_status === "failed" ? (
-                <div className="px-8 py-6">
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive text-sm">
-                    {file.conversion_summary || "文件转换失败。"}
-                  </div>
+            <div className="min-h-0 flex-1 overflow-auto p-4" ref={setPreviewScrollEl}>
+              {file.conversion_status === "failed" ? (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive text-sm">
+                  {file.conversion_summary || "文件转换失败。"}
                 </div>
               ) : (
-                <div className="px-8 py-6 lg:px-12">{renderMarkdownPreview(file.markdown_content ?? "")}</div>
+                renderMarkdownPreview(file.markdown_content ?? "")
               )}
             </div>
           </div>
         ) : (
           <div className="flex h-full min-h-0 flex-col">
             {!sidebarOpen ? (
-              <div className="flex min-h-11 items-center gap-2 border-b px-3 py-2">
+              <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
                 <Button
                   className="shrink-0"
                   onClick={() => onSidebarOpenChange(true)}
