@@ -11,7 +11,6 @@ import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/a
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -25,6 +24,7 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Loader } from "@/components/ui/loader";
+import { authStateStatusTone, explorationStatusTone, StatusBadge } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -163,17 +163,6 @@ const statusLabels: Record<string, string> = {
   blocked: "阻塞",
 };
 
-const statusBadgeClassNames: Record<string, string> = {
-  pending: "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  queued: "border-sky-500/35 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-  running: "border-primary/35 bg-primary/10 text-primary",
-  stopping: "border-muted-foreground/25 bg-muted text-muted-foreground",
-  cancelled: "border-muted-foreground/25 bg-muted text-muted-foreground",
-  partial: "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  completed: "border-green-600/35 bg-green-500/10 text-green-700 dark:text-green-300",
-  blocked: "border-destructive/35 bg-destructive/10 text-destructive",
-};
-
 const loginStrategyLabels: Record<string, string> = {
   account_password: "账号密码",
   skip_login: "无需登录",
@@ -195,13 +184,6 @@ const authStateStatusLabels: Record<string, string> = {
   valid: "有效",
   expired: "过期",
   unknown: "未检测",
-};
-
-const authStateStatusBadgeClassNames: Record<string, string> = {
-  none: "border-muted-foreground/25 bg-muted text-muted-foreground",
-  valid: "border-green-600/35 bg-green-500/10 text-green-700 dark:text-green-300",
-  expired: "border-destructive/35 bg-destructive/10 text-destructive",
-  unknown: "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
 };
 
 function formatAuthStateExpiresAt(expiresAt: string | null | undefined) {
@@ -266,10 +248,10 @@ function ExplorationStatusBadge({ status }: { status: string }) {
   const isLoading = LOADING_EXPLORATION_STATUSES.has(status);
 
   return (
-    <Badge className={statusBadgeClassNames[status]} variant="outline">
+    <StatusBadge tone={explorationStatusTone(status)}>
       {isLoading ? <Loader className="-ml-0.5" size={12} /> : null}
       {statusLabels[status] ?? status}
-    </Badge>
+    </StatusBadge>
   );
 }
 
@@ -1240,9 +1222,9 @@ export function ExplorationWorkspace({
                     </TableCell>
                     <TableCell>
                       <div className="flex min-w-28">
-                        <Badge className={authStateStatusBadgeClassNames[item.auth_state_status]} variant="outline">
+                        <StatusBadge tone={authStateStatusTone(item.auth_state_status)}>
                           {authStateStatusLabels[item.auth_state_status] ?? item.auth_state_status}
-                        </Badge>
+                        </StatusBadge>
                       </div>
                     </TableCell>
                     <TableCell>{formatDateTime(item.updated_at)}</TableCell>
@@ -1444,9 +1426,9 @@ export function ExplorationWorkspace({
                     <div className="min-w-0 space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="text-muted-foreground text-xs">登录态</span>
-                        <Badge className={authStateStatusBadgeClassNames[selectedAuthStateStatus]} variant="outline">
+                        <StatusBadge tone={authStateStatusTone(selectedAuthStateStatus)}>
                           {authStateStatusLabels[selectedAuthStateStatus] ?? selectedAuthStateStatus}
-                        </Badge>
+                        </StatusBadge>
                       </div>
                       {selectedAuthStateStatus === "valid" || selectedAuthStateStatus === "expired" ? (
                         <p className="text-muted-foreground text-xs">

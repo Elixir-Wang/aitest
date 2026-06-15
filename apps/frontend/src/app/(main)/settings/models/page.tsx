@@ -2,12 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Eye, EyeOff, Pencil, Trash2, TestTube } from "lucide-react";
+import { Eye, EyeOff, Pencil, TestTube, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -20,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { healthStatusTone, StatusBadge } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { type ApiModelProvider, apiRequest, formatDateTime, healthStatusToLabel } from "@/lib/api-client";
@@ -158,11 +158,7 @@ export default function Page() {
 
   async function testModel(id: string) {
     // Immediately update UI to show testing status
-    setRows((current) =>
-      current.map((row) =>
-        row.id === id ? { ...row, health_status: "testing" as const } : row,
-      ),
-    );
+    setRows((current) => current.map((row) => (row.id === id ? { ...row, health_status: "testing" as const } : row)));
     setTestingModelId(id);
 
     try {
@@ -189,19 +185,6 @@ export default function Page() {
     } finally {
       setTestingModelId(null);
     }
-  }
-
-  function getBadgeVariant(healthStatus: string): { variant: "success" | "destructive" | "secondary" | "outline"; appearance?: "default" | "light" | "outline" } {
-    if (healthStatus === "healthy") {
-      return { variant: "success", appearance: "outline" }; // Green outline
-    }
-    if (healthStatus === "unhealthy" || healthStatus === "timeout") {
-      return { variant: "destructive", appearance: "outline" }; // Red outline
-    }
-    if (healthStatus === "testing") {
-      return { variant: "secondary", appearance: "outline" }; // Gray outline with animation
-    }
-    return { variant: "outline" }; // Default outline for unknown
   }
 
   return (
@@ -275,13 +258,13 @@ export default function Page() {
                   <TableCell>{item.model}</TableCell>
                   <TableCell className="max-w-md truncate text-muted-foreground">{item.base_url}</TableCell>
                   <TableCell>
-                    <Badge {...getBadgeVariant(item.health_status)}>
+                    <StatusBadge tone={healthStatusTone(item.health_status)}>
                       {item.health_status === "testing" ? (
                         <ProcessingState label={healthStatusToLabel(item.health_status)} />
                       ) : (
                         healthStatusToLabel(item.health_status)
                       )}
-                    </Badge>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                   <TableCell>

@@ -1,11 +1,11 @@
 import { addDays, format } from "date-fns";
 import { ClipboardCheck, Globe, Orbit, Plus } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { englishStatusTone, StatusBadge } from "@/components/ui/status-badge";
 
 const today = new Date();
 
@@ -72,7 +72,7 @@ export function ProjectsSection() {
                 </div>
               </CardTitle>
               <CardAction>
-                <Badge variant="outline">{project.status}</Badge>
+                <StatusBadge tone={englishStatusTone(project.status)}>{project.status}</StatusBadge>
               </CardAction>
             </CardHeader>
             <CardContent>

@@ -6,13 +6,13 @@ import { ChevronLeft, ChevronRight, Eye, RefreshCw, Search } from "lucide-react"
 
 import { OperationLogDetailContent } from "@/components/ai-testing/operation-logs/operation-log-detail-content";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Button as PaginationButton } from "@/components/ui/button-1";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
+import { operationLogResultTone, StatusBadge } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   type ApiOperationLogDetail,
@@ -281,7 +281,8 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
               const moduleLabel = operationLogModuleToLabel(row.module);
               const actionLabel = operationLogActionToLabel(row.action);
               const objectLabel = row.object_name || row.object_id || "-";
-              const summaryLabel = row.result === "failed" ? row.failure_reason || row.summary || "-" : row.summary || "-";
+              const summaryLabel =
+                row.result === "failed" ? row.failure_reason || row.summary || "-" : row.summary || "-";
               const summaryTitle =
                 row.result === "failed" && row.failure_reason && row.summary
                   ? `${row.summary}\n失败原因：${row.failure_reason}`
@@ -302,9 +303,9 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
                     <span className="block truncate">{objectLabel}</span>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={row.result === "failed" ? "destructive" : "outline"}>
+                    <StatusBadge tone={operationLogResultTone(row.result)}>
                       {operationLogResultToLabel(row.result)}
-                    </Badge>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="overflow-hidden" title={summaryTitle}>
                     <span className="block truncate">{summaryLabel}</span>

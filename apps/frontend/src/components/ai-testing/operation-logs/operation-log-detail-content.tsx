@@ -1,7 +1,7 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
 import { OneClipboard } from "@/components/ui/one-clipboard";
+import { operationLogResultTone, StatusBadge } from "@/components/ui/status-badge";
 import { type ApiOperationLogDetail, formatDateTime, operationLogResultToLabel } from "@/lib/api-client";
 
 export function OperationLogDetailContent({ detail }: { detail: ApiOperationLogDetail }) {
@@ -43,7 +43,7 @@ function DetailGrid({ detail }: { detail: ApiOperationLogDetail }) {
             <span className="text-muted-foreground">{label}</span>
             <span className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
               {label === "结果" ? (
-                <Badge variant={detail.result === "failed" ? "destructive" : "outline"}>{value}</Badge>
+                <StatusBadge tone={operationLogResultTone(detail.result)}>{value}</StatusBadge>
               ) : (
                 value
               )}

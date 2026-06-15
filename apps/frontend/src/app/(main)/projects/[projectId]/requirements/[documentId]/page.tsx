@@ -68,11 +68,7 @@ import FileUpload1 from "@/components/ui/file-upload-1";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  AI_RUNNING_TASKS_CHANGED_EVENT,
-  type AiRunningTasksChangedDetail,
-  notifyAiTaskStarted,
-} from "@/lib/ai-task-events";
+import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import {
   ApiRequestError,
   type ApiTaskItem,
@@ -933,61 +929,6 @@ export default function DocumentDetailPage() {
       window.clearInterval(timer);
     };
   }, [latestRequirementAnalysisRunId, latestRequirementAnalysisRunStatus, loadLatestAnalysis, loadOverview]);
-
-  useEffect(() => {
-    if (
-      !requirementReviewRunning &&
-      !activeReviewRunId &&
-      !REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRequirementAnalysisRunStatus)
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-    const refreshRequirementAnalysis = async () => {
-      const latestOverview = await loadOverview({ silent: true });
-      if (cancelled) {
-        return;
-      }
-      const latestAnalysis = await loadLatestAnalysis();
-      if (cancelled) {
-        return;
-      }
-      const latestRunStatus = latestOverview?.document.latest_requirement_analysis_run?.status ?? "";
-      if (!REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRunStatus) && latestAnalysis) {
-        setActiveTab("analysis");
-        setAnalysisTab("analysis-report");
-      }
-    };
-
-    function handleRunningTasksChanged(event: Event) {
-      const detail = (event as CustomEvent<AiRunningTasksChangedDetail>).detail;
-      const runningRequirementRunIds = new Set(
-        (detail?.tasks ?? [])
-          .filter((task) => task.sourceType === "requirement_analysis_run" && task.projectId === projectId)
-          .map((task) => task.sourceId),
-      );
-      const trackedRunId = activeReviewRunId || latestRequirementAnalysisRunId;
-      if (!trackedRunId || runningRequirementRunIds.has(trackedRunId)) {
-        return;
-      }
-      void refreshRequirementAnalysis();
-    }
-
-    window.addEventListener(AI_RUNNING_TASKS_CHANGED_EVENT, handleRunningTasksChanged);
-    return () => {
-      cancelled = true;
-      window.removeEventListener(AI_RUNNING_TASKS_CHANGED_EVENT, handleRunningTasksChanged);
-    };
-  }, [
-    activeReviewRunId,
-    latestRequirementAnalysisRunId,
-    latestRequirementAnalysisRunStatus,
-    loadLatestAnalysis,
-    loadOverview,
-    projectId,
-    requirementReviewRunning,
-  ]);
 
   function handleDetailTabChange(nextTab: string) {
     setActiveTab(nextTab);

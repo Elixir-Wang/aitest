@@ -8,7 +8,7 @@ import { CircleCheckIcon, EllipsisVerticalIcon, GripVerticalIcon, LoaderIcon, Tr
 import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge-2";
 import { Button } from "@/components/ui/button";
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { englishStatusTone, StatusBadge } from "@/components/ui/status-badge";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -286,14 +287,14 @@ export const proposalSectionsColumns: ColumnDef<ProposalSectionsRow>[] = [
     accessorKey: "status",
     header: "Status",
     cell: ({ row }) => (
-      <Badge variant="outline" className="px-1.5 text-muted-foreground">
+      <StatusBadge tone={englishStatusTone(row.original.status)}>
         {row.original.status === "Done" ? (
           <CircleCheckIcon className="fill-green-500 stroke-primary-foreground dark:fill-green-600" />
         ) : (
           <LoaderIcon />
         )}
         {row.original.status}
-      </Badge>
+      </StatusBadge>
     ),
   },
   {
@@ -372,7 +373,7 @@ export const proposalSectionsColumns: ColumnDef<ProposalSectionsRow>[] = [
             <span className="sr-only">Open menu</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-32">
+        <DropdownMenuContent align="center" className="w-32">
           <DropdownMenuItem>Edit</DropdownMenuItem>
           <DropdownMenuItem>Make a copy</DropdownMenuItem>
           <DropdownMenuItem>Favorite</DropdownMenuItem>
