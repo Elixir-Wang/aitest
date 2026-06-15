@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 
 import {
   Archive,
+  ArrowLeft,
   BookOpen,
   Brain,
   Building2,
@@ -21,6 +22,7 @@ import {
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Plus,
   Search,
   Trash2,
@@ -255,6 +257,37 @@ function findCompanyFolderInTree(root: ApiCompanyKnowledgeFolder, folderId: stri
   return null;
 }
 
+function resolveCompanyFolder(root: ApiCompanyKnowledgeFolder, folderId: string): ApiCompanyKnowledgeFolder {
+  if (!folderId || folderId === root.id) {
+    return root;
+  }
+  return findCompanyFolderInTree(root, folderId) ?? root;
+}
+
+function resolveCompanyBreadcrumb(
+  root: ApiCompanyKnowledgeFolder,
+  baseName: string,
+  targetId: string,
+): CompanyBreadcrumbItem[] {
+  if (!targetId || targetId === root.id) {
+    return [{ id: root.id, name: baseName, type: "base" }];
+  }
+  return findCompanyBreadcrumb(root, baseName, targetId) ?? [{ id: root.id, name: baseName, type: "base" }];
+}
+
+function countCompanyFolderChildren(folder: ApiCompanyKnowledgeFolder): { folders: number; files: number } {
+  let folders = 0;
+  let files = 0;
+  for (const child of folder.children) {
+    if (child.type === "folder") {
+      folders += 1;
+    } else {
+      files += 1;
+    }
+  }
+  return { folders, files };
+}
+
 export default function Page() {
   const [activeScope, setActiveScope] = useState<(typeof knowledgeScopes)[number]["value"]>("project");
   const [searchText, setSearchText] = useState("");
@@ -268,6 +301,8 @@ export default function Page() {
   const [selectedTreeNodeId, setSelectedTreeNodeId] = useState("");
   const [selectedCompanyFile, setSelectedCompanyFile] = useState<ApiCompanyKnowledgeFile | null>(null);
   const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
+  const [companyDialogMode, setCompanyDialogMode] = useState<"create" | "edit">("create");
+  const [editingCompanyBaseId, setEditingCompanyBaseId] = useState("");
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [deleteBaseTarget, setDeleteBaseTarget] = useState<ApiCompanyKnowledgeBase | null>(null);
@@ -778,6 +813,8 @@ export default function Page() {
       });
       setCompanyDialogOpen(false);
       setCompanyForm(emptyCompanyForm);
+      setCompanyDialogMode("create");
+      setEditingCompanyBaseId("");
       await loadCompanyBases();
       await openCompanyBase(base.id);
     } catch (nextError) {
@@ -785,6 +822,73 @@ export default function Page() {
     } finally {
       setRunning(false);
     }
+  }
+
+  async function updateCompanyBase() {
+    if (!editingCompanyBaseId) {
+      return;
+    }
+    setRunning(true);
+    setError("");
+    try {
+      const base = await apiRequest<ApiCompanyKnowledgeBase>(`/global-knowledge/bases/${editingCompanyBaseId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: companyForm.name,
+          description: companyForm.description,
+        }),
+      });
+      setCompanyDialogOpen(false);
+      setCompanyForm(emptyCompanyForm);
+      setCompanyDialogMode("create");
+      setEditingCompanyBaseId("");
+      await loadCompanyBases();
+      if (companyView === "detail" && selectedCompanyBase?.id === base.id) {
+        setSelectedCompanyBase(base);
+        await refreshCompanyTree(base.id);
+      }
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "编辑公司知识库失败。");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  function openCreateCompanyDialog() {
+    setCompanyForm(emptyCompanyForm);
+    setCompanyDialogMode("create");
+    setEditingCompanyBaseId("");
+    setCompanyDialogOpen(true);
+  }
+
+  function openEditCompanyDialog(base: ApiCompanyKnowledgeBase) {
+    setCompanyForm({ name: base.name, description: base.description ?? "" });
+    setCompanyDialogMode("edit");
+    setEditingCompanyBaseId(base.id);
+    setCompanyDialogOpen(true);
+  }
+
+  function returnToCompanyList() {
+    setCompanyView("list");
+    setSelectedCompanyBase(null);
+    setCompanyTree(null);
+    setSelectedCompanyFile(null);
+    setSelectedTreeNodeId("");
+    setActiveFolderId("");
+    setExpandedFolderIds([]);
+    setCompanyTreeSearch("");
+    setCompanySidebarOpen(false);
+    setDeleteBaseTarget(null);
+    setDeleteTarget(null);
+  }
+
+  function handleKnowledgeScopeChange(value: string) {
+    const nextScope = value as (typeof knowledgeScopes)[number]["value"];
+    if (nextScope === "company" && activeScope === "company" && companyView === "detail") {
+      returnToCompanyList();
+      return;
+    }
+    setActiveScope(nextScope);
   }
 
   async function createCompanyFolder() {
@@ -1052,10 +1156,19 @@ export default function Page() {
       projectScope="all"
       title="知识库"
     >
-      <Tabs onValueChange={(value) => setActiveScope(value as typeof activeScope)} value={activeScope}>
+      <Tabs onValueChange={handleKnowledgeScopeChange} value={activeScope}>
         <TabsList className="h-auto flex-wrap justify-start">
           {knowledgeScopes.map(({ icon: Icon, label, value }) => (
-            <TabsTrigger className="h-8 gap-1.5 px-3" key={value} value={value}>
+            <TabsTrigger
+              className="h-8 gap-1.5 px-3"
+              key={value}
+              onClick={() => {
+                if (value === "company" && activeScope === "company" && companyView === "detail") {
+                  returnToCompanyList();
+                }
+              }}
+              value={value}
+            >
               <Icon className="size-4" />
               {label}
             </TabsTrigger>
@@ -1067,10 +1180,7 @@ export default function Page() {
           <ListToolbar
             createDisabled={running}
             createLabel={running ? "处理中" : "创建知识库"}
-            onCreate={() => {
-              setCompanyForm(emptyCompanyForm);
-              setCompanyDialogOpen(true);
-            }}
+            onCreate={openCreateCompanyDialog}
             onSearch={setSearchText}
             placeholder="搜索公司知识库"
             selectedCount={selectedCompanyCount}
@@ -1120,6 +1230,7 @@ export default function Page() {
                       <RowActions
                         actions={[
                           { label: "查看", icon: Eye, onSelect: () => void openCompanyBase(item.id) },
+                          { label: "编辑", icon: Pencil, onSelect: () => openEditCompanyDialog(item) },
                           { label: "删除", icon: Trash2, destructive: true, onSelect: () => setDeleteBaseTarget(item) },
                         ]}
                         label="打开操作菜单"
@@ -1159,6 +1270,7 @@ export default function Page() {
               onFolderToggle={toggleCompanyFolder}
               onFolderUpload={openFolderUpload}
               onHomeSelect={selectCompanyKnowledgeHome}
+              onBackToList={returnToCompanyList}
               onSidebarOpenChange={setCompanySidebarOpen}
               onTreeSearchChange={setCompanyTreeSearch}
               root={companyTree.root}
@@ -1210,9 +1322,17 @@ export default function Page() {
       ) : null}
       <CompanyKnowledgeDialog
         form={companyForm}
+        mode={companyDialogMode}
         onFormChange={setCompanyForm}
-        onOpenChange={setCompanyDialogOpen}
-        onSubmit={() => void createCompanyBase()}
+        onOpenChange={(open) => {
+          setCompanyDialogOpen(open);
+          if (!open) {
+            setCompanyForm(emptyCompanyForm);
+            setCompanyDialogMode("create");
+            setEditingCompanyBaseId("");
+          }
+        }}
+        onSubmit={() => void (companyDialogMode === "edit" ? updateCompanyBase() : createCompanyBase())}
         open={companyDialogOpen}
         running={running}
       />
@@ -1763,19 +1883,53 @@ function CompanyDirectoryAddMenu({
   );
 }
 
-function CompanyKnowledgeOverview({
+function CompanyKnowledgeHub({
   base,
+  folder,
   onFileSelect,
   onFolderSelect,
   root,
   sidebarOpen,
 }: {
   base: ApiCompanyKnowledgeBase;
+  folder: ApiCompanyKnowledgeFolder;
   onFileSelect: (fileId: string) => void;
   onFolderSelect: (folder: ApiCompanyKnowledgeFolder) => void;
   root: ApiCompanyKnowledgeFolder;
   sidebarOpen: boolean;
 }) {
+  const isRoot = folder.id === root.id;
+  const { folders: folderCount, files: fileCount } = countCompanyFolderChildren(folder);
+  const subfolders = folder.children.filter(
+    (node): node is ApiCompanyKnowledgeFolder => node.type === "folder",
+  );
+  const files = folder.children.filter((node): node is ApiCompanyKnowledgeFile => node.type === "file");
+  const gridClass = sidebarOpen ? "grid gap-2 sm:grid-cols-2" : "grid gap-2 sm:grid-cols-2 lg:grid-cols-3";
+
+  function renderNodeCard(node: ApiCompanyKnowledgeTreeNode) {
+    return (
+      <button
+        className="flex items-center gap-2 rounded-lg border bg-background px-4 py-3 text-left text-sm transition-colors hover:bg-muted/60"
+        key={node.id}
+        onClick={() => {
+          if (node.type === "file") {
+            onFileSelect(node.id);
+            return;
+          }
+          onFolderSelect(node);
+        }}
+        type="button"
+      >
+        {node.type === "folder" ? (
+          <Folder className="size-4 shrink-0 text-muted-foreground" />
+        ) : (
+          <FileText className="size-4 shrink-0 text-muted-foreground" />
+        )}
+        <span className="truncate">{node.name}</span>
+      </button>
+    );
+  }
+
   return (
     <div
       className={
@@ -1786,40 +1940,45 @@ function CompanyKnowledgeOverview({
     >
       <div className={sidebarOpen ? "w-full max-w-2xl space-y-6" : "w-full space-y-6"}>
         <div className="space-y-1 text-center">
-          <h2 className="font-semibold text-2xl tracking-tight">{base.name}</h2>
+          <h2 className="font-semibold text-2xl tracking-tight">{isRoot ? base.name : folder.name}</h2>
           <p className="text-muted-foreground text-sm">
-            {base.description || "公司知识库"} · {base.file_count} 篇文档
+            {isRoot
+              ? `${base.description || "公司知识库"} · ${base.file_count} 篇文档`
+              : `${folderCount} 个子目录 · ${fileCount} 篇文档`}
           </p>
         </div>
-        <div className="space-y-2">
-          <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">快速进入</p>
-          <div className={sidebarOpen ? "grid gap-2 sm:grid-cols-2" : "grid gap-2 sm:grid-cols-2 lg:grid-cols-3"}>
-            {root.children.map((node) => (
-              <button
-                className="flex items-center gap-2 rounded-lg border bg-background px-4 py-3 text-left text-sm transition-colors hover:bg-muted/60"
-                key={node.id}
-                onClick={() => {
-                  if (node.type === "file") {
-                    onFileSelect(node.id);
-                    return;
-                  }
-                  onFolderSelect(node);
-                }}
-                type="button"
-              >
-                {node.type === "folder" ? (
-                  <Folder className="size-4 shrink-0 text-muted-foreground" />
-                ) : (
-                  <FileText className="size-4 shrink-0 text-muted-foreground" />
-                )}
-                <span className="truncate">{node.name}</span>
-              </button>
-            ))}
+        {isRoot ? (
+          subfolders.length > 0 ? (
+            <div className="space-y-2">
+              <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">快速进入</p>
+              <div className={gridClass}>{subfolders.map((node) => renderNodeCard(node))}</div>
+            </div>
+          ) : folder.children.length === 0 ? (
+            <p className="text-center text-muted-foreground text-sm">此目录暂无内容，可从左侧上传或新建。</p>
+          ) : null
+        ) : folder.children.length === 0 ? (
+          <p className="text-center text-muted-foreground text-sm">此目录暂无内容，可从左侧上传或新建。</p>
+        ) : (
+          <div className="space-y-4">
+            {subfolders.length > 0 ? (
+              <div className="space-y-2">
+                <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">子目录</p>
+                <div className={gridClass}>{subfolders.map((node) => renderNodeCard(node))}</div>
+              </div>
+            ) : null}
+            {files.length > 0 ? (
+              <div className="space-y-2">
+                <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">文档</p>
+                <div className={gridClass}>{files.map((node) => renderNodeCard(node))}</div>
+              </div>
+            ) : null}
           </div>
-        </div>
-        <p className="text-center text-muted-foreground text-sm">
-          {sidebarOpen ? "或从左侧目录展开浏览文档" : "展开左侧目录可浏览全部文档"}
-        </p>
+        )}
+        {isRoot ? (
+          <p className="text-center text-muted-foreground text-sm">
+            {sidebarOpen ? "或从左侧目录展开浏览文档" : "展开左侧目录可浏览全部文档"}
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -1839,22 +1998,25 @@ function CompanyReadingTrail({
       aria-label="阅读路径"
       className={`flex min-w-0 flex-1 flex-wrap items-center gap-1 text-sm ${className ?? ""}`}
     >
-      {items.map((item, index) => (
-        <span className="flex min-w-0 items-center gap-1" key={item.id}>
-          {index > 0 ? <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/70" /> : null}
-          <button
-            className={
-              index === items.length - 1
-                ? "truncate font-medium text-foreground"
-                : "truncate font-medium text-muted-foreground hover:text-foreground"
-            }
-            onClick={() => onSelect(item)}
-            type="button"
-          >
-            {item.name}
-          </button>
-        </span>
-      ))}
+      {items.map((item, index) => {
+        const isLast = index === items.length - 1;
+        return (
+          <span className="flex min-w-0 items-center gap-1" key={item.id}>
+            {index > 0 ? <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/70" /> : null}
+            {isLast ? (
+              <span className="truncate font-medium text-foreground">{item.name}</span>
+            ) : (
+              <button
+                className="truncate font-medium text-muted-foreground hover:text-foreground"
+                onClick={() => onSelect(item)}
+                type="button"
+              >
+                {item.name}
+              </button>
+            )}
+          </span>
+        );
+      })}
     </nav>
   );
 }
@@ -1874,6 +2036,7 @@ function CompanyKnowledgeVault({
   onFolderToggle,
   onFolderUpload,
   onHomeSelect,
+  onBackToList,
   onSidebarOpenChange,
   onTreeSearchChange,
   root,
@@ -1895,6 +2058,7 @@ function CompanyKnowledgeVault({
   onFolderToggle: (folderId: string) => void;
   onFolderUpload: (folderId: string) => void;
   onHomeSelect: () => void;
+  onBackToList: () => void;
   onSidebarOpenChange: (open: boolean) => void;
   onTreeSearchChange: (value: string) => void;
   root: ApiCompanyKnowledgeFolder;
@@ -1913,10 +2077,10 @@ function CompanyKnowledgeVault({
   useEffect(() => {
     previewScrollEl?.scrollTo({ top: 0, behavior: "auto" });
   }, [file?.id, previewScrollEl]);
-  const breadcrumb =
-    file && findCompanyBreadcrumb(root, base.name, file.id)
-      ? findCompanyBreadcrumb(root, base.name, file.id)!
-      : null;
+
+  const currentFolder = resolveCompanyFolder(root, activeFolderId);
+  const navigationTargetId = file?.id ?? (activeFolderId || root.id);
+  const breadcrumb = resolveCompanyBreadcrumb(root, base.name, navigationTargetId);
 
   function renderMarkdownPreview(content: string) {
     return (
@@ -2031,7 +2195,11 @@ function CompanyKnowledgeVault({
                   <PanelLeftOpen className="size-4" />
                 </Button>
               ) : null}
-              {breadcrumb ? <CompanyReadingTrail items={breadcrumb} onSelect={handleBreadcrumbSelect} /> : null}
+              <CompanyReadingTrail items={breadcrumb} onSelect={handleBreadcrumbSelect} />
+              <Button className="ml-auto shrink-0" onClick={onBackToList} size="sm" type="button" variant="default">
+                <ArrowLeft className="size-3.5" />
+                返回
+              </Button>
             </div>
             <div className="min-h-0 flex-1 overflow-auto p-4" ref={setPreviewScrollEl}>
               {file.conversion_status === "failed" ? (
@@ -2045,8 +2213,8 @@ function CompanyKnowledgeVault({
           </div>
         ) : (
           <div className="flex h-full min-h-0 flex-col">
-            {!sidebarOpen ? (
-              <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
+            <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
+              {!sidebarOpen ? (
                 <Button
                   className="shrink-0"
                   onClick={() => onSidebarOpenChange(true)}
@@ -2056,11 +2224,16 @@ function CompanyKnowledgeVault({
                 >
                   <PanelLeftOpen className="size-4" />
                 </Button>
-                <span className="truncate font-medium text-sm">{base.name}</span>
-              </div>
-            ) : null}
-            <CompanyKnowledgeOverview
+              ) : null}
+              <CompanyReadingTrail items={breadcrumb} onSelect={handleBreadcrumbSelect} />
+              <Button className="ml-auto shrink-0" onClick={onBackToList} size="sm" type="button" variant="default">
+                <ArrowLeft className="size-3.5" />
+                返回
+              </Button>
+            </div>
+            <CompanyKnowledgeHub
               base={base}
+              folder={currentFolder}
               onFileSelect={onFileSelect}
               onFolderSelect={onFolderSelect}
               root={root}
@@ -2206,6 +2379,7 @@ function CompanyTreeNode({
 
 function CompanyKnowledgeDialog({
   form,
+  mode,
   onFormChange,
   onOpenChange,
   onSubmit,
@@ -2213,17 +2387,19 @@ function CompanyKnowledgeDialog({
   running,
 }: {
   form: typeof emptyCompanyForm;
+  mode: "create" | "edit";
   onFormChange: (form: typeof emptyCompanyForm) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
   open: boolean;
   running: boolean;
 }) {
+  const isEdit = mode === "edit";
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>创建知识库</DialogTitle>
+          <DialogTitle>{isEdit ? "编辑知识库" : "创建知识库"}</DialogTitle>
         </DialogHeader>
         <FieldGroup>
           <Field>
@@ -2250,7 +2426,7 @@ function CompanyKnowledgeDialog({
             取消
           </Button>
           <Button disabled={running || !form.name.trim()} onClick={onSubmit} type="button">
-            {running ? "处理中" : "创建"}
+            {running ? "处理中" : isEdit ? "保存" : "创建"}
           </Button>
         </DialogFooter>
       </DialogContent>

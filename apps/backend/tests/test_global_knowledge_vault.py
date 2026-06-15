@@ -139,3 +139,16 @@ def test_company_knowledge_base_delete_removes_entry_and_storage(monkeypatch: py
 
     assert global_service.list_bases(actor=ACTOR)["items"] == []
     assert not base_dir.exists()
+
+
+def test_company_knowledge_base_update_changes_name_and_root_folder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    base = global_service.create_base(name="申请操作库", description="旧描述", actor=ACTOR)
+
+    updated = global_service.update_base(base["id"], name="申请操作库 v2", description="新描述", actor=ACTOR)
+
+    assert updated["name"] == "申请操作库 v2"
+    assert updated["description"] == "新描述"
+    tree = global_service.get_base_tree(base["id"], ACTOR)
+    assert tree["base"]["name"] == "申请操作库 v2"
+    assert tree["root"]["name"] == "申请操作库 v2"

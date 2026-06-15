@@ -131,7 +131,7 @@ def generate_clarification_report(
 
 ## 澄清摘要
 
-{clarification.overall_assessment if hasattr(clarification, 'overall_assessment') else clarification.clarification_summary_text}
+{clarification.overall_assessment}
 
 ## 待澄清项统计
 
@@ -453,16 +453,14 @@ def _generate_clarification_items(clarification: ClarificationOutput) -> str:
         return "（无待澄清项）"
 
     groups = [
-        ("blocker", "阻塞项"),
-        ("risk", "风险项"),
-        ("acceptance", "验收项"),
+        ("P0", "P0 阻塞项"),
+        ("P1", "P1 高风险"),
+        ("P2", "P2 中风险"),
+        ("P3", "P3 低风险"),
     ]
     rows = []
-    for bucket, label in groups:
-        bucket_items = [
-            item for item in clarification.items
-            if getattr(item, "clarification_bucket", "risk") == bucket
-        ]
+    for priority, label in groups:
+        bucket_items = [item for item in clarification.items if item.priority == priority]
         rows.append(f"### {label}")
         if not bucket_items:
             rows.append("（无）")
@@ -473,83 +471,58 @@ def _generate_clarification_items(clarification: ClarificationOutput) -> str:
 
 
 def _generate_clarification_item_detail(item, index: int) -> str:
-    row = f"""#### {index}. {item.title or item.question}
+    from app.agents.requirement_analysis.utils.clarification_adapter import (
+        ISSUE_CATEGORY_LABELS,
+        RESOLUTION_STATUS_LABELS,
+        SOURCE_STAGE_LABELS,
+        surface_label,
+    )
 
-- **问题**: {item.question}
-- **分类**: {_clarification_bucket_label(getattr(item, "clarification_bucket", "risk"))}
-- **类型**: {item.issue_type}
-- **来源维度**: {item.source}
+    affected_surfaces = [surface_label(surface) for surface in (item.affected_surfaces or [])]
+    row = f"""#### {index}. {item.title}
+
+- **裁决点**: {item.decision_point}
+- **澄清原因**: {item.why_clarify}
+- **优先级**: {item.priority}
+- **分类**: {ISSUE_CATEGORY_LABELS.get(item.issue_category, item.issue_category)}
+- **来源阶段**: {SOURCE_STAGE_LABELS.get(item.source_stage, item.source_stage)}
 - **模块**: {item.module_name or item.module_key}
-- **严重级别**: {item.severity}
-- **处理状态**: {item.resolution_status}
-- **影响**: {item.impact}
+- **处理状态**: {RESOLUTION_STATUS_LABELS.get(item.resolution_status, item.resolution_status)}
+- **测试影响**: {item.test_impact}
 """
-    if getattr(item, "decision_point", ""):
-        row += f"- **裁决点**: {item.decision_point}\n"
-    if getattr(item, "source_excerpt", "") or item.current_text:
-        row += f"- **来源文本**: {getattr(item, 'source_excerpt', '') or item.current_text}\n"
-    if getattr(item, "current_gap", ""):
-        row += f"- **当前缺口**: {item.current_gap}\n"
-    if getattr(item, "test_impact", ""):
-        row += f"- **测试影响**: {item.test_impact}\n"
-    if getattr(item, "risk_scenario", ""):
+    if item.source_excerpt:
+        row += f"- **来源文本**: {item.source_excerpt}\n"
+    if item.risk_scenario:
         row += f"- **风险场景**:\n{_indent_block(item.risk_scenario)}\n"
-    affected_surfaces = getattr(item, "affected_surfaces", []) or []
     if affected_surfaces:
-        row += f"- **影响范围**: {_inline_list([_surface_label(surface) for surface in affected_surfaces])}\n"
-    if getattr(item, "recommended_decision", ""):
-        row += f"- **推荐判断**: {item.recommended_decision}\n"
-    if getattr(item, "human_question", ""):
-        row += f"- **需要确认**: {item.human_question}\n"
-    if getattr(item, "draft_acceptance_tests", []):
-        row += "- **验收用例草案**:\n"
-        for test in item.draft_acceptance_tests:
-            row += f"  - {_markdown_text(test)}\n"
-    if item.suggested_fix:
-        row += f"- **建议修正**: {item.suggested_fix}\n"
-
-    decision_options = getattr(item, "decision_options", []) or []
-    if decision_options:
-        row += "- **可选裁决**:\n"
-        for option in decision_options[:3]:
+        row += f"- **影响范围**: {_inline_list(affected_surfaces)}\n"
+    if item.recommendation_rationale:
+        row += f"- **推荐理由**: {item.recommendation_rationale}\n"
+    if item.auto_resolution:
+        row += f"- **自动解答**: {item.auto_resolution}\n"
+    if item.auto_resolution_source:
+        row += f"- **解答来源**: {item.auto_resolution_source}\n"
+    if item.test_cases:
+        row += "- **测试用例草案**:\n"
+        for test_case in item.test_cases:
+            row += f"  - **{test_case.test_id}** [{test_case.test_type}]: {test_case.scenario} → {test_case.expected_result}\n"
+    if item.options:
+        row += "- **可选方案**:\n"
+        for option in item.options[:4]:
             row += _format_option_line(option)
-    elif item.recommended_options:
-        row += "- **推荐选项**:\n"
-        for option in item.recommended_options[:2]:
-            row += _format_option_line(option)
-
-    if item.evidence:
-        row += "- **辅助文档证据**:\n"
-        for evidence in item.evidence:
-            row += (
-                f"  - {evidence.filename}"
-                f"（可信度: {evidence.confidence}）: {evidence.excerpt}"
-            )
-            if evidence.section_hint:
-                row += f"；位置: {evidence.section_hint}"
-            row += "\n"
     return row.strip()
 
 
 def _format_option_line(option) -> str:
-    row = (
-        f"  - **{option.label}**（可信度: {option.confidence}）: "
-        f"{option.answer_markdown}"
-    )
-    if option.rationale:
-        row += f"；理由: {option.rationale}"
-    if option.source:
-        row += f"；来源: {option.source}"
+    description = getattr(option, "description", None) or getattr(option, "answer_markdown", "")
+    row = f"  - **{option.label}**（可信度: {option.confidence}）: {description}"
+    source = getattr(option, "source", "")
+    if source:
+        row += f"；来源: {source}"
+    evidence_excerpt = getattr(option, "evidence_excerpt", "")
+    if evidence_excerpt:
+        row += f"；引用: {evidence_excerpt}"
     return row + "\n"
-
-
-def _clarification_bucket_label(bucket: str) -> str:
-    labels = {
-        "blocker": "阻塞项",
-        "risk": "风险项",
-        "acceptance": "验收项",
-    }
-    return labels.get(bucket, bucket)
 
 
 def _surface_label(surface: str) -> str:

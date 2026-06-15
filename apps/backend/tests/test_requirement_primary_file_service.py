@@ -98,8 +98,9 @@ def test_langgraph_requirement_analysis_output_keeps_frontend_compatibility() ->
         ),
         clarification=ClarificationOutput(
             items=[],
-            summary=ClarificationSummary(total=0, auto_resolved=0, has_suggestions=0, needs_manual=0),
-            clarification_summary_text="无需澄清。",
+            summary=ClarificationSummary(total=0),
+            overall_assessment="无需澄清。",
+            generated_at="2026-06-15T00:00:00Z",
         ),
         analysis_report_markdown="# 需求分析报告\n\n主流程已识别。",
         enhanced_requirement_markdown="# 增强版需求\n\n用户可以使用验证码登录。",
@@ -289,6 +290,7 @@ async def test_primary_upload_marks_first_file_without_generating_version(
         document_name="登录需求",
     )
     mapping_id = result["files"][0]["id"]
+    assert result["document"]["status"] == "pending_review"
 
     await document_service.convert_pending_file_mappings([mapping_id])
 

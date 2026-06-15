@@ -2,6 +2,7 @@
 工具函数模块
 """
 
+from .clarification_adapter import clarification_item_to_api
 from .report_generator import (
     generate_analysis_report,
     generate_clarification_report,
@@ -15,6 +16,7 @@ from .requirement_enhancer import (
 )
 
 __all__ = [
+    "clarification_item_to_api",
     "generate_analysis_report",
     "generate_clarification_report",
     "generate_quality_assurance_report",

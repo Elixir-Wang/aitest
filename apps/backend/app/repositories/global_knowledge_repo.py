@@ -281,6 +281,24 @@ def touch_base(db: Connection, base_id: str) -> None:
     db.execute("UPDATE global_knowledge_bases SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (base_id,))
 
 
+def update_base(db: Connection, base_id: str, *, name: str, description: str) -> None:
+    db.execute(
+        """
+        UPDATE global_knowledge_bases
+        SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (name, description, base_id),
+    )
+
+
+def update_folder_name(db: Connection, folder_id: str, name: str) -> None:
+    db.execute(
+        "UPDATE global_knowledge_folders SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (name, folder_id),
+    )
+
+
 def delete_base(db: Connection, base_id: str) -> None:
     db.execute("DELETE FROM global_knowledge_bases WHERE id = ?", (base_id,))
 

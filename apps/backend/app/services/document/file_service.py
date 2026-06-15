@@ -16,11 +16,23 @@ from app.services.requirement_file_conversion.dispatcher import convert_requirem
 from app.services import operation_log_service, task_service
 
 DOCUMENT_PENDING_MERGE_STATUS = "pending_merge"
+DOCUMENT_PENDING_REVIEW_STATUS = "pending_review"
 CONVERSION_SUCCESS_STATUS = "success"
 CONVERSION_FAILED_STATUS = "failed"
 CONVERSION_PENDING_STATUS = "pending"
 CONVERSION_PROCESSING_STATUS = "processing"
 MAPPING_PENDING_MERGE_STATUS = "pending_merge"
+
+
+def sync_document_status(db, document_id: str) -> None:
+    files = document_repo.list_file_mappings(db, document_id)
+    if not files:
+        return
+    primary = document_repo.find_primary_file_mapping(db, document_id)
+    if len(files) == 1 or primary:
+        document_repo.update_document_status(db, document_id, DOCUMENT_PENDING_REVIEW_STATUS)
+    else:
+        document_repo.update_document_status(db, document_id, DOCUMENT_PENDING_MERGE_STATUS)
 
 
 async def upload_documents(
@@ -70,7 +82,7 @@ async def upload_documents(
                 await save_source_file(db, project_id, document_id, upload, index, actor, file_role=file_role)
             )
 
-        document_repo.update_document_status(db, document_id, DOCUMENT_PENDING_MERGE_STATUS)
+        sync_document_status(db, document_id)
         created_files = [
             serialize_file_mapping(row)
             for row in document_repo.list_file_mappings(db, document_id)
@@ -338,6 +350,7 @@ async def convert_source_file_mapping(mapping_id: str) -> dict:
                 conversion_summary,
             )
             updated = document_repo.find_file_mapping(db, mapping_id)
+            sync_document_status(db, updated["document_id"])
             result = serialize_file_mapping(updated)
             return result
     except Exception as exc:

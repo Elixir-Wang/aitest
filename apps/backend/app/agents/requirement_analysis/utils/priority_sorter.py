@@ -1,10 +1,11 @@
 """
 优先级排序工具
 
-用于对待澄清项进行优先级排序
+用于对待澄清项进行优先级排序（v3 schema）
 """
 
 from typing import Literal
+
 from app.agents.requirement_analysis.schemas import ClarificationItem
 
 
@@ -14,86 +15,50 @@ def sort_clarification_items(
     """
     对待澄清项按优先级排序
 
-    排序规则（7级优先级）：
-    1. (blocker, needs_manual) - 最高优先级
-    2. (blocker, has_suggestions)
-    3. (major, needs_manual)
-    4. (major, has_suggestions)
-    5. (minor, needs_manual)
-    6. (minor, has_suggestions)
-    7. (*, auto_resolved) - 最低优先级
-
-    Args:
-        items: 待排序的澄清项列表
-
-    Returns:
-        排序后的列表
+    排序规则：
+    1. priority: P0 → P1 → P2 → P3
+    2. resolution_status: needs_input/needs_research → has_options → auto_resolved
     """
 
+    priority_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    status_order = {
+        "needs_input": 0,
+        "needs_research": 0,
+        "has_options": 1,
+        "auto_resolved": 2,
+    }
+
     def get_priority_key(item: ClarificationItem) -> tuple[int, int]:
-        """
-        获取排序键
-
-        Returns:
-            (severity_priority, status_priority)
-        """
-        severity_priority = {
-            "blocker": 0,
-            "major": 1,
-            "minor": 2,
-        }
-
-        status_priority = {
-            "needs_manual": 0,
-            "has_suggestions": 1,
-            "auto_resolved": 2,
-        }
-
         return (
-            severity_priority.get(item.severity, 999),
-            status_priority.get(item.resolution_status, 999),
+            priority_order.get(item.priority, 999),
+            status_order.get(item.resolution_status, 999),
         )
 
     return sorted(items, key=get_priority_key)
 
 
-def group_by_severity(
+def group_by_priority(
     items: list[ClarificationItem],
-) -> dict[Literal["blocker", "major", "minor"], list[ClarificationItem]]:
-    """
-    按严重程度分组
-
-    Args:
-        items: 澄清项列表
-
-    Returns:
-        按严重程度分组的字典
-    """
-    groups = {
-        "blocker": [],
-        "major": [],
-        "minor": [],
+) -> dict[Literal["P0", "P1", "P2", "P3"], list[ClarificationItem]]:
+    """按 v3 优先级分组"""
+    groups: dict[str, list[ClarificationItem]] = {
+        "P0": [],
+        "P1": [],
+        "P2": [],
+        "P3": [],
     }
 
     for item in items:
-        if item.severity in groups:
-            groups[item.severity].append(item)
+        if item.priority in groups:
+            groups[item.priority].append(item)
 
-    return groups
+    return groups  # type: ignore[return-value]
 
 
-def group_by_source(
+def group_by_source_stage(
     items: list[ClarificationItem],
 ) -> dict[str, list[ClarificationItem]]:
-    """
-    按来源分组
-
-    Args:
-        items: 澄清项列表
-
-    Returns:
-        按来源分组的字典
-    """
+    """按来源阶段分组"""
     groups = {
         "understanding": [],
         "completeness": [],
@@ -103,8 +68,8 @@ def group_by_source(
     }
 
     for item in items:
-        if item.source in groups:
-            groups[item.source].append(item)
+        if item.source_stage in groups:
+            groups[item.source_stage].append(item)
 
     return groups
 
@@ -112,19 +77,12 @@ def group_by_source(
 def group_by_resolution_status(
     items: list[ClarificationItem],
 ) -> dict[str, list[ClarificationItem]]:
-    """
-    按解答状态分组
-
-    Args:
-        items: 澄清项列表
-
-    Returns:
-        按解答状态分组的字典
-    """
+    """按解答状态分组"""
     groups = {
         "auto_resolved": [],
-        "has_suggestions": [],
-        "needs_manual": [],
+        "has_options": [],
+        "needs_input": [],
+        "needs_research": [],
     }
 
     for item in items:
@@ -134,9 +92,16 @@ def group_by_resolution_status(
     return groups
 
 
+# 兼容旧名称
+group_by_severity = group_by_priority
+group_by_source = group_by_source_stage
+
+
 __all__ = [
     "sort_clarification_items",
+    "group_by_priority",
     "group_by_severity",
     "group_by_source",
+    "group_by_source_stage",
     "group_by_resolution_status",
 ]

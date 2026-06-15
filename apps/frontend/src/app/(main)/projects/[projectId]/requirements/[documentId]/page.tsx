@@ -94,6 +94,12 @@ const pendingSeverityLabels: Record<"blocker" | "major" | "minor", string> = {
   major: "重要",
   minor: "一般",
 };
+const pendingPriorityLabels: Record<"P0" | "P1" | "P2" | "P3", string> = {
+  P0: "P0 阻塞",
+  P1: "P1 高风险",
+  P2: "P2 中风险",
+  P3: "P3 低风险",
+};
 const pendingIssueTypeLabels: Record<RequirementAnalysisIssueType, string> = {
   missing: "缺失",
   confirmation: "待确认",
@@ -123,12 +129,55 @@ function normalizePendingQuestionText(question: string) {
 }
 
 function pendingIssueType(item: RequirementAnalysisPendingItem): RequirementAnalysisIssueType {
-  return item.issue_type === "missing" ||
+  if (
+    item.issue_type === "missing" ||
     item.issue_type === "confirmation" ||
     item.issue_type === "conflict" ||
     item.issue_type === "ambiguous"
-    ? item.issue_type
-    : "confirmation";
+  ) {
+    return item.issue_type;
+  }
+  if (item.issue_category === "conflict") {
+    return "conflict";
+  }
+  if (
+    item.issue_category === "rule_missing" ||
+    item.issue_category === "acceptance_missing" ||
+    item.issue_category === "boundary_undefined"
+  ) {
+    return "missing";
+  }
+  if (
+    item.issue_category === "contract_unclear" ||
+    item.issue_category === "state_ambiguous" ||
+    item.issue_category === "concurrency_unclear" ||
+    item.issue_category === "dependency_unclear"
+  ) {
+    return "ambiguous";
+  }
+  return "confirmation";
+}
+
+function pendingItemQuestion(item: RequirementAnalysisPendingItem) {
+  return item.question?.trim() || item.decision_point?.trim() || item.human_question?.trim() || "";
+}
+
+function pendingItemImpact(item: RequirementAnalysisPendingItem) {
+  return item.test_impact?.trim() || item.impact?.trim() || item.why_clarify?.trim() || item.current_gap?.trim() || "";
+}
+
+function pendingItemSeverityLabel(item: RequirementAnalysisPendingItem) {
+  if (item.priority && pendingPriorityLabels[item.priority]) {
+    return pendingPriorityLabels[item.priority];
+  }
+  return pendingSeverityLabels[item.severity] ?? item.severity;
+}
+
+function pendingItemSeverityVariant(item: RequirementAnalysisPendingItem): "destructive" | "secondary" {
+  if (item.priority === "P0" || item.severity === "blocker") {
+    return "destructive";
+  }
+  return "secondary";
 }
 
 function pendingItemTitle(item: RequirementAnalysisPendingItem) {
@@ -138,7 +187,7 @@ function pendingItemTitle(item: RequirementAnalysisPendingItem) {
   if (title && !genericTitles.has(title)) {
     return title;
   }
-  const questionTitle = item.question ? normalizePendingQuestionText(item.question) : "";
+  const questionTitle = pendingItemQuestion(item) ? normalizePendingQuestionText(pendingItemQuestion(item)) : "";
   if (questionTitle) {
     return questionTitle;
   }
@@ -154,7 +203,7 @@ function pendingItemTitle(item: RequirementAnalysisPendingItem) {
 
 function pendingItemHeading(item: RequirementAnalysisPendingItem) {
   const title = pendingItemTitle(item);
-  const questionText = item.question ? normalizePendingQuestionText(item.question) : "";
+  const questionText = pendingItemQuestion(item) ? normalizePendingQuestionText(pendingItemQuestion(item)) : "";
   return questionText && questionText !== title ? `${title}：${questionText}` : title;
 }
 
@@ -166,6 +215,9 @@ function pendingItemSourceExcerpt(item: RequirementAnalysisPendingItem) {
 }
 
 function pendingRecommendedOptions(item: RequirementAnalysisPendingItem): RequirementClarificationOption[] {
+  if (item.options?.length) {
+    return item.options;
+  }
   if (item.decision_options?.length) {
     return item.decision_options;
   }
@@ -286,24 +338,29 @@ type RequirementAnalysisQuestion = {
   id: string;
   title?: string;
   issue_type?: RequirementAnalysisIssueType;
+  issue_category?: string;
   module_key: string;
   module_name: string;
   question: string;
   impact: string;
   dimension: string;
   severity: "blocker" | "major" | "minor";
+  priority?: "P0" | "P1" | "P2" | "P3";
   source_excerpt: string;
   clarification_bucket?: "blocker" | "risk" | "acceptance";
   decision_point?: string;
+  why_clarify?: string;
   current_gap?: string;
   test_impact?: string;
   risk_scenario?: string;
   affected_surfaces?: string[];
+  options?: RequirementClarificationOption[];
   decision_options?: RequirementClarificationOption[];
   recommended_decision?: string;
   human_question?: string;
   draft_acceptance_tests?: string[];
   recommended_options?: RequirementClarificationOption[];
+  resolution_status?: string;
   answer?: RequirementClarificationAnswer;
 };
 
@@ -633,9 +690,7 @@ export default function DocumentDetailPage() {
   const latestRequirementAnalysisRunStatus = overview?.document.latest_requirement_analysis_run?.status ?? "";
   const latestRequirementAnalysisRunId = overview?.document.latest_requirement_analysis_run?.id ?? "";
   const requirementReviewRunning =
-    reviewLoading ||
-    REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRequirementAnalysisRunStatus) ||
-    Boolean(overview?.document.status === "pending_review" && !analysisResult && !latestRequirementAnalysisRunStatus);
+    reviewLoading || REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRequirementAnalysisRunStatus);
   const requirementReviewRunningRef = useRef(false);
   const requirementAnalysisDisabledReason = (() => {
     if (!currentPrimaryFile) {
@@ -1930,7 +1985,8 @@ export default function DocumentDetailPage() {
                         const issueType = pendingIssueType(item);
                         const sourceExcerpt = pendingItemSourceExcerpt(item);
                         const itemHeading = pendingItemHeading(item);
-                        const questionBody = normalizePendingQuestionText(item.question);
+                        const questionBody = normalizePendingQuestionText(pendingItemQuestion(item));
+                        const itemImpact = pendingItemImpact(item);
                         const recommendedOptions = pendingRecommendedOptions(item);
                         return (
                           <div
@@ -1950,8 +2006,8 @@ export default function DocumentDetailPage() {
                                     {itemNumber}
                                   </span>
                                   <Badge variant="outline">{pendingIssueTypeLabels[issueType]}</Badge>
-                                  <Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>
-                                    {pendingSeverityLabels[item.severity] ?? item.severity}
+                                  <Badge variant={pendingItemSeverityVariant(item)}>
+                                    {pendingItemSeverityLabel(item)}
                                   </Badge>
                                   <span className="min-w-0 break-words font-medium text-foreground text-sm leading-6">
                                     {itemHeading}
@@ -1970,11 +2026,11 @@ export default function DocumentDetailPage() {
                               </div>
                             </div>
                             <div className="space-y-3 px-4 pt-2 pb-4">
-                              {item.impact ? (
+                              {itemImpact ? (
                                 <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800 text-xs leading-5 dark:text-amber-200">
                                   <span className="font-medium">影响</span>
                                   <span className="mx-1 text-amber-700/70 dark:text-amber-200/70">/</span>
-                                  {item.impact}
+                                  {itemImpact}
                                 </div>
                               ) : null}
 
@@ -2235,8 +2291,8 @@ export default function DocumentDetailPage() {
               {sourceExcerptItem ? (
                 <span className="inline-flex flex-wrap items-center gap-2">
                   <Badge variant="outline">{pendingIssueTypeLabels[pendingIssueType(sourceExcerptItem)]}</Badge>
-                  <Badge variant={sourceExcerptItem.severity === "blocker" ? "destructive" : "secondary"}>
-                    {pendingSeverityLabels[sourceExcerptItem.severity] ?? sourceExcerptItem.severity}
+                  <Badge variant={pendingItemSeverityVariant(sourceExcerptItem)}>
+                    {pendingItemSeverityLabel(sourceExcerptItem)}
                   </Badge>
                 </span>
               ) : (
@@ -2302,8 +2358,8 @@ export default function DocumentDetailPage() {
                               <Badge variant={isDeferredAnswer ? "secondary" : "outline"}>
                                 {handledPendingItemLabel(item)}
                               </Badge>
-                              <Badge variant={item.severity === "blocker" ? "destructive" : "secondary"}>
-                                {pendingSeverityLabels[item.severity] ?? item.severity}
+                              <Badge variant={pendingItemSeverityVariant(item)}>
+                                {pendingItemSeverityLabel(item)}
                               </Badge>
                             </div>
                             <div className="mt-3 break-words text-foreground text-sm leading-6">{itemHeading}</div>

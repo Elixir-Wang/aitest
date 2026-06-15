@@ -1,7 +1,13 @@
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
 from app.dependencies.auth import current_user
-from app.schemas.global_knowledge import GlobalKnowledgeBaseCreateIn, GlobalKnowledgeFolderCreateIn, GlobalKnowledgeListQuery, GlobalKnowledgeUpdateIn
+from app.schemas.global_knowledge import (
+    GlobalKnowledgeBaseCreateIn,
+    GlobalKnowledgeBaseUpdateIn,
+    GlobalKnowledgeFolderCreateIn,
+    GlobalKnowledgeListQuery,
+    GlobalKnowledgeUpdateIn,
+)
 from app.services.knowledge import global_service as global_knowledge_service
 
 router = APIRouter(prefix="/global-knowledge", tags=["global-knowledge"])
@@ -21,6 +27,20 @@ def create_global_knowledge_base(
     actor=Depends(current_user),
 ) -> dict:
     return global_knowledge_service.create_base(
+        name=payload.name,
+        description=payload.description,
+        actor=actor,
+    )
+
+
+@router.patch("/bases/{base_id}")
+def update_global_knowledge_base(
+    base_id: str,
+    payload: GlobalKnowledgeBaseUpdateIn,
+    actor=Depends(current_user),
+) -> dict:
+    return global_knowledge_service.update_base(
+        base_id,
         name=payload.name,
         description=payload.description,
         actor=actor,

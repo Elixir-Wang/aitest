@@ -13,6 +13,7 @@ from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir, resolve_stored_path, store_path
 from app.agents.requirement_analysis.workflow import run_requirement_analysis
 from app.agents.requirement_analysis.schemas import RequirementAnalysisInputV2, AuxiliaryDocument
+from app.agents.requirement_analysis.utils.clarification_adapter import clarification_item_to_api
 from app.agents.requirement_analysis.utils.report_generator import (
     generate_clarification_report,
     generate_quality_assurance_report,
@@ -108,48 +109,7 @@ def _legacy_output_from_langgraph_result(analysis_output, primary_markdown_conte
     )
     clarification_report = generate_clarification_report(analysis_output.clarification)
     clarification_questions = [
-        {
-            "id": item.item_id,
-            "title": item.title or item.module_name or item.question,
-            "issue_type": item.issue_type,
-            "module_key": item.module_key,
-            "module_name": item.module_name or item.title or "待确认项",
-            "question": item.question,
-            "severity": item.severity,
-            "priority": "HIGH" if item.severity == "blocker" else "MEDIUM",
-            "dimension": item.source,
-            "impact": item.impact,
-            "source_excerpt": item.source_excerpt or item.current_text,
-            "clarification_bucket": item.clarification_bucket,
-            "decision_point": item.decision_point,
-            "current_gap": item.current_gap,
-            "test_impact": item.test_impact,
-            "risk_scenario": item.risk_scenario,
-            "affected_surfaces": item.affected_surfaces,
-            "decision_options": [
-                {
-                    "id": opt.option_id,
-                    "label": opt.label,
-                    "answer_markdown": opt.answer_markdown,
-                    "rationale": opt.rationale,
-                    "confidence": opt.confidence,
-                }
-                for opt in item.decision_options
-            ],
-            "recommended_decision": item.recommended_decision,
-            "human_question": item.human_question,
-            "draft_acceptance_tests": item.draft_acceptance_tests,
-            "recommended_options": [
-                {
-                    "id": opt.option_id,
-                    "label": opt.label,
-                    "answer_markdown": opt.answer_markdown,
-                    "rationale": opt.rationale,
-                    "confidence": opt.confidence,
-                }
-                for opt in item.recommended_options
-            ],
-        }
+        clarification_item_to_api(item)
         for item in analysis_output.clarification.items
     ]
     output_data = {
@@ -1310,6 +1270,7 @@ def set_primary_requirement_file(project_id: str, document_id: str, mapping_id: 
             raise api_error(404, "DOCUMENT_MARKDOWN_MISSING", "标准文件不存在。")
 
         document_repo.set_primary_file_mapping(db, document_id, mapping_id)
+        document_file_service.sync_document_status(db, document_id)
 
     result = get_document_overview(project_id, document_id, actor)
     operation_log_service.record_change(
@@ -1482,12 +1443,18 @@ def _resolve_clarification_answer(question: dict, payload: RequirementClarificat
     selected_option_id = payload.selected_option_id.strip()
     if not selected_option_id:
         raise api_error(422, "REQUIREMENT_CLARIFICATION_OPTION_REQUIRED", "请选择推荐选项。")
-    for option in question.get("recommended_options") or []:
-        if option.get("id") == selected_option_id:
-            answer = str(option.get("answer_markdown") or "").strip()
-            if not answer:
-                raise api_error(422, "REQUIREMENT_CLARIFICATION_OPTION_EMPTY", "推荐选项缺少可写入内容。")
-            return answer, selected_option_id, payload.custom_answer.strip()
+    option_sources = [
+        question.get("options") or [],
+        question.get("recommended_options") or [],
+        question.get("decision_options") or [],
+    ]
+    for options in option_sources:
+        for option in options:
+            if option.get("id") == selected_option_id:
+                answer = str(option.get("answer_markdown") or option.get("description") or "").strip()
+                if not answer:
+                    raise api_error(422, "REQUIREMENT_CLARIFICATION_OPTION_EMPTY", "推荐选项缺少可写入内容。")
+                return answer, selected_option_id, payload.custom_answer.strip()
     raise api_error(404, "REQUIREMENT_CLARIFICATION_OPTION_NOT_FOUND", "推荐选项不存在。")
 
 
@@ -1500,7 +1467,9 @@ def _apply_clarification_answer_to_markdown(
     question_id = question.get("id") or ""
     module_name = str(question.get("module_name") or "").strip()
     module_key = str(question.get("module_key") or "").strip()
-    question_text = str(question.get("question") or "").strip()
+    question_text = str(
+        question.get("question") or question.get("decision_point") or question.get("title") or ""
+    ).strip()
     block = _clarification_answer_markdown_block(question_id, question_text, answer_markdown)
     without_old_block = _replace_or_remove_clarification_block(markdown_content, question_id, replacement="")
     insertion_anchor = module_name or module_key or "人工确认补充"

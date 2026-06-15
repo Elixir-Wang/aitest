@@ -96,6 +96,20 @@ def create_base(*, name: str, description: str = "", actor) -> dict:
     return _serialize_base(row, actor["role"])
 
 
+def update_base(base_id: str, *, name: str, description: str = "", actor) -> dict:
+    _require_admin(actor)
+    name = _clean_required_name(name, "GLOBAL_KNOWLEDGE_BASE_NAME_REQUIRED", "请填写知识库名称。")
+    description = description.strip()
+    with connect() as db:
+        base = _require_base(db, base_id)
+        if global_knowledge_repo.find_base_by_name(db, name, exclude_id=base_id):
+            raise api_error(422, "GLOBAL_KNOWLEDGE_BASE_NAME_EXISTS", "已存在同名公司知识库。")
+        global_knowledge_repo.update_base(db, base_id, name=name, description=description)
+        global_knowledge_repo.update_folder_name(db, base["root_folder_id"], name)
+        row = global_knowledge_repo.find_base(db, base_id)
+    return _serialize_base(row, actor["role"])
+
+
 def get_base_tree(base_id: str, actor) -> dict:
     with connect() as db:
         base = global_knowledge_repo.find_base(db, base_id)
