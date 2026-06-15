@@ -15,3 +15,13 @@ class GlobalKnowledgeListQuery(BaseModel):
     status: str = ""
     page: int = 1
     page_size: int = 20
+
+
+class GlobalKnowledgeBaseCreateIn(BaseModel):
+    name: str
+    description: str = ""
+
+
+class GlobalKnowledgeFolderCreateIn(BaseModel):
+    parent_id: str
+    name: str

@@ -8,16 +8,21 @@ import {
   Bot,
   Brain,
   Building2,
+  ChevronDown,
+  ChevronRight,
   Command,
   Eye,
-  FilePlus2,
+  FileText,
+  Folder,
   FolderKanban,
+  FolderOpen,
+  Loader2,
   MapIcon,
   MessageSquare,
+  MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
-  RefreshCw,
   Search,
   Trash2,
   TriangleAlert,
@@ -28,7 +33,7 @@ import {
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge-2";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -39,19 +44,31 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import FileUpload1 from "@/components/ui/file-upload-1";
 import { Input } from "@/components/ui/input";
 import { KnowledgeChatInput } from "@/components/ui/knowledge-chat-input";
 import { Label } from "@/components/ui/label";
 import PulsatingDots from "@/components/ui/pulsating-loader";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { fileConversionTone, StatusBadge } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   API_BASE_URL,
-  type ApiGlobalKnowledgeDetail,
-  type ApiGlobalKnowledgeDocument,
-  type ApiGlobalKnowledgeList,
+  type ApiCompanyKnowledgeBase,
+  type ApiCompanyKnowledgeBaseList,
+  type ApiCompanyKnowledgeFile,
+  type ApiCompanyKnowledgeFolder,
+  type ApiCompanyKnowledgeTree,
+  type ApiCompanyKnowledgeTreeNode,
+  type ApiCompanyKnowledgeUploadResult,
   type ApiKnowledgeConversation,
   type ApiKnowledgeConversationDetail,
   type ApiKnowledgeConversationMessage,
@@ -60,7 +77,6 @@ import {
   type ApiModelProvider,
   type ApiProject,
   apiAuthHeaders,
-  apiFormRequest,
   apiRequest,
   formatDateTime,
 } from "@/lib/api-client";
@@ -70,24 +86,9 @@ const knowledgeScopes = [
   { value: "project", label: "项目知识库", icon: FolderKanban },
   { value: "company", label: "公司知识库", icon: Building2 },
 ] as const;
-const knowledgeTypes = [
-  { value: "platform_prd", label: "平台 PRD" },
-  { value: "test_standard", label: "测试规范" },
-  { value: "case_template", label: "用例模板" },
-  { value: "review_rule", label: "评审规则" },
-  { value: "automation_standard", label: "自动化规范" },
-  { value: "term", label: "通用术语" },
-  { value: "workflow", label: "通用流程" },
-  { value: "other", label: "其他" },
-] as const;
 const emptyCompanyForm = {
   name: "",
-  knowledge_type: "test_standard",
-  version: "v1",
-  scope: "全部项目",
-  source_note: "",
   description: "",
-  change_summary: "",
 };
 const KNOWLEDGE_QUERY_CAPABILITY_ID = "knowledge_query";
 const projectKnowledgeQuickPrompts = [
@@ -118,6 +119,20 @@ type ProjectKnowledgeStreamEvent =
   | { type: "done" }
   | { type: "error"; message: string };
 
+function companyTreeContainsNode(node: ApiCompanyKnowledgeTreeNode, nodeId: string): boolean {
+  if (node.id === nodeId) {
+    return true;
+  }
+  if (node.type === "file") {
+    return false;
+  }
+  return node.children.some((child) => companyTreeContainsNode(child, nodeId));
+}
+
+function companyUploadFileKey(file: File): string {
+  return `${file.name}-${file.lastModified}-${file.size}`;
+}
+
 export default function Page() {
   const [activeScope, setActiveScope] = useState<(typeof knowledgeScopes)[number]["value"]>("project");
   const [searchText, setSearchText] = useState("");
@@ -125,11 +140,20 @@ export default function Page() {
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
-  const [companyDocs, setCompanyDocs] = useState<ApiGlobalKnowledgeDocument[]>([]);
-  const [selectedCompanyDoc, setSelectedCompanyDoc] = useState<ApiGlobalKnowledgeDetail | null>(null);
+  const [companyView, setCompanyView] = useState<"list" | "detail">("list");
+  const [selectedCompanyBase, setSelectedCompanyBase] = useState<ApiCompanyKnowledgeBase | null>(null);
+  const [companyTree, setCompanyTree] = useState<ApiCompanyKnowledgeTree | null>(null);
+  const [selectedTreeNodeId, setSelectedTreeNodeId] = useState("");
+  const [selectedCompanyFile, setSelectedCompanyFile] = useState<ApiCompanyKnowledgeFile | null>(null);
   const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
-  const [versionDialogOpen, setVersionDialogOpen] = useState(false);
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [deleteBaseTarget, setDeleteBaseTarget] = useState<ApiCompanyKnowledgeBase | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ApiCompanyKnowledgeTreeNode | null>(null);
   const [companyForm, setCompanyForm] = useState(emptyCompanyForm);
+  const [folderName, setFolderName] = useState("");
+  const [activeFolderId, setActiveFolderId] = useState("");
+  const [expandedFolderIds, setExpandedFolderIds] = useState<string[]>([]);
   const [projectChatDraft, setProjectChatDraft] = useState("");
   const [showProjectThinking, setShowProjectThinking] = useState(false);
   const [knowledgeScope, setKnowledgeScope] = useState<"all" | "project">("all");
@@ -147,21 +171,22 @@ export default function Page() {
   const projectQueryAbortControllerRef = useRef<AbortController | null>(null);
   const projectConversationLoadRunIdRef = useRef(0);
   const projectConversationOpenRunIdRef = useRef(0);
-  const [companyFiles, setCompanyFiles] = useState<FileList | null>(null);
+  const [companyFiles, setCompanyFiles] = useState<File[]>([]);
+  const [companyUploadStates, setCompanyUploadStates] = useState<
+    Record<string, { progress: number; status: "idle" | "uploading" | "completed" | "error" }>
+  >({});
   const {
     allSelected: allCompanySelected,
-    deleteSelected: deleteCompanySelected,
     partiallySelected: partiallyCompanySelected,
     rows: companyRows,
     selectedCount: selectedCompanyCount,
     selectedIds: selectedCompanyIds,
+    setRows: setCompanyRows,
     toggleAll: toggleAllCompany,
     toggleOne: toggleOneCompany,
-  } = useLocalTableSelection(companyDocs);
+  } = useLocalTableSelection<ApiCompanyKnowledgeBase>([]);
   const filteredCompanyRows = companyRows.filter((item) =>
-    [item.name, item.knowledge_type_label, item.version, item.scope, item.description, item.status_label].some(
-      (value) => value.toLowerCase().includes(searchText.trim().toLowerCase()),
-    ),
+    [item.name, item.description].some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase())),
   );
   const isCompanyKnowledge = activeScope === "company";
   const activeProjects = projects.filter((project) => project.status !== "archived");
@@ -388,36 +413,63 @@ export default function Page() {
     }
   }
 
-  const openCompanyDoc = useCallback(async (documentId: string) => {
-    const detail = await apiRequest<ApiGlobalKnowledgeDetail>(`/global-knowledge/documents/${documentId}`);
-    setSelectedCompanyDoc(detail);
+  const openCompanyBase = useCallback(async (baseId: string) => {
+    const tree = await apiRequest<ApiCompanyKnowledgeTree>(`/global-knowledge/bases/${baseId}/tree`);
+    setSelectedCompanyBase(tree.base);
+    setCompanyTree(tree);
+    setCompanyView("detail");
+    setExpandedFolderIds((ids) => Array.from(new Set([...ids, tree.root.id])));
+    setSelectedTreeNodeId(tree.root.id);
+    setActiveFolderId(tree.root.id);
+    setSelectedCompanyFile(null);
   }, []);
 
-  const loadCompanyDocs = useCallback(async () => {
+  const refreshCompanyTree = useCallback(
+    async (baseId = selectedCompanyBase?.id ?? "") => {
+      if (!baseId) {
+        return;
+      }
+      const tree = await apiRequest<ApiCompanyKnowledgeTree>(`/global-knowledge/bases/${baseId}/tree`);
+      setSelectedCompanyBase(tree.base);
+      setCompanyTree(tree);
+      setExpandedFolderIds((ids) => Array.from(new Set([...ids, tree.root.id])));
+    },
+    [selectedCompanyBase?.id],
+  );
+
+  const loadCompanyBases = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const result = await apiRequest<ApiGlobalKnowledgeList>("/global-knowledge/documents");
-      setCompanyDocs(result.items);
-      if (result.items[0]) {
-        await openCompanyDoc(result.items[0].id);
-      } else {
-        setSelectedCompanyDoc(null);
+      const result = await apiRequest<ApiCompanyKnowledgeBaseList>("/global-knowledge/bases");
+      setCompanyRows(result.items);
+      if (!result.items[0]) {
+        setSelectedCompanyBase(null);
+        setCompanyTree(null);
+        setSelectedCompanyFile(null);
+        setSelectedTreeNodeId("");
+        setActiveFolderId("");
+        setCompanyView("list");
       }
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "加载公司知识库失败。");
-      setCompanyDocs([]);
-      setSelectedCompanyDoc(null);
+      setCompanyRows([]);
+      setSelectedCompanyBase(null);
+      setCompanyTree(null);
+      setSelectedCompanyFile(null);
+      setSelectedTreeNodeId("");
+      setActiveFolderId("");
+      setCompanyView("list");
     } finally {
       setLoading(false);
     }
-  }, [openCompanyDoc]);
+  }, [setCompanyRows]);
 
   useEffect(() => {
     if (isCompanyKnowledge) {
-      void loadCompanyDocs();
+      void loadCompanyBases();
     }
-  }, [isCompanyKnowledge, loadCompanyDocs]);
+  }, [isCompanyKnowledge, loadCompanyBases]);
 
   async function queryProjectKnowledge(question: string) {
     if (effectiveKnowledgeScope === "project" && !effectiveProjectId) {
@@ -562,85 +614,254 @@ export default function Page() {
     }
   }
 
-  async function uploadCompanyKnowledge() {
-    if (!companyFiles?.length) {
-      setError("请先选择公司知识文件。");
-      return;
-    }
+  async function createCompanyBase() {
     setRunning(true);
     setError("");
     try {
-      const formData = new FormData();
-      formData.set("name", companyForm.name);
-      formData.set("knowledge_type", companyForm.knowledge_type);
-      formData.set("version", companyForm.version);
-      formData.set("scope", companyForm.scope);
-      formData.set("source_note", companyForm.source_note);
-      formData.set("description", companyForm.description);
-      Array.from(companyFiles).forEach((file) => {
-        formData.append("files", file);
-      });
-      const detail = await apiFormRequest<ApiGlobalKnowledgeDetail>("/global-knowledge/documents", formData, {
+      const base = await apiRequest<ApiCompanyKnowledgeBase>("/global-knowledge/bases", {
         method: "POST",
+        body: JSON.stringify({
+          name: companyForm.name,
+          description: companyForm.description,
+        }),
       });
-      setSelectedCompanyDoc(detail);
       setCompanyDialogOpen(false);
       setCompanyForm(emptyCompanyForm);
-      setCompanyFiles(null);
-      await loadCompanyDocs();
+      await loadCompanyBases();
+      await openCompanyBase(base.id);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "上传公司知识失败。");
+      setError(nextError instanceof Error ? nextError.message : "创建公司知识库失败。");
     } finally {
       setRunning(false);
     }
   }
 
-  async function createCompanyVersion() {
-    if (!selectedCompanyDoc || !companyFiles?.length) {
-      setError("请先选择要上传的新版本文件。");
+  async function createCompanyFolder() {
+    if (!selectedCompanyBase || !activeFolderId) {
       return;
     }
     setRunning(true);
     setError("");
     try {
-      const formData = new FormData();
-      formData.set("version", companyForm.version);
-      formData.set("source_note", companyForm.source_note);
-      formData.set("change_summary", companyForm.change_summary);
-      Array.from(companyFiles).forEach((file) => {
-        formData.append("files", file);
-      });
-      const detail = await apiFormRequest<ApiGlobalKnowledgeDetail>(
-        `/global-knowledge/documents/${selectedCompanyDoc.document.id}/versions`,
-        formData,
-        { method: "POST" },
+      const folder = await apiRequest<ApiCompanyKnowledgeFolder>(
+        `/global-knowledge/bases/${selectedCompanyBase.id}/folders`,
+        {
+          method: "POST",
+          body: JSON.stringify({ parent_id: activeFolderId, name: folderName }),
+        },
       );
-      setSelectedCompanyDoc(detail);
-      setVersionDialogOpen(false);
-      setCompanyForm(emptyCompanyForm);
-      setCompanyFiles(null);
-      await loadCompanyDocs();
+      setFolderDialogOpen(false);
+      setFolderName("");
+      setSelectedTreeNodeId(folder.id);
+      setActiveFolderId(folder.id);
+      setExpandedFolderIds((ids) => Array.from(new Set([...ids, activeFolderId, folder.id])));
+      await refreshCompanyTree(selectedCompanyBase.id);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "新增公司知识版本失败。");
+      setError(nextError instanceof Error ? nextError.message : "新建文件夹失败。");
     } finally {
       setRunning(false);
     }
   }
 
-  async function archiveCompanyDoc(documentId: string) {
+  async function uploadCompanyFiles() {
+    if (!selectedCompanyBase || !activeFolderId || companyFiles.length === 0) {
+      setError("请先选择要上传的文件。");
+      return;
+    }
+    const unsupported = companyFiles.find((file) => !/\.(pdf|doc|docx|txt|md|markdown)$/i.test(file.name));
+    if (unsupported) {
+      setError(`仅支持 PDF、Word、TXT、MD 文件：${unsupported.name}`);
+      return;
+    }
     setRunning(true);
     setError("");
+    setCompanyUploadStates(
+      Object.fromEntries(
+        companyFiles.map((file) => [companyUploadFileKey(file), { progress: 1, status: "uploading" as const }]),
+      ),
+    );
     try {
-      const detail = await apiRequest<ApiGlobalKnowledgeDetail>(`/global-knowledge/documents/${documentId}/archive`, {
-        method: "POST",
+      const result = await new Promise<ApiCompanyKnowledgeUploadResult>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open(
+          "POST",
+          `${API_BASE_URL}/global-knowledge/bases/${selectedCompanyBase.id}/folders/${activeFolderId}/files`,
+        );
+        const headers = apiAuthHeaders();
+        headers.forEach((value, key) => {
+          xhr.setRequestHeader(key, value);
+        });
+        xhr.upload.onprogress = (event) => {
+          if (!event.lengthComputable) {
+            return;
+          }
+          const progress = Math.min(99, Math.round((event.loaded / event.total) * 100));
+          setCompanyUploadStates(
+            Object.fromEntries(
+              companyFiles.map((file) => [companyUploadFileKey(file), { progress, status: "uploading" as const }]),
+            ),
+          );
+        };
+        xhr.onload = () => {
+          let payload: unknown = null;
+          if (xhr.responseText) {
+            try {
+              payload = JSON.parse(xhr.responseText);
+            } catch {
+              payload = null;
+            }
+          }
+          if (xhr.status >= 200 && xhr.status < 300 && payload) {
+            resolve(payload as ApiCompanyKnowledgeUploadResult);
+            return;
+          }
+          reject(new Error((payload as { detail?: { message?: string } })?.detail?.message || "上传文件失败。"));
+        };
+        xhr.onerror = () => reject(new Error("网络异常，文件上传失败。"));
+        const formData = new FormData();
+        companyFiles.forEach((file) => {
+          formData.append("files", file);
+        });
+        xhr.send(formData);
       });
-      setSelectedCompanyDoc(detail);
-      await loadCompanyDocs();
+      setCompanyUploadStates(
+        Object.fromEntries(
+          companyFiles.map((file) => [companyUploadFileKey(file), { progress: 100, status: "completed" as const }]),
+        ),
+      );
+      setUploadDialogOpen(false);
+      setCompanyFiles([]);
+      await refreshCompanyTree(selectedCompanyBase.id);
+      if (result.files[0]) {
+        await selectCompanyFile(result.files[0].id);
+      }
+      await loadCompanyBases();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "废弃公司知识失败。");
+      setCompanyUploadStates(
+        Object.fromEntries(
+          companyFiles.map((file) => [companyUploadFileKey(file), { progress: 0, status: "error" as const }]),
+        ),
+      );
+      setError(nextError instanceof Error ? nextError.message : "上传文件失败。");
     } finally {
       setRunning(false);
     }
+  }
+
+  async function selectCompanyFile(fileId: string) {
+    if (!selectedCompanyBase) {
+      return;
+    }
+    setRunning(true);
+    setError("");
+    try {
+      const file = await apiRequest<ApiCompanyKnowledgeFile>(
+        `/global-knowledge/bases/${selectedCompanyBase.id}/files/${fileId}`,
+      );
+      setSelectedCompanyFile(file);
+      setSelectedTreeNodeId(file.id);
+      setActiveFolderId(file.folder_id);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "加载文件内容失败。");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function deleteCompanyTreeNode() {
+    if (!selectedCompanyBase || !deleteTarget) {
+      return;
+    }
+    setRunning(true);
+    setError("");
+    try {
+      if (deleteTarget.type === "file") {
+        await apiRequest<{ deleted: boolean }>(
+          `/global-knowledge/bases/${selectedCompanyBase.id}/files/${deleteTarget.id}`,
+          {
+            method: "DELETE",
+          },
+        );
+        if (selectedCompanyFile?.id === deleteTarget.id) {
+          setSelectedCompanyFile(null);
+          setSelectedTreeNodeId(activeFolderId || companyTree?.root.id || "");
+        }
+      } else {
+        await apiRequest<{ deleted: boolean }>(
+          `/global-knowledge/bases/${selectedCompanyBase.id}/folders/${deleteTarget.id}`,
+          {
+            method: "DELETE",
+          },
+        );
+        const deletedActiveNode = selectedTreeNodeId
+          ? companyTreeContainsNode(deleteTarget, selectedTreeNodeId)
+          : false;
+        const deletedPreviewFile = selectedCompanyFile
+          ? companyTreeContainsNode(deleteTarget, selectedCompanyFile.id)
+          : false;
+        if (deletedActiveNode || deletedPreviewFile) {
+          setSelectedCompanyFile(null);
+          setSelectedTreeNodeId(companyTree?.root.id || "");
+          setActiveFolderId(companyTree?.root.id || "");
+        }
+      }
+      setDeleteTarget(null);
+      await refreshCompanyTree(selectedCompanyBase.id);
+      await loadCompanyBases();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "删除失败。");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function deleteCompanyBase() {
+    if (!deleteBaseTarget) {
+      return;
+    }
+    setRunning(true);
+    setError("");
+    try {
+      await apiRequest<{ deleted: boolean }>(`/global-knowledge/bases/${deleteBaseTarget.id}`, {
+        method: "DELETE",
+      });
+      if (selectedCompanyBase?.id === deleteBaseTarget.id) {
+        setSelectedCompanyBase(null);
+        setCompanyTree(null);
+        setSelectedCompanyFile(null);
+        setSelectedTreeNodeId("");
+        setActiveFolderId("");
+      }
+      setDeleteBaseTarget(null);
+      await loadCompanyBases();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "删除知识库失败。");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  function selectCompanyFolder(folder: ApiCompanyKnowledgeFolder) {
+    setSelectedTreeNodeId(folder.id);
+    setActiveFolderId(folder.id);
+    setExpandedFolderIds((ids) => Array.from(new Set([...ids, folder.id])));
+  }
+
+  function toggleCompanyFolder(folderId: string) {
+    setExpandedFolderIds((ids) => (ids.includes(folderId) ? ids.filter((id) => id !== folderId) : [...ids, folderId]));
+  }
+
+  function openFolderCreate(folderId: string) {
+    setActiveFolderId(folderId);
+    setFolderName("");
+    setFolderDialogOpen(true);
+  }
+
+  function openFolderUpload(folderId: string) {
+    setActiveFolderId(folderId);
+    setCompanyFiles([]);
+    setCompanyUploadStates({});
+    setUploadDialogOpen(true);
   }
 
   return (
@@ -660,26 +881,17 @@ export default function Page() {
           ))}
         </TabsList>
       </Tabs>
-      {isCompanyKnowledge ? (
+      {isCompanyKnowledge && companyView === "list" ? (
         <ShellSection>
           <ListToolbar
-            actions={
-              <Button disabled={loading || running} onClick={() => void loadCompanyDocs()} variant="outline">
-                <RefreshCw className="size-4" />
-                刷新
-              </Button>
-            }
             createDisabled={running}
-            createLabel={running ? "处理中" : "上传公司知识"}
-            description="公司知识库用于维护跨项目复用的测试规范、用例模板、评审规则、自动化规范、术语和流程。"
-            onBatchDelete={deleteCompanySelected}
+            createLabel={running ? "处理中" : "创建知识库"}
             onCreate={() => {
               setCompanyForm(emptyCompanyForm);
-              setCompanyFiles(null);
               setCompanyDialogOpen(true);
             }}
             onSearch={setSearchText}
-            placeholder="搜索公司知识、类型或版本"
+            placeholder="搜索公司知识库"
             selectedCount={selectedCompanyCount}
             title="公司知识库列表"
           />
@@ -694,9 +906,9 @@ export default function Page() {
                       onCheckedChange={(checked) => toggleAllCompany(Boolean(checked))}
                     />
                   </TableHead>
-                  <TableHead>知识名称</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>知识类型</TableHead>
+                  <TableHead>知识库名称</TableHead>
+                  <TableHead>描述</TableHead>
+                  <TableHead>文件数量</TableHead>
                   <TableHead>更新时间</TableHead>
                   <TableHead className="w-16">操作</TableHead>
                 </TableRow>
@@ -714,52 +926,20 @@ export default function Page() {
                     <TableCell>
                       <button
                         className="text-left font-medium hover:underline"
-                        onClick={() => void openCompanyDoc(item.id)}
+                        onClick={() => void openCompanyBase(item.id)}
                         type="button"
                       >
                         {item.name}
                       </button>
-                      <div className="text-muted-foreground text-xs">
-                        {item.version || "未生成版本"} · {item.scope}
-                      </div>
                     </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          item.status === "available"
-                            ? "secondary"
-                            : item.status === "conversion_failed"
-                              ? "destructive"
-                              : "outline"
-                        }
-                      >
-                        {item.status_label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{item.knowledge_type_label}</TableCell>
+                    <TableCell className="max-w-xs truncate text-muted-foreground">{item.description || "—"}</TableCell>
+                    <TableCell>{item.file_count}</TableCell>
                     <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                     <TableCell>
                       <RowActions
                         actions={[
-                          { label: "查看", icon: Eye, onSelect: () => void openCompanyDoc(item.id) },
-                          {
-                            label: "新增版本",
-                            icon: FilePlus2,
-                            disabled: item.status === "archived" || running,
-                            onSelect: () => {
-                              void openCompanyDoc(item.id);
-                              setCompanyForm({ ...emptyCompanyForm, version: "" });
-                              setCompanyFiles(null);
-                              setVersionDialogOpen(true);
-                            },
-                          },
-                          {
-                            label: "废弃",
-                            icon: Archive,
-                            disabled: item.status === "archived" || running,
-                            destructive: true,
-                            onSelect: () => void archiveCompanyDoc(item.id),
-                          },
+                          { label: "查看", icon: Eye, onSelect: () => void openCompanyBase(item.id) },
+                          { label: "删除", icon: Trash2, destructive: true, onSelect: () => setDeleteBaseTarget(item) },
                         ]}
                         label="打开操作菜单"
                       />
@@ -769,7 +949,7 @@ export default function Page() {
                 {filteredCompanyRows.length === 0 ? (
                   <TableRow>
                     <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
-                      {loading ? "正在加载公司知识库。" : "暂无公司知识。管理员可上传测试规范、模板、术语或流程。"}
+                      {loading ? "正在加载公司知识库。" : "暂无公司知识库。"}
                     </TableCell>
                   </TableRow>
                 ) : null}
@@ -778,7 +958,30 @@ export default function Page() {
           </div>
           {error ? <p className="mt-3 text-destructive text-sm">{error}</p> : null}
         </ShellSection>
-      ) : (
+      ) : null}
+      {isCompanyKnowledge && companyView === "detail" ? (
+        <ShellSection>
+          {error ? <p className="mb-3 text-destructive text-sm">{error}</p> : null}
+          {companyTree ? (
+            <CompanyKnowledgeVault
+              activeNodeId={selectedTreeNodeId}
+              expandedFolderIds={expandedFolderIds}
+              file={selectedCompanyFile}
+              onDelete={setDeleteTarget}
+              onFileSelect={(fileId) => void selectCompanyFile(fileId)}
+              onFolderCreate={openFolderCreate}
+              onFolderSelect={selectCompanyFolder}
+              onFolderToggle={toggleCompanyFolder}
+              onFolderUpload={openFolderUpload}
+              root={companyTree.root}
+              running={running}
+            />
+          ) : (
+            <div className="rounded-lg border p-6 text-muted-foreground text-sm">正在加载知识库目录。</div>
+          )}
+        </ShellSection>
+      ) : null}
+      {!isCompanyKnowledge ? (
         <ProjectKnowledgeWorkspace
           activeConversationId={activeProjectConversationId}
           conversations={projectConversations}
@@ -810,79 +1013,52 @@ export default function Page() {
           value={projectChatDraft}
           onValueChange={setProjectChatDraft}
         />
-      )}
-      {isCompanyKnowledge && selectedCompanyDoc ? (
-        <ShellSection className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <div className="min-w-0 space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <BookOpen className="size-4 text-muted-foreground" />
-              <h2 className="font-medium text-sm">{selectedCompanyDoc.document.name}</h2>
-              <Badge variant="outline">{selectedCompanyDoc.document.version || "无版本"}</Badge>
-              <Badge variant={selectedCompanyDoc.document.status === "available" ? "secondary" : "outline"}>
-                {selectedCompanyDoc.document.status_label}
-              </Badge>
-            </div>
-            <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-4 text-sm">
-              {selectedCompanyDoc.current_version?.markdown_content || "暂无 Markdown 预览。"}
-            </pre>
-          </div>
-          <aside className="space-y-3">
-            <div>
-              <h3 className="font-medium text-sm">基础信息</h3>
-              <div className="mt-2 space-y-1 text-muted-foreground text-xs">
-                <p>类型：{selectedCompanyDoc.document.knowledge_type_label}</p>
-                <p>范围：{selectedCompanyDoc.document.scope}</p>
-                <p>文件：{selectedCompanyDoc.files.length} 个</p>
-                <p>来源：{selectedCompanyDoc.document.source_note || "-"}</p>
-              </div>
-            </div>
-            <div>
-              <h3 className="font-medium text-sm">文件列表</h3>
-              <div className="mt-2 space-y-2">
-                {selectedCompanyDoc.files.map((file) => (
-                  <div className="rounded-md border p-2 text-xs" key={file.id}>
-                    <div className="font-medium">{file.original_filename}</div>
-                    <div className="text-muted-foreground">
-                      {file.file_type || "unknown"} · {file.file_size} bytes
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h3 className="font-medium text-sm">版本记录</h3>
-              <div className="mt-2 space-y-2">
-                {selectedCompanyDoc.versions.map((version) => (
-                  <div className="rounded-md border p-2 text-xs" key={version.id}>
-                    <div className="font-medium">{version.version_no}</div>
-                    <div className="text-muted-foreground">{version.conversion_summary}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </aside>
-        </ShellSection>
       ) : null}
       <CompanyKnowledgeDialog
-        files={companyFiles}
         form={companyForm}
-        mode="create"
-        onFilesChange={setCompanyFiles}
         onFormChange={setCompanyForm}
         onOpenChange={setCompanyDialogOpen}
-        onSubmit={() => void uploadCompanyKnowledge()}
+        onSubmit={() => void createCompanyBase()}
         open={companyDialogOpen}
         running={running}
       />
-      <CompanyKnowledgeDialog
+      <CompanyFolderDialog
+        name={folderName}
+        onNameChange={setFolderName}
+        onOpenChange={setFolderDialogOpen}
+        onSubmit={() => void createCompanyFolder()}
+        open={folderDialogOpen}
+        running={running}
+      />
+      <CompanyUploadDialog
         files={companyFiles}
-        form={companyForm}
-        mode="version"
+        uploadStates={companyUploadStates}
         onFilesChange={setCompanyFiles}
-        onFormChange={setCompanyForm}
-        onOpenChange={setVersionDialogOpen}
-        onSubmit={() => void createCompanyVersion()}
-        open={versionDialogOpen}
+        onOpenChange={(open) => {
+          setUploadDialogOpen(open);
+          if (!open && !running) {
+            setCompanyUploadStates({});
+          }
+        }}
+        onSubmit={() => void uploadCompanyFiles()}
+        open={uploadDialogOpen}
+        running={running}
+      />
+      <DeleteCompanyNodeDialog
+        base={deleteBaseTarget}
+        onBaseSubmit={() => void deleteCompanyBase()}
+        onBaseOpenChange={(open) => {
+          if (!open) {
+            setDeleteBaseTarget(null);
+          }
+        }}
+        node={deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+          }
+        }}
+        onSubmit={() => void deleteCompanyTreeNode()}
         running={running}
       />
     </PageShell>
@@ -1337,8 +1513,8 @@ function ChatMessage({
               : loading && body.length === 0
                 ? "mt-2 px-1 py-2 text-foreground text-sm"
                 : tone === "warning"
-                ? "mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-destructive text-sm"
-                : "mt-2 rounded-lg border bg-background p-3 text-foreground text-sm shadow-sm"
+                  ? "mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-destructive text-sm"
+                  : "mt-2 rounded-lg border bg-background p-3 text-foreground text-sm shadow-sm"
           }
         >
           {showThinking ? (
@@ -1364,131 +1540,399 @@ function ChatMessage({
   );
 }
 
+function CompanyKnowledgeVault({
+  activeNodeId,
+  expandedFolderIds,
+  file,
+  onDelete,
+  onFileSelect,
+  onFolderCreate,
+  onFolderSelect,
+  onFolderToggle,
+  onFolderUpload,
+  root,
+  running,
+}: {
+  activeNodeId: string;
+  expandedFolderIds: string[];
+  file: ApiCompanyKnowledgeFile | null;
+  onDelete: (node: ApiCompanyKnowledgeTreeNode) => void;
+  onFileSelect: (fileId: string) => void;
+  onFolderCreate: (folderId: string) => void;
+  onFolderSelect: (folder: ApiCompanyKnowledgeFolder) => void;
+  onFolderToggle: (folderId: string) => void;
+  onFolderUpload: (folderId: string) => void;
+  root: ApiCompanyKnowledgeFolder;
+  running: boolean;
+}) {
+  return (
+    <div className="grid min-h-[32rem] overflow-hidden rounded-lg border bg-background lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <aside className="min-h-0 border-b bg-muted/20 lg:border-r lg:border-b-0">
+        <div className="border-b px-3 py-2 font-medium text-sm">目录</div>
+        <div className="max-h-[34rem] overflow-auto p-2">
+          <CompanyTreeNode
+            activeNodeId={activeNodeId}
+            depth={0}
+            expandedFolderIds={expandedFolderIds}
+            node={root}
+            onDelete={onDelete}
+            onFileSelect={onFileSelect}
+            onFolderCreate={onFolderCreate}
+            onFolderSelect={onFolderSelect}
+            onFolderToggle={onFolderToggle}
+            onFolderUpload={onFolderUpload}
+            running={running}
+          />
+        </div>
+      </aside>
+      <main className="min-w-0 overflow-hidden">
+        {file ? (
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="flex items-center gap-2 border-b px-4 py-3">
+              <FileText className="size-4 text-muted-foreground" />
+              <div className="min-w-0 flex-1 truncate font-medium text-sm">{file.display_name}</div>
+              <StatusBadge tone={fileConversionTone(file.conversion_status)}>
+                {file.conversion_status === "success" ? "可用" : file.conversion_status}
+              </StatusBadge>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto p-4">
+              {file.conversion_status === "failed" ? (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive text-sm">
+                  {file.conversion_summary || "文件转换失败。"}
+                </div>
+              ) : (
+                <MarkdownPreview content={file.markdown_content ?? ""} emptyText="暂无 Markdown 内容。" />
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-full min-h-[32rem] items-center justify-center px-4 text-center text-muted-foreground text-sm">
+            从左侧选择文件，或在文件夹菜单中上传文件。
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function CompanyTreeNode({
+  activeNodeId,
+  depth,
+  expandedFolderIds,
+  node,
+  onDelete,
+  onFileSelect,
+  onFolderCreate,
+  onFolderSelect,
+  onFolderToggle,
+  onFolderUpload,
+  running,
+}: {
+  activeNodeId: string;
+  depth: number;
+  expandedFolderIds: string[];
+  node: ApiCompanyKnowledgeTreeNode;
+  onDelete: (node: ApiCompanyKnowledgeTreeNode) => void;
+  onFileSelect: (fileId: string) => void;
+  onFolderCreate: (folderId: string) => void;
+  onFolderSelect: (folder: ApiCompanyKnowledgeFolder) => void;
+  onFolderToggle: (folderId: string) => void;
+  onFolderUpload: (folderId: string) => void;
+  running: boolean;
+}) {
+  const active = activeNodeId === node.id;
+  const isFolder = node.type === "folder";
+  const expanded = isFolder && expandedFolderIds.includes(node.id);
+  return (
+    <div>
+      <div
+        className={
+          active
+            ? "group flex h-8 items-center gap-1 rounded-md bg-primary/10 px-1 text-primary"
+            : "group flex h-8 items-center gap-1 rounded-md px-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+        }
+        style={{ paddingLeft: `${depth * 14 + 4}px` }}
+      >
+        {isFolder ? (
+          <button
+            aria-label={expanded ? "收起文件夹" : "展开文件夹"}
+            className="flex size-5 items-center justify-center rounded-sm hover:bg-background"
+            onClick={() => onFolderToggle(node.id)}
+            type="button"
+          >
+            {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+          </button>
+        ) : (
+          <span className="size-5" />
+        )}
+        <button
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm"
+          onClick={() => {
+            if (isFolder) {
+              onFolderSelect(node);
+            } else {
+              onFileSelect(node.id);
+            }
+          }}
+          type="button"
+        >
+          {isFolder ? (
+            expanded ? (
+              <FolderOpen className="size-4 shrink-0" />
+            ) : (
+              <Folder className="size-4 shrink-0" />
+            )
+          ) : (
+            <FileText className="size-4 shrink-0" />
+          )}
+          <span className="truncate">{node.name}</span>
+        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={`打开${node.name}操作菜单`}
+              className="size-7 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+              disabled={running}
+              size="icon"
+              variant="ghost"
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="center">
+            {isFolder ? (
+              <>
+                <DropdownMenuItem onSelect={() => onFolderCreate(node.id)}>
+                  <Folder className="size-4" />
+                  新建文件夹
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onFolderUpload(node.id)}>
+                  <Upload className="size-4" />
+                  上传文件
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={node.is_root} onSelect={() => onDelete(node)} variant="destructive">
+                  <Trash2 className="size-4" />
+                  删除本文件夹
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <DropdownMenuItem onSelect={() => onDelete(node)} variant="destructive">
+                <Trash2 className="size-4" />
+                删除文件
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      {isFolder && expanded
+        ? node.children.map((child) => (
+            <CompanyTreeNode
+              activeNodeId={activeNodeId}
+              depth={depth + 1}
+              expandedFolderIds={expandedFolderIds}
+              key={child.id}
+              node={child}
+              onDelete={onDelete}
+              onFileSelect={onFileSelect}
+              onFolderCreate={onFolderCreate}
+              onFolderSelect={onFolderSelect}
+              onFolderToggle={onFolderToggle}
+              onFolderUpload={onFolderUpload}
+              running={running}
+            />
+          ))
+        : null}
+    </div>
+  );
+}
+
 function CompanyKnowledgeDialog({
-  files,
   form,
-  mode,
-  onFilesChange,
   onFormChange,
   onOpenChange,
   onSubmit,
   open,
   running,
 }: {
-  files: FileList | null;
   form: typeof emptyCompanyForm;
-  mode: "create" | "version";
-  onFilesChange: (files: FileList | null) => void;
   onFormChange: (form: typeof emptyCompanyForm) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
   open: boolean;
   running: boolean;
 }) {
-  const isVersionMode = mode === "version";
-  const idPrefix = isVersionMode ? "company-knowledge-version" : "company-knowledge-create";
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isVersionMode ? "新增公司知识版本" : "上传公司知识"}</DialogTitle>
-          <DialogDescription>公司知识不关联项目，只用于跨项目复用的规范、模板、术语和流程。</DialogDescription>
+          <DialogTitle>创建知识库</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-3 md:grid-cols-2">
-          {!isVersionMode ? (
-            <>
-              <div className="space-y-1">
-                <Label htmlFor={`${idPrefix}-name`}>知识名称</Label>
-                <Input
-                  id={`${idPrefix}-name`}
-                  value={form.name}
-                  onChange={(event) => onFormChange({ ...form, name: event.target.value })}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor={`${idPrefix}-type`}>知识类型</Label>
-                <Select
-                  value={form.knowledge_type}
-                  onValueChange={(value) => onFormChange({ ...form, knowledge_type: value })}
-                >
-                  <SelectTrigger className="w-full" id={`${idPrefix}-type`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {knowledgeTypes.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </>
-          ) : null}
-          <div className="space-y-1">
-            <Label htmlFor={`${idPrefix}-version`}>版本号</Label>
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="company-knowledge-name">知识库名称</FieldLabel>
             <Input
-              id={`${idPrefix}-version`}
-              placeholder={isVersionMode ? "留空自动生成" : "v1"}
-              value={form.version}
-              onChange={(event) => onFormChange({ ...form, version: event.target.value })}
+              id="company-knowledge-name"
+              onChange={(event) => onFormChange({ ...form, name: event.target.value })}
+              placeholder="请输入知识库名称"
+              value={form.name}
             />
-          </div>
-          {!isVersionMode ? (
-            <div className="space-y-1">
-              <Label htmlFor={`${idPrefix}-scope`}>适用范围</Label>
-              <Input
-                id={`${idPrefix}-scope`}
-                value={form.scope}
-                onChange={(event) => onFormChange({ ...form, scope: event.target.value })}
-              />
-            </div>
-          ) : null}
-          <div className="space-y-1 md:col-span-2">
-            <Label htmlFor={`${idPrefix}-source-note`}>来源说明</Label>
-            <Input
-              id={`${idPrefix}-source-note`}
-              value={form.source_note}
-              onChange={(event) => onFormChange({ ...form, source_note: event.target.value })}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="company-knowledge-description">描述</FieldLabel>
+            <Textarea
+              id="company-knowledge-description"
+              onChange={(event) => onFormChange({ ...form, description: event.target.value })}
+              placeholder="请输入描述"
+              value={form.description}
             />
-          </div>
-          {isVersionMode ? (
-            <div className="space-y-1 md:col-span-2">
-              <Label htmlFor={`${idPrefix}-change-summary`}>变更摘要</Label>
-              <Textarea
-                id={`${idPrefix}-change-summary`}
-                value={form.change_summary}
-                onChange={(event) => onFormChange({ ...form, change_summary: event.target.value })}
-              />
-            </div>
-          ) : (
-            <div className="space-y-1 md:col-span-2">
-              <Label htmlFor={`${idPrefix}-description`}>描述</Label>
-              <Textarea
-                id={`${idPrefix}-description`}
-                value={form.description}
-                onChange={(event) => onFormChange({ ...form, description: event.target.value })}
-              />
-            </div>
-          )}
-          <div className="space-y-1 md:col-span-2">
-            <Label htmlFor={`${idPrefix}-files`}>上传文件</Label>
-            <Input
-              id={`${idPrefix}-files`}
-              accept=".md,.markdown,.txt,.doc,.docx,.pdf"
-              multiple
-              onChange={(event) => onFilesChange(event.target.files)}
-              type="file"
-            />
-            <div className="text-muted-foreground text-xs">
-              {files?.length ? `已选择 ${files.length} 个文件` : "支持 Markdown、TXT、DOCX、PDF。"}
-            </div>
-          </div>
+          </Field>
+        </FieldGroup>
+        <DialogFooter>
+          <Button disabled={running} onClick={() => onOpenChange(false)} type="button" variant="outline">
+            取消
+          </Button>
+          <Button disabled={running || !form.name.trim()} onClick={onSubmit} type="button">
+            {running ? "处理中" : "创建"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CompanyFolderDialog({
+  name,
+  onNameChange,
+  onOpenChange,
+  onSubmit,
+  open,
+  running,
+}: {
+  name: string;
+  onNameChange: (value: string) => void;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: () => void;
+  open: boolean;
+  running: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>新建文件夹</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-1">
+          <Label htmlFor="company-folder-name">文件夹名称</Label>
+          <Input id="company-folder-name" value={name} onChange={(event) => onNameChange(event.target.value)} />
         </div>
         <DialogFooter>
           <Button disabled={running} onClick={onSubmit}>
-            <Upload className="size-4" />
-            {running ? "处理中" : isVersionMode ? "上传新版本" : "上传"}
+            <Folder className="size-4" />
+            新建
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CompanyUploadDialog({
+  files,
+  onFilesChange,
+  onOpenChange,
+  onSubmit,
+  open,
+  running,
+  uploadStates,
+}: {
+  files: File[];
+  onFilesChange: (files: File[]) => void;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: () => void;
+  open: boolean;
+  running: boolean;
+  uploadStates: Record<string, { progress: number; status: "idle" | "uploading" | "completed" | "error" }>;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>上传文件</DialogTitle>
+          <DialogDescription>文件会上传到当前文件夹，支持 PDF、Word（doc/docx）、TXT、MD 格式。</DialogDescription>
+        </DialogHeader>
+        <FileUpload1
+          accept={{
+            "application/pdf": [".pdf"],
+            "application/msword": [".doc"],
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+            "text/markdown": [".md", ".markdown"],
+            "text/plain": [".txt"],
+          }}
+          files={files}
+          hint="仅支持 PDF、Word（doc/docx）、TXT、MD 文件"
+          maxFiles={10}
+          title="上传知识库文件"
+          uploadStates={uploadStates}
+          onFilesChange={onFilesChange}
+        />
+        <DialogFooter>
+          <Button disabled={running} onClick={() => onOpenChange(false)} type="button" variant="outline">
+            取消
+          </Button>
+          <Button disabled={running || files.length === 0} onClick={onSubmit} type="button">
+            {running ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+            {running ? "上传中" : "上传"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeleteCompanyNodeDialog({
+  base,
+  onBaseOpenChange,
+  onBaseSubmit,
+  node,
+  onOpenChange,
+  onSubmit,
+  running,
+}: {
+  base: ApiCompanyKnowledgeBase | null;
+  onBaseOpenChange: (open: boolean) => void;
+  onBaseSubmit: () => void;
+  node: ApiCompanyKnowledgeTreeNode | null;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: () => void;
+  running: boolean;
+}) {
+  const isFolder = node?.type === "folder";
+  return (
+    <Dialog open={Boolean(node ?? base)} onOpenChange={base ? onBaseOpenChange : onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{base ? "删除知识库" : isFolder ? "删除文件夹" : "删除文件"}</DialogTitle>
+          <DialogDescription>
+            {base
+              ? `确认删除知识库“${base.name}”吗？该知识库下的文件夹、文件和对应记录都会从后端删除。`
+              : node
+                ? isFolder
+                  ? `确认删除文件夹“${node.name}”吗？该文件夹下的子文件夹和文件也会一并删除，并从后端移除对应记录。`
+                  : `确认删除文件“${node.name}”吗？删除后将从后端移除文件和对应记录。`
+                : ""}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            disabled={running}
+            onClick={() => (base ? onBaseOpenChange(false) : onOpenChange(false))}
+            variant="outline"
+          >
+            取消
+          </Button>
+          <Button disabled={running} onClick={base ? onBaseSubmit : onSubmit} variant="destructive">
+            <Trash2 className="size-4" />
+            删除
           </Button>
         </DialogFooter>
       </DialogContent>
