@@ -57,9 +57,9 @@ def generate_quality_assurance_report(
 ## 覆盖风险摘要
 
 - **待处理澄清项**: {summary.total}
-- **需人工确认**: {summary.needs_manual}
-- **有建议选项**: {summary.has_suggestions}
-- **自动解决**: {summary.auto_resolved}
+- **需人工确认**: {summary.by_resolution.get('needs_input', 0) + summary.by_resolution.get('needs_research', 0)}
+- **有建议选项**: {summary.by_resolution.get('has_options', 0)}
+- **自动解决**: {summary.by_resolution.get('auto_resolved', 0)}
 """.rstrip()
 
     return f"""# 质量保障报告
@@ -131,16 +131,16 @@ def generate_clarification_report(
 
 ## 澄清摘要
 
-{clarification.clarification_summary_text}
+{clarification.overall_assessment if hasattr(clarification, 'overall_assessment') else clarification.clarification_summary_text}
 
 ## 待澄清项统计
 
 - **总数**: {summary.total}
-- **需人工确认**: {summary.needs_manual}
-- **有建议选项**: {summary.has_suggestions}
-- **自动解决**: {summary.auto_resolved}
-- **按来源维度**: {_format_count_map(summary.by_source)}
-- **按严重级别**: {_format_count_map(summary.by_severity)}
+- **需人工确认**: {summary.by_resolution.get('needs_input', 0) + summary.by_resolution.get('needs_research', 0)}
+- **有建议选项**: {summary.by_resolution.get('has_options', 0)}
+- **自动解决**: {summary.by_resolution.get('auto_resolved', 0)}
+- **按优先级**: {_format_count_map(summary.by_priority)}
+- **按分类**: {_format_count_map(summary.by_category)}
 
 ## 待澄清项
 

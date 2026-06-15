@@ -34,7 +34,11 @@ async def enhance_node(state: RequirementAnalysisState) -> RequirementAnalysisSt
 
     # 3. 确定最终状态
     decision = state["quality"].decision.result
-    needs_manual = state["clarification"].summary.needs_manual
+    # v3.0: needs_input + needs_research 都需要人工介入
+    needs_manual = (
+        state["clarification"].summary.by_resolution.get("needs_input", 0) +
+        state["clarification"].summary.by_resolution.get("needs_research", 0)
+    )
 
     if decision == "rejected":
         status = "blocked"
