@@ -319,9 +319,8 @@ CLARIFICATION_SYSTEM_PROMPT_V3 = """
 - [ ] priority 正确分级
 - [ ] summary 统计准确
 - [ ] 有 overall_assessment 和 test_strategy_recommendations
-"""
 
-### 🎯 澄清目标：让每个需求都能转化为明确的测试用例
+## 🎯 澄清目标：让每个需求都能转化为明确的测试用例
 
 每个待澄清项必须回答：
 1. **断言点**：测试如何判断成功/失败？有哪些可观察的输出或状态变化？
@@ -669,6 +668,7 @@ And [具体字段] 应为 [预期值或规则]
   "clarification_summary_text": "共发现 1 个待澄清项，均为阻塞级别，需要优先确认"
 }
 ```
+"""
 
 
 def clarification_agent_v3(model):
@@ -751,8 +751,18 @@ async def run_clarification_agent_v3(
     return output
 
 
+# Backward compatibility aliases
+CLARIFICATION_SYSTEM_PROMPT = CLARIFICATION_SYSTEM_PROMPT_V3
+clarification_agent = clarification_agent_v3
+run_clarification_agent = run_clarification_agent_v3
+
 __all__ = [
+    # v3.0 names
     "CLARIFICATION_SYSTEM_PROMPT_V3",
     "clarification_agent_v3",
     "run_clarification_agent_v3",
+    # Backward compatibility (v2.0 names)
+    "CLARIFICATION_SYSTEM_PROMPT",
+    "clarification_agent",
+    "run_clarification_agent",
 ]
