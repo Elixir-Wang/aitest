@@ -37,16 +37,31 @@ def should_skip_clarification(state: RequirementAnalysisState) -> Literal["clari
 
 
 def prepare_empty_clarification(state: RequirementAnalysisState) -> RequirementAnalysisState:
-    """为跳过澄清的高质量需求生成稳定的空澄清结果。"""
+    """为跳过澄清的高质量需求生成稳定的空澄清结果（v3.0）。"""
+    from datetime import datetime
+
     state["clarification"] = ClarificationOutput(
         items=[],
         summary=ClarificationSummary(
             total=0,
-            auto_resolved=0,
-            has_suggestions=0,
-            needs_manual=0,
+            by_priority={"P0": 0, "P1": 0, "P2": 0, "P3": 0},
+            by_category={},
+            by_resolution={
+                "auto_resolved": 0,
+                "has_options": 0,
+                "needs_input": 0,
+                "needs_research": 0
+            },
+            test_surfaces_coverage={},
+            total_test_cases=0,
+            blocking_count=0,
+            high_risk_count=0,
+            recommended_actions=[]
         ),
-        clarification_summary_text="需求质量已通过，无需补充澄清。",
+        overall_assessment="需求质量已通过评估（overall >= 95），无需补充澄清。",
+        test_strategy_recommendations=[],
+        generated_at=datetime.now().isoformat(),
+        model_version="v3.0-test-driven"
     )
     return state
 
