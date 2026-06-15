@@ -252,12 +252,17 @@ def test_all_project_knowledge_query_collects_active_project_sources(monkeypatch
     assert captured_project_names == [["测试项目", "订单项目"]]
     assert [event["type"] for event in events] == ["message_delta", "metadata", "done"]
     result = events[1]["result"]
-    assert result["conversation"] is None
-    assert result["messages"] == []
+    assert result["conversation"] is not None
+    assert len(result["messages"]) == 2
     assert result["answer"] == "已查询全部项目。"
     assert [ref["project_name"] for ref in result["source_refs"]] == ["测试项目", "订单项目"]
     assert result["used_requirement_versions"] == ["version-1", "version-2"]
     assert result["knowledge_queried"] is True
+
+    conversations = service.list_all_project_knowledge_conversations(actor)
+    assert len(conversations) == 1
+    detail = service.get_all_project_knowledge_conversation(conversations[0]["id"], actor)
+    assert [message["role"] for message in detail["messages"]] == ["user", "assistant"]
 
 
 def test_all_project_knowledge_query_tolerates_partial_missing_files(monkeypatch, tmp_path) -> None:
@@ -349,9 +354,74 @@ def test_all_project_knowledge_query_tolerates_partial_missing_files(monkeypatch
     result = events[0]["result"]
     assert result["answer"] == "已使用可用项目来源回答。"
     assert "无法查询项目知识库" not in result["answer"]
-    assert result["conversation"] is None
+    assert result["conversation"] is not None
     assert result["used_requirement_versions"] == ["version-1", "version-valid"]
     assert events[-1] == {"type": "done"}
+
+
+def test_all_project_knowledge_query_persists_conversation_and_uses_history(monkeypatch, tmp_path) -> None:
+    from app.schemas.knowledge import KnowledgeQueryOutput
+    from app.services.knowledge import service
+
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project(monkeypatch, tmp_path)
+    captured_history_lengths: list[int] = []
+
+    async def fake_stream_knowledge_chat(input_data, search_project_knowledge, **_kwargs):
+        captured_history_lengths.append(len(input_data.conversation_history))
+        output = await search_project_knowledge(input_data.question)
+        yield {"type": "metadata", "output": output}
+
+    async def fake_run_knowledge_query(input_data):
+        return KnowledgeQueryOutput(
+            answer=f"检索：{input_data.question}",
+            used_requirement_versions=["version-1"],
+            knowledge_queried=True,
+        )
+
+    monkeypatch.setattr(service.knowledge_chat_service, "stream_knowledge_chat", fake_stream_knowledge_chat)
+    monkeypatch.setattr(service.knowledge_query_service, "run_knowledge_query", fake_run_knowledge_query)
+    actor = {
+        "id": "u-admin",
+        "username": "admin",
+        "nickname": "平台管理员",
+        "role": "admin",
+        "project_scope": "全部项目",
+    }
+
+    async def run_queries():
+        first_events = await _collect_async_events(
+            service.stream_all_project_knowledge_query(
+                actor,
+                service.KnowledgeQueryRequest(question="登录规则是什么？", include_explorations=False),
+            )
+        )
+        first_result = first_events[-2]["result"]
+        second_events = await _collect_async_events(
+            service.stream_all_project_knowledge_query(
+                actor,
+                service.KnowledgeQueryRequest(
+                    question="这个模块还要补哪些测试？",
+                    include_explorations=False,
+                    conversation_id=first_result["conversation"]["id"],
+                ),
+            )
+        )
+        second_result = second_events[-2]["result"]
+        return first_result, second_result
+
+    first, second = asyncio.run(run_queries())
+    conversation_id = first["conversation"]["id"]
+
+    detail = service.get_all_project_knowledge_conversation(conversation_id, actor)
+    assert first["conversation"]["title"] == "登录规则是什么？"
+    assert second["conversation"]["id"] == conversation_id
+    assert captured_history_lengths == [0, 2]
+    assert [message["role"] for message in detail["messages"]] == ["user", "assistant", "user", "assistant"]
+
+    delete_result = service.delete_all_project_knowledge_conversation(conversation_id, actor)
+    assert delete_result == {"deleted": True}
+    assert service.list_all_project_knowledge_conversations(actor) == []
 
 
 def test_all_project_knowledge_query_forwards_visible_thinking(monkeypatch, tmp_path) -> None:

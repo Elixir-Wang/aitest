@@ -30,6 +30,7 @@ from app.services.knowledge import query_service as knowledge_query_service
 
 READY_EXPLORATION_STATUSES = {"completed", "partial"}
 MAX_HISTORY_MESSAGES = 12
+ALL_PROJECTS_CONVERSATION_PROJECT_ID = "__all_projects__"
 
 
 async def query_project_knowledge(project_id: str, actor, request: KnowledgeQueryRequest) -> dict:
@@ -235,12 +236,14 @@ async def stream_all_project_knowledge_query(
     question = request.question.strip()
     if not question:
         raise api_error(400, "KNOWLEDGE_QUERY_REQUIRED", "请输入要查询的问题。")
-
+    actor_id = actor["id"]
+    conversation = _get_or_create_all_projects_conversation(actor_id, request.conversation_id, question)
+    history = _conversation_history(conversation["id"])
     chat_input = KnowledgeQueryInput(
         project_id="",
         project_name="全部项目",
         question=question,
-        conversation_history=[],
+        conversation_history=history,
     )
     source_version_ids: list[str] = []
     exploration_run_ids: list[str] = []
@@ -252,11 +255,12 @@ async def stream_all_project_knowledge_query(
             question=search_question,
             include_requirements=request.include_requirements,
             include_explorations=request.include_explorations,
-            conversation_id=None,
+            conversation_id=request.conversation_id,
         )
         input_data, source_version_ids, exploration_run_ids, blockers = _collect_all_project_query_input(
             actor,
             search_request,
+            history,
         )
         if blockers:
             answer = "无法查询项目知识库：\n\n" + "\n".join(f"- {item}" for item in blockers)
@@ -288,11 +292,40 @@ async def stream_all_project_knowledge_query(
         source_version_ids = []
         exploration_run_ids = []
 
+    user_message, assistant_message = _append_query_messages(
+        conversation["id"],
+        question,
+        final_output,
+        final_output.used_requirement_versions or source_version_ids,
+        final_output.used_exploration_runs or exploration_run_ids,
+    )
+    operation_log_service.record_success(
+        module="knowledge",
+        action="query",
+        object_type="all_project_knowledge",
+        object_id=ALL_PROJECTS_CONVERSATION_PROJECT_ID,
+        object_name="全部项目",
+        project_id=ALL_PROJECTS_CONVERSATION_PROJECT_ID,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary="查询全部项目知识库。" if final_output.knowledge_queried else "全部项目知识库 AI 普通对话。",
+        after={
+            "question": question,
+            "conversation_id": conversation["id"],
+            "knowledge_queried": final_output.knowledge_queried,
+            "source_versions": source_version_ids,
+            "exploration_runs": exploration_run_ids,
+        },
+    )
     yield {
         "type": "metadata",
         "result": {
-            "conversation": None,
-            "messages": [],
+            "conversation": _conversation_to_schema(conversation).model_dump(),
+            "messages": [
+                _message_to_schema(user_message).model_dump(),
+                _message_to_schema(assistant_message).model_dump(),
+            ],
             "answer": final_output.answer,
             "source_refs": [ref.model_dump() for ref in final_output.source_refs],
             "used_requirement_versions": final_output.used_requirement_versions or source_version_ids,
@@ -301,6 +334,58 @@ async def stream_all_project_knowledge_query(
         },
     }
     yield {"type": "done"}
+
+
+def list_all_project_knowledge_conversations(actor) -> list[dict]:
+    with connect() as db:
+        _ensure_all_projects_conversation_scope(db)
+        rows = knowledge_conversation_repo.list_by_project(db, ALL_PROJECTS_CONVERSATION_PROJECT_ID, actor["id"])
+    return [_conversation_to_schema(row).model_dump() for row in rows]
+
+
+def get_all_project_knowledge_conversation(conversation_id: str, actor) -> dict:
+    with connect() as db:
+        _ensure_all_projects_conversation_scope(db)
+        conversation = knowledge_conversation_repo.find_by_project_and_id(
+            db,
+            ALL_PROJECTS_CONVERSATION_PROJECT_ID,
+            conversation_id,
+            actor["id"],
+        )
+        if not conversation:
+            raise api_error(404, "KNOWLEDGE_CONVERSATION_NOT_FOUND", "对话不存在。")
+        messages = knowledge_conversation_repo.list_messages(db, conversation_id)
+    return KnowledgeConversationDetail(
+        conversation=_conversation_to_schema(conversation),
+        messages=[_message_to_schema(message) for message in messages],
+    ).model_dump()
+
+
+def delete_all_project_knowledge_conversation(conversation_id: str, actor) -> dict:
+    with connect() as db:
+        _ensure_all_projects_conversation_scope(db)
+        conversation = knowledge_conversation_repo.find_by_project_and_id(
+            db,
+            ALL_PROJECTS_CONVERSATION_PROJECT_ID,
+            conversation_id,
+            actor["id"],
+        )
+        if not conversation:
+            raise api_error(404, "KNOWLEDGE_CONVERSATION_NOT_FOUND", "对话不存在。")
+        knowledge_conversation_repo.delete(db, conversation_id)
+    operation_log_service.record_success(
+        module="knowledge",
+        action="delete_conversation",
+        object_type="all_project_knowledge_conversation",
+        object_id=conversation_id,
+        object_name=conversation["title"],
+        project_id=ALL_PROJECTS_CONVERSATION_PROJECT_ID,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary="删除全部项目知识库对话。",
+    )
+    return {"deleted": True}
 
 
 def list_project_knowledge_conversations(project_id: str, actor) -> list[dict]:
@@ -383,6 +468,7 @@ def _collect_query_input(
 def _collect_all_project_query_input(
     actor,
     request: KnowledgeQueryRequest,
+    history: list[KnowledgeConversationHistoryMessage] | None = None,
 ) -> tuple[KnowledgeQueryInput, list[str], list[str], list[str]]:
     with connect() as db:
         projects = project_repo.list_visible(db, actor)
@@ -419,7 +505,7 @@ def _collect_all_project_query_input(
             project_id="",
             project_name="全部项目",
             question=request.question.strip(),
-            conversation_history=[],
+            conversation_history=history or [],
             source_documents=source_documents,
             explorations=explorations,
         ),
@@ -506,21 +592,50 @@ def _get_project(project_id: str):
         return _require_project(db, project_id)
 
 
+def _ensure_all_projects_conversation_scope(db) -> None:
+    exists = db.execute("SELECT id FROM projects WHERE id = ?", (ALL_PROJECTS_CONVERSATION_PROJECT_ID,)).fetchone()
+    if exists:
+        return
+    project_repo.create(
+        db,
+        project_id=ALL_PROJECTS_CONVERSATION_PROJECT_ID,
+        name="全部项目知识库",
+        status="archived",
+        description="系统保留项目，用于全部项目知识库对话历史。",
+    )
+
+
 def _get_or_create_conversation(project_id: str, actor_id: str, conversation_id: str | None, question: str):
     with connect() as db:
         _require_project(db, project_id)
-        if conversation_id:
-            conversation = knowledge_conversation_repo.find_by_project_and_id(db, project_id, conversation_id, actor_id)
-            if not conversation:
-                raise api_error(404, "KNOWLEDGE_CONVERSATION_NOT_FOUND", "对话不存在。")
-            return conversation
-        return knowledge_conversation_repo.create(
+        return _get_or_create_conversation_in_db(db, project_id, actor_id, conversation_id, question)
+
+
+def _get_or_create_all_projects_conversation(actor_id: str, conversation_id: str | None, question: str):
+    with connect() as db:
+        _ensure_all_projects_conversation_scope(db)
+        return _get_or_create_conversation_in_db(
             db,
-            conversation_id=str(uuid.uuid4()),
-            project_id=project_id,
-            title=_conversation_title(question),
-            created_by=actor_id,
+            ALL_PROJECTS_CONVERSATION_PROJECT_ID,
+            actor_id,
+            conversation_id,
+            question,
         )
+
+
+def _get_or_create_conversation_in_db(db, project_id: str, actor_id: str, conversation_id: str | None, question: str):
+    if conversation_id:
+        conversation = knowledge_conversation_repo.find_by_project_and_id(db, project_id, conversation_id, actor_id)
+        if not conversation:
+            raise api_error(404, "KNOWLEDGE_CONVERSATION_NOT_FOUND", "对话不存在。")
+        return conversation
+    return knowledge_conversation_repo.create(
+        db,
+        conversation_id=str(uuid.uuid4()),
+        project_id=project_id,
+        title=_conversation_title(question),
+        created_by=actor_id,
+    )
 
 
 def _conversation_history(conversation_id: str) -> list[KnowledgeConversationHistoryMessage]:

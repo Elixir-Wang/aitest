@@ -54,7 +54,7 @@ test("project knowledge chat history is collapsed behind the top controls by def
 test("project knowledge chat history controls open for selected knowledge scope and gate history actions to project conversations", () => {
   assert.match(
     pageSource,
-    /projectConversationEnabled=\{effectiveKnowledgeScope === "project" && Boolean\(projectId\)\}/,
+    /projectConversationEnabled=\{effectiveKnowledgeScope === "all" \|\| Boolean\(projectId\)\}/,
   );
   assert.match(pageSource, /projectSelected=\{effectiveKnowledgeScope === "all" \|\| Boolean\(projectId\)\}/);
   assert.match(pageSource, /projectConversationEnabled: boolean/);
@@ -66,7 +66,7 @@ test("project knowledge chat history controls open for selected knowledge scope 
   assert.match(pageSource, /const projectHistoryOpen = historyOpen/);
   assert.match(pageSource, /if \(!projectSelected \|\| running\)/);
   assert.match(pageSource, /setHistoryOpen\(true\)/);
-  assert.match(pageSource, /全部项目知识库暂不保存历史对话/);
+  assert.match(pageSource, /暂无历史对话。/);
   assert.match(pageSource, /\{projectHistoryOpen \? \(\s+<aside/);
   assert.match(
     pageSource,
@@ -145,17 +145,14 @@ test("knowledge page routes stream requests by effective scope", () => {
   assert.match(pageSource, /fetch\(`\$\{API_BASE_URL\}\$\{streamPath\}`/);
 });
 
-test("knowledge page only uses conversation endpoints for specific project scope", () => {
-  assert.match(
-    pageSource,
-    /if \(isCompanyKnowledge \|\| effectiveKnowledgeScope !== "project" \|\| !effectiveProjectId\)/,
-  );
-  assert.match(pageSource, /if \(effectiveKnowledgeScope !== "project" \|\| !projectId\)/);
+test("knowledge page loads conversation endpoints for all and project scopes", () => {
+  assert.match(pageSource, /if \(effectiveKnowledgeScope === "all"\)/);
+  assert.match(pageSource, /void loadProjectConversations\("all"\)/);
+  assert.match(pageSource, /void loadProjectConversations\("project", effectiveProjectId\)/);
+  assert.match(pageSource, /const conversationsPath =[\s\S]*?scope === "all"[\s\S]*?"\/knowledge\/conversations"/);
   assert.match(pageSource, /const conversation = event\.result\.conversation/);
-  assert.match(
-    pageSource,
-    /if \(isCurrentProjectQueryScope\(\) && submittedKnowledgeScope === "project" && conversation\)/,
-  );
+  assert.match(pageSource, /if \(isCurrentProjectQueryScope\(\) && conversation\)/);
+  assert.match(pageSource, /conversation_id: submittedConversationId/);
 });
 
 test("knowledge page guards stale stream metadata writes after scope changes", () => {
@@ -169,10 +166,7 @@ test("knowledge page guards stale stream metadata writes after scope changes", (
   assert.match(pageSource, /projectQueryRunIdRef\.current === queryRunId/);
   assert.match(pageSource, /latestProjectQueryScopeRef\.current === submittedQueryScopeKey/);
   assert.match(pageSource, /const conversation = event\.result\.conversation/);
-  assert.match(
-    pageSource,
-    /if \(isCurrentProjectQueryScope\(\) && submittedKnowledgeScope === "project" && conversation\)/,
-  );
+  assert.match(pageSource, /if \(isCurrentProjectQueryScope\(\) && conversation\)/);
   assert.match(pageSource, /setActiveProjectConversationId\(conversation\.id\)/);
   assert.match(pageSource, /setProjectConversations\(\(items\) => upsertConversation\(items, conversation\)\)/);
   assert.match(pageSource, /if \(isCurrentProjectQueryScope\(\)\) \{/);
@@ -196,7 +190,10 @@ test("knowledge assistant messages render markdown while user messages stay plai
   assert.match(pageSource, /import \{ MarkdownPreview \} from "@\/components\/ai-testing\/markdown-preview"/);
   const chatMessageSource = sourceAfter("function ChatMessage");
   assert.match(chatMessageSource, /tone === "assistant" \? \(/);
-  assert.match(chatMessageSource, /<MarkdownPreview className="knowledge-chat-markdown" content=\{body\} emptyText="" \/>/);
+  assert.match(
+    chatMessageSource,
+    /<MarkdownPreview className="knowledge-chat-markdown" content=\{body\} emptyText="" \/>/,
+  );
   assert.match(chatMessageSource, /<p className="whitespace-pre-wrap leading-6">\{body\}<\/p>/);
 });
 
@@ -221,7 +218,7 @@ test("knowledge page guards stale project conversation list loads", () => {
   assert.match(conversationLoadSource, /projectConversationLoadRunIdRef\.current = conversationLoadRunId/);
   assert.match(conversationLoadSource, /const isCurrentConversationLoad = \(\) =>/);
   assert.match(conversationLoadSource, /projectConversationLoadRunIdRef\.current === conversationLoadRunId/);
-  assert.match(conversationLoadSource, /latestProjectQueryScopeRef\.current === `project:\$\{targetProjectId\}`/);
+  assert.match(conversationLoadSource, /latestProjectQueryScopeRef\.current === scopeKey/);
   assert.match(
     conversationLoadSource,
     /if \(isCurrentConversationLoad\(\)\) \{\s+setProjectConversations\(conversations\)/,
@@ -231,16 +228,13 @@ test("knowledge page guards stale project conversation list loads", () => {
 });
 
 test("knowledge page guards stale project conversation opens", () => {
-  const conversationOpenSource = sourceBetween(
-    "const openProjectConversation = useCallback",
-    "void loadProjectConversations(effectiveProjectId);",
-  );
+  const conversationOpenSource = sourceBetween("const openProjectConversation = useCallback", "useEffect(() => {");
   assert.match(pageSource, /const projectConversationOpenRunIdRef = useRef\(0\)/);
   assert.match(conversationOpenSource, /const conversationOpenRunId = projectConversationOpenRunIdRef\.current \+ 1/);
   assert.match(conversationOpenSource, /projectConversationOpenRunIdRef\.current = conversationOpenRunId/);
   assert.match(conversationOpenSource, /const isCurrentConversationOpen = \(\) =>/);
   assert.match(conversationOpenSource, /projectConversationOpenRunIdRef\.current === conversationOpenRunId/);
-  assert.match(conversationOpenSource, /latestProjectQueryScopeRef\.current === `project:\$\{targetProjectId\}`/);
+  assert.match(conversationOpenSource, /latestProjectQueryScopeRef\.current === scopeKey/);
   assert.match(
     conversationOpenSource,
     /if \(isCurrentConversationOpen\(\)\) \{[\s\S]*?setActiveProjectConversationId\(detail\.conversation\.id\)/,

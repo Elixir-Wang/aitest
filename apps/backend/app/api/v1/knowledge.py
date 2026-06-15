@@ -46,6 +46,27 @@ def stream_project_knowledge_query(
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
+@global_router.get("/conversations")
+def list_all_project_knowledge_conversations(actor=Depends(current_user)) -> list[dict]:
+    return knowledge_service.list_all_project_knowledge_conversations(actor)
+
+
+@global_router.get("/conversations/{conversation_id}")
+def get_all_project_knowledge_conversation(
+    conversation_id: str,
+    actor=Depends(current_user),
+) -> dict:
+    return knowledge_service.get_all_project_knowledge_conversation(conversation_id, actor)
+
+
+@global_router.delete("/conversations/{conversation_id}")
+def delete_all_project_knowledge_conversation(
+    conversation_id: str,
+    actor=Depends(current_user),
+) -> dict:
+    return knowledge_service.delete_all_project_knowledge_conversation(conversation_id, actor)
+
+
 @global_router.post("/query/stream")
 def stream_all_project_knowledge_query(
     payload: KnowledgeQueryRequest,

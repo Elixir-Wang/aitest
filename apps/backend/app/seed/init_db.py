@@ -615,6 +615,7 @@ def init_db() -> None:
         _migrate_knowledge_query_model_assignment(db)
         _migrate_stored_paths(db)
         _seed_operation_log_retention_policy(db)
+        _ensure_all_projects_conversation_scope(db)
         _seed_user(db, "u-admin", "admin", "admin@example.com", "平台管理员", "admin", "admin", "enabled", "全部项目", "平台管理员，负责用户、模型和项目权限维护。")
         _sync_seed_password(db, "u-admin", "admin")
 
@@ -644,6 +645,18 @@ def _drop_column_if_exists(db: sqlite3.Connection, table: str, column: str) -> N
     if column not in columns:
         return
     db.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+
+
+def _ensure_all_projects_conversation_scope(db: sqlite3.Connection) -> None:
+    exists = db.execute("SELECT id FROM projects WHERE id = '__all_projects__'").fetchone()
+    if exists:
+        return
+    db.execute(
+        """
+        INSERT INTO projects (id, name, status, description, created_by)
+        VALUES ('__all_projects__', '全部项目知识库', 'archived', '系统保留项目，用于全部项目知识库对话历史。', 'system')
+        """
+    )
 
 
 def _seed_operation_log_retention_policy(db: sqlite3.Connection) -> None:

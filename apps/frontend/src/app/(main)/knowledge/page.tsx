@@ -5,7 +5,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import {
   Archive,
   BookOpen,
-  Bot,
   Brain,
   Building2,
   ChevronDown,
@@ -313,18 +312,19 @@ export default function Page() {
     projectQueryAbortControllerRef.current?.abort();
   }
 
-  const loadProjectConversations = useCallback(async (targetProjectId: string) => {
+  const loadProjectConversations = useCallback(async (scope: "all" | "project", targetProjectId?: string) => {
+    const scopeKey = scope === "all" ? "all:" : `project:${targetProjectId ?? ""}`;
     const conversationLoadRunId = projectConversationLoadRunIdRef.current + 1;
     projectConversationLoadRunIdRef.current = conversationLoadRunId;
     const isCurrentConversationLoad = () =>
       projectConversationLoadRunIdRef.current === conversationLoadRunId &&
-      latestProjectQueryScopeRef.current === `project:${targetProjectId}`;
+      latestProjectQueryScopeRef.current === scopeKey;
     setLoading(true);
     setError("");
     try {
-      const conversations = await apiRequest<ApiKnowledgeConversation[]>(
-        `/projects/${targetProjectId}/knowledge/conversations`,
-      );
+      const conversationsPath =
+        scope === "all" ? "/knowledge/conversations" : `/projects/${targetProjectId}/knowledge/conversations`;
+      const conversations = await apiRequest<ApiKnowledgeConversation[]>(conversationsPath);
       if (isCurrentConversationLoad()) {
         setProjectConversations(conversations);
       }
@@ -340,39 +340,52 @@ export default function Page() {
     }
   }, []);
 
-  const openProjectConversation = useCallback(async (targetProjectId: string, conversationId: string) => {
-    const conversationOpenRunId = projectConversationOpenRunIdRef.current + 1;
-    projectConversationOpenRunIdRef.current = conversationOpenRunId;
-    const isCurrentConversationOpen = () =>
-      projectConversationOpenRunIdRef.current === conversationOpenRunId &&
-      latestProjectQueryScopeRef.current === `project:${targetProjectId}`;
-    setLoading(true);
-    setError("");
-    try {
-      const detail = await apiRequest<ApiKnowledgeConversationDetail>(
-        `/projects/${targetProjectId}/knowledge/conversations/${conversationId}`,
-      );
-      if (isCurrentConversationOpen()) {
-        setActiveProjectConversationId(detail.conversation.id);
-        setProjectMessages(detail.messages.map(projectMessageFromApi));
-        setProjectChatDraft("");
+  const openProjectConversation = useCallback(
+    async (scope: "all" | "project", conversationId: string, targetProjectId?: string) => {
+      const scopeKey = scope === "all" ? "all:" : `project:${targetProjectId ?? ""}`;
+      const conversationOpenRunId = projectConversationOpenRunIdRef.current + 1;
+      projectConversationOpenRunIdRef.current = conversationOpenRunId;
+      const isCurrentConversationOpen = () =>
+        projectConversationOpenRunIdRef.current === conversationOpenRunId &&
+        latestProjectQueryScopeRef.current === scopeKey;
+      setLoading(true);
+      setError("");
+      try {
+        const conversationPath =
+          scope === "all"
+            ? `/knowledge/conversations/${conversationId}`
+            : `/projects/${targetProjectId}/knowledge/conversations/${conversationId}`;
+        const detail = await apiRequest<ApiKnowledgeConversationDetail>(conversationPath);
+        if (isCurrentConversationOpen()) {
+          setActiveProjectConversationId(detail.conversation.id);
+          setProjectMessages(detail.messages.map(projectMessageFromApi));
+          setProjectChatDraft("");
+        }
+      } catch (nextError) {
+        if (isCurrentConversationOpen()) {
+          setError(nextError instanceof Error ? nextError.message : "打开项目知识库对话失败。");
+        }
+      } finally {
+        if (isCurrentConversationOpen()) {
+          setLoading(false);
+        }
       }
-    } catch (nextError) {
-      if (isCurrentConversationOpen()) {
-        setError(nextError instanceof Error ? nextError.message : "打开项目知识库对话失败。");
-      }
-    } finally {
-      if (isCurrentConversationOpen()) {
-        setLoading(false);
-      }
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
-    if (isCompanyKnowledge || effectiveKnowledgeScope !== "project" || !effectiveProjectId) {
+    if (isCompanyKnowledge) {
       return;
     }
-    void loadProjectConversations(effectiveProjectId);
+    if (effectiveKnowledgeScope === "all") {
+      void loadProjectConversations("all");
+      return;
+    }
+    if (!effectiveProjectId) {
+      return;
+    }
+    void loadProjectConversations("project", effectiveProjectId);
   }, [effectiveKnowledgeScope, effectiveProjectId, isCompanyKnowledge, loadProjectConversations]);
 
   function createProjectConversation() {
@@ -393,13 +406,17 @@ export default function Page() {
   }
 
   async function deleteProjectConversation(conversationId: string) {
-    if (effectiveKnowledgeScope !== "project" || !projectId) {
+    if (effectiveKnowledgeScope === "project" && !projectId) {
       return;
     }
     setRunning(true);
     setError("");
     try {
-      await apiRequest<{ deleted: boolean }>(`/projects/${projectId}/knowledge/conversations/${conversationId}`, {
+      const deletePath =
+        effectiveKnowledgeScope === "all"
+          ? `/knowledge/conversations/${conversationId}`
+          : `/projects/${projectId}/knowledge/conversations/${conversationId}`;
+      await apiRequest<{ deleted: boolean }>(deletePath, {
         method: "DELETE",
       });
       setProjectConversations((items) => items.filter((item) => item.id !== conversationId));
@@ -523,7 +540,7 @@ export default function Page() {
           include_requirements: true,
           include_explorations: true,
           show_thinking: submittedShowThinking,
-          conversation_id: submittedKnowledgeScope === "project" ? submittedConversationId : null,
+          conversation_id: submittedConversationId,
         }),
         signal: abortController.signal,
       });
@@ -569,7 +586,7 @@ export default function Page() {
           } else if (event.type === "metadata") {
             finalResult = event.result;
             const conversation = event.result.conversation;
-            if (isCurrentProjectQueryScope() && submittedKnowledgeScope === "project" && conversation) {
+            if (isCurrentProjectQueryScope() && conversation) {
               setActiveProjectConversationId(conversation.id);
               setProjectConversations((items) => upsertConversation(items, conversation));
             }
@@ -991,11 +1008,15 @@ export default function Page() {
           modelLoading={knowledgeModelLoading}
           modelProviders={knowledgeModelProviders}
           modelSaving={knowledgeModelSaving}
-          onConversationOpen={(conversationId) =>
-            effectiveKnowledgeScope === "project" &&
-            projectId &&
-            void openProjectConversation(projectId, conversationId)
-          }
+          onConversationOpen={(conversationId) => {
+            if (effectiveKnowledgeScope === "all") {
+              void openProjectConversation("all", conversationId);
+              return;
+            }
+            if (projectId) {
+              void openProjectConversation("project", conversationId, projectId);
+            }
+          }}
           onConversationCreate={createProjectConversation}
           onConversationDelete={(conversationId) => void deleteProjectConversation(conversationId)}
           onModelProviderChange={(modelProviderId) => void updateKnowledgeQueryModelProvider(modelProviderId)}
@@ -1005,7 +1026,7 @@ export default function Page() {
           onSubmit={(question) => void queryProjectKnowledge(question)}
           projectScopeOptions={knowledgeProjectScopeOptions}
           projectSelected={effectiveKnowledgeScope === "all" || Boolean(projectId)}
-          projectConversationEnabled={effectiveKnowledgeScope === "project" && Boolean(projectId)}
+          projectConversationEnabled={effectiveKnowledgeScope === "all" || Boolean(projectId)}
           running={running}
           selectedModelProviderId={selectedKnowledgeModelProviderId}
           selectedProjectScope={selectedProjectScope}
@@ -1221,7 +1242,6 @@ function ProjectKnowledgeWorkspace({
               }
               setHistoryOpen(true);
             }}
-            projectConversationEnabled={projectConversationEnabled}
             projectSelected={projectSelected}
             running={running}
           />
@@ -1249,11 +1269,7 @@ function ProjectKnowledgeWorkspace({
               </div>
             </div>
             <div className="min-h-0 flex-1 space-y-1 overflow-auto p-2">
-              {!projectConversationEnabled ? (
-                <div className="px-2 py-3 text-muted-foreground text-sm">
-                  全部项目知识库暂不保存历史对话，可切换到具体项目查看项目对话历史。
-                </div>
-              ) : loading ? (
+              {loading ? (
                 <div className="px-2 py-3 text-muted-foreground text-sm">正在加载对话。</div>
               ) : conversations.length === 0 ? (
                 <div className="px-2 py-3 text-muted-foreground text-sm">暂无历史对话。</div>
@@ -1361,7 +1377,7 @@ function ProjectKnowledgeWorkspace({
               {messages.map((message) => (
                 <ChatMessage
                   body={message.body}
-                  icon={message.role === "user" ? User : Bot}
+                  icon={message.role === "user" ? User : Command}
                   key={message.id}
                   loading={
                     running &&
@@ -1431,23 +1447,16 @@ function ProjectKnowledgeWorkspace({
 function KnowledgeChatTopControls({
   onConversationCreate,
   onHistoryOpen,
-  projectConversationEnabled,
   projectSelected,
   running,
 }: {
   onConversationCreate: () => void;
   onHistoryOpen: () => void;
-  projectConversationEnabled: boolean;
   projectSelected: boolean;
   running: boolean;
 }) {
   const controlDisabledReason = !projectSelected ? "请选择知识库后使用对话" : "查询中";
-  const historyTitle =
-    projectSelected && !running
-      ? projectConversationEnabled
-        ? "展开对话历史"
-        : "查看全部项目对话状态"
-      : controlDisabledReason;
+  const historyTitle = projectSelected && !running ? "展开对话历史" : controlDisabledReason;
   const createTitle = projectSelected && !running ? "新建对话" : controlDisabledReason;
 
   return (
@@ -1502,7 +1511,7 @@ function ChatMessage({
       <div className={isUser ? "max-w-[82%]" : "max-w-[88%]"}>
         <div className={isUser ? "flex flex-row-reverse items-center gap-2" : "flex items-center gap-2"}>
           <div className="flex size-7 items-center justify-center rounded-md border bg-background">
-            <Icon className={loading ? "size-4 animate-spin" : "size-4"} />
+            <Icon className="size-4" />
           </div>
           <div className="font-medium text-muted-foreground text-xs">{title}</div>
         </div>
