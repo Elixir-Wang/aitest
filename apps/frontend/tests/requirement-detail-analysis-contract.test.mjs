@@ -109,7 +109,6 @@ test("requirement analysis confirmation uses the standard alert dialog", () => {
 test("preliminary requirement can be finalized into the final requirement tab", () => {
   assert.match(pageSource, />转为最终需求</);
   assert.match(pageSource, /\/analysis\/finalize/);
-  assert.match(pageSource, /REQUIREMENT_ANALYSIS_CONFIRM_REQUIRED/);
   assert.match(pageSource, /toast\.success\("已转为最终需求"\)/);
   assert.match(pageSource, /setActiveTab\("final"\)/);
   assert.match(pageSource, /const canFinalizeRequirement = Boolean\(/);
@@ -133,7 +132,8 @@ test("clarification tab keeps the clickable answer structure", () => {
   assert.match(pageSource, /filteredHandledPendingAnalysisItems\.map/);
   assert.match(pageSource, /setActiveRestoredPendingItemId\(item\.id\)/);
   assert.doesNotMatch(pageSource, /scrollIntoView/);
-  assert.match(pageSource, /isDeferredAnswer \? "移回处理" : "移回修改"/);
+  assert.match(pageSource, />\s*移回编辑\s*</);
+  assert.match(pageSource, /撤回已写入初步需求的补充内容/);
   assert.match(pageSource, /澄清：/);
   assert.doesNotMatch(pageSource, /暂未写入初步需求，移回后可选择推荐口径或填写自定义答复/);
   assert.match(pageSource, /保存答复/);
@@ -145,7 +145,7 @@ test("clarification tab keeps the clickable answer structure", () => {
 test("clarification questions do not render prompt prefixes or guessed fallback answers", () => {
   assert.match(pageSource, /function normalizePendingQuestionText\(question: string\)/);
   assert.match(pageSource, /\.replace\(\/\^以下细节需要确认/);
-  assert.match(pageSource, /const questionBody = normalizePendingQuestionText\(item\.question\)/);
+  assert.match(pageSource, /const questionBody = normalizePendingQuestionText\(pendingItemQuestion\(item\)\)/);
   assert.match(pageSource, /<div className="text-foreground text-sm leading-6">\{questionBody\}<\/div>/);
   assert.match(pageSource, /return \[\];\s*\}/);
   assert.doesNotMatch(pageSource, /function inferPendingLikelyAnswers/);

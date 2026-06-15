@@ -57,7 +57,6 @@ import { Input } from "@/components/ui/input";
 import { KnowledgeChatInput } from "@/components/ui/knowledge-chat-input";
 import { Label } from "@/components/ui/label";
 import PulsatingDots from "@/components/ui/pulsating-loader";
-import { fileConversionTone, StatusBadge } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -227,11 +226,7 @@ function companyUploadFileKey(file: File): string {
   return `${file.name}-${file.lastModified}-${file.size}`;
 }
 
-function resolveCompanyTargetFolderLabel(
-  root: ApiCompanyKnowledgeFolder,
-  baseName: string,
-  folderId: string,
-): string {
+function resolveCompanyTargetFolderLabel(root: ApiCompanyKnowledgeFolder, baseName: string, folderId: string): string {
   if (!folderId || folderId === root.id) {
     return baseName;
   }
@@ -1900,9 +1895,7 @@ function CompanyKnowledgeHub({
 }) {
   const isRoot = folder.id === root.id;
   const { folders: folderCount, files: fileCount } = countCompanyFolderChildren(folder);
-  const subfolders = folder.children.filter(
-    (node): node is ApiCompanyKnowledgeFolder => node.type === "folder",
-  );
+  const subfolders = folder.children.filter((node): node is ApiCompanyKnowledgeFolder => node.type === "folder");
   const files = folder.children.filter((node): node is ApiCompanyKnowledgeFile => node.type === "file");
   const gridClass = sidebarOpen ? "grid gap-2 sm:grid-cols-2" : "grid gap-2 sm:grid-cols-2 lg:grid-cols-3";
 
@@ -1947,16 +1940,7 @@ function CompanyKnowledgeHub({
               : `${folderCount} 个子目录 · ${fileCount} 篇文档`}
           </p>
         </div>
-        {isRoot ? (
-          subfolders.length > 0 ? (
-            <div className="space-y-2">
-              <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">快速进入</p>
-              <div className={gridClass}>{subfolders.map((node) => renderNodeCard(node))}</div>
-            </div>
-          ) : folder.children.length === 0 ? (
-            <p className="text-center text-muted-foreground text-sm">此目录暂无内容，可从左侧上传或新建。</p>
-          ) : null
-        ) : folder.children.length === 0 ? (
+        {folder.children.length === 0 ? (
           <p className="text-center text-muted-foreground text-sm">此目录暂无内容，可从左侧上传或新建。</p>
         ) : (
           <div className="space-y-4">
@@ -2075,6 +2059,8 @@ function CompanyKnowledgeVault({
       : expandedFolderIds;
 
   useEffect(() => {
+    const currentFileId = file?.id;
+    void currentFileId;
     previewScrollEl?.scrollTo({ top: 0, behavior: "auto" });
   }, [file?.id, previewScrollEl]);
 

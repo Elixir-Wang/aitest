@@ -49,6 +49,11 @@ class RequirementAnalysisFinalizeIn(BaseModel):
     confirm_unresolved: bool = False
 
 
+class RequirementPreliminaryUpdateIn(BaseModel):
+    markdown_content: str = ""
+    change_summary: str = ""
+
+
 class RequirementClarificationAnswerIn(BaseModel):
     question_id: str = Field(min_length=1)
     answer_type: str = Field(pattern="^(recommended_option|custom|defer)$")

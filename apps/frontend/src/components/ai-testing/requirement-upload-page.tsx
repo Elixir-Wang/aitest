@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
-import { type ApiProject, apiErrorFromXhr, apiRequest } from "@/lib/api-client";
+import { API_BASE_URL, type ApiProject, apiErrorFromXhr, apiRequest } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -52,8 +52,6 @@ type UploadResponse = {
     created_at: string;
   }>;
 };
-
-const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
 export function RequirementUploadPage({
   title,
@@ -190,7 +188,7 @@ export function RequirementUploadPage({
   function uploadFiles() {
     return new Promise<UploadResponse>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", `${apiBase}/projects/${projectId}/requirements`);
+      xhr.open("POST", `${API_BASE_URL}/projects/${projectId}/requirements`);
       if (token) {
         xhr.setRequestHeader("Authorization", `Bearer ${token}`);
       }

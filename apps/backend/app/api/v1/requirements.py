@@ -7,6 +7,7 @@ from app.dependencies.auth import current_user, require_admin
 from app.schemas.document import (
     RequirementAnalysisFinalizeIn,
     RequirementClarificationAnswerIn,
+    RequirementPreliminaryUpdateIn,
     SourceDocumentUpdateIn,
     SourceMarkdownUpdateIn,
 )
@@ -138,6 +139,17 @@ def finalize_requirement_analysis(
     actor=Depends(current_user),
 ) -> dict:
     return document_service.finalize_requirement_analysis(project_id, document_id, payload, actor)
+
+
+@router.put("/{document_id}/analysis/{analysis_id}/preliminary")
+def update_requirement_preliminary_markdown(
+    project_id: str,
+    document_id: str,
+    analysis_id: str,
+    payload: RequirementPreliminaryUpdateIn,
+    actor=Depends(current_user),
+) -> dict:
+    return document_service.update_requirement_preliminary_markdown(project_id, document_id, analysis_id, payload, actor)
 
 
 @router.get("/{document_id}/analysis/{analysis_id}/clarification-answers")

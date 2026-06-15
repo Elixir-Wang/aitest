@@ -48,7 +48,7 @@ class DeepUnderstandingOrchestrator:
 
         # Step 2: 领域建模
         print("🏗️ 正在构建领域模型...")
-        domain_model = await self.domain_modeler.model(
+        domain_model = await self.domain_modeler.build_model(
             requirement_doc,
             business_insight
         )

@@ -2,7 +2,12 @@
 
 import { useAuthStore } from "@/stores/auth-store";
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+function normalizeApiBaseUrl(value: string) {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  return trimmed.endsWith("/api/v1") ? trimmed : `${trimmed}/api/v1`;
+}
+
+export const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1");
 
 type ApiEnvelope<T> = {
   data: T;
@@ -493,12 +498,42 @@ export function apiErrorFromXhr(xhr: XMLHttpRequest, fallbackMessage = "请求�
     xhr.getResponseHeader("x-trace-id") ||
     "";
 
-  return new ApiRequestError(apiErrorMessageFromPayload(payload, fallbackMessage), {
+  const error = new ApiRequestError(apiErrorMessageFromPayload(payload, fallbackMessage), {
     code: apiErrorCodeFromPayload(payload),
     detail,
     status: xhr.status,
     traceId,
   });
+  if (isAuthRequiredError(error)) {
+    redirectToLoginAfterAuthExpired();
+  }
+  return error;
+}
+
+function isAuthRequiredError(error: ApiRequestError) {
+  return error.status === 401 && error.code === "AUTH_REQUIRED";
+}
+
+function redirectToLoginAfterAuthExpired() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const { pathname, search } = window.location;
+  if (pathname.startsWith("/auth/")) {
+    return;
+  }
+
+  useAuthStore.getState().logout();
+  window.location.assign(`/auth/v1/login?next=${encodeURIComponent(`${pathname}${search}`)}`);
+}
+
+function throwApiError(response: Response, payload: unknown): never {
+  const error = apiErrorFromResponse(response, payload);
+  if (isAuthRequiredError(error)) {
+    redirectToLoginAfterAuthExpired();
+  }
+  throw error;
 }
 
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -522,7 +557,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw apiErrorFromResponse(response, payload);
+    throwApiError(response, payload);
   }
 
   return (payload as ApiEnvelope<T>).data;
@@ -563,7 +598,7 @@ export async function apiBlobRequest(path: string, options: RequestInit = {}): P
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw apiErrorFromResponse(response, payload);
+    throwApiError(response, payload);
   }
 
   return response.blob();
@@ -590,7 +625,7 @@ export async function apiFormRequest<T>(path: string, formData: FormData, option
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw apiErrorFromResponse(response, payload);
+    throwApiError(response, payload);
   }
 
   return (payload as ApiEnvelope<T>).data;

@@ -174,7 +174,7 @@ class DomainModeler:
         """
         self.model = model
 
-    async def model(
+    async def build_model(
         self,
         requirement_doc: str,
         business_insight: BusinessInsight

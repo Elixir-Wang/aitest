@@ -70,6 +70,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import {
+  API_BASE_URL,
   ApiRequestError,
   type ApiTaskItem,
   apiBlobRequest,
@@ -557,6 +558,7 @@ export default function DocumentDetailPage() {
   const [editingStandard, setEditingStandard] = useState(false);
   const [savingStandard, setSavingStandard] = useState(false);
   const [editingStandardWithAi, setEditingStandardWithAi] = useState(false);
+  const [editingPreliminaryWithAi, setEditingPreliminaryWithAi] = useState(false);
   const [settingPrimaryFileId, setSettingPrimaryFileId] = useState("");
   const [analysisResult, setAnalysisResult] = useState<RequirementAnalysisResult | null>(null);
   const [requirementVersions, setRequirementVersions] = useState<RequirementVersion[]>([]);
@@ -656,6 +658,7 @@ export default function DocumentDetailPage() {
     analysisResult?.quality_result === "blocked" ||
     analysisResult?.output.quality_gate.result === "blocked";
   const isFinalized = Boolean(analysisResult?.finalized_version_id);
+  const canEditPreliminary = Boolean(analysisResult && preliminaryMarkdown.trim() && !isFinalized && !reviewLoading);
   const isPrimaryAnalysisChanged = Boolean(
     analysisResult?.primary_mapping_id && analysisResult.primary_mapping_id !== currentPrimaryFile?.id,
   );
@@ -1079,6 +1082,48 @@ export default function DocumentDetailPage() {
     }
   }
 
+  async function editPreliminaryMarkdownWithAi(instruction: string) {
+    if (!analysisResult || !preliminaryMarkdown.trim() || isFinalized) {
+      return;
+    }
+    setEditingPreliminaryWithAi(true);
+    try {
+      const editResult = await apiRequest<DocumentEditResponse>("/agents/document-editor/run", {
+        method: "POST",
+        body: JSON.stringify({
+          content: preliminaryMarkdown,
+          instruction,
+        }),
+      });
+      if (!editResult.edited_content.trim()) {
+        toast.info(editResult.change_summary || "AI 未修改文档");
+        return;
+      }
+      const savedResult = await apiRequest<{ analysis: RequirementAnalysisResult }>(
+        `/projects/${projectId}/requirements/${documentId}/analysis/${analysisResult.id}/preliminary`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            markdown_content: editResult.edited_content,
+            change_summary: `AI修改：${editResult.change_summary}`,
+          }),
+        },
+      );
+      setAnalysisResult(savedResult.analysis);
+      toast.success(editResult.change_summary || "AI修改已保存");
+      await loadOverview({ silent: true });
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "智能修改失败",
+        actionLabel: "AI 修改初步需求",
+        method: "POST",
+        path: "/agents/document-editor/run",
+      });
+    } finally {
+      setEditingPreliminaryWithAi(false);
+    }
+  }
+
   async function reviewPrimaryRequirement() {
     if (!currentPrimaryFile) {
       toast.error("请先设置主需求文件");
@@ -1345,7 +1390,7 @@ export default function DocumentDetailPage() {
     }));
     setActiveRestoredPendingItemId(item.id);
     setAnalysisTab("clarification");
-    toast.info("已移回待澄清列表，关闭弹窗后可编辑");
+    toast.info("已移回待澄清列表，关闭弹窗后可编辑或撤回写入");
   }
 
   async function saveClarificationAnswer(item: RequirementAnalysisPendingItem, forcedAnswerType?: "defer") {
@@ -1497,7 +1542,6 @@ export default function DocumentDetailPage() {
       return;
     }
 
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
     setUploadSubmitting(true);
     setUploadStates(
       Object.fromEntries(
@@ -1508,7 +1552,7 @@ export default function DocumentDetailPage() {
     try {
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open("POST", `${apiBase}/projects/${projectId}/requirements`);
+        xhr.open("POST", `${API_BASE_URL}/projects/${projectId}/requirements`);
         if (token) {
           xhr.setRequestHeader("Authorization", `Bearer ${token}`);
         }
@@ -1917,6 +1961,14 @@ export default function DocumentDetailPage() {
                         {handledPendingAnalysisItems.length}
                       </RequirementRoleBadge>
                     </Button>
+                  ) : null}
+                  {analysisTab === "enhanced" ? (
+                    <AiEditInput
+                      disabled={!canEditPreliminary || editingPreliminaryWithAi}
+                      loading={editingPreliminaryWithAi}
+                      onSubmit={editPreliminaryMarkdownWithAi}
+                      placeholder="描述你希望如何修改当前初步需求..."
+                    />
                   ) : null}
                   {requirementReviewRunning ? (
                     <Button
@@ -2358,9 +2410,7 @@ export default function DocumentDetailPage() {
                               <Badge variant={isDeferredAnswer ? "secondary" : "outline"}>
                                 {handledPendingItemLabel(item)}
                               </Badge>
-                              <Badge variant={pendingItemSeverityVariant(item)}>
-                                {pendingItemSeverityLabel(item)}
-                              </Badge>
+                              <Badge variant={pendingItemSeverityVariant(item)}>{pendingItemSeverityLabel(item)}</Badge>
                             </div>
                             <div className="mt-3 break-words text-foreground text-sm leading-6">{itemHeading}</div>
                           </div>
@@ -2369,16 +2419,21 @@ export default function DocumentDetailPage() {
                             disabled={isFinalized}
                             onClick={() => restoreHandledPendingItem(item)}
                             type="button"
-                            variant={isDeferredAnswer ? "default" : "outline"}
+                            variant="outline"
                           >
                             <Pencil className="size-3.5" />
-                            {isDeferredAnswer ? "移回处理" : "移回修改"}
+                            移回编辑
                           </Button>
                         </div>
                         {answerText ? (
                           <div className="mt-3 border-muted-foreground/20 border-l-2 pl-3 text-muted-foreground text-sm leading-6">
                             <span className="mr-2 font-medium text-foreground">澄清：</span>
                             {answerText}
+                          </div>
+                        ) : null}
+                        {!isDeferredAnswer ? (
+                          <div className="mt-2 text-muted-foreground text-xs leading-5">
+                            移回后选择“暂不处理”并保存，会撤回已写入初步需求的补充内容。
                           </div>
                         ) : null}
                       </div>
@@ -2533,7 +2588,7 @@ export default function DocumentDetailPage() {
           <DialogHeader>
             <DialogTitle>转为最终需求</DialogTitle>
             <DialogDescription>
-              当前需求分析仍存在待澄清事项或质量警告。转为最终需求后会生成新的最终需求版本，后续可继续通过版本记录追溯。是否继续？
+              当前需求分析仍存在待澄清事项。转为最终需求后会生成新的最终需求版本，后续可继续通过版本记录追溯。是否继续？
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

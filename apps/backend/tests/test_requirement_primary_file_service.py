@@ -7,7 +7,11 @@ from fastapi import HTTPException
 from app.core import db as core_db
 from app.repositories import document_repo
 from app.seed.init_db import init_db
-from app.schemas.document import RequirementAnalysisFinalizeIn, RequirementClarificationAnswerIn
+from app.schemas.document import (
+    RequirementAnalysisFinalizeIn,
+    RequirementClarificationAnswerIn,
+    RequirementPreliminaryUpdateIn,
+)
 from app.services.document import service as document_service
 
 
@@ -159,6 +163,58 @@ def test_latest_requirement_analysis_normalizes_saved_markdown_output(
     assert output["quality_assurance_report_markdown"].startswith("# 质量保障报告\n\n## 质量摘要")
     assert "\\n" not in output["quality_assurance_report_markdown"]
     assert "主要优点：\n1. 主流程清晰。" in output["quality_assurance_report_markdown"]
+
+
+def test_update_requirement_preliminary_markdown_updates_analysis_draft(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+    _seed_requirement_document("doc-1")
+    with core_db.connect() as db:
+        db.execute(
+            """
+            INSERT INTO requirement_analyses
+              (id, project_id, document_id, status, analysis_summary, output_json, quality_result, testability_score,
+               draft_content_hash, created_by)
+            VALUES (?, ?, ?, 'completed', ?, ?, 'passed', 90, ?, ?)
+            """,
+            (
+                "analysis-1",
+                "project-1",
+                "doc-1",
+                "需求分析完成。",
+                json.dumps(
+                    {
+                        "status": "completed",
+                        "analysis_summary": "需求分析完成。",
+                        "preliminary_requirement_markdown": "# 初步需求\n\n登录。",
+                        "enhanced_requirement_markdown": "# 初步需求\n\n登录。",
+                        "quality_gate": {"result": "passed", "testability_score": 90},
+                    },
+                    ensure_ascii=False,
+                ),
+                "old-hash",
+                ACTOR["id"],
+            ),
+        )
+
+    result = document_service.update_requirement_preliminary_markdown(
+        "project-1",
+        "doc-1",
+        "analysis-1",
+        RequirementPreliminaryUpdateIn(
+            markdown_content="# 初步需求\n\n登录支持验证码。",
+            change_summary="AI修改：补充验证码",
+        ),
+        ACTOR,
+    )
+
+    output = result["analysis"]["output"]
+    assert output["preliminary_requirement_markdown"] == "# 初步需求\n\n登录支持验证码。"
+    assert output["enhanced_requirement_markdown"] == "# 初步需求\n\n登录支持验证码。"
+    assert result["analysis"]["draft_content_hash"] != "old-hash"
 
 
 def test_get_version_detail_and_switch_current_final_requirement_version(
@@ -713,6 +769,73 @@ async def test_finalize_requirement_analysis_requires_confirmation_for_unresolve
 
 
 @pytest.mark.anyio
+async def test_finalize_requirement_analysis_allows_quality_warning_without_unresolved_items(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+
+    async def fake_convert_to_markdown(filename, raw_bytes=None, *, source_path=None, assets_dir=None):
+        return "# 主需求\n\n用户可以使用验证码登录。\n", "已生成主需求标准 Markdown。"
+
+    class FakeQualityGate:
+        result = "warning"
+        testability_score = 70
+        blocking_issues: list[str] = []
+
+    class FakeAnalysisOutput:
+        status = "completed"
+        analysis_summary = "存在质量警告，但没有待确认问题。"
+        quality_gate = FakeQualityGate()
+        preliminary_requirement_markdown = "# 主需求\n\n用户可以使用验证码登录。\n"
+
+        def model_dump(self):
+            return {
+                "status": "completed",
+                "analysis_summary": "存在质量警告，但没有待确认问题。",
+                "preliminary_requirement_markdown": self.preliminary_requirement_markdown,
+                "applied_supplements": [],
+                "modules": [],
+                "clarification_questions": [],
+                "conflicts": [],
+                "quality_gate": {
+                    "result": "warning",
+                    "testability_score": 70,
+                    "blocking_issues": [],
+                    "warning_issues": ["存在质量警告"],
+                    "passed_checks": [],
+                },
+                "next_actions": [],
+            }
+
+    async def fake_analyze_requirement(input_data):
+        return FakeAnalysisOutput()
+
+    monkeypatch.setattr("app.services.document.file_service.convert_to_markdown", fake_convert_to_markdown)
+    monkeypatch.setattr("app.services.document.service.analyze_requirement_with_agent", fake_analyze_requirement)
+
+    result = await document_service.upload_documents(
+        "project-1",
+        [_upload_file("main.md", "# main")],
+        ACTOR,
+        document_name="登录需求",
+    )
+    mapping_id = result["files"][0]["id"]
+    await document_service.convert_pending_file_mappings([mapping_id])
+    review = await document_service.review_primary_requirement_file("project-1", result["document"]["id"], ACTOR)
+
+    finalize = document_service.finalize_requirement_analysis(
+        "project-1",
+        result["document"]["id"],
+        RequirementAnalysisFinalizeIn(analysis_id=review["id"]),
+        ACTOR,
+    )
+
+    assert finalize["version"]["version_no"] == 1
+    assert finalize["analysis"]["finalized_version_id"] == finalize["version"]["id"]
+
+
+@pytest.mark.anyio
 async def test_clarification_answer_recommended_option_updates_preliminary_requirement(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -810,7 +933,9 @@ async def test_clarification_answer_recommended_option_updates_preliminary_requi
     markdown = applied["analysis"]["output"]["preliminary_requirement_markdown"]
     assert applied["answer"]["apply_status"] == "applied"
     assert "验证码有效期为 5 分钟。" in markdown
-    assert "<!-- clarification-answer:Q-001:start -->" in markdown
+    assert "clarification-answer:Q-001:start" not in markdown
+    assert "人工确认" not in markdown
+    assert "## 登录" in markdown
     assert applied["analysis"]["output"]["clarification_questions"][0]["answer"]["selected_option_id"] == "option-a"
 
     finalize = document_service.finalize_requirement_analysis(
@@ -924,7 +1049,8 @@ async def test_clarification_answer_custom_replaces_previous_answer(
     markdown = replaced["analysis"]["output"]["preliminary_requirement_markdown"]
     assert "验证码有效期为 3 分钟" in markdown
     assert "验证码有效期为 5 分钟" not in markdown
-    assert markdown.count("clarification-answer:Q-001:start") == 1
+    assert markdown.count("验证码有效期为 3 分钟") == 1
+    assert "clarification-answer:Q-001:start" not in markdown
 
 
 @pytest.mark.anyio
@@ -1007,6 +1133,7 @@ async def test_clarification_answer_defer_does_not_update_preliminary_requiremen
         deferred["analysis"]["output"]["preliminary_requirement_markdown"].strip()
         == FakeAnalysisOutput.preliminary_requirement_markdown.strip()
     )
+    assert "clarification-answer:Q-001:start" not in deferred["analysis"]["output"]["preliminary_requirement_markdown"]
 
 
 @pytest.mark.anyio
@@ -1110,6 +1237,8 @@ async def test_clarification_answer_defer_removes_previous_answer_block(
     assert deferred["answer"]["apply_status"] == "not_applicable"
     assert "验证码有效期为 5 分钟。" not in markdown
     assert "clarification-answer:Q-001:start" not in markdown
+    assert "### 验证码规则" not in markdown
+    assert markdown.strip() == FakeAnalysisOutput.preliminary_requirement_markdown.strip()
 
 
 @pytest.mark.anyio

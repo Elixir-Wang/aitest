@@ -24,7 +24,7 @@
 - 需求分析完成时不再自动更新 `source_documents.current_version_id`。
 - 最终需求仍复用现有 `source_document_versions` 和 `current_version_id` 机制。
 - 后端提供明确的 finalize 契约，避免前端直接拼装 Markdown 调通用编辑接口。
-- 对存在待确认问题、质量警告、阻塞状态、主需求切换后的过期分析给出明确处理规则。
+- 对存在待确认问题、阻塞状态、主需求切换后的过期分析给出明确处理规则。
 
 ## 非目标
 
@@ -115,14 +115,14 @@ current_version_id 只在 finalize 成功后更新
 | 分析运行中 | 禁用，提示 `需求分析中` |
 | 初步需求为空 | 禁用，提示 `初步需求为空` |
 | `quality_gate.result = blocked` 或 `status = blocked` | 禁用，提示 `存在阻塞问题，不能转为最终需求` |
-| 存在待确认问题或质量警告 | 可点击，但必须二次确认 |
+| 存在待确认问题 | 可点击，但必须二次确认 |
 | 已转为最终需求 | 显示 `已转为最终需求`，禁用，旁边可提供 `查看最终需求` |
 | 主需求文件已切换导致分析过期 | 禁用，提示 `主需求已变更，请重新分析` |
 
 二次确认文案：
 
 ```text
-当前初步需求仍存在待确认问题或质量警告。转为最终需求后会生成新的最终需求版本，后续可继续通过版本记录追溯。是否继续？
+当前初步需求仍存在待确认问题。转为最终需求后会生成新的最终需求版本，后续可继续通过版本记录追溯。是否继续？
 ```
 
 成功提示：
@@ -220,7 +220,7 @@ POST /api/v1/projects/{project_id}/requirements/{document_id}/analysis/finalize
 | 字段 | 必填 | 含义 |
 | --- | --- | --- |
 | `analysis_id` | 是 | 要转为最终需求的分析 ID |
-| `confirm_unresolved` | 否 | 存在待确认问题或质量警告时，用户是否已二次确认 |
+| `confirm_unresolved` | 否 | 存在待确认问题时，用户是否已二次确认 |
 
 成功响应：
 
@@ -261,7 +261,7 @@ POST /api/v1/projects/{project_id}/requirements/{document_id}/analysis/finalize
 | 主需求文件已切换 | 409 | `REQUIREMENT_ANALYSIS_PRIMARY_CHANGED` | `主需求文件已变更，请重新执行需求分析。` |
 | 初步需求为空 | 409 | `REQUIREMENT_ANALYSIS_EMPTY_DRAFT` | `初步需求为空，不能转为最终需求。` |
 | 存在阻塞问题 | 409 | `REQUIREMENT_ANALYSIS_BLOCKED` | `存在阻塞问题，不能转为最终需求。` |
-| 需要二次确认 | 409 | `REQUIREMENT_ANALYSIS_CONFIRM_REQUIRED` | `当前初步需求仍存在待确认问题或质量警告，请确认后再转为最终需求。` |
+| 需要二次确认 | 409 | `REQUIREMENT_ANALYSIS_CONFIRM_REQUIRED` | `当前初步需求仍存在待确认问题，请确认后再转为最终需求。` |
 
 ## 数据模型
 
@@ -527,7 +527,8 @@ finalize 接口内部可以复用现有 repository：
 - `GET /analysis` 返回最新 analysis，并包含 `finalized_version_id`。
 - 初步需求为空时，finalize 返回 409。
 - `status = blocked` 或 `quality_gate.result = blocked` 时，finalize 返回 409。
-- 存在待确认问题或质量 warning 且 `confirm_unresolved=false` 时，finalize 返回 409。
+- 存在待确认问题且 `confirm_unresolved=false` 时，finalize 返回 409。
+- 仅存在质量 warning 且无待确认问题时，finalize 直接成功。
 - `confirm_unresolved=true` 时可继续创建最终版本。
 - finalize 成功后创建 `source_document_versions`。
 - finalize 成功后更新 `source_documents.current_version_id`。
@@ -541,7 +542,7 @@ finalize 接口内部可以复用现有 repository：
 - 初步需求右上角显示 `转为最终需求` 按钮。
 - 没有初步需求时按钮禁用或不显示。
 - 阻塞状态下按钮禁用。
-- 存在待确认问题或质量 warning 时点击按钮会出现二次确认。
+- 存在待确认问题时点击按钮会出现二次确认。
 - 转换成功后 toast 显示 `已转为最终需求`。
 - 转换成功后自动进入 `最终需求` tab。
 - `最终需求` tab 展示刚生成的最终需求 Markdown。

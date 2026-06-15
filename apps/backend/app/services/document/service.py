@@ -19,7 +19,12 @@ from app.agents.requirement_analysis.utils.report_generator import (
     generate_quality_assurance_report,
 )
 from app.repositories import document_repo, requirement_analysis_run_repo, requirement_clarification_answer_repo
-from app.schemas.document import RequirementAnalysisFinalizeIn, RequirementClarificationAnswerIn, SourceDocumentUpdateIn
+from app.schemas.document import (
+    RequirementAnalysisFinalizeIn,
+    RequirementClarificationAnswerIn,
+    RequirementPreliminaryUpdateIn,
+    SourceDocumentUpdateIn,
+)
 from app.schemas.requirement_analysis import (
     RequirementAnalysisInput,
 )
@@ -934,6 +939,67 @@ def list_requirement_clarification_answers(project_id: str, document_id: str, an
         return {"answers": [_serialize_requirement_clarification_answer(row) for row in rows]}
 
 
+def update_requirement_preliminary_markdown(
+    project_id: str,
+    document_id: str,
+    analysis_id: str,
+    payload: RequirementPreliminaryUpdateIn,
+    actor,
+) -> dict:
+    markdown_content = payload.markdown_content.strip()
+    if not markdown_content:
+        raise api_error(422, "REQUIREMENT_PRELIMINARY_MARKDOWN_REQUIRED", "初步需求不能为空。")
+
+    with connect() as db:
+        document = document_repo.find_by_project_and_id(db, project_id, document_id)
+        if not document:
+            raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
+
+        analysis = document_repo.find_requirement_analysis(db, analysis_id)
+        if not analysis or analysis["project_id"] != project_id or analysis["document_id"] != document_id:
+            raise api_error(404, "REQUIREMENT_ANALYSIS_NOT_FOUND", "需求分析结果不存在。")
+        if analysis["finalized_version_id"]:
+            raise api_error(409, "REQUIREMENT_ANALYSIS_FINALIZED", "该初步需求已转为最终需求，不能继续修改。")
+
+        output = _normalize_requirement_analysis_output_markdown(json.loads(analysis["output_json"]))
+        previous_markdown = str(output.get("preliminary_requirement_markdown") or "")
+        output["preliminary_requirement_markdown"] = markdown_content
+        output["enhanced_requirement_markdown"] = markdown_content
+
+        quality_gate = output.get("quality_gate") or {}
+        draft_content_hash = _content_hash(markdown_content)
+        document_repo.update_requirement_analysis_output(
+            db,
+            analysis_id=analysis_id,
+            status=str(output.get("status") or analysis["status"]),
+            analysis_summary=str(output.get("analysis_summary") or analysis["analysis_summary"]),
+            output_json=output,
+            quality_result=str(quality_gate.get("result") or analysis["quality_result"]),
+            testability_score=int(quality_gate.get("testability_score") or analysis["testability_score"] or 0),
+            draft_content_hash=draft_content_hash,
+        )
+        updated_analysis = document_repo.find_requirement_analysis(db, analysis_id)
+
+    summary = payload.change_summary.strip() or "编辑初步需求"
+    operation_log_service.record_change(
+        log_type="audit",
+        module="requirement",
+        action="update",
+        object_type="requirement_analysis",
+        object_id=analysis_id,
+        object_name=document["name"],
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=summary,
+        before={"preliminary_requirement_markdown": previous_markdown},
+        after={"preliminary_requirement_markdown": markdown_content},
+    )
+
+    return {"analysis": _serialize_requirement_analysis(updated_analysis)}
+
+
 def save_requirement_clarification_answer(
     project_id: str,
     document_id: str,
@@ -973,11 +1039,7 @@ def save_requirement_clarification_answer(
             )
             output["preliminary_requirement_markdown"] = preliminary_markdown
         else:
-            output["preliminary_requirement_markdown"] = _replace_or_remove_clarification_block(
-                preliminary_markdown,
-                payload.question_id,
-                replacement="",
-            )
+            output["preliminary_requirement_markdown"] = _remove_existing_clarification_answer(preliminary_markdown, question)
 
         answer_id = f"reqanswer-{secrets.token_hex(8)}"
         answer_snapshot = {
@@ -1115,16 +1177,11 @@ def finalize_requirement_analysis(
                 raise api_error(409, "REQUIREMENT_ANALYSIS_PRIMARY_CHANGED", "主需求文件已变更，请重新执行需求分析。")
 
         unresolved_count = _active_unresolved_count(output)
-        has_quality_warning = (
-            analysis["quality_result"] == "warning"
-            or quality_gate.get("result") == "warning"
-            or bool(quality_gate.get("warning_issues") or [])
-        )
-        if (unresolved_count > 0 or has_quality_warning) and not payload.confirm_unresolved:
+        if unresolved_count > 0 and not payload.confirm_unresolved:
             raise api_error(
                 409,
                 "REQUIREMENT_ANALYSIS_CONFIRM_REQUIRED",
-                "当前初步需求仍存在待确认问题或质量警告，请确认后再转为最终需求。",
+                "当前初步需求仍存在待确认问题，请确认后再转为最终需求。",
             )
 
         supplement_count = len(output.get("applied_supplements") or [])
@@ -1464,36 +1521,24 @@ def _apply_clarification_answer_to_markdown(
     question: dict,
     answer_markdown: str,
 ) -> tuple[str, str]:
-    question_id = question.get("id") or ""
     module_name = str(question.get("module_name") or "").strip()
     module_key = str(question.get("module_key") or "").strip()
-    question_text = str(
-        question.get("question") or question.get("decision_point") or question.get("title") or ""
-    ).strip()
-    block = _clarification_answer_markdown_block(question_id, question_text, answer_markdown)
-    without_old_block = _replace_or_remove_clarification_block(markdown_content, question_id, replacement="")
+    block = _clarification_answer_markdown_block(question, answer_markdown)
+    without_old_block = _remove_existing_clarification_answer(markdown_content, question)
     insertion_anchor = module_name or module_key or "人工确认补充"
-    if _has_clarification_section(without_old_block):
-        return _append_to_clarification_section(without_old_block, block), insertion_anchor
     if module_name or module_key:
         updated = _append_to_matching_section(without_old_block, block, [module_name, module_key])
         if updated != without_old_block:
             return updated, insertion_anchor
     separator = "\n\n" if without_old_block.strip() else ""
-    return f"{without_old_block.rstrip()}{separator}## 人工确认补充\n\n{block}\n", "人工确认补充"
+    return f"{without_old_block.rstrip()}{separator}## 需求补充\n\n{block}\n", "需求补充"
 
 
-def _clarification_answer_markdown_block(question_id: str, question: str, answer_markdown: str) -> str:
-    return "\n".join(
-        [
-            f"<!-- clarification-answer:{question_id}:start -->",
-            "> 人工确认",
-            f"> 问题：{question}",
-            "> 答案：",
-            *[f"> {line}" if line else ">" for line in answer_markdown.strip().splitlines()],
-            f"<!-- clarification-answer:{question_id}:end -->",
-        ]
-    )
+def _clarification_answer_markdown_block(question: dict, answer_markdown: str) -> str:
+    answer = _normalize_clarification_answer_markdown(answer_markdown)
+    if _starts_with_markdown_structure(answer):
+        return answer
+    return f"### {_clarification_answer_heading(question)}\n\n{answer}"
 
 
 def _replace_or_remove_clarification_block(markdown_content: str, question_id: str, *, replacement: str) -> str:
@@ -1504,12 +1549,82 @@ def _replace_or_remove_clarification_block(markdown_content: str, question_id: s
     return pattern.sub(f"\n\n{replacement}\n\n" if replacement else "\n", markdown_content).strip()
 
 
-def _has_clarification_section(markdown_content: str) -> bool:
-    return bool(re.search(r"^##\s+人工确认补充\s*$", markdown_content, flags=re.MULTILINE))
+def _remove_existing_clarification_answer(markdown_content: str, question: dict) -> str:
+    question_id = str(question.get("id") or "")
+    cleaned = _replace_or_remove_clarification_block(markdown_content, question_id, replacement="")
+    previous_answer = str((question.get("answer") or {}).get("answer_markdown") or "").strip()
+    if not previous_answer:
+        return cleaned
+    for previous_block in {
+        _normalize_clarification_answer_markdown(previous_answer),
+        _clarification_answer_markdown_block({**question, "answer": {}}, previous_answer),
+    }:
+        cleaned = _remove_exact_markdown_block(cleaned, previous_block)
+    return _remove_empty_requirement_supplement_section(cleaned)
 
 
-def _append_to_clarification_section(markdown_content: str, block: str) -> str:
-    return f"{markdown_content.rstrip()}\n\n{block}\n"
+def _normalize_clarification_answer_markdown(answer_markdown: str) -> str:
+    answer = answer_markdown.strip()
+    if not answer:
+        return ""
+    if _starts_with_markdown_structure(answer):
+        return answer
+    return "\n".join(f"- {line.strip()}" for line in answer.splitlines() if line.strip())
+
+
+def _starts_with_markdown_structure(markdown: str) -> bool:
+    first_line = markdown.lstrip().splitlines()[0] if markdown.strip() else ""
+    return bool(re.match(r"^(#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s+|\|)", first_line))
+
+
+def _clarification_answer_heading(question: dict) -> str:
+    decision_point = str(question.get("decision_point") or "").strip()
+    if decision_point:
+        return _trim_heading(decision_point)
+    question_text = str(question.get("question") or question.get("title") or "").strip()
+    if "验证码" in question_text:
+        return "验证码规则"
+    if "导出" in question_text:
+        return "导出规则"
+    if "权限" in question_text:
+        return "权限规则"
+    module_name = str(question.get("module_name") or "").strip()
+    return f"{module_name}补充规则" if module_name else "补充规则"
+
+
+def _trim_heading(text: str) -> str:
+    cleaned = re.sub(r"[？?。；;：:，,].*$", "", text).strip()
+    return cleaned[:40] or "补充规则"
+
+
+def _remove_exact_markdown_block(markdown_content: str, block: str) -> str:
+    block = block.strip()
+    if not block:
+        return markdown_content
+    pattern = re.compile(rf"\n*{re.escape(block)}\n*", re.MULTILINE)
+    return pattern.sub("\n", markdown_content).strip() + ("\n" if markdown_content.strip() else "")
+
+
+def _remove_empty_requirement_supplement_section(markdown_content: str) -> str:
+    lines = markdown_content.splitlines()
+    result: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not re.match(r"^##\s+需求补充\s*$", line):
+            result.append(line)
+            index += 1
+            continue
+        next_index = index + 1
+        content_lines: list[str] = []
+        while next_index < len(lines) and not re.match(r"^##\s+.+", lines[next_index]):
+            content_lines.append(lines[next_index])
+            next_index += 1
+        if any(content_line.strip() for content_line in content_lines):
+            result.append(line)
+            result.extend(content_lines)
+        index = next_index
+    return "\n".join(result).strip() + ("\n" if result else "")
 
 
 def _append_to_matching_section(markdown_content: str, block: str, candidates: list[str]) -> str:
