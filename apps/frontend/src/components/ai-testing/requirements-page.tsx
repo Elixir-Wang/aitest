@@ -19,6 +19,8 @@ import { reportError } from "@/lib/error-feedback";
 
 type RequirementRow = {
   id: string;
+  project_id: string;
+  project_name?: string;
   name: string;
   document_type: string;
   file_count: number;
@@ -47,7 +49,7 @@ type RequirementPageProps = {
   breadcrumbs: string[];
   projectScope: "all" | "project";
   description: string;
-  projectId: string;
+  projectId?: string;
   uploadHref: string;
 };
 
@@ -107,6 +109,8 @@ export function RequirementsPage({
     toggleOne,
   } = useLocalTableSelection<RequirementRow>([]);
 
+  const showProjectColumn = projectScope === "all";
+
   useEffect(() => {
     let ignore = false;
 
@@ -114,7 +118,11 @@ export function RequirementsPage({
       setLoading(true);
       setError("");
       try {
-        const data = await apiRequest<RequirementRow[]>(`/projects/${projectId}/requirements`);
+        const path =
+          projectScope === "project" && projectId
+            ? `/projects/${projectId}/requirements`
+            : "/requirements";
+        const data = await apiRequest<RequirementRow[]>(path);
         if (!ignore) {
           setRows(data);
         }
@@ -124,7 +132,10 @@ export function RequirementsPage({
             fallbackMessage: "需求文档加载失败",
             actionLabel: "加载需求文档",
             method: "GET",
-            path: `/projects/${projectId}/requirements`,
+            path:
+              projectScope === "project" && projectId
+                ? `/projects/${projectId}/requirements`
+                : "/requirements",
           });
           setError(requestError instanceof Error ? requestError.message : "需求文档加载失败");
         }
@@ -140,7 +151,7 @@ export function RequirementsPage({
     return () => {
       ignore = true;
     };
-  }, [projectId, setRows]);
+  }, [projectId, projectScope, setRows]);
 
   const filteredRows = useMemo(
     () =>
@@ -148,6 +159,7 @@ export function RequirementsPage({
         const displayStatus = requirementDisplayStatus(item);
         return [
           item.name,
+          item.project_name ?? "",
           String(item.file_count),
           item.status,
           displayStatus.label,
@@ -164,10 +176,11 @@ export function RequirementsPage({
     if (ids.length === 0) {
       return;
     }
+    const targets = rows.filter((row) => ids.includes(row.id));
     try {
       await Promise.all(
-        ids.map((id) =>
-          apiRequest(`/projects/${projectId}/requirements/${id}`, {
+        targets.map((row) =>
+          apiRequest(`/projects/${row.project_id}/requirements/${row.id}`, {
             method: "DELETE",
           }),
         ),
@@ -180,7 +193,7 @@ export function RequirementsPage({
         fallbackMessage: "需求文档删除失败",
         actionLabel: "删除需求文档",
         method: "DELETE",
-        path: `/projects/${projectId}/requirements/{documentId}`,
+        path: "/projects/{projectId}/requirements/{documentId}",
       });
     }
   }
@@ -194,7 +207,7 @@ export function RequirementsPage({
           </div>
         ) : null}
         <ListToolbar
-          createLabel="上传需求"
+          createLabel="新建需求"
           onBatchDelete={() => deleteDocuments(selectedIds)}
           onCreate={() => router.push(uploadHref)}
           onSearch={setSearchText}
@@ -215,6 +228,7 @@ export function RequirementsPage({
                   />
                 </TableHead>
                 <TableHead>需求名称</TableHead>
+                {showProjectColumn ? <TableHead>所属项目</TableHead> : null}
                 <TableHead>文件数量</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>当前版本</TableHead>
@@ -237,12 +251,15 @@ export function RequirementsPage({
                     <TableCell className="font-medium">
                       <Link
                         className="block truncate hover:underline"
-                        href={`/projects/${projectId}/requirements/${item.id}`}
+                        href={`/projects/${item.project_id}/requirements/${item.id}`}
                         title={item.name}
                       >
                         {item.name}
                       </Link>
                     </TableCell>
+                    {showProjectColumn ? (
+                      <TableCell className="text-muted-foreground">{item.project_name || "-"}</TableCell>
+                    ) : null}
                     <TableCell>{item.file_count}</TableCell>
                     <TableCell>
                       <StatusBadge tone={displayStatus.tone}>
@@ -260,12 +277,12 @@ export function RequirementsPage({
                         actions={[
                           {
                             label: "概览",
-                            href: `/projects/${projectId}/requirements/${item.id}`,
+                            href: `/projects/${item.project_id}/requirements/${item.id}`,
                             icon: Eye,
                           },
                           {
                             label: "版本记录",
-                            href: `/projects/${projectId}/requirements/${item.id}/versions`,
+                            href: `/projects/${item.project_id}/requirements/${item.id}/versions`,
                             icon: History,
                           },
                         ]}
@@ -275,10 +292,12 @@ export function RequirementsPage({
                   </TableRow>
                 );
               })}
-              {loading && filteredRows.length === 0 ? <TableLoadingRow colSpan={7} label="需求文档加载中" /> : null}
+              {loading && filteredRows.length === 0 ? (
+                <TableLoadingRow colSpan={showProjectColumn ? 8 : 7} label="需求文档加载中" />
+              ) : null}
               {!loading && filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={7}>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={showProjectColumn ? 8 : 7}>
                     暂无需求文档。上传或新建需求后，可在这里查看分析结果和版本记录。
                   </TableCell>
                 </TableRow>

@@ -1,6 +1,44 @@
 import json
 from sqlite3 import Connection, Row
 
+from app.repositories.project_repo import SYSTEM_RESERVED_PROJECT_IDS
+
+_DOCUMENT_LIST_SELECT = """
+        SELECT d.*,
+               p.name AS project_name,
+               COUNT(m.id) AS file_count,
+               v.id AS version_id,
+               v.version_no AS version_no,
+               v.file_path AS markdown_file_path,
+               v.source_action AS source_action,
+               v.change_summary AS change_summary,
+               v.diff_summary AS diff_summary,
+               v.created_by AS version_created_by,
+               v.created_at AS version_created_at,
+               latest_run.id AS requirement_analysis_run_id,
+               latest_run.status AS requirement_analysis_run_status,
+               latest_run.summary AS requirement_analysis_run_summary,
+               latest_run.failure_reason AS requirement_analysis_run_failure_reason,
+               latest_run.created_at AS requirement_analysis_run_created_at,
+               latest_run.updated_at AS requirement_analysis_run_updated_at
+        FROM source_documents d
+        JOIN projects p ON p.id = d.project_id
+        LEFT JOIN source_document_versions v ON v.id = d.current_version_id
+        LEFT JOIN source_document_file_mappings m ON m.document_id = d.id
+        LEFT JOIN requirement_analysis_runs latest_run ON latest_run.id = (
+            SELECT r.id
+            FROM requirement_analysis_runs r
+            WHERE r.document_id = d.id
+            ORDER BY r.created_at DESC, r.id DESC
+            LIMIT 1
+        )
+"""
+
+
+def _reserved_project_filter() -> tuple[str, list[str]]:
+    placeholders = ", ".join("?" for _ in SYSTEM_RESERVED_PROJECT_IDS)
+    return f"p.id NOT IN ({placeholders})", list(SYSTEM_RESERVED_PROJECT_IDS)
+
 
 def find_by_project_and_id(db: Connection, project_id: str, document_id: str) -> Row | None:
     return db.execute(
@@ -23,38 +61,37 @@ def find_by_project_and_name(db: Connection, project_id: str, name: str, exclude
 
 def list_by_project(db: Connection, project_id: str) -> list[Row]:
     return db.execute(
-        """
-        SELECT d.*,
-               COUNT(m.id) AS file_count,
-               v.id AS version_id,
-               v.version_no AS version_no,
-               v.file_path AS markdown_file_path,
-               v.source_action AS source_action,
-               v.change_summary AS change_summary,
-               v.diff_summary AS diff_summary,
-               v.created_by AS version_created_by,
-               v.created_at AS version_created_at,
-               latest_run.id AS requirement_analysis_run_id,
-               latest_run.status AS requirement_analysis_run_status,
-               latest_run.summary AS requirement_analysis_run_summary,
-               latest_run.failure_reason AS requirement_analysis_run_failure_reason,
-               latest_run.created_at AS requirement_analysis_run_created_at,
-               latest_run.updated_at AS requirement_analysis_run_updated_at
-        FROM source_documents d
-        LEFT JOIN source_document_versions v ON v.id = d.current_version_id
-        LEFT JOIN source_document_file_mappings m ON m.document_id = d.id
-        LEFT JOIN requirement_analysis_runs latest_run ON latest_run.id = (
-            SELECT r.id
-            FROM requirement_analysis_runs r
-            WHERE r.document_id = d.id
-            ORDER BY r.created_at DESC, r.id DESC
-            LIMIT 1
-        )
+        f"""
+        {_DOCUMENT_LIST_SELECT}
         WHERE d.project_id = ?
         GROUP BY d.id
         ORDER BY d.created_at DESC
         """,
         (project_id,),
+    ).fetchall()
+
+
+def list_visible(db: Connection, actor: Row) -> list[Row]:
+    reserved_filter, reserved_params = _reserved_project_filter()
+    if actor["role"] in {"admin", "guest"} or actor["project_scope"] == "全部项目":
+        return db.execute(
+            f"""
+            {_DOCUMENT_LIST_SELECT}
+            WHERE p.status != 'archived' AND {reserved_filter}
+            GROUP BY d.id
+            ORDER BY d.updated_at DESC, d.created_at DESC
+            """,
+            reserved_params,
+        ).fetchall()
+
+    return db.execute(
+        f"""
+        {_DOCUMENT_LIST_SELECT}
+        WHERE p.status != 'archived' AND p.name = ? AND {reserved_filter}
+        GROUP BY d.id
+        ORDER BY d.updated_at DESC, d.created_at DESC
+        """,
+        (actor["project_scope"], *reserved_params),
     ).fetchall()
 
 

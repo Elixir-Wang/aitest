@@ -42,6 +42,7 @@ BASE_STATUSES = {
 }
 
 DIRECT_MARKDOWN_TYPES = {"md", "markdown", "txt"}
+VAULT_UPLOAD_ALLOWED_TYPES = {"md"}
 
 
 def list_documents(query: GlobalKnowledgeListQuery, actor) -> dict:
@@ -109,6 +110,7 @@ def get_base_tree(base_id: str, actor) -> dict:
             "name": row["name"],
             "parent_id": row["parent_id"],
             "is_root": row["id"] == base["root_folder_id"],
+            "sort_order": int(row["sort_order"] if row["sort_order"] is not None else 0),
             "children": [],
         }
         for row in folders
@@ -520,11 +522,18 @@ async def _save_files_and_convert(
                 global_knowledge_repo.update_document_status(db, version["document_id"], status="conversion_failed", current_version_id=version_id)
 
 
+def _validate_vault_upload_filename(filename: str) -> None:
+    file_type = file_format_for_filename(filename)
+    if file_type not in VAULT_UPLOAD_ALLOWED_TYPES:
+        raise api_error(400, "GLOBAL_KNOWLEDGE_FILE_TYPE_NOT_ALLOWED", "仅支持上传 Markdown（.md）文件。")
+
+
 async def _save_vault_file(base_id: str, folder_id: str, upload: UploadFile, index: int) -> dict:
     raw_bytes = await upload.read()
     if not raw_bytes:
         raise api_error(400, "GLOBAL_KNOWLEDGE_FILE_EMPTY", "上传文件不能为空。")
     safe_name = safe_filename_for_storage(upload.filename or f"global-knowledge-{index}")
+    _validate_vault_upload_filename(safe_name)
     file_type = file_format_for_filename(safe_name)
     file_id = f"gkfile-{secrets.token_hex(8)}"
     folder_dir = global_knowledge_folder_dir(base_id, folder_id)
@@ -622,6 +631,7 @@ def _serialize_folder(row, *, is_root: bool) -> dict:
         "name": row["name"],
         "parent_id": row["parent_id"],
         "is_root": is_root,
+        "sort_order": int(row["sort_order"] if row["sort_order"] is not None else 0),
         "children": [],
     }
 
@@ -641,6 +651,7 @@ def _serialize_vault_file(row, *, include_content: bool) -> dict:
         "file_size": row["file_size"],
         "conversion_status": row["conversion_status"],
         "conversion_summary": row["conversion_summary"],
+        "sort_order": int(row["sort_order"] if row["sort_order"] is not None else 0),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -656,7 +667,7 @@ def _serialize_vault_file(row, *, include_content: bool) -> dict:
 
 
 def _sort_tree(node: dict) -> None:
-    node["children"].sort(key=lambda item: (item["type"] != "folder", item["name"]))
+    node["children"].sort(key=lambda item: (item.get("sort_order", 0), item["name"]))
     for child in node["children"]:
         if child["type"] == "folder":
             _sort_tree(child)

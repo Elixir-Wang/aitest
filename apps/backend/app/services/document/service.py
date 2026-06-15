@@ -205,6 +205,13 @@ def list_documents(project_id: str, actor) -> list[dict]:
         return [document_serializer.serialize_document(row, actor["role"]) for row in rows]
 
 
+def list_visible_documents(actor) -> list[dict]:
+    task_service.recover_stale_requirement_analysis_runs()
+    with connect() as db:
+        rows = document_repo.list_visible(db, actor)
+        return [document_serializer.serialize_document(row, actor["role"]) for row in rows]
+
+
 def check_document_name(project_id: str, name: str, exclude_id: str | None = None) -> dict:
     normalized_name = name.strip()
     if not normalized_name:

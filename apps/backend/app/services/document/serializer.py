@@ -34,6 +34,7 @@ def serialize_document(row, actor_role: str) -> dict:
     return {
         "id": row["id"],
         "project_id": row["project_id"],
+        "project_name": row["project_name"] if "project_name" in row_keys else "",
         "name": row["name"],
         "document_type": row["document_type"],
         "file_count": row["file_count"] if "file_count" in row.keys() else 0,

@@ -1,5 +1,6 @@
 from sqlite3 import Connection, Row
 
+SYSTEM_RESERVED_PROJECT_IDS = ("__all_projects__",)
 
 PROJECT_ASSET_TABLES = (
     "source_documents",
@@ -20,7 +21,11 @@ def list_visible(db: Connection, actor: Row) -> list[Row]:
 
 
 def list_all(db: Connection) -> list[Row]:
-    return db.execute("SELECT * FROM projects ORDER BY created_at ASC, name ASC").fetchall()
+    placeholders = ", ".join("?" for _ in SYSTEM_RESERVED_PROJECT_IDS)
+    return db.execute(
+        f"SELECT * FROM projects WHERE id NOT IN ({placeholders}) ORDER BY created_at ASC, name ASC",
+        SYSTEM_RESERVED_PROJECT_IDS,
+    ).fetchall()
 
 
 def find_by_id(db: Connection, project_id: str) -> Row | None:

@@ -3,6 +3,7 @@ import secrets
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.repositories import project_repo
+from app.repositories.project_repo import SYSTEM_RESERVED_PROJECT_IDS
 from app.schemas.project import ProjectCreateIn, ProjectUpdateIn
 from app.presentation.serializers import serialize_project
 from app.services import operation_log_service
@@ -16,7 +17,11 @@ def list_projects(actor) -> list[dict]:
             rows = project_repo.list_all(db)
         else:
             rows = project_repo.list_visible(db, actor)
-        return [serialize_project(row, actor["role"], project_repo.has_project_assets(db, row["id"])) for row in rows]
+        return [
+            serialize_project(row, actor["role"], project_repo.has_project_assets(db, row["id"]))
+            for row in rows
+            if row["id"] not in SYSTEM_RESERVED_PROJECT_IDS
+        ]
 
 
 def create_project(payload: ProjectCreateIn, actor) -> dict:
@@ -52,6 +57,8 @@ def create_project(payload: ProjectCreateIn, actor) -> dict:
 
 
 def update_project(project_id: str, payload: ProjectUpdateIn, actor) -> dict:
+    if project_id in SYSTEM_RESERVED_PROJECT_IDS:
+        raise api_error(409, "PROJECT_SYSTEM_RESERVED", "系统保留项目不能编辑。")
     updates = payload.model_dump(exclude_unset=True)
     if "status" in updates:
         validate_status(updates["status"])
@@ -89,6 +96,8 @@ def update_project(project_id: str, payload: ProjectUpdateIn, actor) -> dict:
 
 
 def delete_project(project_id: str, actor) -> dict:
+    if project_id in SYSTEM_RESERVED_PROJECT_IDS:
+        raise api_error(409, "PROJECT_SYSTEM_RESERVED", "系统保留项目不能删除。")
     with connect() as db:
         existing = project_repo.find_by_id(db, project_id)
         if not existing:

@@ -332,7 +332,7 @@ def list_files_by_base(db: Connection, base_id: str) -> list[Row]:
         SELECT *
         FROM global_knowledge_vault_files
         WHERE knowledge_base_id = ?
-        ORDER BY folder_id, display_name
+        ORDER BY folder_id, sort_order, display_name
         """,
         (base_id,),
     ).fetchall()
@@ -340,9 +340,53 @@ def list_files_by_base(db: Connection, base_id: str) -> list[Row]:
 
 def list_files_by_folder(db: Connection, folder_id: str) -> list[Row]:
     return db.execute(
-        "SELECT * FROM global_knowledge_vault_files WHERE folder_id = ? ORDER BY display_name",
+        "SELECT * FROM global_knowledge_vault_files WHERE folder_id = ? ORDER BY sort_order, display_name",
         (folder_id,),
     ).fetchall()
+
+
+def list_child_folders(db: Connection, base_id: str, parent_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT *
+        FROM global_knowledge_folders
+        WHERE knowledge_base_id = ? AND parent_id = ?
+        ORDER BY sort_order, name
+        """,
+        (base_id, parent_id),
+    ).fetchall()
+
+
+def find_folder_by_parent_and_name(db: Connection, base_id: str, parent_id: str, name: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT *
+        FROM global_knowledge_folders
+        WHERE knowledge_base_id = ? AND parent_id = ? AND name = ?
+        """,
+        (base_id, parent_id, name),
+    ).fetchone()
+
+
+def find_vault_file_by_folder_and_name(db: Connection, folder_id: str, display_name: str) -> Row | None:
+    return db.execute(
+        "SELECT * FROM global_knowledge_vault_files WHERE folder_id = ? AND display_name = ?",
+        (folder_id, display_name),
+    ).fetchone()
+
+
+def update_folder_sort_order(db: Connection, folder_id: str, sort_order: int) -> None:
+    db.execute(
+        "UPDATE global_knowledge_folders SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (sort_order, folder_id),
+    )
+
+
+def update_vault_file_sort_order(db: Connection, file_id: str, sort_order: int) -> None:
+    db.execute(
+        "UPDATE global_knowledge_vault_files SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (sort_order, file_id),
+    )
 
 
 def create_vault_file(

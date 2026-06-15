@@ -16,13 +16,17 @@ type MarkdownPreviewProps = {
   content: string;
   emptyClassName?: string;
   emptyText?: string;
+  onVaultFileClick?: (fileId: string) => void;
 };
+
+const VAULT_FILE_LINK_RE = /^gkfile-[a-f0-9]+$/i;
 
 export function MarkdownPreview({
   className,
   content,
   emptyClassName,
   emptyText = "当前版本暂无可展示内容。",
+  onVaultFileClick,
 }: MarkdownPreviewProps) {
   const markdown = content.trim();
 
@@ -34,6 +38,28 @@ export function MarkdownPreview({
     <article className={cn("markdown-preview", className)}>
       <ReactMarkdown
         components={{
+          a: ({ children, href, onClick, ...props }) => {
+            if (href && VAULT_FILE_LINK_RE.test(href) && onVaultFileClick) {
+              return (
+                <a
+                  {...props}
+                  href={href}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onVaultFileClick(href);
+                    onClick?.(event);
+                  }}
+                >
+                  {children}
+                </a>
+              );
+            }
+            return (
+              <a href={href} onClick={onClick} {...props}>
+                {children}
+              </a>
+            );
+          },
           pre: ({ children }) => {
             const child = Array.isArray(children) ? children[0] : children;
             if (

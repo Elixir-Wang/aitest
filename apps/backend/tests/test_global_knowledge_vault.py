@@ -96,6 +96,39 @@ def test_company_knowledge_root_folder_cannot_be_deleted(monkeypatch: pytest.Mon
     assert exc_info.value.detail["code"] == "GLOBAL_KNOWLEDGE_ROOT_FOLDER_DELETE_FORBIDDEN"
 
 
+def test_company_knowledge_vault_sort_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    base = global_service.create_base(name="排序测试库", description="", actor=ACTOR)
+    root_id = base["root_folder_id"]
+
+    folder_b = global_service.create_folder(base["id"], parent_id=root_id, name="B文件夹", actor=ACTOR)
+    folder_a = global_service.create_folder(base["id"], parent_id=root_id, name="A文件夹", actor=ACTOR)
+
+    from app.core.db import connect
+    from app.repositories import global_knowledge_repo
+
+    with connect() as db:
+        global_knowledge_repo.update_folder_sort_order(db, folder_a["id"], 0)
+        global_knowledge_repo.update_folder_sort_order(db, folder_b["id"], 1)
+
+    uploaded = asyncio.run(
+        global_service.upload_files_to_folder(
+            base["id"],
+            root_id,
+            [_upload("z-last.md", b"# Z"), _upload("m-middle.md", b"# M")],
+            ACTOR,
+        )
+    )
+    with connect() as db:
+        by_name = {item["display_name"]: item["id"] for item in uploaded["files"]}
+        global_knowledge_repo.update_vault_file_sort_order(db, by_name["m-middle.md"], 2)
+        global_knowledge_repo.update_vault_file_sort_order(db, by_name["z-last.md"], 3)
+
+    tree = global_service.get_base_tree(base["id"], ACTOR)
+    names = [child["name"] for child in tree["root"]["children"]]
+    assert names == ["A文件夹", "B文件夹", "m-middle.md", "z-last.md"]
+
+
 def test_company_knowledge_base_delete_removes_entry_and_storage(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     data_dir = _use_temp_db(monkeypatch, tmp_path)
     base = global_service.create_base(name="申请操作库", description="", actor=ACTOR)

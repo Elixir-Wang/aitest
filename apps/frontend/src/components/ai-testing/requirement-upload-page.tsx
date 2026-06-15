@@ -165,7 +165,7 @@ export function RequirementUploadPage({
         Object.fromEntries(files.map((file) => [getFileKey(file), { progress: 100, status: "completed" as const }])),
       );
       if (mode === "new") {
-        toast.success("需求文件已添加，系统会优先使用第一个文件作为主需求");
+        toast.success("需求文件已添加，开始进行需求文件标准化");
       } else {
         toast.success("文件已添加，可在原始文件列表中设为主需求");
       }
@@ -232,6 +232,20 @@ export function RequirementUploadPage({
     } catch {
       return null;
     }
+  }
+
+  function handleFilesChange(nextFiles: File[]) {
+    setFiles(nextFiles);
+    if (mode !== "new" || nextFiles.length === 0) {
+      return;
+    }
+    setName((current) => {
+      if (current.trim()) {
+        return current;
+      }
+      return fileNameWithoutExtension(nextFiles[0].name);
+    });
+    setNameError("");
   }
 
   return (
@@ -315,7 +329,7 @@ export function RequirementUploadPage({
               hint="仅支持 PDF、Word（doc/docx）、TXT、MD 文件；选择完成后统一提交"
               maxFiles={10}
               uploadStates={uploadStates}
-              onFilesChange={setFiles}
+              onFilesChange={handleFilesChange}
             />
           </div>
 
@@ -341,4 +355,13 @@ function isSupportedRequirementFile(file: File) {
 
 function getFileKey(file: File) {
   return `${file.name}-${file.lastModified}-${file.size}`;
+}
+
+function fileNameWithoutExtension(filename: string) {
+  const baseName = filename.replace(/\\/g, "/").split("/").pop() ?? filename;
+  const dotIndex = baseName.lastIndexOf(".");
+  if (dotIndex <= 0) {
+    return baseName;
+  }
+  return baseName.slice(0, dotIndex);
 }

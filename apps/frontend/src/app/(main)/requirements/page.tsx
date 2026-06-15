@@ -1,47 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { EmptyState } from "@/components/ai-testing/page-shell";
 import { RequirementsPage } from "@/components/ai-testing/requirements-page";
-import { apiRequest, type ApiProject } from "@/lib/api-client";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
 export default function Page() {
   const currentProjectId = useProjectContextStore((state) => state.currentProjectId);
-  const [projects, setProjects] = useState<ApiProject[]>([]);
-  const projectId = currentProjectId ?? projects[0]?.id;
-  const projectName = projects.find((project) => project.id === projectId)?.name ?? "当前项目";
+  const hydrate = useProjectContextStore((state) => state.hydrate);
+  const scope = useProjectContextStore((state) => state.scope);
+  const scopedProjectId = scope === "project" ? currentProjectId : null;
 
   useEffect(() => {
-    let ignore = false;
+    hydrate();
+  }, [hydrate]);
 
-    async function loadProjects() {
-      try {
-        const nextProjects = await apiRequest<ApiProject[]>("/projects");
-        if (!ignore) {
-          setProjects(nextProjects);
-        }
-      } catch {
-        if (!ignore) {
-          setProjects([]);
-        }
-      }
-    }
-
-    void loadProjects();
-
-    return () => {
-      ignore = true;
-    };
-  }, []);
-
-  if (!projectId) {
+  if (scope === "project" && !scopedProjectId) {
     return (
       <EmptyState
-        description="新建项目后，可在需求列表中上传文档并查看分析结果和版本记录。"
-        status="无可用项目"
-        title="暂无项目"
+        description="在顶部项目切换器中选择具体项目后，可查看该项目的需求文档。"
+        status="未选择项目"
+        title="请选择项目"
       />
     );
   }
@@ -49,9 +29,13 @@ export default function Page() {
   return (
     <RequirementsPage
       breadcrumbs={["项目工作区", "需求"]}
-      description={`查看并上传 ${projectName} 的需求文档、评审状态和版本记录。`}
-      projectId={projectId}
-      projectScope="all"
+      description={
+        scope === "all"
+          ? "查看全部项目的需求文档、评审状态和版本记录。"
+          : "查看并上传当前项目的需求文档、评审状态和版本记录。"
+      }
+      projectId={scopedProjectId ?? undefined}
+      projectScope={scope}
       title="需求"
       uploadHref="/requirements/upload"
     />

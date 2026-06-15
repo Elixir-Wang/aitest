@@ -90,6 +90,7 @@ const emptyCompanyForm = {
   description: "",
 };
 const KNOWLEDGE_QUERY_CAPABILITY_ID = "knowledge_query";
+const COMPANY_KNOWLEDGE_PREVIEW_ID = "company-knowledge-preview";
 const projectKnowledgeQuickPrompts = [
   { icon: Search, label: "查需求", prompt: "帮我查询当前项目最终需求文档中的核心业务规则。" },
   { icon: MapIcon, label: "看探索", prompt: "帮我总结当前项目探索记录覆盖了哪些页面和模块。" },
@@ -128,8 +129,130 @@ function companyTreeContainsNode(node: ApiCompanyKnowledgeTreeNode, nodeId: stri
   return node.children.some((child) => companyTreeContainsNode(child, nodeId));
 }
 
+type CompanyBreadcrumbItem = { id: string; name: string; type: "base" | "folder" | "file" };
+
+function collectCompanyFolderIds(root: ApiCompanyKnowledgeFolder): string[] {
+  const ids: string[] = [root.id];
+  function walk(node: ApiCompanyKnowledgeFolder) {
+    for (const child of node.children) {
+      if (child.type === "folder") {
+        ids.push(child.id);
+        walk(child);
+      }
+    }
+  }
+  walk(root);
+  return ids;
+}
+
+function collectAncestorFolderIds(root: ApiCompanyKnowledgeFolder, targetId: string): string[] {
+  function walk(node: ApiCompanyKnowledgeFolder, ancestors: string[]): string[] | null {
+    for (const child of node.children) {
+      if (child.id === targetId) {
+        return ancestors;
+      }
+      if (child.type === "folder") {
+        const found = walk(child, [...ancestors, child.id]);
+        if (found) {
+          return found;
+        }
+      }
+    }
+    return null;
+  }
+  return walk(root, []) ?? [];
+}
+
+function findCompanyBreadcrumb(
+  root: ApiCompanyKnowledgeFolder,
+  baseName: string,
+  targetId: string,
+): CompanyBreadcrumbItem[] | null {
+  function walk(node: ApiCompanyKnowledgeFolder, trail: CompanyBreadcrumbItem[]): CompanyBreadcrumbItem[] | null {
+    for (const child of node.children) {
+      const childItem: CompanyBreadcrumbItem =
+        child.type === "file"
+          ? { id: child.id, name: child.name, type: "file" }
+          : { id: child.id, name: child.name, type: "folder" };
+      if (child.id === targetId) {
+        return [...trail, childItem];
+      }
+      if (child.type === "folder") {
+        const found = walk(child, [...trail, childItem]);
+        if (found) {
+          return found;
+        }
+      }
+    }
+    return null;
+  }
+  return walk(root, [{ id: root.id, name: baseName, type: "base" }]);
+}
+
+function filterCompanyTreeNodes(nodes: ApiCompanyKnowledgeTreeNode[], query: string): ApiCompanyKnowledgeTreeNode[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return nodes;
+  }
+  const result: ApiCompanyKnowledgeTreeNode[] = [];
+  for (const node of nodes) {
+    if (node.type === "file") {
+      if (node.name.toLowerCase().includes(normalized)) {
+        result.push(node);
+      }
+      continue;
+    }
+    const filteredChildren = filterCompanyTreeNodes(node.children, query);
+    if (node.name.toLowerCase().includes(normalized) || filteredChildren.length > 0) {
+      result.push({ ...node, children: filteredChildren });
+    }
+  }
+  return result;
+}
+
+function collectFolderIdsFromNodes(nodes: ApiCompanyKnowledgeTreeNode[]): string[] {
+  const ids: string[] = [];
+  for (const node of nodes) {
+    if (node.type === "folder") {
+      ids.push(node.id);
+      ids.push(...collectFolderIdsFromNodes(node.children));
+    }
+  }
+  return ids;
+}
+
 function companyUploadFileKey(file: File): string {
   return `${file.name}-${file.lastModified}-${file.size}`;
+}
+
+function resolveCompanyTargetFolderLabel(
+  root: ApiCompanyKnowledgeFolder,
+  baseName: string,
+  folderId: string,
+): string {
+  if (!folderId || folderId === root.id) {
+    return baseName;
+  }
+  const breadcrumb = findCompanyBreadcrumb(root, baseName, folderId);
+  if (!breadcrumb) {
+    return baseName;
+  }
+  return breadcrumb.map((item) => item.name).join(" / ");
+}
+
+function findCompanyFolderInTree(root: ApiCompanyKnowledgeFolder, folderId: string): ApiCompanyKnowledgeFolder | null {
+  for (const child of root.children) {
+    if (child.type === "folder") {
+      if (child.id === folderId) {
+        return child;
+      }
+      const found = findCompanyFolderInTree(child, folderId);
+      if (found) {
+        return found;
+      }
+    }
+  }
+  return null;
 }
 
 export default function Page() {
@@ -153,6 +276,8 @@ export default function Page() {
   const [folderName, setFolderName] = useState("");
   const [activeFolderId, setActiveFolderId] = useState("");
   const [expandedFolderIds, setExpandedFolderIds] = useState<string[]>([]);
+  const [companySidebarOpen, setCompanySidebarOpen] = useState(false);
+  const [companyTreeSearch, setCompanyTreeSearch] = useState("");
   const [projectChatDraft, setProjectChatDraft] = useState("");
   const [showProjectThinking, setShowProjectThinking] = useState(false);
   const [knowledgeScope, setKnowledgeScope] = useState<"all" | "project">("all");
@@ -435,23 +560,32 @@ export default function Page() {
     setSelectedCompanyBase(tree.base);
     setCompanyTree(tree);
     setCompanyView("detail");
-    setExpandedFolderIds((ids) => Array.from(new Set([...ids, tree.root.id])));
-    setSelectedTreeNodeId(tree.root.id);
+    setExpandedFolderIds([]);
+    setCompanyTreeSearch("");
+    setCompanySidebarOpen(false);
+    setSelectedTreeNodeId("");
     setActiveFolderId(tree.root.id);
     setSelectedCompanyFile(null);
   }, []);
 
   const refreshCompanyTree = useCallback(
-    async (baseId = selectedCompanyBase?.id ?? "") => {
+    async (baseId = selectedCompanyBase?.id ?? "", focusFileId = selectedCompanyFile?.id ?? "") => {
       if (!baseId) {
         return;
       }
       const tree = await apiRequest<ApiCompanyKnowledgeTree>(`/global-knowledge/bases/${baseId}/tree`);
       setSelectedCompanyBase(tree.base);
       setCompanyTree(tree);
-      setExpandedFolderIds((ids) => Array.from(new Set([...ids, tree.root.id])));
+      setExpandedFolderIds((prev) => {
+        const validIds = new Set(collectCompanyFolderIds(tree.root));
+        let next = prev.filter((id) => validIds.has(id));
+        if (focusFileId) {
+          next = Array.from(new Set([...next, ...collectAncestorFolderIds(tree.root, focusFileId)]));
+        }
+        return next;
+      });
     },
-    [selectedCompanyBase?.id],
+    [selectedCompanyBase?.id, selectedCompanyFile?.id],
   );
 
   const loadCompanyBases = useCallback(async () => {
@@ -685,9 +819,9 @@ export default function Page() {
       setError("请先选择要上传的文件。");
       return;
     }
-    const unsupported = companyFiles.find((file) => !/\.(pdf|doc|docx|txt|md|markdown)$/i.test(file.name));
+    const unsupported = companyFiles.find((file) => !/\.(md|markdown)$/i.test(file.name));
     if (unsupported) {
-      setError(`仅支持 PDF、Word、TXT、MD 文件：${unsupported.name}`);
+      setError(`仅支持 Markdown（.md）文件：${unsupported.name}`);
       return;
     }
     setRunning(true);
@@ -778,6 +912,11 @@ export default function Page() {
       setSelectedCompanyFile(file);
       setSelectedTreeNodeId(file.id);
       setActiveFolderId(file.folder_id);
+      if (companyTree) {
+        setExpandedFolderIds((ids) =>
+          Array.from(new Set([...ids, ...collectAncestorFolderIds(companyTree.root, file.id)])),
+        );
+      }
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "加载文件内容失败。");
     } finally {
@@ -858,14 +997,39 @@ export default function Page() {
     }
   }
 
+  function selectCompanyKnowledgeHome() {
+    if (!companyTree) {
+      return;
+    }
+    setSelectedCompanyFile(null);
+    setSelectedTreeNodeId("");
+    setActiveFolderId(companyTree.root.id);
+  }
+
   function selectCompanyFolder(folder: ApiCompanyKnowledgeFolder) {
     setSelectedTreeNodeId(folder.id);
     setActiveFolderId(folder.id);
-    setExpandedFolderIds((ids) => Array.from(new Set([...ids, folder.id])));
+    setSelectedCompanyFile(null);
+    if (companyTree) {
+      setExpandedFolderIds((ids) =>
+        Array.from(new Set([...ids, ...collectAncestorFolderIds(companyTree.root, folder.id), folder.id])),
+      );
+    }
   }
 
   function toggleCompanyFolder(folderId: string) {
     setExpandedFolderIds((ids) => (ids.includes(folderId) ? ids.filter((id) => id !== folderId) : [...ids, folderId]));
+  }
+
+  function expandAllCompanyFolders() {
+    if (!companyTree) {
+      return;
+    }
+    setExpandedFolderIds(collectCompanyFolderIds(companyTree.root).filter((id) => id !== companyTree.root.id));
+  }
+
+  function collapseAllCompanyFolders() {
+    setExpandedFolderIds([]);
   }
 
   function openFolderCreate(folderId: string) {
@@ -979,19 +1143,28 @@ export default function Page() {
       {isCompanyKnowledge && companyView === "detail" ? (
         <ShellSection>
           {error ? <p className="mb-3 text-destructive text-sm">{error}</p> : null}
-          {companyTree ? (
+          {companyTree && selectedCompanyBase ? (
             <CompanyKnowledgeVault
+              activeFolderId={activeFolderId || companyTree.root.id}
               activeNodeId={selectedTreeNodeId}
+              base={selectedCompanyBase}
               expandedFolderIds={expandedFolderIds}
               file={selectedCompanyFile}
+              onCollapseAll={collapseAllCompanyFolders}
               onDelete={setDeleteTarget}
+              onExpandAll={expandAllCompanyFolders}
               onFileSelect={(fileId) => void selectCompanyFile(fileId)}
               onFolderCreate={openFolderCreate}
               onFolderSelect={selectCompanyFolder}
               onFolderToggle={toggleCompanyFolder}
               onFolderUpload={openFolderUpload}
+              onHomeSelect={selectCompanyKnowledgeHome}
+              onSidebarOpenChange={setCompanySidebarOpen}
+              onTreeSearchChange={setCompanyTreeSearch}
               root={companyTree.root}
               running={running}
+              sidebarOpen={companySidebarOpen}
+              treeSearch={companyTreeSearch}
             />
           ) : (
             <div className="rounded-lg border p-6 text-muted-foreground text-sm">正在加载知识库目录。</div>
@@ -1064,6 +1237,15 @@ export default function Page() {
         onSubmit={() => void uploadCompanyFiles()}
         open={uploadDialogOpen}
         running={running}
+        targetFolderLabel={
+          companyTree && selectedCompanyBase
+            ? resolveCompanyTargetFolderLabel(
+                companyTree.root,
+                selectedCompanyBase.name,
+                activeFolderId || companyTree.root.id,
+              )
+            : undefined
+        }
       />
       <DeleteCompanyNodeDialog
         base={deleteBaseTarget}
@@ -1549,74 +1731,360 @@ function ChatMessage({
   );
 }
 
+function CompanyDirectoryAddMenu({
+  onFolderCreate,
+  onFolderUpload,
+  running,
+  targetLabel,
+}: {
+  onFolderCreate: () => void;
+  onFolderUpload: () => void;
+  running: boolean;
+  targetLabel: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button disabled={running} size="icon" title={`添加到：${targetLabel}`} variant="ghost">
+          <Plus className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={onFolderCreate}>
+          <Folder className="size-4" />
+          新建文件夹
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onFolderUpload}>
+          <Upload className="size-4" />
+          上传 Markdown
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function CompanyKnowledgeOverview({
+  base,
+  onFileSelect,
+  onFolderSelect,
+  root,
+  sidebarOpen,
+}: {
+  base: ApiCompanyKnowledgeBase;
+  onFileSelect: (fileId: string) => void;
+  onFolderSelect: (folder: ApiCompanyKnowledgeFolder) => void;
+  root: ApiCompanyKnowledgeFolder;
+  sidebarOpen: boolean;
+}) {
+  return (
+    <div
+      className={
+        sidebarOpen
+          ? "flex h-full min-h-[32rem] flex-col items-center justify-center px-6 py-10"
+          : "flex h-full min-h-[32rem] flex-col justify-center px-8 py-10 lg:px-12"
+      }
+    >
+      <div className={sidebarOpen ? "w-full max-w-2xl space-y-6" : "w-full space-y-6"}>
+        <div className="space-y-1 text-center">
+          <h2 className="font-semibold text-2xl tracking-tight">{base.name}</h2>
+          <p className="text-muted-foreground text-sm">
+            {base.description || "公司知识库"} · {base.file_count} 篇文档
+          </p>
+        </div>
+        <div className="space-y-2">
+          <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">快速进入</p>
+          <div className={sidebarOpen ? "grid gap-2 sm:grid-cols-2" : "grid gap-2 sm:grid-cols-2 lg:grid-cols-3"}>
+            {root.children.map((node) => (
+              <button
+                className="flex items-center gap-2 rounded-lg border bg-background px-4 py-3 text-left text-sm transition-colors hover:bg-muted/60"
+                key={node.id}
+                onClick={() => {
+                  if (node.type === "file") {
+                    onFileSelect(node.id);
+                    return;
+                  }
+                  onFolderSelect(node);
+                }}
+                type="button"
+              >
+                {node.type === "folder" ? (
+                  <Folder className="size-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <FileText className="size-4 shrink-0 text-muted-foreground" />
+                )}
+                <span className="truncate">{node.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="text-center text-muted-foreground text-sm">
+          {sidebarOpen ? "或从左侧目录展开浏览文档" : "展开左侧目录可浏览全部文档"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function CompanyReadingTrail({
+  items,
+  onSelect,
+  className,
+}: {
+  items: CompanyBreadcrumbItem[];
+  onSelect: (item: CompanyBreadcrumbItem) => void;
+  className?: string;
+}) {
+  return (
+    <nav
+      aria-label="阅读路径"
+      className={`flex min-w-0 flex-1 flex-wrap items-center gap-1 text-sm ${className ?? ""}`}
+    >
+      {items.map((item, index) => (
+        <span className="flex min-w-0 items-center gap-1" key={item.id}>
+          {index > 0 ? <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/70" /> : null}
+          <button
+            className={
+              index === items.length - 1
+                ? "truncate font-medium text-foreground"
+                : "truncate text-muted-foreground hover:text-foreground"
+            }
+            onClick={() => onSelect(item)}
+            type="button"
+          >
+            {item.name}
+          </button>
+        </span>
+      ))}
+    </nav>
+  );
+}
+
 function CompanyKnowledgeVault({
+  activeFolderId,
   activeNodeId,
+  base,
   expandedFolderIds,
   file,
+  onCollapseAll,
   onDelete,
+  onExpandAll,
   onFileSelect,
   onFolderCreate,
   onFolderSelect,
   onFolderToggle,
   onFolderUpload,
+  onHomeSelect,
+  onSidebarOpenChange,
+  onTreeSearchChange,
   root,
   running,
+  sidebarOpen,
+  treeSearch,
 }: {
+  activeFolderId: string;
   activeNodeId: string;
+  base: ApiCompanyKnowledgeBase;
   expandedFolderIds: string[];
   file: ApiCompanyKnowledgeFile | null;
+  onCollapseAll: () => void;
   onDelete: (node: ApiCompanyKnowledgeTreeNode) => void;
+  onExpandAll: () => void;
   onFileSelect: (fileId: string) => void;
   onFolderCreate: (folderId: string) => void;
   onFolderSelect: (folder: ApiCompanyKnowledgeFolder) => void;
   onFolderToggle: (folderId: string) => void;
   onFolderUpload: (folderId: string) => void;
+  onHomeSelect: () => void;
+  onSidebarOpenChange: (open: boolean) => void;
+  onTreeSearchChange: (value: string) => void;
   root: ApiCompanyKnowledgeFolder;
   running: boolean;
+  sidebarOpen: boolean;
+  treeSearch: string;
 }) {
+  const [previewScrollEl, setPreviewScrollEl] = useState<HTMLDivElement | null>(null);
+  const filteredNodes = filterCompanyTreeNodes(root.children, treeSearch);
+  const targetFolderLabel = resolveCompanyTargetFolderLabel(root, base.name, activeFolderId);
+  const effectiveExpandedIds =
+    treeSearch.trim().length > 0
+      ? Array.from(new Set([...expandedFolderIds, ...collectFolderIdsFromNodes(filteredNodes)]))
+      : expandedFolderIds;
+
+  useEffect(() => {
+    previewScrollEl?.scrollTo({ top: 0, behavior: "auto" });
+  }, [file?.id, previewScrollEl]);
+  const breadcrumb =
+    file && findCompanyBreadcrumb(root, base.name, file.id)
+      ? findCompanyBreadcrumb(root, base.name, file.id)!
+      : null;
+
+  function renderMarkdownPreview(content: string) {
+    return (
+      <div data-toc-ignore id={COMPANY_KNOWLEDGE_PREVIEW_ID}>
+        <MarkdownPreview
+          className="company-knowledge-document-preview"
+          content={content}
+          emptyText="暂无 Markdown 内容。"
+          onVaultFileClick={(fileId) => {
+            previewScrollEl?.scrollTo({ top: 0, behavior: "auto" });
+            onFileSelect(fileId);
+          }}
+        />
+      </div>
+    );
+  }
+
+  function handleBreadcrumbSelect(item: CompanyBreadcrumbItem) {
+    if (item.type === "base") {
+      onHomeSelect();
+      return;
+    }
+    if (item.type === "file") {
+      onFileSelect(item.id);
+      return;
+    }
+    if (item.type === "folder") {
+      const folder = findCompanyFolderInTree(root, item.id);
+      if (folder) {
+        onFolderSelect(folder);
+      }
+    }
+  }
+
   return (
-    <div className="grid min-h-[32rem] overflow-hidden rounded-lg border bg-background lg:grid-cols-[18rem_minmax(0,1fr)]">
-      <aside className="min-h-0 border-b bg-muted/20 lg:border-r lg:border-b-0">
-        <div className="border-b px-3 py-2 font-medium text-sm">目录</div>
-        <div className="max-h-[34rem] overflow-auto p-2">
-          <CompanyTreeNode
-            activeNodeId={activeNodeId}
-            depth={0}
-            expandedFolderIds={expandedFolderIds}
-            node={root}
-            onDelete={onDelete}
-            onFileSelect={onFileSelect}
-            onFolderCreate={onFolderCreate}
-            onFolderSelect={onFolderSelect}
-            onFolderToggle={onFolderToggle}
-            onFolderUpload={onFolderUpload}
-            running={running}
-          />
-        </div>
-      </aside>
+    <div
+      className={
+        sidebarOpen
+          ? "grid min-h-[32rem] overflow-hidden rounded-lg border bg-background lg:grid-cols-[18rem_minmax(0,1fr)]"
+          : "min-h-[32rem] overflow-hidden rounded-lg border bg-background"
+      }
+    >
+      {sidebarOpen ? (
+        <aside className="flex min-h-0 flex-col border-b bg-muted/20 lg:border-r lg:border-b-0">
+          <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+            <span className="font-medium text-sm">目录</span>
+            <div className="flex items-center gap-0.5">
+              <CompanyDirectoryAddMenu
+                onFolderCreate={() => onFolderCreate(activeFolderId)}
+                onFolderUpload={() => onFolderUpload(activeFolderId)}
+                running={running}
+                targetLabel={targetFolderLabel}
+              />
+              <Button disabled={running} onClick={onExpandAll} size="icon" title="全部展开" variant="ghost">
+                <ChevronDown className="size-4" />
+              </Button>
+              <Button disabled={running} onClick={onCollapseAll} size="icon" title="全部折叠" variant="ghost">
+                <ChevronRight className="size-4" />
+              </Button>
+              <Button onClick={() => onSidebarOpenChange(false)} size="icon" title="收起目录" variant="ghost">
+                <PanelLeftClose className="size-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="border-b px-2 py-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
+              <Input
+                className="h-9 pl-8"
+                onChange={(event) => onTreeSearchChange(event.target.value)}
+                placeholder="搜索目录"
+                value={treeSearch}
+              />
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto p-2">
+            {filteredNodes.length > 0 ? (
+              filteredNodes.map((node) => (
+                <CompanyTreeNode
+                  activeNodeId={activeNodeId}
+                  depth={0}
+                  expandedFolderIds={effectiveExpandedIds}
+                  key={node.id}
+                  node={node}
+                  onDelete={onDelete}
+                  onFileSelect={onFileSelect}
+                  onFolderCreate={onFolderCreate}
+                  onFolderSelect={onFolderSelect}
+                  onFolderToggle={onFolderToggle}
+                  onFolderUpload={onFolderUpload}
+                  running={running}
+                />
+              ))
+            ) : (
+              <p className="px-2 py-3 text-muted-foreground text-sm">没有匹配的目录项。</p>
+            )}
+          </div>
+        </aside>
+      ) : null}
       <main className="min-w-0 overflow-hidden">
         {file ? (
           <div className="flex h-full min-h-0 flex-col">
-            <div className="flex items-center gap-2 border-b px-4 py-3">
-              <FileText className="size-4 text-muted-foreground" />
-              <div className="min-w-0 flex-1 truncate font-medium text-sm">{file.display_name}</div>
-              <StatusBadge tone={fileConversionTone(file.conversion_status)}>
-                {file.conversion_status === "success" ? "可用" : file.conversion_status}
-              </StatusBadge>
+            <div className="flex min-h-11 items-center gap-2 border-b px-3 py-2">
+              {!sidebarOpen ? (
+                <Button
+                  className="shrink-0"
+                  onClick={() => onSidebarOpenChange(true)}
+                  size="icon"
+                  title="展开目录"
+                  variant="outline"
+                >
+                  <PanelLeftOpen className="size-4" />
+                </Button>
+              ) : null}
+              {breadcrumb ? <CompanyReadingTrail items={breadcrumb} onSelect={handleBreadcrumbSelect} /> : null}
             </div>
-            <div className="min-h-0 flex-1 overflow-auto p-4">
-              {file.conversion_status === "failed" ? (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive text-sm">
-                  {file.conversion_summary || "文件转换失败。"}
+            <div
+              className={
+                sidebarOpen
+                  ? "min-h-0 flex-1 overflow-auto bg-[#fafbfc] p-4"
+                  : "min-h-0 flex-1 overflow-auto bg-background"
+              }
+              ref={setPreviewScrollEl}
+            >
+              {sidebarOpen ? (
+                <div className="mx-auto max-w-3xl rounded-lg border bg-background p-4 shadow-sm">
+                  {file.conversion_status === "failed" ? (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive text-sm">
+                      {file.conversion_summary || "文件转换失败。"}
+                    </div>
+                  ) : (
+                    renderMarkdownPreview(file.markdown_content ?? "")
+                  )}
+                </div>
+              ) : file.conversion_status === "failed" ? (
+                <div className="px-8 py-6">
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive text-sm">
+                    {file.conversion_summary || "文件转换失败。"}
+                  </div>
                 </div>
               ) : (
-                <MarkdownPreview content={file.markdown_content ?? ""} emptyText="暂无 Markdown 内容。" />
+                <div className="px-8 py-6 lg:px-12">{renderMarkdownPreview(file.markdown_content ?? "")}</div>
               )}
             </div>
           </div>
         ) : (
-          <div className="flex h-full min-h-[32rem] items-center justify-center px-4 text-center text-muted-foreground text-sm">
-            从左侧选择文件，或在文件夹菜单中上传文件。
+          <div className="flex h-full min-h-0 flex-col">
+            {!sidebarOpen ? (
+              <div className="flex min-h-11 items-center gap-2 border-b px-3 py-2">
+                <Button
+                  className="shrink-0"
+                  onClick={() => onSidebarOpenChange(true)}
+                  size="icon"
+                  title="展开目录"
+                  variant="outline"
+                >
+                  <PanelLeftOpen className="size-4" />
+                </Button>
+                <span className="truncate font-medium text-sm">{base.name}</span>
+              </div>
+            ) : null}
+            <CompanyKnowledgeOverview
+              base={base}
+              onFileSelect={onFileSelect}
+              onFolderSelect={onFolderSelect}
+              root={root}
+              sidebarOpen={sidebarOpen}
+            />
           </div>
         )}
       </main>
@@ -1717,7 +2185,7 @@ function CompanyTreeNode({
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => onFolderUpload(node.id)}>
                   <Upload className="size-4" />
-                  上传文件
+                  上传 Markdown
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={node.is_root} onSelect={() => onDelete(node)} variant="destructive">
                   <Trash2 className="size-4" />
@@ -1852,6 +2320,7 @@ function CompanyUploadDialog({
   onSubmit,
   open,
   running,
+  targetFolderLabel,
   uploadStates,
 }: {
   files: File[];
@@ -1860,27 +2329,28 @@ function CompanyUploadDialog({
   onSubmit: () => void;
   open: boolean;
   running: boolean;
+  targetFolderLabel?: string;
   uploadStates: Record<string, { progress: number; status: "idle" | "uploading" | "completed" | "error" }>;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>上传文件</DialogTitle>
-          <DialogDescription>文件会上传到当前文件夹，支持 PDF、Word（doc/docx）、TXT、MD 格式。</DialogDescription>
+          <DialogTitle>上传 Markdown</DialogTitle>
+          <DialogDescription>
+            {targetFolderLabel
+              ? `文件将上传到「${targetFolderLabel}」，仅支持 .md / .markdown 格式。`
+              : "文件会上传到当前文件夹，仅支持 .md / .markdown 格式。"}
+          </DialogDescription>
         </DialogHeader>
         <FileUpload1
           accept={{
-            "application/pdf": [".pdf"],
-            "application/msword": [".doc"],
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
             "text/markdown": [".md", ".markdown"],
-            "text/plain": [".txt"],
           }}
           files={files}
-          hint="仅支持 PDF、Word（doc/docx）、TXT、MD 文件"
+          hint="仅支持 Markdown（.md）文件，最多 10 个"
           maxFiles={10}
-          title="上传知识库文件"
+          title="上传 Markdown 文档"
           uploadStates={uploadStates}
           onFilesChange={onFilesChange}
         />

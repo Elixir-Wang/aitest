@@ -18,7 +18,7 @@ from app.repositories import global_knowledge_repo
 from app.services.knowledge import global_service
 
 SOURCE_DIR = Path(r"D:\project\bairong_history_export\exported_docs\产品手册")
-BASE_ID = "gkb-e59ec77300ea783d"
+BASE_ID = "gkb-df74f65ec2ab4935"
 ACTOR = {
     "id": "u-admin",
     "role": "admin",

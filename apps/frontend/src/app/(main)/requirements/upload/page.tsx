@@ -56,12 +56,12 @@ export default function Page() {
   return (
     <RequirementUploadPage
       backHref="/requirements"
-      breadcrumbs={["项目工作区", "需求", "上传"]}
+      breadcrumbs={["项目工作区", "需求", "新建"]}
       defaultProjectId={defaultActiveProjectId}
       description="选择关联项目后上传原始需求文件，系统会保存原文档并生成 Markdown 映射。"
       projectScope="all"
       projects={activeProjects}
-      title="上传需求"
+      title="新建需求"
     />
   );
 }

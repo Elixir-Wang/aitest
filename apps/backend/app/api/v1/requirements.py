@@ -13,7 +13,13 @@ from app.schemas.document import (
 from app.services.document import service as document_service
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirements"])
+global_router = APIRouter(prefix="/requirements", tags=["requirements"])
 file_router = APIRouter(prefix="/requirement-files", tags=["requirements"])
+
+
+@global_router.get("")
+def list_visible_requirements(actor=Depends(current_user)) -> list[dict]:
+    return document_service.list_visible_documents(actor)
 
 
 @router.get("")

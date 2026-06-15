@@ -538,6 +538,7 @@ def init_db() -> None:
               markdown_content TEXT NOT NULL DEFAULT '',
               conversion_status TEXT NOT NULL CHECK(conversion_status IN ('queued', 'running', 'success', 'failed')) DEFAULT 'success',
               conversion_summary TEXT NOT NULL DEFAULT '',
+              sort_order INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               FOREIGN KEY(knowledge_base_id) REFERENCES global_knowledge_bases(id) ON DELETE CASCADE,
@@ -578,7 +579,7 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_versions_document ON global_knowledge_versions(document_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_bases_updated ON global_knowledge_bases(updated_at);
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_folders_base_parent ON global_knowledge_folders(knowledge_base_id, parent_id, sort_order);
-            CREATE INDEX IF NOT EXISTS idx_global_knowledge_vault_files_folder ON global_knowledge_vault_files(folder_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_global_knowledge_vault_files_folder ON global_knowledge_vault_files(folder_id, sort_order, display_name);
             CREATE INDEX IF NOT EXISTS idx_knowledge_conversations_project_updated ON knowledge_conversations(project_id, created_by, updated_at);
             CREATE INDEX IF NOT EXISTS idx_knowledge_conversation_messages_conversation_created ON knowledge_conversation_messages(conversation_id, created_at);
             """
@@ -605,6 +606,7 @@ def init_db() -> None:
         _ensure_column(db, "exploration_runs", "max_actions", "INTEGER NOT NULL DEFAULT 1000")
         _ensure_column(db, "exploration_runs", "timeout_minutes", "INTEGER NOT NULL DEFAULT 120")
         _ensure_column(db, "exploration_runs", "requirement_doc_id", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(db, "global_knowledge_vault_files", "sort_order", "INTEGER NOT NULL DEFAULT 0")
         _backfill_environment_login_strategies(db)
         _migrate_exploration_run_statuses(db)
         _migrate_source_documents(db)
