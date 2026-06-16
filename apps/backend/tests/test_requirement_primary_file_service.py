@@ -56,8 +56,8 @@ def _upload_file(filename: str, content: str) -> FakeUploadFile:
     return FakeUploadFile(filename, content)
 
 
-def test_langgraph_requirement_analysis_output_keeps_frontend_compatibility() -> None:
-    from app.agents.requirement_analysis.schemas import (
+def test_v3_requirement_analysis_output_serializes_structured_fields() -> None:
+    from app.agents.requirement_analysis.core.schemas import (
         ClarificationOutput,
         ClarificationSummary,
         ClarityAssessment,
@@ -65,7 +65,7 @@ def test_langgraph_requirement_analysis_output_keeps_frontend_compatibility() ->
         ConsistencyAssessment,
         QualityAssessmentOutput,
         QualityDecision,
-        QualityScores,
+        QualityIssueSummary,
         RequirementAnalysisResultV2,
         RequirementUnderstandingOutput,
         TestabilityAssessment,
@@ -81,12 +81,15 @@ def test_langgraph_requirement_analysis_output_keeps_frontend_compatibility() ->
             understanding_summary="已识别登录需求。",
         ),
         quality_assessment=QualityAssessmentOutput(
-            scores=QualityScores(
-                completeness=80,
-                clarity=82,
-                testability=76,
-                consistency=90,
-                overall=82,
+            summary=QualityIssueSummary(
+                completeness_issues=3,
+                clarity_issues=2,
+                testability_issues=4,
+                consistency_issues=1,
+                total_issues=10,
+                by_severity={"blocker": 0, "major": 5, "minor": 5},
+                has_blocker=False,
+                can_proceed=True,
             ),
             decision=QualityDecision(
                 result="conditional",
@@ -94,10 +97,10 @@ def test_langgraph_requirement_analysis_output_keeps_frontend_compatibility() ->
                 blocking_issues=[],
                 recommended_actions=["补齐验证码错误次数。"],
             ),
-            completeness=CompletenessAssessment(score=80),
-            clarity=ClarityAssessment(score=82),
-            testability=TestabilityAssessment(score=76),
-            consistency=ConsistencyAssessment(score=90),
+            completeness=CompletenessAssessment(),
+            clarity=ClarityAssessment(),
+            testability=TestabilityAssessment(),
+            consistency=ConsistencyAssessment(),
             assessment_summary="质量评估完成。\\n\\n主要优点：\\n1. 主流程清晰。\\n2. 质量保障信息完整。",
         ),
         clarification=ClarificationOutput(
@@ -110,7 +113,7 @@ def test_langgraph_requirement_analysis_output_keeps_frontend_compatibility() ->
         enhanced_requirement_markdown="# 增强版需求\n\n用户可以使用验证码登录。",
     )
 
-    preliminary_markdown, output_data = document_service._legacy_output_from_requirement_analysis_result(
+    preliminary_markdown, output_data = document_service._output_from_analysis_result(
         analysis_output,
         "# 主需求\n\n用户可以使用验证码登录。",
     )
@@ -121,9 +124,12 @@ def test_langgraph_requirement_analysis_output_keeps_frontend_compatibility() ->
     assert output_data["quality_assurance_report_markdown"].startswith("# 质量保障报告")
     assert "\\n" not in output_data["quality_assurance_report_markdown"]
     assert "主要优点：\n1. 主流程清晰。" in output_data["quality_assurance_report_markdown"]
-    assert "可测试性 | 76/100" in output_data["quality_assurance_report_markdown"]
+    assert "## 质量问题统计" in output_data["quality_assurance_report_markdown"]
     assert output_data["clarification_report_markdown"].startswith("# 待澄清内容")
     assert output_data["quality_gate"]["result"] == "warning"
+    assert output_data["quality_summary"]["total_issues"] == 10
+    assert "testability_score" not in output_data["quality_gate"]
+    assert "maturity_assessment" not in output_data
 
 
 def test_latest_requirement_analysis_normalizes_saved_markdown_output(
@@ -355,6 +361,107 @@ async def test_primary_upload_marks_first_file_without_generating_version(
     assert overview["files"][0]["file_role"] == "primary"
     assert overview["files"][0]["version_no"] is None
     assert overview["initial_markdown_content"] == ""
+
+
+@pytest.mark.anyio
+async def test_new_upload_auto_starts_requirement_analysis_after_conversion(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+
+    async def fake_convert_to_markdown(filename, raw_bytes=None, *, source_path=None, assets_dir=None):
+        return f"# {filename}\n\n主需求内容。\n", "已生成标准 Markdown。"
+
+    executed_run_ids: list[str] = []
+
+    async def fake_execute_requirement_review_run(run_id: str, actor) -> None:
+        executed_run_ids.append(run_id)
+
+    monkeypatch.setattr("app.services.document.file_service.convert_to_markdown", fake_convert_to_markdown)
+    monkeypatch.setattr(
+        "app.services.document.service.execute_requirement_review_run",
+        fake_execute_requirement_review_run,
+    )
+
+    result = await document_service.upload_documents(
+        "project-1",
+        [_upload_file("main.md", "# main")],
+        ACTOR,
+        document_name="登录需求",
+    )
+    mapping_id = result["files"][0]["id"]
+    document_id = result["document"]["id"]
+
+    await document_service.convert_pending_file_mappings([mapping_id], ACTOR, auto_continue=True)
+
+    assert len(executed_run_ids) == 1
+    runs = document_service.list_requirement_analysis_runs("project-1", document_id, ACTOR)
+    assert len(runs) == 1
+    assert runs[0]["id"] == executed_run_ids[0]
+    assert runs[0]["status"] == "queued"
+
+
+@pytest.mark.anyio
+async def test_convert_without_auto_continue_does_not_start_requirement_analysis(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+
+    async def fake_convert_to_markdown(filename, raw_bytes=None, *, source_path=None, assets_dir=None):
+        return f"# {filename}\n\n主需求内容。\n", "已生成标准 Markdown。"
+
+    monkeypatch.setattr("app.services.document.file_service.convert_to_markdown", fake_convert_to_markdown)
+
+    result = await document_service.upload_documents(
+        "project-1",
+        [_upload_file("main.md", "# main")],
+        ACTOR,
+        document_name="登录需求",
+    )
+    mapping_id = result["files"][0]["id"]
+
+    await document_service.convert_pending_file_mappings([mapping_id])
+
+    runs = document_service.list_requirement_analysis_runs("project-1", result["document"]["id"], ACTOR)
+    assert runs == []
+
+
+@pytest.mark.anyio
+async def test_auto_continue_only_starts_once_for_multi_file_new_upload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+
+    async def fake_convert_to_markdown(filename, raw_bytes=None, *, source_path=None, assets_dir=None):
+        return f"# {filename}\n\n标准内容。\n", "已生成标准 Markdown。"
+
+    executed_run_ids: list[str] = []
+
+    async def fake_execute_requirement_review_run(run_id: str, actor) -> None:
+        executed_run_ids.append(run_id)
+
+    monkeypatch.setattr("app.services.document.file_service.convert_to_markdown", fake_convert_to_markdown)
+    monkeypatch.setattr(
+        "app.services.document.service.execute_requirement_review_run",
+        fake_execute_requirement_review_run,
+    )
+
+    result = await document_service.upload_documents(
+        "project-1",
+        [_upload_file("main.md", "# main"), _upload_file("supplement.md", "# supplement")],
+        ACTOR,
+        document_name="登录需求",
+    )
+    mapping_ids = [item["id"] for item in result["files"]]
+
+    await document_service.convert_pending_file_mappings(mapping_ids, ACTOR, auto_continue=True)
+
+    assert len(executed_run_ids) == 1
+    runs = document_service.list_requirement_analysis_runs("project-1", result["document"]["id"], ACTOR)
+    assert len(runs) == 1
 
 
 @pytest.mark.anyio

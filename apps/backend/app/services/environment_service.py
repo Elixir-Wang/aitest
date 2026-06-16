@@ -1,13 +1,14 @@
 import secrets
 
-from app.core.environment_auth_state import delete_auth_state
+from app.core.environment_auth_state import auth_state_summary, delete_auth_state
 from app.core.environment_credentials import delete_credentials, load_credentials, save_credentials
 from app.core.db import connect
 from app.core.exceptions import api_error
-from app.presentation.serializers import serialize_project_environment
+from app.presentation.serializers import apply_environment_auth_display, serialize_project_environment
 from app.repositories import environment_repo, project_repo
 from app.schemas.environment import ProjectEnvironmentCreateIn, ProjectEnvironmentUpdateIn
 from app.services import operation_log_service
+from app.services import auto_auth_service
 
 LOGIN_STRATEGIES = {"account_password", "skip_login"}
 CAPTCHA_STRATEGIES = {"none", "ai_letter", "manual"}
@@ -91,7 +92,42 @@ def create_project_environment(project_id: str, payload: ProjectEnvironmentCreat
         summary=f"新建项目环境：{result['name']}",
         after=_environment_snapshot(result),
     )
-    return result
+    return _finalize_environment_result(project_id, result, is_create=True)
+
+
+def _finalize_environment_result(
+    project_id: str,
+    result: dict,
+    *,
+    is_create: bool = False,
+    auth_state_cleared: bool = False,
+) -> dict:
+    if auto_auth_service.should_schedule_ai_letter_auto_auth(result) and _should_trigger_ai_letter_auto_auth(
+        project_id,
+        result,
+        is_create=is_create,
+        auth_state_cleared=auth_state_cleared,
+    ):
+        auto_auth_service.schedule_ai_letter_auto_auth(project_id, result["id"])
+    return apply_environment_auth_display(result)
+
+
+def _should_trigger_ai_letter_auto_auth(
+    project_id: str,
+    result: dict,
+    *,
+    is_create: bool,
+    auth_state_cleared: bool,
+) -> bool:
+    if is_create or auth_state_cleared:
+        return True
+    file_state = auth_state_summary(
+        project_id=project_id,
+        environment_id=result["id"],
+        login_strategy=result["login_strategy"],
+        reuse_auth_state=bool(result.get("reuse_auth_state")),
+    )
+    return file_state["status"] != "valid"
 
 
 def update_project_environment(project_id: str, environment_id: str, payload: ProjectEnvironmentUpdateIn, actor) -> dict:
@@ -147,6 +183,7 @@ def update_project_environment(project_id: str, environment_id: str, payload: Pr
                 raise api_error(409, "ENVIRONMENT_CONFLICT", "同一项目下环境名称已存在。") from exc
         if should_clear_auth_state:
             delete_auth_state(project_id, environment_id)
+            auto_auth_service.reset_auto_auth_status(project_id, environment_id)
         row = environment_repo.find_by_id(db, environment_id)
         result = serialize_project_environment(row, actor["role"])
         before = _environment_snapshot(existing)
@@ -179,7 +216,39 @@ def update_project_environment(project_id: str, environment_id: str, payload: Pr
         before=before,
         after=after,
     )
-    return result
+    return _finalize_environment_result(
+        project_id,
+        result,
+        auth_state_cleared=should_clear_auth_state,
+    )
+
+
+def start_environment_auto_auth(project_id: str, environment_id: str, actor) -> dict:
+    with connect() as db:
+        existing = environment_repo.find_by_id(db, environment_id)
+        if not existing or existing["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "环境不存在。")
+        _ensure_project_visible(existing, actor)
+        row = existing
+
+    result = serialize_project_environment(row, actor["role"])
+    result["has_saved_credentials"] = load_credentials(project_id, environment_id) is not None
+
+    if result["captcha_strategy"] != "ai_letter":
+        raise api_error(400, "AUTO_AUTH_NOT_SUPPORTED", "当前环境未启用字母 AI 验证码登录。")
+    if result["login_strategy"] != "account_password":
+        raise api_error(400, "AUTO_AUTH_NOT_SUPPORTED", "当前环境未启用账号密码登录。")
+    if not result["reuse_auth_state"]:
+        raise api_error(400, "AUTO_AUTH_NOT_SUPPORTED", "当前环境未开启复用登录态。")
+    if not result["has_saved_credentials"]:
+        raise api_error(400, "AUTO_AUTH_CREDENTIALS_REQUIRED", "请先保存账号密码后再登录。")
+
+    try:
+        auto_auth_service.trigger_ai_letter_auto_auth(project_id, environment_id)
+    except ValueError as exc:
+        raise api_error(400, "AUTO_AUTH_NOT_SUPPORTED", "当前环境无法自动登录。") from exc
+
+    return apply_environment_auth_display(result)
 
 
 def delete_project_environment(project_id: str, environment_id: str, actor) -> dict:

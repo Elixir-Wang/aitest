@@ -171,14 +171,14 @@ def test_clarification_output_structure():
         overall_assessment="需求存在 1 个高风险项，需要澄清",
         test_strategy_recommendations=["补充 API 契约测试"],
         generated_at="2024-01-15T10:00:00Z",
-        model_version="v3.0-test-driven"
+        model_version="test-driven"
     )
 
     assert len(output.items) == 1
     assert output.summary.total == 1
     assert output.summary.by_priority["P1"] == 1
     assert output.summary.high_risk_count == 1
-    assert output.model_version == "v3.0-test-driven"
+    assert output.model_version == "test-driven"
     print("✅ ClarificationOutput 结构正确")
 
 

@@ -3,23 +3,28 @@
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 
-from app.agents.requirement_analysis.schemas import (
+from app.agents.requirement_analysis.core.schemas import (
     ClarificationOutput,
     QualityAssessmentOutput,
+    QualityAssessmentBrief,
+    EvidenceSnippet,
     RequirementUnderstandingOutput,
+    RequirementUnderstandingBrief,
 )
+from app.agents.requirement_analysis.utils.context import format_evidence_snippets
 
 
-CLARIFICATION_SYSTEM_PROMPT_V3 = """
-你是需求分析系统中的【测试驱动澄清智能体 v3.0】，具备资深测试架构师和需求分析师的双重视角。
+CLARIFICATION_SYSTEM_PROMPT = """
+你是需求分析系统中的【测试驱动澄清智能体】，具备资深测试架构师和需求分析师的双重视角。
 
 ## 核心使命
 
 从**测试可执行性**和**验收可判定性**出发，识别需求中所有会导致测试无法设计、无法断言、无法验收的模糊点，并提供可操作的澄清建议。
+本阶段输出轻量澄清索引，默认不生成 test_cases，不展开完整断言清单，options 默认 0-2 个且不要求 pros/cons。
 
-## 输出 Schema（v3.0）
+## 输出 Schema
 
-严格遵循 ClarificationOutput v3.0 结构：
+严格遵循 ClarificationOutput 结构：
 
 ```json
 {
@@ -29,13 +34,15 @@ CLARIFICATION_SYSTEM_PROMPT_V3 = """
       "title": "简短标题",
       "issue_category": "contract_unclear|rule_missing|boundary_undefined|...",
       "priority": "P0|P1|P2|P3",
+      "visual_marker": "🔴|🟡|🟢",
+      "risk_level": "high|medium|low",
       "module_key": "模块标识",
       "module_name": "模块名称",
       "source_stage": "completeness|clarity|testability|consistency",
 
       "decision_point": "需要裁决的具体业务点",
       "why_clarify": "为什么需要澄清（当前的不确定性）",
-      "test_impact": "不澄清会导致哪些测试无法做（至少3点）",
+      "test_impact": "不澄清会导致哪些测试无法做（1-3点）",
       "risk_scenario": "Given...When...Then...",
 
       "affected_surfaces": [
@@ -45,25 +52,13 @@ CLARIFICATION_SYSTEM_PROMPT_V3 = """
         }
       ],
 
-      "test_cases": [
-        {
-          "test_id": "TC-001",
-          "scenario": "Given...When...Then...",
-          "test_type": "positive|negative|boundary|concurrency|security|performance",
-          "expected_result": "明确的可断言结果",
-          "assertion_points": ["断言1", "断言2", "断言3"],
-          "priority": "P0|P1|P2|P3"
-        }
-      ],
+      "test_cases": [],
 
       "options": [
         {
           "option_id": "OPT-001",
           "label": "简短标签",
           "description": "完整描述",
-          "pros": ["优势1", "优势2"],
-          "cons": ["劣势1", "劣势2"],
-          "additional_tests": ["额外测试1"],
           "confidence": "high|medium|low",
           "source": "来源"
         }
@@ -92,7 +87,7 @@ CLARIFICATION_SYSTEM_PROMPT_V3 = """
   "overall_assessment": "整体评估文本",
   "test_strategy_recommendations": ["测试策略建议1"],
   "generated_at": "ISO8601时间戳",
-  "model_version": "v3.0-test-driven"
+  "model_version": "test-driven"
 }
 ```
 
@@ -109,10 +104,10 @@ CLARIFICATION_SYSTEM_PROMPT_V3 = """
    - 说明当前的不确定性或风险
    - 示例："当前需求未说明重复提交的处理规则，存在幂等性风险"
 
-3. **test_impact**（必填，至少3点）
-   - 必须列出至少 3 个具体影响
-   - 格式："不澄清会导致：(1) ...；(2) ...；(3) ..."
-   - 示例："不澄清会导致：(1) 并发测试无法设计；(2) 无法验证是否产生重复数据；(3) 压测无法判定系统行为正确性"
+3. **test_impact**（必填，1-3点）
+   - 列出 1-3 个具体影响即可
+   - 格式："不澄清会导致：(1) ...；(2) ..."
+   - 示例："不澄清会导致：(1) 并发测试无法设计；(2) 无法验证是否产生重复数据"
 
 4. **risk_scenario**（必填）
    - 必须使用 Given-When-Then 格式
@@ -123,28 +118,27 @@ CLARIFICATION_SYSTEM_PROMPT_V3 = """
      Then [预期结果或风险]
      ```
 
-5. **test_cases**（必填，至少3个）
-   - 每个测试用例必须包含：
-     - scenario: Given-When-Then 格式
-     - expected_result: 明确的可断言结果
-     - assertion_points: 至少 3 个具体断言点
-     - test_type: 正确的测试类型
-     - priority: P0/P1/P2/P3
+5. **test_cases**（可选，默认不生成）
+   - 当前阶段优先输出待澄清点，不生成完整测试设计
+   - 仅当该测试草案对裁决非常关键时，补充 0-2 个简短草案
 
-6. **options**（推荐2-4个）
-   - 每个选项必须包含：
-     - label: 简短标签（3-5个字）
-     - description: 完整描述（可直接写入需求文档）
-     - pros: 至少 2 个优势（测试角度）
-     - cons: 至少 1 个劣势或风险
-     - additional_tests: 选择该选项后需补充的测试
-     - source: 明确来源（不得臆造）
+6. **options**（可选，0-2个）
+   - 没有明确方案时可以留空
+   - 每个选项只需包含 label、description、confidence、source
+   - 不要求 pros/cons，不要求 additional_tests
 
 7. **priority**（必填）
    - P0: 阻塞交付（如：状态流转冲突、数据一致性破坏）
    - P1: 高风险（如：并发控制不明确、权限边界模糊）
    - P2: 中风险（如：边界值未定义、错误提示不明确）
    - P3: 低风险（如：术语不一致、格式问题）
+
+8. **visual_marker** 和 **risk_level**（必填）
+   - 根据 priority 自动设置：
+     * P0 → visual_marker="🔴", risk_level="high" (高风险阻塞，影响主流程、交付、测试设计)
+     * P1 → visual_marker="🟡", risk_level="medium" (中高风险，影响边界、异常、性能)
+     * P2 → visual_marker="🟡", risk_level="medium" (中风险，需关注但不阻碍当前推进)
+     * P3 → visual_marker="🟢", risk_level="low" (低风险，信息补充、文档说明、体验优化)
 
 ### issue_category 分类指南
 
@@ -300,22 +294,21 @@ CLARIFICATION_SYSTEM_PROMPT_V3 = """
 ### ❌ 避免的澄清项
 
 - decision_point 太宽泛："性能需求不明确"
-- test_impact 太少：只有 1-2 点
-- test_cases 太简单：没有断言点
-- options 没有 pros/cons 分析
+- test_impact 空泛，不能指导业务方裁决
+- 为每个 item 强行补全 test_cases
+- 为每个 option 强行补全 pros/cons
 - 推荐选项没有来源依据
 
 ## 示例
 
-参考 SCHEMA_V3_SPEC.md 中的完整示例。
+参考上方 Schema 中的完整示例。
 
 ## 最终检查
 
 输出前确保：
-- [ ] 每个 item 至少 3 个 test_cases
-- [ ] 每个 test_case 至少 3 个 assertion_points
 - [ ] 每个 item 至少 1 个 affected_surface
-- [ ] 每个 option 有 pros/cons
+- [ ] test_cases 默认留空，仅在必要时简短补充
+- [ ] options 仅在有明确方案时补充 0-2 个
 - [ ] priority 正确分级
 - [ ] summary 统计准确
 - [ ] 有 overall_assessment 和 test_strategy_recommendations
@@ -671,55 +664,94 @@ And [具体字段] 应为 [预期值或规则]
 """
 
 
-def clarification_agent_v3(model):
-    """Create the requirement clarification agent v3.0"""
+def clarification_agent(model):
+    """Create the requirement clarification agent."""
     return create_agent(
         model=model,
         tools=[],
-        system_prompt=CLARIFICATION_SYSTEM_PROMPT_V3,
+        system_prompt=CLARIFICATION_SYSTEM_PROMPT,
         response_format=ToolStrategy(ClarificationOutput),
     )
 
 
-async def run_clarification_agent_v3(
+async def run_clarification_agent(
     model,
-    understanding_result: RequirementUnderstandingOutput,
-    quality_assessment_result: QualityAssessmentOutput,
+    understanding_result: RequirementUnderstandingOutput | None = None,
+    quality_assessment_result: QualityAssessmentOutput | None = None,
     auxiliary_documents: list = None,
+    *,
+    quality_brief: QualityAssessmentBrief | None = None,
+    evidence_snippets: list[EvidenceSnippet] | None = None,
+    understanding_brief: RequirementUnderstandingBrief | None = None,
 ) -> ClarificationOutput:
-    """Run the requirement clarification agent v3.0"""
+    """Run the requirement clarification agent."""
     from datetime import datetime
 
-    agent = clarification_agent_v3(model)
+    agent = clarification_agent(model)
 
-    auxiliary_docs_text = ""
-    if auxiliary_documents:
-        auxiliary_docs_text = "# 辅助文档\n\n"
-        for doc in auxiliary_documents:
-            doc_type = getattr(doc, 'document_type', 'other')
-            auxiliary_docs_text += f"## {doc.filename} (类型: {doc_type})\n\n"
-            auxiliary_docs_text += f"{doc.markdown_content}\n\n---\n\n"
-    else:
-        auxiliary_docs_text = "# 辅助文档\n\n（无）\n"
+    if quality_brief is None and quality_assessment_result is not None:
+        from app.agents.requirement_analysis.utils.context import build_quality_brief
+
+        quality_brief = build_quality_brief(quality_assessment_result)
+
+    if understanding_brief is None and understanding_result is not None:
+        from app.agents.requirement_analysis.utils.context import build_understanding_brief
+
+        understanding_brief = build_understanding_brief(understanding_result)
+
+    if evidence_snippets is None:
+        evidence_snippets = []
+        if auxiliary_documents:
+            for doc in auxiliary_documents:
+                evidence_snippets.append(
+                    EvidenceSnippet(
+                        source="auxiliary",
+                        ref=getattr(doc, "mapping_id", "") or getattr(doc, "filename", "AUX"),
+                        filename=getattr(doc, "filename", ""),
+                        text=str(getattr(doc, "markdown_content", "") or "").strip(),
+                    )
+                )
+        if understanding_result is not None and not evidence_snippets:
+            evidence_snippets.append(
+                EvidenceSnippet(
+                    source="primary",
+                    ref="REQ-PRIMARY",
+                    text=understanding_result.understanding_summary,
+                )
+            )
+
+    understanding_text = (
+        understanding_brief.model_dump_json(indent=2)
+        if understanding_brief is not None
+        else (understanding_result.model_dump_json(indent=2) if understanding_result is not None else "（无理解摘要）")
+    )
+    quality_text = (
+        quality_brief.model_dump_json(indent=2)
+        if quality_brief is not None
+        else (quality_assessment_result.model_dump_json(indent=2) if quality_assessment_result is not None else "（无质量摘要）")
+    )
+    evidence_text = format_evidence_snippets(evidence_snippets)
 
     user_content = f"""
-# 需求理解结果
+# 需求理解摘要
 
-{understanding_result.model_dump_json(indent=2)}
-
----
-
-# 质量评估结果
-
-{quality_assessment_result.model_dump_json(indent=2)}
+{understanding_text}
 
 ---
 
-{auxiliary_docs_text}
+# 质量评估摘要
+
+{quality_text}
 
 ---
 
-请从测试驱动视角分析，生成完整的澄清内容（v3.0）。
+# 证据片段
+
+{evidence_text}
+
+---
+
+请从测试驱动视角分析，生成完整的澄清内容。
 
 输出要求：
 1. 每个澄清项至少 3 个测试用例
@@ -751,17 +783,7 @@ async def run_clarification_agent_v3(
     return output
 
 
-# Backward compatibility aliases
-CLARIFICATION_SYSTEM_PROMPT = CLARIFICATION_SYSTEM_PROMPT_V3
-clarification_agent = clarification_agent_v3
-run_clarification_agent = run_clarification_agent_v3
-
 __all__ = [
-    # v3.0 names
-    "CLARIFICATION_SYSTEM_PROMPT_V3",
-    "clarification_agent_v3",
-    "run_clarification_agent_v3",
-    # Backward compatibility (v2.0 names)
     "CLARIFICATION_SYSTEM_PROMPT",
     "clarification_agent",
     "run_clarification_agent",

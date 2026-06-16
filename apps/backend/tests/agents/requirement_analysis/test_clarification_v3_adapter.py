@@ -1,6 +1,6 @@
 """ClarificationItem v3 适配层测试。"""
 
-from app.agents.requirement_analysis.schemas import (
+from app.agents.requirement_analysis.core.schemas import (
     ClarificationItem,
     ClarificationOption,
     ClarificationOutput,

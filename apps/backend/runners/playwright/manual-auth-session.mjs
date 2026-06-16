@@ -178,7 +178,7 @@ export function evaluateLoginSuccessSignals(state) {
   return { reasons, score, success: score >= 5 };
 }
 
-async function collectAuthDetectionState(context, startUrl) {
+export async function collectAuthDetectionState(context, startUrl) {
   const pages = context.pages().filter((page) => !page.isClosed());
   const page = pages.at(-1);
   if (!page) {

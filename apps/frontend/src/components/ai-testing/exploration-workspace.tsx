@@ -29,6 +29,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { type ApiProject, ApiRequestError, apiRequest, formatDateTime } from "@/lib/api-client";
+import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import { reportError } from "@/lib/error-feedback";
 
 type ProjectScope = "all" | "project";
@@ -46,6 +47,9 @@ type ProjectEnvironment = {
   has_saved_credentials: boolean;
   auth_state_status: string;
   auth_state_expires_at: string | null;
+  auth_state_message?: string;
+  auto_auth_status?: string;
+  auto_auth_message?: string;
   description: string;
   created_at: string;
   updated_at: string;
@@ -184,7 +188,11 @@ const authStateStatusLabels: Record<string, string> = {
   valid: "有效",
   expired: "过期",
   unknown: "未检测",
+  logging_in: "登录中",
+  login_failed: "登录失败",
 };
+
+const LOGGING_IN_AUTH_STATE_STATUSES = new Set(["logging_in"]);
 
 function formatAuthStateExpiresAt(expiresAt: string | null | undefined) {
   return expiresAt ? formatDateTime(expiresAt) : "有效期未知";
@@ -228,6 +236,19 @@ function isManualAuthEnabled(environment: ProjectEnvironment | null) {
   );
 }
 
+function isAiLetterAutoAuthEnabled(environment: ProjectEnvironment | null) {
+  return Boolean(
+    environment &&
+      environment.login_strategy === "account_password" &&
+      environment.captcha_strategy === "ai_letter" &&
+      environment.reuse_auth_state,
+  );
+}
+
+function canStartAiLetterAutoAuth(environment: ProjectEnvironment) {
+  return isAiLetterAutoAuthEnabled(environment) && environment.has_saved_credentials;
+}
+
 function formMatchesSavedManualAuthConfig(environment: ProjectEnvironment | null, form: EnvironmentForm) {
   return Boolean(
     environment &&
@@ -255,6 +276,37 @@ function ExplorationStatusBadge({ status }: { status: string }) {
   );
 }
 
+function EnvironmentAuthStateBadge({
+  message,
+  status,
+}: {
+  message?: string;
+  status: string;
+}) {
+  const isLoading = LOGGING_IN_AUTH_STATE_STATUSES.has(status);
+  const badge = (
+    <StatusBadge tone={authStateStatusTone(status)}>
+      {isLoading ? <Loader className="-ml-0.5" size={12} /> : null}
+      {authStateStatusLabels[status] ?? status}
+    </StatusBadge>
+  );
+
+  if (!message) {
+    return badge;
+  }
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">{badge}</span>
+        </TooltipTrigger>
+        <TooltipContent side="top">{message}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function isManualAuthSessionEnded(session: ManualAuthSession) {
   return ["ended", "cancelled", "saved", "auto_saved"].includes(session.status);
 }
@@ -278,6 +330,7 @@ export function ExplorationWorkspace({
 }: ExplorationWorkspaceProps) {
   const searchParams = useSearchParams();
   const createParamHandledRef = useRef(false);
+  const authStateToastRef = useRef<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState("探索列表");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [explorationDialogOpen, setExplorationDialogOpen] = useState(false);
@@ -380,6 +433,52 @@ export function ExplorationWorkspace({
       ignore = true;
     };
   }, [projectId, projectScope, setRows]);
+
+  const hasLoggingInEnvironment = useMemo(
+    () => rows.some((item) => item.auth_state_status === "logging_in"),
+    [rows],
+  );
+
+  useEffect(() => {
+    if (!hasLoggingInEnvironment) {
+      return;
+    }
+
+    let ignore = false;
+    const environmentsPath =
+      projectScope === "project" && projectId ? `/projects/${projectId}/environments` : "/environments";
+
+    async function refreshEnvironmentAuthStates() {
+      try {
+        const data = await apiRequest<ProjectEnvironment[]>(environmentsPath);
+        if (ignore) {
+          return;
+        }
+        for (const item of data) {
+          const previous = authStateToastRef.current[item.id];
+          if (previous === "logging_in" && item.auth_state_status === "valid") {
+            toast.success("登录态已自动保存");
+          } else if (previous === "logging_in" && item.auth_state_status === "login_failed") {
+            toast.error(item.auth_state_message || "自动登录失败");
+          }
+          authStateToastRef.current[item.id] = item.auth_state_status;
+        }
+        setRows(data);
+      } catch {
+        // ignore polling errors
+      }
+    }
+
+    void refreshEnvironmentAuthStates();
+    const intervalId = window.setInterval(() => {
+      void refreshEnvironmentAuthStates();
+    }, 2000);
+
+    return () => {
+      ignore = true;
+      window.clearInterval(intervalId);
+    };
+  }, [hasLoggingInEnvironment, projectId, projectScope, setRows]);
 
   useEffect(() => {
     let ignore = false;
@@ -517,9 +616,17 @@ export function ExplorationWorkspace({
   const selectedAuthStateExpiresAt =
     manualAuthSession?.auth_state_expires_at ?? editingEnvironment?.auth_state_expires_at ?? null;
   const selectedManualCaptcha = showLoginCredentials && form.captchaStrategy === "manual";
+  const selectedAiLetterCaptcha = showLoginCredentials && form.captchaStrategy === "ai_letter";
   const savedManualAuthEnabled = isManualAuthEnabled(editingEnvironment);
+  const savedAiLetterAutoAuthEnabled = isAiLetterAutoAuthEnabled(editingEnvironment);
   const showManualAuthControls =
     savedManualAuthEnabled && selectedManualCaptcha && formMatchesSavedManualAuthConfig(editingEnvironment, form);
+  const showAiLetterAutoAuthStatus =
+    savedAiLetterAutoAuthEnabled &&
+    selectedAiLetterCaptcha &&
+    form.reuseAuthState &&
+    form.loginStrategy === "account_password" &&
+    form.captchaStrategy === "ai_letter";
   const manualAuthSessionActive = isActiveManualAuthSession(manualAuthSession);
   const availableEnvironments = rows.filter((environment) => environment.project_id === selectedProjectId);
   const availableRequirements = useMemo(
@@ -760,6 +867,18 @@ export function ExplorationWorkspace({
           toast.success("环境已更新，可打开登录窗口保存登录态");
           return;
         }
+        if (isAiLetterAutoAuthEnabled(updated)) {
+          if (updated.auth_state_status === "logging_in") {
+            authStateToastRef.current[updated.id] = updated.auth_state_status;
+            notifyAiTaskStarted();
+            toast.success("环境已更新，正在自动登录…");
+            handleEnvironmentDialogOpenChange(false);
+            return;
+          }
+          toast.success("环境已更新");
+          handleEnvironmentDialogOpenChange(false);
+          return;
+        }
         toast.success("环境已更新");
       } else {
         // 创建环境
@@ -782,6 +901,13 @@ export function ExplorationWorkspace({
           setEditingEnvironment(created);
           setForm(formFromEnvironment(created));
           toast.success("环境已创建，可打开登录窗口保存登录态");
+          return;
+        }
+        if (isAiLetterAutoAuthEnabled(created)) {
+          authStateToastRef.current[created.id] = created.auth_state_status;
+          notifyAiTaskStarted();
+          toast.success("环境已创建，正在自动登录…");
+          handleEnvironmentDialogOpenChange(false);
           return;
         }
         toast.success("环境已创建");
@@ -910,6 +1036,32 @@ export function ExplorationWorkspace({
       });
     } finally {
       setStoppingExplorationId("");
+    }
+  }
+
+  async function startAiLetterAutoAuth(environment: ProjectEnvironment) {
+    if (environment.auth_state_status === "logging_in") {
+      return;
+    }
+    try {
+      const updated = await apiRequest<ProjectEnvironment>(
+        `/projects/${environment.project_id}/environments/${environment.id}/auto-auth/start`,
+        { method: "POST" },
+      );
+      setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+      if (editingEnvironment?.id === updated.id) {
+        setEditingEnvironment(updated);
+      }
+      authStateToastRef.current[updated.id] = updated.auth_state_status;
+      notifyAiTaskStarted();
+      toast.success("正在自动登录…");
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "自动登录启动失败",
+        actionLabel: "环境登录",
+        method: "POST",
+        path: `/projects/${environment.project_id}/environments/${environment.id}/auto-auth/start`,
+      });
     }
   }
 
@@ -1222,15 +1374,26 @@ export function ExplorationWorkspace({
                     </TableCell>
                     <TableCell>
                       <div className="flex min-w-28">
-                        <StatusBadge tone={authStateStatusTone(item.auth_state_status)}>
-                          {authStateStatusLabels[item.auth_state_status] ?? item.auth_state_status}
-                        </StatusBadge>
+                        <EnvironmentAuthStateBadge
+                          message={item.auth_state_message}
+                          status={item.auth_state_status}
+                        />
                       </div>
                     </TableCell>
                     <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                     <TableCell>
                       <RowActions
                         actions={[
+                          ...(canStartAiLetterAutoAuth(item)
+                            ? [
+                                {
+                                  label: item.auth_state_status === "logging_in" ? "登录中" : "登录",
+                                  icon: LogIn,
+                                  disabled: item.auth_state_status === "logging_in",
+                                  onSelect: () => void startAiLetterAutoAuth(item),
+                                },
+                              ]
+                            : []),
                           {
                             label: "删除",
                             icon: Trash2,
@@ -1426,9 +1589,10 @@ export function ExplorationWorkspace({
                     <div className="min-w-0 space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="text-muted-foreground text-xs">登录态</span>
-                        <StatusBadge tone={authStateStatusTone(selectedAuthStateStatus)}>
-                          {authStateStatusLabels[selectedAuthStateStatus] ?? selectedAuthStateStatus}
-                        </StatusBadge>
+                        <EnvironmentAuthStateBadge
+                          message={editingEnvironment?.auth_state_message}
+                          status={selectedAuthStateStatus}
+                        />
                       </div>
                       {selectedAuthStateStatus === "valid" || selectedAuthStateStatus === "expired" ? (
                         <p className="text-muted-foreground text-xs">
@@ -1448,6 +1612,16 @@ export function ExplorationWorkspace({
                             </p>
                           ) : null}
                         </div>
+                      ) : showAiLetterAutoAuthStatus ? (
+                        <p className="text-muted-foreground text-xs">
+                          {selectedAuthStateStatus === "logging_in"
+                            ? editingEnvironment?.auth_state_message || "正在通过 Playwright 自动登录（验证码 AI 识别，最多 3 次）…"
+                            : selectedAuthStateStatus === "login_failed"
+                              ? editingEnvironment?.auth_state_message || "自动登录失败，请检查账号密码或模型配置后重新保存环境。"
+                              : selectedAuthStateStatus === "valid"
+                                ? "登录态已自动保存，探索任务将直接复用。"
+                                : "保存环境后将自动登录并保存登录态。"}
+                        </p>
                       ) : selectedManualCaptcha && form.reuseAuthState ? (
                         <p className="text-muted-foreground text-xs">保存环境后可打开登录窗口并保存登录态。</p>
                       ) : (

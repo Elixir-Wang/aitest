@@ -156,7 +156,7 @@ export function Select({
       ? createPortal(
           <div
             ref={menuRef}
-            className="fixed z-50 max-h-60 overflow-y-auto rounded-lg border border-border bg-popover py-0.5 text-sm text-popover-foreground shadow-sm"
+            className="pointer-events-auto fixed z-[100] max-h-60 overflow-y-auto rounded-lg border border-border bg-popover py-0.5 text-sm text-popover-foreground shadow-sm"
             style={{
               left: menuPosition.left,
               top: menuPosition.top,

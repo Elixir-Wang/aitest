@@ -3,11 +3,11 @@
 """
 
 import pytest
-from app.agents.requirement_analysis.schemas import (
+from app.agents.requirement_analysis.core.schemas import (
     RequirementUnderstandingOutput,
     RequirementModule,
     QualityAssessmentOutput,
-    QualityScores,
+    QualityIssueSummary,
     QualityDecision,
     CompletenessAssessment,
     ClarityAssessment,
@@ -38,18 +38,23 @@ class TestSchemas:
         assert module.module_name == "订单管理"
         assert len(module.capabilities) == 2
 
-    def test_quality_scores(self):
-        """测试质量分数"""
-        scores = QualityScores(
-            completeness=70,
-            clarity=75,
-            testability=60,
-            consistency=95,
-            overall=73,
+    def test_quality_issue_summary(self):
+        """测试质量问题统计（替代评分）"""
+        summary = QualityIssueSummary(
+            completeness_issues=3,
+            clarity_issues=5,
+            testability_issues=4,
+            consistency_issues=1,
+            total_issues=13,
+            by_severity={"blocker": 1, "major": 7, "minor": 5},
+            has_blocker=True,
+            can_proceed=False,
         )
 
-        assert scores.completeness == 70
-        assert scores.overall == 73
+        assert summary.completeness_issues == 3
+        assert summary.total_issues == 13
+        assert summary.has_blocker is True
+        assert summary.can_proceed is False
 
     def test_nfr_gap(self):
         """测试 NFR 缺口"""
@@ -276,23 +281,26 @@ class TestReportGenerator:
         )
 
         quality = QualityAssessmentOutput(
-            scores=QualityScores(
-                completeness=70,
-                clarity=75,
-                testability=60,
-                consistency=95,
-                overall=73,
+            summary=QualityIssueSummary(
+                completeness_issues=3,
+                clarity_issues=5,
+                testability_issues=6,
+                consistency_issues=1,
+                total_issues=15,
+                by_severity={"blocker": 1, "major": 8, "minor": 6},
+                has_blocker=True,
+                can_proceed=False,
             ),
             decision=QualityDecision(
                 result="conditional",
-                rationale="总分73分",
+                rationale="存在15个问题需要澄清",
                 blocking_issues=["缺少性能要求"],
                 recommended_actions=["补充性能指标"],
             ),
-            completeness=CompletenessAssessment(score=70),
-            clarity=ClarityAssessment(score=75),
-            testability=TestabilityAssessment(score=60),
-            consistency=ConsistencyAssessment(score=95),
+            completeness=CompletenessAssessment(),
+            clarity=ClarityAssessment(),
+            testability=TestabilityAssessment(),
+            consistency=ConsistencyAssessment(),
             assessment_summary="质量评估完成",
         )
 
@@ -496,6 +504,40 @@ class TestRequirementEnhancer:
             item.resolution_status in ["needs_manual", "has_suggestions"]
             for item in pending
         )
+
+
+class TestQualityConversion:
+    def test_convert_ambiguous_issue_without_interpretations_uses_fallbacks(self):
+        from app.agents.requirement_analysis.agents.quality import convert_to_full_assessment
+        from app.agents.requirement_analysis.core.schemas import (
+            QualityAssessmentSimple,
+            QualityIssueFlat,
+        )
+
+        simple = QualityAssessmentSimple(
+            issues=[
+                QualityIssueFlat(
+                    issue_id="CLAR-001",
+                    dimension="clarity",
+                    category="ambiguous",
+                    severity="major",
+                    title="歧义表述",
+                    description="一句话多种理解",
+                    location="登录模块",
+                    current_text="用户登录后系统需要快速响应",
+                    issue_reason="无法确定响应时间要求",
+                    suggested_fix="登录后系统需在2秒内返回结果",
+                    impact="无法设计性能测试",
+                    extra={},
+                )
+            ],
+            assessment_summary="识别出1个清晰度问题",
+        )
+
+        result = convert_to_full_assessment(simple)
+
+        assert len(result.clarity.ambiguous_statements) == 1
+        assert len(result.clarity.ambiguous_statements[0].possible_interpretations) >= 2
 
 
 # 运行测试

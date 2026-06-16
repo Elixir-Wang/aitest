@@ -5,7 +5,7 @@
 """
 
 import pytest
-from app.agents.requirement_analysis.schemas import (
+from app.agents.requirement_analysis.core.schemas import (
     RequirementAnalysisInputV2,
     AuxiliaryDocument,
 )
@@ -54,7 +54,7 @@ async def test_full_workflow():
 
     注意：此测试需要配置真实的 LLM 模型才能运行
     """
-    from app.agents.requirement_analysis.workflow import run_requirement_analysis
+    from app.agents.requirement_analysis.workflow.workflow import run_requirement_analysis
 
     # TODO: 替换为真实的 LLM 模型
     # from app.core.llm import get_llm_model
@@ -90,7 +90,7 @@ async def test_full_workflow():
     assert len(result.understanding.modules) > 0
 
     # 验证质量评估
-    assert 0 <= result.quality_assessment.scores.overall <= 100
+    assert result.quality_assessment.summary.total_issues >= 0
     assert result.quality_assessment.decision.result in [
         "approved",
         "conditional",
@@ -103,7 +103,7 @@ async def test_full_workflow():
 
 def test_input_validation():
     """测试输入验证"""
-    from app.agents.requirement_analysis.schemas import (
+    from app.agents.requirement_analysis.core.schemas import (
         RequirementAnalysisInputV2,
     )
 
@@ -122,11 +122,11 @@ def test_input_validation():
 
 def test_output_structure():
     """测试输出结构完整性"""
-    from app.agents.requirement_analysis.schemas import (
+    from app.agents.requirement_analysis.core.schemas import (
         RequirementAnalysisResultV2,
         RequirementUnderstandingOutput,
         QualityAssessmentOutput,
-        QualityScores,
+        QualityIssueSummary,
         QualityDecision,
         CompletenessAssessment,
         ClarityAssessment,
@@ -146,12 +146,15 @@ def test_output_structure():
             understanding_summary="测试",
         ),
         quality_assessment=QualityAssessmentOutput(
-            scores=QualityScores(
-                completeness=70,
-                clarity=75,
-                testability=60,
-                consistency=95,
-                overall=73,
+            summary=QualityIssueSummary(
+                completeness_issues=2,
+                clarity_issues=3,
+                testability_issues=4,
+                consistency_issues=1,
+                total_issues=10,
+                by_severity={"blocker": 0, "major": 5, "minor": 5},
+                has_blocker=False,
+                can_proceed=True,
             ),
             decision=QualityDecision(
                 result="conditional",
@@ -159,10 +162,10 @@ def test_output_structure():
                 blocking_issues=[],
                 recommended_actions=[],
             ),
-            completeness=CompletenessAssessment(score=70),
-            clarity=ClarityAssessment(score=75),
-            testability=TestabilityAssessment(score=60),
-            consistency=ConsistencyAssessment(score=95),
+            completeness=CompletenessAssessment(),
+            clarity=ClarityAssessment(),
+            testability=TestabilityAssessment(),
+            consistency=ConsistencyAssessment(),
             assessment_summary="测试",
         ),
         clarification=ClarificationOutput(

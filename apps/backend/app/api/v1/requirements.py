@@ -46,7 +46,12 @@ async def upload_requirements(
         document_name=document_name,
         existing_document_id=existing_document_id,
     )
-    background_tasks.add_task(document_service.convert_pending_file_mappings, [item["id"] for item in result["files"]])
+    background_tasks.add_task(
+        document_service.convert_pending_file_mappings,
+        [item["id"] for item in result["files"]],
+        dict(actor),
+        auto_continue=(mode == "new"),
+    )
     return result
 
 
@@ -193,7 +198,12 @@ async def append_requirement_files(
     actor=Depends(current_user),
 ) -> dict:
     result = await document_service.append_document_files(project_id, document_id, files, actor)
-    background_tasks.add_task(document_service.convert_pending_file_mappings, [item["id"] for item in result["files"]])
+    background_tasks.add_task(
+        document_service.convert_pending_file_mappings,
+        [item["id"] for item in result["files"]],
+        dict(actor),
+        auto_continue=False,
+    )
     return result
 
 

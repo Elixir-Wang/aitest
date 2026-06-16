@@ -8,13 +8,14 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from fastapi import UploadFile
+from loguru import logger
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir, resolve_stored_path, store_path
 from app.agents.requirement_analysis.workflow import run_requirement_analysis
-from app.agents.requirement_analysis.schemas import RequirementAnalysisInputV2, AuxiliaryDocument
-from app.agents.requirement_analysis.utils.clarification_adapter import clarification_item_to_api
-from app.agents.requirement_analysis.utils.report_generator import (
+from app.agents.requirement_analysis.core.schemas import RequirementAnalysisInputV2, AuxiliaryDocument
+from app.agents.requirement_analysis.utils import (
+    clarification_item_to_api,
     generate_clarification_report,
     generate_quality_assurance_report,
 )
@@ -24,9 +25,6 @@ from app.schemas.document import (
     RequirementClarificationAnswerIn,
     RequirementPreliminaryUpdateIn,
     SourceDocumentUpdateIn,
-)
-from app.schemas.requirement_analysis import (
-    RequirementAnalysisInput,
 )
 from app.services import operation_log_service, task_service
 from app.services.document import file_service as document_file_service
@@ -52,26 +50,7 @@ class RequirementAnalysisCancelledError(Exception):
 
 
 async def analyze_requirement_with_agent(input_data: RequirementAnalysisInputV2):
-    """Compatibility wrapper for tests and callers; runtime still uses LangGraph workflow."""
-    if isinstance(input_data, RequirementAnalysisInputV2):
-        workflow_input = input_data
-    else:
-        workflow_input = RequirementAnalysisInputV2(
-            project_id=input_data.project_id,
-            document_id=input_data.document_id,
-            document_name=input_data.document_name,
-            run_id=input_data.run_id,
-            primary_mapping_id=input_data.primary_mapping_id,
-            primary_filename=input_data.primary_filename,
-            primary_markdown_content=input_data.primary_markdown_content,
-            auxiliary_documents=[],
-            config={},
-        )
-    return await run_requirement_analysis(workflow_input)
-
-
-def _is_langgraph_requirement_analysis_output(analysis_output) -> bool:
-    return hasattr(analysis_output, "quality_assessment") and hasattr(analysis_output, "clarification")
+    return await run_requirement_analysis(input_data)
 
 
 def _map_langgraph_quality_result(result: str) -> str:
@@ -103,13 +82,14 @@ def _normalize_requirement_analysis_output_markdown(output: dict) -> dict:
     return normalized
 
 
-def _legacy_output_from_langgraph_result(analysis_output, primary_markdown_content: str) -> tuple[str, dict]:
+def _output_from_analysis_result(analysis_output, primary_markdown_content: str) -> tuple[str, dict]:
     preliminary_markdown = (
         analysis_output.enhanced_requirement_markdown
         or primary_markdown_content
     )
+    quality = analysis_output.quality_assessment
     quality_assurance_report = generate_quality_assurance_report(
-        analysis_output.quality_assessment,
+        quality,
         analysis_output.clarification,
     )
     clarification_report = generate_clarification_report(analysis_output.clarification)
@@ -119,46 +99,25 @@ def _legacy_output_from_langgraph_result(analysis_output, primary_markdown_conte
     ]
     output_data = {
         "status": analysis_output.status,
-        "analysis_summary": analysis_output.quality_assessment.assessment_summary,
+        "analysis_summary": quality.assessment_summary,
         "preliminary_requirement_markdown": preliminary_markdown,
         "enhanced_requirement_markdown": preliminary_markdown,
         "analysis_report_markdown": analysis_output.analysis_report_markdown or "",
         "quality_assurance_report_markdown": quality_assurance_report,
         "clarification_report_markdown": clarification_report,
         "applied_supplements": [],
-        "maturity_assessment": analysis_output.quality_assessment.scores.model_dump(),
+        "quality_summary": quality.summary.model_dump(),
+        "quality_decision": quality.decision.model_dump(),
         "clarification_questions": clarification_questions,
         "conflicts": [],
         "quality_gate": {
-            "result": _map_langgraph_quality_result(analysis_output.quality_assessment.decision.result),
-            "testability_score": analysis_output.quality_assessment.scores.testability,
-            "blocking_issues": analysis_output.quality_assessment.decision.blocking_issues,
-            "warnings": [],
+            "result": _map_langgraph_quality_result(quality.decision.result),
+            "blocking_issues": quality.decision.blocking_issues,
+            "warning_issues": [],
+            "passed_checks": [],
         },
         "metadata": analysis_output.metadata,
     }
-    output_data = _normalize_requirement_analysis_output_markdown(output_data)
-    return output_data["preliminary_requirement_markdown"], output_data
-
-
-def _legacy_output_from_requirement_analysis_result(analysis_output, primary_markdown_content: str) -> tuple[str, dict]:
-    if _is_langgraph_requirement_analysis_output(analysis_output):
-        return _legacy_output_from_langgraph_result(analysis_output, primary_markdown_content)
-
-    output_data = analysis_output.model_dump()
-    preliminary_markdown = (
-        output_data.get("preliminary_requirement_markdown")
-        or getattr(analysis_output, "preliminary_requirement_markdown", "")
-        or primary_markdown_content
-    )
-    output_data["preliminary_requirement_markdown"] = preliminary_markdown
-    output_data.setdefault("enhanced_requirement_markdown", preliminary_markdown)
-    output_data.setdefault("clarification_questions", [])
-    output_data.setdefault("conflicts", [])
-    output_data.setdefault("analysis_report_markdown", "")
-    output_data.setdefault("quality_assurance_report_markdown", "")
-    output_data.setdefault("applied_supplements", [])
-    output_data.setdefault("metadata", {})
     output_data = _normalize_requirement_analysis_output_markdown(output_data)
     return output_data["preliminary_requirement_markdown"], output_data
 
@@ -224,8 +183,54 @@ async def convert_source_file_mapping(mapping_id: str) -> dict:
     return await document_file_service.convert_source_file_mapping(mapping_id)
 
 
-async def convert_pending_file_mappings(mapping_ids: list[str]) -> None:
-    await document_file_service.convert_pending_mappings(mapping_ids)
+async def convert_pending_file_mappings(
+    mapping_ids: list[str],
+    actor: dict | None = None,
+    *,
+    auto_continue: bool = False,
+) -> None:
+    for mapping_id in mapping_ids:
+        result = await document_file_service.convert_source_file_mapping(mapping_id)
+        if auto_continue and actor:
+            await maybe_auto_start_requirement_analysis(mapping_id, result, actor)
+
+
+async def maybe_auto_start_requirement_analysis(mapping_id: str, conversion_result: dict, actor: dict) -> None:
+    conversion_status = conversion_result.get("conversion_status")
+    if conversion_status not in {CONVERSION_SUCCESS_STATUS, "warning"}:
+        return
+    if conversion_result.get("file_role") != "primary":
+        return
+    if not conversion_result.get("markdown_file_path"):
+        return
+
+    document_id = conversion_result.get("document_id")
+    if not document_id:
+        return
+
+    with connect() as db:
+        mapping_row = document_repo.find_file_mapping(db, mapping_id)
+        if not mapping_row:
+            return
+        project_id = mapping_row["project_id"]
+        document = document_repo.find_by_project_and_id(db, project_id, document_id)
+        if not document or document["current_version_id"]:
+            return
+        if requirement_analysis_run_repo.list_by_document(db, document_id):
+            return
+        if requirement_analysis_run_repo.find_active_by_document(db, document_id):
+            return
+
+    try:
+        task = start_requirement_review_run(project_id, document_id, actor)
+        await execute_requirement_review_run(task["source_id"], actor)
+    except Exception as exc:
+        logger.warning(
+            "auto_continue_requirement_analysis_failed | mapping_id={mapping_id} document_id={document_id} error={error}",
+            mapping_id=mapping_id,
+            document_id=document_id,
+            error=exc,
+        )
 
 
 def update_converted_markdown(mapping_id: str, *, markdown_content: str, change_summary: str, actor) -> dict:
@@ -653,7 +658,7 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
     if task_id:
         _ensure_requirement_analysis_run_not_stopping(task_id)
 
-    analysis_input = RequirementAnalysisInput(
+    analysis_input = RequirementAnalysisInputV2(
         project_id=project_id,
         document_id=document_id,
         document_name=document["name"],
@@ -672,7 +677,7 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
     if task_id:
         _ensure_requirement_analysis_run_not_stopping(task_id)
 
-    preliminary_markdown, output_data = _legacy_output_from_requirement_analysis_result(
+    preliminary_markdown, output_data = _output_from_analysis_result(
         analysis_output,
         primary_markdown_content,
     )
@@ -686,7 +691,6 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
     draft_content_hash = _content_hash(preliminary_markdown)
     quality_gate = output_data.get("quality_gate") or {}
     quality_result = quality_gate.get("result", "warning")
-    testability_score = quality_gate.get("testability_score", 0)
 
     with connect() as db:
         document_repo.create_requirement_analysis(
@@ -697,10 +701,10 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
             version_id=None,
             primary_mapping_id=primary_file["id"],
             status=analysis_output.status,
-            analysis_summary=output_data.get("analysis_summary") or getattr(analysis_output, "analysis_summary", ""),
+            analysis_summary=output_data.get("analysis_summary") or "",
             output_json=output_data,
             quality_result=quality_result,
-            testability_score=testability_score,
+            testability_score=0,
             draft_content_hash=draft_content_hash,
             created_by=actor["id"],
         )
@@ -712,7 +716,6 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
         "version_id": None,
         "primary_mapping_id": primary_file["id"],
         "quality_result": quality_result,
-        "testability_score": testability_score,
         "created_by": actor["id"],
         "created_at": "",
         "draft_content_hash": draft_content_hash,
@@ -1393,7 +1396,6 @@ def _serialize_requirement_analysis(row) -> dict:
         "status": row["status"],
         "analysis_summary": row["analysis_summary"],
         "quality_result": row["quality_result"],
-        "testability_score": row["testability_score"],
         "draft_content_hash": row["draft_content_hash"],
         "finalized_version_id": row["finalized_version_id"],
         "finalized_at": row["finalized_at"],

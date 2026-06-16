@@ -14,6 +14,9 @@ class ProjectEnvironmentOut(BaseModel):
     has_saved_credentials: bool = False
     auth_state_status: str = "none"
     auth_state_expires_at: str | None = None
+    auth_state_message: str = ""
+    auto_auth_status: str = "idle"
+    auto_auth_message: str = ""
     description: str
     created_at: str
     updated_at: str
@@ -50,3 +53,10 @@ class ManualAuthSessionOut(BaseModel):
     auth_state_expires_at: str | None = None
     has_saved_credentials: bool = False
     message: str
+
+
+class AutoAuthStatusOut(BaseModel):
+    status: str
+    message: str
+    updated_at: str | None = None
+    last_error_code: str = ""

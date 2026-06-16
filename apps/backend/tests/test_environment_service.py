@@ -6,7 +6,7 @@ from app.core import environment_auth_state
 from app.core import environment_credentials
 from app.schemas.environment import ProjectEnvironmentCreateIn, ProjectEnvironmentUpdateIn
 from app.seed.init_db import init_db
-from app.services import environment_service, manual_auth_service
+from app.services import environment_service, manual_auth_service, auto_auth_service
 
 
 ACTOR = {"id": "u-admin", "role": "admin", "nickname": "管理员", "username": "admin", "project_scope": "全部项目"}
@@ -26,6 +26,8 @@ def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setattr(environment_auth_state.settings, "PROJECT_FILE_STORAGE_ROOT", data_dir / "projects")
     with manual_auth_service._sessions_lock:
         manual_auth_service._sessions.clear()
+    with auto_auth_service._running_lock:
+        auto_auth_service._running_environments.clear()
     init_db()
 
 
@@ -120,6 +122,162 @@ def test_create_account_password_defaults_reuse_auth_state(monkeypatch: pytest.M
     assert stored["password_encrypted"]
     assert stored["password_hash"]
     assert "secret123" not in stored["password_encrypted"]
+
+
+def test_create_ai_letter_schedules_auto_auth(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+    scheduled: list[tuple[str, str]] = []
+
+    def fake_schedule(project_id: str, environment_id: str) -> None:
+        scheduled.append((project_id, environment_id))
+        auto_auth_service._write_auto_auth_status(
+            project_id,
+            environment_id,
+            status="queued",
+            message="等待自动登录",
+        )
+
+    monkeypatch.setattr(auto_auth_service, "schedule_ai_letter_auto_auth", fake_schedule)
+
+    result = environment_service.create_project_environment(
+        "project-1",
+        ProjectEnvironmentCreateIn(
+            name="AI 验证码环境",
+            site_url="https://example.test/login",
+            username="admin",
+            password="secret123",
+            login_strategy="account_password",
+            captcha_strategy="ai_letter",
+            reuse_auth_state=True,
+        ),
+        ACTOR,
+    )
+
+    assert scheduled == [("project-1", result["id"])]
+    assert result["auto_auth_status"] == "queued"
+    assert result["auth_state_status"] == "logging_in"
+    assert "自动登录" in result["auth_state_message"]
+
+
+def test_update_ai_letter_with_valid_auth_state_does_not_reschedule_auto_auth(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+    scheduled: list[tuple[str, str]] = []
+
+    def fake_schedule(project_id: str, environment_id: str) -> None:
+        scheduled.append((project_id, environment_id))
+
+    monkeypatch.setattr(auto_auth_service, "schedule_ai_letter_auto_auth", fake_schedule)
+
+    created = environment_service.create_project_environment(
+        "project-1",
+        ProjectEnvironmentCreateIn(
+            name="AI 验证码环境",
+            site_url="https://example.test/login",
+            username="admin",
+            password="secret123",
+            login_strategy="account_password",
+            captcha_strategy="ai_letter",
+            reuse_auth_state=True,
+        ),
+        ACTOR,
+    )
+    scheduled.clear()
+    state_path = environment_auth_state.auth_state_path("project-1", created["id"])
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        f'{{"cookies":[{{"name":"sid","value":"secret","domain":"example.test","path":"/","expires":{FUTURE_EXPIRES}}}],"origins":[]}}',
+        encoding="utf-8",
+    )
+    auto_auth_service._write_auto_auth_status(
+        "project-1",
+        created["id"],
+        status="succeeded",
+        message="登录态已自动保存。",
+    )
+
+    updated = environment_service.update_project_environment(
+        "project-1",
+        created["id"],
+        ProjectEnvironmentUpdateIn(description="仅更新描述"),
+        ACTOR,
+    )
+
+    assert scheduled == []
+    assert updated["auth_state_status"] == "valid"
+
+
+def test_start_environment_auto_auth_triggers_login(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+    scheduled: list[tuple[str, str]] = []
+
+    def fake_schedule(project_id: str, environment_id: str) -> None:
+        scheduled.append((project_id, environment_id))
+        auto_auth_service._write_auto_auth_status(
+            project_id,
+            environment_id,
+            status="queued",
+            message="等待自动登录",
+        )
+
+    monkeypatch.setattr(auto_auth_service, "schedule_ai_letter_auto_auth", fake_schedule)
+
+    created = environment_service.create_project_environment(
+        "project-1",
+        ProjectEnvironmentCreateIn(
+            name="AI 验证码环境",
+            site_url="https://example.test/login",
+            username="admin",
+            password="secret123",
+            login_strategy="account_password",
+            captcha_strategy="ai_letter",
+            reuse_auth_state=True,
+        ),
+        ACTOR,
+    )
+    scheduled.clear()
+
+    result = environment_service.start_environment_auto_auth("project-1", created["id"], ACTOR)
+
+    assert scheduled == [("project-1", created["id"])]
+    assert result["auth_state_status"] == "logging_in"
+    assert result["auto_auth_status"] == "queued"
+
+
+def test_start_environment_auto_auth_requires_saved_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+    with core_db.connect() as db:
+        db.execute(
+            """
+            INSERT INTO project_environments (
+                id, project_id, name, site_url, username, login_strategy, captcha_strategy,
+                reuse_auth_state, description, created_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "env-no-password",
+                "project-1",
+                "无密码环境",
+                "https://example.test/login",
+                "admin",
+                "account_password",
+                "ai_letter",
+                1,
+                "",
+                "u-admin",
+            ),
+        )
+
+    with pytest.raises(HTTPException) as exc:
+        environment_service.start_environment_auto_auth("project-1", "env-no-password", ACTOR)
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["code"] == "AUTO_AUTH_CREDENTIALS_REQUIRED"
 
 
 def test_update_username_keeps_saved_password_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends
 
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.environment import (
+    AutoAuthStatusOut,
     ManualAuthSessionOut,
     ProjectEnvironmentCreateIn,
     ProjectEnvironmentOut,
     ProjectEnvironmentUpdateIn,
 )
-from app.services import environment_service, manual_auth_service
+from app.services import auto_auth_service, environment_service, manual_auth_service
 
 router = APIRouter(prefix="/projects", tags=["environments"])
 global_router = APIRouter(prefix="/environments", tags=["environments"])
@@ -40,6 +41,27 @@ def update_project_environment(
     actor=Depends(require_admin),
 ) -> dict:
     return environment_service.update_project_environment(project_id, environment_id, payload, actor)
+
+
+@router.get(
+    "/{project_id}/environments/{environment_id}/auto-auth/status",
+    response_model=AutoAuthStatusOut,
+)
+def get_auto_auth_status(project_id: str, environment_id: str, actor=Depends(require_admin)) -> dict:
+    _ = actor
+    return auto_auth_service.get_auto_auth_status(project_id, environment_id)
+
+
+@router.post(
+    "/{project_id}/environments/{environment_id}/auto-auth/start",
+    response_model=ProjectEnvironmentOut,
+)
+def start_environment_auto_auth(
+    project_id: str,
+    environment_id: str,
+    actor=Depends(require_admin),
+) -> dict:
+    return environment_service.start_environment_auto_auth(project_id, environment_id, actor)
 
 
 @router.post("/{project_id}/environments/{environment_id}/manual-auth/start", response_model=ManualAuthSessionOut)

@@ -21,5 +21,10 @@ def test_ai_capabilities_include_business_agents() -> None:
     assert "requirement_analysis" in ids
 
 
+def test_ai_capabilities_exclude_letter_captcha_recognition() -> None:
+    ids = [capability.id for capability in list_ai_capabilities()]
+    assert "letter_captcha_recognition" not in ids
+
+
 def test_ai_capabilities_do_not_carry_redundant_kind() -> None:
     assert all(not hasattr(capability, "kind") for capability in list_ai_capabilities())

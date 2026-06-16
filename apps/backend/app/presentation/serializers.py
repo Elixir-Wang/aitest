@@ -1,6 +1,71 @@
 from sqlite3 import Row
 
 from app.core.environment_auth_state import auth_state_summary
+from app.services.auto_auth_service import get_auto_auth_status
+
+
+def resolve_environment_auth_state_display(
+    *,
+    project_id: str,
+    environment_id: str,
+    login_strategy: str,
+    reuse_auth_state: bool,
+) -> dict:
+    auto_auth = get_auto_auth_status(project_id, environment_id)
+    auto_auth_status = auto_auth["status"]
+    auto_auth_message = auto_auth["message"]
+    file_state = auth_state_summary(
+        project_id=project_id,
+        environment_id=environment_id,
+        login_strategy=login_strategy,
+        reuse_auth_state=reuse_auth_state,
+    )
+
+    if login_strategy != "account_password" or not reuse_auth_state:
+        return {
+            "auth_state_status": "none",
+            "auth_state_expires_at": None,
+            "auth_state_message": "",
+            "auto_auth_status": auto_auth_status,
+            "auto_auth_message": auto_auth_message,
+        }
+
+    if auto_auth_status in {"queued", "running"}:
+        return {
+            "auth_state_status": "logging_in",
+            "auth_state_expires_at": None,
+            "auth_state_message": auto_auth_message or "正在自动登录",
+            "auto_auth_status": auto_auth_status,
+            "auto_auth_message": auto_auth_message,
+        }
+
+    if auto_auth_status == "failed":
+        return {
+            "auth_state_status": "login_failed",
+            "auth_state_expires_at": None,
+            "auth_state_message": auto_auth_message or "自动登录失败",
+            "auto_auth_status": auto_auth_status,
+            "auto_auth_message": auto_auth_message,
+        }
+
+    return {
+        "auth_state_status": file_state["status"],
+        "auth_state_expires_at": file_state["expires_at"],
+        "auth_state_message": "",
+        "auto_auth_status": auto_auth_status,
+        "auto_auth_message": auto_auth_message,
+    }
+
+
+def apply_environment_auth_display(environment: dict) -> dict:
+    display = resolve_environment_auth_state_display(
+        project_id=environment["project_id"],
+        environment_id=environment["id"],
+        login_strategy=environment["login_strategy"],
+        reuse_auth_state=bool(environment.get("reuse_auth_state")),
+    )
+    environment.update(display)
+    return environment
 
 
 def user_actions(role: str) -> list[str]:
@@ -92,7 +157,7 @@ def serialize_project_environment(row: Row, actor_role: str) -> dict:
     )
     project_id = row["project_id"]
     environment_id = row["id"]
-    auth_state = auth_state_summary(
+    auth_display = resolve_environment_auth_state_display(
         project_id=project_id,
         environment_id=environment_id,
         login_strategy=login_strategy,
@@ -113,8 +178,11 @@ def serialize_project_environment(row: Row, actor_role: str) -> dict:
         "captcha_strategy": captcha_strategy,
         "reuse_auth_state": reuse_auth_state,
         "has_saved_credentials": has_saved_credentials,
-        "auth_state_status": auth_state["status"],
-        "auth_state_expires_at": auth_state["expires_at"],
+        "auth_state_status": auth_display["auth_state_status"],
+        "auth_state_expires_at": auth_display["auth_state_expires_at"],
+        "auth_state_message": auth_display["auth_state_message"],
+        "auto_auth_status": auth_display["auto_auth_status"],
+        "auto_auth_message": auth_display["auto_auth_message"],
         "description": row["description"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],

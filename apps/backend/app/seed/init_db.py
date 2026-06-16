@@ -615,6 +615,7 @@ def init_db() -> None:
         _migrate_requirement_analysis_run_statuses(db)
         _migrate_agent_model_assignments(db)
         _migrate_knowledge_query_model_assignment(db)
+        _migrate_remove_retired_model_assignments(db)
         _migrate_stored_paths(db)
         _seed_operation_log_retention_policy(db)
         _ensure_all_projects_conversation_scope(db)
@@ -1051,6 +1052,15 @@ def _migrate_knowledge_query_model_assignment(db: sqlite3.Connection) -> None:
         """
     )
     db.execute("DELETE FROM model_assignments WHERE capability_id = 'knowledge_builder'")
+
+
+def _migrate_remove_retired_model_assignments(db: sqlite3.Connection) -> None:
+    """Remove model assignments for capabilities no longer registered in AI_CAPABILITIES."""
+    retired_capability_ids = (
+        "letter_captcha_recognition",
+    )
+    for capability_id in retired_capability_ids:
+        db.execute("DELETE FROM model_assignments WHERE capability_id = ?", (capability_id,))
 
 
 def _migrate_stored_paths(db: sqlite3.Connection) -> None:

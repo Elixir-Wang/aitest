@@ -437,7 +437,6 @@ type RequirementAnalysisResult = {
   status: "completed" | "needs_clarification" | "blocked";
   analysis_summary: string;
   quality_result: "passed" | "warning" | "blocked";
-  testability_score: number;
   draft_content_hash: string;
   finalized_version_id: string | null;
   finalized_at: string | null;
@@ -476,10 +475,25 @@ type RequirementAnalysisResult = {
     }>;
     quality_gate: {
       result: "passed" | "warning" | "blocked";
-      testability_score: number;
       blocking_issues: string[];
       warning_issues: string[];
       passed_checks: string[];
+    };
+    quality_summary?: {
+      completeness_issues: number;
+      clarity_issues: number;
+      testability_issues: number;
+      consistency_issues: number;
+      total_issues: number;
+      by_severity: Record<string, number>;
+      has_blocker: boolean;
+      can_proceed: boolean;
+    };
+    quality_decision?: {
+      result: "approved" | "conditional" | "rejected";
+      rationale: string;
+      blocking_issues: string[];
+      recommended_actions: string[];
     };
     next_actions: string[];
   };
@@ -695,6 +709,8 @@ export default function DocumentDetailPage() {
   const requirementReviewRunning =
     reviewLoading || REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRequirementAnalysisRunStatus);
   const requirementReviewRunningRef = useRef(false);
+  const hasRunningConversionsRef = useRef(false);
+  const autoContinueNotifiedRef = useRef(false);
   const requirementAnalysisDisabledReason = (() => {
     if (!currentPrimaryFile) {
       return "请先设置主需求文件";
@@ -928,6 +944,11 @@ export default function DocumentDetailPage() {
   }, [activeTab, loadReadableOriginalPreview, loadStandardPreview, selectedFileEffectKey]);
 
   useEffect(() => {
+    autoContinueNotifiedRef.current = false;
+    hasRunningConversionsRef.current = false;
+  }, [documentId]);
+
+  useEffect(() => {
     if (!hasRunningConversions) {
       return;
     }
@@ -935,6 +956,35 @@ export default function DocumentDetailPage() {
       void loadOverview({ silent: true });
     }, 3000);
     return () => window.clearInterval(timer);
+  }, [hasRunningConversions, loadOverview]);
+
+  useEffect(() => {
+    const wasRunning = hasRunningConversionsRef.current;
+    hasRunningConversionsRef.current = hasRunningConversions;
+    if (!wasRunning || hasRunningConversions) {
+      return;
+    }
+
+    void (async () => {
+      const latestOverview = await loadOverview({ silent: true });
+      if (!latestOverview) {
+        return;
+      }
+      const primaryFile = latestOverview.files.find((file) => file.file_role === "primary");
+      const runStatus = latestOverview.document.latest_requirement_analysis_run?.status ?? "";
+      if (
+        primaryFile &&
+        ["success", "warning"].includes(primaryFile.conversion_status) &&
+        REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(runStatus) &&
+        !autoContinueNotifiedRef.current
+      ) {
+        autoContinueNotifiedRef.current = true;
+        toast.success("标准文件已生成，正在自动开始需求分析");
+        notifyAiTaskStarted();
+        setActiveTab("analysis");
+        setAnalysisTab("analysis-report");
+      }
+    })();
   }, [hasRunningConversions, loadOverview]);
 
   useEffect(() => {

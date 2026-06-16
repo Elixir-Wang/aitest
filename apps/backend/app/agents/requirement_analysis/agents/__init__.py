@@ -5,7 +5,7 @@ from app.agents.requirement_analysis.agents.clarification import (
     clarification_agent,
     run_clarification_agent,
 )
-from app.agents.requirement_analysis.agents.quality_assessment import (
+from app.agents.requirement_analysis.agents.quality import (
     QUALITY_ASSESSMENT_SYSTEM_PROMPT,
     quality_assessment_agent,
     run_quality_assessment_agent,

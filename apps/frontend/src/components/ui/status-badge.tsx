@@ -100,7 +100,8 @@ export function explorationPlanStatusTone(status: string): StatusBadgeTone {
 
 export function authStateStatusTone(status: string): StatusBadgeTone {
   if (status === "valid") return "success";
-  if (status === "expired") return "destructive";
+  if (status === "expired" || status === "login_failed") return "destructive";
+  if (status === "logging_in") return "processing";
   if (status === "unknown") return "warning";
   return "neutral";
 }
