@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from app.agents.requirement_analysis.core.schemas import (
+from app.agents.requirement_analysis.schemas import (
     AuxiliaryDocument,
     EvidenceSnippet,
     QualityAssessmentBrief,
-    QualityAssessmentOutput,
     QualityIssueBrief,
-    QuestioningBrief,
     RequirementUnderstandingBrief,
-    RequirementUnderstandingOutput,
 )
+from app.agents.requirement_analysis.quality.schemas import QualityAssessmentOutput
+from app.agents.requirement_analysis.understanding.schemas import RequirementUnderstandingOutput
 
 
 def build_evidence_snippets(
@@ -79,71 +78,6 @@ def build_understanding_brief(
     )
 
 
-def build_quality_brief(quality: QualityAssessmentOutput) -> QualityAssessmentBrief:
-    issues: list[QualityIssueBrief] = []
-    issues.extend(
-        QualityIssueBrief(
-            issue_id=f"BLOCKER-{index:03d}",
-            severity="blocker",
-            dimension="decision",
-            summary=issue,
-            impact=issue,
-            evidence_refs=["REQ-PRIMARY"],
-        )
-        for index, issue in enumerate(quality.decision.blocking_issues, 1)
-    )
-    issues.extend(
-        QualityIssueBrief(
-            issue_id=f"NFR-{index:03d}",
-            severity=gap.severity,
-            dimension="completeness",
-            summary=gap.description,
-            impact=gap.impact,
-            evidence_refs=["REQ-PRIMARY"] if gap.evidence_text else [],
-        )
-        for index, gap in enumerate(quality.completeness.nfr_gaps, 1)
-    )
-    issues.extend(
-        QualityIssueBrief(
-            issue_id=f"FUZZY-{index:03d}",
-            severity="major",
-            dimension="clarity",
-            summary=term.issue,
-            impact=term.suggested_fix,
-            evidence_refs=["REQ-PRIMARY"] if term.current_text else [],
-        )
-        for index, term in enumerate(quality.clarity.fuzzy_terms, 1)
-    )
-    issues.extend(
-        QualityIssueBrief(
-            issue_id=f"TEST-{index:03d}",
-            severity="major",
-            dimension="testability",
-            summary=gap.description,
-            impact=gap.impact,
-            evidence_refs=["REQ-PRIMARY"],
-        )
-        for index, gap in enumerate(quality.testability.test_coverage_gaps, 1)
-    )
-    issues.extend(
-        QualityIssueBrief(
-            issue_id=f"CONFLICT-{index:03d}",
-            severity=conflict.severity,
-            dimension="consistency",
-            summary=conflict.description,
-            impact=conflict.impact,
-            evidence_refs=["REQ-PRIMARY"],
-        )
-        for index, conflict in enumerate(quality.consistency.conflicts, 1)
-    )
-
-    return QualityAssessmentBrief(
-        decision=quality.decision.result,
-        blockers=list(quality.decision.blocking_issues),
-        top_issues=issues[:20],
-    )
-
-
 def format_evidence_snippets(snippets: list[EvidenceSnippet]) -> str:
     if not snippets:
         return "（无证据片段）"
@@ -154,6 +88,124 @@ def format_evidence_snippets(snippets: list[EvidenceSnippet]) -> str:
             title = f"{title} / {snippet.filename}"
         blocks.append(f"## {title}\n\n{snippet.text}")
     return "\n\n---\n\n".join(blocks)
+
+
+def build_quality_brief(quality: QualityAssessmentOutput) -> QualityAssessmentBrief:
+    """Build a compact quality summary for the clarification agent."""
+    issues: list[QualityIssueBrief] = []
+    issues.extend(
+        QualityIssueBrief(
+            issue_id=f"COMP-FG-{index:03d}",
+            severity="major",
+            dimension="completeness",
+            summary=gap,
+            impact="功能规则或处理路径不完整，影响测试设计和验收判定。",
+            evidence_refs=["REQ-PRIMARY"],
+        )
+        for index, gap in enumerate(quality.completeness.functional_gaps, 1)
+    )
+    issues.extend(
+        QualityIssueBrief(
+            issue_id=f"COMP-NFR-{index:03d}",
+            severity=gap.severity,
+            dimension="completeness",
+            summary=gap.description,
+            impact=gap.impact,
+            evidence_refs=["REQ-PRIMARY"] if gap.evidence_text else [],
+        )
+        for index, gap in enumerate(quality.completeness.nfr_gaps, 1)
+    )
+    issues.extend(
+        QualityIssueBrief(
+            issue_id=f"COMP-MD-{index:03d}",
+            severity="minor",
+            dimension="completeness",
+            summary=detail,
+            impact="细节缺失可能导致实现和测试口径不一致。",
+            evidence_refs=["REQ-PRIMARY"],
+        )
+        for index, detail in enumerate(quality.completeness.missing_details, 1)
+    )
+    issues.extend(
+        QualityIssueBrief(
+            issue_id=f"CLAR-FT-{index:03d}",
+            severity="major",
+            dimension="clarity",
+            summary=f"模糊词：{term.term}（{term.location}）",
+            impact=term.issue,
+            evidence_refs=["REQ-PRIMARY"] if term.current_text else [],
+        )
+        for index, term in enumerate(quality.clarity.fuzzy_terms, 1)
+    )
+    issues.extend(
+        QualityIssueBrief(
+            issue_id=f"CLAR-AS-{index:03d}",
+            severity="major",
+            dimension="clarity",
+            summary=statement.statement,
+            impact="存在多种解读，需确认唯一业务口径。",
+            evidence_refs=["REQ-PRIMARY"],
+        )
+        for index, statement in enumerate(quality.clarity.ambiguous_statements, 1)
+    )
+    issues.extend(
+        QualityIssueBrief(
+            issue_id=f"TEST-AC-{index:03d}",
+            severity="major",
+            dimension="testability",
+            summary=f"{gap.module_key}: {gap.capability}",
+            impact="缺少验收标准会导致测试无法断言。",
+            evidence_refs=["REQ-PRIMARY"] if gap.current_text else [],
+        )
+        for index, gap in enumerate(quality.testability.acceptance_criteria_gaps, 1)
+    )
+    issues.extend(
+        QualityIssueBrief(
+            issue_id=f"TEST-COV-{index:03d}",
+            severity="major",
+            dimension="testability",
+            summary=gap.description,
+            impact=gap.impact,
+            evidence_refs=["REQ-PRIMARY"],
+        )
+        for index, gap in enumerate(quality.testability.test_coverage_gaps, 1)
+    )
+    issues.extend(
+        QualityIssueBrief(
+            issue_id=conflict.conflict_id or f"CONS-CON-{index:03d}",
+            severity=conflict.severity,
+            dimension="consistency",
+            summary=conflict.description,
+            impact=conflict.impact,
+            evidence_refs=["REQ-PRIMARY"],
+        )
+        for index, conflict in enumerate(quality.consistency.conflicts, 1)
+    )
+    issues.extend(
+        QualityIssueBrief(
+            issue_id=f"CONS-TERM-{index:03d}",
+            severity="minor",
+            dimension="consistency",
+            summary=f"术语不一致：{issue.concept}",
+            impact="术语不一致可能导致实现、测试和业务沟通偏差。",
+            evidence_refs=["REQ-PRIMARY"],
+            needs_human_decision=False,
+        )
+        for index, issue in enumerate(quality.consistency.terminology_issues, 1)
+    )
+
+    severity_order = {"blocker": 0, "major": 1, "minor": 2}
+    top_issues = sorted(
+        issues,
+        key=lambda item: (severity_order.get(item.severity, 3), not item.needs_human_decision),
+    )[:20]
+
+    return QualityAssessmentBrief(
+        decision=quality.decision.result,
+        blockers=quality.decision.blocking_issues,
+        top_issues=top_issues,
+        assessment_summary=quality.assessment_summary,
+    )
 
 
 def _trim_text(text: str, max_chars: int) -> str:
@@ -172,104 +224,10 @@ def _unique(values: list[str]) -> list[str]:
     return result
 
 
-def build_questioning_brief(questioning_output) -> QuestioningBrief:
-    """
-    构建质疑分析摘要
-
-    Token 优化：
-    - 完整版 QuestioningOutput: ~12K tokens
-    - 摘要版 QuestioningBrief: ~1.5K tokens
-    - 节省: 87.5%
-
-    Args:
-        questioning_output: QuestioningOutput 对象
-
-    Returns:
-        QuestioningBrief 摘要对象
-    """
-    from app.agents.requirement_analysis.agents.questioning import QuestioningOutput
-
-    if not isinstance(questioning_output, QuestioningOutput):
-        # 兼容性处理：如果传入的不是 QuestioningOutput，返回空摘要
-        return QuestioningBrief()
-
-    # 统计风险等级
-    high_risk_count = 0
-    medium_risk_count = 0
-    low_risk_count = 0
-
-    # 统计反向场景风险
-    for scenario in questioning_output.adversarial_scenarios:
-        if scenario.risk_level == "🔴":
-            high_risk_count += 1
-        elif scenario.risk_level == "🟡":
-            medium_risk_count += 1
-        elif scenario.risk_level == "🟢":
-            low_risk_count += 1
-
-    # 统计需求漏洞风险
-    critical_gap_count = 0
-    for gap in questioning_output.requirement_gaps:
-        if gap.severity == "🔴":
-            high_risk_count += 1
-            critical_gap_count += 1
-        elif gap.severity == "🟡":
-            medium_risk_count += 1
-        elif gap.severity == "🟢":
-            low_risk_count += 1
-
-    # 统计可执行性/可实现性问题
-    executability_red = len([c for c in questioning_output.executability_checks if c.status == "🔴不可测试"])
-    executability_yellow = len([c for c in questioning_output.executability_checks if c.status == "🟡验证困难"])
-    implementability_red = len([c for c in questioning_output.implementability_checks if c.status == "🔴不可实现"])
-    implementability_yellow = len([c for c in questioning_output.implementability_checks if c.status == "🟡有风险"])
-
-    high_risk_count += executability_red + implementability_red
-    medium_risk_count += executability_yellow + implementability_yellow
-
-    # 统计 9 宫格疑点
-    nine_grid_summary = {}
-    total_nine_grid_issues = 0
-    critical_question_ids = []
-
-    for matrix in questioning_output.nine_grid_matrices:
-        for item in matrix.grid_items:
-            dimension = item.dimension
-            if item.status.startswith("Q-"):
-                nine_grid_summary[dimension] = nine_grid_summary.get(dimension, 0) + 1
-                total_nine_grid_issues += 1
-                critical_question_ids.append(item.status)
-
-    # 统计反向场景
-    adversarial_high_risk = len([s for s in questioning_output.adversarial_scenarios if s.risk_level == "🔴"])
-
-    return QuestioningBrief(
-        high_risk_count=high_risk_count,
-        medium_risk_count=medium_risk_count,
-        low_risk_count=low_risk_count,
-        total_risk_count=high_risk_count + medium_risk_count + low_risk_count,
-        breaker_status=questioning_output.risk_breaker.breaker_status,
-        breaker_message=questioning_output.risk_breaker.message,
-        nine_grid_summary=nine_grid_summary,
-        total_nine_grid_issues=total_nine_grid_issues,
-        critical_question_ids=critical_question_ids[:10],  # 只保留前10个关键疑点ID
-        adversarial_scenario_count=len(questioning_output.adversarial_scenarios),
-        adversarial_high_risk_count=adversarial_high_risk,
-        executability_red_count=executability_red,
-        executability_yellow_count=executability_yellow,
-        implementability_red_count=implementability_red,
-        implementability_yellow_count=implementability_yellow,
-        requirement_gap_count=len(questioning_output.requirement_gaps),
-        critical_gap_count=critical_gap_count,
-        recommended_action=questioning_output.risk_breaker.recommended_action,
-        generated_at=questioning_output.generated_at,
-    )
-
-
 __all__ = [
     "build_evidence_snippets",
     "build_quality_brief",
-    "build_questioning_brief",
     "build_understanding_brief",
     "format_evidence_snippets",
 ]
+

@@ -7,14 +7,17 @@ from typing import Any
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 
-from app.agents.requirement_analysis.core.models import DeepUnderstandingResult, UnifiedUnderstandingOutput
-from app.agents.requirement_analysis.core.schemas import (
+from app.agents.requirement_analysis.understanding.schemas import (
     BusinessObject,
     RequirementModule,
     RequirementUnderstandingOutput,
     Risk,
 )
-from app.agents.requirement_analysis.utils.explainer import ExplanationGenerator
+from app.agents.requirement_analysis.understanding.explainer import ExplanationGenerator
+from app.agents.requirement_analysis.understanding.models import (
+    DeepUnderstandingResult,
+    UnifiedUnderstandingOutput,
+)
 from app.agents.requirement_analysis.utils.timing import record_step_timing, start_step_timer
 
 
@@ -186,7 +189,7 @@ async def run_understanding_agent(
     # 新增：保存 Mermaid 图到文件系统（Token 优化）
     mermaid_files = {}
     if output_dir:
-        from app.agents.requirement_analysis.utils.mermaid_manager import MermaidManager
+        from app.agents.requirement_analysis.understanding.mermaid_manager import MermaidManager
 
         mermaid_mgr = MermaidManager(output_dir)
 

@@ -11,33 +11,32 @@ def credential_key_path():
     return settings.PROJECT_FILE_STORAGE_ROOT.parent / ".secrets" / "environment-credentials.key"
 
 
-def save_credentials(project_id: str, environment_id: str, *, username: str, password: str) -> None:
+def save_credentials(environment_id: str, *, username: str, password: str) -> None:
     with connect() as db:
         db.execute(
             """
             UPDATE project_environments
             SET username = ?, password_encrypted = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE project_id = ? AND id = ?
+            WHERE id = ?
             """,
             (
                 username,
                 _fernet().encrypt(password.encode("utf-8")).decode("ascii"),
                 hash_secret(password),
-                project_id,
                 environment_id,
             ),
         )
 
 
-def load_credentials(project_id: str, environment_id: str) -> dict | None:
+def load_credentials(environment_id: str) -> dict | None:
     with connect() as db:
         row = db.execute(
             """
             SELECT username, password_encrypted, password_hash
             FROM project_environments
-            WHERE project_id = ? AND id = ?
+            WHERE id = ?
             """,
-            (project_id, environment_id),
+            (environment_id,),
         ).fetchone()
     if not row:
         return None
@@ -54,20 +53,20 @@ def load_credentials(project_id: str, environment_id: str) -> dict | None:
     return {"username": username, "password": password}
 
 
-def delete_credentials(project_id: str, environment_id: str) -> None:
+def delete_credentials(environment_id: str) -> None:
     with connect() as db:
         db.execute(
             """
             UPDATE project_environments
             SET password_encrypted = '', password_hash = '', updated_at = CURRENT_TIMESTAMP
-            WHERE project_id = ? AND id = ?
+            WHERE id = ?
             """,
-            (project_id, environment_id),
+            (environment_id,),
         )
 
 
-def credentials_exist(project_id: str, environment_id: str) -> bool:
-    return load_credentials(project_id, environment_id) is not None
+def credentials_exist(environment_id: str) -> bool:
+    return load_credentials(environment_id) is not None
 
 
 def _fernet() -> Fernet:

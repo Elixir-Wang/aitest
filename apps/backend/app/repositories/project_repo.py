@@ -1,6 +1,6 @@
 from sqlite3 import Connection, Row
 
-SYSTEM_RESERVED_PROJECT_IDS = ("__all_projects__",)
+SYSTEM_RESERVED_PROJECT_IDS = ("__all_projects__", "__global_environments__")
 
 PROJECT_ASSET_TABLES = (
     "source_documents",

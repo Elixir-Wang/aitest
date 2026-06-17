@@ -1,7 +1,7 @@
 """
 需求分析报告生成工具。
 
-LangGraph 输出按前端三 Tab 拆分：
+输出按前端三 Tab 拆分：
 - 需求分析：仅展示需求理解和 Mermaid 理解图。
 - 质量保障：仅展示质量评估与验证风险。
 - 待澄清：仅展示需要人工确认或裁决的事项。
@@ -10,9 +10,9 @@ LangGraph 输出按前端三 Tab 拆分：
 import re
 from hashlib import sha1
 
-from app.agents.requirement_analysis.core.schemas import (
-    ClarificationOutput,
-    QualityAssessmentOutput,
+from app.agents.requirement_analysis.clarification.schemas import ClarificationOutput
+from app.agents.requirement_analysis.quality.schemas import QualityAssessmentOutput
+from app.agents.requirement_analysis.understanding.schemas import (
     RequirementModule,
     RequirementUnderstandingOutput,
 )

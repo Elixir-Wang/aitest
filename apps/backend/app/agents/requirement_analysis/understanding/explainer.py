@@ -5,7 +5,7 @@
 把业务洞察、领域模型、风险画像转换成易读的讲解文档
 """
 
-from app.agents.requirement_analysis.core.models import (
+from app.agents.requirement_analysis.understanding.models import (
     BusinessInsight,
     DomainModel,
     RiskProfile,

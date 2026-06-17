@@ -553,7 +553,7 @@ def _stored_auth_state_path_for_run(run) -> Path | None:
     login_strategy, _, reuse_auth_state = _agent_login_context(run)
     if login_strategy != "account_password" or not reuse_auth_state:
         return None
-    path = auth_state_path(str(run["project_id"]), str(run["environment_id"]))
+    path = auth_state_path(str(run["environment_id"]))
     return path if path.exists() else None
 
 

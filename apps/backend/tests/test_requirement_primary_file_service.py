@@ -57,18 +57,24 @@ def _upload_file(filename: str, content: str) -> FakeUploadFile:
 
 
 def test_v3_requirement_analysis_output_serializes_structured_fields() -> None:
-    from app.agents.requirement_analysis.core.schemas import (
+    from app.agents.requirement_analysis.clarification.schemas import (
         ClarificationOutput,
         ClarificationSummary,
+    )
+    from app.agents.requirement_analysis.schemas import (
+        RequirementAnalysisResultV2,
+    )
+    from app.agents.requirement_analysis.quality.schemas import (
         ClarityAssessment,
         CompletenessAssessment,
         ConsistencyAssessment,
         QualityAssessmentOutput,
         QualityDecision,
         QualityIssueSummary,
-        RequirementAnalysisResultV2,
-        RequirementUnderstandingOutput,
         TestabilityAssessment,
+    )
+    from app.agents.requirement_analysis.understanding.schemas import (
+        RequirementUnderstandingOutput,
     )
 
     analysis_output = RequirementAnalysisResultV2(
@@ -1697,3 +1703,4 @@ async def test_stop_queued_requirement_review_run_cancels_and_cleans_artifacts(
     assert run["summary"] == "用户已停止需求分析。"
     assert analyses["count"] == 0
     assert not run_dir.exists()
+

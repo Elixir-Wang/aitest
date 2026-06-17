@@ -34,10 +34,8 @@ import { reportError } from "@/lib/error-feedback";
 
 type ProjectScope = "all" | "project";
 
-type ProjectEnvironment = {
+type ExplorationEnvironment = {
   id: string;
-  project_id: string;
-  project_name: string;
   name: string;
   site_url: string;
   username: string;
@@ -61,7 +59,15 @@ type RequirementDocument = {
   name: string;
   status: string;
   created_at: string;
+  latest_requirement_analysis_run?: {
+    id: string;
+    status: string;
+  } | null;
 };
+
+function isExplorationLinkableRequirement(requirement: RequirementDocument) {
+  return requirement.latest_requirement_analysis_run?.status === "completed";
+}
 
 type ExplorationRun = {
   id: string;
@@ -97,7 +103,6 @@ type ExplorationWorkspaceProps = {
 
 type EnvironmentForm = {
   name: string;
-  projectId: string;
   siteUrl: string;
   username: string;
   password: string;
@@ -132,7 +137,6 @@ type ExplorationForm = {
 
 const emptyForm: EnvironmentForm = {
   name: "",
-  projectId: "",
   siteUrl: "",
   username: "",
   password: "",
@@ -213,10 +217,9 @@ const explorationPlaceholders = {
   goal: "填写本次探索要验证的目标，例如遍历元素和链接，检查 401/403、登录跳转和异常页。",
 };
 
-function formFromEnvironment(environment: ProjectEnvironment): EnvironmentForm {
+function formFromEnvironment(environment: ExplorationEnvironment): EnvironmentForm {
   return {
     name: environment.name,
-    projectId: environment.project_id,
     siteUrl: environment.site_url,
     username: environment.username,
     password: "",
@@ -227,7 +230,7 @@ function formFromEnvironment(environment: ProjectEnvironment): EnvironmentForm {
   };
 }
 
-function isManualAuthEnabled(environment: ProjectEnvironment | null) {
+function isManualAuthEnabled(environment: ExplorationEnvironment | null) {
   return Boolean(
     environment &&
       environment.login_strategy === "account_password" &&
@@ -236,7 +239,7 @@ function isManualAuthEnabled(environment: ProjectEnvironment | null) {
   );
 }
 
-function isAiLetterAutoAuthEnabled(environment: ProjectEnvironment | null) {
+function isAiLetterAutoAuthEnabled(environment: ExplorationEnvironment | null) {
   return Boolean(
     environment &&
       environment.login_strategy === "account_password" &&
@@ -245,11 +248,11 @@ function isAiLetterAutoAuthEnabled(environment: ProjectEnvironment | null) {
   );
 }
 
-function canStartAiLetterAutoAuth(environment: ProjectEnvironment) {
+function canStartAiLetterAutoAuth(environment: ExplorationEnvironment) {
   return isAiLetterAutoAuthEnabled(environment) && environment.has_saved_credentials;
 }
 
-function formMatchesSavedManualAuthConfig(environment: ProjectEnvironment | null, form: EnvironmentForm) {
+function formMatchesSavedManualAuthConfig(environment: ExplorationEnvironment | null, form: EnvironmentForm) {
   return Boolean(
     environment &&
       form.loginStrategy === environment.login_strategy &&
@@ -335,7 +338,7 @@ export function ExplorationWorkspace({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [explorationDialogOpen, setExplorationDialogOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [editingEnvironment, setEditingEnvironment] = useState<ProjectEnvironment | null>(null);
+  const [editingEnvironment, setEditingEnvironment] = useState<ExplorationEnvironment | null>(null);
   const [editingExploration, setEditingExploration] = useState<ExplorationRun | null>(null);
   const [manualAuthSession, setManualAuthSession] = useState<ManualAuthSession | null>(null);
   const [manualAuthAction, setManualAuthAction] = useState<"cancel" | "save" | "start" | "">("");
@@ -349,7 +352,7 @@ export function ExplorationWorkspace({
   const [searchText, setSearchText] = useState("");
   const [projects, setProjects] = useState<ApiProject[]>([]);
   const [requirements, setRequirements] = useState<RequirementDocument[]>([]);
-  const [form, setForm] = useState<EnvironmentForm>({ ...emptyForm, projectId: projectId ?? "" });
+  const [form, setForm] = useState<EnvironmentForm>({ ...emptyForm });
   const [explorationForm, setExplorationForm] = useState<ExplorationForm>({
     ...emptyExplorationForm,
     projectId: projectId ?? "",
@@ -365,11 +368,10 @@ export function ExplorationWorkspace({
     setRows,
     toggleAll,
     toggleOne,
-  } = useLocalTableSelection<ProjectEnvironment>([]);
+  } = useLocalTableSelection<ExplorationEnvironment>([]);
   const selectedProjectId = projectScope === "project" ? (projectId ?? "") : explorationForm.projectId;
 
   useEffect(() => {
-    setForm((current) => ({ ...current, projectId: projectId ?? current.projectId }));
     setExplorationForm((current) => ({ ...current, projectId: projectId ?? current.projectId }));
   }, [projectId]);
 
@@ -382,9 +384,6 @@ export function ExplorationWorkspace({
         const data = await apiRequest<ApiProject[]>("/projects");
         if (!ignore) {
           setProjects(data);
-          if (projectScope === "all") {
-            setForm((current) => ({ ...current, projectId: current.projectId || data[0]?.id || "" }));
-          }
         }
       } catch (requestError) {
         if (!ignore) {
@@ -411,8 +410,7 @@ export function ExplorationWorkspace({
       setEnvironmentLoading(true);
       setError("");
       try {
-        const path = projectScope === "project" && projectId ? `/projects/${projectId}/environments` : "/environments";
-        const data = await apiRequest<ProjectEnvironment[]>(path);
+        const data = await apiRequest<ExplorationEnvironment[]>("/environments");
         if (!ignore) {
           setRows(data);
         }
@@ -432,7 +430,7 @@ export function ExplorationWorkspace({
     return () => {
       ignore = true;
     };
-  }, [projectId, projectScope, setRows]);
+  }, [setRows]);
 
   const hasLoggingInEnvironment = useMemo(
     () => rows.some((item) => item.auth_state_status === "logging_in"),
@@ -445,12 +443,11 @@ export function ExplorationWorkspace({
     }
 
     let ignore = false;
-    const environmentsPath =
-      projectScope === "project" && projectId ? `/projects/${projectId}/environments` : "/environments";
+    const environmentsPath = "/environments";
 
     async function refreshEnvironmentAuthStates() {
       try {
-        const data = await apiRequest<ProjectEnvironment[]>(environmentsPath);
+        const data = await apiRequest<ExplorationEnvironment[]>(environmentsPath);
         if (ignore) {
           return;
         }
@@ -478,7 +475,7 @@ export function ExplorationWorkspace({
       ignore = true;
       window.clearInterval(intervalId);
     };
-  }, [hasLoggingInEnvironment, projectId, projectScope, setRows]);
+  }, [hasLoggingInEnvironment, setRows]);
 
   useEffect(() => {
     let ignore = false;
@@ -528,7 +525,10 @@ export function ExplorationWorkspace({
           setRequirements(data);
           setExplorationForm((current) => ({
             ...current,
-            requirementDocId: data.some((item) => item.id === current.requirementDocId) ? current.requirementDocId : "",
+            requirementDocId:
+              data.some((item) => item.id === current.requirementDocId && isExplorationLinkableRequirement(item))
+                ? current.requirementDocId
+                : "",
           }));
         }
       } catch (requestError) {
@@ -560,7 +560,6 @@ export function ExplorationWorkspace({
       rows.filter((item) =>
         [
           item.name,
-          item.project_name,
           item.site_url,
           item.username,
           loginStrategyLabels[item.login_strategy] ?? item.login_strategy,
@@ -593,18 +592,15 @@ export function ExplorationWorkspace({
   const scopedProjectName =
     (projectName.trim() ? projectName : undefined) ??
     projects.find((project) => project.id === projectId)?.name ??
-    rows.find((environment) => environment.project_id === projectId)?.project_name ??
     explorationSelection.rows.find((run) => run.project_id === projectId)?.project_name ??
     projectId ??
     "";
-  const environmentProjectValue = projectScope === "project" ? (projectId ?? "") : form.projectId;
   const explorationProjectValue = projectScope === "project" ? (projectId ?? "") : explorationForm.projectId;
   const hasReusableEnvironmentPassword =
     editingEnvironment?.login_strategy === "account_password" && editingEnvironment.has_saved_credentials;
   const canCreateEnvironment =
     form.name.trim().length > 0 &&
     form.siteUrl.trim().length > 0 &&
-    (projectScope === "project" || form.projectId.length > 0) &&
     (form.loginStrategy !== "account_password" ||
       (form.username.trim().length > 0 && (hasReusableEnvironmentPassword || form.password.trim().length > 0)));
   const showLoginCredentials = form.loginStrategy === "account_password";
@@ -628,11 +624,21 @@ export function ExplorationWorkspace({
     form.loginStrategy === "account_password" &&
     form.captchaStrategy === "ai_letter";
   const manualAuthSessionActive = isActiveManualAuthSession(manualAuthSession);
-  const availableEnvironments = rows.filter((environment) => environment.project_id === selectedProjectId);
-  const availableRequirements = useMemo(
-    () => requirements.filter((requirement) => requirement.status !== "archived"),
-    [requirements],
-  );
+  const availableEnvironments = rows;
+  const availableRequirements = useMemo(() => {
+    const linkable = requirements.filter(
+      (requirement) => requirement.status !== "archived" && isExplorationLinkableRequirement(requirement),
+    );
+    const linkedRequirementId = explorationForm.requirementDocId;
+    if (!linkedRequirementId) {
+      return linkable;
+    }
+    const linkedRequirement = requirements.find((requirement) => requirement.id === linkedRequirementId);
+    if (!linkedRequirement || linkable.some((requirement) => requirement.id === linkedRequirementId)) {
+      return linkable;
+    }
+    return [linkedRequirement, ...linkable];
+  }, [explorationForm.requirementDocId, requirements]);
   const selectedRequirementLabel = useMemo(() => {
     const selected = availableRequirements.find((item) => item.id === explorationForm.requirementDocId);
     return selected?.name ?? "";
@@ -642,11 +648,6 @@ export function ExplorationWorkspace({
     projectScope === "project",
     projectLoading,
     editingExploration !== null,
-  ].some(Boolean);
-  const environmentProjectSelectDisabled = [
-    projectScope === "project",
-    projectLoading,
-    editingEnvironment !== null,
   ].some(Boolean);
 
   const syncManualAuthState = useCallback(
@@ -695,7 +696,7 @@ export function ExplorationWorkspace({
 
     let ignore = false;
     const environmentId = editingEnvironment.id;
-    const statusPath = `/projects/${editingEnvironment.project_id}/environments/${environmentId}/manual-auth/${manualAuthSession.session_id}/status`;
+    const statusPath = `/environments/${environmentId}/manual-auth/${manualAuthSession.session_id}/status`;
 
     async function refreshManualAuthStatus() {
       try {
@@ -730,22 +731,21 @@ export function ExplorationWorkspace({
     setEditingEnvironment(null);
     setManualAuthSession(null);
     setManualAuthAction("");
-    setForm({ ...emptyForm, projectId: projectId ?? projects[0]?.id ?? "" });
+    setForm({ ...emptyForm });
     setShowPassword(false);
     setDialogOpen(true);
   }
 
   const openCreateExplorationDialog = useCallback(() => {
     const targetProjectId = projectId ?? projects[0]?.id ?? "";
-    const firstEnvironment = rows.find((environment) => environment.project_id === targetProjectId);
     setEditingExploration(null);
     setExplorationForm({
       ...emptyExplorationForm,
       projectId: targetProjectId,
-      environmentId: firstEnvironment?.id ?? "",
+      environmentId: "",
     });
     setExplorationDialogOpen(true);
-  }, [projectId, projects, rows]);
+  }, [projectId, projects]);
 
   useEffect(() => {
     if (searchParams.get("create") !== "exploration" || createParamHandledRef.current) {
@@ -757,7 +757,7 @@ export function ExplorationWorkspace({
     openCreateExplorationDialog();
   }, [openCreateExplorationDialog, searchParams]);
 
-  function openEditDialog(environment: ProjectEnvironment) {
+  function openEditDialog(environment: ExplorationEnvironment) {
     setEditingEnvironment(environment);
     setManualAuthSession(null);
     setManualAuthAction("");
@@ -795,7 +795,7 @@ export function ExplorationWorkspace({
       setManualAuthSession(null);
       setManualAuthAction("");
       setShowPassword(false);
-      setForm({ ...emptyForm, projectId: projectId ?? form.projectId });
+      setForm({ ...emptyForm });
     }
   }
 
@@ -818,11 +818,6 @@ export function ExplorationWorkspace({
   }
 
   async function saveEnvironment() {
-    const targetProjectId = projectScope === "project" ? projectId : form.projectId;
-    if (!targetProjectId) {
-      toast.error("请选择项目");
-      return;
-    }
     if (!form.name.trim() || !form.siteUrl.trim()) {
       toast.error("请填写环境名称和站点地址");
       return;
@@ -852,13 +847,10 @@ export function ExplorationWorkspace({
           payload.password = form.password;
         }
 
-        const updated = await apiRequest<ProjectEnvironment>(
-          `/projects/${editingEnvironment.project_id}/environments/${editingEnvironment.id}`,
-          {
-            method: "PATCH",
-            body: JSON.stringify(payload),
-          },
-        );
+        const updated = await apiRequest<ExplorationEnvironment>(`/environments/${editingEnvironment.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
         setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
         setEditingEnvironment(updated);
         setForm(formFromEnvironment(updated));
@@ -882,10 +874,9 @@ export function ExplorationWorkspace({
         toast.success("环境已更新");
       } else {
         // 创建环境
-        const created = await apiRequest<ProjectEnvironment>(`/projects/${targetProjectId}/environments`, {
+        const created = await apiRequest<ExplorationEnvironment>("/environments", {
           method: "POST",
           body: JSON.stringify({
-            project_id: targetProjectId,
             name: form.name,
             site_url: form.siteUrl,
             username: showLoginCredentials ? form.username : "",
@@ -918,9 +909,7 @@ export function ExplorationWorkspace({
         fallbackMessage: editingEnvironment ? "环境更新失败" : "环境创建失败",
         actionLabel: editingEnvironment ? "更新环境" : "创建环境",
         method: editingEnvironment ? "PATCH" : "POST",
-        path: editingEnvironment
-          ? `/projects/${editingEnvironment.project_id}/environments/${editingEnvironment.id}`
-          : `/projects/${targetProjectId}/environments`,
+        path: editingEnvironment ? `/environments/${editingEnvironment.id}` : "/environments",
       });
     }
   }
@@ -1039,13 +1028,13 @@ export function ExplorationWorkspace({
     }
   }
 
-  async function startAiLetterAutoAuth(environment: ProjectEnvironment) {
+  async function startAiLetterAutoAuth(environment: ExplorationEnvironment) {
     if (environment.auth_state_status === "logging_in") {
       return;
     }
     try {
-      const updated = await apiRequest<ProjectEnvironment>(
-        `/projects/${environment.project_id}/environments/${environment.id}/auto-auth/start`,
+      const updated = await apiRequest<ExplorationEnvironment>(
+        `/environments/${environment.id}/auto-auth/start`,
         { method: "POST" },
       );
       setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
@@ -1060,7 +1049,7 @@ export function ExplorationWorkspace({
         fallbackMessage: "自动登录启动失败",
         actionLabel: "环境登录",
         method: "POST",
-        path: `/projects/${environment.project_id}/environments/${environment.id}/auto-auth/start`,
+        path: `/environments/${environment.id}/auto-auth/start`,
       });
     }
   }
@@ -1072,7 +1061,7 @@ export function ExplorationWorkspace({
     setManualAuthAction("start");
     try {
       const session = await apiRequest<ManualAuthSession>(
-        `/projects/${editingEnvironment.project_id}/environments/${editingEnvironment.id}/manual-auth/start`,
+        `/environments/${editingEnvironment.id}/manual-auth/start`,
         { method: "POST" },
       );
       setManualAuthSession(session);
@@ -1082,7 +1071,7 @@ export function ExplorationWorkspace({
         fallbackMessage: "打开人工登录窗口失败",
         actionLabel: "打开人工登录窗口",
         method: "POST",
-        path: `/projects/${editingEnvironment.project_id}/environments/${editingEnvironment.id}/manual-auth/start`,
+        path: `/environments/${editingEnvironment.id}/manual-auth/start`,
       });
     } finally {
       setManualAuthAction("");
@@ -1096,7 +1085,7 @@ export function ExplorationWorkspace({
     setManualAuthAction("save");
     try {
       const result = await apiRequest<ManualAuthSession>(
-        `/projects/${editingEnvironment.project_id}/environments/${editingEnvironment.id}/manual-auth/${manualAuthSession.session_id}/save`,
+        `/environments/${editingEnvironment.id}/manual-auth/${manualAuthSession.session_id}/save`,
         { method: "POST" },
       );
       if (result.status === "ended") {
@@ -1116,7 +1105,7 @@ export function ExplorationWorkspace({
         fallbackMessage: "保存登录态失败",
         actionLabel: "保存人工登录态",
         method: "POST",
-        path: `/projects/${editingEnvironment.project_id}/environments/${editingEnvironment.id}/manual-auth/${manualAuthSession.session_id}/save`,
+        path: `/environments/${editingEnvironment.id}/manual-auth/${manualAuthSession.session_id}/save`,
       });
     } finally {
       setManualAuthAction("");
@@ -1130,7 +1119,7 @@ export function ExplorationWorkspace({
     setManualAuthAction("cancel");
     try {
       const result = await apiRequest<ManualAuthSession>(
-        `/projects/${editingEnvironment.project_id}/environments/${editingEnvironment.id}/manual-auth/${manualAuthSession.session_id}/cancel`,
+        `/environments/${editingEnvironment.id}/manual-auth/${manualAuthSession.session_id}/cancel`,
         { method: "POST" },
       );
       setManualAuthSession(null);
@@ -1148,7 +1137,7 @@ export function ExplorationWorkspace({
           fallbackMessage: "取消人工登录失败",
           actionLabel: "取消人工登录会话",
           method: "POST",
-          path: `/projects/${editingEnvironment.project_id}/environments/${editingEnvironment.id}/manual-auth/${manualAuthSession.session_id}/cancel`,
+          path: `/environments/${editingEnvironment.id}/manual-auth/${manualAuthSession.session_id}/cancel`,
         });
       }
     } finally {
@@ -1171,7 +1160,7 @@ export function ExplorationWorkspace({
           if (!environment) {
             return Promise.resolve();
           }
-          return apiRequest(`/projects/${environment.project_id}/environments/${id}`, { method: "DELETE" });
+          return apiRequest(`/environments/${id}`, { method: "DELETE" });
         }),
       );
       setRows((current) => current.filter((row) => !ids.includes(row.id)));
@@ -1182,7 +1171,7 @@ export function ExplorationWorkspace({
         fallbackMessage: "环境删除失败",
         actionLabel: "删除环境",
         method: "DELETE",
-        path: "/projects/{projectId}/environments/{environmentId}",
+        path: "/environments/{environmentId}",
       });
     }
   }
@@ -1327,7 +1316,7 @@ export function ExplorationWorkspace({
             onBatchDelete={() => deleteEnvironments(selectedIds)}
             onCreate={openCreateDialog}
             onSearch={setSearchText}
-            placeholder="搜索环境名称、项目、站点或用户名"
+            placeholder="搜索环境名称、站点或用户名"
             selectedCount={selectedCount}
             title="环境列表"
           />
@@ -1344,7 +1333,6 @@ export function ExplorationWorkspace({
                     />
                   </TableHead>
                   <TableHead>环境名称</TableHead>
-                  <TableHead>项目</TableHead>
                   <TableHead>站点地址</TableHead>
                   <TableHead>登录态</TableHead>
                   <TableHead>更新时间</TableHead>
@@ -1366,7 +1354,6 @@ export function ExplorationWorkspace({
                         {item.name}
                       </button>
                     </TableCell>
-                    <TableCell>{item.project_name}</TableCell>
                     <TableCell>
                       <span className="block max-w-72 truncate" title={item.site_url}>
                         {item.site_url}
@@ -1407,11 +1394,11 @@ export function ExplorationWorkspace({
                   </TableRow>
                 ))}
                 {environmentLoading && filteredRows.length === 0 ? (
-                  <TableLoadingRow colSpan={6} label="环境列表加载中" />
+                  <TableLoadingRow colSpan={5} label="环境列表加载中" />
                 ) : null}
                 {!environmentLoading && filteredRows.length === 0 ? (
                   <TableRow>
-                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
+                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={5}>
                       暂无环境。新增站点环境后，可用于后续页面探索任务。
                     </TableCell>
                   </TableRow>
@@ -1439,28 +1426,7 @@ export function ExplorationWorkspace({
                 value={form.name}
               />
             </Field>
-            <Field>
-              <FieldLabel htmlFor="environment-project">项目 *</FieldLabel>
-              <Select
-                aria-required="true"
-                disabled={environmentProjectSelectDisabled}
-                id="environment-project"
-                placeholder={projectScope === "project" ? scopedProjectName : "选择项目"}
-                setValue={(value) => setForm((current) => ({ ...current, projectId: value }))}
-                value={environmentProjectValue}
-              >
-                {projectScope === "project" && projectId ? (
-                  <SelectOption value={projectId}>{scopedProjectName}</SelectOption>
-                ) : (
-                  projects.map((project) => (
-                    <SelectOption key={project.id} value={project.id}>
-                      {project.name}
-                    </SelectOption>
-                  ))
-                )}
-              </Select>
-            </Field>
-            <Field>
+            <Field className="sm:col-span-2">
               <FieldLabel htmlFor="environment-site-url">站点地址 *</FieldLabel>
               <Input
                 aria-required="true"
@@ -1753,11 +1719,9 @@ export function ExplorationWorkspace({
                 id="exploration-project"
                 placeholder={projectScope === "project" ? scopedProjectName : "选择项目"}
                 setValue={(value) => {
-                  const firstEnvironment = rows.find((environment) => environment.project_id === value);
                   setExplorationForm((current) => ({
                     ...current,
                     projectId: value,
-                    environmentId: firstEnvironment?.id ?? "",
                     requirementDocId: "",
                   }));
                 }}
@@ -1792,6 +1756,7 @@ export function ExplorationWorkspace({
             <Field>
               <FieldLabel htmlFor="exploration-requirement">需求</FieldLabel>
               <Select
+                disabled={requirementLoading}
                 id="exploration-requirement"
                 placeholder={requirementLoading ? "加载需求中..." : "选择需求或留空"}
                 setValue={(value) =>
@@ -1811,6 +1776,8 @@ export function ExplorationWorkspace({
               </Select>
               {selectedRequirementLabel ? (
                 <p className="text-muted-foreground text-xs">已关联：{selectedRequirementLabel}</p>
+              ) : !requirementLoading && availableRequirements.length === 0 ? (
+                <p className="text-muted-foreground text-xs">当前项目没有可关联的需求，请先完成需求分析。</p>
               ) : null}
             </Field>
             <Field className="sm:col-span-2">

@@ -1,22 +1,19 @@
 """ClarificationItem v3 适配层测试。"""
 
-from app.agents.requirement_analysis.core.schemas import (
+from app.agents.requirement_analysis.clarification.schemas import (
     ClarificationItem,
     ClarificationOption,
     ClarificationOutput,
     ClarificationSummary,
     TestSurface,
 )
-from app.agents.requirement_analysis.utils.clarification_adapter import (
+from app.agents.requirement_analysis.utils.adapter import (
     clarification_item_to_api,
     is_pending_resolution_status,
 )
-from app.agents.requirement_analysis.utils.priority_sorter import sort_clarification_items
-from app.agents.requirement_analysis.utils.report_generator import generate_clarification_report
-from app.agents.requirement_analysis.utils.requirement_enhancer import (
-    generate_enhanced_requirement,
-    get_pending_items,
-)
+from app.agents.requirement_analysis.utils.sorter import sort_clarification_items
+from app.agents.requirement_analysis.utils.report import generate_clarification_report
+from app.agents.requirement_analysis.utils.enhancer import generate_enhanced_requirement
 
 
 def _sample_item(**overrides) -> ClarificationItem:
@@ -96,7 +93,11 @@ def test_sort_and_pending_items_use_v3_statuses() -> None:
     ]
 
     sorted_items = sort_clarification_items(items)
-    pending = get_pending_items(items)
+    pending = [
+        item
+        for item in items
+        if is_pending_resolution_status(item.resolution_status)
+    ]
 
     assert [item.item_id for item in sorted_items] == ["CL-002", "CL-003", "CL-001"]
     assert {item.item_id for item in pending} == {"CL-002", "CL-003"}

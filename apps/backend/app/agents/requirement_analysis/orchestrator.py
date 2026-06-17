@@ -2,24 +2,21 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 from datetime import datetime
 from typing import Any
 
 from app.agents.model_selection import build_agent_model, resolve_model_selection
-from app.agents.requirement_analysis.agents.clarification import run_clarification_agent
-from app.agents.requirement_analysis.agents.quality import run_quality_assessment_agent
-from app.agents.requirement_analysis.agents.questioning import run_questioning_agent
-from app.agents.requirement_analysis.agents.understanding import run_understanding_agent
-from app.agents.requirement_analysis.core.schemas import (
+from app.agents.requirement_analysis.understanding import run_understanding_agent
+from app.agents.requirement_analysis.quality import run_quality_assessment_agent
+from app.agents.requirement_analysis.clarification import run_clarification_agent
+from app.agents.requirement_analysis.schemas import (
     RequirementAnalysisInputV2,
     RequirementAnalysisResultV2,
 )
 from app.agents.requirement_analysis.utils.context import (
     build_evidence_snippets,
     build_quality_brief,
-    build_questioning_brief,
     build_understanding_brief,
 )
 from app.agents.requirement_analysis.utils.enhancer import (
@@ -54,6 +51,16 @@ async def run_requirement_analysis(input_data: RequirementAnalysisInputV2) -> Re
     record_step_timing(metadata, run_id=input_data.run_id or "", step="understand", started_at=started_at)
     metadata["deep_understanding"] = deep_understanding
 
+    # 1.5 EARS 句式校验（可选）
+    from app.agents.requirement_analysis.utils.ears_validator import validate_ears_pattern
+    ears_issues = []
+    for feature in understanding.features:
+        issues = validate_ears_pattern(feature.description)
+        if issues:
+            ears_issues.extend(issues)
+    if ears_issues:
+        metadata["ears_validation_issues"] = len(ears_issues)
+
     # 生成理解摘要（传递给下游）
     understanding_brief = build_understanding_brief(understanding)
 
@@ -72,50 +79,27 @@ async def run_requirement_analysis(input_data: RequirementAnalysisInputV2) -> Re
         input_data.auxiliary_documents,
     )
 
-    # 2. 质疑节点 + 3. 质量评估节点（并行执行 🚀）
-    # 两个节点都只依赖 Understanding，可以同时执行以节省时间
-    parallel_started_at = start_step_timer()
-
-    # 并行执行 Questioning 和 Quality Assessment
-    questioning_task = run_questioning_agent(
-        model=model,
-        primary_markdown_content=input_data.primary_markdown_content,
-        understanding_result=understanding,
-        understanding_brief=understanding_brief,  # 传递摘要
-        run_id=input_data.run_id or "",
-        metadata=metadata,
-    )
-
-    quality_task = _run_quality_agent_compat(
+    # 2. 质量评估节点（包含质疑式审查策略）
+    started_at = start_step_timer()
+    quality = await _run_quality_agent_compat(
         model=model,
         primary_markdown_content=input_data.primary_markdown_content,
         understanding=understanding,
         understanding_brief=understanding_brief,  # 传递摘要
         evidence_snippets=evidence_snippets,
     )
+    record_step_timing(metadata, run_id=input_data.run_id or "", step="quality", started_at=started_at)
 
-    # 等待两个任务完成
-    (questioning, questioning_metadata), quality = await asyncio.gather(
-        questioning_task,
-        quality_task,
-    )
-
-    parallel_elapsed_ms = int((time.time() - parallel_started_at) * 1000)
-    metadata.setdefault("step_timings", {})["questioning_quality_parallel"] = parallel_elapsed_ms
-    metadata["questioning"] = questioning_metadata
-
-    # 生成质疑摘要（传递给下游）
-    questioning_brief = build_questioning_brief(questioning)
     quality_brief = build_quality_brief(quality)
 
-    # 4. 澄清节点（传递摘要）
+    # 3. 澄清节点（传递摘要）
     started_at = start_step_timer()
     clarification = await _run_clarification_agent_compat(
         model=model,
         understanding=understanding,
         quality=quality,
         understanding_brief=understanding_brief,  # 传递摘要
-        quality_brief=quality_brief,              # 传递摘要
+        quality_brief=quality_brief,
         evidence_snippets=evidence_snippets,
         auxiliary_documents=input_data.auxiliary_documents,
     )
@@ -128,13 +112,13 @@ async def run_requirement_analysis(input_data: RequirementAnalysisInputV2) -> Re
         original_markdown=input_data.primary_markdown_content,
         auto_resolved_items=auto_resolved_items,
     )
-    needs_manual = (
+    needs_human_input = (
         clarification.summary.by_resolution.get("needs_input", 0)
         + clarification.summary.by_resolution.get("needs_research", 0)
     )
     if quality.decision.result == "rejected":
         status = "blocked"
-    elif needs_manual > 0:
+    elif needs_human_input > 0:
         status = "needs_clarification"
     else:
         status = "completed"
@@ -144,7 +128,7 @@ async def run_requirement_analysis(input_data: RequirementAnalysisInputV2) -> Re
     return RequirementAnalysisResultV2(
         status=status,
         understanding=understanding,
-        questioning=questioning,
+        questioning=None,
         quality_assessment=quality,
         clarification=clarification,
         analysis_report_markdown=analysis_report,
@@ -159,7 +143,6 @@ async def run_requirement_analysis(input_data: RequirementAnalysisInputV2) -> Re
             "execution_time_ms": execution_time_ms,
             "step_timings": metadata.get("step_timings", {}),
             "execution_timestamp": datetime.now().isoformat(),
-            "config": input_data.config,
         },
     )
 
@@ -218,3 +201,4 @@ async def _run_clarification_agent_compat(
 
 
 __all__ = ["run_requirement_analysis"]
+

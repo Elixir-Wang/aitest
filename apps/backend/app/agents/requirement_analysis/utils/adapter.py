@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.agents.requirement_analysis.core.schemas import ClarificationItem, ClarificationOption, TestSurface
+from app.agents.requirement_analysis.clarification.schemas import (
+    ClarificationItem,
+    ClarificationOption,
+    TestSurface,
+)
 
 PRIORITY_LABELS = {
     "P0": "P0 阻塞项",

@@ -1,4 +1,4 @@
-from app.agents.requirement_analysis.agents.clarification import CLARIFICATION_SYSTEM_PROMPT
+from app.agents.requirement_analysis.clarification import CLARIFICATION_SYSTEM_PROMPT
 
 
 def test_clarification_prompt_does_not_force_heavy_test_artifacts() -> None:

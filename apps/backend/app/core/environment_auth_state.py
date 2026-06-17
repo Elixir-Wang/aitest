@@ -8,19 +8,21 @@ from typing import Any
 from app.core import settings
 
 
-def auth_state_path(project_id: str, environment_id: str) -> Path:
-    return settings.PROJECT_FILE_STORAGE_ROOT / project_id / "environments" / environment_id / "auth" / "storage-state.json"
+def environment_root(environment_id: str) -> Path:
+    return settings.PROJECT_FILE_STORAGE_ROOT / "environments" / environment_id
+
+
+def auth_state_path(environment_id: str) -> Path:
+    return environment_root(environment_id) / "auth" / "storage-state.json"
 
 
 def auth_state_status(
     *,
-    project_id: str,
     environment_id: str,
     login_strategy: str,
     reuse_auth_state: bool,
 ) -> str:
     return auth_state_summary(
-        project_id=project_id,
         environment_id=environment_id,
         login_strategy=login_strategy,
         reuse_auth_state=reuse_auth_state,
@@ -29,7 +31,6 @@ def auth_state_status(
 
 def auth_state_summary(
     *,
-    project_id: str,
     environment_id: str,
     login_strategy: str,
     reuse_auth_state: bool,
@@ -37,7 +38,7 @@ def auth_state_summary(
     if login_strategy != "account_password" or not reuse_auth_state:
         return {"status": "none", "expires_at": None}
 
-    path = auth_state_path(project_id, environment_id)
+    path = auth_state_path(environment_id)
     if not path.exists():
         return {"status": "none", "expires_at": None}
 
@@ -57,8 +58,8 @@ def auth_state_summary(
     return {"status": "valid", "expires_at": expires_at.isoformat() if expires_at else None}
 
 
-def delete_auth_state(project_id: str, environment_id: str) -> None:
-    auth_dir = auth_state_path(project_id, environment_id).parent
+def delete_auth_state(environment_id: str) -> None:
+    auth_dir = auth_state_path(environment_id).parent
     if auth_dir.exists():
         shutil.rmtree(auth_dir)
 

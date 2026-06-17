@@ -1,7 +1,10 @@
+import shutil
 import sqlite3
 from pathlib import Path, PureWindowsPath
 
 from app.core.db import connect
+from app.core.environment_auth_state import environment_root
+from app.core.environment_scope import GLOBAL_ENVIRONMENT_PROJECT_ID
 from app.core.security import hash_secret
 from app.core.storage import PROJECT_FILE_STORAGE_ROOT, store_path
 
@@ -619,6 +622,8 @@ def init_db() -> None:
         _migrate_stored_paths(db)
         _seed_operation_log_retention_policy(db)
         _ensure_all_projects_conversation_scope(db)
+        _ensure_global_environments_project(db)
+        _migrate_exploration_environments_to_global(db)
         _seed_user(db, "u-admin", "admin", "admin@example.com", "平台管理员", "admin", "admin", "enabled", "全部项目", "平台管理员，负责用户、模型和项目权限维护。")
         _sync_seed_password(db, "u-admin", "admin")
 
@@ -660,6 +665,72 @@ def _ensure_all_projects_conversation_scope(db: sqlite3.Connection) -> None:
         VALUES ('__all_projects__', '全部项目知识库', 'archived', '系统保留项目，用于全部项目知识库对话历史。', 'system')
         """
     )
+
+
+def _ensure_global_environments_project(db: sqlite3.Connection) -> None:
+    exists = db.execute("SELECT id FROM projects WHERE id = '__global_environments__'").fetchone()
+    if exists:
+        return
+    db.execute(
+        """
+        INSERT INTO projects (id, name, status, description, created_by)
+        VALUES ('__global_environments__', '全局探索环境', 'archived', '系统保留项目，用于存放与业务项目解耦的探索环境。', 'system')
+        """
+    )
+
+
+def _migrate_exploration_environments_to_global(db: sqlite3.Connection) -> None:
+    used_names = {
+        row[0]
+        for row in db.execute(
+            "SELECT name FROM project_environments WHERE project_id = ?",
+            (GLOBAL_ENVIRONMENT_PROJECT_ID,),
+        ).fetchall()
+    }
+
+    legacy_rows = db.execute(
+        "SELECT id, project_id, name FROM project_environments WHERE project_id != ?",
+        (GLOBAL_ENVIRONMENT_PROJECT_ID,),
+    ).fetchall()
+    for row in legacy_rows:
+        env_id = row["id"]
+        old_project_id = row["project_id"]
+        name = row["name"]
+        _move_environment_storage(env_id, [PROJECT_FILE_STORAGE_ROOT / old_project_id / "environments" / env_id])
+
+        unique_name = name
+        counter = 2
+        while unique_name in used_names:
+            unique_name = f"{name}-{counter}"
+            counter += 1
+        used_names.add(unique_name)
+        db.execute(
+            "UPDATE project_environments SET project_id = ?, name = ? WHERE id = ?",
+            (GLOBAL_ENVIRONMENT_PROJECT_ID, unique_name, env_id),
+        )
+
+    global_rows = db.execute(
+        "SELECT id FROM project_environments WHERE project_id = ?",
+        (GLOBAL_ENVIRONMENT_PROJECT_ID,),
+    ).fetchall()
+    for row in global_rows:
+        env_id = row["id"]
+        _move_environment_storage(
+            env_id,
+            [PROJECT_FILE_STORAGE_ROOT / GLOBAL_ENVIRONMENT_PROJECT_ID / "environments" / env_id],
+        )
+
+
+def _move_environment_storage(environment_id: str, legacy_dirs: list[Path]) -> None:
+    target_dir = environment_root(environment_id)
+    if target_dir.exists():
+        return
+    for legacy_dir in legacy_dirs:
+        if not legacy_dir.exists():
+            continue
+        target_dir.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(legacy_dir), str(target_dir))
+        return
 
 
 def _seed_operation_log_retention_policy(db: sqlite3.Connection) -> None:

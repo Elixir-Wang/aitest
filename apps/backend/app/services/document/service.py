@@ -12,8 +12,8 @@ from loguru import logger
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir, resolve_stored_path, store_path
-from app.agents.requirement_analysis.workflow import run_requirement_analysis
-from app.agents.requirement_analysis.core.schemas import RequirementAnalysisInputV2, AuxiliaryDocument
+from app.agents.requirement_analysis.schemas import AuxiliaryDocument, RequirementAnalysisInputV2
+from app.agents.requirement_analysis.orchestrator import run_requirement_analysis
 from app.agents.requirement_analysis.utils import (
     clarification_item_to_api,
     generate_clarification_report,
@@ -1667,3 +1667,4 @@ def _active_unresolved_count(output: dict) -> int:
 
 def _version_markdown_path(project_id: str, document_id: str, version_no: int) -> Path:
     return project_requirement_dir(project_id, document_id) / "versions" / f"v{version_no}.md"
+

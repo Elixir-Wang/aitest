@@ -3,8 +3,9 @@ from fastapi import HTTPException
 
 from app.core import db as core_db
 from app.core import environment_auth_state
+from app.core.environment_scope import GLOBAL_ENVIRONMENT_PROJECT_ID
 from app.core import environment_credentials
-from app.schemas.environment import ProjectEnvironmentCreateIn, ProjectEnvironmentUpdateIn
+from app.schemas.environment import ExplorationEnvironmentCreateIn, ExplorationEnvironmentUpdateIn
 from app.seed.init_db import init_db
 from app.services import environment_service, manual_auth_service, auto_auth_service
 
@@ -62,11 +63,8 @@ class FakeManualAuthProcess:
 
 def test_create_skip_login_normalizes_captcha_and_auth_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
 
-    result = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    result = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="无需登录环境",
             site_url="https://example.test",
             username="admin",
@@ -89,11 +87,8 @@ def test_create_skip_login_normalizes_captcha_and_auth_state(monkeypatch: pytest
 
 def test_create_account_password_defaults_reuse_auth_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
 
-    result = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    result = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="账号密码环境",
             site_url="https://example.test",
             username="admin",
@@ -110,7 +105,7 @@ def test_create_account_password_defaults_reuse_auth_state(monkeypatch: pytest.M
     assert result["reuse_auth_state"] is True
     assert result["has_saved_credentials"] is True
     assert result["auth_state_status"] == "none"
-    assert environment_credentials.load_credentials("project-1", result["id"]) == {
+    assert environment_credentials.load_credentials(result["id"]) == {
         "username": "admin",
         "password": "secret123",
     }
@@ -126,13 +121,11 @@ def test_create_account_password_defaults_reuse_auth_state(monkeypatch: pytest.M
 
 def test_create_ai_letter_schedules_auto_auth(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    scheduled: list[tuple[str, str]] = []
+    scheduled: list[str] = []
 
-    def fake_schedule(project_id: str, environment_id: str) -> None:
-        scheduled.append((project_id, environment_id))
+    def fake_schedule(environment_id: str) -> None:
+        scheduled.append(environment_id)
         auto_auth_service._write_auto_auth_status(
-            project_id,
             environment_id,
             status="queued",
             message="等待自动登录",
@@ -140,9 +133,7 @@ def test_create_ai_letter_schedules_auto_auth(monkeypatch: pytest.MonkeyPatch, t
 
     monkeypatch.setattr(auto_auth_service, "schedule_ai_letter_auto_auth", fake_schedule)
 
-    result = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    result = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="AI 验证码环境",
             site_url="https://example.test/login",
             username="admin",
@@ -154,7 +145,7 @@ def test_create_ai_letter_schedules_auto_auth(monkeypatch: pytest.MonkeyPatch, t
         ACTOR,
     )
 
-    assert scheduled == [("project-1", result["id"])]
+    assert scheduled == [result["id"]]
     assert result["auto_auth_status"] == "queued"
     assert result["auth_state_status"] == "logging_in"
     assert "自动登录" in result["auth_state_message"]
@@ -164,17 +155,14 @@ def test_update_ai_letter_with_valid_auth_state_does_not_reschedule_auto_auth(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    scheduled: list[tuple[str, str]] = []
+    scheduled: list[str] = []
 
-    def fake_schedule(project_id: str, environment_id: str) -> None:
-        scheduled.append((project_id, environment_id))
+    def fake_schedule(environment_id: str) -> None:
+        scheduled.append(environment_id)
 
     monkeypatch.setattr(auto_auth_service, "schedule_ai_letter_auto_auth", fake_schedule)
 
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="AI 验证码环境",
             site_url="https://example.test/login",
             username="admin",
@@ -186,23 +174,19 @@ def test_update_ai_letter_with_valid_auth_state_does_not_reschedule_auto_auth(
         ACTOR,
     )
     scheduled.clear()
-    state_path = environment_auth_state.auth_state_path("project-1", created["id"])
+    state_path = environment_auth_state.auth_state_path(created["id"])
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         f'{{"cookies":[{{"name":"sid","value":"secret","domain":"example.test","path":"/","expires":{FUTURE_EXPIRES}}}],"origins":[]}}',
         encoding="utf-8",
     )
-    auto_auth_service._write_auto_auth_status(
-        "project-1",
-        created["id"],
+    auto_auth_service._write_auto_auth_status(created["id"],
         status="succeeded",
         message="登录态已自动保存。",
     )
 
-    updated = environment_service.update_project_environment(
-        "project-1",
-        created["id"],
-        ProjectEnvironmentUpdateIn(description="仅更新描述"),
+    updated = environment_service.update_environment(created["id"],
+        ExplorationEnvironmentUpdateIn(description="仅更新描述"),
         ACTOR,
     )
 
@@ -212,13 +196,11 @@ def test_update_ai_letter_with_valid_auth_state_does_not_reschedule_auto_auth(
 
 def test_start_environment_auto_auth_triggers_login(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    scheduled: list[tuple[str, str]] = []
+    scheduled: list[str] = []
 
-    def fake_schedule(project_id: str, environment_id: str) -> None:
-        scheduled.append((project_id, environment_id))
+    def fake_schedule(environment_id: str) -> None:
+        scheduled.append(environment_id)
         auto_auth_service._write_auto_auth_status(
-            project_id,
             environment_id,
             status="queued",
             message="等待自动登录",
@@ -226,9 +208,7 @@ def test_start_environment_auto_auth_triggers_login(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(auto_auth_service, "schedule_ai_letter_auto_auth", fake_schedule)
 
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="AI 验证码环境",
             site_url="https://example.test/login",
             username="admin",
@@ -241,16 +221,15 @@ def test_start_environment_auto_auth_triggers_login(monkeypatch: pytest.MonkeyPa
     )
     scheduled.clear()
 
-    result = environment_service.start_environment_auto_auth("project-1", created["id"], ACTOR)
+    result = environment_service.start_environment_auto_auth(created["id"], ACTOR)
 
-    assert scheduled == [("project-1", created["id"])]
+    assert scheduled == [created["id"]]
     assert result["auth_state_status"] == "logging_in"
     assert result["auto_auth_status"] == "queued"
 
 
 def test_start_environment_auto_auth_requires_saved_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
     with core_db.connect() as db:
         db.execute(
             """
@@ -261,7 +240,7 @@ def test_start_environment_auto_auth_requires_saved_credentials(monkeypatch: pyt
             """,
             (
                 "env-no-password",
-                "project-1",
+                GLOBAL_ENVIRONMENT_PROJECT_ID,
                 "无密码环境",
                 "https://example.test/login",
                 "admin",
@@ -274,7 +253,7 @@ def test_start_environment_auto_auth_requires_saved_credentials(monkeypatch: pyt
         )
 
     with pytest.raises(HTTPException) as exc:
-        environment_service.start_environment_auto_auth("project-1", "env-no-password", ACTOR)
+        environment_service.start_environment_auto_auth("env-no-password", ACTOR)
 
     assert exc.value.status_code == 400
     assert exc.value.detail["code"] == "AUTO_AUTH_CREDENTIALS_REQUIRED"
@@ -282,10 +261,7 @@ def test_start_environment_auto_auth_requires_saved_credentials(monkeypatch: pyt
 
 def test_update_username_keeps_saved_password_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="账号密码环境",
             site_url="https://example.test",
             username="admin",
@@ -295,14 +271,12 @@ def test_update_username_keeps_saved_password_credentials(monkeypatch: pytest.Mo
         ACTOR,
     )
 
-    environment_service.update_project_environment(
-        "project-1",
-        created["id"],
-        ProjectEnvironmentUpdateIn(username="tester"),
+    environment_service.update_environment(created["id"],
+        ExplorationEnvironmentUpdateIn(username="tester"),
         ACTOR,
     )
 
-    assert environment_credentials.load_credentials("project-1", created["id"]) == {
+    assert environment_credentials.load_credentials(created["id"]) == {
         "username": "tester",
         "password": "secret123",
     }
@@ -310,10 +284,7 @@ def test_update_username_keeps_saved_password_credentials(monkeypatch: pytest.Mo
 
 def test_update_empty_password_keeps_existing_password_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="账号密码环境",
             site_url="https://example.test",
             username="admin",
@@ -323,16 +294,14 @@ def test_update_empty_password_keeps_existing_password_credentials(monkeypatch: 
         ACTOR,
     )
 
-    updated = environment_service.update_project_environment(
-        "project-1",
-        created["id"],
-        ProjectEnvironmentUpdateIn(password=""),
+    updated = environment_service.update_environment(created["id"],
+        ExplorationEnvironmentUpdateIn(password=""),
         ACTOR,
     )
 
     assert "password_mask" not in updated
     assert updated["has_saved_credentials"] is True
-    assert environment_credentials.load_credentials("project-1", created["id"]) == {
+    assert environment_credentials.load_credentials(created["id"]) == {
         "username": "admin",
         "password": "secret123",
     }
@@ -343,10 +312,7 @@ def test_environment_list_reports_saved_credentials_from_secure_store(
     tmp_path,
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="账号密码环境",
             site_url="https://example.test",
             username="admin",
@@ -356,26 +322,23 @@ def test_environment_list_reports_saved_credentials_from_secure_store(
         ACTOR,
     )
 
-    listed = environment_service.list_project_environments("project-1", ACTOR)
+    listed = environment_service.list_visible_environments(ACTOR)
     assert listed[0]["id"] == created["id"]
     assert "password_mask" not in listed[0]
     assert listed[0]["has_saved_credentials"] is True
 
-    environment_credentials.delete_credentials("project-1", created["id"])
+    environment_credentials.delete_credentials(created["id"])
 
-    listed = environment_service.list_project_environments("project-1", ACTOR)
+    listed = environment_service.list_visible_environments(ACTOR)
     assert "password_mask" not in listed[0]
     assert listed[0]["has_saved_credentials"] is False
 
 
 def test_manual_captcha_requires_reuse_auth_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
 
     with pytest.raises(HTTPException) as exc_info:
-        environment_service.create_project_environment(
-            "project-1",
-            ProjectEnvironmentCreateIn(
+        environment_service.create_environment(ExplorationEnvironmentCreateIn(
                 name="人工验证码环境",
                 site_url="https://example.test",
                 username="admin",
@@ -394,12 +357,9 @@ def test_manual_captcha_requires_reuse_auth_state(monkeypatch: pytest.MonkeyPatc
 
 def test_legacy_manual_login_strategy_is_rejected(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
 
     with pytest.raises(HTTPException) as exc_info:
-        environment_service.create_project_environment(
-            "project-1",
-            ProjectEnvironmentCreateIn(
+        environment_service.create_environment(ExplorationEnvironmentCreateIn(
                 name="旧人工登录环境",
                 site_url="https://example.test",
                 username="admin",
@@ -415,7 +375,6 @@ def test_legacy_manual_login_strategy_is_rejected(monkeypatch: pytest.MonkeyPatc
 
 def test_init_db_migrates_legacy_login_strategies(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
     with core_db.connect() as db:
         db.execute(
             """
@@ -423,11 +382,11 @@ def test_init_db_migrates_legacy_login_strategies(monkeypatch: pytest.MonkeyPatc
               (id, project_id, name, site_url, username, password_encrypted, password_hash,
                login_strategy, captcha_strategy, reuse_auth_state, created_by)
             VALUES
-              ('env-reuse', 'project-1', '旧复用态', 'https://reuse.test', 'admin', 'enc', 'hash',
+              ('env-reuse', '__global_environments__', '旧复用态', 'https://reuse.test', 'admin', 'enc', 'hash',
                'reuse_state', 'none', 1, 'u-admin'),
-              ('env-manual', 'project-1', '旧人工登录', 'https://manual.test', 'admin', 'enc', 'hash',
+              ('env-manual', '__global_environments__', '旧人工登录', 'https://manual.test', 'admin', 'enc', 'hash',
                'manual', 'none', 1, 'u-admin'),
-              ('env-empty', 'project-1', '空策略', 'https://empty.test', 'admin', 'enc', 'hash',
+              ('env-empty', '__global_environments__', '空策略', 'https://empty.test', 'admin', 'enc', 'hash',
                '', 'manual', 1, 'u-admin')
             """
         )
@@ -462,10 +421,7 @@ def test_init_db_migrates_legacy_login_strategies(monkeypatch: pytest.MonkeyPatc
 
 def test_update_skip_login_clears_login_fields(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="账号密码环境",
             site_url="https://example.test",
             username="admin",
@@ -476,10 +432,8 @@ def test_update_skip_login_clears_login_fields(monkeypatch: pytest.MonkeyPatch, 
         ACTOR,
     )
 
-    updated = environment_service.update_project_environment(
-        "project-1",
-        created["id"],
-        ProjectEnvironmentUpdateIn(login_strategy="skip_login"),
+    updated = environment_service.update_environment(created["id"],
+        ExplorationEnvironmentUpdateIn(login_strategy="skip_login"),
         ACTOR,
     )
 
@@ -489,15 +443,12 @@ def test_update_skip_login_clears_login_fields(monkeypatch: pytest.MonkeyPatch, 
     assert updated["captcha_strategy"] == "none"
     assert updated["reuse_auth_state"] is False
     assert updated["has_saved_credentials"] is False
-    assert environment_credentials.load_credentials("project-1", created["id"]) is None
+    assert environment_credentials.load_credentials(created["id"]) is None
 
 
 def test_auth_state_status_is_valid_when_cookie_expires_in_future(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="人工验证码环境",
             site_url="https://example.test",
             username="admin",
@@ -508,14 +459,14 @@ def test_auth_state_status_is_valid_when_cookie_expires_in_future(monkeypatch: p
         ),
         ACTOR,
     )
-    state_path = environment_auth_state.auth_state_path("project-1", created["id"])
+    state_path = environment_auth_state.auth_state_path(created["id"])
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         f'{{"cookies":[{{"name":"sid","value":"secret","domain":"example.test","path":"/","expires":{FUTURE_EXPIRES}}}],"origins":[]}}',
         encoding="utf-8",
     )
 
-    result = environment_service.list_project_environments("project-1", ACTOR)[0]
+    result = environment_service.list_visible_environments(ACTOR)[0]
 
     assert result["auth_state_status"] == "valid"
     assert result["auth_state_expires_at"] == "2100-01-01T00:00:00+00:00"
@@ -523,10 +474,7 @@ def test_auth_state_status_is_valid_when_cookie_expires_in_future(monkeypatch: p
 
 def test_auth_state_status_is_expired_when_cookie_expires_in_past(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="人工验证码环境",
             site_url="https://example.test",
             username="admin",
@@ -537,14 +485,14 @@ def test_auth_state_status_is_expired_when_cookie_expires_in_past(monkeypatch: p
         ),
         ACTOR,
     )
-    state_path = environment_auth_state.auth_state_path("project-1", created["id"])
+    state_path = environment_auth_state.auth_state_path(created["id"])
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         f'{{"cookies":[{{"name":"sid","value":"secret","domain":"example.test","path":"/","expires":{PAST_EXPIRES}}}],"origins":[]}}',
         encoding="utf-8",
     )
 
-    result = environment_service.list_project_environments("project-1", ACTOR)[0]
+    result = environment_service.list_visible_environments(ACTOR)[0]
 
     assert result["auth_state_status"] == "expired"
     assert result["auth_state_expires_at"] == "2000-01-01T00:00:00+00:00"
@@ -552,10 +500,7 @@ def test_auth_state_status_is_expired_when_cookie_expires_in_past(monkeypatch: p
 
 def test_auth_state_status_reads_jwt_exp_from_local_storage(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="人工验证码环境",
             site_url="https://example.test",
             username="admin",
@@ -566,7 +511,7 @@ def test_auth_state_status_reads_jwt_exp_from_local_storage(monkeypatch: pytest.
         ),
         ACTOR,
     )
-    state_path = environment_auth_state.auth_state_path("project-1", created["id"])
+    state_path = environment_auth_state.auth_state_path(created["id"])
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         (
@@ -577,7 +522,7 @@ def test_auth_state_status_reads_jwt_exp_from_local_storage(monkeypatch: pytest.
         encoding="utf-8",
     )
 
-    result = environment_service.list_project_environments("project-1", ACTOR)[0]
+    result = environment_service.list_visible_environments(ACTOR)[0]
 
     assert result["auth_state_status"] == "valid"
     assert result["auth_state_expires_at"] == "2100-01-01T00:00:00+00:00"
@@ -585,10 +530,7 @@ def test_auth_state_status_reads_jwt_exp_from_local_storage(monkeypatch: pytest.
 
 def test_auth_state_status_is_valid_with_unknown_expiry(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="人工验证码环境",
             site_url="https://example.test",
             username="admin",
@@ -599,14 +541,14 @@ def test_auth_state_status_is_valid_with_unknown_expiry(monkeypatch: pytest.Monk
         ),
         ACTOR,
     )
-    state_path = environment_auth_state.auth_state_path("project-1", created["id"])
+    state_path = environment_auth_state.auth_state_path(created["id"])
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         '{"cookies":[{"name":"sid","value":"secret","domain":"example.test","path":"/"}],"origins":[]}',
         encoding="utf-8",
     )
 
-    result = environment_service.list_project_environments("project-1", ACTOR)[0]
+    result = environment_service.list_visible_environments(ACTOR)[0]
 
     assert result["auth_state_status"] == "valid"
     assert result["auth_state_expires_at"] is None
@@ -614,10 +556,7 @@ def test_auth_state_status_is_valid_with_unknown_expiry(monkeypatch: pytest.Monk
 
 def test_manual_auth_start_requires_manual_captcha_strategy(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="无验证码环境",
             site_url="https://example.test",
             username="admin",
@@ -630,7 +569,7 @@ def test_manual_auth_start_requires_manual_captcha_strategy(monkeypatch: pytest.
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        manual_auth_service.start_manual_auth_session("project-1", created["id"], ACTOR)
+        manual_auth_service.start_manual_auth_session(created["id"], ACTOR)
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail["code"] == "MANUAL_AUTH_NOT_ENABLED"
@@ -641,10 +580,7 @@ def test_manual_auth_start_returns_session_summary_without_state_path(
     tmp_path,
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="人工验证码环境",
             site_url="https://example.test",
             username="admin",
@@ -662,7 +598,7 @@ def test_manual_auth_start_returns_session_summary_without_state_path(
         lambda *args, **kwargs: FakeManualAuthProcess(),
     )
 
-    result = manual_auth_service.start_manual_auth_session("project-1", created["id"], ACTOR)
+    result = manual_auth_service.start_manual_auth_session(created["id"], ACTOR)
 
     assert result["status"] == "waiting_human"
     assert result["session_id"]
@@ -676,10 +612,7 @@ def test_manual_auth_start_without_saved_credentials_opens_without_autofill(
     tmp_path,
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="人工验证码环境",
             site_url="https://example.test",
             username="admin",
@@ -690,7 +623,7 @@ def test_manual_auth_start_without_saved_credentials_opens_without_autofill(
         ),
         ACTOR,
     )
-    environment_credentials.delete_credentials("project-1", created["id"])
+    environment_credentials.delete_credentials(created["id"])
     captured: dict = {}
 
     def fake_launch(*args, **kwargs):
@@ -699,7 +632,7 @@ def test_manual_auth_start_without_saved_credentials_opens_without_autofill(
 
     monkeypatch.setattr(manual_auth_service, "_launch_manual_auth_process", fake_launch)
 
-    result = manual_auth_service.start_manual_auth_session("project-1", created["id"], ACTOR)
+    result = manual_auth_service.start_manual_auth_session(created["id"], ACTOR)
 
     assert result["status"] == "waiting_human"
     assert result["has_saved_credentials"] is False
@@ -712,10 +645,7 @@ def test_manual_auth_start_injects_saved_credentials_to_runner(
     tmp_path,
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="人工验证码环境",
             site_url="https://example.test",
             username="admin",
@@ -734,7 +664,7 @@ def test_manual_auth_start_injects_saved_credentials_to_runner(
 
     monkeypatch.setattr(manual_auth_service, "_launch_manual_auth_process", fake_launch)
 
-    result = manual_auth_service.start_manual_auth_session("project-1", created["id"], ACTOR)
+    result = manual_auth_service.start_manual_auth_session(created["id"], ACTOR)
 
     assert result["status"] == "waiting_human"
     assert result["has_saved_credentials"] is True
@@ -771,10 +701,7 @@ def test_manual_auth_status_returns_ended_when_browser_process_exited(
     tmp_path,
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="人工验证码环境",
             site_url="https://example.test",
             username="admin",
@@ -792,8 +719,8 @@ def test_manual_auth_status_returns_ended_when_browser_process_exited(
         lambda *args, **kwargs: FakeManualAuthProcess(returncode=1),
     )
 
-    session = manual_auth_service.start_manual_auth_session("project-1", created["id"], ACTOR)
-    result = manual_auth_service.get_manual_auth_session_status("project-1", created["id"], session["session_id"], ACTOR)
+    session = manual_auth_service.start_manual_auth_session(created["id"], ACTOR)
+    result = manual_auth_service.get_manual_auth_session_status(created["id"], session["session_id"], ACTOR)
 
     assert result["status"] == "ended"
     assert result["message"] == "登录窗口已关闭，请重新打开登录窗口。"
@@ -804,10 +731,7 @@ def test_manual_auth_status_returns_auto_saved_when_process_exited_with_valid_st
     tmp_path,
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_project()
-    created = environment_service.create_project_environment(
-        "project-1",
-        ProjectEnvironmentCreateIn(
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
             name="人工验证码环境",
             site_url="https://example.test",
             username="admin",
@@ -818,7 +742,7 @@ def test_manual_auth_status_returns_auto_saved_when_process_exited_with_valid_st
         ),
         ACTOR,
     )
-    state_path = environment_auth_state.auth_state_path("project-1", created["id"])
+    state_path = environment_auth_state.auth_state_path(created["id"])
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         f'{{"cookies":[{{"name":"sid","value":"secret","domain":"example.test","path":"/","expires":{FUTURE_EXPIRES}}}],"origins":[]}}',
@@ -829,13 +753,12 @@ def test_manual_auth_status_returns_auto_saved_when_process_exited_with_valid_st
     session_id = "manual-auth-auto-saved"
     with manual_auth_service._sessions_lock:
         manual_auth_service._sessions[session_id] = {
-            "project_id": "project-1",
             "environment_id": created["id"],
             "process": process,
             "storage_state_path": state_path,
         }
 
-    result = manual_auth_service.get_manual_auth_session_status("project-1", created["id"], session_id, ACTOR)
+    result = manual_auth_service.get_manual_auth_session_status(created["id"], session_id, ACTOR)
 
     assert result["status"] == "auto_saved"
     assert result["auth_state_status"] == "valid"

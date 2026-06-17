@@ -4,9 +4,7 @@
 用于对待澄清项进行优先级排序
 """
 
-from typing import Literal
-
-from app.agents.requirement_analysis.core.schemas import ClarificationItem
+from app.agents.requirement_analysis.clarification.schemas import ClarificationItem
 
 
 def sort_clarification_items(
@@ -36,72 +34,6 @@ def sort_clarification_items(
 
     return sorted(items, key=get_priority_key)
 
-
-def group_by_priority(
-    items: list[ClarificationItem],
-) -> dict[Literal["P0", "P1", "P2", "P3"], list[ClarificationItem]]:
-    """按优先级分组"""
-    groups: dict[str, list[ClarificationItem]] = {
-        "P0": [],
-        "P1": [],
-        "P2": [],
-        "P3": [],
-    }
-
-    for item in items:
-        if item.priority in groups:
-            groups[item.priority].append(item)
-
-    return groups  # type: ignore[return-value]
-
-
-def group_by_source_stage(
-    items: list[ClarificationItem],
-) -> dict[str, list[ClarificationItem]]:
-    """按来源阶段分组"""
-    groups = {
-        "understanding": [],
-        "completeness": [],
-        "clarity": [],
-        "testability": [],
-        "consistency": [],
-    }
-
-    for item in items:
-        if item.source_stage in groups:
-            groups[item.source_stage].append(item)
-
-    return groups
-
-
-def group_by_resolution_status(
-    items: list[ClarificationItem],
-) -> dict[str, list[ClarificationItem]]:
-    """按解答状态分组"""
-    groups = {
-        "auto_resolved": [],
-        "has_options": [],
-        "needs_input": [],
-        "needs_research": [],
-    }
-
-    for item in items:
-        if item.resolution_status in groups:
-            groups[item.resolution_status].append(item)
-
-    return groups
-
-
-# 兼容旧名称
-group_by_severity = group_by_priority
-group_by_source = group_by_source_stage
-
-
 __all__ = [
     "sort_clarification_items",
-    "group_by_priority",
-    "group_by_severity",
-    "group_by_source",
-    "group_by_source_stage",
-    "group_by_resolution_status",
 ]

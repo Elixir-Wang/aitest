@@ -6,16 +6,14 @@ from app.services.auto_auth_service import get_auto_auth_status
 
 def resolve_environment_auth_state_display(
     *,
-    project_id: str,
     environment_id: str,
     login_strategy: str,
     reuse_auth_state: bool,
 ) -> dict:
-    auto_auth = get_auto_auth_status(project_id, environment_id)
+    auto_auth = get_auto_auth_status(environment_id)
     auto_auth_status = auto_auth["status"]
     auto_auth_message = auto_auth["message"]
     file_state = auth_state_summary(
-        project_id=project_id,
         environment_id=environment_id,
         login_strategy=login_strategy,
         reuse_auth_state=reuse_auth_state,
@@ -59,7 +57,6 @@ def resolve_environment_auth_state_display(
 
 def apply_environment_auth_display(environment: dict) -> dict:
     display = resolve_environment_auth_state_display(
-        project_id=environment["project_id"],
         environment_id=environment["id"],
         login_strategy=environment["login_strategy"],
         reuse_auth_state=bool(environment.get("reuse_auth_state")),
@@ -149,16 +146,14 @@ def serialize_project(row: Row, actor_role: str, has_assets: bool = False) -> di
     }
 
 
-def serialize_project_environment(row: Row, actor_role: str) -> dict:
+def serialize_exploration_environment(row: Row, actor_role: str) -> dict:
     login_strategy, captcha_strategy, reuse_auth_state = _normalize_auth_config_values(
         _row_value(row, "login_strategy", "skip_login"),
         _row_value(row, "captcha_strategy", "none"),
         _row_value(row, "reuse_auth_state", True),
     )
-    project_id = row["project_id"]
     environment_id = row["id"]
     auth_display = resolve_environment_auth_state_display(
-        project_id=project_id,
         environment_id=environment_id,
         login_strategy=login_strategy,
         reuse_auth_state=reuse_auth_state,
@@ -169,8 +164,6 @@ def serialize_project_environment(row: Row, actor_role: str) -> dict:
     )
     return {
         "id": environment_id,
-        "project_id": project_id,
-        "project_name": row["project_name"],
         "name": row["name"],
         "site_url": row["site_url"],
         "username": row["username"],

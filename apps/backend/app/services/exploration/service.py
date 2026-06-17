@@ -572,8 +572,8 @@ def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) 
         _ensure_project_visible(project, actor)
 
         environment = environment_repo.find_by_id(db, payload.environment_id)
-        if not environment or environment["project_id"] != project_id:
-            raise api_error(400, "INVALID_ENVIRONMENT", "请选择当前项目下的环境。")
+        if not environment:
+            raise api_error(400, "INVALID_ENVIRONMENT", "请选择有效环境。")
         requirement_doc_id = payload.requirement_doc_id.strip()
         _ensure_requirement_document_in_project(db, project_id, requirement_doc_id)
 
@@ -632,8 +632,8 @@ def update_project_run(project_id: str, run_id: str, payload: ExplorationRunUpda
             raise api_error(409, "RUNNING_EXPLORATION", "探索任务执行中，不能修改。")
         if "environment_id" in updates:
             environment = environment_repo.find_by_id(db, updates["environment_id"])
-            if not environment or environment["project_id"] != project_id:
-                raise api_error(400, "INVALID_ENVIRONMENT", "请选择当前项目下的环境。")
+            if not environment:
+                raise api_error(400, "INVALID_ENVIRONMENT", "请选择有效环境。")
         if "requirement_doc_id" in updates:
             updates["requirement_doc_id"] = str(updates["requirement_doc_id"] or "").strip()
             _ensure_requirement_document_in_project(db, project_id, updates["requirement_doc_id"])
@@ -1665,7 +1665,7 @@ def _stored_auth_state_path_for_run(run) -> Path | None:
     login_strategy, _, reuse_auth_state = _snapshot_auth_config(run)
     if login_strategy != "account_password" or not reuse_auth_state:
         return None
-    path = auth_state_path(_run_value(run, "project_id", ""), _run_value(run, "environment_id", ""))
+    path = auth_state_path(_run_value(run, "environment_id", ""))
     return path if path.exists() else None
 
 

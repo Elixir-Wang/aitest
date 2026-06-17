@@ -3,14 +3,10 @@
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 
-from app.agents.requirement_analysis.core.schemas import (
-    ClarificationOutput,
-    QualityAssessmentOutput,
-    QualityAssessmentBrief,
-    EvidenceSnippet,
-    RequirementUnderstandingOutput,
-    RequirementUnderstandingBrief,
-)
+from app.agents.requirement_analysis.clarification.schemas import ClarificationOutput
+from app.agents.requirement_analysis.quality.schemas import QualityAssessmentOutput
+from app.agents.requirement_analysis.schemas import EvidenceSnippet, QualityAssessmentBrief, RequirementUnderstandingBrief
+from app.agents.requirement_analysis.understanding.schemas import RequirementUnderstandingOutput
 from app.agents.requirement_analysis.utils.context import format_evidence_snippets
 
 
@@ -172,6 +168,100 @@ CLARIFICATION_SYSTEM_PROMPT = """
 
 每个 surface 必须有 rationale 说明为什么影响该层面。
 
+## 反向提问策略（核心方法）
+
+对每条需求，用"反向场景"暴露缺失定义。这是最有效的需求澄清方法。
+
+### 反向提问模板
+
+| 需求原文模式 | 反向场景 | 生成的澄清问题 |
+|------------|---------|---------------|
+| "用户可以..." | 谁不能？什么时候不能？ | 未登录/权限不足/账号冻结时如何处理？ |
+| "系统应..." | 什么时候不应该？失败了呢？ | 触发条件是什么？失败时的行为？ |
+| "支持...格式/类型" | 不支持的呢？ | 上传不支持格式时如何提示？ |
+| "...后自动..." | 什么条件下不自动？ | 依赖服务挂了/超时了怎么办？ |
+| "状态变为X" | 从哪些状态能变？不能变呢？ | 完整状态流转图？并发修改冲突解决？ |
+| "验证/审核通过后..." | 不通过呢？ | 不通过的错误码？能申诉/重试吗？ |
+| "保存..." | 不保存直接退出呢？ | 未保存提示？草稿自动保存吗？ |
+| "删除..." | 误删了呢？ | 软删除还是硬删除？能恢复吗？ |
+| "计算..." | 计算失败/超时呢？ | 显示什么？有默认值吗？ |
+| "发送通知..." | 发送失败呢？ | 重试几次？失败了用户知道吗？ |
+
+### 应用规则
+
+1. **对 P0/P1 需求必须应用反向提问**
+2. **每个肯定句生成 2-4 个反向场景**
+3. **反向场景要转化为具体的 test_impact**
+4. **在 risk_scenario 中用 Given-When-Then 描述最危险的反向场景**
+
+### 示例
+
+**原需求**："用户提交订单后自动扣减库存"
+
+**反向提问生成的 ClarificationItem**：
+```json
+{
+  "item_id": "CL-001",
+  "title": "库存扣减异常场景处理规则",
+  "issue_category": "exception_unhandled",
+  "priority": "P0",
+  "decision_point": "库存不足、并发冲突、扣减失败时的处理规则",
+  "why_clarify": "需求只定义了成功路径，所有异常场景均未说明",
+  "test_impact": [
+    "无法设计库存不足的测试用例（不知道是拒绝还是允许超卖）",
+    "无法验证并发抢购的正确性（不知道用什么锁机制）",
+    "无法确定支付失败后的库存回滚逻辑（时机、重试策略）"
+  ],
+  "risk_scenario": "Given 商品库存剩余1件\nWhen 用户A和用户B同时下单\nThen 应该谁成功？另一个用户看到什么提示？",
+  "反向场景清单": [
+    "库存不足 → 允许超卖？拒绝下单？预留机制？",
+    "并发下单最后一件 → 谁成功？用分布式锁还是乐观锁？",
+    "下单成功但支付失败 → 库存回滚吗？多久回滚？",
+    "扣减库存失败（DB异常）→ 订单还创建吗？"
+  ]
+}
+```
+
+## 结构化提问框架（6 维度深度扫描）
+
+对每个待澄清点，用以下 6 个维度系统性检查是否有遗漏，确保测试完整性：
+
+### 维度 1：触发条件与前置
+- **谁能触发？** → 角色/权限是否明确？→ 缺失则标记 `permission_undefined`
+- **什么时候触发？** → 状态/条件是否清晰？→ 缺失则标记 `trigger_condition_missing`
+- **前置条件是什么？** → 环境/数据依赖是否定义？→ 缺失则标记 `precondition_undefined`
+
+### 维度 2：边界值与约束
+- **数量限制**：最大/最小/为空？→ 缺失则标记 `boundary_undefined`
+- **格式限制**：长度/类型/编码？→ 缺失则标记 `format_constraint_missing`
+- **时间限制**：超时/有效期？→ 缺失则标记 `timeout_undefined`
+- **并发控制**：多人同时操作？→ 缺失则标记 `concurrency_unclear`
+
+### 维度 3：异常与容错
+- **失败处理**：网络断/超时/冲突怎么办？→ 缺失则标记 `exception_unhandled`
+- **错误提示**：具体提示文案是什么？→ 缺失则标记 `error_message_undefined`
+- **重试恢复**：能否重试？如何恢复？→ 缺失则标记 `recovery_strategy_missing`
+
+### 维度 4：状态与时序
+- **可逆性**：操作可撤销/回滚吗？→ 缺失则标记 `reversibility_undefined`
+- **中断处理**：中途退出会怎样？→ 缺失则标记 `interruption_handling_missing`
+- **冲突解决**：并发修改谁赢？→ 缺失则标记 `conflict_resolution_missing`
+
+### 维度 5：权限与隔离
+- **权限矩阵**：谁能查看/修改/删除？→ 缺失则标记 `permission_matrix_incomplete`
+- **数据隔离**：跨组织/租户数据隔离吗？→ 缺失则标记 `isolation_boundary_unclear`
+- **敏感操作**：有二次确认吗？→ 缺失则标记 `sensitive_operation_unprotected`
+
+### 维度 6：数据生命周期
+- **保留策略**：保存多久？有过期机制吗？→ 缺失则标记 `retention_policy_missing`
+- **删除策略**：软删除还是物理删除？→ 缺失则标记 `deletion_strategy_unclear`
+- **历史版本**：需要版本记录吗？→ 缺失则标记 `versioning_undefined`
+
+**应用规则**：
+- 对 P0/P1 优先级的问题，必须用这 6 个维度扫描一遍
+- 每个维度的缺失都要体现在 test_impact 中
+- 在 options 中提供具体的边界值建议（如"最大 100 条"、"5 秒超时"）
+
 ## 处理流程
 
 ### 1. 从质量评估中提取问题
@@ -182,7 +272,7 @@ CLARIFICATION_SYSTEM_PROMPT = """
 - testability: acceptance_criteria_gaps, test_coverage_gaps
 - consistency: conflicts, terminology_issues
 
-### 2. 应用测试视角转换
+### 2. 应用测试视角转换（使用 6 维度框架）
 
 对每个问题，转换为 ClarificationItem：
 
@@ -474,18 +564,18 @@ And [具体字段] 应为 [预期值或规则]
 ### 4. 确定解答状态
 
 - **auto_resolved**：从辅助文档找到 high 置信度答案，可直接采用
-- **has_suggestions**：有推荐选项（来自辅助文档 medium 置信度 / 质量评估建议 / 测试经验推断）
-- **needs_manual**：无推荐选项，必须人工决策
+- **has_options**：有推荐选项（来自辅助文档 medium 置信度 / 质量评估建议 / 测试经验推断）
+- **needs_input**：无推荐选项，必须人工决策
 
 ### 5. 优先级排序
 
 按业务影响和阻塞程度排序：
-1. blocker + needs_manual（阻塞交付且无建议）
-2. blocker + has_suggestions（阻塞交付但有建议）
-3. major + needs_manual（重大影响且无建议）
-4. major + has_suggestions（重大影响但有建议）
-5. minor + needs_manual（轻微影响且无建议）
-6. minor + has_suggestions（轻微影响但有建议）
+1. P0 + needs_input（阻塞交付且无建议）
+2. P0 + has_options（阻塞交付但有建议）
+3. P1 + needs_input（高风险且无建议）
+4. P1 + has_options（高风险但有建议）
+5. P2/P3 + needs_input（中低风险且无建议）
+6. P2/P3 + has_options（中低风险但有建议）
 7. * + auto_resolved（已自动解决）
 
 ## 输出规范
@@ -497,8 +587,8 @@ And [具体字段] 应为 [预期值或规则]
 - **source**: completeness/clarity/testability/consistency
 - **question**: 面向业务的清晰问题
 - **impact**: 从测试/验收角度说明影响
-- **severity**: blocker/major/minor
-- **resolution_status**: auto_resolved/has_suggestions/needs_manual
+- **priority**: P0/P1/P2/P3
+- **resolution_status**: auto_resolved/has_options/needs_input/needs_research
 
 ### 推荐选项规范（recommended_options）
 仅在以下情况生成：
@@ -647,16 +737,15 @@ And [具体字段] 应为 [预期值或规则]
       "evidence": [],
 
       // 解答状态
-      "resolution_status": "has_suggestions"
+      "resolution_status": "has_options"
     }
   ],
   "summary": {
     "total": 1,
     "auto_resolved": 0,
-    "has_suggestions": 1,
-    "needs_manual": 0,
-    "by_severity": {"blocker": 1, "major": 0, "minor": 0},
-    "by_source": {"completeness": 1, "clarity": 0, "testability": 0, "consistency": 0}
+    "by_resolution": {"auto_resolved": 0, "has_options": 1, "needs_input": 0, "needs_research": 0},
+    "by_priority": {"P0": 1, "P1": 0, "P2": 0, "P3": 0},
+    "by_category": {"acceptance_missing": 1}
   },
   "clarification_summary_text": "共发现 1 个待澄清项，均为阻塞级别，需要优先确认"
 }
@@ -680,19 +769,14 @@ async def run_clarification_agent(
     quality_assessment_result: QualityAssessmentOutput | None = None,
     auxiliary_documents: list = None,
     *,
-    quality_brief: QualityAssessmentBrief | None = None,
     evidence_snippets: list[EvidenceSnippet] | None = None,
+    quality_brief: QualityAssessmentBrief | None = None,
     understanding_brief: RequirementUnderstandingBrief | None = None,
 ) -> ClarificationOutput:
     """Run the requirement clarification agent."""
     from datetime import datetime
 
     agent = clarification_agent(model)
-
-    if quality_brief is None and quality_assessment_result is not None:
-        from app.agents.requirement_analysis.utils.context import build_quality_brief
-
-        quality_brief = build_quality_brief(quality_assessment_result)
 
     if understanding_brief is None and understanding_result is not None:
         from app.agents.requirement_analysis.utils.context import build_understanding_brief
@@ -728,7 +812,9 @@ async def run_clarification_agent(
     quality_text = (
         quality_brief.model_dump_json(indent=2)
         if quality_brief is not None
-        else (quality_assessment_result.model_dump_json(indent=2) if quality_assessment_result is not None else "（无质量摘要）")
+        else quality_assessment_result.model_dump_json(indent=2)
+        if quality_assessment_result is not None
+        else "（无质量摘要）"
     )
     evidence_text = format_evidence_snippets(evidence_snippets)
 
@@ -788,3 +874,4 @@ __all__ = [
     "clarification_agent",
     "run_clarification_agent",
 ]
+

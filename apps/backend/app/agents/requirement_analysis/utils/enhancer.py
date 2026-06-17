@@ -6,8 +6,7 @@
 
 from typing import List
 
-from ..core.schemas import ClarificationItem
-from .adapter import is_pending_resolution_status
+from app.agents.requirement_analysis.clarification.schemas import ClarificationItem
 
 
 def generate_enhanced_requirement(
@@ -85,24 +84,11 @@ def _build_enhancement_block(item: ClarificationItem) -> str:
     return "\n".join(lines)
 
 
-def generate_inline_enhanced_requirement(
-    original_markdown: str,
-    auto_resolved_items: List[ClarificationItem],
-) -> str:
-    return generate_enhanced_requirement(original_markdown, auto_resolved_items)
-
-
 def get_auto_resolved_items(all_items: List[ClarificationItem]) -> List[ClarificationItem]:
     return [item for item in all_items if item.resolution_status == "auto_resolved"]
 
 
-def get_pending_items(all_items: List[ClarificationItem]) -> List[ClarificationItem]:
-    return [item for item in all_items if is_pending_resolution_status(item.resolution_status)]
-
-
 __all__ = [
     "generate_enhanced_requirement",
-    "generate_inline_enhanced_requirement",
     "get_auto_resolved_items",
-    "get_pending_items",
 ]

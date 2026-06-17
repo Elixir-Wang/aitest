@@ -19,8 +19,8 @@ _running_environments: set[str] = set()
 _running_lock = threading.Lock()
 
 
-def reset_auto_auth_status(project_id: str, environment_id: str) -> None:
-    _write_auto_auth_status(project_id, environment_id, status="idle", message="")
+def reset_auto_auth_status(environment_id: str) -> None:
+    _write_auto_auth_status(environment_id, status="idle", message="")
 
 
 def should_schedule_ai_letter_auto_auth(environment: dict) -> bool:
@@ -32,28 +32,27 @@ def should_schedule_ai_letter_auto_auth(environment: dict) -> bool:
     )
 
 
-def schedule_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
+def schedule_ai_letter_auto_auth(environment_id: str) -> None:
     with _running_lock:
         if environment_id in _running_environments:
             return
         _running_environments.add(environment_id)
     _write_auto_auth_status(
-        project_id,
         environment_id,
         status="queued",
         message="等待自动登录",
     )
     thread = threading.Thread(
         target=_run_ai_letter_auto_auth_safe,
-        args=(project_id, environment_id),
+        args=(environment_id,),
         daemon=True,
     )
     thread.start()
 
 
-def trigger_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
-    environment = _load_environment(project_id, environment_id)
-    has_saved_credentials = load_credentials(project_id, environment_id) is not None
+def trigger_ai_letter_auto_auth(environment_id: str) -> None:
+    environment = _load_environment(environment_id)
+    has_saved_credentials = load_credentials(environment_id) is not None
     if not should_schedule_ai_letter_auto_auth(
         {
             **environment,
@@ -61,11 +60,11 @@ def trigger_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
         }
     ):
         raise ValueError("environment is not eligible for ai letter auto auth")
-    schedule_ai_letter_auto_auth(project_id, environment_id)
+    schedule_ai_letter_auto_auth(environment_id)
 
 
-def get_auto_auth_status(project_id: str, environment_id: str) -> dict:
-    path = _auto_auth_status_path(project_id, environment_id)
+def get_auto_auth_status(environment_id: str) -> dict:
+    path = _auto_auth_status_path(environment_id)
     if not path.exists():
         return {"status": "idle", "message": "", "updated_at": None, "last_error_code": ""}
     try:
@@ -83,36 +82,34 @@ def get_auto_auth_status(project_id: str, environment_id: str) -> dict:
     }
 
 
-def _run_ai_letter_auto_auth_safe(project_id: str, environment_id: str) -> None:
+def _run_ai_letter_auto_auth_safe(environment_id: str) -> None:
     try:
-        _run_ai_letter_auto_auth(project_id, environment_id)
+        _run_ai_letter_auto_auth(environment_id)
     finally:
         with _running_lock:
             _running_environments.discard(environment_id)
 
 
-def _run_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
-    environment = _load_environment(project_id, environment_id)
+def _run_ai_letter_auto_auth(environment_id: str) -> None:
+    environment = _load_environment(environment_id)
     if not should_schedule_ai_letter_auto_auth(
         {
             **environment,
-            "has_saved_credentials": load_credentials(project_id, environment_id) is not None,
+            "has_saved_credentials": load_credentials(environment_id) is not None,
         }
     ):
-        _write_auto_auth_status(project_id, environment_id, status="idle", message="")
+        _write_auto_auth_status(environment_id, status="idle", message="")
         return
 
-    credentials = load_credentials(project_id, environment_id)
+    credentials = load_credentials(environment_id)
     if credentials is None:
         _write_auto_auth_status(
-            project_id,
             environment_id,
             status="failed",
             message="未找到可自动登录的账号密码。",
             last_error_code="MISSING_CREDENTIALS",
         )
         _record_auto_auth_event(
-            project_id,
             environment_id,
             result="failed",
             summary="环境自动登录失败：未找到可自动登录的账号密码",
@@ -120,10 +117,9 @@ def _run_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
         )
         return
 
-    state_path = auth_state_path(project_id, environment_id)
+    state_path = auth_state_path(environment_id)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     _write_auto_auth_status(
-        project_id,
         environment_id,
         status="running",
         message="正在通过 Playwright 自动登录",
@@ -132,7 +128,7 @@ def _run_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
     process = _launch_ai_letter_login_process(
         site_url=environment["site_url"],
         storage_state_path=state_path,
-        login_plan_path=_login_plan_path(project_id, environment_id),
+        login_plan_path=_login_plan_path(environment_id),
         browser_channel=PLAYWRIGHT_BROWSER_CHANNEL,
         credentials=credentials,
     )
@@ -157,7 +153,6 @@ def _run_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
             _append_auto_login_event(events_path, event)
             if kind == "login_plan_loaded":
                 _write_auto_auth_status(
-                    project_id,
                     environment_id,
                     status="running",
                     message="正在复用已保存的登录计划",
@@ -166,7 +161,6 @@ def _run_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
 
             if kind == "login_plan_invalid":
                 _write_auto_auth_status(
-                    project_id,
                     environment_id,
                     status="running",
                     message="已保存登录计划失效，正在重新分析登录页",
@@ -177,7 +171,6 @@ def _run_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
                 page_image_path = Path(str(event.get("page_image_path") or ""))
                 elements_path = Path(str(event.get("elements_path") or ""))
                 _write_auto_auth_status(
-                    project_id,
                     environment_id,
                     status="running",
                     message="正在分析登录页元素",
@@ -200,7 +193,6 @@ def _run_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
                 attempt = int(event.get("attempt") or 1)
                 image_path = Path(str(event.get("image_path") or ""))
                 _write_auto_auth_status(
-                    project_id,
                     environment_id,
                     status="running",
                     message=f"正在识别验证码（第 {attempt}/3 次）",
@@ -210,14 +202,12 @@ def _run_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
                 except captcha_solver_service.CaptchaSolverError as exc:
                     message = str(exc)
                     _write_auto_auth_status(
-                        project_id,
                         environment_id,
                         status="failed",
                         message=message,
                         last_error_code="CAPTCHA_SOLVE_FAILED",
                     )
                     _record_auto_auth_event(
-                        project_id,
                         environment_id,
                         result="failed",
                         summary="环境自动登录失败：验证码识别失败",
@@ -245,13 +235,11 @@ def _run_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
 
             if kind == "login_succeeded":
                 _write_auto_auth_status(
-                    project_id,
                     environment_id,
                     status="succeeded",
                     message="登录态已自动保存。",
                 )
                 _record_auto_auth_event(
-                    project_id,
                     environment_id,
                     result="success",
                     summary="环境自动登录成功，登录态已保存",
@@ -265,14 +253,12 @@ def _run_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
                 reason = str(event.get("reason") or "login_failed")
                 message = _failure_message_for_reason(reason)
                 _write_auto_auth_status(
-                    project_id,
                     environment_id,
                     status="failed",
                     message=message,
                     last_error_code=reason.upper(),
                 )
                 _record_auto_auth_event(
-                    project_id,
                     environment_id,
                     result="failed",
                     summary="环境自动登录失败",
@@ -284,13 +270,11 @@ def _run_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
         return_code = process.wait(timeout=180)
         if return_code == 0 and state_path.exists():
             _write_auto_auth_status(
-                project_id,
                 environment_id,
                 status="succeeded",
                 message="登录态已自动保存。",
             )
             _record_auto_auth_event(
-                project_id,
                 environment_id,
                 result="success",
                 summary="环境自动登录成功，登录态已保存",
@@ -299,14 +283,12 @@ def _run_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
 
         message = "自动登录失败，请检查账号密码或站点探索模型配置。"
         _write_auto_auth_status(
-            project_id,
             environment_id,
             status="failed",
             message=message,
             last_error_code="AUTO_LOGIN_FAILED",
         )
         _record_auto_auth_event(
-            project_id,
             environment_id,
             result="failed",
             summary="环境自动登录失败",
@@ -316,14 +298,12 @@ def _run_ai_letter_auto_auth(project_id: str, environment_id: str) -> None:
     except Exception as exc:
         message = "自动登录执行异常，请稍后重试。"
         _write_auto_auth_status(
-            project_id,
             environment_id,
             status="failed",
             message=message,
             last_error_code="AUTO_LOGIN_EXCEPTION",
         )
         _record_auto_auth_event(
-            project_id,
             environment_id,
             result="failed",
             summary="环境自动登录异常",
@@ -368,14 +348,11 @@ def _launch_ai_letter_login_process(
     )
 
 
-def _load_environment(project_id: str, environment_id: str) -> dict:
-    from app.services.environment_service import _ensure_project_visible
-
+def _load_environment(environment_id: str) -> dict:
     with connect() as db:
         environment = environment_repo.find_by_id(db, environment_id)
-        if not environment or environment["project_id"] != project_id:
+        if not environment:
             raise ValueError("environment not found")
-        _ensure_project_visible(environment, {"role": "admin", "project_scope": "全部项目"})
         return {
             "site_url": environment["site_url"],
             "login_strategy": environment["login_strategy"],
@@ -384,8 +361,8 @@ def _load_environment(project_id: str, environment_id: str) -> dict:
         }
 
 
-def _auto_auth_status_path(project_id: str, environment_id: str) -> Path:
-    return auth_state_path(project_id, environment_id).parent / "auto-login-status.json"
+def _auto_auth_status_path(environment_id: str) -> Path:
+    return auth_state_path(environment_id).parent / "auto-login-status.json"
 
 
 def _append_auto_login_event(path: Path, event: dict) -> None:
@@ -399,19 +376,18 @@ def _append_auto_login_event(path: Path, event: dict) -> None:
         file.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
-def _login_plan_path(project_id: str, environment_id: str) -> Path:
-    return auth_state_path(project_id, environment_id).parent / "login-plan.json"
+def _login_plan_path(environment_id: str) -> Path:
+    return auth_state_path(environment_id).parent / "login-plan.json"
 
 
 def _write_auto_auth_status(
-    project_id: str,
     environment_id: str,
     *,
     status: str,
     message: str,
     last_error_code: str = "",
 ) -> None:
-    path = _auto_auth_status_path(project_id, environment_id)
+    path = _auto_auth_status_path(environment_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "status": status,
@@ -433,7 +409,6 @@ def _failure_message_for_reason(reason: str) -> str:
 
 
 def _record_auto_auth_event(
-    project_id: str,
     environment_id: str,
     *,
     result: str,
@@ -453,10 +428,10 @@ def _record_auto_auth_event(
         operation_log_service.record_task_event(
             module="environment",
             action="auto_auth_login",
-            object_type="project_environment",
+            object_type="exploration_environment",
             object_id=environment_id,
             object_name=environment_name,
-            project_id=project_id,
+            project_id="",
             actor_id="system",
             actor_name="系统",
             result="failed",
@@ -470,10 +445,10 @@ def _record_auto_auth_event(
         log_type="task",
         module="environment",
         action="auto_auth_login",
-        object_type="project_environment",
+        object_type="exploration_environment",
         object_id=environment_id,
         object_name=environment_name,
-        project_id=project_id,
+        project_id="",
         actor_id="system",
         actor_name="系统",
         summary=summary,

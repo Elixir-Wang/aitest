@@ -93,22 +93,25 @@ def test_site_exploration_services_use_child_agents() -> None:
     assert "app.agents.site_exploration.execution_decision" in agentic_orchestrator_path.read_text(encoding="utf-8")
 
 
-def test_requirement_analysis_agent_uses_langgraph_package_layout() -> None:
+def test_requirement_analysis_agent_uses_child_agent_package_layout() -> None:
     package = NEW_AGENTS_ROOT / "requirement_analysis"
     assert not (NEW_AGENTS_ROOT / "requirement_analysis_codex").exists()
     assert not (package / "agent.py").exists()
     assert not (package / "service.py").exists()
-    assert (package / "core" / "schemas.py").exists()
-    assert (package / "core" / "state.py").exists()
-    assert (package / "workflow" / "workflow.py").exists()
-    assert (package / "agents" / "__init__.py").exists()
-    assert (package / "agents" / "quality.py").exists()
-    assert (package / "agents" / "clarification.py").exists()
-    assert (package / "agents" / "understanding.py").exists()
-    assert (package / "workflow" / "nodes" / "understand.py").exists()
-    assert (package / "workflow" / "nodes" / "quality.py").exists()
-    assert (package / "workflow" / "nodes" / "clarify.py").exists()
-    assert (package / "workflow" / "nodes" / "enhance.py").exists()
+    assert not (package / "core").exists()
+    assert not (package / "workflow").exists()
+    assert not (package / "agents").exists()
+    assert not (package / "common.py").exists()
+    assert (package / "schemas.py").exists()
+    assert (package / "orchestrator.py").exists()
+    assert (package / "understanding" / "agent.py").exists()
+    assert (package / "understanding" / "schemas.py").exists()
+    assert (package / "understanding" / "models.py").exists()
+    assert (package / "quality" / "agent.py").exists()
+    assert (package / "quality" / "schemas.py").exists()
+    assert not (package / "questioning").exists()
+    assert (package / "clarification" / "agent.py").exists()
+    assert (package / "clarification" / "schemas.py").exists()
     assert not (package / "analyzers" / "unified_understanding.py").exists()
     assert (package / "tools" / "search_auxiliary.py").exists()
     assert not (package / "v3").exists()
@@ -124,7 +127,7 @@ def test_requirement_analysis_service_uses_langgraph_agent_directly() -> None:
     service_path = BACKEND_APP / "services" / "document" / "service.py"
     text = service_path.read_text(encoding="utf-8")
 
-    assert "app.agents.requirement_analysis.workflow" in text
+    assert "app.agents.requirement_analysis.orchestrator" in text
     assert "app.agents.requirement_auxiliary_enhancement" not in text
     assert "app.agents.requirement_analysis_codex.service" not in text
     assert "app.agents.requirement_analysis.primary_analysis" not in text

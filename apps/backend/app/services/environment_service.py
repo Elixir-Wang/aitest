@@ -4,36 +4,24 @@ from app.core.environment_auth_state import auth_state_summary, delete_auth_stat
 from app.core.environment_credentials import delete_credentials, load_credentials, save_credentials
 from app.core.db import connect
 from app.core.exceptions import api_error
-from app.presentation.serializers import apply_environment_auth_display, serialize_project_environment
-from app.repositories import environment_repo, project_repo
-from app.schemas.environment import ProjectEnvironmentCreateIn, ProjectEnvironmentUpdateIn
-from app.services import operation_log_service
+from app.presentation.serializers import apply_environment_auth_display, serialize_exploration_environment
+from app.repositories import environment_repo
+from app.schemas.environment import ExplorationEnvironmentCreateIn, ExplorationEnvironmentUpdateIn
 from app.services import auto_auth_service
+from app.services import operation_log_service
 
 LOGIN_STRATEGIES = {"account_password", "skip_login"}
 CAPTCHA_STRATEGIES = {"none", "ai_letter", "manual"}
 
 
-def list_project_environments(project_id: str, actor) -> list[dict]:
-    with connect() as db:
-        project = project_repo.find_by_id(db, project_id)
-        if not project:
-            raise api_error(404, "NOT_FOUND", "项目不存在。")
-        _ensure_project_visible(project, actor)
-        rows = environment_repo.list_by_project(db, project_id)
-        return [serialize_project_environment(row, actor["role"]) for row in rows]
-
-
 def list_visible_environments(actor) -> list[dict]:
+    _ = actor
     with connect() as db:
-        rows = environment_repo.list_visible(db, actor)
-        return [serialize_project_environment(row, actor["role"]) for row in rows]
+        rows = environment_repo.list_all(db)
+        return [serialize_exploration_environment(row, actor["role"]) for row in rows]
 
 
-def create_project_environment(project_id: str, payload: ProjectEnvironmentCreateIn, actor) -> dict:
-    target_project_id = payload.project_id or project_id
-    if target_project_id != project_id:
-        raise api_error(400, "PROJECT_MISMATCH", "环境所属项目与当前项目不一致。")
+def create_environment(payload: ExplorationEnvironmentCreateIn, actor) -> dict:
     auth_config = _normalize_auth_config(
         login_strategy=payload.login_strategy,
         captcha_strategy=payload.captcha_strategy,
@@ -45,15 +33,10 @@ def create_project_environment(project_id: str, payload: ProjectEnvironmentCreat
 
     environment_id = f"env-{secrets.token_hex(8)}"
     with connect() as db:
-        project = project_repo.find_by_id(db, project_id)
-        if not project:
-            raise api_error(404, "NOT_FOUND", "项目不存在。")
-        _ensure_project_visible(project, actor)
         try:
             environment_repo.create(
                 db,
                 environment_id=environment_id,
-                project_id=project_id,
                 name=payload.name.strip(),
                 site_url=payload.site_url.strip(),
                 username=auth_config["username"],
@@ -64,82 +47,45 @@ def create_project_environment(project_id: str, payload: ProjectEnvironmentCreat
                 created_by=actor["id"],
             )
         except Exception as exc:
-            raise api_error(409, "ENVIRONMENT_CONFLICT", "同一项目下环境名称已存在。") from exc
+            raise api_error(409, "ENVIRONMENT_CONFLICT", "环境名称已存在。") from exc
         row = environment_repo.find_by_id(db, environment_id)
-        result = serialize_project_environment(row, actor["role"])
+        result = serialize_exploration_environment(row, actor["role"])
     if auth_config["login_strategy"] == "account_password":
         save_credentials(
-            project_id,
             environment_id,
             username=auth_config["username"],
             password=auth_config["password"],
         )
         result["has_saved_credentials"] = True
     else:
-        delete_credentials(project_id, environment_id)
+        delete_credentials(environment_id)
         result["has_saved_credentials"] = False
     operation_log_service.record_change(
         log_type="config",
         module="environment",
         action="create",
-        object_type="project_environment",
+        object_type="exploration_environment",
         object_id=environment_id,
         object_name=result["name"],
-        project_id=project_id,
+        project_id="",
         actor_id=actor["id"],
         actor_name=operation_log_service.actor_display_name(actor),
         source="web",
-        summary=f"新建项目环境：{result['name']}",
+        summary=f"新建探索环境：{result['name']}",
         after=_environment_snapshot(result),
     )
-    return _finalize_environment_result(project_id, result, is_create=True)
+    return _finalize_environment_result(result, is_create=True)
 
 
-def _finalize_environment_result(
-    project_id: str,
-    result: dict,
-    *,
-    is_create: bool = False,
-    auth_state_cleared: bool = False,
-) -> dict:
-    if auto_auth_service.should_schedule_ai_letter_auto_auth(result) and _should_trigger_ai_letter_auto_auth(
-        project_id,
-        result,
-        is_create=is_create,
-        auth_state_cleared=auth_state_cleared,
-    ):
-        auto_auth_service.schedule_ai_letter_auto_auth(project_id, result["id"])
-    return apply_environment_auth_display(result)
-
-
-def _should_trigger_ai_letter_auto_auth(
-    project_id: str,
-    result: dict,
-    *,
-    is_create: bool,
-    auth_state_cleared: bool,
-) -> bool:
-    if is_create or auth_state_cleared:
-        return True
-    file_state = auth_state_summary(
-        project_id=project_id,
-        environment_id=result["id"],
-        login_strategy=result["login_strategy"],
-        reuse_auth_state=bool(result.get("reuse_auth_state")),
-    )
-    return file_state["status"] != "valid"
-
-
-def update_project_environment(project_id: str, environment_id: str, payload: ProjectEnvironmentUpdateIn, actor) -> dict:
+def update_environment(environment_id: str, payload: ExplorationEnvironmentUpdateIn, actor) -> dict:
     updates = payload.model_dump(exclude_unset=True)
     password_provided = "password" in updates and bool(updates.get("password"))
     if "password" in updates and not updates["password"]:
         updates.pop("password")
     with connect() as db:
         existing = environment_repo.find_by_id(db, environment_id)
-        if not existing or existing["project_id"] != project_id:
+        if not existing:
             raise api_error(404, "NOT_FOUND", "环境不存在。")
-        _ensure_project_visible(existing, actor)
         effective = _normalize_auth_config(
             login_strategy=updates.get("login_strategy", existing["login_strategy"]),
             captcha_strategy=updates.get(
@@ -166,73 +112,63 @@ def update_project_environment(project_id: str, environment_id: str, payload: Pr
             updates["password"] = effective["password"]
         assignments, values = _build_update_assignments(updates)
         if "name" in updates:
-            duplicate = environment_repo.find_by_project_and_name(
-                db,
-                project_id,
-                updates["name"].strip(),
-                exclude_id=environment_id,
-            )
+            duplicate = environment_repo.find_by_name(db, updates["name"].strip(), exclude_id=environment_id)
             if duplicate:
-                raise api_error(409, "ENVIRONMENT_CONFLICT", "同一项目下环境名称已存在。")
+                raise api_error(409, "ENVIRONMENT_CONFLICT", "环境名称已存在。")
         should_clear_auth_state = _should_clear_auth_state(existing, updates)
         if assignments:
             assignments.append("updated_at = CURRENT_TIMESTAMP")
             try:
                 environment_repo.update(db, environment_id, assignments, values)
             except Exception as exc:
-                raise api_error(409, "ENVIRONMENT_CONFLICT", "同一项目下环境名称已存在。") from exc
+                raise api_error(409, "ENVIRONMENT_CONFLICT", "环境名称已存在。") from exc
         if should_clear_auth_state:
-            delete_auth_state(project_id, environment_id)
-            auto_auth_service.reset_auto_auth_status(project_id, environment_id)
+            delete_auth_state(environment_id)
+            auto_auth_service.reset_auto_auth_status(environment_id)
         row = environment_repo.find_by_id(db, environment_id)
-        result = serialize_project_environment(row, actor["role"])
+        result = serialize_exploration_environment(row, actor["role"])
         before = _environment_snapshot(existing)
     if result["login_strategy"] == "skip_login":
-        delete_credentials(project_id, environment_id)
+        delete_credentials(environment_id)
         result["has_saved_credentials"] = False
     elif password_provided:
         save_credentials(
-            project_id,
             environment_id,
             username=result["username"],
             password=updates["password"],
         )
         result["has_saved_credentials"] = True
     else:
-        result["has_saved_credentials"] = load_credentials(project_id, environment_id) is not None
+        result["has_saved_credentials"] = load_credentials(environment_id) is not None
     after = _environment_snapshot(result)
     operation_log_service.record_change(
         log_type="config",
         module="environment",
         action="update",
-        object_type="project_environment",
+        object_type="exploration_environment",
         object_id=environment_id,
         object_name=result["name"],
-        project_id=project_id,
+        project_id="",
         actor_id=actor["id"],
         actor_name=operation_log_service.actor_display_name(actor),
         source="web",
-        summary=f"编辑项目环境：{result['name']}",
+        summary=f"编辑探索环境：{result['name']}",
         before=before,
         after=after,
     )
-    return _finalize_environment_result(
-        project_id,
-        result,
-        auth_state_cleared=should_clear_auth_state,
-    )
+    return _finalize_environment_result(result, auth_state_cleared=should_clear_auth_state)
 
 
-def start_environment_auto_auth(project_id: str, environment_id: str, actor) -> dict:
+def start_environment_auto_auth(environment_id: str, actor) -> dict:
+    _ = actor
     with connect() as db:
         existing = environment_repo.find_by_id(db, environment_id)
-        if not existing or existing["project_id"] != project_id:
+        if not existing:
             raise api_error(404, "NOT_FOUND", "环境不存在。")
-        _ensure_project_visible(existing, actor)
         row = existing
 
-    result = serialize_project_environment(row, actor["role"])
-    result["has_saved_credentials"] = load_credentials(project_id, environment_id) is not None
+    result = serialize_exploration_environment(row, actor["role"])
+    result["has_saved_credentials"] = load_credentials(environment_id) is not None
 
     if result["captcha_strategy"] != "ai_letter":
         raise api_error(400, "AUTO_AUTH_NOT_SUPPORTED", "当前环境未启用字母 AI 验证码登录。")
@@ -244,48 +180,72 @@ def start_environment_auto_auth(project_id: str, environment_id: str, actor) -> 
         raise api_error(400, "AUTO_AUTH_CREDENTIALS_REQUIRED", "请先保存账号密码后再登录。")
 
     try:
-        auto_auth_service.trigger_ai_letter_auto_auth(project_id, environment_id)
+        auto_auth_service.trigger_ai_letter_auto_auth(environment_id)
     except ValueError as exc:
         raise api_error(400, "AUTO_AUTH_NOT_SUPPORTED", "当前环境无法自动登录。") from exc
 
     return apply_environment_auth_display(result)
 
 
-def delete_project_environment(project_id: str, environment_id: str, actor) -> dict:
+def delete_environment(environment_id: str, actor) -> dict:
     with connect() as db:
         existing = environment_repo.find_by_id(db, environment_id)
-        if not existing or existing["project_id"] != project_id:
+        if not existing:
             raise api_error(404, "NOT_FOUND", "环境不存在。")
-        _ensure_project_visible(existing, actor)
         snapshot = _environment_snapshot(existing)
         environment_repo.delete(db, environment_id)
-        delete_auth_state(project_id, environment_id)
-        delete_credentials(project_id, environment_id)
+        delete_auth_state(environment_id)
+        delete_credentials(environment_id)
     operation_log_service.record_change(
         log_type="config",
         module="environment",
         action="delete",
-        object_type="project_environment",
+        object_type="exploration_environment",
         object_id=environment_id,
         object_name=snapshot["name"],
-        project_id=project_id,
+        project_id="",
         actor_id=actor["id"],
         actor_name=operation_log_service.actor_display_name(actor),
         source="web",
-        summary=f"删除项目环境：{snapshot['name']}",
+        summary=f"删除探索环境：{snapshot['name']}",
         before=snapshot,
         after={},
     )
     return {"success": True}
 
 
-def _ensure_project_visible(project, actor) -> None:
-    if actor["role"] in {"admin", "guest"} or actor["project_scope"] == "全部项目":
-        return
-    project_name = project["project_name"] if "project_name" in project.keys() else project["name"]
-    if project_name == actor["project_scope"]:
-        return
-    raise api_error(403, "PERMISSION_DENIED", "无权访问该项目。")
+def _finalize_environment_result(
+    result: dict,
+    *,
+    is_create: bool = False,
+    auth_state_cleared: bool = False,
+) -> dict:
+    environment_id = result["id"]
+    if auto_auth_service.should_schedule_ai_letter_auto_auth(result) and _should_trigger_ai_letter_auto_auth(
+        environment_id,
+        result,
+        is_create=is_create,
+        auth_state_cleared=auth_state_cleared,
+    ):
+        auto_auth_service.schedule_ai_letter_auto_auth(environment_id)
+    return apply_environment_auth_display(result)
+
+
+def _should_trigger_ai_letter_auto_auth(
+    environment_id: str,
+    result: dict,
+    *,
+    is_create: bool,
+    auth_state_cleared: bool,
+) -> bool:
+    if is_create or auth_state_cleared:
+        return True
+    file_state = auth_state_summary(
+        environment_id=environment_id,
+        login_strategy=result["login_strategy"],
+        reuse_auth_state=bool(result.get("reuse_auth_state")),
+    )
+    return file_state["status"] != "valid"
 
 
 def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:

@@ -43,7 +43,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import {
   explorationPlanStatusTone,
   goalValidationStatusTone,
@@ -248,9 +248,8 @@ type ExplorationStreamEvent = {
   payload: Record<string, unknown>;
 };
 
-type ProjectEnvironment = {
+type ExplorationEnvironment = {
   id: string;
-  project_id: string;
   name: string;
 };
 
@@ -259,7 +258,15 @@ type RequirementDocument = {
   name: string;
   status: string;
   created_at: string;
+  latest_requirement_analysis_run?: {
+    id: string;
+    status: string;
+  } | null;
 };
+
+function isExplorationLinkableRequirement(requirement: RequirementDocument) {
+  return requirement.latest_requirement_analysis_run?.status === "completed";
+}
 
 type ExplorationForm = {
   title: string;
@@ -900,7 +907,7 @@ export default function Page() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [stopDialogOpen, setStopDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [environments, setEnvironments] = useState<ProjectEnvironment[]>([]);
+  const [environments, setEnvironments] = useState<ExplorationEnvironment[]>([]);
   const [environmentLoading, setEnvironmentLoading] = useState(false);
   const [requirements, setRequirements] = useState<RequirementDocument[]>([]);
   const [requirementLoading, setRequirementLoading] = useState(false);
@@ -1330,14 +1337,14 @@ export default function Page() {
   async function loadEnvironments() {
     setEnvironmentLoading(true);
     try {
-      const data = await apiRequest<ProjectEnvironment[]>(`/projects/${params.projectId}/environments`);
+      const data = await apiRequest<ExplorationEnvironment[]>("/environments");
       setEnvironments(data);
     } catch (requestError) {
       reportApiError(requestError, {
         fallbackMessage: "环境列表加载失败",
         actionLabel: "加载环境列表",
         method: "GET",
-        path: `/projects/${params.projectId}/environments`,
+        path: "/environments",
       });
     } finally {
       setEnvironmentLoading(false);
@@ -1351,7 +1358,10 @@ export default function Page() {
       setRequirements(data);
       setExplorationForm((current) => ({
         ...current,
-        requirementDocId: data.some((item) => item.id === current.requirementDocId) ? current.requirementDocId : "",
+        requirementDocId:
+          data.some((item) => item.id === current.requirementDocId && isExplorationLinkableRequirement(item))
+            ? current.requirementDocId
+            : "",
       }));
     } catch (requestError) {
       reportApiError(requestError, {
@@ -1444,7 +1454,20 @@ export default function Page() {
   const canStop = run ? stoppableStatuses.has(run.status) : false;
   const canEdit = run ? !["queued", "running", "stopping"].includes(run.status) : false;
   const saveDisabled = !explorationForm.title.trim() || !explorationForm.environmentId || saving;
-  const availableRequirements = requirements.filter((requirement) => requirement.status !== "archived");
+  const availableRequirements = useMemo(() => {
+    const linkable = requirements.filter(
+      (requirement) => requirement.status !== "archived" && isExplorationLinkableRequirement(requirement),
+    );
+    const linkedRequirementId = explorationForm.requirementDocId;
+    if (!linkedRequirementId) {
+      return linkable;
+    }
+    const linkedRequirement = requirements.find((requirement) => requirement.id === linkedRequirementId);
+    if (!linkedRequirement || linkable.some((requirement) => requirement.id === linkedRequirementId)) {
+      return linkable;
+    }
+    return [linkedRequirement, ...linkable];
+  }, [explorationForm.requirementDocId, requirements]);
   const selectedRequirementLabel =
     availableRequirements.find((item) => item.id === explorationForm.requirementDocId)?.name ?? "";
   const activeDetail = streamDetail ?? detail;
@@ -1656,26 +1679,25 @@ export default function Page() {
               <FieldLabel htmlFor="exploration-environment">环境</FieldLabel>
               <Select
                 disabled={environmentLoading}
-                onValueChange={(value) => setExplorationForm((current) => ({ ...current, environmentId: value }))}
+                id="exploration-environment"
+                placeholder={environmentLoading ? "环境加载中" : "选择环境"}
+                setValue={(value) => setExplorationForm((current) => ({ ...current, environmentId: value }))}
                 value={explorationForm.environmentId}
               >
-                <SelectTrigger className="w-full" id="exploration-environment">
-                  <SelectValue placeholder={environmentLoading ? "环境加载中" : "选择环境"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {environments.map((environment) => (
-                    <SelectItem key={environment.id} value={environment.id}>
-                      {environment.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
+                {environments.map((environment) => (
+                  <SelectOption key={environment.id} value={environment.id}>
+                    {environment.name}
+                  </SelectOption>
+                ))}
               </Select>
             </Field>
             <Field>
               <FieldLabel htmlFor="exploration-requirement">需求</FieldLabel>
               <Select
                 disabled={requirementLoading}
-                onValueChange={(value) =>
+                id="exploration-requirement"
+                placeholder={requirementLoading ? "需求加载中" : "选择需求或留空"}
+                setValue={(value) =>
                   setExplorationForm((current) => ({
                     ...current,
                     requirementDocId: value === NO_REQUIREMENT_VALUE ? "" : value,
@@ -1683,20 +1705,17 @@ export default function Page() {
                 }
                 value={explorationForm.requirementDocId || NO_REQUIREMENT_VALUE}
               >
-                <SelectTrigger className="w-full" id="exploration-requirement">
-                  <SelectValue placeholder={requirementLoading ? "需求加载中" : "选择需求或留空"} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_REQUIREMENT_VALUE}>不关联需求</SelectItem>
-                  {availableRequirements.map((requirement) => (
-                    <SelectItem key={requirement.id} value={requirement.id}>
-                      {requirement.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
+                <SelectOption value={NO_REQUIREMENT_VALUE}>不关联需求</SelectOption>
+                {availableRequirements.map((requirement) => (
+                  <SelectOption key={requirement.id} value={requirement.id}>
+                    {requirement.name}
+                  </SelectOption>
+                ))}
               </Select>
               {selectedRequirementLabel ? (
                 <p className="text-muted-foreground text-xs">已关联：{selectedRequirementLabel}</p>
+              ) : !requirementLoading && availableRequirements.length === 0 ? (
+                <p className="text-muted-foreground text-xs">当前项目没有可关联的需求，请先完成需求分析。</p>
               ) : null}
             </Field>
             <Field className="sm:col-span-2">
@@ -3264,17 +3283,17 @@ function RequirementImportDialog({
             ) : documents.length === 0 ? (
               <p className="text-muted-foreground text-sm">当前项目没有需求文档</p>
             ) : (
-              <Select onValueChange={setSelectedDocId} value={selectedDocId}>
-                <SelectTrigger id="requirement-doc-select">
-                  <SelectValue placeholder="选择需求文档" />
-                </SelectTrigger>
-                <SelectContent>
-                  {documents.map((doc) => (
-                    <SelectItem key={doc.id} value={doc.id}>
-                      {doc.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
+              <Select
+                id="requirement-doc-select"
+                placeholder="选择需求文档"
+                setValue={setSelectedDocId}
+                value={selectedDocId}
+              >
+                {documents.map((doc) => (
+                  <SelectOption key={doc.id} value={doc.id}>
+                    {doc.name}
+                  </SelectOption>
+                ))}
               </Select>
             )}
           </div>
@@ -3292,17 +3311,17 @@ function RequirementImportDialog({
               ) : analysisRuns.length === 0 ? (
                 <p className="text-muted-foreground text-sm">该需求文档没有已完成的分析记录</p>
               ) : (
-                <Select onValueChange={setSelectedRunId} value={selectedRunId}>
-                  <SelectTrigger id="analysis-run-select">
-                    <SelectValue placeholder="选择分析记录" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {analysisRuns.map((run) => (
-                      <SelectItem key={run.id} value={run.id}>
-                        {formatDateTime(run.created_at)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
+                <Select
+                  id="analysis-run-select"
+                  placeholder="选择分析记录"
+                  setValue={setSelectedRunId}
+                  value={selectedRunId}
+                >
+                  {analysisRuns.map((run) => (
+                    <SelectOption key={run.id} value={run.id}>
+                      {formatDateTime(run.created_at)}
+                    </SelectOption>
+                  ))}
                 </Select>
               )}
             </div>

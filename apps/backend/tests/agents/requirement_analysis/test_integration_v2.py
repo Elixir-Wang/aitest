@@ -5,7 +5,7 @@
 """
 
 import pytest
-from app.agents.requirement_analysis.core.schemas import (
+from app.agents.requirement_analysis.schemas import (
     RequirementAnalysisInputV2,
     AuxiliaryDocument,
 )
@@ -54,7 +54,7 @@ async def test_full_workflow():
 
     注意：此测试需要配置真实的 LLM 模型才能运行
     """
-    from app.agents.requirement_analysis.workflow.workflow import run_requirement_analysis
+    from app.agents.requirement_analysis.orchestrator import run_requirement_analysis
 
     # TODO: 替换为真实的 LLM 模型
     # from app.core.llm import get_llm_model
@@ -68,12 +68,11 @@ async def test_full_workflow():
         primary_filename="订单管理需求.md",
         primary_markdown_content=TEST_REQUIREMENT,
         auxiliary_documents=[
-            AuxiliaryDocument(
-                mapping_id="aux-001",
-                filename="技术标准.md",
-                document_type="standard",
-                markdown_content=TEST_AUXILIARY_DOC,
-            )
+        AuxiliaryDocument(
+            mapping_id="aux-001",
+            filename="技术标准.md",
+            markdown_content=TEST_AUXILIARY_DOC,
+        )
         ],
     )
 
@@ -103,7 +102,7 @@ async def test_full_workflow():
 
 def test_input_validation():
     """测试输入验证"""
-    from app.agents.requirement_analysis.core.schemas import (
+    from app.agents.requirement_analysis.schemas import (
         RequirementAnalysisInputV2,
     )
 
@@ -122,9 +121,14 @@ def test_input_validation():
 
 def test_output_structure():
     """测试输出结构完整性"""
-    from app.agents.requirement_analysis.core.schemas import (
+    from app.agents.requirement_analysis.clarification.schemas import (
+        ClarificationOutput,
+        ClarificationSummary,
+    )
+    from app.agents.requirement_analysis.schemas import (
         RequirementAnalysisResultV2,
-        RequirementUnderstandingOutput,
+    )
+    from app.agents.requirement_analysis.quality.schemas import (
         QualityAssessmentOutput,
         QualityIssueSummary,
         QualityDecision,
@@ -132,8 +136,9 @@ def test_output_structure():
         ClarityAssessment,
         TestabilityAssessment,
         ConsistencyAssessment,
-        ClarificationOutput,
-        ClarificationSummary,
+    )
+    from app.agents.requirement_analysis.understanding.schemas import (
+        RequirementUnderstandingOutput,
     )
 
     # 构造完整的输出对象
@@ -172,11 +177,15 @@ def test_output_structure():
             items=[],
             summary=ClarificationSummary(
                 total=5,
-                auto_resolved=1,
-                has_suggestions=2,
-                needs_manual=2,
+                by_resolution={
+                    "auto_resolved": 1,
+                    "has_options": 2,
+                    "needs_input": 2,
+                    "needs_research": 0,
+                },
             ),
-            clarification_summary_text="测试",
+            overall_assessment="测试",
+            generated_at="2026-06-17T00:00:00",
         ),
         analysis_report_markdown="# 测试报告",
         metadata={},
@@ -194,3 +203,4 @@ def test_output_structure():
 # 运行测试
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+

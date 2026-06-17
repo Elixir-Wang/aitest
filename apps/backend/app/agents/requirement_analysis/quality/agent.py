@@ -3,7 +3,7 @@
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 
-from app.agents.requirement_analysis.core.schemas import (
+from app.agents.requirement_analysis.quality.schemas import (
     QualityAssessmentOutput,
     QualityAssessmentSimple,
     QualityIssueFlat,
@@ -20,10 +20,9 @@ from app.agents.requirement_analysis.core.schemas import (
     TestCoverageGap,
     Conflict,
     TerminologyIssue,
-    RequirementUnderstandingOutput,
-    RequirementUnderstandingBrief,
-    EvidenceSnippet,
 )
+from app.agents.requirement_analysis.understanding.schemas import RequirementUnderstandingOutput
+from app.agents.requirement_analysis.schemas import RequirementUnderstandingBrief, EvidenceSnippet
 from app.agents.requirement_analysis.utils.context import format_evidence_snippets
 
 QUALITY_ASSESSMENT_SYSTEM_PROMPT = """
@@ -31,6 +30,15 @@ QUALITY_ASSESSMENT_SYSTEM_PROMPT = """
 
 ## 任务
 识别需求文档中的所有质量问题，每个问题输出为一个 QualityIssueFlat 对象。
+
+你同时承担“质疑式审查”职责。质疑不是独立输出，而是质量评估的方法：
+- 对 P0/P1 功能从 WHAT、WHY、WHO、WHEN、WHERE、HOW、HOW_MUCH、WHAT_IF、WHY_NOT 角度检查是否明确。
+- 从 malicious_input、concurrency、resource_exhaustion、dependency_failure、rollback_chaos、permission_drift、data_pollution 角度寻找反向破坏场景。
+- 检查测试环境、测试数据、验证手段、Mock 依赖、自动化集成和环境限制是否可执行。
+- 检查模型能力、依赖服务成熟度、性能边界、技术方案、新技术引入、第三方限制和数据兼容是否可实现。
+- 检查 logical_flaw、missing_feature、rule_conflict、state_conflict、permission_breach、boundary_missing、exception_unhandled、concurrency_undefined、degradation_undefined、consistency_issue。
+
+质疑式发现的问题必须归一为 QualityIssueFlat，不要生成独立质疑结果。
 
 ## 检查维度和类别
 
@@ -41,8 +49,20 @@ QUALITY_ASSESSMENT_SYSTEM_PROMPT = """
 - **missing_detail**: 缺少关键细节（字段长度、错误提示内容等）
 
 ### 2. clarity（清晰度）
-- **fuzzy_term**: 模糊词（"快速"、"用户友好"等无法度量的词）
-  - 在extra中添加: {"term": "快速"}
+- **fuzzy_term**: 不可量化的陈述（无法设计测试断言）
+  - 在extra中添加: {"testability_impact": "无法设计性能测试"}
+  - **检查规则**：
+    - 时间/性能陈述必须有具体数值和单位（如"< 2秒"、"< 500ms"）
+    - 数量陈述必须有边界值（如"最多100条"、"至少1个"）
+    - 条件陈述必须有明确触发条件（如"当X=Y时"而非"必要时"）
+    - 结果陈述必须有可观测的状态变化（如"状态变为已支付"而非"完成支付"）
+  - **判断标准**：如果该陈述无法直接转化为测试断言（assert语句），则标记为fuzzy_term
+  - 示例：
+    - ❌ "系统应快速响应" → 无法写 assert，需澄清
+    - ✅ "系统响应时间 < 2秒" → 可以写 assert response_time < 2000
+    - ❌ "支持大量并发" → 无法写 assert，需澄清
+    - ✅ "支持1000 QPS并发" → 可以写 assert qps >= 1000
+
 - **ambiguous**: 歧义表述（一句话多种理解）
   - 在extra中添加: {"interpretations": ["理解1", "理解2", "理解3"]}
 
@@ -61,6 +81,16 @@ QUALITY_ASSESSMENT_SYSTEM_PROMPT = """
   - conflict_type可选值: rule_contradiction, state_conflict, priority_conflict, permission_conflict, data_conflict
 - **terminology**: 术语不一致
   - 在extra中添加: {"concept": "智能体", "variations": ["智能体", "Agent", "助手"]}
+
+### 5. implementability（可实现性）
+- **implementation_risk**: 技术方案、模型能力、依赖成熟度、性能边界或数据兼容存在实现风险
+  - 在extra中添加: {"questioning_dimension": "HOW", "risk_level": "high|medium|low"}
+
+### 6. adversarial（反向破坏）
+- **adversarial_scenario**: 通过反向破坏场景发现的需求漏洞
+  - 在extra中添加: {"attack_vector": "concurrency", "expected_defense": "应有防御", "actual_consequence": "缺失防御的后果"}
+- **requirement_gap**: 通过质疑矩阵发现的业务漏洞
+  - 在extra中添加: {"questioning_dimension": "WHAT_IF", "gap_type": "exception_unhandled"}
 
 ## 严重程度
 - **blocker**: 必须立即修复（严重冲突、核心流程无验收标准）
@@ -114,6 +144,7 @@ QUALITY_ASSESSMENT_SYSTEM_PROMPT = """
 3. **NFR不要过度**：必须有明确原文场景才生成nfr_gap
 4. **severity要准确**：blocker要慎重，只有真正阻塞的才标
 5. **维度特定信息放在extra中**：便于后处理转换为详细结构
+6. **质疑能力归入质量问题**：9宫格、反向破坏、可执行性、可实现性和风险熔断都必须体现为 quality issue 或 assessment_summary，不得输出独立质疑结果
 """.strip()
 
 
@@ -304,7 +335,7 @@ def _calculate_summary(issues: list[QualityIssueFlat]) -> QualityIssueSummary:
     """根据问题列表自动计算统计信息"""
     completeness = sum(1 for i in issues if i.dimension == "completeness")
     clarity = sum(1 for i in issues if i.dimension == "clarity")
-    testability = sum(1 for i in issues if i.dimension == "testability")
+    testability = sum(1 for i in issues if i.dimension in {"testability", "implementability", "adversarial"})
     consistency = sum(1 for i in issues if i.dimension == "consistency")
 
     by_severity = {
@@ -374,7 +405,7 @@ def convert_to_full_assessment(simple: QualityAssessmentSimple) -> QualityAssess
     # 按维度分组并转换
     completeness_issues = [i for i in issues if i.dimension == "completeness"]
     clarity_issues = [i for i in issues if i.dimension == "clarity"]
-    testability_issues = [i for i in issues if i.dimension == "testability"]
+    testability_issues = [i for i in issues if i.dimension in {"testability", "implementability", "adversarial"}]
     consistency_issues = [i for i in issues if i.dimension == "consistency"]
 
     completeness = CompletenessAssessment(
@@ -490,3 +521,4 @@ __all__ = [
     "run_quality_assessment_agent",
     "convert_to_full_assessment",
 ]
+

@@ -12,7 +12,6 @@ from .sorter import sort_clarification_items
 from .enhancer import (
     generate_enhanced_requirement,
     get_auto_resolved_items,
-    get_pending_items,
 )
 
 __all__ = [
@@ -23,5 +22,4 @@ __all__ = [
     "sort_clarification_items",
     "generate_enhanced_requirement",
     "get_auto_resolved_items",
-    "get_pending_items",
 ]

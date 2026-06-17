@@ -3,9 +3,14 @@
 """
 
 import pytest
-from app.agents.requirement_analysis.core.schemas import (
-    RequirementUnderstandingOutput,
-    RequirementModule,
+from app.agents.requirement_analysis.clarification.schemas import (
+    ClarificationOutput,
+    ClarificationItem,
+    ClarificationOption,
+    ClarificationSummary,
+    TestSurface,
+)
+from app.agents.requirement_analysis.quality.schemas import (
     QualityAssessmentOutput,
     QualityIssueSummary,
     QualityDecision,
@@ -13,17 +18,47 @@ from app.agents.requirement_analysis.core.schemas import (
     ClarityAssessment,
     TestabilityAssessment,
     ConsistencyAssessment,
-    ClarificationOutput,
-    ClarificationItem,
-    ClarificationOption,
-    ClarificationSummary,
     NFRGap,
     FuzzyTerm,
 )
+from app.agents.requirement_analysis.understanding.schemas import (
+    RequirementUnderstandingOutput,
+    RequirementModule,
+)
+from app.agents.requirement_analysis.schemas import AuxiliaryDocument, RequirementAnalysisInputV2
+
+
+def _clarification_item(**overrides) -> ClarificationItem:
+    payload = {
+        "item_id": "CLR-001",
+        "title": "响应时间要求待确认",
+        "issue_category": "boundary_undefined",
+        "priority": "P1",
+        "module_key": "order_management",
+        "module_name": "订单管理",
+        "source_stage": "completeness",
+        "decision_point": "请确认响应时间要求？",
+        "why_clarify": "当前需求未给出可度量指标。",
+        "test_impact": "无法评估性能。",
+        "risk_scenario": "Given 用户发起请求\nWhen 系统响应\nThen 响应时间应有明确阈值",
+        "resolution_status": "needs_input",
+    }
+    payload.update(overrides)
+    return ClarificationItem(**payload)
 
 
 class TestSchemas:
     """测试数据模型"""
+
+    def test_root_schemas_do_not_keep_unused_input_or_brief_fields(self):
+        """根契约只保留实际消费的输入字段和下游摘要字段。"""
+        assert "document_type" not in AuxiliaryDocument.model_fields
+        assert "config" not in RequirementAnalysisInputV2.model_fields
+
+        from app.agents.requirement_analysis import schemas
+
+        assert hasattr(schemas, "QualityIssueBrief")
+        assert hasattr(schemas, "QualityAssessmentBrief")
 
     def test_requirement_module(self):
         """测试需求模块创建"""
@@ -85,81 +120,70 @@ class TestSchemas:
 
     def test_clarification_item(self):
         """测试待澄清项"""
-        item = ClarificationItem(
-            item_id="CLR-001",
-            source="completeness",
-            module_key="order_management",
-            module_name="订单管理",
-            question="请确认响应时间要求？",
-            impact="无法评估性能",
-            severity="blocker",
-            current_text="系统应当快速",
-            suggested_fix="响应时间 < 2秒",
-            resolution_status="needs_manual",
+        item = _clarification_item(
+            priority="P0",
+            resolution_status="needs_input",
         )
 
-        assert item.severity == "blocker"
-        assert item.resolution_status == "needs_manual"
-        assert item.clarification_bucket == "risk"
+        assert item.priority == "P0"
+        assert item.resolution_status == "needs_input"
+        assert item.decision_point == "请确认响应时间要求？"
         assert item.affected_surfaces == []
 
     def test_clarification_item_supports_test_decision_fields(self):
         """测试待澄清项支持测试裁决字段，同时保持旧字段兼容"""
-        item = ClarificationItem(
+        item = _clarification_item(
             item_id="CLR-001",
-            source="testability",
             module_key="order_create",
             module_name="订单创建",
-            clarification_bucket="blocker",
+            title="重复提交规则待确认",
+            source_stage="testability",
+            priority="P0",
+            issue_category="concurrency_unclear",
             decision_point="重复提交是否幂等",
             source_excerpt="用户提交订单后生成订单记录并扣减库存。",
-            current_gap="当前需求未说明重复提交是否创建多笔订单。",
+            why_clarify="当前需求未说明重复提交是否创建多笔订单。",
             test_impact="无法断言订单数量、库存扣减次数和重复请求响应。",
             risk_scenario=(
                 "Given 用户已提交一次有效订单请求\n"
                 "When 相同请求再次提交\n"
                 "Then 系统应按确认规则返回可观察结果"
             ),
-            affected_surfaces=["api", "data_consistency", "regression"],
-            decision_options=[
+            affected_surfaces=[
+                TestSurface(surface_type="api"),
+                TestSurface(surface_type="data_consistency"),
+            ],
+            options=[
                 ClarificationOption(
                     option_id="decision-1",
                     label="按幂等处理",
-                    answer_markdown="重复请求返回首次创建结果。",
+                    description="重复请求返回首次创建结果。",
                     confidence="low",
                     source="测试视角推理",
                 )
             ],
-            recommended_decision="推荐优先确认幂等规则。该判断来自测试推理，需业务确认。",
-            human_question="请确认重复提交同一业务请求时如何处理？",
-            draft_acceptance_tests=["首次提交成功", "重复提交不产生重复业务结果"],
-            question="请确认重复提交同一业务请求时如何处理？",
-            impact="无法断言订单数量、库存扣减次数和重复请求响应。",
-            severity="blocker",
-            current_text="用户提交订单后生成订单记录并扣减库存。",
-            resolution_status="needs_manual",
+            recommendation_rationale="推荐优先确认幂等规则。该判断来自测试推理，需业务确认。",
+            resolution_status="has_options",
         )
 
-        assert item.question == item.human_question
-        assert item.current_text == item.source_excerpt
-        assert item.clarification_bucket == "blocker"
-        assert item.affected_surfaces == ["api", "data_consistency", "regression"]
-        assert item.decision_options[0].label == "按幂等处理"
+        assert item.decision_point == "重复提交是否幂等"
+        assert item.source_excerpt == "用户提交订单后生成订单记录并扣减库存。"
+        assert item.priority == "P0"
+        assert [surface.surface_type for surface in item.affected_surfaces] == ["api", "data_consistency"]
+        assert item.options[0].label == "按幂等处理"
 
     def test_clarification_summary(self):
         """测试澄清内容汇总"""
         summary = ClarificationSummary(
             total=10,
-            auto_resolved=2,
-            has_suggestions=5,
-            needs_manual=3,
-            by_severity={"blocker": 1, "major": 5, "minor": 4},
-            by_source={"completeness": 4, "clarity": 3, "testability": 3},
+            by_priority={"P0": 1, "P1": 5, "P2": 4, "P3": 0},
+            by_category={"boundary_undefined": 4, "contract_unclear": 3},
+            by_resolution={"auto_resolved": 2, "has_options": 5, "needs_input": 3, "needs_research": 0},
         )
 
         assert summary.total == 10
-        assert summary.needs_manual == 3
-        assert summary.by_severity["blocker"] == 1
+        assert summary.by_resolution["needs_input"] == 3
+        assert summary.by_priority["P0"] == 1
 
 
 class TestPrioritySorter:
@@ -167,91 +191,34 @@ class TestPrioritySorter:
 
     def test_sort_clarification_items(self):
         """测试待澄清项排序"""
-        from app.agents.requirement_analysis.utils.priority_sorter import (
+        from app.agents.requirement_analysis.utils.sorter import (
             sort_clarification_items,
         )
 
         items = [
-            ClarificationItem(
+            _clarification_item(
                 item_id="1",
-                source="completeness",
-                module_key="test",
-                module_name="测试",
-                question="Q1",
-                impact="I1",
-                severity="minor",
-                resolution_status="needs_manual",
+                priority="P3",
+                resolution_status="needs_input",
             ),
-            ClarificationItem(
+            _clarification_item(
                 item_id="2",
-                source="completeness",
-                module_key="test",
-                module_name="测试",
-                question="Q2",
-                impact="I2",
-                severity="blocker",
-                resolution_status="needs_manual",
+                priority="P0",
+                resolution_status="needs_input",
             ),
-            ClarificationItem(
+            _clarification_item(
                 item_id="3",
-                source="completeness",
-                module_key="test",
-                module_name="测试",
-                question="Q3",
-                impact="I3",
-                severity="major",
+                priority="P1",
                 resolution_status="auto_resolved",
             ),
         ]
 
         sorted_items = sort_clarification_items(items)
 
-        # 验证排序：blocker + needs_manual 应该在最前面
+        # 验证排序：P0 + needs_input 应该在最前面
         assert sorted_items[0].item_id == "2"
-        assert sorted_items[0].severity == "blocker"
-        assert sorted_items[0].resolution_status == "needs_manual"
-
-    def test_group_by_severity(self):
-        """测试按严重程度分组"""
-        from app.agents.requirement_analysis.utils.priority_sorter import (
-            group_by_severity,
-        )
-
-        items = [
-            ClarificationItem(
-                item_id="1",
-                source="completeness",
-                module_key="test",
-                module_name="测试",
-                question="Q1",
-                impact="I1",
-                severity="blocker",
-            ),
-            ClarificationItem(
-                item_id="2",
-                source="completeness",
-                module_key="test",
-                module_name="测试",
-                question="Q2",
-                impact="I2",
-                severity="major",
-            ),
-            ClarificationItem(
-                item_id="3",
-                source="completeness",
-                module_key="test",
-                module_name="测试",
-                question="Q3",
-                impact="I3",
-                severity="blocker",
-            ),
-        ]
-
-        groups = group_by_severity(items)
-
-        assert len(groups["blocker"]) == 2
-        assert len(groups["major"]) == 1
-        assert len(groups["minor"]) == 0
+        assert sorted_items[0].priority == "P0"
+        assert sorted_items[0].resolution_status == "needs_input"
 
 
 class TestReportGenerator:
@@ -259,7 +226,7 @@ class TestReportGenerator:
 
     def test_generate_analysis_report(self):
         """测试生成分析报告"""
-        from app.agents.requirement_analysis.utils.report_generator import (
+        from app.agents.requirement_analysis.utils.report import (
             generate_analysis_report,
             generate_clarification_report,
             generate_quality_assurance_report,
@@ -308,11 +275,10 @@ class TestReportGenerator:
             items=[],
             summary=ClarificationSummary(
                 total=5,
-                auto_resolved=1,
-                has_suggestions=2,
-                needs_manual=2,
+                by_resolution={"auto_resolved": 1, "has_options": 2, "needs_input": 2, "needs_research": 0},
             ),
-            clarification_summary_text="共5个问题",
+            overall_assessment="共5个问题",
+            generated_at="2026-06-17T00:00:00",
         )
 
         # 生成报告
@@ -338,43 +304,47 @@ class TestReportGenerator:
 
     def test_generate_clarification_report_groups_test_decision_items(self):
         """待澄清报告应按测试裁决分组展示"""
-        from app.agents.requirement_analysis.utils.report_generator import generate_clarification_report
+        from app.agents.requirement_analysis.utils.report import generate_clarification_report
 
         clarification = ClarificationOutput(
             items=[
-                ClarificationItem(
+                _clarification_item(
                     item_id="CLR-001",
-                    source="testability",
                     module_key="order_create",
                     module_name="订单创建",
-                    clarification_bucket="blocker",
+                    title="重复提交是否幂等待确认",
+                    source_stage="testability",
+                    priority="P0",
+                    issue_category="concurrency_unclear",
                     decision_point="重复提交是否幂等",
                     source_excerpt="用户提交订单后生成订单记录并扣减库存。",
-                    current_gap="当前需求未说明重复提交是否创建多笔订单。",
+                    why_clarify="当前需求未说明重复提交是否创建多笔订单。",
                     test_impact="无法断言订单数量、库存扣减次数和重复请求响应。",
                     risk_scenario="Given 已提交一次有效请求\nWhen 相同请求再次提交\nThen 系统应按确认规则返回可观察结果",
-                    affected_surfaces=["api", "data_consistency", "regression"],
-                    human_question="请确认重复提交同一业务请求时如何处理？",
-                    draft_acceptance_tests=["首次提交成功", "重复提交不产生重复业务结果"],
-                    question="请确认重复提交同一业务请求时如何处理？",
-                    impact="无法断言订单数量、库存扣减次数和重复请求响应。",
-                    severity="blocker",
-                    resolution_status="needs_manual",
+                    affected_surfaces=[
+                        TestSurface(surface_type="api"),
+                        TestSurface(surface_type="data_consistency"),
+                    ],
+                    resolution_status="needs_input",
                 )
             ],
-            summary=ClarificationSummary(total=1, auto_resolved=0, has_suggestions=0, needs_manual=1),
-            clarification_summary_text="共1个问题",
+            summary=ClarificationSummary(
+                total=1,
+                by_resolution={"auto_resolved": 0, "has_options": 0, "needs_input": 1, "needs_research": 0},
+            ),
+            overall_assessment="共1个问题",
+            generated_at="2026-06-17T00:00:00",
         )
 
         report = generate_clarification_report(clarification)
 
-        assert "### 阻塞项" in report
-        assert "### 风险项" in report
-        assert "### 验收项" in report
-        assert "**当前缺口**" in report
+        assert "### P0 阻塞项" in report
+        assert "### P1 高风险" in report
+        assert "### P2 中风险" in report
+        assert "**澄清原因**" in report
         assert "**测试影响**" in report
         assert "**风险场景**" in report
-        assert "**验收用例草案**" in report
+        assert "**影响范围**" in report
 
 
 class TestRequirementEnhancer:
@@ -382,25 +352,21 @@ class TestRequirementEnhancer:
 
     def test_generate_enhanced_requirement(self):
         """测试生成增强版需求"""
-        from app.agents.requirement_analysis.utils.requirement_enhancer import (
+        from app.agents.requirement_analysis.utils.enhancer import (
             generate_enhanced_requirement,
         )
 
         original = "# 订单管理\n\n用户可以创建订单。"
 
         auto_resolved = [
-            ClarificationItem(
+            _clarification_item(
                 item_id="CLR-001",
-                source="completeness",
                 module_key="order",
                 module_name="订单管理",
-                question="响应时间要求是什么？",
-                impact="无法评估性能",
-                severity="major",
-                current_text="系统应当快速",
-                suggested_fix="响应时间 < 2秒",
+                title="响应时间要求待确认",
+                decision_point="响应时间要求是什么？",
                 resolution_status="auto_resolved",
-                evidence=[],
+                auto_resolution="响应时间 < 2秒",
             )
         ]
 
@@ -416,39 +382,21 @@ class TestRequirementEnhancer:
 
     def test_get_auto_resolved_items(self):
         """测试提取 auto_resolved 项"""
-        from app.agents.requirement_analysis.utils.requirement_enhancer import (
+        from app.agents.requirement_analysis.utils.enhancer import (
             get_auto_resolved_items,
         )
 
         items = [
-            ClarificationItem(
+            _clarification_item(
                 item_id="1",
-                source="completeness",
-                module_key="test",
-                module_name="测试",
-                question="Q1",
-                impact="I1",
-                severity="major",
                 resolution_status="auto_resolved",
             ),
-            ClarificationItem(
+            _clarification_item(
                 item_id="2",
-                source="completeness",
-                module_key="test",
-                module_name="测试",
-                question="Q2",
-                impact="I2",
-                severity="major",
-                resolution_status="needs_manual",
+                resolution_status="needs_input",
             ),
-            ClarificationItem(
+            _clarification_item(
                 item_id="3",
-                source="completeness",
-                module_key="test",
-                module_name="测试",
-                question="Q3",
-                impact="I3",
-                severity="minor",
                 resolution_status="auto_resolved",
             ),
         ]
@@ -458,58 +406,10 @@ class TestRequirementEnhancer:
         assert len(auto_resolved) == 2
         assert all(item.resolution_status == "auto_resolved" for item in auto_resolved)
 
-    def test_get_pending_items(self):
-        """测试提取待处理项"""
-        from app.agents.requirement_analysis.utils.requirement_enhancer import (
-            get_pending_items,
-        )
-
-        items = [
-            ClarificationItem(
-                item_id="1",
-                source="completeness",
-                module_key="test",
-                module_name="测试",
-                question="Q1",
-                impact="I1",
-                severity="major",
-                resolution_status="auto_resolved",
-            ),
-            ClarificationItem(
-                item_id="2",
-                source="completeness",
-                module_key="test",
-                module_name="测试",
-                question="Q2",
-                impact="I2",
-                severity="major",
-                resolution_status="needs_manual",
-            ),
-            ClarificationItem(
-                item_id="3",
-                source="completeness",
-                module_key="test",
-                module_name="测试",
-                question="Q3",
-                impact="I3",
-                severity="minor",
-                resolution_status="has_suggestions",
-            ),
-        ]
-
-        pending = get_pending_items(items)
-
-        assert len(pending) == 2
-        assert all(
-            item.resolution_status in ["needs_manual", "has_suggestions"]
-            for item in pending
-        )
-
-
 class TestQualityConversion:
     def test_convert_ambiguous_issue_without_interpretations_uses_fallbacks(self):
-        from app.agents.requirement_analysis.agents.quality import convert_to_full_assessment
-        from app.agents.requirement_analysis.core.schemas import (
+        from app.agents.requirement_analysis.quality.agent import convert_to_full_assessment
+        from app.agents.requirement_analysis.quality.schemas import (
             QualityAssessmentSimple,
             QualityIssueFlat,
         )

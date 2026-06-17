@@ -10,7 +10,7 @@ const workspaceSource = readFileSync(
 test("manual auth controls require the saved environment to enable manual captcha", () => {
   assert.match(
     workspaceSource,
-    /function isManualAuthEnabled\(environment: ProjectEnvironment \| null\)[\s\S]*environment\.login_strategy === "account_password"[\s\S]*environment\.captcha_strategy === "manual"[\s\S]*environment\.reuse_auth_state/,
+    /function isManualAuthEnabled\(environment: ExplorationEnvironment \| null\)[\s\S]*environment\.login_strategy === "account_password"[\s\S]*environment\.captcha_strategy === "manual"[\s\S]*environment\.reuse_auth_state/,
   );
   assert.match(
     workspaceSource,

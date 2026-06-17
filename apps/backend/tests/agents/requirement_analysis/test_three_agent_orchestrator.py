@@ -2,19 +2,21 @@ from datetime import datetime
 
 import pytest
 
-from app.agents.requirement_analysis.core.schemas import (
+from app.agents.requirement_analysis.clarification.schemas import (
     ClarificationOutput,
     ClarificationSummary,
+)
+from app.agents.requirement_analysis.schemas import RequirementAnalysisInputV2
+from app.agents.requirement_analysis.quality.schemas import (
+    ClarityAssessment,
     CompletenessAssessment,
     ConsistencyAssessment,
-    ClarityAssessment,
     QualityAssessmentOutput,
     QualityDecision,
     QualityIssueSummary,
-    RequirementAnalysisInputV2,
-    RequirementUnderstandingOutput,
     TestabilityAssessment,
 )
+from app.agents.requirement_analysis.understanding.schemas import RequirementUnderstandingOutput
 
 
 @pytest.mark.anyio
@@ -101,22 +103,14 @@ async def test_orchestrator_calls_three_agents_in_order(monkeypatch):
         "app.agents.model_selection.build_agent_model",
         lambda model_selection: object(),
     )
-    monkeypatch.setattr(
-        "app.agents.requirement_analysis.agents.understanding.run_understanding_agent",
-        fake_understanding_agent,
-    )
-    monkeypatch.setattr(
-        "app.agents.requirement_analysis.agents.quality.run_quality_assessment_agent",
-        fake_quality_agent,
-    )
-    monkeypatch.setattr(
-        "app.agents.requirement_analysis.agents.clarification.run_clarification_agent",
-        fake_clarification_agent,
-    )
+    import app.agents.requirement_analysis.orchestrator as orchestrator
 
-    from app.agents.requirement_analysis.orchestrator import run_requirement_analysis
+    monkeypatch.setattr(orchestrator, "run_understanding_agent", fake_understanding_agent)
+    monkeypatch.setattr(orchestrator, "run_quality_assessment_agent", fake_quality_agent)
+    assert not hasattr(orchestrator, "run_questioning_agent")
+    monkeypatch.setattr(orchestrator, "run_clarification_agent", fake_clarification_agent)
 
-    result = await run_requirement_analysis(
+    result = await orchestrator.run_requirement_analysis(
         RequirementAnalysisInputV2(
             project_id="project-1",
             document_id="doc-1",
@@ -126,23 +120,25 @@ async def test_orchestrator_calls_three_agents_in_order(monkeypatch):
             primary_filename="登录需求.md",
             primary_markdown_content="# 登录需求\n\n用户可以验证码登录。",
             auxiliary_documents=[],
-            config={},
         )
     )
 
     assert calls == ["understanding", "quality", "clarification"]
     assert result.status == "completed"
     assert result.metadata["engine"] == "three_agent_orchestrator"
+    assert result.questioning is None
     assert result.metadata["step_timings"].keys() >= {
         "understand",
-        "assess_quality",
+        "quality",
         "clarify",
         "enhance",
     }
 
 
-def test_workflow_import_forwards_to_orchestrator():
+def test_package_import_forwards_to_orchestrator():
     from app.agents.requirement_analysis.orchestrator import run_requirement_analysis as orchestrator_run
-    from app.agents.requirement_analysis.workflow import run_requirement_analysis as workflow_run
+    from app.agents.requirement_analysis import run_requirement_analysis as package_run
 
-    assert workflow_run is orchestrator_run
+    assert package_run is not orchestrator_run
+    assert package_run.__name__ == orchestrator_run.__name__
+

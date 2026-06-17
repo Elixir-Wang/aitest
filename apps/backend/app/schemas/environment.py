@@ -1,10 +1,8 @@
 from pydantic import BaseModel, Field
 
 
-class ProjectEnvironmentOut(BaseModel):
+class ExplorationEnvironmentOut(BaseModel):
     id: str
-    project_id: str
-    project_name: str
     name: str
     site_url: str
     username: str
@@ -23,8 +21,7 @@ class ProjectEnvironmentOut(BaseModel):
     available_actions: list[str]
 
 
-class ProjectEnvironmentCreateIn(BaseModel):
-    project_id: str | None = None
+class ExplorationEnvironmentCreateIn(BaseModel):
     name: str = Field(min_length=1)
     site_url: str = Field(min_length=1)
     username: str = ""
@@ -35,7 +32,7 @@ class ProjectEnvironmentCreateIn(BaseModel):
     description: str = ""
 
 
-class ProjectEnvironmentUpdateIn(BaseModel):
+class ExplorationEnvironmentUpdateIn(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     site_url: str | None = Field(default=None, min_length=1)
     username: str | None = None
