@@ -12,12 +12,11 @@ from loguru import logger
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import project_requirement_dir, resolve_stored_path, store_path
-from app.agents.requirement_analysis.schemas import AuxiliaryDocument, RequirementAnalysisInputV2
-from app.agents.requirement_analysis.orchestrator import run_requirement_analysis
-from app.agents.requirement_analysis.utils import (
-    clarification_item_to_api,
-    generate_clarification_report,
-    generate_quality_assurance_report,
+from app.agents.requirement_analysis.schemas import RequirementAnalysisRunInput
+from app.agents.requirement_analysis.service import (
+    build_requirement_analysis_output_json,
+    next_analysis_id,
+    run_requirement_analysis,
 )
 from app.repositories import document_repo, requirement_analysis_run_repo, requirement_clarification_answer_repo
 from app.schemas.document import (
@@ -49,7 +48,7 @@ class RequirementAnalysisCancelledError(Exception):
     pass
 
 
-async def analyze_requirement_with_agent(input_data: RequirementAnalysisInputV2):
+async def analyze_requirement_with_agent(input_data: RequirementAnalysisRunInput):
     return await run_requirement_analysis(input_data)
 
 
@@ -82,44 +81,9 @@ def _normalize_requirement_analysis_output_markdown(output: dict) -> dict:
     return normalized
 
 
-def _output_from_analysis_result(analysis_output, primary_markdown_content: str) -> tuple[str, dict]:
-    preliminary_markdown = (
-        analysis_output.enhanced_requirement_markdown
-        or primary_markdown_content
-    )
-    quality = analysis_output.quality_assessment
-    quality_assurance_report = generate_quality_assurance_report(
-        quality,
-        analysis_output.clarification,
-    )
-    clarification_report = generate_clarification_report(analysis_output.clarification)
-    clarification_questions = [
-        clarification_item_to_api(item)
-        for item in analysis_output.clarification.items
-    ]
-    output_data = {
-        "status": analysis_output.status,
-        "analysis_summary": quality.assessment_summary,
-        "preliminary_requirement_markdown": preliminary_markdown,
-        "enhanced_requirement_markdown": preliminary_markdown,
-        "analysis_report_markdown": analysis_output.analysis_report_markdown or "",
-        "quality_assurance_report_markdown": quality_assurance_report,
-        "clarification_report_markdown": clarification_report,
-        "applied_supplements": [],
-        "quality_summary": quality.summary.model_dump(),
-        "quality_decision": quality.decision.model_dump(),
-        "clarification_questions": clarification_questions,
-        "conflicts": [],
-        "quality_gate": {
-            "result": _map_langgraph_quality_result(quality.decision.result),
-            "blocking_issues": quality.decision.blocking_issues,
-            "warning_issues": [],
-            "passed_checks": [],
-        },
-        "metadata": analysis_output.metadata,
-    }
-    output_data = _normalize_requirement_analysis_output_markdown(output_data)
-    return output_data["preliminary_requirement_markdown"], output_data
+def _output_from_analysis_result(analysis_output) -> dict:
+    output_data = build_requirement_analysis_output_json(analysis_output)
+    return _normalize_requirement_analysis_output_markdown(output_data)
 
 
 def list_documents(project_id: str, actor) -> list[dict]:
@@ -615,9 +579,6 @@ async def execute_requirement_review_run(run_id: str, actor) -> None:
     if status == "needs_clarification":
         summary = result["analysis_summary"] or "需求分析完成，存在待确认问题。"
         log_result = "partial_success"
-    elif status == "blocked":
-        summary = result["analysis_summary"] or "需求分析阻塞。"
-        log_result = "partial_success"
     else:
         summary = result["analysis_summary"] or "需求分析完成。"
         log_result = "success"
@@ -638,6 +599,8 @@ async def execute_requirement_review_run(run_id: str, actor) -> None:
 
 
 async def review_primary_requirement_file(project_id: str, document_id: str, actor, *, task_id: str | None = None) -> dict:
+    if not task_id:
+        raise api_error(400, "REQUIREMENT_ANALYSIS_RUN_REQUIRED", "需求分析必须通过运行任务执行。")
     with connect() as db:
         document = document_repo.find_by_project_and_id(db, project_id, document_id)
         if not document:
@@ -653,20 +616,10 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
         if not markdown_path.exists():
             raise api_error(404, "DOCUMENT_MARKDOWN_MISSING", "主需求标准文件不存在。")
 
-        primary_markdown_content = markdown_path.read_text(encoding="utf-8")
-
     if task_id:
         _ensure_requirement_analysis_run_not_stopping(task_id)
 
-    analysis_input = RequirementAnalysisInputV2(
-        project_id=project_id,
-        document_id=document_id,
-        document_name=document["name"],
-        run_id=task_id or "",
-        primary_mapping_id=primary_file["id"],
-        primary_filename=primary_file["original_filename"],
-        primary_markdown_content=primary_markdown_content,
-    )
+    analysis_input = RequirementAnalysisRunInput(run_id=task_id)
     try:
         analysis_output = await analyze_requirement_with_agent(analysis_input)
     except RequirementAnalysisCancelledError:
@@ -677,20 +630,11 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
     if task_id:
         _ensure_requirement_analysis_run_not_stopping(task_id)
 
-    preliminary_markdown, output_data = _output_from_analysis_result(
-        analysis_output,
-        primary_markdown_content,
-    )
-    if not preliminary_markdown:
-        raise api_error(502, "REQUIREMENT_ANALYSIS_EMPTY_DRAFT", "需求分析智能体未返回初步需求。")
+    output_data = _output_from_analysis_result(analysis_output)
 
-    analysis_id = f"reqana-{secrets.token_hex(8)}"
+    analysis_id = next_analysis_id()
 
-    pending_count = len(output_data.get("clarification_questions") or []) + len(output_data.get("conflicts") or [])
-    supplement_count = 0
-    draft_content_hash = _content_hash(preliminary_markdown)
-    quality_gate = output_data.get("quality_gate") or {}
-    quality_result = quality_gate.get("result", "warning")
+    pending_count = len(output_data.get("clarification_items") or [])
 
     with connect() as db:
         document_repo.create_requirement_analysis(
@@ -701,11 +645,11 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
             version_id=None,
             primary_mapping_id=primary_file["id"],
             status=analysis_output.status,
-            analysis_summary=output_data.get("analysis_summary") or "",
+            analysis_summary=output_data.get("summary") or "",
             output_json=output_data,
-            quality_result=quality_result,
+            quality_result="passed" if analysis_output.status == "completed" else "warning",
             testability_score=0,
-            draft_content_hash=draft_content_hash,
+            draft_content_hash="",
             created_by=actor["id"],
         )
 
@@ -715,10 +659,10 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
         "document_id": document_id,
         "version_id": None,
         "primary_mapping_id": primary_file["id"],
-        "quality_result": quality_result,
+        "quality_result": "passed" if analysis_output.status == "completed" else "warning",
         "created_by": actor["id"],
         "created_at": "",
-        "draft_content_hash": draft_content_hash,
+        "draft_content_hash": "",
         "finalized_version_id": None,
         "finalized_at": None,
         "finalized_by": None,
@@ -738,8 +682,6 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
         summary=f"执行需求分析：{document['name']}",
         after={
             "status": analysis_output.status,
-            "quality_result": quality_result,
-            "supplement_count": supplement_count,
             "pending_count": pending_count,
         },
         task_id=task_id,
@@ -1418,7 +1360,7 @@ def _serialize_requirement_analysis_run(row) -> dict:
         "failure_reason": row["failure_reason"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
-        "has_enhanced_requirement": bool(str(output.get("preliminary_requirement_markdown") or "").strip()),
+        "has_understanding": bool(str(output.get("understanding_markdown") or "").strip()),
     }
 
 
@@ -1667,4 +1609,3 @@ def _active_unresolved_count(output: dict) -> int:
 
 def _version_markdown_path(project_id: str, document_id: str, version_no: int) -> Path:
     return project_requirement_dir(project_id, document_id) / "versions" / f"v{version_no}.md"
-

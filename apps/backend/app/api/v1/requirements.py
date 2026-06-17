@@ -116,6 +116,18 @@ def review_requirement(
     return task
 
 
+@router.post("/{document_id}/analysis-runs")
+def create_requirement_analysis_run(
+    project_id: str,
+    document_id: str,
+    background_tasks: BackgroundTasks,
+    actor=Depends(current_user),
+) -> dict:
+    task = document_service.start_requirement_review_run(project_id, document_id, actor)
+    background_tasks.add_task(document_service.execute_requirement_review_run, task["source_id"], dict(actor))
+    return task
+
+
 @router.post("/{document_id}/analysis-runs/{run_id}/stop")
 def stop_requirement_analysis_run(
     project_id: str,

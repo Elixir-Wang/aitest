@@ -42,7 +42,6 @@ REQUIREMENT_ANALYSIS_STATUS = {
     "cancelled": (COMPLETED_GROUP, "已取消"),
     "completed": (COMPLETED_GROUP, "已完成"),
     "needs_clarification": (WAITING_GROUP, "等待澄清"),
-    "blocked": (FAILED_GROUP, "分析阻塞"),
     "failed": (FAILED_GROUP, "分析失败"),
 }
 

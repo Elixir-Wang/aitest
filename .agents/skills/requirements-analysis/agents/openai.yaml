@@ -1,0 +1,4 @@
+interface:
+  display_name: "Requirements Analysis"
+  short_description: "结构化理解业务需求并生成高质量待澄清问题清单内容集"
+  default_prompt: "Use $requirements-analysis to analyze this requirement and produce structured understanding plus pending clarification questions."

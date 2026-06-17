@@ -96,24 +96,18 @@ def test_site_exploration_services_use_child_agents() -> None:
 def test_requirement_analysis_agent_uses_child_agent_package_layout() -> None:
     package = NEW_AGENTS_ROOT / "requirement_analysis"
     assert not (NEW_AGENTS_ROOT / "requirement_analysis_codex").exists()
-    assert not (package / "agent.py").exists()
-    assert not (package / "service.py").exists()
-    assert not (package / "core").exists()
-    assert not (package / "workflow").exists()
-    assert not (package / "agents").exists()
+    assert (package / "agent.py").exists()
+    assert (package / "service.py").exists()
     assert not (package / "common.py").exists()
     assert (package / "schemas.py").exists()
-    assert (package / "orchestrator.py").exists()
-    assert (package / "understanding" / "agent.py").exists()
-    assert (package / "understanding" / "schemas.py").exists()
-    assert (package / "understanding" / "models.py").exists()
-    assert (package / "quality" / "agent.py").exists()
-    assert (package / "quality" / "schemas.py").exists()
+    assert not (package / "orchestrator.py").exists()
+    assert not (package / "understanding").exists()
+    assert not (package / "quality").exists()
     assert not (package / "questioning").exists()
-    assert (package / "clarification" / "agent.py").exists()
-    assert (package / "clarification" / "schemas.py").exists()
+    assert not (package / "clarification").exists()
     assert not (package / "analyzers" / "unified_understanding.py").exists()
-    assert (package / "tools" / "search_auxiliary.py").exists()
+    assert (package / "skills" / "requirements-analysis" / "SKILL.md").exists()
+    assert not (package / "tools").exists()
     assert not (package / "v3").exists()
     assert not (package / "agent_v2.py").exists()
     assert not (package / "service_v2.py").exists()
@@ -127,7 +121,8 @@ def test_requirement_analysis_service_uses_langgraph_agent_directly() -> None:
     service_path = BACKEND_APP / "services" / "document" / "service.py"
     text = service_path.read_text(encoding="utf-8")
 
-    assert "app.agents.requirement_analysis.orchestrator" in text
+    assert "app.agents.requirement_analysis.service" in text
+    assert "app.agents.requirement_analysis.orchestrator" not in text
     assert "app.agents.requirement_auxiliary_enhancement" not in text
     assert "app.agents.requirement_analysis_codex.service" not in text
     assert "app.agents.requirement_analysis.primary_analysis" not in text
