@@ -13,6 +13,21 @@ test("test case page exposes the create test case set flow in the test case modu
   assert.doesNotMatch(pageSource, /UI 自动化/);
 });
 
+test("test case set list supports selection, batch delete, and task indicator registration", () => {
+  assert.match(pageSource, /useLocalTableSelection<ApiTestCaseSet>/);
+  assert.match(pageSource, /onBatchDelete=\{\(\) => deleteTestCaseSets\(setSelection\.selectedIds\)\}/);
+  assert.match(pageSource, /aria-label="选择全部测试用例集"/);
+  assert.match(pageSource, /notifyAiTaskStarted\(\)/);
+  assert.match(pageSource, /method: "DELETE"/);
+});
+
+test("all-project scope loads test case sets from every real project", () => {
+  assert.match(pageSource, /async \(nextProjectIds: string\[\]\)/);
+  assert.match(pageSource, /nextProjectIds\.map\(\(projectId\) => apiRequest<ApiTestCaseSet\[\]>/);
+  assert.match(pageSource, /projects\.filter\(\(project\) => !project\.id\.startsWith\("__"\)\)/);
+  assert.match(pageSource, /data\.flat\(\)\.sort/);
+});
+
 test("test case set creation requires exactly one requirement and auto-selects related exploration", () => {
   assert.match(pageSource, /requirementDocId: ""/);
   assert.match(pageSource, /function handleRequirementChange\(value: string\)/);

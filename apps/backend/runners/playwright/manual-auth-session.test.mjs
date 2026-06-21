@@ -131,6 +131,23 @@ describe("manual auth login success detection", () => {
     assert.equal(result.success, false);
   });
 
+  it("rejects success-looking pages when storage state is empty", () => {
+    const result = evaluateLoginSuccessSignals({
+      bodyText: "控制台 我的 退出登录",
+      cookieCount: 0,
+      indexedDbCount: 0,
+      navigationChanged: true,
+      storageItemCount: 0,
+      title: "工作台",
+      url: "https://example.test/dashboard",
+      visibleLoginButtons: 0,
+      visiblePasswordInputs: 0,
+    });
+
+    assert.equal(result.success, false);
+    assert.deepEqual(result.reasons, ["auth_storage_empty"]);
+  });
+
   it("rejects failure and pending-human states", () => {
     assert.equal(
       evaluateLoginSuccessSignals({

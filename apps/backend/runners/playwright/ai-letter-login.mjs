@@ -443,10 +443,47 @@ export async function fillCaptchaWithPlan(page, plan, value) {
     const input = locatorFromDescriptor(page, plan.captcha_input_locator, plan.captcha_input_selector)?.first();
     if (input && (await input.isVisible({ timeout: 300 }).catch(() => false))) {
       await input.fill(value, { timeout: 1000 }).catch(() => {});
-      return true;
+      return (await input.inputValue({ timeout: 300 }).catch(() => "")) === value;
     }
   }
   return fillCaptchaValue(page, value);
+}
+
+export async function expectedCaptchaLengthWithPlan(page, plan) {
+  if (isPlannedLoginForm(plan)) {
+    const input = locatorFromDescriptor(page, plan.captcha_input_locator, plan.captcha_input_selector)?.first();
+    const expectedLength = await expectedCaptchaLengthForInput(input);
+    if (expectedLength) {
+      return expectedLength;
+    }
+  }
+  for (const scope of credentialScopes(page)) {
+    const input = await locateGraphicCaptchaInput(scope);
+    const expectedLength = await expectedCaptchaLengthForInput(input);
+    if (expectedLength) {
+      return expectedLength;
+    }
+  }
+  return null;
+}
+
+async function expectedCaptchaLengthForInput(input) {
+  if (!input) {
+    return null;
+  }
+  const maxLength = Number(await input.getAttribute("maxlength").catch(() => ""));
+  if (Number.isInteger(maxLength) && maxLength > 0 && maxLength <= 12) {
+    return maxLength;
+  }
+  const pattern = String(await input.getAttribute("pattern").catch(() => "") || "");
+  const exactRepeat = pattern.match(/\{(\d+)\}/);
+  if (exactRepeat) {
+    const length = Number(exactRepeat[1]);
+    if (Number.isInteger(length) && length > 0 && length <= 12) {
+      return length;
+    }
+  }
+  return null;
 }
 
 export async function ensureAgreementWithPlan(page, plan) {
@@ -928,7 +965,7 @@ export async function fillCaptchaValue(page, value) {
       continue;
     }
     await input.fill(value, { timeout: 1000 }).catch(() => {});
-    return true;
+    return (await input.inputValue({ timeout: 300 }).catch(() => "")) === value;
   }
   return false;
 }
@@ -1169,7 +1206,7 @@ function createCommandReader() {
         };
       });
     },
-    waitForAnswer(expectedAttempt, timeoutMs = 120_000) {
+    waitForAnswer(expectedAttempt, _expectedLength = null, timeoutMs = 120_000) {
       return new Promise((resolve) => {
         const timeout = setTimeout(() => resolve(""), timeoutMs);
         answerWaiters.push((command) => {
@@ -1278,9 +1315,10 @@ export async function runAiLetterLogin({
       const imagePath = `${authDir}/captcha-attempt-${attempt}.png`;
       mkdirSync(dirname(imagePath), { recursive: true });
       await captchaTarget.screenshot({ path: imagePath }).catch(() => {});
-      onEvent({ kind: "captcha_challenge", attempt, image_path: imagePath });
+      const expectedLength = await expectedCaptchaLengthWithPlan(page, plan);
+      onEvent({ kind: "captcha_challenge", attempt, image_path: imagePath, expected_length: expectedLength });
 
-      const answer = await waitForAnswer(attempt);
+      const answer = await waitForAnswer(attempt, expectedLength);
       if (!answer) {
         onEvent({ kind: "login_failed", reason: "captcha_answer_missing", attempt });
         return { success: false, reason: "captcha_answer_missing" };
@@ -1319,7 +1357,7 @@ export async function runAiLetterLogin({
 
       const loginResult = await waitForLoginSuccess(context, startUrl);
       if (loginResult.success) {
-        await context.storageState({ path: storageStatePath });
+        await context.storageState({ path: storageStatePath, indexedDB: true });
         if (await saveLoginPlan(page, loginPlanPath, plan, startUrl)) {
           onEvent({ kind: "login_plan_saved", path: loginPlanPath });
         }
@@ -1361,7 +1399,7 @@ if (isDirectRun()) {
     loginPlanPath,
     onEvent: writeEvent,
     waitForLoginFormPlan: () => commandReader.waitForLoginFormPlan(),
-    waitForAnswer: (attempt) => commandReader.waitForAnswer(attempt),
+    waitForAnswer: (attempt, expectedLength) => commandReader.waitForAnswer(attempt, expectedLength),
   });
   commandReader.close();
   process.exit(result.success ? 0 : 1);

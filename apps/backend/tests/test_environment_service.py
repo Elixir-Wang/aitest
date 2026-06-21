@@ -554,6 +554,58 @@ def test_auth_state_status_is_valid_with_unknown_expiry(monkeypatch: pytest.Monk
     assert result["auth_state_expires_at"] is None
 
 
+def test_auth_state_status_is_none_when_storage_state_is_empty(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
+            name="人工验证码环境",
+            site_url="https://example.test",
+            username="admin",
+            password="secret123",
+            login_strategy="account_password",
+            captcha_strategy="manual",
+            reuse_auth_state=True,
+        ),
+        ACTOR,
+    )
+    state_path = environment_auth_state.auth_state_path(created["id"])
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text('{"cookies":[],"origins":[]}', encoding="utf-8")
+
+    result = environment_service.list_visible_environments(ACTOR)[0]
+
+    assert result["auth_state_status"] == "none"
+    assert result["auth_state_expires_at"] is None
+
+
+def test_auth_state_status_is_none_with_empty_indexeddb_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    created = environment_service.create_environment(ExplorationEnvironmentCreateIn(
+            name="人工验证码环境",
+            site_url="https://example.test",
+            username="admin",
+            password="secret123",
+            login_strategy="account_password",
+            captcha_strategy="manual",
+            reuse_auth_state=True,
+        ),
+        ACTOR,
+    )
+    state_path = environment_auth_state.auth_state_path(created["id"])
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        (
+            '{"cookies":[],"origins":[{"origin":"https://example.test","localStorage":[],"indexedDB":'
+            '[{"name":"auth-db","version":1,"stores":[{"name":"kv","records":[]}]}]}]}'
+        ),
+        encoding="utf-8",
+    )
+
+    result = environment_service.list_visible_environments(ACTOR)[0]
+
+    assert result["auth_state_status"] == "none"
+    assert result["auth_state_expires_at"] is None
+
+
 def test_manual_auth_start_requires_manual_captcha_strategy(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     created = environment_service.create_environment(ExplorationEnvironmentCreateIn(

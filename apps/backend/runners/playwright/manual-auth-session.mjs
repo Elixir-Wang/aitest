@@ -59,7 +59,7 @@ if (isDirectRun()) {
   for await (const line of rl) {
     const command = line.trim().toLowerCase();
     if (command === "save") {
-      await context.storageState({ path: storageStatePath });
+      await context.storageState({ path: storageStatePath, indexedDB: true });
       completed = true;
       break;
     }
@@ -115,7 +115,7 @@ export function startAutoSaveOnLoginSuccess(context, options) {
 
     saving = true;
     clearInterval(timer);
-    await context.storageState({ path: storageStatePath });
+    await context.storageState({ path: storageStatePath, indexedDB: true });
     onSaved(result);
   }, pollMs);
 
@@ -131,15 +131,19 @@ export function evaluateLoginSuccessSignals(state) {
   const visiblePasswordInputs = Number(state?.visiblePasswordInputs || 0);
   const visibleLoginButtons = Number(state?.visibleLoginButtons || 0);
   const navigationChanged = Boolean(state?.navigationChanged);
+  const indexedDbCount = Number(state?.indexedDbCount || 0);
   const haystack = `${url}\n${title}\n${bodyText}`;
   const stillLooksLikeLogin = LOGIN_URL_PATTERN.test(url) || /登录|登陆|sign in|login/i.test(title);
   const hasFailureSignal = LOGIN_FAILURE_PATTERN.test(haystack);
   const hasPendingHumanSignal = LOGIN_PENDING_PATTERN.test(haystack);
   const hasLoggedInSignal = LOGGED_IN_PATTERN.test(bodyText);
-  const hasStoredAuth = cookieCount > 0 || storageItemCount > 0;
+  const hasStoredAuth = cookieCount > 0 || storageItemCount > 0 || indexedDbCount > 0;
 
   let score = 0;
   const reasons = [];
+  if (!hasStoredAuth) {
+    return { reasons: ["auth_storage_empty"], score: -5, success: false };
+  }
   if (hasFailureSignal) {
     return { reasons: ["failure_signal"], score: -5, success: false };
   }
@@ -189,6 +193,10 @@ export async function collectAuthDetectionState(context, startUrl) {
     (total, origin) => total + (origin.localStorage || []).length,
     0,
   );
+  const indexedDbCount = (storageState.origins || []).reduce(
+    (total, origin) => total + (origin.indexedDB || []).length,
+    0,
+  );
   const bodyText = await page.locator("body").innerText({ timeout: 300 }).catch(() => "");
   const visiblePasswordInputs = await countVisible(page, passwordSelector());
   const visibleLoginButtons = await countVisible(page, loginButtonSelector());
@@ -197,6 +205,7 @@ export async function collectAuthDetectionState(context, startUrl) {
     bodyText: bodyText.slice(0, 4000),
     cookieCount: (storageState.cookies || []).length,
     navigationChanged: normalizeComparableUrl(url) !== normalizeComparableUrl(startUrl),
+    indexedDbCount,
     storageItemCount,
     title: await page.title().catch(() => ""),
     url,

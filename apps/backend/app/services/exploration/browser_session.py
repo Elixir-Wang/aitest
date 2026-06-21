@@ -3,12 +3,26 @@ import queue
 import subprocess
 import threading
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
 from app.core.settings import PLAYWRIGHT_BROWSER_CHANNEL, PLAYWRIGHT_RUNNER_DIR
 
 
 class BrowserSessionError(RuntimeError):
     pass
+
+
+_sessions_lock = threading.Lock()
+_sessions_by_run_id: dict[str, "PlaywrightBrowserSession"] = {}
+
+
+def close_run_session(run_id: str, *, timeout_seconds: float = 1.0) -> bool:
+    with _sessions_lock:
+        session = _sessions_by_run_id.get(run_id)
+    if session is None:
+        return False
+    session.close(timeout_seconds=timeout_seconds)
+    return True
 
 
 class PlaywrightBrowserSession:
@@ -19,11 +33,13 @@ class PlaywrightBrowserSession:
         storage_state_path: str = "",
         browser_channel: str | None = None,
         timeout_seconds: float = 30.0,
+        run_id: str = "",
     ) -> None:
         self.start_url = start_url
         self.storage_state_path = storage_state_path
         self.browser_channel = browser_channel if browser_channel is not None else PLAYWRIGHT_BROWSER_CHANNEL
         self.timeout_seconds = timeout_seconds
+        self.run_id = run_id
         self._process: subprocess.Popen[str] | None = None
         self._queue: queue.Queue[dict | None] = queue.Queue()
         self._reader: threading.Thread | None = None
@@ -61,6 +77,9 @@ class PlaywrightBrowserSession:
         started = self._read_message()
         if not started or started.get("kind") != "session_started":
             raise BrowserSessionError("Playwright browser session did not start.")
+        if self.run_id:
+            with _sessions_lock:
+                _sessions_by_run_id[self.run_id] = self
 
     def observe(self) -> dict:
         return self.command({"type": "observe"})
@@ -81,7 +100,7 @@ class PlaywrightBrowserSession:
         return self.command({"type": "wait", "ms": ms})
 
     def navigate(self, url: str) -> dict:
-        return self.command({"type": "navigate", "url": url})
+        return self.command({"type": "navigate", "url": resolve_navigation_url(url, self.start_url)})
 
     def command(self, payload: dict) -> dict:
         process = self._ensure_process()
@@ -102,10 +121,13 @@ class PlaywrightBrowserSession:
             result = message.get("result")
             return result if isinstance(result, dict) else {}
 
-    def close(self) -> None:
+    def close(self, *, timeout_seconds: float = 5.0) -> None:
         process = self._process
         if process is None:
             return
+        graceful_timeout = max(0.0, min(timeout_seconds, 0.2))
+        terminate_timeout = max(0.0, min(timeout_seconds - graceful_timeout, 0.4))
+        kill_timeout = max(0.0, timeout_seconds - graceful_timeout - terminate_timeout)
         try:
             if process.poll() is None and process.stdin is not None:
                 self._sequence += 1
@@ -114,16 +136,20 @@ class PlaywrightBrowserSession:
         except (BrokenPipeError, OSError):
             pass
         try:
-            process.wait(timeout=5)
+            process.wait(timeout=graceful_timeout)
         except subprocess.TimeoutExpired:
             process.terminate()
             try:
-                process.wait(timeout=3)
+                process.wait(timeout=terminate_timeout)
             except subprocess.TimeoutExpired:
                 process.kill()
-                process.wait(timeout=3)
+                process.wait(timeout=max(kill_timeout, 0.1))
         if self._reader is not None:
-            self._reader.join(timeout=1)
+            self._reader.join(timeout=0.1)
+        if self.run_id:
+            with _sessions_lock:
+                if _sessions_by_run_id.get(self.run_id) is self:
+                    _sessions_by_run_id.pop(self.run_id, None)
         self._process = None
 
     def _ensure_process(self) -> subprocess.Popen[str]:
@@ -155,3 +181,20 @@ class PlaywrightBrowserSession:
             return self._queue.get(timeout=self.timeout_seconds)
         except queue.Empty as error:
             raise BrowserSessionError("Timed out waiting for Playwright browser session.") from error
+
+
+def resolve_navigation_url(url: str, start_url: str) -> str:
+    target = str(url or "").strip()
+    if not target or _is_absolute_navigation_url(target):
+        return target
+    if not target.startswith("/"):
+        return target
+    parsed_start = urlparse(str(start_url or "").strip())
+    if parsed_start.scheme not in {"http", "https"} or not parsed_start.netloc:
+        return target
+    return urljoin(f"{parsed_start.scheme}://{parsed_start.netloc}", target)
+
+
+def _is_absolute_navigation_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.scheme in {"http", "https", "about"} and bool(parsed.scheme)

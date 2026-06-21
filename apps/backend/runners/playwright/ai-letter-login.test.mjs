@@ -11,6 +11,7 @@ import {
   collectLoginFormElements,
   ensureAgreementWithPlan,
   ensureUserAgreementChecked,
+  expectedCaptchaLengthWithPlan,
   fillCaptchaWithPlan,
   fillCaptchaValue,
   fillCredentialsWithPlan,
@@ -496,6 +497,49 @@ describe("ai letter login helpers", () => {
     }
   });
 
+  it("rejects captcha answers truncated by the input field", async () => {
+    const browser = await chromium.launch({ channel: "chrome", headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(`
+        <form>
+          <input placeholder="请输入图形验证码" maxlength="4" />
+        </form>
+      `);
+
+      const plan = normalizeLoginPlan({
+        strategy: "planned",
+        captcha_input_locator: { type: "placeholder", value: "请输入图形验证码" },
+      });
+
+      assert.equal(await fillCaptchaWithPlan(page, plan, "ABCDEF"), false);
+      assert.equal(await page.getByPlaceholder("请输入图形验证码").inputValue(), "ABCD");
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("reads expected captcha length from input maxlength", async () => {
+    const browser = await chromium.launch({ channel: "chrome", headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(`
+        <form>
+          <input placeholder="请输入图形验证码" maxlength="4" />
+        </form>
+      `);
+
+      const plan = normalizeLoginPlan({
+        strategy: "planned",
+        captcha_input_locator: { type: "placeholder", value: "请输入图形验证码" },
+      });
+
+      assert.equal(await expectedCaptchaLengthWithPlan(page, plan), 4);
+    } finally {
+      await browser.close();
+    }
+  });
+
   it("reports login page not ready when observation has no elements", async () => {
     const browser = await chromium.launch({ channel: "chrome", headless: true });
     try {
@@ -561,6 +605,7 @@ describe("ai letter login helpers", () => {
           }
         });
         document.getElementById("confirm-btn").addEventListener("click", () => {
+          window.localStorage.setItem("session_token", "token-123");
           document.body.innerHTML = "<div>退出登录</div>";
           history.pushState({}, "", "/home");
         });

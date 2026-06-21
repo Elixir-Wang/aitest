@@ -159,7 +159,7 @@ def test_run_auto_auth_writes_storage_state_on_success(monkeypatch: pytest.Monke
             return None
 
     monkeypatch.setattr(auto_auth_service, "_launch_ai_letter_login_process", lambda **_kwargs: FakeProcess())
-    monkeypatch.setattr(captcha_solver_service, "solve_letter_captcha", lambda _path: "AB12")
+    monkeypatch.setattr(captcha_solver_service, "solve_letter_captcha", lambda _path, expected_length=None: "AB12")
     monkeypatch.setattr(
         login_form_analyzer_service,
         "analyze_login_form",
@@ -169,7 +169,8 @@ def test_run_auto_auth_writes_storage_state_on_success(monkeypatch: pytest.Monke
     auto_auth_service._run_ai_letter_auto_auth("project-1", "env-1")
 
     status = auto_auth_service.get_auto_auth_status("project-1", "env-1")
-    assert status["status"] == "succeeded"
+    assert status["status"] == "failed"
+    assert status["last_error_code"] == "AUTH_STATE_INVALID"
     assert environment_auth_state.auth_state_path("project-1", "env-1").exists()
 
 
@@ -260,7 +261,7 @@ def test_run_auto_auth_marks_failed_when_solver_unavailable(monkeypatch: pytest.
         lambda _page_image_path, _elements: _planned_login_form_plan(),
     )
 
-    def raise_solver_error(_path):
+    def raise_solver_error(_path, expected_length=None):
         raise captcha_solver_service.CaptchaSolverError("字母验证码识别模型未配置或未启用。")
 
     monkeypatch.setattr(captcha_solver_service, "solve_letter_captcha", raise_solver_error)
@@ -323,7 +324,7 @@ def test_run_auto_auth_records_operation_log_on_failure(monkeypatch: pytest.Monk
         lambda _page_image_path, _elements: _planned_login_form_plan(),
     )
 
-    def raise_solver_error(_path):
+    def raise_solver_error(_path, expected_length=None):
         raise captcha_solver_service.CaptchaSolverError("字母验证码识别模型未配置或未启用。")
 
     monkeypatch.setattr(captcha_solver_service, "solve_letter_captcha", raise_solver_error)

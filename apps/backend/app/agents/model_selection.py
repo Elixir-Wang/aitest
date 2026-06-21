@@ -32,10 +32,14 @@ def resolve_model_selection(capability_id: str) -> ModelSelection:
     )
 
 
-def build_agent_model(selection: ModelSelection):
+def build_agent_model(selection: ModelSelection, *, extra_body: dict | None = None):
+    kwargs = {}
+    if extra_body is not None:
+        kwargs["extra_body"] = extra_body
     return ChatOpenAI(
         model=selection.model,
         api_key=SecretStr(selection.api_key),
         base_url=selection.base_url,
         temperature=0,
+        **kwargs,
     )

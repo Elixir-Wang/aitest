@@ -1,29 +1,18 @@
-import json
-import queue
-import shutil
-import subprocess
 import threading
 import traceback
 from pathlib import Path
 import secrets
-import time
 
-from app.core.environment_auth_state import auth_state_path
-from app.core.settings import (
-    PLAYWRIGHT_BROWSER_CHANNEL,
-    PLAYWRIGHT_CLI_COMMAND,
-    PLAYWRIGHT_CLI_TIMEOUT_SECONDS,
-    PLAYWRIGHT_RUNNER_DIR,
-)
+from app.core.environment_auth_state import auth_state_path, auth_state_summary
 from app.core.db import connect
 from app.core.storage import PROJECT_FILE_STORAGE_ROOT, store_path
 from app.repositories import exploration_repo
 from app.services import operation_log_service
-from app.services.exploration import agentic_orchestrator
 from app.services.exploration import artifact_service as exploration_artifact_service
 from app.services.exploration import event_bus as exploration_event_bus
 from app.services.exploration import goal_validation_service as exploration_goal_validation_service
 from app.services.exploration import service as exploration_service
+from app.services.exploration import unified_orchestrator
 
 
 def run_exploration(run_id: str) -> None:
@@ -113,7 +102,7 @@ def _run_exploration(run_id: str) -> None:
         _record_runner_event(finish_event[0], **finish_event[1])
         return
 
-    result = _execute_agentic_loop(run_id, artifact_root)
+    result = _execute_unified_exploration(run_id, artifact_root)
     _persist_runner_result(run_id, artifact_root, result)
 
 
@@ -122,6 +111,9 @@ def _persist_runner_result(run_id: str, artifact_root: Path, result: dict) -> No
     with connect() as db:
         run = exploration_repo.find_by_id(db, run_id)
         if not run:
+            return
+        if run["status"] in {"cancelled", "interrupted"}:
+            exploration_event_bus.close(run_id)
             return
         if run["status"] == "stopping":
             _mark_cancelled(db, run, "用户已停止探索，已保留停止前生成的日志和产物。")
@@ -183,27 +175,51 @@ def _persist_runner_result(run_id: str, artifact_root: Path, result: dict) -> No
         _record_runner_event(finish_event[0], **finish_event[1])
 
 
-def _execute_agentic_loop(run_id: str, artifact_root: Path) -> dict:
+def _execute_unified_exploration(run_id: str, artifact_root: Path) -> dict:
+    """执行目标驱动的统一探索。"""
+
     log_path = artifact_root / "logs" / "run.log"
-    if not _playwright_cli_available():
-        message = "未检测到可用 Playwright CLI，无法执行 Agentic Playwright 探索。"
-        log_path.write_text(f"{message}\n", encoding="utf-8")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        exploration_event_bus.publish(run_id, "execution_started", {
+            "message": "使用统一编排器执行目标驱动探索",
+            "mode": "unified"
+        })
+
+        page_url, forbidden_paths, storage_state_path = _safe_run_context_from_db(run_id)
+
+        exploration_event_bus.publish(run_id, "context_loaded", {
+            "start_url": page_url,
+            "has_auth": bool(storage_state_path)
+        })
+
+        return unified_orchestrator.run_unified_exploration_sync(
+            run_id=run_id,
+            artifact_root=artifact_root,
+            start_url=page_url,
+            forbidden_paths=forbidden_paths,
+            storage_state_path=storage_state_path,
+        )
+
+    except Exception as e:
+        error_msg = f"统一探索执行异常: {type(e).__name__}: {str(e)}"
+
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"{error_msg}\n")
+                import traceback
+                f.write(traceback.format_exc())
+        except:
+            pass
+
+        exploration_event_bus.publish(run_id, "error", {"message": error_msg})
+
         return {
             "status": "blocked",
-            "summary": message,
-            "reason_type": "runner_unavailable",
-            "suggested_action": "在后端运行环境安装 Playwright，并执行 npx playwright install 后重试。",
+            "summary": error_msg,
             "log_path": store_path(log_path) or "",
-            "log": f"{message}\n",
         }
-    page_url, forbidden_paths, storage_state_path = _safe_run_context_from_db(run_id)
-    return agentic_orchestrator.run_agentic_exploration(
-        run_id,
-        artifact_root,
-        start_url=page_url,
-        forbidden_paths=forbidden_paths,
-        storage_state_path=storage_state_path,
-    )
 
 
 def _mark_run_failed_after_unhandled_error(run_id: str, error: Exception) -> None:
@@ -301,242 +317,9 @@ def _bool_value(value, default: bool = False) -> bool:
     return default
 
 
-def _execute_playwright_probe(run_id: str, artifact_root: Path) -> dict:
-    log_path = artifact_root / "logs" / "run.log"
-    if not _playwright_cli_available():
-        message = "未检测到可用 Playwright CLI，无法执行真实站点探索。"
-        log_path.write_text(f"{message}\n", encoding="utf-8")
-        return {
-            "status": "blocked",
-            "summary": message,
-            "reason_type": "runner_unavailable",
-            "suggested_action": "在后端运行环境安装 Playwright，并执行 npx playwright install 后重试。",
-            "log_path": store_path(log_path) or "",
-            "log": f"{message}\n",
-        }
-
-    page_url, forbidden_paths, storage_state_path = _safe_run_context_from_db(run_id)
-    exploration_result = _run_site_explorer(page_url, artifact_root, forbidden_paths, storage_state_path)
-    if exploration_result["status"] == "blocked":
-        log_path.write_text(exploration_result["log"], encoding="utf-8")
-        failure_detail = _failure_detail_from_log(exploration_result["log"])
-        summary = _summary_with_failure_detail(exploration_result["summary"], failure_detail)
-        return {
-            "status": "blocked",
-            "summary": summary,
-            "reason_type": "browser_smoke_failed",
-            "failure_detail": failure_detail,
-            "suggested_action": _suggested_action_with_failure_detail(
-                "检查 Playwright 浏览器安装、浏览器 channel 配置、网络连通性和目标站点可访问性后重试。",
-                failure_detail,
-            ),
-            "log_path": store_path(log_path) or "",
-            "log": exploration_result["log"],
-        }
-
-    log_path.write_text(exploration_result["log"], encoding="utf-8")
-    exploration_result["log_path"] = store_path(log_path) or ""
-    return exploration_result
-
-
-def _playwright_cli_available() -> bool:
-    if not _npx_command_path():
-        return False
-    if not PLAYWRIGHT_RUNNER_DIR.exists():
-        return False
-    try:
-        completed = subprocess.run(
-            _playwright_command("--version"),
-            check=False,
-            capture_output=True,
-            cwd=PLAYWRIGHT_RUNNER_DIR,
-            text=True,
-            timeout=PLAYWRIGHT_CLI_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return completed.returncode == 0 and "Version" in completed.stdout
-
-
-def _playwright_command(*args: str) -> list[str]:
-    return [_npx_command_path() or "npx", "--no-install", PLAYWRIGHT_CLI_COMMAND, *args]
-
-
-def _npx_command_path() -> str | None:
-    return shutil.which("npx")
-
-
-def _run_site_explorer(
-    page_url: str,
-    artifact_root: Path,
-    forbidden_paths: str = "",
-    storage_state_path: str = "",
-) -> dict:
-    script_path = PLAYWRIGHT_RUNNER_DIR / "site-explorer.mjs"
-    command = [
-        "node",
-        str(script_path),
-        page_url,
-        str(artifact_root),
-        PLAYWRIGHT_BROWSER_CHANNEL,
-        forbidden_paths,
-        storage_state_path,
-    ]
-    timeout_seconds = max(PLAYWRIGHT_CLI_TIMEOUT_SECONDS, 30)
-    env = _runner_env_from_db(artifact_root.name)
-    try:
-        process = subprocess.Popen(
-            command,
-            cwd=PLAYWRIGHT_RUNNER_DIR,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-        )
-        stdout_queue: queue.Queue[str | None] = queue.Queue()
-        stdout_lines: list[str] = []
-        result_payload: dict | None = None
-        reader = threading.Thread(target=_enqueue_output_lines, args=(process.stdout, stdout_queue), daemon=True)
-        reader.start()
-        started_at = time.monotonic()
-        while process.poll() is None:
-            result_payload = _drain_runner_stdout(artifact_root.name, stdout_queue, stdout_lines, result_payload)
-            if _run_cancel_requested(artifact_root):
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-                reader.join(timeout=1)
-                stderr = process.stderr.read() if process.stderr else ""
-                result_payload = _drain_runner_stdout(artifact_root.name, stdout_queue, stdout_lines, result_payload)
-                return {
-                    "status": "cancelled",
-                    "summary": "用户已停止探索。",
-                    "log": "\n".join(["Playwright site exploration cancelled by user.", "\n".join(stdout_lines), stderr]).strip() + "\n",
-                }
-            if time.monotonic() - started_at > timeout_seconds:
-                process.kill()
-                process.wait()
-                reader.join(timeout=1)
-                stderr = process.stderr.read() if process.stderr else ""
-                result_payload = _drain_runner_stdout(artifact_root.name, stdout_queue, stdout_lines, result_payload)
-                raise subprocess.TimeoutExpired(command, timeout_seconds, output="\n".join(stdout_lines), stderr=stderr)
-            time.sleep(0.2)
-        process.wait()
-        reader.join(timeout=1)
-        stderr = process.stderr.read() if process.stderr else ""
-        result_payload = _drain_runner_stdout(artifact_root.name, stdout_queue, stdout_lines, result_payload)
-        stdout = "\n".join(stdout_lines)
-    except (OSError, subprocess.TimeoutExpired) as error:
-        return {
-            "status": "blocked",
-            "summary": "Playwright 探索脚本执行失败。",
-            "log": f"Playwright site exploration failed: {error}\n",
-        }
-    if process.returncode != 0:
-        return {
-            "status": "blocked",
-            "summary": "Playwright 探索脚本执行失败。",
-            "log": "\n".join([stdout, stderr]).strip() + "\n",
-        }
-    try:
-        payload = result_payload or _parse_legacy_runner_result(stdout)
-    except (IndexError, json.JSONDecodeError, ValueError) as error:
-        return {
-            "status": "blocked",
-            "summary": "Playwright 探索脚本未返回有效结构化结果。",
-            "log": f"{stdout}\n{stderr}\nJSON parse error: {error}\n",
-        }
-    payload_log = str(payload.get("log") or "")
-    payload["log"] = "\n".join(
-        item
-        for item in [
-            payload_log.strip(),
-            stderr.strip(),
-            "" if payload_log.strip() else stdout.strip(),
-        ]
-        if item
-    ).strip() + "\n"
-    return payload
-
-
-def _enqueue_output_lines(stream, output_queue: queue.Queue[str | None]) -> None:
-    if stream is None:
-        output_queue.put(None)
-        return
-    try:
-        for line in stream:
-            output_queue.put(line)
-    finally:
-        output_queue.put(None)
-
-
-def _drain_runner_stdout(
-    run_id: str,
-    output_queue: queue.Queue[str | None],
-    stdout_lines: list[str],
-    result_payload: dict | None,
-) -> dict | None:
-    while True:
-        try:
-            line = output_queue.get_nowait()
-        except queue.Empty:
-            return result_payload
-        if line is None:
-            return result_payload
-        stripped = line.strip()
-        if not stripped:
-            continue
-        stdout_lines.append(stripped)
-        try:
-            event = json.loads(stripped)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(event, dict):
-            continue
-        if event.get("kind") == "progress":
-            event_type = str(event.get("type") or "")
-            payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-            if event_type:
-                exploration_event_bus.publish(run_id, event_type, payload)
-        elif event.get("kind") == "result":
-            payload = event.get("payload")
-            if isinstance(payload, dict):
-                result_payload = payload
-    return result_payload
-
-
-def _parse_legacy_runner_result(stdout: str) -> dict:
-    payload = json.loads(stdout.strip().splitlines()[-1])
-    if isinstance(payload, dict) and payload.get("kind") == "result" and isinstance(payload.get("payload"), dict):
-        return payload["payload"]
-    if not isinstance(payload, dict):
-        raise ValueError("runner result must be a JSON object")
-    return payload
-
-
-def _runner_env_from_db(run_id: str) -> dict:
-    import os
-
-    env = os.environ.copy()
-    with connect() as db:
-        run = exploration_repo.find_by_id(db, run_id)
-        if not run:
-            return env
-        env["AI_TESTING_EXPLORATION_MAX_PAGES"] = str(run["max_pages"] if "max_pages" in run.keys() else 50)
-        env["AI_TESTING_EXPLORATION_MAX_ACTIONS"] = str(run["max_actions"] if "max_actions" in run.keys() else 1000)
-        timeout_minutes = int(run["timeout_minutes"] if "timeout_minutes" in run.keys() else 120)
-        env["AI_TESTING_EXPLORATION_TIMEOUT_MS"] = str(max(timeout_minutes, 1) * 60 * 1000)
-    return env
-
-
-def _run_cancel_requested(artifact_root: Path) -> bool:
-    run_id = artifact_root.name
-    with connect() as db:
-        run = exploration_repo.find_by_id(db, run_id)
-        return bool(run and run["status"] == "stopping")
+def _result_log_content(result: dict) -> str:
+    log = str(result.get("log") or result.get("summary") or "")
+    return log if log.endswith("\n") else f"{log}\n"
 
 
 def _safe_run_context_from_db(run_id: str) -> tuple[str, str, str]:
@@ -553,7 +336,15 @@ def _stored_auth_state_path_for_run(run) -> Path | None:
     login_strategy, _, reuse_auth_state = _agent_login_context(run)
     if login_strategy != "account_password" or not reuse_auth_state:
         return None
-    path = auth_state_path(str(run["environment_id"]))
+    environment_id = str(run["environment_id"])
+    summary = auth_state_summary(
+        environment_id=environment_id,
+        login_strategy=login_strategy,
+        reuse_auth_state=reuse_auth_state,
+    )
+    if summary["status"] != "valid":
+        return None
+    path = auth_state_path(environment_id)
     return path if path.exists() else None
 
 
@@ -705,6 +496,10 @@ def _suggested_action_with_failure_detail(suggested_action: str, failure_detail:
 
 def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:
     module_key = _module_key(run)
+    reason_type = str(result.get("reason_type") or "exploration_blocked")
+    log_path = str(result.get("log_path") or "")
+    log_content = str(result.get("log") or result["summary"]) + "\n"
+    suggested_action = str(result.get("suggested_action") or "查看执行日志并修正阻塞原因后重新探索。")
     markdown = _render_markdown(
         run=run,
         status="blocked",
@@ -723,13 +518,13 @@ def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:
             {
                 "module_key": module_key,
                 "page_ref": run["environment_name"],
-                "reason_type": result["reason_type"],
+                "reason_type": reason_type,
                 "reason": result["summary"],
-                "evidence_path": result["log_path"],
-                "suggested_action": result["suggested_action"],
+                "evidence_path": log_path,
+                "suggested_action": suggested_action,
             }
         ],
-        log_content=result["log"],
+        log_content=log_content,
     )
 
     exploration_repo.create_module_coverage(
@@ -756,24 +551,24 @@ def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:
         exploration_run_id=run["id"],
         module_key=module_key,
         page_ref=run["environment_name"],
-        reason_type=result["reason_type"],
+        reason_type=reason_type,
         reason=result["summary"],
-        evidence_path=result["log_path"],
+        evidence_path=log_path,
         impact_scope="站点探索、候选需求、知识库、用例、自动化",
-        suggested_action=result["suggested_action"],
+        suggested_action=suggested_action,
     )
     _publish_blocker_event(
         run["id"],
         {
             "module_key": module_key,
             "page_ref": run["environment_name"],
-            "reason_type": result["reason_type"],
+            "reason_type": reason_type,
             "reason": result["summary"],
-            "evidence_path": result["log_path"],
-            "suggested_action": result["suggested_action"],
+            "evidence_path": log_path,
+            "suggested_action": suggested_action,
         },
     )
-    _persist_common_artifacts(db, run["id"], artifacts, result["log_path"])
+    _persist_common_artifacts(db, run["id"], artifacts, log_path)
     exploration_repo.update_run_state(
         db,
         run["id"],
@@ -787,6 +582,8 @@ def _persist_blocked_result(db, run, artifact_root: Path, result: dict) -> None:
 
 def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> tuple[str, str]:
     page_url = _safe_site_url(run)
+    result_log = str(result.get("log") or result.get("summary") or "")
+    result_log_path = str(result.get("log_path") or "")
     page_artifacts = _result_page_artifacts(result)
     result_status, coverage_gap_blocker = _completion_status_with_coverage_gate(run, result, page_artifacts)
     goal_validation = exploration_goal_validation_service.validate_goal(run["goal"], page_artifacts, _result_graph(result))
@@ -813,7 +610,7 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> tup
                     "page_ref": blocker.get("page_ref") or page_url,
                     "reason_type": blocker.get("reason_type") or "exploration_gap",
                     "reason": blocker.get("reason") or "探索过程中存在未覆盖项。",
-                    "evidence_path": result["log_path"],
+                    "evidence_path": result_log_path,
                     "suggested_action": blocker.get("suggested_action") or "人工确认后重新探索。",
                     "is_blocking": bool(blocker.get("is_blocking", True)),
                 }
@@ -830,27 +627,49 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> tup
         page_artifacts=page_artifacts,
         graph=_result_graph(result),
         blockers=payload_blockers,
-        log_content=result["log"],
+        log_content=result_log,
         goal_validation=goal_validation,
     )
 
     for module in module_coverages:
-        exploration_repo.create_module_coverage(
-            db,
-            coverage_id=_id("expcov"),
-            exploration_run_id=run["id"],
-            module_key=module["module_key"],
-            module_name=module["module_name"],
-            entry_path=module["entry_path"],
-            planned_page_count=module["planned_page_count"],
-            explored_page_count=module["explored_page_count"],
-            blocked_page_count=module["blocked_page_count"],
-            action_count=module["action_count"],
-            field_count=module["field_count"],
-            state_transition_count=module["state_transition_count"],
-            completion_status=module["completion_status"],
-            completion_summary=module["completion_summary"],
-        )
+        # 尝试更新已存在的规划模块，如果不存在则创建新的
+        existing_modules = {m["module_key"]: m for m in exploration_repo.list_module_coverages(db, run["id"])}
+
+        if module["module_key"] in existing_modules:
+            # 更新已存在的规划模块
+            exploration_repo.update_module_coverage(
+                db,
+                exploration_run_id=run["id"],
+                module_key=module["module_key"],
+                module_name=module["module_name"],
+                entry_path=module["entry_path"],
+                planned_page_count=module["planned_page_count"],
+                explored_page_count=module["explored_page_count"],
+                blocked_page_count=module["blocked_page_count"],
+                action_count=module["action_count"],
+                field_count=module["field_count"],
+                state_transition_count=module["state_transition_count"],
+                completion_status=module["completion_status"],
+                completion_summary=module["completion_summary"],
+            )
+        else:
+            # 创建新模块（对于未在规划中的模块）
+            exploration_repo.create_module_coverage(
+                db,
+                coverage_id=_id("expcov"),
+                exploration_run_id=run["id"],
+                module_key=module["module_key"],
+                module_name=module["module_name"],
+                entry_path=module["entry_path"],
+                planned_page_count=module["planned_page_count"],
+                explored_page_count=module["explored_page_count"],
+                blocked_page_count=module["blocked_page_count"],
+                action_count=module["action_count"],
+                field_count=module["field_count"],
+                state_transition_count=module["state_transition_count"],
+                completion_status=module["completion_status"],
+                completion_summary=module["completion_summary"],
+            )
     for module in exploration_repo.list_module_coverages(db, run["id"]):
         _publish_module_event("module_updated", run["id"], module)
     for module in module_coverages:
@@ -861,7 +680,7 @@ def _persist_completed_result(db, run, artifact_root: Path, result: dict) -> tup
     for module in module_coverages:
         for blocker in module["blockers"]:
             _publish_blocker_event(run["id"], blocker)
-    _persist_common_artifacts(db, run["id"], artifacts, result["log_path"])
+    _persist_common_artifacts(db, run["id"], artifacts, result_log_path)
     exploration_repo.update_run_state(
         db,
         run["id"],
@@ -891,15 +710,34 @@ def _build_module_coverages(
     coverage_gap_blocker: dict | None,
     page_url: str,
 ) -> list[dict]:
+    # 获取规划的模块列表，建立模块名到 module_key 的映射
+    from app.core.db import connect
+    from app.repositories import exploration_repo
+
+    planned_module_map = {}
+    with connect() as db:
+        for module in exploration_repo.list_module_coverages(db, run["id"]):
+            # 将规划的模块名映射到 module_key (planned-01, planned-02 等)
+            planned_module_map[module["module_name"]] = module["module_key"]
+
     module_groups: dict[str, dict] = {}
     for page_artifact in page_artifacts:
         page = page_artifact["page"]
-        module_key = str(page.get("module") or "unclassified")
+        page_module_name = str(page.get("module") or "unclassified")
+
+        # 如果页面的模块名在规划中存在，使用规划的 module_key
+        if page_module_name in planned_module_map:
+            module_key = planned_module_map[page_module_name]
+            module_name = page_module_name
+        else:
+            module_key = page_module_name
+            module_name = page_module_name if page_module_name != "unclassified" else _module_name(run)
+
         module = module_groups.setdefault(
             module_key,
             {
                 "module_key": module_key,
-                "module_name": str(page.get("module") or _module_name(run)),
+                "module_name": module_name,
                 "entry_path": str(page.get("normalized_url") or page.get("url") or page_url),
                 "pages": [],
                 "elements": [],
@@ -942,6 +780,8 @@ def _build_module_coverages(
             completion_status = "blocked"
         elif blockers:
             completion_status = "partial"
+        elif explored_page_count == 0:
+            completion_status = "partial"
         else:
             completion_status = "completed"
         module["planned_page_count"] = planned_page_count
@@ -959,12 +799,18 @@ def _build_module_coverages(
             explored_page_count=explored_page_count,
             planned_page_count=planned_page_count,
             recent_page=recent_page,
-            blocker_summary=blocker_summary,
+            blocker_summary=_empty_page_summary(result_status) if explored_page_count == 0 and blocker_summary == "无" else blocker_summary,
             completion_status=completion_status,
             result_status=result_status,
         )
         module["blocker_summary"] = blocker_summary
     return list(module_groups.values())
+
+
+def _empty_page_summary(result_status: str) -> str:
+    if result_status == "running":
+        return "等待页面事实生成"
+    return "未探索到页面事实，无法确认探索目标已完成"
 
 
 def _module_blockers_from_result(
@@ -1275,6 +1121,9 @@ def _selector_stability_note(selector: dict) -> str:
 
 def _page_index_payload(page_artifact: dict, module_key: str) -> dict:
     page = page_artifact["page"]
+    raw_steps = page_artifact.get("steps")
+    if not isinstance(raw_steps, list) or not raw_steps:
+        raw_steps = page_artifact.get("actions", [])
     return {
         "id": page["id"],
         "module_key": module_key,
@@ -1283,7 +1132,7 @@ def _page_index_payload(page_artifact: dict, module_key: str) -> dict:
         "entry_path": page["normalized_url"],
         "structure_summary": page["structure_summary"],
         "status": page.get("status", "explored"),
-        "steps": _normalize_steps(page_artifact.get("steps", [])),
+        "steps": _normalize_steps(raw_steps),
     }
 
 
@@ -1298,8 +1147,8 @@ def _normalize_steps(raw_steps) -> list[dict]:
             {
                 "id": str(raw_step.get("id") or f"step-{index:03d}"),
                 "type": str(raw_step.get("type") or "event"),
-                "title": str(raw_step.get("title") or raw_step.get("detail") or "探索步骤"),
-                "detail": str(raw_step.get("detail") or ""),
+                "title": str(raw_step.get("title") or raw_step.get("target") or raw_step.get("detail") or "探索步骤"),
+                "detail": str(raw_step.get("detail") or raw_step.get("result") or ""),
                 "status": str(raw_step.get("status") or "completed"),
                 "occurred_at": raw_step.get("occurred_at") if raw_step.get("occurred_at") else None,
                 "artifact_path": str(raw_step.get("artifact_path") or ""),

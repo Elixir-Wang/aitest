@@ -28,6 +28,14 @@ test("running exploration runs show pending module plans as active", () => {
   assert.match(pageSource, /status: resolveModulePlanStatus\(detail\.run\.status, module\.completion_status\)/);
 });
 
+test("running exploration modules without pages still render an expandable progress subtask", () => {
+  assert.match(pageSource, /function buildModulePlanSubtasks\(/);
+  assert.match(pageSource, /if \(module\.pages\.length > 0\)/);
+  assert.match(pageSource, /id: `\$\{module\.id\}-progress`/);
+  assert.match(pageSource, /title: buildModuleProgressSubtaskTitle\(detail\.run\.status\)/);
+  assert.match(pageSource, /detail: detailText/);
+});
+
 test("running page events do not keep completed exploration pages active", () => {
   assert.match(pageSource, /function resolvePagePlanStatus\(page: ExplorationPage\): AgentPlanStatus/);
   assert.match(pageSource, /status: resolvePagePlanStatus\(page\)/);
@@ -43,11 +51,22 @@ test("exploration stream updates the displayed detail snapshot", () => {
     pageSource,
     /function applyStreamEvent\([\s\S]*setStreamDetail: React\.Dispatch<React\.SetStateAction<ExplorationRunDetail \| null>>;/,
   );
-  assert.match(pageSource, /applyStreamEvent\(event, \{ setStreamDetail, setRun \}\);/);
+  assert.match(pageSource, /setMonitor: React\.Dispatch<React\.SetStateAction<ExplorationMonitorState>>;/);
+  assert.match(pageSource, /applyStreamEvent\(event, \{ setMonitor, setStreamDetail, setRun \}\);/);
+  assert.match(pageSource, /if \(event\.type === "run_snapshot"\) \{/);
+  assert.match(pageSource, /setters\.setMonitor\(monitorFromRunDetail\(snapshot\)\);/);
   assert.match(pageSource, /setters\.setStreamDetail\(\(current\) => mergeModuleEvent\(current, event\)\);/);
   assert.doesNotMatch(pageSource, /applyStreamEvent\(event, \{ setDetail, setRun \}\);/);
   assert.match(pageSource, /const runStatus = run\?\.status;/);
   assert.match(pageSource, /\}, \[loadRun, params\.projectId, params\.runId, runStatus\]\);/);
+});
+
+test("exploration stream snapshot rebuilds realtime monitor without fuzzy module matching", () => {
+  assert.match(pageSource, /function monitorFromRunDetail\(detail: ExplorationRunDetail\): ExplorationMonitorState/);
+  assert.match(pageSource, /function monitorStepsFromDetail\(detail: ExplorationRunDetail\): ExplorationMonitorStep\[\]/);
+  assert.match(pageSource, /function findStreamModuleIndex\(modules: ExplorationRunDetail\["modules"\], moduleId: string\): number/);
+  assert.doesNotMatch(pageSource, /module\.module_name\.includes\(moduleId\)/);
+  assert.doesNotMatch(pageSource, /moduleId\.includes\(module\.module_name\)/);
 });
 
 test("exploration detail exposes no execution or interaction mode controls", () => {
@@ -68,66 +87,40 @@ test("exploration detail exposes no execution or interaction mode controls", () 
   assert.doesNotMatch(pageSource, /body: JSON\.stringify\(\{[\s\S]*(execution_mode|interaction_mode)[\s\S]*\}\)/);
 });
 
-test("exploration detail supports first discovery before confirmed plan runs", () => {
-  assert.match(pageSource, /type ExplorationPlan = \{/);
+test("exploration overview keeps the start action in page-level actions", () => {
   assert.match(
     pageSource,
-    /plan_status: "not_generated" \| "draft" \| "confirmed" \| "running" \| "completed" \| "blocked";/,
+    /const canStart = run[\s\S]*\? \["pending", "partial", "completed", "blocked", "cancelled", "interrupted", "failed"\]\.includes\(run\.status\)[\s\S]*: false;/,
   );
-  assert.match(pageSource, /async function generateExplorationPlan\(\)/);
-  assert.match(pageSource, /async function confirmExplorationPlan\(\): Promise<boolean>/);
-  assert.match(
-    pageSource,
-    /const hasFirstDiscoveryArtifacts = activeDetail[\s\S]*\? activeDetail\.modules\.some\(\(module\) => !hasNoModuleArtifacts\(module\)\)[\s\S]*: false;/,
-  );
-  assert.match(pageSource, /const canStartFirstDiscovery = Boolean\(run\) && canStart && !hasFirstDiscoveryArtifacts;/);
-  assert.match(
-    pageSource,
-    /const canStartFromPlan = explorationPlan\?\.plan_status === "confirmed" && Boolean\(run\) && canStart;/,
-  );
-  assert.match(pageSource, /\{canStartFirstDiscovery \? \(/);
-  assert.match(pageSource, />\s*首次探索采集\s*<\/Button>/);
-  assert.match(pageSource, /\{generatingPlan \? "生成中" : "生成探索计划"\}/);
-  assert.match(pageSource, /async function confirmPlanThenStart\(\)/);
-  assert.match(pageSource, /const confirmed = await onConfirmPlan\(\);/);
-  assert.match(pageSource, /setReadyToStartConfirmedPlan\(true\);/);
-  assert.match(pageSource, /if \(!readyToStartConfirmedPlan\) \{/);
-  assert.match(pageSource, /await onStart\(\);/);
-  assert.match(pageSource, /确认计划并准备探索/);
-  assert.match(pageSource, /再次点击开始探索/);
-  assert.match(pageSource, /按计划开始探索/);
-  assert.match(pageSource, /\{confirmAndStartLabel\}/);
-  assert.doesNotMatch(pageSource, />\s*确认计划\s*<\/Button>/);
-  assert.doesNotMatch(pageSource, />\s*按计划开始探索\s*<\/Button>/);
-  assert.doesNotMatch(pageSource, />\s*\{startLabel\}\s*<\/Button>/);
+  assert.match(pageSource, /\{canStart \? \(/);
+  assert.match(pageSource, /onClick=\{\(\) => void startExploration\(\)\}/);
+  assert.match(pageSource, /\{run && hasExplorationStarted\(run\) \? "重新探索" : "开始探索"\}/);
 });
 
-test("regenerating an exploration plan clears stale generated modules and plan items", () => {
-  assert.match(pageSource, /function clearGeneratedExplorationPlanModules\(\)/);
-  assert.match(pageSource, /function clearStaleExplorationPlan\(\)/);
+test("interrupted exploration runs are terminal and restartable", () => {
   assert.match(
     pageSource,
-    /current \? \{ \.\.\.current, modules: current\.modules\.filter\(\(module\) => !isEmptyPlannedModule\(module\)\) \} : current/,
+    /return \["completed", "partial", "blocked", "cancelled", "interrupted", "failed"\]\.includes\(status\);/,
   );
-  assert.match(pageSource, /items: \[\]/);
-  assert.match(pageSource, /summary: "正在生成新的探索计划，旧计划已清除。"/);
-  assert.match(pageSource, /setPlanAction\("generate"\);\s*clearGeneratedExplorationPlanModules\(\);\s*clearStaleExplorationPlan\(\);/);
+  assert.match(pageSource, /"interrupted"/);
 });
 
-test("plan generation exposes local in-page progress instead of implying a task-center job", () => {
-  assert.match(pageSource, /const generatingPlan = planAction === "generate";/);
-  assert.match(pageSource, /formatElapsedDuration\(planActionNow - planActionStartedAt\)/);
-  assert.doesNotMatch(pageSource, /这一步不是后台任务，不会显示在任务中心/);
-  assert.doesNotMatch(pageSource, /生成期间会暂时锁定确认、手动修改和按计划开始探索/);
-  assert.match(pageSource, /\{generatingPlan \? "生成中" : "生成探索计划"\}/);
-  assert.match(pageSource, /探索计划正在生成/);
-  assert.match(pageSource, /\) : generatingPlan \? null : \(/);
+test("exploration detail removes the exploration plan module", () => {
+  assert.match(pageSource, /tabs=\{\["探索计划", "探索概览", "探索日志", "探索报告"\]\}/);
+  assert.doesNotMatch(pageSource, /type ExplorationPlan = \{/);
+  assert.doesNotMatch(pageSource, /plan_status:/);
+  assert.doesNotMatch(pageSource, /async function generateExplorationPlan\(\)/);
+  assert.doesNotMatch(pageSource, /async function confirmExplorationPlan/);
+  assert.doesNotMatch(pageSource, /ExplorationTaskPanel/);
+  assert.doesNotMatch(pageSource, /<TaskSection title="探索计划">/);
+  assert.doesNotMatch(pageSource, /首次探索采集/);
+  assert.doesNotMatch(pageSource, /生成探索计划/);
+  assert.doesNotMatch(pageSource, /从需求导入/);
+  assert.doesNotMatch(pageSource, /手动修改探索计划/);
+  assert.doesNotMatch(pageSource, /AI 修改当前计划/);
 });
 
-test("exploration plan renders module-level content without visible capability ids", () => {
-  assert.doesNotMatch(pageSource, /capabilityTypeLabels/);
-  assert.doesNotMatch(pageSource, /item\.capability_type\]\s*\?\?\s*item\.capability_type/);
-  assert.match(pageSource, /所属模块：\{item\.business_module\}/);
-  assert.match(pageSource, /<PlanList title="探索内容" values=\{item\.steps\} \/>/);
-  assert.match(pageSource, /<PlanList title="已发现入口" values=\{item\.exploration_points\} \/>/);
+test("exploration task text keeps single newlines inside one rendered paragraph", () => {
+  assert.match(pageSource, /\.split\(\s*\/\\n\{2,\}\/\s*\)/);
+  assert.doesNotMatch(pageSource, /\.split\(\s*\/\\n\+\/\s*\)/);
 });

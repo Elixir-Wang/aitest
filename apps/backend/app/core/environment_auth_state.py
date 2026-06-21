@@ -51,6 +51,8 @@ def auth_state_summary(
     origins = payload.get("origins")
     if not isinstance(cookies, list) or not isinstance(origins, list):
         return {"status": "expired", "expires_at": None}
+    if not _has_reusable_auth_payload(cookies, origins):
+        return {"status": "none", "expires_at": None}
 
     expires_at = _earliest_expires_at(payload)
     if expires_at and expires_at <= datetime.now(timezone.utc):
@@ -81,6 +83,21 @@ def _earliest_expires_at(payload: dict) -> datetime | None:
     return min(expires_at_values) if expires_at_values else None
 
 
+def _has_reusable_auth_payload(cookies: list, origins: list) -> bool:
+    if cookies:
+        return True
+    for origin in origins:
+        if not isinstance(origin, dict):
+            continue
+        local_storage = origin.get("localStorage")
+        if isinstance(local_storage, list) and local_storage:
+            return True
+        indexed_db = origin.get("indexedDB")
+        if _indexed_db_has_auth_payload(indexed_db):
+            return True
+    return False
+
+
 def _cookie_expires_at(cookie: object) -> datetime | None:
     if not isinstance(cookie, dict):
         return None
@@ -97,10 +114,8 @@ def _origin_token_expires_at_values(origin: object) -> list[datetime]:
     if not isinstance(origin, dict):
         return []
     expires_at_values: list[datetime] = []
-    for storage_key in ("localStorage", "sessionStorage"):
-        storage = origin.get(storage_key)
-        if not isinstance(storage, list):
-            continue
+    storage = origin.get("localStorage")
+    if isinstance(storage, list):
         for item in storage:
             if not isinstance(item, dict):
                 continue
@@ -108,6 +123,25 @@ def _origin_token_expires_at_values(origin: object) -> list[datetime]:
             if expires_at:
                 expires_at_values.append(expires_at)
     return expires_at_values
+
+
+def _indexed_db_has_auth_payload(indexed_db: object) -> bool:
+    if not isinstance(indexed_db, list):
+        return False
+    for database in indexed_db:
+        if not isinstance(database, dict):
+            continue
+        stores = database.get("stores")
+        if not isinstance(stores, list):
+            continue
+        for store in stores:
+            if not isinstance(store, dict):
+                continue
+            for key in ("records", "entries", "values"):
+                items = store.get(key)
+                if isinstance(items, list) and items:
+                    return True
+    return False
 
 
 def _jwt_expires_at(value: Any) -> datetime | None:

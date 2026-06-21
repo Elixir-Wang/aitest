@@ -6,16 +6,17 @@ from fastapi.responses import StreamingResponse
 
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.exploration import (
+    ExplorationGoalOptimizeIn,
+    ExplorationGoalOptimizeOut,
     ExplorationLogOut,
-    ExplorationPlanUpdateIn,
     ExplorationReportOut,
     ExplorationRunCreateIn,
     ExplorationRunDetailOut,
     ExplorationRunOut,
     ExplorationRunUpdateIn,
 )
-from app.schemas.requirement_exploration import RequirementPlanImportIn
 from app.services.exploration import event_bus as exploration_event_bus
+from app.services.exploration import goal_optimizer
 from app.services.exploration import service as exploration_service
 from app.services.exploration import site_orchestrator as site_exploration_orchestrator
 
@@ -78,12 +79,22 @@ def get_project_run_log(
 @router.get("/{project_id}/exploration-runs/{run_id}/stream")
 def stream_project_run(project_id: str, run_id: str, actor=Depends(current_user)) -> StreamingResponse:
     run = exploration_service.get_project_run(project_id, run_id, actor)
-    if run["status"] in {"completed", "partial", "blocked", "cancelled"}:
+    detail = exploration_service.get_project_run_detail(project_id, run_id, actor)
+    snapshot_event_id = exploration_event_bus.latest_event_id(run_id)
+    snapshot_event = {
+        "event_id": snapshot_event_id,
+        "type": "run_snapshot",
+        "run_id": run_id,
+        "payload": detail,
+    }
+    if run["status"] in {"completed", "partial", "blocked", "cancelled", "interrupted"}:
         event_type = _terminal_stream_event_type(run["status"])
 
         def terminal_event_stream():
+            yield _format_sse_event(snapshot_event)
             data = json.dumps(
                 {
+                    "event_id": snapshot_event_id,
                     "type": event_type,
                     "run_id": run_id,
                     "payload": run,
@@ -96,15 +107,23 @@ def stream_project_run(project_id: str, run_id: str, actor=Depends(current_user)
         return StreamingResponse(terminal_event_stream(), media_type="text/event-stream")
 
     def event_stream():
-        for event in exploration_event_bus.subscribe(run_id):
+        yield _format_sse_event(snapshot_event)
+        replay_event_id = exploration_event_bus.latest_event_id(run_id)
+        for event in exploration_event_bus.recent_events(run_id):
+            yield _format_sse_event(event)
+        for event in exploration_event_bus.subscribe(run_id, after_event_id=replay_event_id):
             if event is None:
                 yield ": keep-alive\n\n"
                 continue
-            event_type = str(event.get("type") or "message")
-            data = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
-            yield f"event: {event_type}\ndata: {data}\n\n"
+            yield _format_sse_event(event)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _format_sse_event(event: dict) -> str:
+    event_type = str(event.get("type") or "message")
+    data = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
+    return f"event: {event_type}\ndata: {data}\n\n"
 
 
 def _terminal_stream_event_type(status: str) -> str:
@@ -134,35 +153,13 @@ def update_project_run(
     return exploration_service.update_project_run(project_id, run_id, payload, actor)
 
 
-@router.post("/{project_id}/exploration-runs/{run_id}/plan/generate")
-def generate_project_run_plan(project_id: str, run_id: str, actor=Depends(require_admin)) -> dict:
-    return exploration_service.generate_project_run_plan(project_id, run_id, actor)
-
-
-@router.patch("/{project_id}/exploration-runs/{run_id}/plan")
-def update_project_run_plan(
+@router.post("/{project_id}/exploration-goal/optimize", response_model=ExplorationGoalOptimizeOut)
+def optimize_exploration_goal(
     project_id: str,
-    run_id: str,
-    payload: ExplorationPlanUpdateIn,
+    payload: ExplorationGoalOptimizeIn,
     actor=Depends(require_admin),
 ) -> dict:
-    return exploration_service.update_project_run_plan(project_id, run_id, payload, actor)
-
-
-@router.post("/{project_id}/exploration-runs/{run_id}/plan/confirm")
-def confirm_project_run_plan(project_id: str, run_id: str, actor=Depends(require_admin)) -> dict:
-    return exploration_service.confirm_project_run_plan(project_id, run_id, actor)
-
-
-@router.post("/{project_id}/exploration-runs/{run_id}/plan/import-from-requirement")
-def import_plan_from_requirement(
-    project_id: str,
-    run_id: str,
-    payload: RequirementPlanImportIn,
-    actor=Depends(require_admin),
-) -> dict:
-    """从需求分析导入探索计划到探索任务"""
-    return exploration_service.import_plan_from_requirement(project_id, run_id, payload, actor)
+    return goal_optimizer.optimize_exploration_goal(project_id, payload, actor)
 
 
 @router.post("/{project_id}/exploration-runs/{run_id}/start", response_model=ExplorationRunOut)

@@ -65,21 +65,14 @@ class ExplorationRunUpdateIn(BaseModel):
     timeout_minutes: int | None = None
 
 
-class ExplorationPlanItemIn(BaseModel):
+class ExplorationGoalOptimizeIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str | None = None
-    business_module: str = Field(min_length=1)
-    capability_type: str = Field(min_length=1)
-    title: str = Field(min_length=1)
-    steps: list[str] = Field(default_factory=list)
-    exploration_points: list[str] = Field(default_factory=list)
+    goal: str = Field(min_length=1, max_length=4000)
 
 
-class ExplorationPlanUpdateIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    items: list[ExplorationPlanItemIn]
+class ExplorationGoalOptimizeOut(BaseModel):
+    optimized_goal: str
 
 
 class ExplorationStepOut(BaseModel):
@@ -157,8 +150,6 @@ class ExplorationRunDetailOut(BaseModel):
     unsupported_artifact: bool = False
     unsupported_reason: str = ""
     modules: list[ExplorationModuleOut]
-    goal_validation: dict = Field(default_factory=dict)
-    exploration_plan: dict = Field(default_factory=dict)
 
 
 class ExplorationReportOut(BaseModel):

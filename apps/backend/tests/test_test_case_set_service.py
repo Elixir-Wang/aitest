@@ -1,8 +1,14 @@
+import asyncio
 from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
 
+from app.agents.test_case_generation.schemas import (
+    TestCase as AgentTestCase,
+    TestCaseGenerationResult as AgentTestCaseGenerationResult,
+    TestCaseModule as AgentTestCaseModule,
+)
 from app.core import db as core_db
 from app.core import storage
 from app.seed.init_db import init_db
@@ -150,6 +156,40 @@ def test_guest_cannot_create_test_case_set(monkeypatch: pytest.MonkeyPatch, tmp_
     assert exc_info.value.status_code == 403
 
 
+def test_delete_test_case_set_removes_generation_runs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+
+    test_case_service.delete_test_case_set("project-1", created["id"], ACTOR)
+
+    assert test_case_service.list_project_test_case_sets("project-1", ACTOR) == []
+    tasks = task_service.list_running_tasks(ACTOR, project_id="project-1")
+    assert all(task["source_id"] != created["generation_run"]["id"] for task in tasks)
+
+
+def test_guest_cannot_delete_test_case_set(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        test_case_service.delete_test_case_set("project-1", created["id"], GUEST)
+
+    assert exc_info.value.status_code == 403
+
+
 def test_list_test_case_sets_returns_latest_generation_run(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -196,3 +236,102 @@ def test_test_case_generation_run_appears_in_task_center(
         and task["status_label"] == "排队中"
         for task in tasks
     )
+
+
+def test_execute_test_case_generation_run_completes_and_persists_cases(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+
+    async def fake_generate_test_cases(input_data):
+        assert input_data.requirement_name == "登录需求"
+        assert "用户可以登录系统" in input_data.requirement_content
+        assert input_data.include_company_knowledge is True
+        return AgentTestCaseGenerationResult(
+            summary="覆盖登录成功和失败场景。",
+            total_count=1,
+            modules=[
+                AgentTestCaseModule(
+                    module_name="登录",
+                    test_cases=[
+                        AgentTestCase(
+                            id="tc-001",
+                            module="登录",
+                            title="账号密码登录成功",
+                            priority="P0",
+                            type="功能测试",
+                            precondition="用户已注册。",
+                            steps=["打开登录页", "输入正确账号密码", "提交登录"],
+                            expected_result="进入系统首页。",
+                        )
+                    ],
+                )
+            ],
+        )
+
+    monkeypatch.setattr(test_case_service, "generate_test_cases", fake_generate_test_cases)
+
+    asyncio.run(test_case_service.execute_test_case_generation_run(created["generation_run"]["id"]))
+
+    updated = test_case_service.get_test_case_set("project-1", created["id"], ACTOR)
+    assert updated["status"] == "ready_for_review"
+    assert updated["case_count"] == 1
+    assert updated["generation_run"]["status"] == "completed"
+    with core_db.connect() as db:
+        rows = db.execute("SELECT * FROM test_cases WHERE test_case_set_id = ?", (created["id"],)).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["title"] == "账号密码登录成功"
+    assert rows[0]["status"] == "ready_for_review"
+
+
+def test_execute_test_case_generation_run_marks_failed_on_agent_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+
+    async def fake_generate_test_cases(_input_data):
+        raise RuntimeError("模型调用失败")
+
+    monkeypatch.setattr(test_case_service, "generate_test_cases", fake_generate_test_cases)
+
+    asyncio.run(test_case_service.execute_test_case_generation_run(created["generation_run"]["id"]))
+
+    updated = test_case_service.get_test_case_set("project-1", created["id"], ACTOR)
+    assert updated["status"] == "failed"
+    assert updated["case_count"] == 0
+    assert updated["generation_run"]["status"] == "failed"
+    assert "模型调用失败" in updated["generation_run"]["error_message"]
+
+
+def test_recover_interrupted_test_case_generation_runs_marks_active_runs_failed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+
+    test_case_service.recover_interrupted_test_case_generation_runs()
+
+    updated = test_case_service.get_test_case_set("project-1", created["id"], ACTOR)
+    assert updated["status"] == "failed"
+    assert updated["generation_run"]["status"] == "failed"
+    assert "服务已重启" in updated["generation_run"]["error_message"]

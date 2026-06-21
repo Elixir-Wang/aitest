@@ -1,5 +1,4 @@
 import asyncio
-import asyncio
 import base64
 import json
 import re
@@ -7,10 +6,10 @@ from pathlib import Path
 
 from langchain_core.messages import HumanMessage
 
+from app.agents.login_form_analysis.agent import login_form_analysis_agent
 from app.agents.model_selection import build_agent_model, resolve_model_selection
+from app.core import settings
 from app.services.captcha_solver_service import CAPTCHA_MODEL_CAPABILITY_ID
-
-_JSON_BLOCK_PATTERN = re.compile(r"\{[\s\S]*\}")
 
 
 class LoginFormAnalyzerError(RuntimeError):
@@ -68,19 +67,6 @@ def _heuristic_agreement_locator(elements: list[dict]) -> dict:
     return {}
 
 
-def _parse_plan_payload(raw: str) -> dict:
-    text = str(raw or "").strip()
-    if not text:
-        raise LoginFormAnalyzerError("登录页元素规划结果为空。")
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = _JSON_BLOCK_PATTERN.search(text)
-        if not match:
-            raise LoginFormAnalyzerError("登录页元素规划结果不是有效 JSON。") from None
-        return json.loads(match.group(0))
-
-
 def analyze_login_form(page_image_path: Path, elements: list[dict]) -> dict:
     path = Path(page_image_path)
     if not path.is_file():
@@ -122,21 +108,24 @@ def analyze_login_form(page_image_path: Path, elements: list[dict]) -> dict:
 
     try:
         model = _build_login_form_analyzer_model()
-        response = asyncio.run(model.ainvoke([message]))
+        agent = login_form_analysis_agent(model)
+        response = asyncio.run(agent.ainvoke({"messages": [message]}))
     except ValueError as exc:
         raise LoginFormAnalyzerError(str(exc)) from exc
     except Exception as exc:
         raise LoginFormAnalyzerError("登录页元素规划失败。") from exc
 
-    payload = _parse_plan_payload(str(getattr(response, "content", response) or ""))
-    username_locator = _locator_for_element(elements, str(payload.get("username_element_id") or ""))
-    password_locator = _locator_for_element(elements, str(payload.get("password_element_id") or ""))
-    captcha_image_locator = _locator_for_element(elements, str(payload.get("captcha_image_element_id") or ""))
-    captcha_input_locator = _locator_for_element(elements, str(payload.get("captcha_input_element_id") or ""))
-    agreement_locator = _locator_for_element(elements, str(payload.get("agreement_element_id") or ""))
+    raw_response = str(getattr(response, "content", response) or "").strip()
+    _write_debug_payload(page_image_path, raw_response)
+    payload = _extract_structured_payload(response)
+    username_locator = _locator_for_element(elements, str(payload.username_element_id or ""))
+    password_locator = _locator_for_element(elements, str(payload.password_element_id or ""))
+    captcha_image_locator = _locator_for_element(elements, str(payload.captcha_image_element_id or ""))
+    captcha_input_locator = _locator_for_element(elements, str(payload.captcha_input_element_id or ""))
+    agreement_locator = _locator_for_element(elements, str(payload.agreement_element_id or ""))
     if not agreement_locator:
         agreement_locator = _heuristic_agreement_locator(elements)
-    login_button_locator = _locator_for_element(elements, str(payload.get("login_button_element_id") or ""))
+    login_button_locator = _locator_for_element(elements, str(payload.login_button_element_id or ""))
 
     if not username_locator or not password_locator or not captcha_image_locator or not captcha_input_locator or not login_button_locator:
         return {"strategy": "heuristic"}
@@ -157,3 +146,20 @@ def analyze_login_form(page_image_path: Path, elements: list[dict]) -> dict:
         "login_button_selector": login_button_locator.get("value", ""),
         "has_agreement_checkbox": bool(agreement_locator),
     }
+
+
+def _extract_structured_payload(response):
+    if hasattr(response, "structured_response") and response.structured_response is not None:
+        return response.structured_response
+    if isinstance(response, dict) and "structured_response" in response:
+        return response["structured_response"]
+    raise LoginFormAnalyzerError("登录页元素规划结果缺少结构化输出。")
+
+
+def _write_debug_payload(page_image_path: Path, raw_response: str) -> None:
+    if not raw_response:
+        return
+    debug_dir = Path(settings.PROJECT_FILE_STORAGE_ROOT) / "debug" / "login-form-analysis"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    debug_path = debug_dir / f"{Path(page_image_path).stem}.txt"
+    debug_path.write_text(raw_response + "\n", encoding="utf-8")

@@ -17,7 +17,7 @@ LEFT JOIN source_documents rd ON rd.id = er.requirement_doc_id
 
 
 def list_by_project(db: Connection, project_id: str) -> list[Row]:
-    return db.execute(
+    rows = db.execute(
         f"""
         {BASE_SELECT}
         WHERE er.project_id = ?
@@ -25,19 +25,21 @@ def list_by_project(db: Connection, project_id: str) -> list[Row]:
         """,
         (project_id,),
     ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def list_visible(db: Connection, actor: Row) -> list[Row]:
     if actor["role"] in {"admin", "guest"} or actor["project_scope"] == "全部项目":
-        return db.execute(
+        rows = db.execute(
             f"""
             {BASE_SELECT}
             WHERE p.status != 'archived'
             ORDER BY er.updated_at DESC, er.created_at DESC
             """
         ).fetchall()
+        return [dict(row) for row in rows]
 
-    return db.execute(
+    rows = db.execute(
         f"""
         {BASE_SELECT}
         WHERE p.status != 'archived' AND p.name = ?
@@ -45,10 +47,12 @@ def list_visible(db: Connection, actor: Row) -> list[Row]:
         """,
         (actor["project_scope"],),
     ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def find_by_id(db: Connection, run_id: str) -> Row | None:
-    return db.execute(f"{BASE_SELECT} WHERE er.id = ?", (run_id,)).fetchone()
+    row = db.execute(f"{BASE_SELECT} WHERE er.id = ?", (run_id,)).fetchone()
+    return dict(row) if row else None
 
 
 def list_module_coverages(db: Connection, run_id: str) -> list[Row]:
@@ -280,6 +284,55 @@ def update_module_coverages_status(
         WHERE exploration_run_id = ? AND completion_status = ?
         """,
         values,
+    )
+
+
+def update_module_coverage(
+    db: Connection,
+    *,
+    exploration_run_id: str,
+    module_key: str,
+    module_name: str,
+    entry_path: str,
+    planned_page_count: int,
+    explored_page_count: int,
+    blocked_page_count: int,
+    action_count: int,
+    field_count: int,
+    state_transition_count: int,
+    completion_status: str,
+    completion_summary: str,
+) -> None:
+    """更新已存在的模块覆盖记录"""
+    db.execute(
+        """
+        UPDATE exploration_module_coverages
+        SET module_name = ?,
+            entry_path = ?,
+            planned_page_count = ?,
+            explored_page_count = ?,
+            blocked_page_count = ?,
+            action_count = ?,
+            field_count = ?,
+            state_transition_count = ?,
+            completion_status = ?,
+            completion_summary = ?
+        WHERE exploration_run_id = ? AND module_key = ?
+        """,
+        (
+            module_name,
+            entry_path,
+            planned_page_count,
+            explored_page_count,
+            blocked_page_count,
+            action_count,
+            field_count,
+            state_transition_count,
+            completion_status,
+            completion_summary,
+            exploration_run_id,
+            module_key,
+        ),
     )
 
 

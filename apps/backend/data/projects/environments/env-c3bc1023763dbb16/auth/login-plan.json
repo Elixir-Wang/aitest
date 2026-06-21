@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "strategy": "planned",
+  "site_url": "https://www.cybotstar.cn/agentStore",
+  "username_locator": {
+    "type": "placeholder",
+    "value": "请输入邮箱/手机号"
+  },
+  "password_locator": {
+    "type": "placeholder",
+    "value": "请输入密码"
+  },
+  "captcha_image_locator": {
+    "type": "css",
+    "value": "img.verify-code"
+  },
+  "captcha_input_locator": {
+    "type": "placeholder",
+    "value": "请输入图形验证码"
+  },
+  "agreement_locator": {
+    "type": "text",
+    "value": "我已阅读并同意"
+  },
+  "login_button_locator": {
+    "type": "role",
+    "role": "button",
+    "name": "登录"
+  },
+  "username_selector": "请输入邮箱/手机号",
+  "password_selector": "请输入密码",
+  "captcha_image_selector": "img.verify-code",
+  "captcha_input_selector": "请输入图形验证码",
+  "agreement_selector": "我已阅读并同意",
+  "login_button_selector": "",
+  "has_agreement_checkbox": true,
+  "created_from": "successful_login",
+  "created_at": "2026-06-21T23:16:01.463Z",
+  "dom_fingerprint": {
+    "host": "www.cybotstar.cn",
+    "title": "百融百工",
+    "element_count": 21
+  }
+}

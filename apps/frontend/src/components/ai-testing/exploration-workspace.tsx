@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useSearchParams } from "next/navigation";
 
-import { CircleHelp, Eye, EyeOff, LogIn, Pencil, Play, Plus, Save, Square, Trash2, X } from "lucide-react";
+import { CircleHelp, Eye, EyeOff, LogIn, Pencil, Play, Plus, Save, Sparkles, Square, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
@@ -28,8 +28,8 @@ import { authStateStatusTone, explorationStatusTone, StatusBadge } from "@/compo
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { type ApiProject, ApiRequestError, apiRequest, formatDateTime } from "@/lib/api-client";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
+import { type ApiProject, ApiRequestError, apiRequest, formatDateTime } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
 
 type ProjectScope = "all" | "project";
@@ -58,6 +58,7 @@ type RequirementDocument = {
   id: string;
   name: string;
   status: string;
+  current_version_id: string | null;
   created_at: string;
   latest_requirement_analysis_run?: {
     id: string;
@@ -66,7 +67,7 @@ type RequirementDocument = {
 };
 
 function isExplorationLinkableRequirement(requirement: RequirementDocument) {
-  return requirement.latest_requirement_analysis_run?.status === "completed";
+  return Boolean(requirement.current_version_id);
 }
 
 type ExplorationRun = {
@@ -90,6 +91,10 @@ type ExplorationRun = {
   created_at: string;
   updated_at: string;
   available_actions: string[];
+};
+
+type ExplorationGoalOptimizeResult = {
+  optimized_goal: string;
 };
 
 type ExplorationWorkspaceProps = {
@@ -166,6 +171,7 @@ const statusLabels: Record<string, string> = {
   running: "探索中",
   stopping: "正在停止",
   cancelled: "已停止",
+  interrupted: "已中断",
   partial: "部分完成",
   completed: "已完成",
   blocked: "阻塞",
@@ -208,6 +214,7 @@ const reuseAuthStateOptions = ["enabled", "disabled"];
 
 const explorationTabs = ["探索列表", "探索环境"];
 const NO_REQUIREMENT_VALUE = "__none__";
+const EXPLORATION_GOAL_MAX_LENGTH = 4000;
 const STOPPABLE_EXPLORATION_STATUSES = new Set(["queued", "running"]);
 const LOADING_EXPLORATION_STATUSES = new Set(["queued", "running", "stopping"]);
 const ACTIVE_MANUAL_AUTH_SESSION_STATUSES = new Set(["waiting_human"]);
@@ -279,13 +286,7 @@ function ExplorationStatusBadge({ status }: { status: string }) {
   );
 }
 
-function EnvironmentAuthStateBadge({
-  message,
-  status,
-}: {
-  message?: string;
-  status: string;
-}) {
+function EnvironmentAuthStateBadge({ message, status }: { message?: string; status: string }) {
   const isLoading = LOGGING_IN_AUTH_STATE_STATUSES.has(status);
   const badge = (
     <StatusBadge tone={authStateStatusTone(status)}>
@@ -344,6 +345,7 @@ export function ExplorationWorkspace({
   const [manualAuthAction, setManualAuthAction] = useState<"cancel" | "save" | "start" | "">("");
   const [stoppingExploration, setStoppingExploration] = useState<ExplorationRun | null>(null);
   const [stoppingExplorationId, setStoppingExplorationId] = useState("");
+  const [startingExplorationId, setStartingExplorationId] = useState("");
   const [explorationLoading, setExplorationLoading] = useState(true);
   const [environmentLoading, setEnvironmentLoading] = useState(true);
   const [requirementLoading, setRequirementLoading] = useState(false);
@@ -357,6 +359,10 @@ export function ExplorationWorkspace({
     ...emptyExplorationForm,
     projectId: projectId ?? "",
   });
+  const [goalOptimizeOpen, setGoalOptimizeOpen] = useState(false);
+  const [goalOptimizeLoading, setGoalOptimizeLoading] = useState(false);
+  const [goalOptimizeSource, setGoalOptimizeSource] = useState("");
+  const [goalOptimizeResult, setGoalOptimizeResult] = useState("");
   const explorationSelection = useLocalTableSelection<ExplorationRun>([]);
   const {
     allSelected,
@@ -401,7 +407,7 @@ export function ExplorationWorkspace({
     return () => {
       ignore = true;
     };
-  }, [projectScope]);
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -432,10 +438,7 @@ export function ExplorationWorkspace({
     };
   }, [setRows]);
 
-  const hasLoggingInEnvironment = useMemo(
-    () => rows.some((item) => item.auth_state_status === "logging_in"),
-    [rows],
-  );
+  const hasLoggingInEnvironment = useMemo(() => rows.some((item) => item.auth_state_status === "logging_in"), [rows]);
 
   useEffect(() => {
     if (!hasLoggingInEnvironment) {
@@ -525,10 +528,11 @@ export function ExplorationWorkspace({
           setRequirements(data);
           setExplorationForm((current) => ({
             ...current,
-            requirementDocId:
-              data.some((item) => item.id === current.requirementDocId && isExplorationLinkableRequirement(item))
-                ? current.requirementDocId
-                : "",
+            requirementDocId: data.some(
+              (item) => item.id === current.requirementDocId && isExplorationLinkableRequirement(item),
+            )
+              ? current.requirementDocId
+              : "",
           }));
         }
       } catch (requestError) {
@@ -639,16 +643,13 @@ export function ExplorationWorkspace({
     }
     return [linkedRequirement, ...linkable];
   }, [explorationForm.requirementDocId, requirements]);
-  const selectedRequirementLabel = useMemo(() => {
-    const selected = availableRequirements.find((item) => item.id === explorationForm.requirementDocId);
-    return selected?.name ?? "";
-  }, [availableRequirements, explorationForm.requirementDocId]);
   const canCreateExploration = selectedProjectId.length > 0 && explorationForm.environmentId.length > 0;
   const explorationProjectSelectDisabled = [
     projectScope === "project",
     projectLoading,
     editingExploration !== null,
   ].some(Boolean);
+  const goalOptimizeCharacterCount = goalOptimizeResult.length;
 
   const syncManualAuthState = useCallback(
     (session: ManualAuthSession, environmentId: string) => {
@@ -815,6 +816,60 @@ export function ExplorationWorkspace({
       timeoutMinutes: String(run.timeout_minutes ?? 120),
     });
     setExplorationDialogOpen(true);
+  }
+
+  async function requestGoalOptimization(sourceGoal: string) {
+    const targetProjectId = projectScope === "project" ? projectId : explorationForm.projectId;
+    if (!targetProjectId) {
+      toast.error("请选择项目");
+      return;
+    }
+    const normalizedGoal = sourceGoal.trim();
+    if (!normalizedGoal) {
+      toast.error("请先输入探索目标");
+      return;
+    }
+    if (normalizedGoal.length > EXPLORATION_GOAL_MAX_LENGTH) {
+      toast.error(`探索目标不能超过 ${EXPLORATION_GOAL_MAX_LENGTH} 字`);
+      return;
+    }
+
+    setGoalOptimizeLoading(true);
+    try {
+      const result = await apiRequest<ExplorationGoalOptimizeResult>(
+        `/projects/${targetProjectId}/exploration-goal/optimize`,
+        {
+          method: "POST",
+          body: JSON.stringify({ goal: normalizedGoal }),
+        },
+      );
+      setGoalOptimizeResult(result.optimized_goal);
+      setGoalOptimizeSource(normalizedGoal);
+      setGoalOptimizeOpen(true);
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "探索目标优化失败",
+        actionLabel: "优化探索目标",
+        method: "POST",
+        path: `/projects/${targetProjectId}/exploration-goal/optimize`,
+      });
+    } finally {
+      setGoalOptimizeLoading(false);
+    }
+  }
+
+  function openGoalOptimizeDialog() {
+    void requestGoalOptimization(explorationForm.goal);
+  }
+
+  function useOptimizedGoal() {
+    const optimizedGoal = goalOptimizeResult.trim();
+    if (!optimizedGoal) {
+      toast.error("暂无可使用的优化结果");
+      return;
+    }
+    setExplorationForm((current) => ({ ...current, goal: optimizedGoal }));
+    setGoalOptimizeOpen(false);
   }
 
   async function saveEnvironment() {
@@ -1028,15 +1083,35 @@ export function ExplorationWorkspace({
     }
   }
 
+  async function startExplorationRun(run: ExplorationRun) {
+    setStartingExplorationId(run.id);
+    try {
+      const updated = await apiRequest<ExplorationRun>(`/projects/${run.project_id}/exploration-runs/${run.id}/start`, {
+        method: "POST",
+      });
+      explorationSelection.setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+      notifyAiTaskStarted();
+      toast.success(run.status === "pending" ? "探索任务已开始" : "重新探索已开始");
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "探索任务启动失败",
+        actionLabel: run.status === "pending" ? "启动探索任务" : "重新探索",
+        method: "POST",
+        path: `/projects/${run.project_id}/exploration-runs/${run.id}/start`,
+      });
+    } finally {
+      setStartingExplorationId("");
+    }
+  }
+
   async function startAiLetterAutoAuth(environment: ExplorationEnvironment) {
     if (environment.auth_state_status === "logging_in") {
       return;
     }
     try {
-      const updated = await apiRequest<ExplorationEnvironment>(
-        `/environments/${environment.id}/auto-auth/start`,
-        { method: "POST" },
-      );
+      const updated = await apiRequest<ExplorationEnvironment>(`/environments/${environment.id}/auto-auth/start`, {
+        method: "POST",
+      });
       setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
       if (editingEnvironment?.id === updated.id) {
         setEditingEnvironment(updated);
@@ -1060,10 +1135,9 @@ export function ExplorationWorkspace({
     }
     setManualAuthAction("start");
     try {
-      const session = await apiRequest<ManualAuthSession>(
-        `/environments/${editingEnvironment.id}/manual-auth/start`,
-        { method: "POST" },
-      );
+      const session = await apiRequest<ManualAuthSession>(`/environments/${editingEnvironment.id}/manual-auth/start`, {
+        method: "POST",
+      });
       setManualAuthSession(session);
       toast.success(session.message || "登录窗口已打开");
     } catch (requestError) {
@@ -1266,6 +1340,16 @@ export function ExplorationWorkspace({
                             icon: Pencil,
                             onSelect: () => openEditExplorationDialog(item),
                           },
+                          ...(item.available_actions.includes("start")
+                            ? [
+                                {
+                                  label: item.status === "pending" ? "开始探索" : "重新探索",
+                                  icon: Play,
+                                  disabled: startingExplorationId === item.id,
+                                  onSelect: () => void startExplorationRun(item),
+                                },
+                              ]
+                            : []),
                           ...(STOPPABLE_EXPLORATION_STATUSES.has(item.status)
                             ? [
                                 {
@@ -1361,10 +1445,7 @@ export function ExplorationWorkspace({
                     </TableCell>
                     <TableCell>
                       <div className="flex min-w-28">
-                        <EnvironmentAuthStateBadge
-                          message={item.auth_state_message}
-                          status={item.auth_state_status}
-                        />
+                        <EnvironmentAuthStateBadge message={item.auth_state_message} status={item.auth_state_status} />
                       </div>
                     </TableCell>
                     <TableCell>{formatDateTime(item.updated_at)}</TableCell>
@@ -1581,9 +1662,11 @@ export function ExplorationWorkspace({
                       ) : showAiLetterAutoAuthStatus ? (
                         <p className="text-muted-foreground text-xs">
                           {selectedAuthStateStatus === "logging_in"
-                            ? editingEnvironment?.auth_state_message || "正在通过 Playwright 自动登录（验证码 AI 识别，最多 3 次）…"
+                            ? editingEnvironment?.auth_state_message ||
+                              "正在通过 Playwright 自动登录（验证码 AI 识别，最多 3 次）…"
                             : selectedAuthStateStatus === "login_failed"
-                              ? editingEnvironment?.auth_state_message || "自动登录失败，请检查账号密码或模型配置后重新保存环境。"
+                              ? editingEnvironment?.auth_state_message ||
+                                "自动登录失败，请检查账号密码或模型配置后重新保存环境。"
                               : selectedAuthStateStatus === "valid"
                                 ? "登录态已自动保存，探索任务将直接复用。"
                                 : "保存环境后将自动登录并保存登录态。"}
@@ -1774,9 +1857,7 @@ export function ExplorationWorkspace({
                   </SelectOption>
                 ))}
               </Select>
-              {selectedRequirementLabel ? (
-                <p className="text-muted-foreground text-xs">已关联：{selectedRequirementLabel}</p>
-              ) : !requirementLoading && availableRequirements.length === 0 ? (
+              {!requirementLoading && availableRequirements.length === 0 ? (
                 <p className="text-muted-foreground text-xs">当前项目没有可关联的需求，请先完成需求分析。</p>
               ) : null}
             </Field>
@@ -1803,10 +1884,24 @@ export function ExplorationWorkspace({
               />
             </Field>
             <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="exploration-goal">探索目标</FieldLabel>
+              <div className="flex items-center justify-between gap-3">
+                <FieldLabel htmlFor="exploration-goal">探索目标</FieldLabel>
+                <Button
+                  className="text-primary hover:text-primary"
+                  disabled={goalOptimizeLoading}
+                  onClick={openGoalOptimizeDialog}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  {goalOptimizeLoading ? <Loader size={14} /> : <Sparkles className="size-4" />}
+                  AI 生成
+                </Button>
+              </div>
               <Textarea
                 className="min-h-20"
                 id="exploration-goal"
+                maxLength={EXPLORATION_GOAL_MAX_LENGTH}
                 onChange={(event) => setExplorationForm((current) => ({ ...current, goal: event.target.value }))}
                 placeholder={explorationPlaceholders.goal}
                 value={explorationForm.goal}
@@ -1883,6 +1978,49 @@ export function ExplorationWorkspace({
                   创建任务
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog onOpenChange={setGoalOptimizeOpen} open={goalOptimizeOpen}>
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="shrink-0 px-6 pt-6">
+            <DialogTitle>大模型优化</DialogTitle>
+          </DialogHeader>
+          <div className="min-h-0 overflow-y-auto px-6 py-5">
+            <div className="relative">
+              <Textarea
+                className="min-h-[360px] resize-none pr-14"
+                onChange={(event) => setGoalOptimizeResult(event.target.value)}
+                value={goalOptimizeResult}
+              />
+              <span className="absolute right-3 bottom-3 text-muted-foreground text-xs">
+                {goalOptimizeCharacterCount}
+              </span>
+            </div>
+          </div>
+          <DialogFooter className="m-0 flex-row justify-center gap-3 px-6 py-4 sm:justify-center">
+            <Button onClick={() => setGoalOptimizeOpen(false)} type="button" variant="outline">
+              <X className="size-4" />
+              取消
+            </Button>
+            <Button
+              disabled={goalOptimizeLoading}
+              onClick={() => requestGoalOptimization(goalOptimizeSource)}
+              type="button"
+              variant="secondary"
+            >
+              {goalOptimizeLoading ? <Loader size={14} /> : <Sparkles className="size-4" />}
+              重新生成
+            </Button>
+            <Button
+              disabled={goalOptimizeLoading || !goalOptimizeResult.trim()}
+              onClick={useOptimizedGoal}
+              type="button"
+            >
+              <Save className="size-4" />
+              使用
             </Button>
           </DialogFooter>
         </DialogContent>

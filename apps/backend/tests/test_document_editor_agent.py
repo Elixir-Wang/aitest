@@ -57,6 +57,31 @@ def test_build_agent_model_uses_openai_compatible_client(monkeypatch: pytest.Mon
     assert calls["temperature"] == 0
 
 
+def test_build_agent_model_passes_extra_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.agents.model_selection import build_agent_model
+
+    calls = {}
+
+    def fake_chat_openai(**kwargs):
+        calls.update(kwargs)
+        return "chat-model"
+
+    monkeypatch.setattr("app.agents.model_selection.ChatOpenAI", fake_chat_openai)
+
+    model = build_agent_model(
+        ModelSelection(
+            provider="Minimax",
+            model="MiniMax-M3",
+            base_url="https://minimax.example/v1",
+            api_key="sk-test",
+        ),
+        extra_body={"thinking": {"type": "disabled"}},
+    )
+
+    assert model == "chat-model"
+    assert calls["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
 def test_document_editor_service_returns_structured_response(monkeypatch: pytest.MonkeyPatch) -> None:
     original_content = "# Old title\n\n" + "Body line.\n" * 20
     edited_content = "# New title\n\n" + "Body line.\n" * 20

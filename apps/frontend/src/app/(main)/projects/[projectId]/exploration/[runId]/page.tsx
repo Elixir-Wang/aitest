@@ -8,17 +8,15 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
-  Download,
   Eye,
   FileText,
-  Loader2,
   Pencil,
   Play,
   RefreshCw,
   Route,
-  Save,
   Search,
   Square,
+  ListChecks,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,7 +25,7 @@ import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { useProjectName } from "@/components/ai-testing/use-project-name";
 import { AgentPlan, type AgentPlanStatus, type AgentPlanTask } from "@/components/ui/agent-plan";
-import { AiEditInput } from "@/components/ui/ai-input";
+import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
 import { Button as PaginationButton } from "@/components/ui/button-1";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,13 +41,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
-import { Select, SelectOption } from "@/components/ui/animated-select-1";
-import {
-  explorationPlanStatusTone,
-  goalValidationStatusTone,
-  logLevelTone,
-  StatusBadge,
-} from "@/components/ui/status-badge";
+import { logLevelTone, StatusBadge, type StatusBadgeTone } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
@@ -89,8 +81,6 @@ type ExplorationRunDetail = {
   artifact_schema_version: number;
   unsupported_artifact: boolean;
   unsupported_reason: string;
-  goal_validation?: ExplorationGoalValidation;
-  exploration_plan?: ExplorationPlan;
   modules: Array<{
     id: string;
     module_key: string;
@@ -103,6 +93,7 @@ type ExplorationRunDetail = {
     field_count: number;
     state_transition_count: number;
     completion_status: string;
+    completion_summary: string;
     pages: Array<{
       id: string;
       title: string;
@@ -136,39 +127,6 @@ type ExplorationRunDetail = {
       is_blocking: boolean;
     }>;
   }>;
-};
-
-type ExplorationGoalValidation = {
-  goal: string;
-  status: string;
-  summary: string;
-  stats?: Record<string, unknown>;
-  items?: Array<Record<string, unknown>>;
-};
-
-type ExplorationPlanStatus = "not_generated" | "draft" | "confirmed" | "running" | "completed" | "blocked";
-
-type ExplorationPlan = {
-  artifact_schema_version: number;
-  plan_status: "not_generated" | "draft" | "confirmed" | "running" | "completed" | "blocked";
-  business_boundary: string;
-  goal: string;
-  summary: string;
-  items: ExplorationPlanItem[];
-};
-
-type ExplorationPlanItem = {
-  id: string;
-  business_module: string;
-  capability_type: string;
-  title: string;
-  steps: string[];
-  exploration_points: string[];
-};
-
-type DocumentEditResponse = {
-  edited_content: string;
-  change_summary: string;
 };
 
 type ExplorationStep = {
@@ -243,9 +201,78 @@ type ApiExplorationLogItem = {
 };
 
 type ExplorationStreamEvent = {
+  event_id?: number;
   type: string;
   run_id: string;
-  payload: Record<string, unknown>;
+  payload: Record<string, unknown> | ExplorationRunDetail;
+};
+
+type ExplorationMonitorPlanStep = {
+  step_id: string;
+  step_number: number;
+  module_name: string;
+  action_type: string;
+  description: string;
+  target_description: string;
+  target_selector: string;
+  value: string;
+  expected_result: string;
+  execution_strategy: string;
+  is_critical: boolean;
+  retry_on_failure: boolean;
+  max_retries: number;
+};
+
+type ExplorationMonitorStep = ExplorationMonitorPlanStep & {
+  status: AgentPlanStatus;
+  total_steps: number;
+  attempt: number;
+  started_at: string;
+  completed_at: string;
+  duration_ms: number | null;
+  success: boolean | null;
+  message: string;
+  error: string;
+  failure_type: string;
+  retryable: boolean;
+  matched_element: {
+    id: string;
+    role: string;
+    name: string;
+    selector: string;
+  };
+  page_state: {
+    url: string;
+    title: string;
+    element_count: number;
+  };
+  screenshot_path: string;
+};
+
+type ExplorationMonitorEvent = {
+  id: string;
+  type: string;
+  label: string;
+  summary: string;
+  occurred_at: string;
+  status: AgentPlanStatus;
+};
+
+type ExplorationMonitorState = {
+  phase: string;
+  plan: {
+    plan_id: string;
+    goal_summary: string;
+    scope_summary: string;
+    strategy: string;
+    modules: string[];
+    estimated_duration_minutes: number | null;
+    risk_assessment: string;
+    success_criteria: string[];
+    total_steps: number;
+  } | null;
+  steps: ExplorationMonitorStep[];
+  events: ExplorationMonitorEvent[];
 };
 
 type ExplorationEnvironment = {
@@ -257,6 +284,7 @@ type RequirementDocument = {
   id: string;
   name: string;
   status: string;
+  current_version_id: string | null;
   created_at: string;
   latest_requirement_analysis_run?: {
     id: string;
@@ -265,7 +293,7 @@ type RequirementDocument = {
 };
 
 function isExplorationLinkableRequirement(requirement: RequirementDocument) {
-  return requirement.latest_requirement_analysis_run?.status === "completed";
+  return Boolean(requirement.current_version_id);
 }
 
 type ExplorationForm = {
@@ -311,26 +339,10 @@ const statusLabels: Record<string, string> = {
   running: "探索中",
   stopping: "正在停止",
   cancelled: "已中止",
+  interrupted: "已中断",
   partial: "部分完成",
   completed: "已完成",
   blocked: "阻塞",
-};
-
-const goalValidationStatusLabels: Record<string, string> = {
-  pending: "待验证",
-  passed: "已通过",
-  partial: "部分完成",
-  failed: "未通过",
-  skipped: "已跳过",
-};
-
-const explorationPlanStatusLabels: Record<ExplorationPlanStatus, string> = {
-  not_generated: "未生成",
-  draft: "待确认",
-  confirmed: "已确认",
-  running: "探索中",
-  completed: "已完成",
-  blocked: "有阻塞",
 };
 
 const loginStrategyLabels: Record<string, string> = {
@@ -340,6 +352,11 @@ const loginStrategyLabels: Record<string, string> = {
 
 const logTypeLabels: Record<string, string> = {
   run_started: "探索开始",
+  planning_started: "规划开始",
+  planning_completed: "规划完成",
+  execution_started: "执行开始",
+  execution_completed: "执行完成",
+  exploration_cancelled: "探索取消",
   login_started: "登录开始",
   login_completed: "登录完成",
   page_discovered: "发现页面",
@@ -355,6 +372,14 @@ const logTypeLabels: Record<string, string> = {
   action_started: "开始动作",
   action_result: "动作结果",
   action_completed: "动作完成",
+  step_started: "步骤开始",
+  step_completed: "步骤完成",
+  step_failed: "步骤失败",
+  step_skipped: "步骤跳过",
+  step_retrying: "步骤重试",
+  step_recorded: "探索步骤",
+  direct_step_started: "直接执行开始",
+  agentic_step_started: "智能执行开始",
   edge_created: "记录关系",
   artifact_written: "写入产物",
   blocked: "探索阻塞",
@@ -362,6 +387,13 @@ const logTypeLabels: Record<string, string> = {
   error: "错误",
   run_completed: "探索完成",
   raw: "原始日志",
+};
+
+const emptyMonitorState: ExplorationMonitorState = {
+  phase: "idle",
+  plan: null,
+  steps: [],
+  events: [],
 };
 
 const logCategoryLabels: Record<LogCategory, string> = {
@@ -449,29 +481,385 @@ function applyStreamEvent(
   event: ExplorationStreamEvent,
   setters: {
     setStreamDetail: React.Dispatch<React.SetStateAction<ExplorationRunDetail | null>>;
+    setMonitor: React.Dispatch<React.SetStateAction<ExplorationMonitorState>>;
     setRun: React.Dispatch<React.SetStateAction<ExplorationRun | null>>;
   },
 ) {
+  if (event.type === "run_snapshot") {
+    const snapshot = normalizeExplorationRunDetail(event.payload as ExplorationRunDetail);
+    setters.setRun(snapshot.run);
+    setters.setStreamDetail(snapshot);
+    setters.setMonitor(monitorFromRunDetail(snapshot));
+    return;
+  }
+
+  setters.setMonitor((current) => mergeMonitorEvent(current, event));
+
+  // 处理运行状态事件
   if (
     event.type === "run_started" ||
     event.type === "run_completed" ||
     event.type === "run_failed" ||
-    event.type === "run_cancelled"
+    event.type === "run_cancelled" ||
+    event.type === "run_status_updated"
   ) {
     setters.setRun((current) => (current ? { ...current, ...(event.payload as Partial<ExplorationRun>) } : current));
     setters.setStreamDetail((current) =>
       current ? { ...current, run: { ...current.run, ...(event.payload as Partial<ExplorationRun>) } } : current,
     );
   }
+
+  // 处理规划和执行阶段事件
+  if (
+    event.type === "planning_started" ||
+    event.type === "planning_completed" ||
+    event.type === "step_started" ||
+    event.type === "step_completed" ||
+    event.type === "step_failed" ||
+    event.type === "step_skipped" ||
+    event.type === "step_retrying" ||
+    event.type === "re_planning_started" ||
+    event.type === "re_planning_completed"
+  ) {
+    return;
+  }
+
+  // 处理模块事件
   if (event.type.startsWith("module_")) {
     setters.setStreamDetail((current) => mergeModuleEvent(current, event));
-  } else if (event.type.startsWith("page_")) {
+  }
+  // 处理页面事件
+  else if (event.type.startsWith("page_")) {
     setters.setStreamDetail((current) => mergePageEvent(current, event));
-  } else if (event.type === "step_recorded") {
+  }
+  // 处理步骤事件
+  else if (event.type === "step_recorded") {
     setters.setStreamDetail((current) => mergeStepEvent(current, event));
-  } else if (event.type === "blocker_detected") {
+  }
+  // 处理阻塞事件
+  else if (event.type === "blocker_detected") {
     setters.setStreamDetail((current) => mergeBlockerEvent(current, event));
   }
+}
+
+function mergeMonitorEvent(current: ExplorationMonitorState, event: ExplorationStreamEvent): ExplorationMonitorState {
+  if (event.type === "run_snapshot") {
+    return monitorFromRunDetail(event.payload as ExplorationRunDetail);
+  }
+  const payload = event.payload as Record<string, unknown>;
+  let next: ExplorationMonitorState = {
+    ...current,
+    phase: monitorPhaseFromEvent(event.type, current.phase),
+  };
+
+  if (event.type === "planning_completed") {
+    const steps = normalizeMonitorPlanSteps(payload.steps);
+    next = {
+      ...next,
+      plan: {
+        plan_id: stringValue(payload.plan_id),
+        goal_summary: stringValue(payload.goal_summary),
+        scope_summary: stringValue(payload.scope_summary),
+        strategy: stringValue(payload.strategy),
+        modules: arrayOfStrings(payload.modules),
+        estimated_duration_minutes: numberOrNull(payload.estimated_duration_minutes),
+        risk_assessment: stringValue(payload.risk_assessment),
+        success_criteria: arrayOfStrings(payload.success_criteria),
+        total_steps: Number(payload.total_steps || steps.length || 0),
+      },
+      steps: mergeMonitorPlanSteps(next.steps, steps),
+    };
+  }
+
+  if (isStepMonitorEvent(event.type)) {
+    const incomingStep = monitorStepFromPayload(event.type, payload, current.plan?.total_steps ?? 0);
+    if (incomingStep) {
+      next = { ...next, steps: upsertMonitorStep(next.steps, incomingStep) };
+    }
+  }
+
+  return {
+    ...next,
+    events: [monitorTimelineEvent(event), ...next.events].slice(0, 80),
+  };
+}
+
+function monitorFromRunDetail(detail: ExplorationRunDetail): ExplorationMonitorState {
+  const steps = monitorStepsFromDetail(detail);
+  return {
+    phase: monitorPhaseFromRunStatus(detail.run.status),
+    plan: monitorPlanFromDetail(detail, steps),
+    steps,
+    events: monitorEventsFromDetail(detail, steps),
+  };
+}
+
+function monitorStepsFromDetail(detail: ExplorationRunDetail): ExplorationMonitorStep[] {
+  const steps: ExplorationMonitorStep[] = [];
+  for (const module of detail.modules) {
+    for (const page of module.pages) {
+      for (const step of page.steps ?? []) {
+        const planStep = monitorPlanStepFromDetailStep(step, module.module_name, steps.length + 1);
+        steps.push({
+          ...emptyMonitorStep(planStep),
+          status: normalizeAgentPlanStatus(step.status || page.status || module.completion_status),
+          completed_at: step.occurred_at || "",
+          message: step.detail || "",
+        });
+      }
+    }
+  }
+  return steps;
+}
+
+function monitorPlanStepFromDetailStep(
+  step: ExplorationStep,
+  moduleName: string,
+  fallbackIndex: number,
+): ExplorationMonitorPlanStep {
+  return {
+    step_id: step.id || `snapshot-step-${String(fallbackIndex).padStart(3, "0")}`,
+    step_number: fallbackIndex,
+    module_name: moduleName,
+    action_type: step.type || "event",
+    description: step.title || "探索步骤",
+    target_description: step.detail ?? step.title ?? "",
+    target_selector: "",
+    value: "",
+    expected_result: step.detail ?? "",
+    execution_strategy: step.source === "exploration_plan" ? "planned" : "observed",
+    is_critical: false,
+    retry_on_failure: false,
+    max_retries: 0,
+  };
+}
+
+function monitorPlanFromDetail(
+  detail: ExplorationRunDetail,
+  steps: ExplorationMonitorStep[],
+): ExplorationMonitorState["plan"] {
+  if (!steps.length && !isActiveStatus(detail.run.status)) {
+    return null;
+  }
+  return {
+    plan_id: "",
+    goal_summary: detail.run.goal,
+    scope_summary: detail.run.scope,
+    strategy: "目标驱动探索",
+    modules: detail.modules.map((module) => module.module_name).filter(Boolean),
+    estimated_duration_minutes: detail.run.timeout_minutes,
+    risk_assessment: detail.run.forbidden_paths ? `禁止路径：${detail.run.forbidden_paths}` : "",
+    success_criteria: detail.run.goal ? [detail.run.goal] : [],
+    total_steps: steps.length,
+  };
+}
+
+function monitorEventsFromDetail(
+  detail: ExplorationRunDetail,
+  steps: ExplorationMonitorStep[],
+): ExplorationMonitorEvent[] {
+  const events = steps
+    .filter((step) => step.message || step.status !== "pending")
+    .slice(-20)
+    .reverse()
+    .map((step) => ({
+      id: `snapshot-${step.step_id}`,
+      type: "run_snapshot",
+      label: "当前步骤",
+      summary: step.message || step.description,
+      occurred_at: step.completed_at || detail.run.updated_at,
+      status: step.status,
+    }));
+  if (detail.run.result_summary) {
+    events.unshift({
+      id: "snapshot-run-summary",
+      type: "run_snapshot",
+      label: "当前状态",
+      summary: detail.run.result_summary,
+      occurred_at: detail.run.updated_at,
+      status: normalizeAgentPlanStatus(detail.run.status),
+    });
+  }
+  return events;
+}
+
+function monitorPhaseFromRunStatus(status: string): string {
+  if (status === "queued") return "planning";
+  if (status === "running" || status === "stopping") return "executing";
+  if (status === "completed" || status === "partial") return "completed";
+  if (status === "blocked" || status === "failed" || status === "interrupted") return "failed";
+  if (status === "cancelled") return "cancelled";
+  return "idle";
+}
+
+function monitorPhaseFromEvent(eventType: string, currentPhase: string): string {
+  if (eventType === "planning_started") return "planning";
+  if (eventType === "planning_completed") return "planned";
+  if (eventType === "execution_started" || eventType === "step_started") return "executing";
+  if (eventType === "re_planning_started") return "replanning";
+  if (eventType === "run_completed") return "completed";
+  if (eventType === "run_failed" || eventType === "error") return "failed";
+  if (eventType === "run_cancelled" || eventType === "exploration_cancelled") return "cancelled";
+  return currentPhase;
+}
+
+function isStepMonitorEvent(eventType: string): boolean {
+  return ["step_started", "step_completed", "step_failed", "step_skipped", "step_retrying"].includes(eventType);
+}
+
+function normalizeMonitorPlanSteps(value: unknown): ExplorationMonitorPlanStep[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item, index) => monitorPlanStepFromPayload(item, index + 1)).filter(Boolean);
+}
+
+function monitorPlanStepFromPayload(value: unknown, fallbackIndex: number): ExplorationMonitorPlanStep {
+  const item = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    step_id: stringValue(item.step_id || `step-${String(fallbackIndex).padStart(3, "0")}`),
+    step_number: Number(item.step_number || fallbackIndex),
+    module_name: stringValue(item.module_name),
+    action_type: stringValue(item.action_type || "event"),
+    description: stringValue(item.description || "探索步骤"),
+    target_description: stringValue(item.target_description),
+    target_selector: stringValue(item.target_selector),
+    value: stringValue(item.value),
+    expected_result: stringValue(item.expected_result),
+    execution_strategy: stringValue(item.execution_strategy || "direct"),
+    is_critical: Boolean(item.is_critical),
+    retry_on_failure: item.retry_on_failure !== false,
+    max_retries: Number(item.max_retries || 0),
+  };
+}
+
+function mergeMonitorPlanSteps(
+  currentSteps: ExplorationMonitorStep[],
+  planSteps: ExplorationMonitorPlanStep[],
+): ExplorationMonitorStep[] {
+  return planSteps.map((planStep) => {
+    const existing = currentSteps.find((step) => step.step_id === planStep.step_id);
+    return {
+      ...emptyMonitorStep(planStep),
+      ...existing,
+      ...planStep,
+    };
+  });
+}
+
+function monitorStepFromPayload(
+  eventType: string,
+  payload: Record<string, unknown>,
+  fallbackTotalSteps: number,
+): ExplorationMonitorStep | null {
+  const planStep = monitorPlanStepFromPayload(payload, Number(payload.step_number || 1));
+  if (!planStep.step_id) return null;
+  return {
+    ...emptyMonitorStep(planStep),
+    status: monitorStepStatusFromEvent(eventType),
+    total_steps: Number(payload.total_steps || fallbackTotalSteps || 0),
+    attempt: Number(payload.attempt || 1),
+    started_at: stringValue(payload.started_at),
+    completed_at: stringValue(payload.completed_at),
+    duration_ms: numberOrNull(payload.duration_ms),
+    success: typeof payload.success === "boolean" ? payload.success : null,
+    message: stringValue(payload.message),
+    error: stringValue(payload.error || payload.reason || payload.previous_error),
+    failure_type: stringValue(payload.failure_type),
+    retryable: Boolean(payload.retryable),
+    matched_element: monitorMatchedElement(payload.matched_element),
+    page_state: monitorPageState(payload.page_state),
+    screenshot_path: stringValue(payload.screenshot_path),
+  };
+}
+
+function emptyMonitorStep(planStep: ExplorationMonitorPlanStep): ExplorationMonitorStep {
+  return {
+    ...planStep,
+    status: "pending",
+    total_steps: 0,
+    attempt: 0,
+    started_at: "",
+    completed_at: "",
+    duration_ms: null,
+    success: null,
+    message: "",
+    error: "",
+    failure_type: "",
+    retryable: false,
+    matched_element: { id: "", role: "", name: "", selector: "" },
+    page_state: { url: "", title: "", element_count: 0 },
+    screenshot_path: "",
+  };
+}
+
+function upsertMonitorStep(steps: ExplorationMonitorStep[], incoming: ExplorationMonitorStep): ExplorationMonitorStep[] {
+  const existingIndex = steps.findIndex((step) => step.step_id === incoming.step_id);
+  if (existingIndex < 0) {
+    return [...steps, incoming].sort((a, b) => a.step_number - b.step_number);
+  }
+  return steps.map((step, index) => (index === existingIndex ? { ...step, ...incoming } : step));
+}
+
+function monitorStepStatusFromEvent(eventType: string): AgentPlanStatus {
+  if (eventType === "step_started" || eventType === "step_retrying") return "running";
+  if (eventType === "step_completed") return "completed";
+  if (eventType === "step_failed") return "failed";
+  if (eventType === "step_skipped") return "partial";
+  return "pending";
+}
+
+function monitorMatchedElement(value: unknown): ExplorationMonitorStep["matched_element"] {
+  const item = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    id: stringValue(item.id),
+    role: stringValue(item.role),
+    name: stringValue(item.name),
+    selector: stringValue(item.selector),
+  };
+}
+
+function monitorPageState(value: unknown): ExplorationMonitorStep["page_state"] {
+  const item = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    url: stringValue(item.url),
+    title: stringValue(item.title),
+    element_count: Number(item.element_count || 0),
+  };
+}
+
+function monitorTimelineEvent(event: ExplorationStreamEvent): ExplorationMonitorEvent {
+  const payload = event.payload as Record<string, unknown>;
+  const stepNumber = payload.step_number ? `#${payload.step_number} ` : "";
+  const summary =
+    stringValue(payload.message) ||
+    stringValue(payload.error) ||
+    stringValue(payload.description) ||
+    stringValue(payload.reason) ||
+    stringValue(payload.strategy);
+  return {
+    id: `${event.type}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    type: event.type,
+    label: logTypeLabels[event.type] ?? event.type,
+    summary: `${stepNumber}${summary || "收到探索事件"}`,
+    occurred_at: stringValue(payload.completed_at || payload.started_at || payload.occurred_at) || new Date().toISOString(),
+    status: monitorTimelineStatus(event.type),
+  };
+}
+
+function monitorTimelineStatus(eventType: string): AgentPlanStatus {
+  if (eventType.includes("failed") || eventType === "error") return "failed";
+  if (eventType.includes("completed")) return "completed";
+  if (eventType.includes("cancelled")) return "cancelled";
+  if (eventType.includes("started") || eventType === "step_retrying") return "running";
+  return "pending";
+}
+
+function arrayOfStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
+}
+
+function numberOrNull(value: unknown): number | null {
+  const next = Number(value);
+  return Number.isFinite(next) ? next : null;
 }
 
 function mergeModuleEvent(
@@ -499,6 +887,7 @@ function mergeModuleEvent(
     field_count: Number(payload.field_count || 0),
     state_transition_count: Number(payload.state_transition_count || 0),
     completion_status: String(payload.completion_status || "pending"),
+    completion_summary: String(payload.completion_summary || ""),
     pages: moduleIndex >= 0 ? detail.modules[moduleIndex].pages : [],
     elements: moduleIndex >= 0 ? detail.modules[moduleIndex].elements : [],
     blockers: moduleIndex >= 0 ? detail.modules[moduleIndex].blockers : [],
@@ -525,8 +914,12 @@ function mergePageEvent(
   if (!moduleId || !pageId) {
     return detail;
   }
-  const modules = detail.modules.map((module) => {
-    if (module.id !== moduleId && module.module_key !== moduleId) {
+  const targetModuleIndex = findStreamModuleIndex(detail.modules, moduleId);
+  if (targetModuleIndex < 0) {
+    return detail;
+  }
+  const modules = detail.modules.map((module, moduleIndex) => {
+    if (moduleIndex !== targetModuleIndex) {
       return module;
     }
     const existingIndex = module.pages.findIndex((page) => page.id === pageId);
@@ -555,6 +948,14 @@ function mergePageEvent(
   return { ...detail, modules };
 }
 
+function findStreamModuleIndex(modules: ExplorationRunDetail["modules"], moduleId: string): number {
+  const exactIndex = modules.findIndex((module) => module.id === moduleId || module.module_key === moduleId);
+  if (exactIndex >= 0) {
+    return exactIndex;
+  }
+  return modules.length === 1 ? 0 : -1;
+}
+
 function mergeStepEvent(
   detail: ExplorationRunDetail | null,
   event: ExplorationStreamEvent,
@@ -569,11 +970,34 @@ function mergeStepEvent(
   if (!moduleId || !pageId || !step) {
     return detail;
   }
-  const modules = detail.modules.map((module) => {
-    if (module.id !== moduleId && module.module_key !== moduleId) {
+  const targetModuleIndex = findStreamModuleIndex(detail.modules, moduleId);
+  if (targetModuleIndex < 0) {
+    return detail;
+  }
+  const modules = detail.modules.map((module, moduleIndex) => {
+    if (moduleIndex !== targetModuleIndex) {
       return module;
     }
-    const pages = module.pages.map((page) => {
+    const existingPageIndex = module.pages.findIndex((page) => page.id === pageId);
+    const sourcePages =
+      existingPageIndex >= 0
+        ? module.pages
+        : [
+            ...module.pages,
+            {
+              id: pageId,
+              title: pageId,
+              url: "",
+              entry_path: "",
+              yaml_path: "",
+              status: "running",
+              blocker_reason: "",
+              recent_event: "",
+              structure_summary: "",
+              steps: [],
+            },
+          ];
+    const pages = sourcePages.map((page) => {
       if (page.id !== pageId) {
         return page;
       }
@@ -658,15 +1082,60 @@ function buildAgentPlanTasks(detail: ExplorationRunDetail | null): AgentPlanTask
       meta: [
         `${module.explored_page_count}/${Math.max(module.planned_page_count, module.explored_page_count, 1)} 页面`,
       ],
-      subtasks: module.pages.map((page) => ({
-        id: page.id,
-        title: buildExplorationPageTaskTitle(page),
-        description: page.recent_event || page.structure_summary || page.blocker_reason || "",
-        status: resolvePagePlanStatus(page),
-        meta: buildExplorationPageTaskMeta(page),
-        steps: page.steps,
-      })),
+      subtasks: buildModulePlanSubtasks(detail, module),
     }));
+}
+
+function buildModulePlanSubtasks(
+  detail: ExplorationRunDetail,
+  module: ExplorationRunDetail["modules"][number],
+): NonNullable<AgentPlanTask["subtasks"]> {
+  if (module.pages.length > 0) {
+    return module.pages.map((page) => ({
+      id: page.id,
+      title: buildExplorationPageTaskTitle(page),
+      description: page.recent_event || page.structure_summary || page.blocker_reason || "",
+      status: resolvePagePlanStatus(page),
+      meta: buildExplorationPageTaskMeta(page),
+      steps: page.steps,
+    }));
+  }
+  if (!isActiveStatus(detail.run.status) && !module.completion_summary && !detail.run.result_summary) {
+    return [];
+  }
+  const status = resolveModulePlanStatus(detail.run.status, module.completion_status);
+  const detailText = module.completion_summary || detail.run.result_summary || "等待探索执行。";
+  return [
+    {
+      id: `${module.id}-progress`,
+      title: buildModuleProgressSubtaskTitle(detail.run.status),
+      description: detailText,
+      status,
+      meta: [module.entry_path || detail.run.environment_name].filter((item): item is string => Boolean(item)),
+      steps: [
+        {
+          id: `${module.id}-progress-step`,
+          title: buildModuleProgressStepTitle(detail.run.status),
+          detail: detailText,
+          status,
+        },
+      ],
+    },
+  ];
+}
+
+function buildModuleProgressSubtaskTitle(runStatus: string): string {
+  if (isActiveStatus(runStatus)) {
+    return "当前运行阶段";
+  }
+  return "探索阶段记录";
+}
+
+function buildModuleProgressStepTitle(runStatus: string): string {
+  if (isActiveStatus(runStatus)) {
+    return "等待页面事实";
+  }
+  return "暂无页面事实";
 }
 
 function resolvePagePlanStatus(page: ExplorationPage): AgentPlanStatus {
@@ -727,90 +1196,8 @@ function compactText(value: string, maxLength = 48): string {
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
 }
 
-function formatPlanItemsDraft(items: ExplorationPlanItem[] = []): string {
-  return JSON.stringify(items, null, 2);
-}
-
-function parsePlanItemsDraft(draft: string): ExplorationPlanItem[] {
-  const parsed = JSON.parse(draft) as unknown;
-  if (!Array.isArray(parsed)) {
-    throw new Error("计划内容必须是计划项数组。");
-  }
-  if (!parsed.length) {
-    throw new Error("探索计划至少需要一个计划项。");
-  }
-  return parsed.map((item, index) => normalizePlanDraftItem(item, index));
-}
-
 function normalizeExplorationRunDetail(data: ExplorationRunDetail): ExplorationRunDetail {
-  return {
-    ...data,
-    exploration_plan: normalizeExplorationPlan(data.exploration_plan),
-  };
-}
-
-function normalizeExplorationPlan(plan: ExplorationPlan | undefined): ExplorationPlan | undefined {
-  if (!plan) {
-    return undefined;
-  }
-  const items = Array.isArray(plan.items)
-    ? plan.items
-        .filter((item): item is ExplorationPlanItem => Boolean(item) && typeof item === "object")
-        .map((item, index) => normalizePlanDisplayItem(item, index))
-    : [];
-  return {
-    ...plan,
-    items,
-  };
-}
-
-function normalizePlanDisplayItem(item: ExplorationPlanItem, index: number): ExplorationPlanItem {
-  const record = item as Record<string, unknown>;
-  return {
-    id: optionalPlanText(record.id) || `plan-item-${index + 1}`,
-    business_module: optionalPlanText(record.business_module) || "未命名模块",
-    capability_type: optionalPlanText(record.capability_type) || "custom",
-    title: optionalPlanText(record.title) || "未命名计划项",
-    steps: planTextList(record.steps),
-    exploration_points: planTextList(record.exploration_points),
-  };
-}
-
-function normalizePlanDraftItem(item: unknown, index: number): ExplorationPlanItem {
-  if (!item || typeof item !== "object" || Array.isArray(item)) {
-    throw new Error(`第 ${index + 1} 个计划项必须是对象。`);
-  }
-  const record = item as Record<string, unknown>;
-  const title = requiredPlanText(record.title, index, "title");
-  const businessModule = requiredPlanText(record.business_module, index, "business_module");
-  const capabilityType = requiredPlanText(record.capability_type, index, "capability_type");
-  return {
-    id: optionalPlanText(record.id) || `plan-custom-${index + 1}`,
-    business_module: businessModule,
-    capability_type: capabilityType,
-    title,
-    steps: planTextList(record.steps),
-    exploration_points: planTextList(record.exploration_points),
-  };
-}
-
-function requiredPlanText(value: unknown, index: number, field: string): string {
-  const text = optionalPlanText(value);
-  if (!text) {
-    throw new Error(`第 ${index + 1} 个计划项缺少 ${field}。`);
-  }
-  return text;
-}
-
-function optionalPlanText(value: unknown): string {
-  return typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
-}
-
-function planTextList(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.map((item) => optionalPlanText(item)).filter(Boolean);
+  return data;
 }
 
 function isEmptyPlannedModule(module: ExplorationRunDetail["modules"][number]): boolean {
@@ -872,7 +1259,7 @@ function isActiveStatus(status: string): boolean {
 }
 
 function isTerminalStatus(status: string): boolean {
-  return ["completed", "partial", "blocked", "cancelled", "failed"].includes(status);
+  return ["completed", "partial", "blocked", "cancelled", "interrupted", "failed"].includes(status);
 }
 
 function hasExplorationStarted(run: ExplorationRun): boolean {
@@ -893,8 +1280,6 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
-  const [planAction, setPlanAction] = useState<"generate" | "confirm" | "save" | "">("");
-  const [planActionStartedAt, setPlanActionStartedAt] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [failureVisible, setFailureVisible] = useState(true);
   const [activeTab, setActiveTab] = useState("探索概览");
@@ -904,6 +1289,7 @@ export default function Page() {
   const [log, setLog] = useState<ExplorationLog | null>(null);
   const [logError, setLogError] = useState("");
   const [streamDetail, setStreamDetail] = useState<ExplorationRunDetail | null>(null);
+  const [monitor, setMonitor] = useState<ExplorationMonitorState>(emptyMonitorState);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [stopDialogOpen, setStopDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -913,8 +1299,6 @@ export default function Page() {
   const [requirementLoading, setRequirementLoading] = useState(false);
   const [explorationForm, setExplorationForm] = useState<ExplorationForm>(emptyExplorationForm);
   const [durationNow, setDurationNow] = useState(() => Date.now());
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const [importingFromRequirement, setImportingFromRequirement] = useState(false);
 
   const loadRun = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -930,6 +1314,7 @@ export default function Page() {
         const normalizedData = normalizeExplorationRunDetail(data);
         setDetail(normalizedData);
         setStreamDetail(normalizedData);
+        setMonitor(emptyMonitorState);
         setRun(normalizedData.run);
       } catch (requestError) {
         setError(requestError instanceof Error ? requestError.message : "探索任务加载失败");
@@ -955,7 +1340,7 @@ export default function Page() {
 
     const shouldTickRunDuration = Boolean(runStartedAt && !runFinishedAt && runStatus && isActiveStatus(runStatus));
 
-    if (!shouldTickRunDuration && !planActionStartedAt) {
+    if (!shouldTickRunDuration) {
       return undefined;
     }
 
@@ -965,7 +1350,7 @@ export default function Page() {
     }, 1000);
 
     return () => window.clearInterval(timer);
-  }, [planActionStartedAt, run]);
+  }, [run]);
 
   useEffect(() => {
     if (!runStatus || !autoRefreshStatuses.has(runStatus)) {
@@ -1010,7 +1395,7 @@ export default function Page() {
             if (!event) {
               continue;
             }
-            applyStreamEvent(event, { setStreamDetail, setRun });
+            applyStreamEvent(event, { setMonitor, setStreamDetail, setRun });
           }
         }
       } catch {
@@ -1109,205 +1494,6 @@ export default function Page() {
     }
   }
 
-  function applyExplorationPlan(plan: ExplorationPlan) {
-    const normalizedPlan = normalizeExplorationPlan(plan);
-    setDetail((current) => (current ? { ...current, exploration_plan: normalizedPlan } : current));
-    setStreamDetail((current) => (current ? { ...current, exploration_plan: normalizedPlan } : current));
-  }
-
-  function clearGeneratedExplorationPlanModules() {
-    setDetail((current) =>
-      current ? { ...current, modules: current.modules.filter((module) => !isEmptyPlannedModule(module)) } : current,
-    );
-    setStreamDetail((current) =>
-      current ? { ...current, modules: current.modules.filter((module) => !isEmptyPlannedModule(module)) } : current,
-    );
-  }
-
-  function clearStaleExplorationPlan() {
-    const clearPlan = (current: ExplorationRunDetail | null) => {
-      if (!current?.exploration_plan) {
-        return current;
-      }
-      return {
-        ...current,
-        exploration_plan: {
-          ...current.exploration_plan,
-          plan_status: "not_generated" as ExplorationPlanStatus,
-          summary: "正在生成新的探索计划，旧计划已清除。",
-          items: [],
-        },
-      };
-    };
-
-    setDetail(clearPlan);
-    setStreamDetail(clearPlan);
-  }
-
-  async function generateExplorationPlan() {
-    if (!run) {
-      return;
-    }
-    setPlanAction("generate");
-    clearGeneratedExplorationPlanModules();
-    clearStaleExplorationPlan();
-    setPlanActionStartedAt(Date.now());
-    try {
-      toast.info("正在生成探索计划，此操作在当前页面执行，不会进入任务中心");
-      const plan = await apiRequest<ExplorationPlan>(
-        `/projects/${run.project_id}/exploration-runs/${run.id}/plan/generate`,
-        { method: "POST" },
-      );
-      applyExplorationPlan(plan);
-      toast.success("探索计划已生成，请确认或补充后再开始探索");
-    } catch (requestError) {
-      reportApiError(requestError, {
-        fallbackMessage: "探索计划生成失败",
-        actionLabel: "生成探索计划",
-        method: "POST",
-        path: `/projects/${run.project_id}/exploration-runs/${run.id}/plan/generate`,
-      });
-    } finally {
-      setPlanAction("");
-      setPlanActionStartedAt(null);
-    }
-  }
-
-  async function importPlanFromRequirement(requirementDocId: string, requirementRunId: string) {
-    if (!run) {
-      return;
-    }
-    setImportingFromRequirement(true);
-    clearGeneratedExplorationPlanModules();
-    clearStaleExplorationPlan();
-    try {
-      toast.info("正在从需求文档生成并导入探索计划...");
-
-      // 先生成探索计划
-      await apiRequest(
-        `/projects/${run.project_id}/requirements/${requirementDocId}/analysis-runs/${requirementRunId}/exploration-plan/generate`,
-        { method: "POST" },
-      );
-
-      // 然后导入到当前探索任务
-      const plan = await apiRequest<ExplorationPlan>(
-        `/projects/${run.project_id}/exploration-runs/${run.id}/plan/import-from-requirement`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            requirement_doc_id: requirementDocId,
-            requirement_run_id: requirementRunId,
-          }),
-        },
-      );
-
-      applyExplorationPlan(plan);
-      setImportDialogOpen(false);
-      toast.success("探索计划已从需求导入，请确认或补充后再开始探索");
-    } catch (requestError) {
-      reportApiError(requestError, {
-        fallbackMessage: "从需求导入探索计划失败",
-        actionLabel: "导入探索计划",
-        method: "POST",
-        path: `/projects/${run.project_id}/exploration-runs/${run.id}/plan/import-from-requirement`,
-      });
-    } finally {
-      setImportingFromRequirement(false);
-    }
-  }
-
-  async function loadLatestImportableRequirementRun(requirementDocId: string): Promise<string | null> {
-    if (!run) {
-      return null;
-    }
-    const runs = await apiRequest<RequirementAnalysisRun[]>(
-      `/projects/${run.project_id}/requirements/${requirementDocId}/analysis-runs`,
-    );
-    return runs.find((item) => item.status === "completed" && item.has_enhanced_requirement)?.id ?? null;
-  }
-
-  async function importFromLinkedRequirementOrOpenDialog() {
-    if (!run) {
-      return;
-    }
-    const requirementDocId = run.requirement_doc_id.trim();
-    if (!requirementDocId) {
-      setImportDialogOpen(true);
-      return;
-    }
-
-    setImportingFromRequirement(true);
-    try {
-      const requirementRunId = await loadLatestImportableRequirementRun(requirementDocId);
-      if (!requirementRunId) {
-        toast.error("关联需求没有可导入的已完成分析记录");
-        return;
-      }
-      await importPlanFromRequirement(requirementDocId, requirementRunId);
-    } catch (requestError) {
-      reportApiError(requestError, {
-        fallbackMessage: "加载关联需求分析记录失败",
-        actionLabel: "加载需求分析记录",
-        method: "GET",
-        path: `/projects/${run.project_id}/requirements/${requirementDocId}/analysis-runs`,
-      });
-    } finally {
-      setImportingFromRequirement(false);
-    }
-  }
-
-  async function saveExplorationPlanItems(items: ExplorationPlanItem[]): Promise<boolean> {
-    if (!run) {
-      return false;
-    }
-    setPlanAction("save");
-    try {
-      const plan = await apiRequest<ExplorationPlan>(`/projects/${run.project_id}/exploration-runs/${run.id}/plan`, {
-        method: "PATCH",
-        body: JSON.stringify({ items }),
-      });
-      applyExplorationPlan(plan);
-      toast.success("探索计划已保存");
-      return true;
-    } catch (requestError) {
-      reportApiError(requestError, {
-        fallbackMessage: "探索计划保存失败",
-        actionLabel: "保存探索计划",
-        method: "PATCH",
-        path: `/projects/${run.project_id}/exploration-runs/${run.id}/plan`,
-      });
-      return false;
-    } finally {
-      setPlanAction("");
-    }
-  }
-
-  async function confirmExplorationPlan(): Promise<boolean> {
-    if (!run) {
-      return false;
-    }
-    setPlanAction("confirm");
-    try {
-      const plan = await apiRequest<ExplorationPlan>(
-        `/projects/${run.project_id}/exploration-runs/${run.id}/plan/confirm`,
-        { method: "POST" },
-      );
-      applyExplorationPlan(plan);
-      toast.success("探索计划已确认，可以按计划开始探索");
-      return true;
-    } catch (requestError) {
-      reportApiError(requestError, {
-        fallbackMessage: "探索计划确认失败",
-        actionLabel: "确认探索计划",
-        method: "POST",
-        path: `/projects/${run.project_id}/exploration-runs/${run.id}/plan/confirm`,
-      });
-      return false;
-    } finally {
-      setPlanAction("");
-    }
-  }
-
   async function stopExploration() {
     if (!run) {
       return;
@@ -1358,10 +1544,11 @@ export default function Page() {
       setRequirements(data);
       setExplorationForm((current) => ({
         ...current,
-        requirementDocId:
-          data.some((item) => item.id === current.requirementDocId && isExplorationLinkableRequirement(item))
-            ? current.requirementDocId
-            : "",
+        requirementDocId: data.some(
+          (item) => item.id === current.requirementDocId && isExplorationLinkableRequirement(item),
+        )
+          ? current.requirementDocId
+          : "",
       }));
     } catch (requestError) {
       reportApiError(requestError, {
@@ -1450,7 +1637,9 @@ export default function Page() {
     }
   }
 
-  const canStart = run ? ["pending", "partial", "completed", "blocked", "cancelled"].includes(run.status) : false;
+  const canStart = run
+    ? ["pending", "partial", "completed", "blocked", "cancelled", "interrupted", "failed"].includes(run.status)
+    : false;
   const canStop = run ? stoppableStatuses.has(run.status) : false;
   const canEdit = run ? !["queued", "running", "stopping"].includes(run.status) : false;
   const saveDisabled = !explorationForm.title.trim() || !explorationForm.environmentId || saving;
@@ -1468,24 +1657,9 @@ export default function Page() {
     }
     return [linkedRequirement, ...linkable];
   }, [explorationForm.requirementDocId, requirements]);
-  const selectedRequirementLabel =
-    availableRequirements.find((item) => item.id === explorationForm.requirementDocId)?.name ?? "";
   const activeDetail = streamDetail ?? detail;
-  const explorationPlan = activeDetail?.exploration_plan;
-  const hasFirstDiscoveryArtifacts = activeDetail
-    ? activeDetail.modules.some((module) => !hasNoModuleArtifacts(module))
-    : false;
-  const canStartFirstDiscovery = Boolean(run) && canStart && !hasFirstDiscoveryArtifacts;
-  const canGeneratePlan = Boolean(run) && canEdit;
-  const canStartFromPlan = explorationPlan?.plan_status === "confirmed" && Boolean(run) && canStart;
   const isUnsupportedArtifact = Boolean(activeDetail?.unsupported_artifact);
   const unsupportedArtifactReason = activeDetail?.unsupported_reason || "历史产物格式不支持新版详情，请重新探索。";
-  const hasNoExplorationArtifacts = activeDetail
-    ? activeDetail.modules.every((module) => hasNoModuleArtifacts(module))
-    : false;
-  const shouldShowNoArtifactNotice = Boolean(
-    run && hasNoExplorationArtifacts && (run.status === "cancelled" || run.status === "blocked"),
-  );
   const explorationDuration = run ? formatExplorationDuration(run, durationNow) : "-";
   const agentPlanTasks = buildAgentPlanTasks(activeDetail);
   const showRunActions = activeTab === "探索计划" || activeTab === "探索概览";
@@ -1510,10 +1684,18 @@ export default function Page() {
               <RefreshCw className="size-4" />
               刷新
             </Button>
-            <Button disabled={!canEdit} onClick={openEditDialog} size="sm" variant="outline">
-              <Pencil className="size-4" />
-              编辑
-            </Button>
+            {activeTab === "探索计划" ? (
+              <Button disabled={!canEdit} onClick={openEditDialog} size="sm" variant="outline">
+                <Pencil className="size-4" />
+                编辑
+              </Button>
+            ) : null}
+            {canStart ? (
+              <Button disabled={starting} onClick={() => void startExploration()} size="sm">
+                <Play className="size-4" />
+                {run && hasExplorationStarted(run) ? "重新探索" : "开始探索"}
+              </Button>
+            ) : null}
             {canStop ? (
               <Button disabled={stopping} onClick={() => setStopDialogOpen(true)} size="sm" variant="destructive">
                 <Square className="size-4" />
@@ -1533,26 +1715,7 @@ export default function Page() {
         <ExplorationFailureNotice error={error} onClose={() => setFailureVisible(false)} />
       ) : null}
 
-      {activeTab === "探索计划" ? (
-        <ExplorationTaskPanel
-          canEdit={canEdit}
-          canGeneratePlan={canGeneratePlan}
-          canStartFirstDiscovery={canStartFirstDiscovery}
-          canStartFromPlan={canStartFromPlan}
-          onConfirmPlan={confirmExplorationPlan}
-          onGeneratePlan={generateExplorationPlan}
-          importingFromRequirement={importingFromRequirement}
-          onImportFromRequirement={() => void importFromLinkedRequirementOrOpenDialog()}
-          onSavePlanItems={saveExplorationPlanItems}
-          onStart={startExploration}
-          plan={explorationPlan}
-          planAction={planAction}
-          planActionStartedAt={planActionStartedAt}
-          planActionNow={durationNow}
-          run={run}
-          starting={starting}
-        />
-      ) : null}
+      {activeTab === "探索计划" ? <ExplorationTaskInfoPanel monitor={monitor} run={run} /> : null}
 
       {activeTab === "探索概览" ? (
         <>
@@ -1597,8 +1760,6 @@ export default function Page() {
                       reason={unsupportedArtifactReason}
                       restarting={starting}
                     />
-                  ) : shouldShowNoArtifactNotice ? (
-                    <NoArtifactNotice run={run} onOpenLog={() => setActiveTab("探索日志")} />
                   ) : null}
                   {isUnsupportedArtifact ? null : (
                     <AgentPlan completedTaskDecoration="none" emptyLabel="暂无探索模块" tasks={agentPlanTasks} />
@@ -1633,8 +1794,6 @@ export default function Page() {
               </Card>
             </div>
           </div>
-
-          {isUnsupportedArtifact ? null : <GoalValidationSection detail={activeDetail} run={run} />}
         </>
       ) : null}
 
@@ -1712,9 +1871,7 @@ export default function Page() {
                   </SelectOption>
                 ))}
               </Select>
-              {selectedRequirementLabel ? (
-                <p className="text-muted-foreground text-xs">已关联：{selectedRequirementLabel}</p>
-              ) : !requirementLoading && availableRequirements.length === 0 ? (
+              {!requirementLoading && availableRequirements.length === 0 ? (
                 <p className="text-muted-foreground text-xs">当前项目没有可关联的需求，请先完成需求分析。</p>
               ) : null}
             </Field>
@@ -1836,395 +1993,7 @@ export default function Page() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <RequirementImportDialog
-        importingFromRequirement={importingFromRequirement}
-        onImport={importPlanFromRequirement}
-        onOpenChange={setImportDialogOpen}
-        open={importDialogOpen}
-        projectId={params.projectId}
-      />
     </PageShell>
-  );
-}
-
-function ExplorationTaskPanel({
-  canEdit,
-  canGeneratePlan,
-  canStartFirstDiscovery,
-  canStartFromPlan,
-  importingFromRequirement,
-  onConfirmPlan,
-  onGeneratePlan,
-  onImportFromRequirement,
-  onSavePlanItems,
-  onStart,
-  plan,
-  planAction,
-  planActionNow,
-  planActionStartedAt,
-  run,
-  starting,
-}: {
-  canEdit: boolean;
-  canGeneratePlan: boolean;
-  canStartFirstDiscovery: boolean;
-  canStartFromPlan: boolean;
-  importingFromRequirement: boolean;
-  onConfirmPlan: () => Promise<boolean>;
-  onGeneratePlan: () => Promise<void> | void;
-  onImportFromRequirement: () => void;
-  onSavePlanItems: (items: ExplorationPlanItem[]) => Promise<boolean>;
-  onStart: () => Promise<void> | void;
-  plan?: ExplorationPlan;
-  planAction: "generate" | "confirm" | "save" | "";
-  planActionNow: number;
-  planActionStartedAt: number | null;
-  run: ExplorationRun | null;
-  starting: boolean;
-}) {
-  const loginStrategy = run ? (loginStrategyLabels[run.login_strategy] ?? run.login_strategy) : "-";
-  const planStatus = plan?.plan_status ?? "not_generated";
-  const planStatusLabel = explorationPlanStatusLabels[planStatus];
-  const canGenerateDiscoveryPlan = canEdit && canGeneratePlan && !planAction;
-  const canConfirmAndPreparePlan = canEdit && !planAction && Boolean(plan?.items.length) && planStatus !== "confirmed";
-  const [editingPlan, setEditingPlan] = useState(false);
-  const [editingPlanWithAi, setEditingPlanWithAi] = useState(false);
-  const [readyToStartConfirmedPlan, setReadyToStartConfirmedPlan] = useState(false);
-  const [planDraft, setPlanDraft] = useState(formatPlanItemsDraft(plan?.items ?? []));
-  const [planDraftError, setPlanDraftError] = useState("");
-  const generatingPlan = planAction === "generate";
-  const generatingPlanElapsed =
-    generatingPlan && planActionStartedAt ? formatElapsedDuration(planActionNow - planActionStartedAt) : "";
-  const canEditPlanWithAi = canEdit && (plan?.items.length ?? 0) > 0 && !editingPlanWithAi && !planAction;
-  const confirmAndStartDisabled =
-    planStatus === "confirmed" ? !canStartFromPlan || starting : !canConfirmAndPreparePlan;
-  const confirmAndStartLabel =
-    planAction === "confirm"
-      ? "确认中"
-      : starting
-        ? "启动中"
-        : readyToStartConfirmedPlan
-          ? "再次点击开始探索"
-          : planStatus === "confirmed"
-            ? "按计划开始探索"
-            : "确认计划并准备探索";
-
-  useEffect(() => {
-    if (!editingPlan) {
-      setPlanDraft(formatPlanItemsDraft(plan?.items ?? []));
-      setPlanDraftError("");
-    }
-  }, [editingPlan, plan]);
-
-  useEffect(() => {
-    if (planStatus !== "confirmed") {
-      setReadyToStartConfirmedPlan(false);
-    }
-  }, [planStatus]);
-
-  async function savePlanDraft() {
-    setPlanDraftError("");
-    try {
-      const items = parsePlanItemsDraft(planDraft);
-      const saved = await onSavePlanItems(items);
-      if (saved) {
-        setEditingPlan(false);
-      }
-    } catch (error) {
-      setPlanDraftError(error instanceof Error ? error.message : "探索计划格式不正确。");
-    }
-  }
-
-  async function editPlanWithAi(instruction: string) {
-    if (!plan?.items.length) {
-      toast.error("请先生成探索计划");
-      return;
-    }
-    setEditingPlanWithAi(true);
-    try {
-      const editResult = await apiRequest<DocumentEditResponse>("/agents/document-editor/run", {
-        method: "POST",
-        body: JSON.stringify({
-          content: formatPlanItemsDraft(plan.items),
-          instruction: [
-            "请只修改下面的探索计划项 JSON 数组，并返回修改后的完整 JSON 数组。",
-            "必须保留字段：id、business_module、capability_type、title、steps、exploration_points。",
-            "title 使用中文功能名，steps 保持模块级探索内容，exploration_points 记录已发现入口或补充线索；不要把 capability_type 当作用户可见标题。",
-            instruction,
-          ].join("\n"),
-        }),
-      });
-      if (!editResult.edited_content.trim()) {
-        toast.info(editResult.change_summary || "AI 未修改探索计划");
-        return;
-      }
-      const items = parsePlanItemsDraft(editResult.edited_content);
-      const saved = await onSavePlanItems(items);
-      if (saved) {
-        toast.success(editResult.change_summary.trim() ? editResult.change_summary : "AI 修改当前计划已保存");
-      }
-    } catch (requestError) {
-      reportApiError(requestError, {
-        fallbackMessage: "AI 修改探索计划失败",
-        actionLabel: "AI 修改当前计划",
-        method: "POST",
-        path: "/agents/document-editor/run",
-      });
-    } finally {
-      setEditingPlanWithAi(false);
-    }
-  }
-
-  async function confirmPlanThenStart() {
-    if (planStatus !== "confirmed") {
-      const confirmed = await onConfirmPlan();
-      if (confirmed) {
-        setReadyToStartConfirmedPlan(true);
-      }
-      return;
-    }
-    if (!readyToStartConfirmedPlan) {
-      setReadyToStartConfirmedPlan(true);
-      return;
-    }
-    setReadyToStartConfirmedPlan(false);
-    await onStart();
-  }
-
-  return (
-    <div className="space-y-4">
-      <TaskSection title="环境">
-        <div className="grid gap-3 md:grid-cols-2">
-          <InfoRow label="所属项目" value={displayValue(run?.project_name)} />
-          <InfoRow label="探索环境" value={displayValue(run?.environment_name)} />
-          <InfoRow label="关联需求" value={displayValue(run?.requirement_doc_title)} />
-          <InfoRow label="登录策略" value={loginStrategy} />
-          <InfoRow label="站点地址" value={displayValue(run?.environment_site_url)} />
-        </div>
-      </TaskSection>
-
-      <TaskSection title="探索">
-        <InfoRow label="任务名称" value={displayValue(run?.title)} />
-        <InfoRow label="探索范围" value={displayValue(run?.scope)} />
-        <InfoRow label="禁止路径" value={displayValue(run?.forbidden_paths)} />
-        <InfoRow label="探索目标" value={displayValue(run?.goal)} />
-        <InfoRow label="备注" value={displayValue(run?.notes)} />
-      </TaskSection>
-
-      <TaskSection title="执行边界">
-        <div className="grid gap-3 md:grid-cols-3">
-          <InfoRow label="页面上限" value={run ? `${run.max_pages ?? 50} 页` : "-"} />
-          <InfoRow label="操作上限" value={run ? `${run.max_actions ?? 1000} 次` : "-"} />
-          <InfoRow label="超时时间" value={run ? `${run.timeout_minutes ?? 120} 分钟` : "-"} />
-        </div>
-      </TaskSection>
-
-      <TaskSection title="探索计划">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium">计划状态</span>
-              <StatusBadge tone={explorationPlanStatusTone(planStatus)}>{planStatusLabel}</StatusBadge>
-            </div>
-            <p className="text-muted-foreground text-xs">
-              {plan?.summary || "访问探索范围并由 AI 根据页面事实生成模块化探索计划。"}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {editingPlan ? (
-              <>
-                <Button disabled={planAction === "save"} onClick={() => void savePlanDraft()} size="sm" type="button">
-                  <Save className="size-4" />
-                  {planAction === "save" ? "保存中" : "保存"}
-                </Button>
-                <Button
-                  disabled={planAction === "save"}
-                  onClick={() => {
-                    setPlanDraft(formatPlanItemsDraft(plan?.items ?? []));
-                    setPlanDraftError("");
-                    setEditingPlan(false);
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  <X className="size-4" />
-                  取消
-                </Button>
-              </>
-            ) : (
-              <>
-                {canStartFirstDiscovery ? (
-                  <Button disabled={starting} onClick={() => void onStart()} size="sm" type="button" variant="outline">
-                    <Play className="size-4" />
-                    首次探索采集
-                  </Button>
-                ) : null}
-                <Button
-                  disabled={generatingPlan || !canGenerateDiscoveryPlan}
-                  onClick={() => void onGeneratePlan()}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  {generatingPlan ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-                  {generatingPlan ? "生成中" : "生成探索计划"}
-                </Button>
-                <Button
-                  disabled={!canEdit || Boolean(planAction) || importingFromRequirement}
-                  onClick={onImportFromRequirement}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  {importingFromRequirement ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Download className="size-4" />
-                  )}
-                  {importingFromRequirement ? "导入中" : "从需求导入"}
-                </Button>
-                <Button
-                  disabled={!canEdit || !plan || Boolean(planAction)}
-                  onClick={() => setEditingPlan(true)}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  <Pencil className="size-4" />
-                  手动修改探索计划
-                </Button>
-                <AiEditInput
-                  disabled={!canEditPlanWithAi}
-                  label="AI 修改当前计划"
-                  loading={editingPlanWithAi}
-                  onSubmit={editPlanWithAi}
-                  placeholder="描述你希望如何修改当前探索计划..."
-                  size="sm"
-                  title="AI 修改探索计划"
-                  variant="outline"
-                />
-                <Button
-                  disabled={confirmAndStartDisabled}
-                  onClick={() => void confirmPlanThenStart()}
-                  size="sm"
-                  type="button"
-                >
-                  <Play className="size-4" />
-                  {confirmAndStartLabel}
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {generatingPlan ? (
-          <div className="rounded-lg border border-dashed bg-muted/30 p-3 text-muted-foreground text-sm">
-            <div className="flex flex-wrap items-center gap-2">
-              <Loader2 className="size-4 animate-spin" />
-              <span className="font-medium text-foreground">探索计划正在生成</span>
-              {generatingPlanElapsed ? <span>已等待 {generatingPlanElapsed}</span> : null}
-            </div>
-          </div>
-        ) : null}
-
-        {editingPlan ? (
-          <div className="space-y-2">
-            <Textarea
-              className="min-h-96 font-mono text-xs"
-              onChange={(event) => {
-                setPlanDraft(event.target.value);
-                setPlanDraftError("");
-              }}
-              spellCheck={false}
-              value={planDraft}
-            />
-            {planDraftError ? <p className="text-destructive text-xs">{planDraftError}</p> : null}
-          </div>
-        ) : plan?.items.length ? (
-          <div className="space-y-3">
-            {plan.items.map((item) => (
-              <div className="rounded-lg border bg-background p-3" key={item.id}>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0 space-y-1">
-                    <div className="font-medium">{item.title}</div>
-                    <div className="text-muted-foreground text-xs">所属模块：{item.business_module}</div>
-                  </div>
-                </div>
-                <div className="mt-3 space-y-3">
-                  <PlanList title="探索内容" values={item.steps} />
-                  <PlanList title="已发现入口" values={item.exploration_points} />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : generatingPlan ? null : (
-          <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground text-sm">
-            暂无探索计划。请点击生成探索计划，由 AI 访问探索范围并分析模块。
-          </div>
-        )}
-      </TaskSection>
-    </div>
-  );
-}
-
-function PlanList({ title, values }: { title: string; values?: string[] }) {
-  const listValues = Array.isArray(values) ? values : [];
-  return (
-    <div className="space-y-1">
-      <div className="font-medium text-xs">{title}</div>
-      <ul className="space-y-1 text-muted-foreground text-xs">
-        {listValues.length ? listValues.map((value) => <li key={value}>{value}</li>) : <li>未设置</li>}
-      </ul>
-    </div>
-  );
-}
-
-function TaskSection({ children, title }: { children: ReactNode; title: string }) {
-  return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle className="text-sm">{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm">{children}</CardContent>
-    </Card>
-  );
-}
-
-function GoalValidationSection({ detail, run }: { detail: ExplorationRunDetail | null; run: ExplorationRun | null }) {
-  const validation = detail?.goal_validation;
-  const goal = validation?.goal || run?.goal || "";
-  const status = validation?.status || (goal ? "pending" : "skipped");
-  const summary = validation?.summary || (goal ? "目标验证尚未执行。" : "未设置探索目标。");
-  const stats = validation?.stats ?? {};
-  const statText = (key: string) => formatUnknownCount(stats[key]);
-  const statusLabel = goalValidationStatusLabels[status] ?? status;
-
-  return (
-    <ShellSection>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h2 className="font-medium text-sm">目标验证</h2>
-          <p className="text-muted-foreground text-xs">区分页面采集完成和探索目标是否达成</p>
-        </div>
-        <StatusBadge tone={goalValidationStatusTone(status)}>{statusLabel}</StatusBadge>
-      </div>
-      <div className="grid gap-3 text-sm md:grid-cols-2">
-        <InfoRow label="探索目标" value={displayValue(goal)} />
-        <InfoRow label="验证结论" value={summary} />
-        <InfoRow label="页面" value={statText("page_count")} />
-        <InfoRow
-          label="链接"
-          value={`已验证 ${statText("link_checked_count")}/${statText("link_total_count")}，失败 ${statText("link_failed_count")}`}
-        />
-        <InfoRow
-          label="按钮"
-          value={`已验证 ${statText("button_checked_count")}/${statText("button_total_count")}，未验证 ${statText("button_unverified_count")}，失败 ${statText("button_failed_count")}`}
-        />
-        <InfoRow label="风险" value={`失败 ${statText("failed_count")}，未验证 ${statText("unverified_count")}`} />
-      </div>
-    </ShellSection>
   );
 }
 
@@ -2242,35 +2011,278 @@ function ExplorationFailureNotice({ error, onClose }: { error: string; onClose: 
   );
 }
 
-function NoArtifactNotice({ onOpenLog, run }: { onOpenLog: () => void; run: ExplorationRun }) {
-  const isCancelled = run.status === "cancelled";
-  const title = isCancelled ? "本次探索已中止，未生成探索产物" : "本次探索被阻塞，未生成探索产物";
-  const stopReason =
-    run.result_summary || "用户已停止探索；此前任务已无运行中的浏览器探索进程，已生成的日志会继续保留。";
-  const description = isCancelled
-    ? "此前任务已无运行中的浏览器探索进程；如需重新执行，请使用页面右上角的重新探索。"
-    : run.result_summary || "当前探索需要人工处理后才能继续，请查看日志确认阻塞原因和证据。";
+function ExplorationTaskInfoPanel({ monitor, run }: { monitor: ExplorationMonitorState; run: ExplorationRun | null }) {
+  const loginStrategy = run ? (loginStrategyLabels[run.login_strategy] ?? run.login_strategy) : "-";
+  const scopeParagraphs = formatTaskText(run?.scope);
+  const forbiddenPathParagraphs = formatTaskText(run?.forbidden_paths);
+  const goalParagraphs = formatTaskText(run?.goal);
 
   return (
-    <div className="rounded-lg border bg-muted/20 p-4 text-sm">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 space-y-1">
-          <div className="font-medium">{title}</div>
-          {isCancelled ? (
-            <div className="text-foreground">
-              <span className="text-muted-foreground">中止原因：</span>
-              {stopReason}
-            </div>
-          ) : null}
-          <p className="text-muted-foreground">{description}</p>
+    <div className="space-y-4">
+      <ExplorationRealtimeMonitor monitor={monitor} run={run} />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-4">
+          <TaskTextSection paragraphs={scopeParagraphs} title="探索范围" />
+          <TaskTextSection paragraphs={forbiddenPathParagraphs} title="禁止路径" />
+          <TaskTextSection paragraphs={goalParagraphs} title="探索目标" />
         </div>
-        <div className="flex shrink-0 gap-2">
-          <Button onClick={onOpenLog} size="sm" type="button" variant="outline">
-            查看日志
-          </Button>
+
+        <div className="space-y-4">
+          <TaskSection title="环境">
+            <InfoRow label="所属项目" value={displayValue(run?.project_name)} compact />
+            <InfoRow label="关联需求" value={displayValue(run?.requirement_doc_title)} compact />
+            <InfoRow label="探索环境" value={displayValue(run?.environment_name)} compact />
+            <InfoRow label="登录策略" value={loginStrategy} compact />
+            <InfoRow label="站点地址" value={displayValue(run?.environment_site_url)} compact />
+          </TaskSection>
+
+          <TaskSection title="执行边界">
+            <div className="grid grid-cols-3 gap-2">
+              <LimitTile label="页面" value={run ? `${run.max_pages ?? 50}` : "-"} unit="页" />
+              <LimitTile label="操作" value={run ? `${run.max_actions ?? 1000}` : "-"} unit="次" />
+              <LimitTile label="超时" value={run ? `${run.timeout_minutes ?? 120}` : "-"} unit="分钟" />
+            </div>
+          </TaskSection>
+
+          <TaskSection title="补充信息">
+            <InfoRow label="备注" value={displayValue(run?.notes)} compact />
+          </TaskSection>
         </div>
       </div>
     </div>
+  );
+}
+
+function ExplorationRealtimeMonitor({
+  monitor,
+  run,
+}: {
+  monitor: ExplorationMonitorState;
+  run: ExplorationRun | null;
+}) {
+  const runningStep = monitor.steps.find((step) => step.status === "running");
+  const completedCount = monitor.steps.filter((step) => step.status === "completed").length;
+  const failedCount = monitor.steps.filter((step) => step.status === "failed").length;
+  const totalSteps = monitor.plan?.total_steps || monitor.steps.length;
+  const phaseLabel = monitorPhaseLabel(monitor.phase, run?.status);
+
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <ListChecks className="size-4" />
+              实时执行监控
+            </CardTitle>
+            <CardDescription>展示规划结果、当前步骤和后台事件流水</CardDescription>
+          </div>
+          <StatusBadge tone={monitorPhaseTone(monitor.phase, run?.status)}>{phaseLabel}</StatusBadge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-4">
+          <MonitorStat label="规划步骤" value={totalSteps ? `${totalSteps}` : "-"} />
+          <MonitorStat label="已完成" value={`${completedCount}`} />
+          <MonitorStat label="失败" value={`${failedCount}`} />
+          <MonitorStat label="当前步骤" value={runningStep ? `#${runningStep.step_number}` : "-"} />
+        </div>
+
+        {monitor.plan ? (
+          <div className="grid gap-3 rounded-lg border bg-muted/15 p-3 text-sm lg:grid-cols-[minmax(0,1fr)_280px]">
+            <div className="min-w-0 space-y-2">
+              <InfoRow label="目标摘要" value={displayValue(monitor.plan.goal_summary)} compact />
+              <InfoRow label="探索策略" value={displayValue(monitor.plan.strategy)} compact />
+              <InfoRow label="范围摘要" value={displayValue(monitor.plan.scope_summary)} compact />
+              {monitor.plan.risk_assessment ? (
+                <InfoRow label="风险提示" value={monitor.plan.risk_assessment} compact />
+              ) : null}
+            </div>
+            <div className="min-w-0 space-y-2">
+              <InfoRow label="计划 ID" value={displayValue(monitor.plan.plan_id)} compact />
+              <InfoRow
+                label="模块"
+                value={monitor.plan.modules.length ? monitor.plan.modules.join("、") : "-"}
+                compact
+              />
+              <InfoRow
+                label="成功标准"
+                value={monitor.plan.success_criteria.length ? monitor.plan.success_criteria.join("；") : "-"}
+                compact
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border bg-muted/15 p-3 text-muted-foreground text-sm">
+            {isActiveStatus(run?.status ?? "") ? "等待后端推送探索规划。" : "开始探索后会在这里展示实时规划和步骤。"}
+          </div>
+        )}
+
+        {runningStep ? <MonitorCurrentStep step={runningStep} /> : null}
+
+        {monitor.steps.length ? (
+          <div className="overflow-hidden rounded-lg border">
+            <Table className="table-fixed">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[8%]">序号</TableHead>
+                  <TableHead className="w-[14%]">状态</TableHead>
+                  <TableHead className="w-[18%]">动作</TableHead>
+                  <TableHead className="w-[30%]">目标</TableHead>
+                  <TableHead className="w-[18%]">结果</TableHead>
+                  <TableHead className="w-[12%]">耗时</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {monitor.steps.map((step) => (
+                  <TableRow key={step.step_id}>
+                    <TableCell className="font-mono text-xs">#{step.step_number}</TableCell>
+                    <TableCell>
+                      <StatusBadge tone={monitorStepTone(step.status)}>{monitorStepLabel(step.status)}</StatusBadge>
+                    </TableCell>
+                    <TableCell className="truncate" title={step.description}>
+                      {step.action_type}
+                    </TableCell>
+                    <TableCell className="truncate" title={step.target_description || step.description}>
+                      {step.target_description || step.description}
+                    </TableCell>
+                    <TableCell className="truncate" title={step.message || step.error || step.expected_result}>
+                      {step.message || step.error || step.expected_result || "-"}
+                    </TableCell>
+                    <TableCell>{step.duration_ms === null ? "-" : `${step.duration_ms}ms`}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : null}
+
+        {monitor.events.length ? (
+          <div className="space-y-2">
+            <div className="font-medium text-muted-foreground text-xs">实时事件</div>
+            <div className="max-h-56 space-y-2 overflow-auto rounded-lg border bg-background p-2">
+              {monitor.events.slice(0, 12).map((event) => (
+                <div className="grid gap-1 rounded-md px-2 py-1.5 text-sm" key={event.id}>
+                  <div className="flex min-w-0 items-center justify-between gap-2">
+                    <span className="font-medium">{event.label}</span>
+                    <span className="shrink-0 text-muted-foreground text-xs">{formatDateTime(event.occurred_at)}</span>
+                  </div>
+                  <div className="truncate text-muted-foreground text-xs" title={event.summary}>
+                    {event.summary}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function MonitorStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border bg-background p-3">
+      <div className="text-muted-foreground text-xs">{label}</div>
+      <div className="mt-1 font-semibold text-lg">{value}</div>
+    </div>
+  );
+}
+
+function MonitorCurrentStep({ step }: { step: ExplorationMonitorStep }) {
+  const matchedLabel = step.matched_element.name || step.matched_element.id || "-";
+  return (
+    <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-3 text-sm dark:border-blue-500/30 dark:bg-blue-500/10">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="font-medium">正在执行 #{step.step_number}：{step.description}</div>
+        <span className="text-muted-foreground text-xs">第 {step.attempt || 1} 次</span>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        <InfoRow label="目标" value={displayValue(step.target_description)} compact />
+        <InfoRow label="预期" value={displayValue(step.expected_result)} compact />
+        <InfoRow label="匹配元素" value={matchedLabel} compact />
+        <InfoRow label="当前页面" value={step.page_state.url || step.page_state.title || "-"} compact />
+      </div>
+    </div>
+  );
+}
+
+function monitorPhaseLabel(phase: string, runStatus?: string): string {
+  if (phase === "planning") return "规划中";
+  if (phase === "planned") return "已生成计划";
+  if (phase === "executing") return "执行中";
+  if (phase === "replanning") return "重新规划";
+  if (phase === "completed") return "已完成";
+  if (phase === "failed") return "失败";
+  if (phase === "cancelled") return "已中止";
+  return runStatus ? (statusLabels[runStatus] ?? runStatus) : "待开始";
+}
+
+function monitorPhaseTone(phase: string, runStatus?: string): StatusBadgeTone {
+  if (phase === "completed") return "success";
+  if (phase === "failed") return "destructive";
+  if (phase === "cancelled" || phase === "replanning") return "warning";
+  if (phase === "planning" || phase === "planned" || phase === "executing") return "processing";
+  if (runStatus === "completed") return "success";
+  if (runStatus === "blocked" || runStatus === "failed") return "destructive";
+  if (runStatus === "running" || runStatus === "queued") return "processing";
+  return "neutral";
+}
+
+function monitorStepLabel(status: AgentPlanStatus): string {
+  if (status === "running" || status === "in-progress") return "执行中";
+  if (status === "completed") return "完成";
+  if (status === "failed") return "失败";
+  if (status === "partial") return "跳过";
+  return "待执行";
+}
+
+function monitorStepTone(status: AgentPlanStatus): StatusBadgeTone {
+  if (status === "completed") return "success";
+  if (status === "failed" || status === "blocked") return "destructive";
+  if (status === "running" || status === "in-progress") return "processing";
+  if (status === "partial" || status === "cancelled") return "warning";
+  return "neutral";
+}
+
+function TaskTextSection({ paragraphs, title }: { paragraphs: string[]; title: string }) {
+  return (
+    <TaskSection title={title}>
+      {paragraphs.length ? (
+        <div className="space-y-3 text-foreground text-sm leading-7">
+          {paragraphs.map((paragraph) => (
+            <p className="max-w-5xl whitespace-pre-wrap break-words" key={paragraph}>
+              {paragraph}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <div className="text-muted-foreground text-sm">未设置</div>
+      )}
+    </TaskSection>
+  );
+}
+
+function LimitTile({ label, unit, value }: { label: string; unit: string; value: string }) {
+  return (
+    <div className="rounded-md border bg-muted/20 p-3">
+      <div className="text-muted-foreground text-xs">{label}</div>
+      <div className="mt-1 flex items-baseline gap-1">
+        <span className="font-semibold text-lg">{value}</span>
+        <span className="text-muted-foreground text-xs">{unit}</span>
+      </div>
+    </div>
+  );
+}
+
+function TaskSection({ children, title }: { children: ReactNode; title: string }) {
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle className="text-sm">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">{children}</CardContent>
+    </Card>
   );
 }
 
@@ -3115,25 +3127,15 @@ function formatExplorationDuration(run: ExplorationRun, now: number = Date.now()
   return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
 }
 
-function formatElapsedDuration(durationMs: number): string {
-  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-
-  if (minutes <= 0) {
-    return `${seconds} 秒`;
-  }
-
-  return `${minutes} 分 ${String(seconds).padStart(2, "0")} 秒`;
-}
-
-function hasNoModuleArtifacts(module: ExplorationRunDetail["modules"][number]): boolean {
-  return module.pages.length === 0 && module.elements.length === 0 && module.blockers.length === 0;
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ compact = false, label, value }: { compact?: boolean; label: string; value: string }) {
   return (
-    <div className="grid gap-1 border-b pb-3 last:border-b-0 last:pb-0 sm:grid-cols-[96px_1fr]">
+    <div
+      className={
+        compact
+          ? "grid gap-1 border-b pb-2 last:border-b-0 last:pb-0"
+          : "grid gap-1 border-b pb-3 last:border-b-0 last:pb-0 sm:grid-cols-[96px_1fr]"
+      }
+    >
       <div className="text-muted-foreground">{label}</div>
       <div className="min-w-0 break-words font-medium">{value}</div>
     </div>
@@ -3144,14 +3146,19 @@ function displayValue(value: string | null | undefined): string {
   return value?.trim() || "-";
 }
 
-function formatUnknownCount(value: unknown): string {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
+function formatTaskText(value: string | null | undefined): string[] {
+  const text = value?.trim();
+  if (!text || text === "-") {
+    return [];
   }
-  if (typeof value === "string" && value.trim()) {
-    return value;
-  }
-  return "0";
+  const normalized = text
+    .replace(/\s+(模块[一二三四五六七八九十]+[：:])/g, "\n$1")
+    .replace(/\s+(整体目标[：:])/g, "\n$1")
+    .replace(/\s+(\d+[.、]\s*)/g, "\n$1");
+  return normalized
+    .split(/\n{2,}/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function TimelineItem({ active, label, value }: { active: boolean; label: string; value: string }) {
@@ -3168,186 +3175,5 @@ function TimelineItem({ active, label, value }: { active: boolean; label: string
         <div className="text-muted-foreground text-xs">{value}</div>
       </div>
     </div>
-  );
-}
-
-type RequirementAnalysisRun = {
-  id: string;
-  status: string;
-  created_at: string;
-  has_enhanced_requirement: boolean;
-};
-
-function RequirementImportDialog({
-  importingFromRequirement,
-  onImport,
-  onOpenChange,
-  open,
-  projectId,
-}: {
-  importingFromRequirement: boolean;
-  onImport: (requirementDocId: string, requirementRunId: string) => Promise<void>;
-  onOpenChange: (open: boolean) => void;
-  open: boolean;
-  projectId: string;
-}) {
-  const [loading, setLoading] = useState(false);
-  const [documents, setDocuments] = useState<RequirementDocument[]>([]);
-  const [selectedDocId, setSelectedDocId] = useState("");
-  const [analysisRuns, setAnalysisRuns] = useState<RequirementAnalysisRun[]>([]);
-  const [selectedRunId, setSelectedRunId] = useState("");
-  const [loadingRuns, setLoadingRuns] = useState(false);
-
-  const loadDocuments = useCallback(async () => {
-    setLoading(true);
-    try {
-      const docs = await apiRequest<RequirementDocument[]>(`/projects/${projectId}/requirements`);
-      setDocuments(docs);
-    } catch (error) {
-      toast.error("加载需求文档列表失败");
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId]);
-
-  const loadAnalysisRuns = useCallback(
-    async (docId: string) => {
-      setLoadingRuns(true);
-      setSelectedRunId("");
-      try {
-        const runs = await apiRequest<RequirementAnalysisRun[]>(
-          `/projects/${projectId}/requirements/${docId}/analysis-runs`,
-        );
-        const validRuns = runs.filter((run) => run.status === "completed" && run.has_enhanced_requirement);
-        setAnalysisRuns(validRuns);
-        if (validRuns.length === 1) {
-          setSelectedRunId(validRuns[0].id);
-        }
-      } catch (error) {
-        toast.error("加载需求分析记录失败");
-        console.error(error);
-      } finally {
-        setLoadingRuns(false);
-      }
-    },
-    [projectId],
-  );
-
-  useEffect(() => {
-    if (open) {
-      void loadDocuments();
-    } else {
-      setSelectedDocId("");
-      setSelectedRunId("");
-      setAnalysisRuns([]);
-    }
-  }, [loadDocuments, open]);
-
-  useEffect(() => {
-    if (selectedDocId) {
-      void loadAnalysisRuns(selectedDocId);
-    } else {
-      setAnalysisRuns([]);
-      setSelectedRunId("");
-    }
-  }, [loadAnalysisRuns, selectedDocId]);
-
-  async function handleImport() {
-    if (!selectedDocId || !selectedRunId) {
-      toast.error("请选择需求文档和分析记录");
-      return;
-    }
-    await onImport(selectedDocId, selectedRunId);
-  }
-
-  const canImport = !importingFromRequirement && Boolean(selectedDocId) && Boolean(selectedRunId);
-
-  return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>从需求导入探索计划</DialogTitle>
-          <DialogDescription>选择已完成分析的需求文档，将自动生成探索计划并导入到当前任务。</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <label className="font-medium text-sm" htmlFor="requirement-doc-select">
-              需求文档
-            </label>
-            {loading ? (
-              <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                <Loader2 className="size-4 animate-spin" />
-                加载中...
-              </div>
-            ) : documents.length === 0 ? (
-              <p className="text-muted-foreground text-sm">当前项目没有需求文档</p>
-            ) : (
-              <Select
-                id="requirement-doc-select"
-                placeholder="选择需求文档"
-                setValue={setSelectedDocId}
-                value={selectedDocId}
-              >
-                {documents.map((doc) => (
-                  <SelectOption key={doc.id} value={doc.id}>
-                    {doc.name}
-                  </SelectOption>
-                ))}
-              </Select>
-            )}
-          </div>
-
-          {selectedDocId && (
-            <div className="space-y-2">
-              <label className="font-medium text-sm" htmlFor="analysis-run-select">
-                需求分析记录
-              </label>
-              {loadingRuns ? (
-                <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                  <Loader2 className="size-4 animate-spin" />
-                  加载中...
-                </div>
-              ) : analysisRuns.length === 0 ? (
-                <p className="text-muted-foreground text-sm">该需求文档没有已完成的分析记录</p>
-              ) : (
-                <Select
-                  id="analysis-run-select"
-                  placeholder="选择分析记录"
-                  setValue={setSelectedRunId}
-                  value={selectedRunId}
-                >
-                  {analysisRuns.map((run) => (
-                    <SelectOption key={run.id} value={run.id}>
-                      {formatDateTime(run.created_at)}
-                    </SelectOption>
-                  ))}
-                </Select>
-              )}
-            </div>
-          )}
-        </div>
-        <DialogFooter>
-          <Button
-            disabled={importingFromRequirement}
-            onClick={() => onOpenChange(false)}
-            type="button"
-            variant="outline"
-          >
-            取消
-          </Button>
-          <Button disabled={!canImport} onClick={() => void handleImport()} type="button">
-            {importingFromRequirement ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                导入中...
-              </>
-            ) : (
-              "导入"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

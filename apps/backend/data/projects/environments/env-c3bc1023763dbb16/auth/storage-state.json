@@ -1,18 +1,4 @@
 {
   "cookies": [],
-  "origins": [
-    {
-      "origin": "https://www.cybotstar.cn",
-      "localStorage": [
-        {
-          "name": "sbtToken",
-          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzgyMDIzMTA2LCJpYXQiOjE3ODE1OTExMDYsImp0aSI6ImE4MGQ0YWQ3MmViYTRjNTg4N2NhYWViZDE4ZDY4Zjc2IiwidXNlcl9pZCI6NDU3MH0.1_ILO5prEKyXli4bFYTwVAtwR2tJiNSbZ5wcLFcBNgY"
-        },
-        {
-          "name": "vuex",
-          "value": "{\"app\":{\"menuTheme\":\"dark\",\"avatar\":\"-user\",\"isBlur\":false,\"currentRole\":\"\",\"currentBot\":{\"id\":\"\",\"agent_type\":\"\"},\"operates\":[\"homeland_plugin\",\"homeland_chatflow\",\"homeland_long_memory\",\"homeland_knowledge\",\"homeland_database\"],\"botUserInfo\":{\"token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzgyMDIzMTA2LCJpYXQiOjE3ODE1OTExMDYsImp0aSI6ImE4MGQ0YWQ3MmViYTRjNTg4N2NhYWViZDE4ZDY4Zjc2IiwidXNlcl9pZCI6NDU3MH0.1_ILO5prEKyXli4bFYTwVAtwR2tJiNSbZ5wcLFcBNgY\",\"refresh_token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc4MjQ1NTEwNiwiaWF0IjoxNzgxNTkxMTA2LCJqdGkiOiI2YjQyOWZmNWM0NTc0ZmUzOWYxYzBjZWEwZjZiYWY0MSIsInVzZXJfaWQiOjQ1NzB9.ofLXBtjSDAuJk8QYJk9-bu-Q_wqTEIAKdl2VYvJ6F7M\",\"userId\":4570,\"userName\":\"hongbao.wang@brgroup.com\",\"nickname\":\"hongbao.wang1\",\"homeLandId\":4981,\"email\":\"hongbao.wang@brgroup.com\",\"mobile\":\"\",\"avatar\":\"/api/media/file/image/avatar/user_avatar.png\",\"expire_time\":\"2999-12-31 23:59:59\",\"need_bind_mobile\":true},\"homelandInfo\":{\"homeland\":4981,\"user\":4570,\"homeland_name\":\"hongbao.wang\",\"homeland_type\":1,\"homeland_owner\":\"hongbao.wang1\",\"homeland_owner_id\":4981,\"role\":\"home_owner\",\"response_role\":\"所有者\"},\"showConversationList\":false,\"isCompanyUser\":false,\"companyPermissions\":[],\"companyAgentPermissions\":[],\"companyAiWritePermissions\":[],\"companyKnowledgePermissions\":[],\"companyPluginPermissions\":[],\"companyDatabasePermissions\":[],\"workspaceListState\":null},\"aiWrite\":{\"articleReadonly\":false}}"
-        }
-      ]
-    }
-  ]
+  "origins": []
 }

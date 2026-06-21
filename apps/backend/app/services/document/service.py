@@ -36,11 +36,9 @@ CONVERSION_FAILED_STATUS = "failed"
 REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES = 120
 REQUIREMENT_ANALYSIS_RUN_TIMEOUT_SECONDS = REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES * 60
 REQUIREMENT_ANALYSIS_MARKDOWN_FIELDS = {
-    "analysis_report_markdown",
-    "quality_assurance_report_markdown",
     "clarification_report_markdown",
-    "preliminary_requirement_markdown",
-    "enhanced_requirement_markdown",
+    "clarification_markdown",
+    "understanding_markdown",
 }
 
 
@@ -907,11 +905,8 @@ def update_requirement_preliminary_markdown(
             raise api_error(409, "REQUIREMENT_ANALYSIS_FINALIZED", "该初步需求已转为最终需求，不能继续修改。")
 
         output = _normalize_requirement_analysis_output_markdown(json.loads(analysis["output_json"]))
-        previous_markdown = str(output.get("preliminary_requirement_markdown") or "")
-        output["preliminary_requirement_markdown"] = markdown_content
-        output["enhanced_requirement_markdown"] = markdown_content
-
-        quality_gate = output.get("quality_gate") or {}
+        previous_markdown = str(output.get("understanding_markdown") or "")
+        output["understanding_markdown"] = markdown_content
         draft_content_hash = _content_hash(markdown_content)
         document_repo.update_requirement_analysis_output(
             db,
@@ -919,8 +914,8 @@ def update_requirement_preliminary_markdown(
             status=str(output.get("status") or analysis["status"]),
             analysis_summary=str(output.get("analysis_summary") or analysis["analysis_summary"]),
             output_json=output,
-            quality_result=str(quality_gate.get("result") or analysis["quality_result"]),
-            testability_score=int(quality_gate.get("testability_score") or analysis["testability_score"] or 0),
+            quality_result=str(analysis["quality_result"]),
+            testability_score=int(analysis["testability_score"] or 0),
             draft_content_hash=draft_content_hash,
         )
         updated_analysis = document_repo.find_requirement_analysis(db, analysis_id)
@@ -938,8 +933,8 @@ def update_requirement_preliminary_markdown(
         actor_name=operation_log_service.actor_display_name(actor),
         source="web",
         summary=summary,
-        before={"preliminary_requirement_markdown": previous_markdown},
-        after={"preliminary_requirement_markdown": markdown_content},
+        before={"understanding_markdown": previous_markdown},
+        after={"understanding_markdown": markdown_content},
     )
 
     return {"analysis": _serialize_requirement_analysis(updated_analysis)}
@@ -972,19 +967,19 @@ def save_requirement_clarification_answer(
         apply_status = "not_applicable" if payload.answer_type == "defer" else "applied"
         insertion_anchor = ""
         failure_reason = ""
-        preliminary_markdown = str(output.get("preliminary_requirement_markdown") or "").strip()
-        if not preliminary_markdown:
-            raise api_error(409, "REQUIREMENT_ANALYSIS_EMPTY_DRAFT", "初步需求为空，不能写入答复。")
+        understanding_markdown = str(output.get("understanding_markdown") or "").strip()
+        if not understanding_markdown:
+            raise api_error(409, "REQUIREMENT_ANALYSIS_EMPTY_DRAFT", "需求理解为空，不能写入答复。")
 
         if apply_status == "applied":
-            preliminary_markdown, insertion_anchor = _apply_clarification_answer_to_markdown(
-                preliminary_markdown,
+            understanding_markdown, insertion_anchor = _apply_clarification_answer_to_markdown(
+                understanding_markdown,
                 question=question,
                 answer_markdown=answer_markdown,
             )
-            output["preliminary_requirement_markdown"] = preliminary_markdown
+            output["understanding_markdown"] = understanding_markdown
         else:
-            output["preliminary_requirement_markdown"] = _remove_existing_clarification_answer(preliminary_markdown, question)
+            output["understanding_markdown"] = _remove_existing_clarification_answer(understanding_markdown, question)
 
         answer_id = f"reqanswer-{secrets.token_hex(8)}"
         answer_snapshot = {
@@ -1003,16 +998,15 @@ def save_requirement_clarification_answer(
             "answer": answer_snapshot,
         }
 
-        quality_gate = output.get("quality_gate") or {}
-        draft_content_hash = _content_hash(str(output.get("preliminary_requirement_markdown") or ""))
+        draft_content_hash = _content_hash(str(output.get("understanding_markdown") or ""))
         document_repo.update_requirement_analysis_output(
             db,
             analysis_id=analysis_id,
             status=str(output.get("status") or analysis["status"]),
             analysis_summary=str(output.get("analysis_summary") or analysis["analysis_summary"]),
             output_json=output,
-            quality_result=str(quality_gate.get("result") or analysis["quality_result"]),
-            testability_score=int(quality_gate.get("testability_score") or analysis["testability_score"] or 0),
+            quality_result=str(analysis["quality_result"]),
+            testability_score=int(analysis["testability_score"] or 0),
             draft_content_hash=draft_content_hash,
         )
         requirement_clarification_answer_repo.upsert_answer(
@@ -1084,9 +1078,9 @@ def finalize_requirement_analysis(
             raise api_error(409, "REQUIREMENT_ANALYSIS_STALE", "该需求分析不是最新结果，请刷新后重试。")
 
         output = _normalize_requirement_analysis_output_markdown(json.loads(analysis["output_json"]))
-        preliminary_markdown = str(output.get("preliminary_requirement_markdown") or "").strip()
+        preliminary_markdown = str(output.get("understanding_markdown") or "").strip()
         if not preliminary_markdown:
-            raise api_error(409, "REQUIREMENT_ANALYSIS_EMPTY_DRAFT", "初步需求为空，不能转为最终需求。")
+            raise api_error(409, "REQUIREMENT_ANALYSIS_EMPTY_DRAFT", "需求理解为空，不能转为最终需求。")
 
         current_hash = _content_hash(preliminary_markdown)
         stored_hash = analysis["draft_content_hash"] or current_hash
@@ -1109,10 +1103,6 @@ def finalize_requirement_analysis(
                 }
 
         if analysis["status"] == "blocked" or analysis["quality_result"] == "blocked":
-            raise api_error(409, "REQUIREMENT_ANALYSIS_BLOCKED", "存在阻塞问题，不能转为最终需求。")
-
-        quality_gate = output.get("quality_gate") or {}
-        if quality_gate.get("result") == "blocked":
             raise api_error(409, "REQUIREMENT_ANALYSIS_BLOCKED", "存在阻塞问题，不能转为最终需求。")
 
         primary_mapping_id = analysis["primary_mapping_id"] or ""
@@ -1425,7 +1415,7 @@ def _content_hash(content: str) -> str:
 
 
 def _find_requirement_analysis_question(output: dict, question_id: str) -> tuple[dict | None, str | None, int | None]:
-    for bucket in ("clarification_questions", "conflicts"):
+    for bucket in ("clarification_items",):
         items = output.get(bucket) or []
         for index, item in enumerate(items):
             if item.get("id") == question_id:
@@ -1599,7 +1589,7 @@ def _append_to_matching_section(markdown_content: str, block: str, candidates: l
 
 def _active_unresolved_count(output: dict) -> int:
     count = 0
-    for item in [*(output.get("clarification_questions") or []), *(output.get("conflicts") or [])]:
+    for item in output.get("clarification_items") or []:
         answer = item.get("answer") or {}
         if answer.get("apply_status") in {"applied", "not_applicable"}:
             continue

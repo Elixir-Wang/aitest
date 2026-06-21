@@ -1,8 +1,10 @@
 import pytest
 
 from app.core import db as core_db
+from app.presentation.serializers import exploration_actions
 from app.seed.init_db import init_db
 from app.services import task_service
+from app.services.exploration import service as exploration_service
 
 
 ACTOR = {"id": "u-admin", "role": "admin", "nickname": "管理员", "username": "admin", "project_scope": "全部项目"}
@@ -315,6 +317,54 @@ def test_startup_recovers_interrupted_requirement_analysis_run(monkeypatch: pyte
     assert "服务已重启" in log["failure_reason"]
 
 
+def test_startup_marks_active_exploration_runs_interrupted(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_project(db)
+        db.execute(
+            """
+            INSERT INTO project_environments (id, project_id, name, site_url, created_by)
+            VALUES ('env-1', 'project-1', '测试环境', 'https://example.test', 'u-admin')
+            """
+        )
+        for status in ("queued", "running", "stopping"):
+            db.execute(
+                """
+                INSERT INTO exploration_runs
+                  (id, project_id, environment_id, title, status, result_summary, created_by)
+                VALUES (?, 'project-1', 'env-1', ?, ?, '原状态摘要', 'u-admin')
+                """,
+                (f"run-{status}", f"{status} 探索", status),
+            )
+
+    exploration_service.recover_interrupted_exploration_runs()
+
+    with core_db.connect() as db:
+        rows = db.execute(
+            """
+            SELECT id, status, result_summary, finished_at
+            FROM exploration_runs
+            ORDER BY id
+            """
+        ).fetchall()
+        logs = db.execute(
+            """
+            SELECT task_id, action, result, failure_reason
+            FROM operation_logs
+            WHERE object_type = 'exploration_run'
+            ORDER BY task_id
+            """
+        ).fetchall()
+
+    assert {row["status"] for row in rows} == {"interrupted"}
+    assert all("服务已重启" in row["result_summary"] for row in rows)
+    assert all(row["finished_at"] for row in rows)
+    assert [log["task_id"] for log in logs] == ["run-queued", "run-running", "run-stopping"]
+    assert {log["action"] for log in logs} == {"interrupt"}
+    assert {log["result"] for log in logs} == {"failed"}
+    assert all("服务已重启" in log["failure_reason"] for log in logs)
+
+
 def test_get_task_by_source_returns_normalized_exploration_task(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     with core_db.connect() as db:
@@ -347,6 +397,7 @@ def test_is_active_task_status_matches_running_indicator_contract() -> None:
     assert task_service.is_active_task_status("exploration_run", "running") is True
     assert task_service.is_active_task_status("exploration_run", "stopping") is True
     assert task_service.is_active_task_status("exploration_run", "pending") is False
+    assert task_service.is_active_task_status("exploration_run", "interrupted") is False
     assert task_service.is_active_task_status("exploration_run", "completed") is False
     assert task_service.is_active_task_status("requirement_analysis_run", "queued") is True
     assert task_service.is_active_task_status("requirement_analysis_run", "running") is True
@@ -354,3 +405,9 @@ def test_is_active_task_status_matches_running_indicator_contract() -> None:
     assert task_service.is_active_task_status("requirement_analysis_run", "cancelled") is False
     assert task_service.is_active_task_status("requirement_analysis_run", "needs_clarification") is False
     assert task_service.is_active_task_status("requirement_analysis_run", "completed") is False
+
+
+def test_interrupted_exploration_run_is_restartable_for_admin() -> None:
+    assert "start" in exploration_actions("admin", "interrupted")
+    assert "delete" in exploration_actions("admin", "interrupted")
+    assert "cancel" not in exploration_actions("admin", "interrupted")

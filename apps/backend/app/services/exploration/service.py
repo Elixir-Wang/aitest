@@ -1,34 +1,25 @@
 import json
-import asyncio
 import secrets
 import shutil
 import re
+import yaml
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import yaml
-
 from app.core.db import connect
-from app.core.environment_auth_state import auth_state_path
+from app.core.environment_auth_state import auth_state_path, auth_state_summary
 from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
-from app.agents.site_exploration.planning import service as site_exploration_plan_service
-from app.agents.site_exploration.planning.schemas import (
-    ExplorationPlanInput,
-    ExplorationPlanModule,
-    ExplorationPlanOutput,
-)
 from app.presentation.serializers import serialize_exploration_run
 from app.repositories import document_repo, environment_repo, exploration_repo, project_repo
-from app.schemas.exploration import ExplorationPlanUpdateIn, ExplorationRunCreateIn, ExplorationRunUpdateIn
-from app.schemas.requirement_exploration import RequirementPlanImportIn
+from app.schemas.exploration import ExplorationRunCreateIn, ExplorationRunUpdateIn
 from app.services import operation_log_service
 from app.services.exploration import artifact_service as exploration_artifact_service
-from app.services.exploration.browser_session import BrowserSessionError, PlaywrightBrowserSession
-from app.services import requirement_exploration_service
+from app.services.exploration import browser_session as exploration_browser_session
+from app.services.exploration import event_bus as exploration_event_bus
 
-STATUSES = {"pending", "queued", "running", "stopping", "cancelled", "partial", "completed", "blocked"}
+STATUSES = {"pending", "queued", "running", "stopping", "cancelled", "interrupted", "partial", "completed", "blocked"}
 LOGIN_STRATEGIES = {"account_password", "skip_login"}
 AGENT_PLAN_DISPLAY_STATUSES = {
     "pending",
@@ -41,7 +32,10 @@ AGENT_PLAN_DISPLAY_STATUSES = {
     "blocked",
     "failed",
     "cancelled",
+    "interrupted",
 }
+
+INTERRUPTED_EXPLORATION_SUMMARY = "服务已重启，站点探索后台任务已中断，请重新发起探索。"
 
 LOG_EVENT_LABELS = {
     "run_started": "探索开始",
@@ -86,6 +80,47 @@ def list_visible_runs(actor) -> list[dict]:
         rows = exploration_repo.list_visible(db, actor)
         rows = [_recover_stale_stopping_run(db, row) for row in rows]
         return [serialize_exploration_run(row, actor["role"]) for row in rows]
+
+
+def recover_interrupted_exploration_runs(*, project_id: str | None = None) -> None:
+    with connect() as db:
+        query = """
+            SELECT er.*, p.name AS project_name
+            FROM exploration_runs er
+            JOIN projects p ON p.id = er.project_id
+            WHERE er.status IN ('queued', 'running', 'stopping')
+        """
+        params: tuple[str, ...] = ()
+        if project_id:
+            query += " AND er.project_id = ?"
+            params = (project_id,)
+        rows = [dict(row) for row in db.execute(query, params).fetchall()]
+        for row in rows:
+            exploration_repo.update_run_state(
+                db,
+                row["id"],
+                status="interrupted",
+                result_summary=INTERRUPTED_EXPLORATION_SUMMARY,
+                finished=True,
+            )
+
+    for row in rows:
+        operation_log_service.record_task_event(
+            module="exploration",
+            action="interrupt",
+            object_type="exploration_run",
+            object_id=row["id"],
+            object_name=row["title"],
+            project_id=row["project_id"],
+            actor_id="system",
+            actor_name="系统",
+            source="system",
+            result="failed",
+            failure_reason=INTERRUPTED_EXPLORATION_SUMMARY,
+            summary=f"站点探索已中断：{row['title']}",
+            after={"status": "interrupted", "reason": "startup_recovered"},
+            task_id=row["id"],
+        )
 
 
 def get_project_run(project_id: str, run_id: str, actor) -> dict:
@@ -135,6 +170,8 @@ def get_project_run_detail(project_id: str, run_id: str, actor) -> dict:
         fallback_key = "current"
         if not module_by_key:
             module_by_key.update(_planned_or_fallback_modules(run_id, existing, fallback_key))
+
+        _attach_plan_steps_to_modules(existing, artifact_bundle, module_by_key)
 
         for page in pages:
             target = module_by_key.setdefault(page["module_key"] or fallback_key, _fallback_module(run_id, existing, page["module_key"] or fallback_key))
@@ -194,6 +231,8 @@ def get_project_run_detail(project_id: str, run_id: str, actor) -> dict:
                 }
             )
 
+        _attach_live_progress_to_modules(artifact_bundle, module_by_key)
+
         for module in module_by_key.values():
             if module["module_key"] not in persisted_module_keys and (module["pages"] or module["blockers"]):
                 module["completion_status"] = _module_status_from_artifacts(module, existing["status"])
@@ -206,7 +245,6 @@ def get_project_run_detail(project_id: str, run_id: str, actor) -> dict:
             "unsupported_reason": str(artifact_bundle.get("unsupported_reason") or ""),
             "modules": list(module_by_key.values()),
             "goal_validation": _goal_validation_from_bundle(existing, artifact_bundle),
-            "exploration_plan": _load_exploration_plan(existing),
         }
 
 
@@ -403,6 +441,116 @@ def _enrich_module_progress(module: dict) -> None:
     module["planned_page_count"] = planned
     module["explored_page_count"] = explored
     module["blocked_page_count"] = blocked
+    if explored == 0 and module.get("completion_status") == "completed":
+        module["completion_status"] = "partial"
+        module["completion_summary"] = "未探索到页面事实，无法确认探索目标已完成。"
+
+
+def _attach_plan_steps_to_modules(run, artifact_bundle: dict, module_by_key: dict[str, dict]) -> None:
+    if not _is_active_run(run):
+        return
+    plan = artifact_bundle.get("plan") if isinstance(artifact_bundle.get("plan"), dict) else {}
+    raw_steps = plan.get("steps") if isinstance(plan.get("steps"), list) else []
+    if not raw_steps:
+        return
+    module_key_by_name = {str(module.get("module_name") or ""): key for key, module in module_by_key.items()}
+    fallback_key = next(iter(module_by_key.keys()), "current")
+    grouped: dict[str, list[dict]] = {}
+    for index, raw_step in enumerate(raw_steps, start=1):
+        if not isinstance(raw_step, dict):
+            continue
+        module_name = str(raw_step.get("module_name") or "")
+        module_key = module_key_by_name.get(module_name) or fallback_key
+        grouped.setdefault(module_key, []).append(_plan_step_payload(raw_step, index))
+
+    for module_key, steps in grouped.items():
+        module = module_by_key.get(module_key)
+        if not module:
+            continue
+        if module.get("pages"):
+            continue
+        module["pages"].append(
+            {
+                "id": f"plan-{module_key}",
+                "module_key": module_key,
+                "title": "探索计划步骤",
+                "url": "",
+                "entry_path": module.get("entry_path", ""),
+                "structure_summary": f"已生成 {len(steps)} 个计划步骤，等待页面事实回写。",
+                "yaml_path": "exploration-plan.yaml",
+                "status": "running",
+                "blocker_reason": "",
+                "recent_event": steps[0]["detail"] if steps else "",
+                "steps": steps,
+            }
+        )
+
+
+def _attach_live_progress_to_modules(artifact_bundle: dict, module_by_key: dict[str, dict]) -> None:
+    live_progress = artifact_bundle.get("live_progress") if isinstance(artifact_bundle.get("live_progress"), dict) else {}
+    raw_modules = live_progress.get("modules") if isinstance(live_progress.get("modules"), dict) else {}
+    for module_key, live_module in raw_modules.items():
+        module_key = str(module_key or "")
+        if not module_key:
+            continue
+        module = module_by_key.get(module_key)
+        if not module or not isinstance(live_module, dict):
+            continue
+        raw_pages = live_module.get("pages") if isinstance(live_module.get("pages"), dict) else {}
+        for raw_page in raw_pages.values():
+            if not isinstance(raw_page, dict):
+                continue
+            page = _live_progress_page(raw_page, module_key)
+            existing_index = next((index for index, item in enumerate(module["pages"]) if item.get("id") == page["id"]), -1)
+            if existing_index >= 0:
+                module["pages"][existing_index] = _merge_live_page(module["pages"][existing_index], page)
+            else:
+                module["pages"].append(page)
+
+
+def _live_progress_page(raw_page: dict, module_key: str) -> dict:
+    page_id = str(raw_page.get("id") or "live-progress")
+    return {
+        "id": page_id,
+        "module_key": str(raw_page.get("module_key") or module_key),
+        "title": str(raw_page.get("title") or "当前运行阶段"),
+        "url": str(raw_page.get("url") or ""),
+        "entry_path": str(raw_page.get("entry_path") or ""),
+        "structure_summary": str(raw_page.get("structure_summary") or ""),
+        "yaml_path": str(raw_page.get("yaml_path") or "live/progress.json"),
+        "status": _normalize_page_display_status(str(raw_page.get("status") or "running")),
+        "blocker_reason": str(raw_page.get("blocker_reason") or ""),
+        "recent_event": str(raw_page.get("recent_event") or ""),
+        "steps": _normalize_steps(raw_page.get("steps") or []),
+    }
+
+
+def _merge_live_page(existing: dict, live_page: dict) -> dict:
+    merged = {**existing, **{key: value for key, value in live_page.items() if value not in ("", [], None)}}
+    existing_steps = {str(step.get("id")): step for step in existing.get("steps", []) if isinstance(step, dict)}
+    for step in live_page.get("steps", []):
+        if isinstance(step, dict):
+            existing_steps[str(step.get("id"))] = step
+    merged["steps"] = list(existing_steps.values())
+    return merged
+
+
+def _plan_step_payload(raw_step: dict, index: int) -> dict:
+    description = str(raw_step.get("description") or raw_step.get("target_description") or f"探索步骤 {index}")
+    return {
+        "id": str(raw_step.get("step_id") or f"plan-step-{index:03d}"),
+        "type": str(raw_step.get("action_type") or "planned_step"),
+        "title": description,
+        "detail": str(raw_step.get("expected_result") or description),
+        "status": "pending",
+        "occurred_at": None,
+        "artifact_path": "exploration-plan.yaml",
+        "source": "exploration_plan",
+    }
+
+
+def _is_active_run(run) -> bool:
+    return str(run["status"] if "status" in run.keys() else run.get("status", "")) in {"queued", "running", "stopping"}
 
 
 def _module_status_from_artifacts(module: dict, run_status: str) -> str:
@@ -560,6 +708,75 @@ def _format_log_timestamp(value: str) -> str:
     return parsed.astimezone(target_timezone).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _recommend_execution_limits(scope: str) -> dict[str, int]:
+    """
+    根据探索范围智能推荐合理的执行限制
+
+    Args:
+        scope: 探索范围描述
+
+    Returns:
+        包含 max_pages, max_actions, timeout_minutes 的推荐值字典
+    """
+    scope_text = scope.strip() if scope else ""
+    scope_lower = scope_text.lower()
+
+    # 判断探索范围类型
+    is_full_site = _is_full_site_scope({"scope": scope})
+
+    # 单页判断：明确包含"入口页"等关键词，且不是范围列表格式
+    is_single_page = (
+        any(term in scope_lower for term in ("入口页", "单页", "single page", "home page")) and
+        "范围包含" not in scope_text
+    )
+
+    # 如果包含"首页"但也包含其他内容，不算单页
+    if "首页" in scope_text and "范围包含" in scope_text:
+        is_single_page = False
+    elif scope_text == "首页":
+        is_single_page = True
+
+    # 提取范围中的模块数量
+    module_count = len(_scope_named_items(scope))
+
+    # 根据范围类型推荐限制值
+    if is_single_page:
+        # 单页或入口页探索
+        return {
+            "max_pages": 5,
+            "max_actions": 100,
+            "timeout_minutes": 10,
+        }
+    elif is_full_site:
+        # 全站探索
+        return {
+            "max_pages": 500,
+            "max_actions": 10000,
+            "timeout_minutes": 240,
+        }
+    elif module_count >= 5:
+        # 多模块探索（5个或以上）
+        return {
+            "max_pages": 200,
+            "max_actions": 5000,
+            "timeout_minutes": 120,
+        }
+    elif module_count >= 2:
+        # 少量模块探索（2-4个）
+        return {
+            "max_pages": 100,
+            "max_actions": 2000,
+            "timeout_minutes": 60,
+        }
+    else:
+        # 默认标准探索（单模块或未明确范围）
+        return {
+            "max_pages": 50,
+            "max_actions": 1000,
+            "timeout_minutes": 60,
+        }
+
+
 def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) -> dict:
     target_project_id = payload.project_id or project_id
     if target_project_id != project_id:
@@ -577,10 +794,16 @@ def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) 
         requirement_doc_id = payload.requirement_doc_id.strip()
         _ensure_requirement_document_in_project(db, project_id, requirement_doc_id)
 
+        # 如果用户使用默认值，根据探索范围智能推荐
+        recommended = _recommend_execution_limits(payload.scope)
+        max_pages = payload.max_pages if payload.max_pages != 50 else recommended["max_pages"]
+        max_actions = payload.max_actions if payload.max_actions != 1000 else recommended["max_actions"]
+        timeout_minutes = payload.timeout_minutes if payload.timeout_minutes != 120 else recommended["timeout_minutes"]
+
         _validate_execution_limits(
-            max_pages=payload.max_pages,
-            max_actions=payload.max_actions,
-            timeout_minutes=payload.timeout_minutes,
+            max_pages=max_pages,
+            max_actions=max_actions,
+            timeout_minutes=timeout_minutes,
         )
         exploration_repo.create(
             db,
@@ -594,9 +817,9 @@ def create_project_run(project_id: str, payload: ExplorationRunCreateIn, actor) 
             login_strategy=environment["login_strategy"],
             goal=payload.goal.strip(),
             notes=payload.notes.strip(),
-            max_pages=payload.max_pages,
-            max_actions=payload.max_actions,
-            timeout_minutes=payload.timeout_minutes,
+            max_pages=max_pages,
+            max_actions=max_actions,
+            timeout_minutes=timeout_minutes,
             created_by=actor["id"],
         )
         row = exploration_repo.find_by_id(db, run_id)
@@ -679,17 +902,10 @@ def start_project_run(project_id: str, run_id: str, actor) -> dict:
         existing = _recover_stale_stopping_run(db, existing)
         if existing["status"] in {"queued", "running", "stopping"}:
             raise api_error(409, "EXPLORATION_ALREADY_RUNNING", "探索任务正在执行。")
-        if existing["status"] not in {"pending", "partial", "completed", "blocked", "cancelled"}:
+        if existing["status"] not in {"pending", "partial", "completed", "blocked", "cancelled", "interrupted"}:
             raise api_error(409, "EXPLORATION_NOT_STARTABLE", "当前状态不能发起探索。")
-        plan = _load_exploration_plan(existing)
-        has_discovery_artifacts = _has_first_discovery_artifacts(existing)
-        if has_discovery_artifacts and plan["plan_status"] != "confirmed":
-            raise api_error(409, "EXPLORATION_PLAN_NOT_CONFIRMED", "请先根据首次探索生成并确认探索计划，再按计划开始探索。")
-        if plan["plan_status"] == "confirmed":
-            plan["plan_status"] = "running"
+        exploration_event_bus.reset_run(run_id)
         _remove_run_artifact_directory(existing)
-        if plan["plan_status"] == "running":
-            _write_exploration_plan(existing, plan)
         exploration_repo.update_run_state(
             db,
             run_id,
@@ -719,114 +935,6 @@ def start_project_run(project_id: str, run_id: str, actor) -> dict:
     return result
 
 
-def generate_project_run_plan(project_id: str, run_id: str, actor) -> dict:
-    with connect() as db:
-        existing = exploration_repo.find_by_id(db, run_id)
-        if not existing or existing["project_id"] != project_id:
-            raise api_error(404, "NOT_FOUND", "探索任务不存在。")
-        _ensure_project_visible(existing, actor)
-        if existing["status"] in {"queued", "running", "stopping"}:
-            raise api_error(409, "RUNNING_EXPLORATION", "探索任务执行中，不能重新生成探索计划。")
-        plan = _build_ai_generated_exploration_plan(existing)
-        _write_exploration_plan(existing, plan)
-        return plan
-
-
-def update_project_run_plan(project_id: str, run_id: str, payload: ExplorationPlanUpdateIn, actor) -> dict:
-    with connect() as db:
-        existing = exploration_repo.find_by_id(db, run_id)
-        if not existing or existing["project_id"] != project_id:
-            raise api_error(404, "NOT_FOUND", "探索任务不存在。")
-        _ensure_project_visible(existing, actor)
-        if existing["status"] in {"queued", "running", "stopping"}:
-            raise api_error(409, "RUNNING_EXPLORATION", "探索任务执行中，不能修改探索计划。")
-        current = _load_exploration_plan(existing)
-        if current["plan_status"] in {"running", "completed", "blocked"}:
-            raise api_error(409, "EXPLORATION_PLAN_LOCKED", "探索计划已进入执行阶段，不能修改。")
-        items = [_normalize_plan_item(item.model_dump(), index + 1, _plan_business_boundary(existing)) for index, item in enumerate(payload.items)]
-        if not items:
-            raise api_error(400, "EMPTY_EXPLORATION_PLAN", "探索计划至少需要一个计划项。")
-        plan = {
-            **current,
-            "plan_status": "draft",
-            "items": items,
-            "summary": f"已人工调整 {len(items)} 个探索计划项，等待确认。",
-        }
-        _write_exploration_plan(existing, plan)
-        return plan
-
-
-def confirm_project_run_plan(project_id: str, run_id: str, actor) -> dict:
-    with connect() as db:
-        existing = exploration_repo.find_by_id(db, run_id)
-        if not existing or existing["project_id"] != project_id:
-            raise api_error(404, "NOT_FOUND", "探索任务不存在。")
-        _ensure_project_visible(existing, actor)
-        if existing["status"] in {"queued", "running", "stopping"}:
-            raise api_error(409, "RUNNING_EXPLORATION", "探索任务执行中，不能确认探索计划。")
-        plan = _load_exploration_plan(existing)
-        if not plan["items"]:
-            raise api_error(400, "EMPTY_EXPLORATION_PLAN", "请先生成或补充探索计划项。")
-        plan["plan_status"] = "confirmed"
-        plan["summary"] = f"已确认 {len(plan['items'])} 个探索计划项，可按计划开始探索。"
-        _write_exploration_plan(existing, plan)
-        return plan
-
-
-def import_plan_from_requirement(project_id: str, run_id: str, payload: RequirementPlanImportIn, actor) -> dict:
-    """从需求分析导入探索计划到探索任务"""
-    from app.services import requirement_exploration_service
-
-    with connect() as db:
-        existing = exploration_repo.find_by_id(db, run_id)
-        if not existing or existing["project_id"] != project_id:
-            raise api_error(404, "NOT_FOUND", "探索任务不存在。")
-        _ensure_project_visible(existing, actor)
-        if existing["status"] in {"queued", "running", "stopping"}:
-            raise api_error(409, "RUNNING_EXPLORATION", "探索任务执行中，不能修改探索计划。")
-        current = _load_exploration_plan(existing)
-        if current["plan_status"] in {"running", "completed", "blocked"}:
-            raise api_error(409, "EXPLORATION_PLAN_LOCKED", "探索计划已进入执行阶段，不能修改。")
-
-        # 获取需求探索计划
-        req_plan = requirement_exploration_service.get_exploration_plan_from_requirement(
-            project_id=project_id,
-            document_id=payload.requirement_doc_id,
-            run_id=payload.requirement_run_id,
-            actor=actor,
-        )
-
-        # 转换为探索模块的计划格式
-        business_boundary = req_plan.get("business_boundary", "")
-        items = []
-        for req_item in req_plan.get("items", []):
-            # 转换为探索模块的item格式
-            item = {
-                "id": req_item.get("id", ""),
-                "business_module": req_item.get("business_module", ""),
-                "capability_type": req_item.get("capability_type", ""),
-                "title": req_item.get("title", ""),
-                "steps": req_item.get("steps", []),
-                "exploration_points": req_item.get("exploration_points", []),
-            }
-            items.append(item)
-
-        if not items:
-            raise api_error(400, "EMPTY_REQUIREMENT_PLAN", "需求探索计划为空，无法导入。")
-
-        # 更新探索计划
-        plan = {
-            **current,
-            "plan_status": "draft",
-            "business_boundary": business_boundary,
-            "items": items,
-            "summary": f"已从需求分析导入 {len(items)} 个探索计划项，等待确认。",
-        }
-        _write_exploration_plan(existing, plan)
-
-        return plan
-
-
 def _remove_run_artifact_directory(run) -> None:
     artifact_root = resolve_stored_path(run["artifact_root"])
     if artifact_root and artifact_root.exists():
@@ -834,6 +942,8 @@ def _remove_run_artifact_directory(run) -> None:
 
 
 def stop_project_run(project_id: str, run_id: str, actor) -> dict:
+    should_close_session = False
+    should_publish_cancelled = False
     with connect() as db:
         existing = exploration_repo.find_by_id(db, run_id)
         if not existing or existing["project_id"] != project_id:
@@ -841,7 +951,7 @@ def stop_project_run(project_id: str, run_id: str, actor) -> dict:
         _ensure_project_visible(existing, actor)
         existing = _recover_stale_stopping_run(db, existing)
         before = _run_snapshot(existing)
-        if existing["status"] in {"completed", "partial", "blocked", "cancelled"}:
+        if existing["status"] in {"completed", "partial", "blocked", "cancelled", "interrupted"}:
             result = serialize_exploration_run(existing, actor["role"])
             after = _run_snapshot(result)
             should_log = False
@@ -864,15 +974,41 @@ def stop_project_run(project_id: str, run_id: str, actor) -> dict:
             exploration_repo.update_run_state(
                 db,
                 run_id,
-                status="stopping",
-                result_summary="用户已请求停止探索，正在终止浏览器探索进程。",
+                status="cancelled",
+                result_summary="用户已停止探索，已保留停止前生成的日志和产物。",
+                finished=True,
+            )
+            exploration_repo.update_module_coverages_status(
+                db,
+                run_id,
+                from_status="pending",
+                to_status="blocked",
+                completion_summary="用户已停止探索。",
+            )
+            exploration_repo.update_module_coverages_status(
+                db,
+                run_id,
+                from_status="running",
+                to_status="blocked",
+                completion_summary="用户已停止探索。",
             )
             row = exploration_repo.find_by_id(db, run_id)
             result = serialize_exploration_run(row, actor["role"])
             after = _run_snapshot(result)
             should_log = True
+            should_close_session = existing["status"] == "running"
+            should_publish_cancelled = True
         else:
             raise api_error(409, "EXPLORATION_NOT_RUNNING", "只有排队中或探索中的任务可以停止。")
+    if should_close_session:
+        exploration_browser_session.close_run_session(run_id, timeout_seconds=1.0)
+    if should_publish_cancelled:
+        exploration_event_bus.publish(
+            run_id,
+            "run_cancelled",
+            {"status": "cancelled", "result_summary": result["result_summary"]},
+        )
+        exploration_event_bus.close(run_id)
     if should_log:
         operation_log_service.record_task_event(
             module="exploration",
@@ -983,672 +1119,6 @@ def _resolve_run_artifact_root(run) -> Path | None:
     return artifact_root
 
 
-def _exploration_plan_path(run) -> Path | None:
-    artifact_root = _resolve_run_artifact_root(run)
-    if artifact_root is None:
-        return None
-    return artifact_root / "exploration-plan.yaml"
-
-
-def _load_exploration_plan(run) -> dict:
-    path = _exploration_plan_path(run)
-    if not path or not path.exists():
-        return _empty_exploration_plan(run)
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        return _empty_exploration_plan(run)
-    items = data.get("items") if isinstance(data.get("items"), list) else []
-    boundary = str(data.get("business_boundary") or _plan_business_boundary(run))
-    return {
-        "artifact_schema_version": 1,
-        "plan_status": str(data.get("plan_status") or "not_generated"),
-        "business_boundary": boundary,
-        "goal": str(data.get("goal") or _run_value(run, "goal", "")),
-        "summary": str(data.get("summary") or ""),
-        "items": [_normalize_plan_item(item, index + 1, boundary) for index, item in enumerate(items) if isinstance(item, dict)],
-    }
-
-
-def _write_exploration_plan(run, plan: dict) -> None:
-    path = _exploration_plan_path(run)
-    if path is None:
-        raise api_error(500, "INVALID_ARTIFACT_ROOT", "探索任务产物目录无效，无法保存探索计划。")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(plan, allow_unicode=True, sort_keys=False, default_flow_style=False), encoding="utf-8")
-
-
-def _empty_exploration_plan(run) -> dict:
-    return {
-        "artifact_schema_version": 1,
-        "plan_status": "not_generated",
-        "business_boundary": _plan_business_boundary(run),
-        "goal": _run_value(run, "goal", ""),
-        "summary": "尚未生成探索计划。",
-        "items": [],
-    }
-
-
-def _has_first_discovery_artifacts(run) -> bool:
-    artifacts = _load_run_artifact_bundle(run)
-    if bool(artifacts.get("unsupported_artifact")):
-        return False
-    pages = artifacts.get("pages") if isinstance(artifacts.get("pages"), list) else []
-    return any(isinstance(page, dict) and isinstance(page.get("content"), dict) for page in pages)
-
-
-def _build_discovery_based_exploration_plan(run, artifact_bundle: dict) -> dict:
-    if bool(artifact_bundle.get("unsupported_artifact")):
-        raise api_error(409, "UNSUPPORTED_EXPLORATION_ARTIFACT", "历史探索产物无法生成探索计划，请先重新执行首次探索。")
-    modules = _discovered_plan_modules(run, artifact_bundle)
-    if not modules:
-        raise api_error(409, "EXPLORATION_DISCOVERY_REQUIRED", "请先执行首次探索，采集探索范围内的模块。")
-    boundary = _plan_business_boundary(run)
-    items = [_module_plan_item(module, index) for index, module in enumerate(modules, start=1)]
-    return {
-        "artifact_schema_version": 1,
-        "plan_status": "draft",
-        "business_boundary": boundary,
-        "goal": _run_value(run, "goal", ""),
-        "summary": f"已根据首次探索采集结果生成 {len(items)} 个模块计划项，等待人工确认或补充。",
-        "items": items,
-    }
-
-
-def _build_ai_generated_exploration_plan(run) -> dict:
-    page_facts = _collect_scope_plan_facts(run)
-    scope_constraints = _plan_scope_constraints(run, page_facts)
-    try:
-        output = asyncio.run(
-            site_exploration_plan_service.generate_exploration_plan(
-                ExplorationPlanInput(
-                    run=_run_plan_context(run),
-                    page_facts=page_facts,
-                    scope_constraints=scope_constraints,
-                )
-            )
-        )
-    except Exception as error:
-        raise api_error(502, "EXPLORATION_PLAN_AI_FAILED", f"AI 生成探索计划失败：{str(error)[:300]}") from error
-
-    plan = _normalize_ai_exploration_plan(run, output, page_facts, scope_constraints)
-    if not plan["items"]:
-        raise api_error(409, "EXPLORATION_PLAN_MODULES_REQUIRED", "AI 未能根据当前探索范围识别模块，请补充探索范围或先人工确认页面内容。")
-    return plan
-
-
-def _collect_scope_plan_facts(run) -> dict:
-    start_url = _run_site_url(run)
-    if not start_url:
-        raise api_error(409, "EXPLORATION_SITE_URL_REQUIRED", "探索环境未配置站点地址，无法访问探索范围生成计划。")
-    storage_state_path = _stored_auth_state_path_for_run(run)
-    try:
-        with PlaywrightBrowserSession(
-            start_url=start_url,
-            storage_state_path=str(storage_state_path or ""),
-            timeout_seconds=45,
-        ) as session:
-            observation = session.observe()
-    except BrowserSessionError as error:
-        raise api_error(502, "EXPLORATION_PLAN_COLLECT_FAILED", f"访问探索范围并采集页面事实失败：{str(error)[:300]}") from error
-    return _plan_facts_from_observation(run, observation)
-
-
-def _plan_facts_from_observation(run, observation: dict) -> dict:
-    elements = observation.get("elements") if isinstance(observation.get("elements"), list) else []
-    visible_elements = []
-    for element in elements:
-        if not isinstance(element, dict):
-            continue
-        visible_elements.append(
-            {
-                "id": str(element.get("id") or ""),
-                "role": str(element.get("role") or ""),
-                "name": str(element.get("name") or ""),
-                "text": str(element.get("text") or ""),
-                "action_type": str(element.get("action_type") or ""),
-                "enabled": bool(element.get("enabled", True)),
-                "visible": bool(element.get("visible", True)),
-            }
-        )
-    return {
-        "url": str(observation.get("url") or ""),
-        "normalized_url": str(observation.get("normalized_url") or observation.get("url") or ""),
-        "title": str(observation.get("title") or ""),
-        "page_text_summary": str(observation.get("page_text_summary") or observation.get("text_summary") or ""),
-        "scope": _run_value(run, "scope", ""),
-        "goal": _run_value(run, "goal", ""),
-        "forbidden_paths": _run_value(run, "forbidden_paths", ""),
-        "elements": visible_elements[:120],
-    }
-
-
-def _run_plan_context(run) -> dict:
-    return {
-        "id": _run_value(run, "id", ""),
-        "title": _run_value(run, "title", ""),
-        "scope": _run_value(run, "scope", ""),
-        "goal": _run_value(run, "goal", ""),
-        "forbidden_paths": _run_value(run, "forbidden_paths", ""),
-        "site_url": _run_site_url(run),
-        "environment_name": _run_value(run, "environment_name", ""),
-    }
-
-
-def _normalize_ai_exploration_plan(
-    run,
-    output: ExplorationPlanOutput,
-    page_facts: dict,
-    scope_constraints: dict | None = None,
-) -> dict:
-    boundary = _plan_business_boundary(run)
-    items = _dom_group_plan_items(boundary, page_facts)
-    skipped_modules = []
-    scope_constraints = scope_constraints or _plan_scope_constraints(run, page_facts)
-    used_capability_types = {str(item.get("capability_type") or "") for item in items}
-    for index, module in enumerate(output.modules, start=1):
-        module_name = module.module_name.strip()
-        if not module_name:
-            continue
-        capability_type = _capability_type_from_module_name(module_name)
-        if capability_type in used_capability_types:
-            continue
-        if not _module_matches_plan_scope(module, scope_constraints):
-            skipped_modules.append(module_name)
-            continue
-        if capability_type == "custom":
-            continue
-        steps = module.steps or [
-            f"基于真实 DOM 入口探索{module_name}",
-            "记录该功能内的操作结果和页面变化",
-        ]
-        item = _normalize_plan_item(
-            {
-                "id": f"plan-ai-module-{index:02d}",
-                "business_module": boundary,
-                "capability_type": capability_type,
-                "title": module_name,
-                "steps": steps,
-                "exploration_points": [module.reason, module.entry_hint],
-                "entry_path": str(page_facts.get("normalized_url") or page_facts.get("url") or ""),
-            },
-            index,
-            boundary,
-        )
-        items.append(item)
-        used_capability_types.add(capability_type)
-    summary = f"AI 已根据探索范围和 DOM 元素分组生成 {len(items)} 个功能计划项，等待人工确认或补充。"
-    if skipped_modules:
-        summary = f"{summary} 已过滤范围外模块：{'、'.join(skipped_modules)}。"
-    return {
-        "artifact_schema_version": 1,
-        "plan_status": "draft",
-        "business_boundary": boundary,
-        "goal": _run_value(run, "goal", ""),
-        "summary": summary,
-        "items": items,
-    }
-
-
-def _capability_type_from_module_name(module_name: str) -> str:
-    text = str(module_name or "").lower()
-    if _contains_any(text, ("搜索", "查询", "筛选", "过滤", "排序", "标签", "search", "filter", "sort")):
-        return "query_filter"
-    if _contains_any(text, ("视图", "宫格", "网格", "列表视图", "布局", "view", "grid", "layout")):
-        return "view_switch"
-    if _contains_any(text, ("卡片", "更多菜单", "主操作", "对话历史", "日志查询", "复制", "下线", "card", "menu")):
-        return "card_action"
-    if _contains_any(text, ("创建导入", "创建", "新增", "新建", "导入", "上传", "create", "new", "add", "import", "upload")):
-        return "create_import"
-    if _contains_any(text, ("导入", "导出", "上传", "下载", "模板", "import", "export", "upload", "download")):
-        return "import_export"
-    if _contains_any(text, ("批量", "全选", "多选", "batch", "select all")):
-        return "batch_operation"
-    if _contains_any(text, ("新增", "新建", "创建", "查看", "详情", "编辑", "删除", "保存", "crud", "create", "detail", "edit", "delete")):
-        return "crud"
-    if _contains_any(text, ("卡片", "列表", "表格", "展示", "内容", "card", "list", "table")):
-        return "content_display"
-    return "custom"
-
-
-def _dom_group_plan_items(boundary: str, page_facts: dict) -> list[dict]:
-    groups = _classify_plan_dom_groups(page_facts)
-    entry_path = str(page_facts.get("normalized_url") or page_facts.get("url") or "")
-    items: list[dict] = []
-    for definition in _dom_plan_definitions():
-        capability_type = definition["capability_type"]
-        sources = groups.get(capability_type, [])
-        if not sources:
-            continue
-        index = len(items) + 1
-        items.append(
-            _normalize_plan_item(
-                {
-                    "id": f"plan-dom-{capability_type}-{index:02d}",
-                    "business_module": boundary,
-                    "capability_type": capability_type,
-                    "title": definition["title"],
-                    "steps": [step.replace("当前模块", boundary) for step in definition["steps"]],
-                    "exploration_points": [
-                        f"已发现入口：{_format_dom_sources(sources)}",
-                        *definition["exploration_points"],
-                    ],
-                    "entry_path": entry_path,
-                },
-                index,
-                boundary,
-            )
-        )
-    return items
-
-
-def _classify_plan_dom_groups(page_facts: dict) -> dict[str, list[str]]:
-    groups: dict[str, list[str]] = {}
-    for element in page_facts.get("elements") if isinstance(page_facts.get("elements"), list) else []:
-        if not isinstance(element, dict):
-            continue
-        text = _plan_element_text(element)
-        if not text:
-            continue
-        for capability_type in _capability_types_for_element(element, text):
-            groups.setdefault(capability_type, [])
-            if text not in groups[capability_type]:
-                groups[capability_type].append(text)
-    _merge_card_menu_sources(groups)
-    return groups
-
-
-def _merge_card_menu_sources(groups: dict[str, list[str]]) -> None:
-    card_sources = groups.get("card_action", [])
-    if not card_sources:
-        return
-    display_sources = groups.get("content_display", [])
-    card_display_sources = [source for source in display_sources if _contains_any(source, ("卡片", "card"))]
-    for source in card_display_sources:
-        if source not in card_sources:
-            card_sources.append(source)
-    groups["content_display"] = [source for source in display_sources if source not in card_display_sources]
-    if not groups["content_display"]:
-        groups.pop("content_display", None)
-    has_menu_context = any(
-        _contains_any(source, ("更多", "日志查询", "更新发布平台", "复制", "下线", "对话历史"))
-        for source in card_sources
-    )
-    if not has_menu_context:
-        return
-    query_sources = groups.get("query_filter", [])
-    menu_query_sources = [source for source in query_sources if _contains_any(source, ("日志查询",))]
-    for source in menu_query_sources:
-        if source not in card_sources:
-            card_sources.append(source)
-    groups["query_filter"] = [source for source in query_sources if source not in menu_query_sources]
-    if not groups["query_filter"]:
-        groups.pop("query_filter", None)
-    import_sources = groups.get("import_export", [])
-    menu_export_sources = [source for source in import_sources if _contains_any(source, ("导出", "下载"))]
-    for source in menu_export_sources:
-        if source not in card_sources:
-            card_sources.append(source)
-    groups["import_export"] = [source for source in import_sources if source not in menu_export_sources]
-    if not groups["import_export"]:
-        groups.pop("import_export", None)
-
-
-def _capability_types_for_element(element: dict, text: str) -> list[str]:
-    haystack = f"{text} {element.get('role') or ''} {element.get('action_type') or ''}".lower()
-    role = str(element.get("role") or "").lower()
-    action_type = str(element.get("action_type") or "").lower()
-    types: list[str] = []
-    if role in {"textbox", "searchbox", "combobox", "select", "tab"} or action_type == "fill":
-        if _contains_any(haystack, ("搜索", "查询", "筛选", "过滤", "排序", "类型", "状态", "日期", "重置", "全部", "search", "query", "filter", "sort", "status", "date", "reset")):
-            types.append("query_filter")
-    if _contains_any(haystack, ("搜索", "查询", "筛选", "过滤", "排序", "重置", "search", "query", "filter", "sort", "reset")):
-        types.append("query_filter")
-    if _contains_any(haystack, ("视图", "宫格", "网格", "列表视图", "布局", "view", "grid", "layout")):
-        types.append("view_switch")
-    if _contains_any(
-        haystack,
-        (
-            "卡片",
-            "分析",
-            "使用",
-            "对话历史",
-            "更多",
-            "日志查询",
-            "更新发布平台",
-            "复制",
-            "下线",
-            "card",
-            "history",
-            "more",
-            "copy",
-        ),
-    ):
-        types.append("card_action")
-    if _contains_any(haystack, ("创建", "新增", "新建", "导入", "上传", "create", "new", "add", "import", "upload")):
-        types.append("create_import")
-    if not _contains_any(haystack, ("视图", "view")) and _contains_any(haystack, ("卡片", "列表", "表格", "统计", "缩略图", "card", "list", "table", "row")):
-        types.append("content_display")
-    if _contains_any(haystack, ("查看", "详情", "编辑", "修改", "删除", "保存", "取消", "确认", "view", "detail", "edit", "update", "delete", "save", "cancel", "confirm")):
-        types.append("crud")
-    if _contains_any(haystack, ("导出", "下载", "模板", "文件", "export", "download", "template", "file")):
-        types.append("import_export")
-    if role in {"checkbox"} or _contains_any(haystack, ("批量", "全选", "多选", "选择", "batch", "select all", "checkbox")):
-        types.append("batch_operation")
-    return _unique_preserve_order(types)
-
-
-def _plan_element_text(element: dict) -> str:
-    readable = str(element.get("name") or element.get("text") or "").strip()
-    if readable:
-        return re.sub(r"\s+", " ", readable).strip()[:80]
-    candidates = [element.get("id")]
-    text = " ".join(str(item).strip() for item in candidates if str(item or "").strip())
-    return re.sub(r"\s+", " ", text).strip()[:80]
-
-
-def _format_dom_sources(sources: list[str]) -> str:
-    return "、".join(sources[:8])
-
-
-def _dom_plan_definitions() -> list[dict]:
-    return [
-        {
-            "capability_type": "query_filter",
-            "title": "查询筛选功能",
-            "steps": ["完整探索当前模块中的查询、筛选、搜索、排序能力，记录可操作项、交互结果、数据变化和过程中发现的问题。"],
-            "exploration_points": [],
-        },
-        {
-            "capability_type": "view_switch",
-            "title": "视图切换功能",
-            "steps": ["完整探索当前模块中的视图切换能力，记录可切换视图、切换结果、信息展示变化和过程中发现的问题。"],
-            "exploration_points": [],
-        },
-        {
-            "capability_type": "content_display",
-            "title": "内容展示功能",
-            "steps": ["完整探索当前模块中的内容展示能力，记录字段展示、状态标识、入口操作、信息展示变化和过程中发现的问题。"],
-            "exploration_points": [],
-        },
-        {
-            "capability_type": "card_action",
-            "title": "卡片功能",
-            "steps": ["完整探索当前模块中卡片的信息展示、主操作按钮和更多菜单，记录卡片字段、按钮入口、菜单项、交互结果和过程中发现的问题。"],
-            "exploration_points": [],
-        },
-        {
-            "capability_type": "create_import",
-            "title": "创建导入功能",
-            "steps": ["完整探索当前模块中的创建和导入入口，记录入口位置、打开结果、流程边界、可操作项和过程中发现的问题。"],
-            "exploration_points": [],
-        },
-        {
-            "capability_type": "crud",
-            "title": "CRUD 功能",
-            "steps": ["完整探索当前模块中真实出现的新增、查看、编辑、删除等操作入口，记录流程边界、可操作项、交互结果和过程中发现的问题。"],
-            "exploration_points": [],
-        },
-        {
-            "capability_type": "import_export",
-            "title": "导入导出功能",
-            "steps": ["完整探索当前模块中的导入、导出、上传或下载入口，记录入口位置、打开结果、流程边界、可操作项和过程中发现的问题。"],
-            "exploration_points": [],
-        },
-        {
-            "capability_type": "batch_operation",
-            "title": "批量操作功能",
-            "steps": ["完整探索当前模块中的批量选择和批量操作能力，记录选择规则、可用条件、确认结果和过程中发现的问题。"],
-            "exploration_points": [],
-        },
-    ]
-
-
-def _contains_any(value: str, needles: tuple[str, ...]) -> bool:
-    text = str(value or "").lower()
-    return any(needle.lower() in text for needle in needles)
-
-
-def _plan_scope_constraints(run, page_facts: dict | None = None) -> dict:
-    scope = _run_value(run, "scope", "").strip()
-    allow_all = not scope or _is_full_site_scope(scope)
-    allowed_terms = [] if allow_all else _scope_constraint_terms(scope)
-    page_facts = page_facts if isinstance(page_facts, dict) else {}
-    return {
-        "scope": scope,
-        "allow_all": allow_all,
-        "allowed_terms": allowed_terms,
-        "instruction": (
-            "scope 未限制具体模块，可基于页面事实识别模块。"
-            if allow_all
-            else "只能生成 allowed_terms 或 scope 明确包含的模块；同级导航、相邻菜单和范围外页面必须忽略。"
-        ),
-        "current_url": str(page_facts.get("normalized_url") or page_facts.get("url") or ""),
-        "current_title": str(page_facts.get("title") or ""),
-    }
-
-
-def _scope_constraint_terms(scope: str) -> list[str]:
-    named_items = _scope_named_items(scope)
-    candidates = named_items or _split_scope_terms(scope)
-    terms: list[str] = []
-    for candidate in candidates:
-        text = _clean_scope_term(candidate)
-        if text:
-            terms.append(text)
-        route_label = _scope_route_label(text)
-        if route_label:
-            terms.append(route_label)
-    return _unique_preserve_order(terms)
-
-
-def _split_scope_terms(scope: str) -> list[str]:
-    normalized = re.sub(r"\s*和\s*", "\n", scope)
-    normalized = re.sub(r"\s*及\s*", "\n", normalized)
-    return [item.strip() for item in re.split(r"[、,，;；。\n]+", normalized) if item.strip()]
-
-
-def _clean_scope_term(term: str) -> str:
-    text = str(term or "").strip()
-    text = re.sub(r"^范围包含[：:]", "", text).strip()
-    text = re.sub(r"(模块|页面|菜单|入口|路径|URL)$", "", text, flags=re.IGNORECASE).strip()
-    text = re.sub(r"(的)?(全部内容|全部模块|相关内容|范围|探索)$", "", text).strip()
-    return text[:80]
-
-
-def _scope_route_label(term: str) -> str:
-    route_labels = {
-        "agentStore": "探索广场",
-        "workspace": "工作台",
-        "agentAnalysis": "效果评测",
-        "resource": "资源库",
-        "publish": "发布管理",
-        "manage": "管理中心",
-    }
-    normalized = str(term or "").strip("/").split("?")[0]
-    for segment, label in route_labels.items():
-        if segment in normalized:
-            return label
-    return ""
-
-
-def _module_matches_plan_scope(module: ExplorationPlanModule, scope_constraints: dict) -> bool:
-    if bool(scope_constraints.get("allow_all")):
-        return True
-    allowed_terms = [str(item).strip() for item in scope_constraints.get("allowed_terms", []) if str(item).strip()]
-    if not allowed_terms:
-        return True
-    haystack = _scope_match_text(
-        " ".join(
-            [
-                module.module_name,
-                module.reason,
-                module.entry_hint,
-                " ".join(module.steps),
-            ]
-        )
-    )
-    module_name = _scope_match_text(module.module_name)
-    scope_text = _scope_match_text(str(scope_constraints.get("scope") or ""))
-    for term in allowed_terms:
-        normalized_term = _scope_match_text(term)
-        if not normalized_term:
-            continue
-        if normalized_term in module_name or module_name in normalized_term:
-            return True
-        if normalized_term in haystack:
-            return True
-        if module_name and module_name in scope_text:
-            return True
-    return False
-
-
-def _scope_match_text(value: str) -> str:
-    return re.sub(r"\s+", "", str(value or "").lower())
-
-
-def _discovered_plan_modules(run, artifact_bundle: dict) -> list[dict]:
-    pages = artifact_bundle.get("pages") if isinstance(artifact_bundle.get("pages"), list) else []
-    modules: dict[str, dict] = {}
-    fallback_module = _plan_business_boundary(run)
-    for page_item in pages:
-        if not isinstance(page_item, dict):
-            continue
-        content = page_item.get("content") if isinstance(page_item.get("content"), dict) else {}
-        page = content.get("page") if isinstance(content.get("page"), dict) else {}
-        module_name = str(page.get("module") or fallback_module).strip() or fallback_module
-        module = modules.setdefault(
-            module_name,
-            {
-                "name": module_name,
-                "entry_path": str(page.get("normalized_url") or page.get("url") or "").strip(),
-                "page_titles": [],
-                "page_count": 0,
-                "action_count": 0,
-                "field_count": 0,
-                "blocked_count": 0,
-            },
-        )
-        if not module["entry_path"]:
-            module["entry_path"] = str(page.get("normalized_url") or page.get("url") or "").strip()
-        title = str(page.get("title") or page.get("semantic_title") or page.get("url") or "").strip()
-        if title and title not in module["page_titles"]:
-            module["page_titles"].append(title)
-        module["page_count"] += 1
-        module["action_count"] += len(content.get("actions")) if isinstance(content.get("actions"), list) else 0
-        module["field_count"] += len(content.get("forms")) if isinstance(content.get("forms"), list) else 0
-        status = str(page.get("status") or "").strip()
-        if status in {"blocked", "failed"}:
-            module["blocked_count"] += 1
-    return list(modules.values())
-
-
-def _module_plan_item(module: dict, index: int) -> dict:
-    name = str(module["name"])
-    entry_path = str(module.get("entry_path") or "")
-    page_titles = [str(title) for title in module.get("page_titles", []) if str(title).strip()]
-    sampled_pages = "、".join(page_titles[:3]) if page_titles else "首次探索采集页面"
-    steps = [
-        f"进入{name}模块入口" + (f"（{entry_path}）" if entry_path else ""),
-        f"按首次探索采集结果复核页面：{sampled_pages}",
-        "补充遗漏入口、关键页面状态和阻塞原因",
-    ]
-    exploration_points = [
-        f"覆盖{name}模块已采集的 {int(module.get('page_count') or 0)} 个页面/状态",
-        f"记录模块动作、表单和跳转证据（已发现 {int(module.get('action_count') or 0)} 个动作）",
-    ]
-    if int(module.get("blocked_count") or 0):
-        exploration_points.append(f"复核 {int(module.get('blocked_count') or 0)} 个阻塞页面并记录处理建议")
-    return _normalize_plan_item(
-        {
-            "id": f"plan-module-{index:02d}",
-            "business_module": name,
-            "capability_type": "module_discovery",
-            "title": f"探索{name}模块",
-            "steps": steps,
-            "exploration_points": exploration_points,
-        },
-        index,
-        name,
-    )
-
-
-def _build_default_exploration_plan(run) -> dict:
-    boundary = _plan_business_boundary(run)
-    items = [
-        _plan_item(boundary, "access", "访问边界首页", ["进入指定探索边界", "确认主内容区、导航和核心入口出现"], ["页面访问", "导航与主内容"], 1),
-        _plan_item(boundary, "search", f"搜索{boundary}内容", ["定位搜索框", "输入关键词并观察结果区变化"], ["搜索入口", "结果区状态"], 2),
-        _plan_item(boundary, "filter", f"筛选{boundary}内容", ["识别类型、范围、状态等筛选控件", "至少展开一个筛选项"], ["筛选入口", "筛选项与回显"], 3),
-        _plan_item(boundary, "sort", f"排序{boundary}列表", ["识别排序控件", "切换排序条件"], ["排序入口", "排序回显"], 4),
-        _plan_item(boundary, "create", f"打开{boundary}新建入口", ["点击创建或新增入口", "检查弹窗或创建页字段", "取消提交并返回"], ["新建入口", "表单结构"], 5),
-        _plan_item(boundary, "import", f"检查{boundary}导入入口", ["点击导入入口", "检查上传控件、模板或格式限制", "关闭弹窗"], ["导入入口", "上传限制和模板入口"], 6),
-        _plan_item(boundary, "detail", f"查看{boundary}详情", ["点击一条列表、卡片或业务对象", "记录详情页、抽屉或弹窗内容"], ["详情入口", "详情字段和返回路径"], 7),
-        _plan_item(boundary, "agent_usage", f"验证{boundary}智能体使用入口", ["识别使用、试用、运行或对话入口", "进入入口并记录状态", "遇到扣费、发布或外部调用时停止"], ["智能体使用入口", "运行前状态和阻塞原因"], 8),
-        _plan_item(boundary, "empty_state", f"检查{boundary}空状态", ["观察无数据状态", "记录空状态文案和主按钮"], ["空状态文案", "空状态引导入口"], 9),
-    ]
-    return {
-        "artifact_schema_version": 1,
-        "plan_status": "draft",
-        "business_boundary": boundary,
-        "goal": _run_value(run, "goal", ""),
-        "summary": f"已根据“{boundary}”边界生成 {len(items)} 个探索计划项，等待人工确认或补充。",
-        "items": items,
-    }
-
-
-def _plan_item(
-    boundary: str,
-    capability_type: str,
-    title: str,
-    steps: list[str],
-    exploration_points: list[str],
-    index: int,
-) -> dict:
-    return _normalize_plan_item(
-        {
-            "id": f"plan-{capability_type}-{index:02d}",
-            "business_module": boundary,
-            "capability_type": capability_type,
-            "title": title,
-            "steps": steps,
-            "exploration_points": exploration_points,
-        },
-        index,
-        boundary,
-    )
-
-
-def _normalize_plan_item(raw: dict, index: int, boundary: str) -> dict:
-    capability_type = str(raw.get("capability_type") or "custom").strip() or "custom"
-    item = {
-        "id": str(raw.get("id") or f"plan-{capability_type}-{index:02d}"),
-        "business_module": str(raw.get("business_module") or boundary),
-        "capability_type": capability_type,
-        "title": str(raw.get("title") or f"{boundary}探索计划项"),
-        "steps": _string_list(raw.get("steps")),
-        "exploration_points": _string_list(raw.get("exploration_points")),
-    }
-    entry_path = str(raw.get("entry_path") or "").strip()
-    if entry_path:
-        item["entry_path"] = entry_path
-    return item
-
-
-def _string_list(value) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item).strip() for item in value if str(item).strip()]
-
-
-def _plan_business_boundary(run) -> str:
-    scope = _run_value(run, "scope", "").strip()
-    if scope:
-        return scope.splitlines()[0][:80]
-    goal = _run_value(run, "goal", "").strip()
-    if goal:
-        return goal.splitlines()[0][:80]
-    return _run_value(run, "title", "站点入口").strip() or "站点入口"
-
-
 def _run_value(run, key: str, default: str = "") -> str:
     if isinstance(run, dict):
         return str(run.get(key) or default)
@@ -1665,7 +1135,15 @@ def _stored_auth_state_path_for_run(run) -> Path | None:
     login_strategy, _, reuse_auth_state = _snapshot_auth_config(run)
     if login_strategy != "account_password" or not reuse_auth_state:
         return None
-    path = auth_state_path(_run_value(run, "environment_id", ""))
+    environment_id = _run_value(run, "environment_id", "")
+    summary = auth_state_summary(
+        environment_id=environment_id,
+        login_strategy=login_strategy,
+        reuse_auth_state=reuse_auth_state,
+    )
+    if summary["status"] != "valid":
+        return None
+    path = auth_state_path(environment_id)
     return path if path.exists() else None
 
 
@@ -1693,7 +1171,7 @@ def _status_to_completion(status: str) -> str:
         return "blocked"
     if status in {"queued", "running", "stopping"}:
         return "in-progress"
-    if status == "cancelled":
+    if status in {"cancelled", "interrupted"}:
         return "blocked"
     if status == "partial":
         return "partial"
@@ -1862,13 +1340,77 @@ def _scope_named_items(scope: str) -> list[str]:
 
 
 def _validate_execution_limits(*, max_pages: int | None, max_actions: int | None, timeout_minutes: int | None) -> None:
+    """
+    验证探索执行限制参数的有效性
+
+    限制范围：
+    - max_pages: 1-10000 页
+    - max_actions: 1-100000 个动作
+    - timeout_minutes: 1-720 分钟（12小时）
+
+    同时验证参数之间的逻辑关系，确保配置合理。
+    """
+    # 定义上下界
+    LIMITS = {
+        "max_pages": {"min": 1, "max": 10000, "name": "最大页面数"},
+        "max_actions": {"min": 1, "max": 100000, "name": "最大动作数"},
+        "timeout_minutes": {"min": 1, "max": 720, "name": "超时时间（分钟）"},
+    }
+
     values = {
         "max_pages": max_pages,
         "max_actions": max_actions,
         "timeout_minutes": timeout_minutes,
     }
+
+    # 验证下界
     if any(value is not None and value < 1 for value in values.values()):
         raise api_error(400, "INVALID_EXPLORATION_LIMIT", "探索执行边界必须大于 0。")
+
+    # 验证上界
+    for key, value in values.items():
+        if value is not None:
+            limit = LIMITS[key]
+            if value > limit["max"]:
+                raise api_error(
+                    400,
+                    "EXPLORATION_LIMIT_EXCEEDED",
+                    f"{limit['name']}超出最大限制 {limit['max']}，当前设置为 {value}。"
+                )
+
+    # 验证参数之间的逻辑关系
+    # 规则：确保 timeout 相对于 max_pages 是合理的
+    if max_pages is not None and timeout_minutes is not None:
+        # 动态计算最小超时时间，使用更宽松的阈值以支持大规模探索：
+        # - 小规模探索（≤100页）：每页至少 0.5 分钟
+        # - 中等规模（101-1000页）：每页至少 0.2 分钟
+        # - 大规模探索（>1000页）：每页至少 0.05 分钟（批量处理效率高）
+        if max_pages <= 100:
+            min_required_timeout = max(1, int(max_pages * 0.5))
+        elif max_pages <= 1000:
+            min_required_timeout = max(1, int(max_pages * 0.2))
+        else:
+            min_required_timeout = max(1, int(max_pages * 0.05))
+
+        # 只在差距明显时提示警告（允许一定的灵活性）
+        if timeout_minutes < min_required_timeout * 0.8:  # 给予 20% 的容错空间
+            raise api_error(
+                400,
+                "INVALID_EXPLORATION_CONFIG",
+                f"超时时间 {timeout_minutes} 分钟可能不足以探索 {max_pages} 个页面，建议至少设置为 {min_required_timeout} 分钟。"
+            )
+
+    # 验证 max_actions 和 max_pages 的关系
+    # 规则：平均每页至少需要 10 个动作（页面加载、链接点击等）
+    if max_pages is not None and max_actions is not None:
+        min_required_actions = max_pages * 10
+        # 只在差距明显时提示警告
+        if max_actions < min_required_actions * 0.8:  # 给予 20% 的容错空间
+            raise api_error(
+                400,
+                "INVALID_EXPLORATION_CONFIG",
+                f"最大动作数 {max_actions} 可能不足以探索 {max_pages} 个页面，建议至少设置为 {min_required_actions}。"
+            )
 
 
 def _is_full_site_scope(scope: str) -> bool:
@@ -1960,6 +1502,8 @@ def _load_run_artifacts(run, bundle: dict | None = None) -> tuple[list[dict], li
     for page_item in bundle["pages"]:
         content = page_item.get("content", {})
         page = content.get("page", {})
+        # 优先使用 steps 字段，如果不存在则使用 actions 字段
+        raw_steps = content.get("steps") or content.get("actions", [])
         pages.append(
             {
                 "id": page.get("id") or page_item.get("file_path", ""),
@@ -1972,7 +1516,7 @@ def _load_run_artifacts(run, bundle: dict | None = None) -> tuple[list[dict], li
                 "status": _normalize_page_display_status(page.get("status")),
                 "blocker_reason": "",
                 "recent_event": "",
-                "steps": _normalize_steps(content.get("steps", [])),
+                "steps": _normalize_steps(raw_steps),
             }
         )
         elements.extend(_elements_from_v2_states(content, page, page_item))
@@ -2070,13 +1614,28 @@ def _normalize_steps(raw_steps) -> list[dict]:
         if not isinstance(raw_step, dict):
             continue
         step_id = str(raw_step.get("id") or f"step-{index:03d}")
-        title = str(raw_step.get("title") or raw_step.get("detail") or raw_step.get("type") or "探索步骤")
+
+        # 兼容 steps 和 actions 两种数据结构
+        # actions 格式: {id, type, target, status, result}
+        # steps 格式: {id, type, title, detail, status, occurred_at, artifact_path, source}
+        step_type = str(raw_step.get("type") or "event")
+
+        # 优先使用 title，如果没有则使用 target（来自 actions）
+        title = raw_step.get("title") or raw_step.get("target") or step_type
+        if not isinstance(title, str):
+            title = str(title)
+
+        # 优先使用 detail，如果没有则使用 result（来自 actions）
+        detail = raw_step.get("detail") or raw_step.get("result") or ""
+        if not isinstance(detail, str):
+            detail = str(detail)
+
         steps.append(
             {
                 "id": step_id,
-                "type": str(raw_step.get("type") or "event"),
+                "type": step_type,
                 "title": title,
-                "detail": str(raw_step.get("detail") or ""),
+                "detail": detail,
                 "status": str(raw_step.get("status") or "completed"),
                 "occurred_at": raw_step.get("occurred_at") if raw_step.get("occurred_at") else None,
                 "artifact_path": str(raw_step.get("artifact_path") or ""),
@@ -2106,9 +1665,33 @@ def _load_run_artifact_bundle(run) -> dict:
         }
     bundle = exploration_artifact_service.load_exploration_run_artifacts(artifact_root)
     bundle["log_path"] = f"{run['artifact_root'].rstrip('/')}/logs/run.log"
+    bundle["plan"] = _load_exploration_plan_artifact(artifact_root)
+    bundle["live_progress"] = _load_live_progress_artifact(artifact_root)
     if not bundle.get("goal_validation"):
         bundle["goal_validation"] = _goal_validation_from_bundle(run, bundle)
     return bundle
+
+
+def _load_exploration_plan_artifact(artifact_root: Path) -> dict:
+    plan_path = artifact_root / "exploration-plan.yaml"
+    if not plan_path.exists():
+        return {}
+    try:
+        payload = yaml.safe_load(plan_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _load_live_progress_artifact(artifact_root: Path) -> dict:
+    progress_path = artifact_root / "live" / "progress.json"
+    if not progress_path.exists():
+        return {}
+    try:
+        payload = json.loads(progress_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _goal_validation_from_bundle(run, bundle: dict) -> dict:

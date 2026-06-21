@@ -297,7 +297,7 @@ def init_db() -> None:
               environment_id TEXT NOT NULL,
               requirement_doc_id TEXT NOT NULL DEFAULT '',
               title TEXT NOT NULL,
-              status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
+              status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'interrupted', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
               scope TEXT NOT NULL DEFAULT '',
               forbidden_paths TEXT NOT NULL DEFAULT '',
               login_strategy TEXT NOT NULL DEFAULT 'skip_login',
@@ -783,6 +783,7 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
     legacy_columns = {"environment_type", "description", "execution_mode", "interaction_mode", "agent_turn_count"}
     if (
         "'stopping'" in table["sql"]
+        and "'interrupted'" in table["sql"]
         and required_columns.issubset(columns)
         and columns.isdisjoint(legacy_columns)
     ):
@@ -809,7 +810,7 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
           environment_id TEXT NOT NULL,
           requirement_doc_id TEXT NOT NULL DEFAULT '',
           title TEXT NOT NULL,
-          status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
+          status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'interrupted', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
           scope TEXT NOT NULL DEFAULT '',
           forbidden_paths TEXT NOT NULL DEFAULT '',
           login_strategy TEXT NOT NULL DEFAULT 'skip_login',

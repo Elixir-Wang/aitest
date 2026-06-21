@@ -73,9 +73,7 @@ def test_site_exploration_agent_uses_child_agents() -> None:
     assert not (package / "schemas.py").exists()
     assert not (package / "tools.py").exists()
     assert (package / "__init__.py").exists()
-    assert (package / "planning" / "agent.py").exists()
-    assert (package / "planning" / "service.py").exists()
-    assert (package / "planning" / "schemas.py").exists()
+    assert not (package / "planning").exists()
     assert not (package / "planning" / "plan.py").exists()
     assert not (package / "planning" / "plan_service.py").exists()
     assert not (package / "planning" / "plan_schemas.py").exists()
@@ -86,11 +84,11 @@ def test_site_exploration_agent_uses_child_agents() -> None:
 
 
 def test_site_exploration_services_use_child_agents() -> None:
-    exploration_service_path = BACKEND_APP / "services" / "exploration" / "service.py"
-    agentic_orchestrator_path = BACKEND_APP / "services" / "exploration" / "agentic_orchestrator.py"
+    unified_orchestrator_path = BACKEND_APP / "services" / "exploration" / "unified_orchestrator.py"
+    unified_orchestrator_source = unified_orchestrator_path.read_text(encoding="utf-8")
 
-    assert "app.agents.site_exploration.planning" in exploration_service_path.read_text(encoding="utf-8")
-    assert "app.agents.site_exploration.execution_decision" in agentic_orchestrator_path.read_text(encoding="utf-8")
+    assert "app.services.exploration.plan_and_execute.planner" in unified_orchestrator_source
+    assert "app.agents.site_exploration.execution_decision" in unified_orchestrator_source
 
 
 def test_requirement_analysis_agent_uses_child_agent_package_layout() -> None:

@@ -130,13 +130,12 @@ function normalizePendingQuestionText(question: string) {
 }
 
 function pendingIssueType(item: RequirementAnalysisPendingItem): RequirementAnalysisIssueType {
-  if (
-    item.issue_type === "missing" ||
-    item.issue_type === "confirmation" ||
-    item.issue_type === "conflict" ||
-    item.issue_type === "ambiguous"
-  ) {
+  if (item.issue_type === "missing" || item.issue_type === "conflict" || item.issue_type === "ambiguous") {
     return item.issue_type;
+  }
+  // 移除 "confirmation" 类型，统一归类为 "missing"
+  if (item.issue_type === "confirmation") {
+    return "missing";
   }
   if (item.issue_category === "conflict") {
     return "conflict";
@@ -156,7 +155,7 @@ function pendingIssueType(item: RequirementAnalysisPendingItem): RequirementAnal
   ) {
     return "ambiguous";
   }
-  return "confirmation";
+  return "missing";
 }
 
 function pendingItemQuestion(item: RequirementAnalysisPendingItem) {
@@ -171,7 +170,7 @@ function pendingItemSeverityLabel(item: RequirementAnalysisPendingItem) {
   if (item.priority && pendingPriorityLabels[item.priority]) {
     return pendingPriorityLabels[item.priority];
   }
-  return pendingSeverityLabels[item.severity] ?? item.severity;
+  return item.severity ? (pendingSeverityLabels[item.severity] ?? item.severity) : "待确认";
 }
 
 function pendingItemSeverityVariant(item: RequirementAnalysisPendingItem): "destructive" | "secondary" {
@@ -195,7 +194,7 @@ function pendingItemTitle(item: RequirementAnalysisPendingItem) {
   if (title) {
     return title;
   }
-  const moduleName = item.module_name?.trim();
+  const moduleName = item.module_name?.trim() || item.module?.trim();
   if (moduleName) {
     return moduleName;
   }
@@ -204,8 +203,12 @@ function pendingItemTitle(item: RequirementAnalysisPendingItem) {
 
 function pendingItemHeading(item: RequirementAnalysisPendingItem) {
   const title = pendingItemTitle(item);
-  const questionText = pendingItemQuestion(item) ? normalizePendingQuestionText(pendingItemQuestion(item)) : "";
-  return questionText && questionText !== title ? `${title}：${questionText}` : title;
+  // 不再拼接问题文本，只返回标题
+  return title;
+}
+
+function normalizePendingDisplayText(text: string) {
+  return text.replace(/\s+/g, " ").trim();
 }
 
 function pendingItemSourceExcerpt(item: RequirementAnalysisPendingItem) {
@@ -216,6 +219,7 @@ function pendingItemSourceExcerpt(item: RequirementAnalysisPendingItem) {
 }
 
 function pendingRecommendedOptions(item: RequirementAnalysisPendingItem): RequirementClarificationOption[] {
+  // 优先使用现有的 options 数组格式
   if (item.options?.length) {
     return item.options;
   }
@@ -225,7 +229,25 @@ function pendingRecommendedOptions(item: RequirementAnalysisPendingItem): Requir
   if (item.recommended_options?.length) {
     return item.recommended_options;
   }
-  return [];
+
+  // 从 option_a 和 option_b 字段生成选项数组（新架构）
+  const options: RequirementClarificationOption[] = [];
+  if (item.option_a) {
+    options.push({
+      id: `${item.id}_option_a`,
+      label: "选项 A",
+      answer_markdown: item.option_a,
+    });
+  }
+  if (item.option_b) {
+    options.push({
+      id: `${item.id}_option_b`,
+      label: "选项 B",
+      answer_markdown: item.option_b,
+    });
+  }
+
+  return options;
 }
 
 function pendingItemAnswerStatus(item: RequirementAnalysisPendingItem) {
@@ -242,25 +264,6 @@ function isPendingItemHandled(item: RequirementAnalysisPendingItem) {
 
 function handledPendingItemLabel(item: RequirementAnalysisPendingItem) {
   return item.answer?.apply_status === "not_applicable" ? "暂不处理" : "已写入";
-}
-
-function extractMarkdownSection(content: string, heading: string) {
-  const markdown = content.trim();
-  if (!markdown) {
-    return "";
-  }
-  const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const startPattern = new RegExp(`^##\\s+\\d*\\.?\\s*${escapedHeading}\\s*$`, "m");
-  const startMatch = markdown.match(startPattern);
-  if (!startMatch || startMatch.index === undefined) {
-    return "";
-  }
-  const sectionStart = startMatch.index;
-  const afterHeadingIndex = sectionStart + startMatch[0].length;
-  const nextSectionMatch = markdown.slice(afterHeadingIndex).match(/^---$|^##\s+/m);
-  const sectionEnd =
-    nextSectionMatch?.index === undefined ? markdown.length : afterHeadingIndex + nextSectionMatch.index;
-  return markdown.slice(sectionStart, sectionEnd).trim();
 }
 
 function latestRequirementAnalysisRunFromTask(
@@ -340,14 +343,16 @@ type RequirementAnalysisQuestion = {
   title?: string;
   issue_type?: RequirementAnalysisIssueType;
   issue_category?: string;
-  module_key: string;
-  module_name: string;
+  module?: string;
+  module_key?: string;
+  module_name?: string;
   question: string;
   impact: string;
-  dimension: string;
-  severity: "blocker" | "major" | "minor";
+  dimension?: string;
+  severity?: "blocker" | "major" | "minor";
   priority?: "P0" | "P1" | "P2" | "P3";
-  source_excerpt: string;
+  source_excerpt?: string;
+  primary_excerpt?: string;
   clarification_bucket?: "blocker" | "risk" | "acceptance";
   decision_point?: string;
   why_clarify?: string;
@@ -359,46 +364,17 @@ type RequirementAnalysisQuestion = {
   decision_options?: RequirementClarificationOption[];
   recommended_decision?: string;
   human_question?: string;
+  option_a?: string;
+  option_b?: string;
   draft_acceptance_tests?: string[];
   recommended_options?: RequirementClarificationOption[];
   resolution_status?: string;
   answer?: RequirementClarificationAnswer;
 };
 
-type RequirementAnalysisConflict = {
-  id: string;
-  title?: string;
-  module_key: string;
-  module_name: string;
-  issue_type: RequirementAnalysisIssueType | string;
-  question: string;
-  impact: string;
-  severity: "blocker" | "major" | "minor";
-  primary_excerpt: string;
-  source_excerpt?: string;
-  clarification_bucket?: "blocker" | "risk" | "acceptance";
-  decision_point?: string;
-  current_gap?: string;
-  test_impact?: string;
-  risk_scenario?: string;
-  affected_surfaces?: string[];
-  decision_options?: RequirementClarificationOption[];
-  recommended_decision?: string;
-  human_question?: string;
-  draft_acceptance_tests?: string[];
-  evidence?: Array<{
-    mapping_id: string;
-    filename: string;
-    excerpt: string;
-    section_hint: string;
-  }>;
-  recommended_options?: RequirementClarificationOption[];
-  answer?: RequirementClarificationAnswer;
-};
-
 type RequirementAnalysisIssueType = "missing" | "confirmation" | "conflict" | "ambiguous";
 
-type RequirementAnalysisPendingItem = RequirementAnalysisQuestion | RequirementAnalysisConflict;
+type RequirementAnalysisPendingItem = RequirementAnalysisQuestion;
 
 type RequirementClarificationOption = {
   id: string;
@@ -446,56 +422,11 @@ type RequirementAnalysisResult = {
   output: {
     status: "completed" | "needs_clarification" | "blocked";
     analysis_summary: string;
-    preliminary_requirement_markdown: string;
-    analysis_report_markdown: string;
-    clarification_report_markdown?: string;
-    quality_assurance_report_markdown?: string;
-    enhanced_requirement_markdown?: string;
-    applied_supplements: unknown[];
-    modules: Array<{
-      module_key: string;
-      module_name: string;
-      summary: string;
-      business_objects: string[];
-      capabilities: string[];
-      rules: string[];
-      fields: string[];
-      state_flows: string[];
-      dependencies: string[];
-      risks: string[];
-    }>;
-    clarification_questions: RequirementAnalysisQuestion[];
-    conflicts: RequirementAnalysisConflict[];
-    coverage_audit: Array<{
-      module_key: string;
-      module_name: string;
-      source_excerpt: string;
-      analysis_status: string;
-      reason: string;
-    }>;
-    quality_gate: {
-      result: "passed" | "warning" | "blocked";
-      blocking_issues: string[];
-      warning_issues: string[];
-      passed_checks: string[];
-    };
-    quality_summary?: {
-      completeness_issues: number;
-      clarity_issues: number;
-      testability_issues: number;
-      consistency_issues: number;
-      total_issues: number;
-      by_severity: Record<string, number>;
-      has_blocker: boolean;
-      can_proceed: boolean;
-    };
-    quality_decision?: {
-      result: "approved" | "conditional" | "rejected";
-      rationale: string;
-      blocking_issues: string[];
-      recommended_actions: string[];
-    };
-    next_actions: string[];
+    summary?: string;
+    understanding_markdown: string;
+    clarification_markdown: string;
+    clarification_items: RequirementAnalysisQuestion[];
+    artifacts?: Record<string, string>;
   };
 };
 
@@ -646,14 +577,9 @@ export default function DocumentDetailPage() {
         ["pending", "processing"].includes(selectedFile.conversion_status)),
   );
   const initialMarkdownContent = overview?.initial_markdown_content ?? "";
-  const preliminaryMarkdown = analysisResult?.output.preliminary_requirement_markdown ?? "";
-  const analysisReportMarkdown = analysisResult?.output.analysis_report_markdown ?? "";
-  const qualityAssuranceMarkdown =
-    analysisResult?.output.quality_assurance_report_markdown?.trim() ||
-    extractMarkdownSection(analysisReportMarkdown, "质量评估");
-  const clarificationQuestions = analysisResult?.output.clarification_questions ?? [];
-  const analysisConflicts = analysisResult?.output.conflicts ?? [];
-  const pendingAnalysisItems: RequirementAnalysisPendingItem[] = [...clarificationQuestions, ...analysisConflicts];
+  const analysisReportMarkdown = analysisResult?.output.understanding_markdown ?? "";
+  const clarificationMarkdown = analysisResult?.output.clarification_markdown ?? "";
+  const pendingAnalysisItems: RequirementAnalysisPendingItem[] = analysisResult?.output.clarification_items ?? [];
   const visiblePendingAnalysisItems = pendingAnalysisItems.filter(isPendingItemOpen);
   const handledPendingAnalysisItems = pendingAnalysisItems.filter(
     (item) => isPendingItemHandled(item) && !pendingAnswerDrafts[item.id],
@@ -667,12 +593,9 @@ export default function DocumentDetailPage() {
   const filteredHandledPendingAnalysisItems = handledPendingAnalysisItems.filter((item) =>
     handledClarificationFilter === "all" ? true : item.answer?.apply_status === handledClarificationFilter,
   );
-  const isBlocked =
-    analysisResult?.status === "blocked" ||
-    analysisResult?.quality_result === "blocked" ||
-    analysisResult?.output.quality_gate.result === "blocked";
+  const isBlocked = analysisResult?.status === "blocked" || analysisResult?.quality_result === "blocked";
   const isFinalized = Boolean(analysisResult?.finalized_version_id);
-  const canEditPreliminary = Boolean(analysisResult && preliminaryMarkdown.trim() && !isFinalized && !reviewLoading);
+  const canEditPreliminary = Boolean(analysisResult && analysisReportMarkdown.trim() && !isFinalized && !reviewLoading);
   const isPrimaryAnalysisChanged = Boolean(
     analysisResult?.primary_mapping_id && analysisResult.primary_mapping_id !== currentPrimaryFile?.id,
   );
@@ -683,8 +606,8 @@ export default function DocumentDetailPage() {
     if (!analysisResult) {
       return "尚未生成初步需求";
     }
-    if (!preliminaryMarkdown.trim()) {
-      return "初步需求为空";
+    if (!analysisReportMarkdown.trim()) {
+      return "需求理解为空";
     }
     if (isFinalized) {
       return "已转为最终需求";
@@ -946,7 +869,7 @@ export default function DocumentDetailPage() {
   useEffect(() => {
     autoContinueNotifiedRef.current = false;
     hasRunningConversionsRef.current = false;
-  }, [documentId]);
+  }, []);
 
   useEffect(() => {
     if (!hasRunningConversions) {
@@ -1133,7 +1056,7 @@ export default function DocumentDetailPage() {
   }
 
   async function editPreliminaryMarkdownWithAi(instruction: string) {
-    if (!analysisResult || !preliminaryMarkdown.trim() || isFinalized) {
+    if (!analysisResult || !analysisReportMarkdown.trim() || isFinalized) {
       return;
     }
     setEditingPreliminaryWithAi(true);
@@ -1141,7 +1064,7 @@ export default function DocumentDetailPage() {
       const editResult = await apiRequest<DocumentEditResponse>("/agents/document-editor/run", {
         method: "POST",
         body: JSON.stringify({
-          content: preliminaryMarkdown,
+          content: analysisReportMarkdown,
           instruction,
         }),
       });
@@ -1677,10 +1600,7 @@ export default function DocumentDetailPage() {
 
   const showRequirementToc =
     (activeTab === "standard" && !editingStandard && Boolean(currentStandardPreview?.markdownContent.trim())) ||
-    (activeTab === "analysis" &&
-      ((analysisTab === "analysis-report" && Boolean(analysisReportMarkdown.trim())) ||
-        (analysisTab === "quality" && Boolean(qualityAssuranceMarkdown.trim())) ||
-        (analysisTab === "enhanced" && Boolean(preliminaryMarkdown.trim())))) ||
+    (activeTab === "analysis" && analysisTab === "analysis-report" && Boolean(analysisReportMarkdown.trim())) ||
     (activeTab === "final" && Boolean(overview.initial_markdown_content.trim()));
   const requirementTocRefreshKey = [
     activeTab,
@@ -1688,8 +1608,7 @@ export default function DocumentDetailPage() {
     selectedFile?.id ?? "",
     currentStandardPreview?.markdownContent.length ?? 0,
     analysisReportMarkdown.length,
-    qualityAssuranceMarkdown.length,
-    preliminaryMarkdown.length,
+    clarificationMarkdown.length,
     initialMarkdownContent.length,
     analysisResult?.finalized_version_id ?? "",
   ].join(":");
@@ -1697,11 +1616,7 @@ export default function DocumentDetailPage() {
     activeTab === "standard"
       ? `#${STANDARD_FILE_SECTION_ID} .requirement-document-preview`
       : activeTab === "analysis"
-        ? analysisTab === "quality"
-          ? `#quality-assurance-section .requirement-document-preview`
-          : analysisTab === "enhanced"
-            ? `#enhanced-requirement-section .requirement-document-preview`
-            : `#analysis-report-section .requirement-document-preview`
+        ? `#analysis-report-section .requirement-document-preview`
         : `#${FINAL_REQUIREMENT_SECTION_ID} .requirement-document-preview`;
   return (
     <PageShell
@@ -1999,8 +1914,6 @@ export default function DocumentDetailPage() {
                 <TabsList>
                   <TabsTrigger value="analysis-report">需求分析</TabsTrigger>
                   <TabsTrigger value="clarification">待澄清</TabsTrigger>
-                  <TabsTrigger value="quality">质量保障</TabsTrigger>
-                  <TabsTrigger value="enhanced">初步需求</TabsTrigger>
                 </TabsList>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   {analysisTab === "clarification" ? (
@@ -2012,12 +1925,12 @@ export default function DocumentDetailPage() {
                       </RequirementRoleBadge>
                     </Button>
                   ) : null}
-                  {analysisTab === "enhanced" ? (
+                  {analysisTab === "analysis-report" ? (
                     <AiEditInput
                       disabled={!canEditPreliminary || editingPreliminaryWithAi}
                       loading={editingPreliminaryWithAi}
                       onSubmit={editPreliminaryMarkdownWithAi}
-                      placeholder="描述你希望如何修改当前初步需求..."
+                      placeholder="描述你希望如何修改当前需求理解..."
                     />
                   ) : null}
                   {requirementReviewRunning ? (
@@ -2084,10 +1997,12 @@ export default function DocumentDetailPage() {
                           answerType: item.answer?.answer_type ?? "recommended_option",
                         };
                         const isSaving = savingClarificationId === item.id;
-                        const issueType = pendingIssueType(item);
                         const sourceExcerpt = pendingItemSourceExcerpt(item);
                         const itemHeading = pendingItemHeading(item);
                         const questionBody = normalizePendingQuestionText(pendingItemQuestion(item));
+                        const shouldShowQuestionBody =
+                          Boolean(questionBody) &&
+                          normalizePendingDisplayText(questionBody) !== normalizePendingDisplayText(itemHeading);
                         const itemImpact = pendingItemImpact(item);
                         const recommendedOptions = pendingRecommendedOptions(item);
                         return (
@@ -2103,11 +2018,10 @@ export default function DocumentDetailPage() {
                           >
                             <div className="bg-muted/20 px-4 py-3">
                               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-                                <div className="grid min-w-0 grid-cols-[auto_auto_auto_minmax(0,1fr)] items-center gap-2">
+                                <div className="grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-2">
                                   <span className="inline-flex h-7 min-w-8 items-center justify-center rounded-md border border-border bg-background px-2 font-medium text-[11px] text-muted-foreground tabular-nums">
                                     {itemNumber}
                                   </span>
-                                  <Badge variant="outline">{pendingIssueTypeLabels[issueType]}</Badge>
                                   <Badge variant={pendingItemSeverityVariant(item)}>
                                     {pendingItemSeverityLabel(item)}
                                   </Badge>
@@ -2130,15 +2044,17 @@ export default function DocumentDetailPage() {
                             <div className="space-y-3 px-4 pt-2 pb-4">
                               {itemImpact ? (
                                 <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800 text-xs leading-5 dark:text-amber-200">
-                                  <span className="font-medium">影响</span>
-                                  <span className="mx-1 text-amber-700/70 dark:text-amber-200/70">/</span>
-                                  {itemImpact}
+                                  <span className="font-medium">影响：</span>
+                                  <span className="text-amber-900 dark:text-amber-100">{itemImpact}</span>
                                 </div>
                               ) : null}
 
-                              {questionBody ? (
+                              {shouldShowQuestionBody ? (
                                 <div className="rounded-md border border-border bg-background px-3 py-2 dark:bg-input/20">
-                                  <div className="text-foreground text-sm leading-6">{questionBody}</div>
+                                  <MarkdownPreview
+                                    className="text-foreground text-sm leading-6"
+                                    content={questionBody}
+                                  />
                                 </div>
                               ) : null}
 
@@ -2270,30 +2186,6 @@ export default function DocumentDetailPage() {
                     </div>
                   </div>
                 )}
-              </TabsContent>
-              <TabsContent id="quality-assurance-section" value="quality">
-                <MarkdownPreview
-                  className="requirement-document-preview"
-                  content={qualityAssuranceMarkdown}
-                  emptyClassName="flex items-center justify-center text-center"
-                  emptyText={
-                    reviewLoading
-                      ? "需求分析中，完成后会在这里展示质量保障报告。"
-                      : "尚未生成质量保障报告，请先执行需求分析。"
-                  }
-                />
-              </TabsContent>
-              <TabsContent id="enhanced-requirement-section" value="enhanced">
-                <MarkdownPreview
-                  className="requirement-document-preview markdown-enhanced"
-                  content={preliminaryMarkdown}
-                  emptyClassName="flex items-center justify-center text-center"
-                  emptyText={
-                    reviewLoading
-                      ? "需求分析中，完成后会在这里展示增强版需求文档。"
-                      : "尚未生成增强版需求文档，请先执行需求分析。"
-                  }
-                />
               </TabsContent>
             </Tabs>
           </ShellSection>

@@ -262,7 +262,7 @@ def find_versions_by_document(db: Connection, document_id: str) -> list[Row]:
 
 def find_version(db: Connection, version_id: str) -> Row | None:
     return db.execute(
-        "SELECT id, document_id, version_no, file_path, source_action, change_summary, diff_summary, created_by, created_at FROM source_document_versions WHERE id = ?",
+        "SELECT id, document_id, version_no, markdown_content, file_path, source_action, change_summary, diff_summary, created_by, created_at FROM source_document_versions WHERE id = ?",
         (version_id,),
     ).fetchone()
 

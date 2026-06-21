@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Children,
   type ComponentPropsWithoutRef,
   type ReactNode,
   cloneElement,
@@ -51,7 +52,7 @@ export function Select({
   const selectRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const childrenArray = Array.isArray(children) ? children : [children];
+  const childrenArray = Children.toArray(children);
   const selectedLabel = useMemo(() => {
     const selected = childrenArray.find((child) => isValidElement<SelectOptionProps>(child) && child.props.value === value);
     if (!selected || !isValidElement<SelectOptionProps>(selected)) {

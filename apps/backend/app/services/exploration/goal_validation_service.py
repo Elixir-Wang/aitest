@@ -1,116 +1,173 @@
 from urllib.parse import urlparse
 
 
-LOGIN_PATTERNS = (
-    "login",
-    "signin",
-    "sign-in",
-    "auth",
-    "passport",
-    "account/login",
-    "user/login",
-    "登录",
-    "登陆",
-    "验证码",
-    "401",
-    "403",
-)
+LOGIN_PATTERNS = {
+    # 中文模式
+    "zh": (
+        "登录", "登陆", "注册", "验证码", "captcha",
+    ),
+    # 英文模式
+    "en": (
+        "login", "signin", "sign-in", "sign_in",
+        "signup", "sign-up", "register", "authentication",
+        "sso", "oauth", "saml",
+    ),
+    # 路径模式（更精确）
+    "path": (
+        "/login", "/signin", "/sign-in", "/auth/login",
+        "/user/login", "/account/login", "/passport",
+        "/register", "/signup",
+    ),
+    # HTTP 状态码（应该检查实际状态码，这里仅作为 URL 中出现的标记）
+    "status": (
+        "401", "403", "unauthorized", "forbidden",
+    ),
+}
 
-UNSAFE_BUTTON_KEYWORDS = (
-    "删除",
-    "移除",
-    "提交",
-    "支付",
-    "付款",
-    "确认",
-    "确定",
-    "发布",
-    "保存",
-    "创建",
-    "新增",
-    "修改",
-    "编辑",
-    "上传",
-    "发送",
-)
+
+def _looks_like_login_page(text: str) -> bool:
+    """
+    判断 URL 或文本是否像登录页
+
+    改进逻辑：
+    1. 移除过于宽泛的 "auth" 模式
+    2. 添加更多语言支持
+    3. 区分路径模式和状态码模式
+    4. 更精确的匹配规则
+    """
+    if not text:
+        return False
+
+    value = text.lower()
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(text)
+        path = parsed.path.lower()
+        query = parsed.query.lower()
+    except Exception:
+        path = ""
+        query = ""
+
+    # 检查路径模式（精确匹配）
+    for pattern in LOGIN_PATTERNS["path"]:
+        if pattern in path:
+            return True
+
+    # 检查中英文关键词（在 URL、路径或查询参数中）
+    candidates = " ".join(part for part in (value, path, query) if part)
+
+    for pattern in LOGIN_PATTERNS["zh"] + LOGIN_PATTERNS["en"]:
+        if pattern in candidates:
+            return True
+
+    # 检查状态码模式（需要更谨慎）
+    # "401" 和 "403" 只在特定上下文中才算登录页标记
+    for pattern in LOGIN_PATTERNS["status"]:
+        if pattern in path or pattern in query:
+            return True
+
+    return False
+
+
+UNSAFE_BUTTON_KEYWORDS = {
+    # 中文关键词
+    "zh": (
+        "删除", "移除", "提交", "支付", "付款", "确认", "确定",
+        "发布", "保存", "创建", "新增", "修改", "编辑", "上传", "发送",
+    ),
+    # 英文关键词
+    "en": (
+        "delete", "remove", "submit", "pay", "payment", "confirm", "approve",
+        "publish", "save", "create", "add", "update", "edit", "upload", "send",
+        "execute", "run", "apply", "commit",
+    ),
+}
+
+# 高危关键词 - 完全匹配才算不安全
+HIGH_RISK_KEYWORDS = {
+    "zh": ("删除", "支付", "付款", "发布"),
+    "en": ("delete", "pay", "payment", "publish", "execute", "run"),
+}
 
 
 def validate_goal(goal: str, page_artifacts: list[dict], graph: dict | None = None) -> dict:
     goal_text = str(goal or "").strip()
     if not goal_text:
         return _result("", "skipped", "未设置探索目标。", _empty_stats(), [])
-    if not _supports_article_link_button_login_goal(goal_text):
-        return _result(
-            goal_text,
-            "pending",
-            "当前探索目标尚未解析成可执行验收规则。",
-            _empty_stats(page_count=len(page_artifacts)),
-            [],
-        )
+
+    # 检查是否支持特定的登录页验证目标格式
+    supports_login_validation = _supports_article_link_button_login_goal(goal_text)
 
     items: list[dict] = []
     graph_edges = _graph_edges(graph)
-    for page_artifact in page_artifacts:
-        page = page_artifact.get("page") if isinstance(page_artifact.get("page"), dict) else {}
-        page_id = str(page.get("id") or "")
-        page_url = str(page.get("url") or page.get("normalized_url") or "")
-        page_title = str(page.get("title") or "")
+    # 如果目标支持登录页验证，执行详细的链接和按钮验证
+    if supports_login_validation:
+        for page_artifact in page_artifacts:
+            page = page_artifact.get("page") if isinstance(page_artifact.get("page"), dict) else {}
+            page_id = str(page.get("id") or "")
+            page_url = str(page.get("url") or page.get("normalized_url") or "")
+            page_title = str(page.get("title") or "")
 
-        for link in _links_for_page(page_artifact, graph_edges, page_id, page_url):
-            target_url = str(link.get("target_url") or "")
-            result = "failed" if _looks_like_login_page(target_url) else "passed"
-            reason = "链接目标命中登录/鉴权页特征。" if result == "failed" else "链接目标未命中登录页特征。"
-            items.append(
-                {
+            for link in _links_for_page(page_artifact, graph_edges, page_id, page_url):
+                target_url = str(link.get("target_url") or "")
+                result = "failed" if _looks_like_login_page(target_url) else "passed"
+                reason = "链接目标命中登录/鉴权页特征。" if result == "failed" else "链接目标未命中登录页特征。"
+                items.append(
+                    {
+                        "page_id": page_id,
+                        "page_title": page_title,
+                        "page_url": page_url,
+                        "element_type": "link",
+                        "element_name": str(link.get("name") or target_url or "LINK"),
+                        "action": "href_check",
+                        "before_url": page_url,
+                        "after_url": target_url,
+                        "result": result,
+                        "reason": reason,
+                    }
+                )
+
+            for button in _buttons_for_page(page_artifact):
+                name = str(button.get("name") or "").strip()
+                locator = str(button.get("locator_hint") or "")
+                validation = button.get("validation") if isinstance(button.get("validation"), dict) else {}
+                validation_result = str(validation.get("result") or validation.get("status") or "").strip()
+                validation_reason = str(validation.get("reason") or "").strip()
+                item = {
                     "page_id": page_id,
                     "page_title": page_title,
                     "page_url": page_url,
-                    "element_type": "link",
-                    "element_name": str(link.get("name") or target_url or "LINK"),
-                    "action": "href_check",
+                    "element_type": "button",
+                    "element_name": name or "BUTTON",
+                    "action": "click",
                     "before_url": page_url,
-                    "after_url": target_url,
-                    "result": result,
-                    "reason": reason,
+                    "after_url": str(validation.get("after_url") or ""),
+                    "result": validation_result or "unverified",
+                    "reason": "按钮尚无点击后 URL、标题或正文证据，不能判定是否跳转登录页。",
                 }
-            )
+                if validation_result == "passed":
+                    item["reason"] = validation_reason or "按钮点击后页面未命中登录页特征。"
+                elif validation_result == "failed":
+                    item["reason"] = validation_reason or "按钮点击后页面命中登录/鉴权页特征。"
+                if _is_low_quality_button_name(name):
+                    item["reason"] = "按钮名称不可识别，未执行点击验证。"
+                elif _is_unsafe_button(name):
+                    item["reason"] = "按钮疑似会修改业务数据，跳过真实点击验证。"
+                elif validation_result in {"passed", "failed"}:
+                    item["reason"] = validation_reason or item["reason"]
+                elif locator:
+                    item["reason"] = "已定位按钮，但当前探索产物没有点击后页面证据。"
+                items.append(item)
 
-        for button in _buttons_for_page(page_artifact):
-            name = str(button.get("name") or "").strip()
-            locator = str(button.get("locator_hint") or "")
-            validation = button.get("validation") if isinstance(button.get("validation"), dict) else {}
-            validation_result = str(validation.get("result") or validation.get("status") or "").strip()
-            validation_reason = str(validation.get("reason") or "").strip()
-            item = {
-                "page_id": page_id,
-                "page_title": page_title,
-                "page_url": page_url,
-                "element_type": "button",
-                "element_name": name or "BUTTON",
-                "action": "click",
-                "before_url": page_url,
-                "after_url": str(validation.get("after_url") or ""),
-                "result": validation_result or "unverified",
-                "reason": "按钮尚无点击后 URL、标题或正文证据，不能判定是否跳转登录页。",
-            }
-            if validation_result == "passed":
-                item["reason"] = validation_reason or "按钮点击后页面未命中登录页特征。"
-            elif validation_result == "failed":
-                item["reason"] = validation_reason or "按钮点击后页面命中登录/鉴权页特征。"
-            if _is_low_quality_button_name(name):
-                item["reason"] = "按钮名称不可识别，未执行点击验证。"
-            elif _is_unsafe_button(name):
-                item["reason"] = "按钮疑似会修改业务数据，跳过真实点击验证。"
-            elif validation_result in {"passed", "failed"}:
-                item["reason"] = validation_reason or item["reason"]
-            elif locator:
-                item["reason"] = "已定位按钮，但当前探索产物没有点击后页面证据。"
-            items.append(item)
+        stats = _stats(page_artifacts, items)
+        status = _status_from_items(items)
+        summary = _summary_from_stats(stats, status)
+        return _result(goal_text, status, summary, stats, items)
 
-    stats = _stats(page_artifacts, items)
-    status = _status_from_items(items)
-    summary = _summary_from_stats(stats, status)
-    return _result(goal_text, status, summary, stats, items)
+    # 对于不支持特定格式的目标，执行基础验证
+    else:
+        return _validate_generic_goal(goal_text, page_artifacts, graph_edges)
 
 
 def terminal_status_for_goal_validation(current_status: str, validation: dict) -> str:
@@ -220,19 +277,47 @@ def _flatten_accessibility(raw_tree) -> list[dict]:
     return nodes
 
 
-def _looks_like_login_page(text: str) -> bool:
-    value = text.lower()
-    parsed = urlparse(text)
-    candidates = " ".join(part for part in (value, parsed.path.lower(), parsed.query.lower()) if part)
-    return any(pattern.lower() in candidates for pattern in LOGIN_PATTERNS)
-
-
 def _is_low_quality_button_name(name: str) -> bool:
     return not name.strip() or name.strip().upper() == "BUTTON"
 
 
 def _is_unsafe_button(name: str) -> bool:
-    return any(keyword in name for keyword in UNSAFE_BUTTON_KEYWORDS)
+    """
+    判断按钮是否不安全（可能修改数据）
+
+    改进逻辑：
+    1. 支持中英文
+    2. 高危关键词需要完全匹配
+    3. 一般关键词支持子字符串匹配
+    4. 考虑上下文（如"查看确认"不算不安全）
+    """
+    if not name or not name.strip():
+        return False
+
+    name_lower = name.lower().strip()
+
+    # 白名单：包含这些词的按钮认为是安全的
+    safe_patterns = (
+        "查看", "view", "显示", "show", "详情", "detail",
+        "取消", "cancel", "关闭", "close", "返回", "back",
+        "搜索", "search", "查询", "query", "筛选", "filter",
+    )
+    if any(pattern in name_lower for pattern in safe_patterns):
+        return False
+
+    # 高危关键词：完全匹配（或作为独立词出现）
+    for keyword in HIGH_RISK_KEYWORDS["zh"] + HIGH_RISK_KEYWORDS["en"]:
+        # 完全匹配
+        if name_lower == keyword:
+            return True
+        # 作为独立词出现（前后有分隔符或边界）
+        import re
+        if re.search(rf'\b{re.escape(keyword)}\b', name_lower):
+            return True
+
+    # 一般关键词：子字符串匹配
+    all_keywords = UNSAFE_BUTTON_KEYWORDS["zh"] + UNSAFE_BUTTON_KEYWORDS["en"]
+    return any(keyword in name_lower for keyword in all_keywords)
 
 
 def _graph_edges(graph: dict | None) -> list[dict]:
@@ -314,6 +399,152 @@ def _summary_from_stats(stats: dict, status: str) -> str:
         f"按钮已验证 {stats['button_checked_count']}/{stats['button_total_count']} 个，"
         f"失败 {stats['failed_count']} 个，未验证 {stats['unverified_count']} 个。"
     )
+
+
+def _validate_generic_goal(goal_text: str, page_artifacts: list[dict], graph_edges: list[dict]) -> dict:
+    """
+    对通用探索目标执行基础验证
+
+    不执行特定的登录页检测，但不能把“发现页面/按钮”等同于“目标完成”。
+    结构化或动作型目标必须有真实动作证据，否则只能返回 partial。
+    """
+    items: list[dict] = []
+    page_count = len(page_artifacts)
+
+    # 收集基本的探索统计信息
+    total_links = 0
+    total_buttons = 0
+
+    for page_artifact in page_artifacts:
+        page = page_artifact.get("page") if isinstance(page_artifact.get("page"), dict) else {}
+        page_id = str(page.get("id") or "")
+        page_url = str(page.get("url") or page.get("normalized_url") or "")
+        page_title = str(page.get("title") or "")
+
+        # 统计链接
+        links = _links_for_page(page_artifact, graph_edges, page_id, page_url)
+        total_links += len(links)
+
+        # 添加链接发现项。discovered 只是事实记录，不代表目标已验证通过。
+        for link in links[:5]:  # 只记录前5个作为示例
+            items.append({
+                "page_id": page_id,
+                "page_title": page_title,
+                "page_url": page_url,
+                "element_type": "link",
+                "element_name": str(link.get("name") or link.get("target_url") or "LINK"),
+                "action": "discovered",
+                "before_url": page_url,
+                "after_url": str(link.get("target_url") or ""),
+                "result": "unverified",
+                "reason": "已发现链接，但未形成目标步骤执行证据。",
+            })
+
+        # 统计按钮
+        buttons = _buttons_for_page(page_artifact)
+        total_buttons += len(buttons)
+
+        # 添加按钮发现项。discovered 只是事实记录，不代表目标已验证通过。
+        for button in buttons[:5]:  # 只记录前5个作为示例
+            items.append({
+                "page_id": page_id,
+                "page_title": page_title,
+                "page_url": page_url,
+                "element_type": "button",
+                "element_name": str(button.get("name") or "BUTTON"),
+                "action": "discovered",
+                "before_url": page_url,
+                "after_url": "",
+                "result": "unverified",
+                "reason": "已发现按钮，但未形成目标步骤执行证据。",
+            })
+
+    # 构建统计信息
+    stats = {
+        "page_count": page_count,
+        "link_total_count": total_links,
+        "link_checked_count": min(total_links, len([i for i in items if i["element_type"] == "link"])),
+        "link_passed_count": len([i for i in items if i["element_type"] == "link" and i["result"] == "passed"]),
+        "link_failed_count": 0,
+        "button_total_count": total_buttons,
+        "button_checked_count": min(total_buttons, len([i for i in items if i["element_type"] == "button"])),
+        "button_passed_count": len([i for i in items if i["element_type"] == "button" and i["result"] == "passed"]),
+        "button_failed_count": 0,
+        "button_unverified_count": max(0, total_buttons - len([i for i in items if i["element_type"] == "button"])),
+        "button_skipped_count": 0,
+        "passed_count": len([i for i in items if i["result"] == "passed"]),
+        "failed_count": 0,
+        "unverified_count": len([i for i in items if i["result"] == "unverified"]),
+    }
+
+    # 确定验证状态
+    if page_count == 0:
+        status = "partial"
+        summary = f"目标验证部分完成：未探索到页面，无法验证目标「{goal_text}」。"
+    elif _requires_step_execution(goal_text) and not _has_goal_action_evidence(page_artifacts):
+        status = "partial"
+        summary = (
+            f"目标验证部分完成：已覆盖 {page_count} 个页面，"
+            f"但未找到点击、填写、选择、发送、发布、返回等目标步骤执行证据，"
+            f"不能判定探索目标「{goal_text}」已完成。"
+        )
+    elif page_count > 0 and _has_goal_action_evidence(page_artifacts):
+        status = "passed"
+        summary = (
+            f"目标验证通过：已覆盖 {page_count} 个页面，"
+            f"并存在目标步骤执行证据，"
+            f"探索目标「{goal_text}」已完成基础验证。"
+        )
+    else:
+        status = "partial"
+        summary = f"目标验证部分完成：已覆盖 {page_count} 个页面，但缺少目标步骤执行证据。"
+
+    return _result(goal_text, status, summary, stats, items)
+
+
+def _requires_step_execution(goal_text: str) -> bool:
+    normalized = str(goal_text or "").lower()
+    markers = (
+        "模块一", "模块二", "模块三", "步骤", "点击", "输入", "填写", "选择", "发送", "发布", "返回",
+        "新建", "会话", "对话", "使用", "卡片", "模型", "click", "fill", "select", "send", "publish",
+    )
+    return any(marker in normalized for marker in markers)
+
+
+def _has_goal_action_evidence(page_artifacts: list[dict]) -> bool:
+    evidence_types = {
+        "click",
+        "fill",
+        "select_option",
+        "press",
+        "navigate",
+        "go_back",
+        "close_modal",
+        "action_result",
+        "agent_decision",
+    }
+    for page_artifact in page_artifacts:
+        for action in page_artifact.get("actions", []) if isinstance(page_artifact.get("actions"), list) else []:
+            if not isinstance(action, dict):
+                continue
+            status = str(action.get("status") or "")
+            action_type = str(action.get("type") or action.get("action_type") or "")
+            if action_type in evidence_types and status in {"passed", "completed", "unverified"}:
+                return True
+        for step in page_artifact.get("steps", []) if isinstance(page_artifact.get("steps"), list) else []:
+            if not isinstance(step, dict):
+                continue
+            step_type = str(step.get("type") or "")
+            title = str(step.get("title") or "")
+            detail = str(step.get("detail") or "")
+            status = str(step.get("status") or "")
+            if status not in {"passed", "completed", "unverified"}:
+                continue
+            if step_type in evidence_types:
+                return True
+            if any(keyword in f"{title} {detail}".lower() for keyword in ("点击", "填写", "输入", "选择", "发送", "发布", "返回", "click", "fill")):
+                return True
+    return False
 
 
 def _result(goal: str, status: str, summary: str, stats: dict, items: list[dict]) -> dict:

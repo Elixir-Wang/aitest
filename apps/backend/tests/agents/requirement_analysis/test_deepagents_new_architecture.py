@@ -117,7 +117,22 @@ async def test_requirement_analysis_service_returns_structured_response(monkeypa
 
     expected = RequirementAnalysisAgentOutput(
         status="completed",
-        understanding_markdown="## 需求理解\n\n### 1. 需求背景\n原文未说明",
+        understanding_markdown="""## 需求理解
+
+### 1. 需求背景
+原文说明用户需要完成登录能力，以便进入系统使用受保护功能。
+
+### 2. 目标与价值
+目标是让已注册用户能够通过账号完成身份识别，进入系统后继续办理业务。
+
+### 3. 用户角色与使用场景
+主要用户为已注册用户，使用场景是在访问系统时输入账号凭证并进入工作台。
+
+### 4. 功能范围
+当前范围包含登录入口、凭证提交、系统校验和登录结果反馈。
+
+### 5. 业务流程
+用户打开登录页，输入账号信息并提交，系统校验后返回成功或失败结果。""",
         clarification_markdown="## 待澄清内容\n\n暂无。",
         clarification_items=[],
     )
@@ -143,6 +158,43 @@ async def test_requirement_analysis_service_returns_structured_response(monkeypa
     )
 
     assert result is expected
+
+
+@pytest.mark.anyio
+async def test_requirement_analysis_service_rejects_title_only_markdown(monkeypatch) -> None:
+    from app.agents.requirement_analysis.service import analyze_requirement
+
+    output = RequirementAnalysisAgentOutput(
+        status="needs_clarification",
+        understanding_markdown="# 通用模型网关设计 - 需求理解文档",
+        clarification_markdown="# 通用模型网关设计 - 待澄清问题",
+        clarification_items=[
+            {
+                "id": "clar-001",
+                "priority": "P0",
+                "module": "协议兼容",
+                "question": "是否需要兼容非 OpenAI 协议？",
+                "impact": "影响网关协议设计。",
+            }
+        ],
+    )
+
+    class FakeAgent:
+        async def ainvoke(self, payload):
+            return {"structured_response": output}
+
+    monkeypatch.setattr("app.agents.requirement_analysis.service.resolve_model_selection", lambda capability_id: "selection")
+    monkeypatch.setattr("app.agents.requirement_analysis.service.build_agent_model", lambda selection: "model")
+    monkeypatch.setattr("app.agents.requirement_analysis.service.requirement_analysis_agent", lambda model: FakeAgent())
+
+    with pytest.raises(ValueError, match="只有标题"):
+        await analyze_requirement(
+            RequirementAnalysisAgentInput(
+                requirement_name="通用模型网关设计",
+                primary_filename="gateway.md",
+                primary_markdown_content="# 通用模型网关设计\n\n需要兼容 OpenAI 协议。",
+            )
+        )
 
 
 @pytest.mark.anyio

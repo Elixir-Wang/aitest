@@ -1153,8 +1153,7 @@ def _build_page_payloads(page_artifacts: list[dict]) -> list[dict]:
         page_meta = page_content["page"]
         if not _text(page_meta.get("semantic_title")):
             page_meta["semantic_title"] = _page_display_title(page_meta)
-        if not _text(page_meta.get("module")) or _text(page_meta.get("module")) == _text(page_meta.get("title")):
-            page_meta["module"] = _page_module_name(page_meta)
+        page_meta["module"] = _page_module_name(page_meta)
         if not isinstance(page_content.get("business_summary"), dict):
             page_content["business_summary"] = {
                 "headline": _page_key_note(page_content),

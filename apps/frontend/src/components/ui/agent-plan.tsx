@@ -147,6 +147,44 @@ export function AgentPlan({
     });
   }, [tasks]);
 
+  // 自动展开正在运行或最新的子任务，让用户能看到探索步骤
+  useEffect(() => {
+    const newExpanded: Record<string, boolean> = {};
+
+    for (const task of tasks) {
+      if (!task.subtasks?.length) continue;
+
+      // 优先展开正在运行中的子任务
+      const runningSubtask = task.subtasks.find(
+        (subtask) => subtask.status === "running" || subtask.status === "in-progress" || subtask.status === "queued"
+      );
+
+      if (runningSubtask) {
+        newExpanded[`${task.id}-${runningSubtask.id}`] = true;
+      } else {
+        // 如果没有运行中的，展开最后一个有步骤的子任务
+        const subtaskWithSteps = [...task.subtasks].reverse().find((subtask) => subtask.steps && subtask.steps.length > 0);
+        if (subtaskWithSteps) {
+          newExpanded[`${task.id}-${subtaskWithSteps.id}`] = true;
+        }
+      }
+    }
+
+    // 只在有新的需要展开的子任务时更新状态
+    if (Object.keys(newExpanded).length > 0) {
+      setExpandedSubtasks((current) => {
+        // 保留用户手动操作的状态，只添加新的自动展开
+        const merged = { ...current };
+        for (const [key, value] of Object.entries(newExpanded)) {
+          if (!(key in merged)) {
+            merged[key] = value;
+          }
+        }
+        return merged;
+      });
+    }
+  }, [tasks]);
+
   function toggleTaskExpansion(taskId: string) {
     setExpandedTasks((current) =>
       current.includes(taskId) ? current.filter((id) => id !== taskId) : [...current, taskId],

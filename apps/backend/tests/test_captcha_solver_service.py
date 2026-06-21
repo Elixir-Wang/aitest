@@ -39,6 +39,30 @@ def test_solve_letter_captcha_strips_non_alphanumeric(monkeypatch: pytest.Monkey
     assert captcha_solver_service.solve_letter_captcha(image_path) == "x9k"
 
 
+def test_solve_letter_captcha_uses_expected_length_in_prompt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    image_path = tmp_path / "captcha.png"
+    image_path.write_bytes(b"fake-png")
+    captured: dict[str, str] = {}
+
+    class FakeResponse:
+        content = "AB12"
+
+    class FakeModel:
+        async def ainvoke(self, messages):
+            captured["prompt"] = messages[0].content[0]["text"]
+            return FakeResponse()
+
+    monkeypatch.setattr(captcha_solver_service, "build_captcha_solver_model", lambda: FakeModel())
+
+    assert captcha_solver_service.solve_letter_captcha(image_path, expected_length=4) == "AB12"
+    assert "只输出 4 位验证码字符本身" in captured["prompt"]
+
+
+def test_extract_captcha_code_rejects_unexpected_length() -> None:
+    with pytest.raises(captcha_solver_service.CaptchaSolverError, match="4 位"):
+        captcha_solver_service.extract_captcha_code("ABCDEF", expected_length=4)
+
+
 def test_solve_letter_captcha_rejects_empty_model_output(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     image_path = tmp_path / "captcha.png"
     image_path.write_bytes(b"fake-png")

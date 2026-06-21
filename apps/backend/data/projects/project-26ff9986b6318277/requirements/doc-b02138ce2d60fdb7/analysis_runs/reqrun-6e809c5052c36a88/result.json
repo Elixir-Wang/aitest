@@ -1,0 +1,112 @@
+{
+  "status": "needs_clarification",
+  "understanding_markdown": "# 需求理解\n\n## 1. 需求背景\n\n现有 `agent-chat-model-g` 服务与业务有较大的耦合和绑定，不适合作为统一的网关层使用。\n\n当前需要将核心的与大模型 LLM 交互功能提取出来，成为通用功能沉淀，以支撑多个业务方对多种大模型（三方及公司内）的统一接入。\n\n拆分为两个核心组件：\n- **llm-gateway-g**：Web 服务应用，提供 OpenAI 通信协议，供其他业务方调用。\n- **llm-gateway-g-sdk**：Go SDK，提供 Go 服务直接调用 LLM 的能力，减少 HTTP 交互带来的性能损耗。\n\n按照模型维度逐渐切流，当前已在 Cybertron Agent 对话和 Go 版本对话流中进行测试验证。\n\n\n## 2. 目标与价值\n\n1. **能力解耦**：将 LLM 交互核心能力从 `agent-chat-model-g` 中剥离，使其不再与具体业务绑定。\n2. **统一接入**：通过网关层对外屏蔽不同 LLM 厂商的协议差异，对外暴露统一的 OpenAI 通信协议。\n3. **性能优化**：为 Go 系服务提供原生 SDK 接入方式，避免 HTTP 跨进程调用的性能损耗。\n4. **多模型支持**：支持三方大模型和公司内大模型的统一接入与切换。\n5. **平滑迁移**：通过配置开关（`UseLLMGatewaySDK`）按模型粒度逐步切流，灰度可控。\n\n\n## 3. 用户角色与使用场景\n\n| 用户角色 | 使用场景 | 用户目标 |\n|---------|---------|---------|\n| 内部 Go 业务服务（如 Cybertron Agent） | 通过 `llm-gateway-g-sdk` 调用 LLM 能力 | 低损耗地完成对话/FunctionCall 调用 |\n| 外部/其他业务方（非 Go 或跨语言服务） | 通过 HTTP 协议（OpenAI 格式）调用 `llm-gateway-g` | 标准化方式接入大模型能力 |\n| 系统管理员/运维 | 配置模型信息、API_KEY、代理信息 | 管理可用的 LLM 资源和访问凭证 |\n| LLM 厂商运营 | 维护厂商分类（`llm_info_classify`） | 对模型按厂商进行分类管理 |\n\n\n## 4. 功能范围\n\n**包含（本次实现）**：\n- llm-gateway-g Web 服务（提供 OpenAI 协议接口）\n- llm-gateway-g-sdk Go SDK\n- 自动初始化流程（服务启动时初始化模型配置）\n- 模型配置管理（`llm_model_config` 表的 CRUD）\n- API_KEY 管理（`api_keys` 表的 CRUD）\n- LLM 厂商分类管理（`llm_info_classify` 表的 CRUD）\n- 代理配置管理（`proxy_config` 表的 CRUD）\n- 源 API_KEY 与 LLM 提供商 API_KEY 映射（`source_model_api_key` 表）\n- Cybertron Agent 对话 + FunctionCall 调用验证\n- Go 版本对话流验证\n\n**不包含（TODO，后续迭代）**：\n- API_KEY 限流、管控\n- 模型 QPS 调用管控\n- Token 消耗计量\n- 完整的模型管理功能（如模型上下架、版本切换、灰度策略配置界面等）\n\n\n## 5. 业务流程\n\n原文通过架构图和流程图描述，图片链接不可直接访问，以下基于文字描述推断核心流程。\n\n**整体调用架构**：\n\n```mermaid\ngraph LR\n    A[Go 业务服务] -->|SDK 直连| B[llm-gateway-g-sdk]\n    B -->|内部方法调用| B\n    C[其他业务方] -->|OpenAI HTTP 协议| D[llm-gateway-g]\n    D -->|按 llm_code 路由| E[三方 LLM 厂商]\n    D -->|按 llm_code 路由| F[公司内 LLM]\n    B -.内置.-> D\n```\n\n**自动初始化流程**：\n\n```mermaid\ngraph TD\n    Start[服务启动] --> InitDB[连接数据库]\n    InitDB --> LoadConfig[加载 llm_model_config 配置]\n    LoadConfig --> LoadClassify[加载 llm_info_classify 分类]\n    LoadClassify --> LoadProxy[加载 proxy_config 代理配置]\n    LoadProxy --> LoadApiKey[加载 source_model_api_key 映射]\n    LoadApiKey --> Ready[网关就绪，对外提供服务]\n```\n\n**模型配置管理流程**：\n\n原文仅有标题\"模型配置管理\"，未给出具体流程描述，原文未说明增删改查的具体步骤和审批流程。\n\n\n## 6. 状态流转\n\n从数据库字段推断的核心对象状态：\n\n| 对象 | 状态 | 说明 |\n|------|------|------|\n| 模型配置 (`llm_model_config`) | 启用（`is_delete=0`） | 正常提供调用能力 |\n| 模型配置 (`llm_model_config`) | 软删除（`is_delete=1`） | 不再提供服务，保留记录 |\n| API_KEY (`api_keys`) | 启用（`is_delete=0`） | 有效凭证 |\n| API_KEY (`api_keys`) | 软删除（`is_delete=1`） | 已失效 |\n| 代理配置 (`proxy_config`) | 启用（`is_delete=0`） | 生效中 |\n| 代理配置 (`proxy_config`) | 软删除（`is_delete=1`） | 已失效 |\n| 厂商分类 (`llm_info_classify`) | 启用（`is_delete=0`） | 正常展示 |\n| 厂商分类 (`llm_info_classify`) | 软删除（`is_delete=0` 默认值） | 原文未说明删除操作流程 |\n\n模型配置的状态流转：\n\n```mermaid\ngraph LR\n    A[新增启用] --> B[已启用]\n    B --> C[软删除]\n    C -.原文未说明恢复机制.-> B\n```\n\n\n## 7. 业务规则\n\n| 规则分类 | 具体规则 | 来源 |\n|---------|---------|------|\n| 唯一性 | `api_keys.api_key` 全局唯一 | `UNIQUE KEY idx_api_keys_api_key` |\n| 唯一性 | `llm_model_config.llm_code` 唯一（char(6)） | `uniq_index_llm_code` |\n| 软删除 | 所有表均通过 `is_delete` 字段标记删除，默认值 0（`api_keys`/`proxy_config`/`llm_model_config`）/0（`llm_info_classify`）/0（`source_model_api_key`） | 表结构定义 |\n| 必填字段 | `llm_model_config` 中 `llm_code`、`llm_name`、`target_model`、`end_point`、`api_key`、`interface_protocol`、`create_name`、`update_name` 均 NOT NULL | 表结构定义 |\n| 必填字段 | `proxy_config` 中 `proxy_name`、`proxy_url`、`creat_username`、`update_username` 均 NOT NULL | 表结构定义 |\n| 必填字段 | `api_keys` 中 `api_key`、`source` 均 NOT NULL | 表结构定义 |\n| 索引 | `api_keys` 按 `source + is_delete` 建索引 | 表结构定义 |\n| 索引 | `source_model_api_key` 按 `source_api_key + llm_code` 建索引 | 表结构定义 |\n| 切流策略 | 仅配置在 `UseLLMGatewaySDK` 列表中的模型走 SDK，否则维持原有调用方式 | `Cybertron 相关配置` |\n| 当前切流范围 | `azure-gpt-4-jp`、`Qwen2-72B-Instruct-AWQ` 两款模型走 SDK | `Cybertron 相关配置` |\n| 字符集 | 数据库统一使用 `utf8mb4` / `utf8mb4_unicode_ci` 字符集 | 表结构定义 |\n| 加密存储 | `api_key`、`provider_api_key` 字段使用 `text` 类型存储，原文未说明是否加密 | 字段类型推断 |\n\n\n## 8. 页面与交互\n\n原文未说明是否提供 Web 管理界面或可视化配置页面。\n\n- **接入入口**：业务方通过 HTTP（OpenAI 协议）或 Go SDK 调用，不涉及 UI 交互。\n- **管理端 UI**：原文仅涉及数据库表结构，未描述管理后台页面，原文未说明。\n- **配置变更方式**：原文未说明模型/API_KEY/代理配置的变更入口（页面、接口、SQL 直改等）。\n\n\n## 9. 数据与系统交互\n\n**数据库表（共 5 张）**：\n\n| 表名 | 用途 | 关键字段 |\n|------|------|---------|\n| `api_keys` | API_KEY 主表 | `id`, `api_key`（唯一）, `source`, `is_delete`, `creat_time` |\n| `llm_info_classify` | LLM 厂商/分类 | `id`, `classify_name`, `user_name`, `icon`, `is_delete` |\n| `llm_model_config` | 模型配置主表 | `id`, `llm_code`（6 位唯一）, `llm_name`, `target_model`, `end_point`, `api_key`, `interface_protocol`, `api_version`, `proxy_id`, `classify_id`, `protocol_options`（JSON） |\n| `proxy_config` | 代理配置 | `id`, `proxy_name`, `proxy_url`, `is_delete`, `creat_username`, `update_username` |\n| `source_model_api_key` | 源 API_KEY 与提供商 API_KEY 映射 | `id`, `source_api_key`, `llm_code`, `provider_api_key`, `api_version`, `is_delete` |\n\n**表关联关系**：\n\n```mermaid\nerDiagram\n    llm_model_config ||--o{ llm_info_classify : \"classify_id\"\n    llm_model_config ||--o{ proxy_config : \"proxy_id\"\n    llm_model_config ||--o{ source_model_api_key : \"llm_code\"\n    api_keys ||--o{ source_model_api_key : \"api_key(source)\"\n```\n\n**测试环境数据库**：\n- 实例：`10.100.123.143:3306`\n- 账号：`u_cybertron_llm_gateway`\n- 库名：`llm_gateway`\n\n**外部系统对接**：\n- 三方 LLM 厂商（通过 `end_point` + `api_key` + `interface_protocol` 调用）\n- 公司内 LLM 服务（同上）\n- Cybertron Agent（通过 `UseLLMGatewaySDK` 配置切流消费）\n\n**配置中心**：\n- `params_config` 中的 `UseLLMGatewaySDK` 参数控制切流范围\n\n",
+  "clarification_markdown": "# 待澄清问题\n\n| 优先级 | 模块/对象 | 澄清问题 | 选项 A | 选项 B | 影响 |\n|-------|----------|---------|--------|--------|------|\n| P0 | 模型配置管理 | 模型配置管理的具体功能和操作流程是什么？原文该章节只有标题，无任何描述。 | 提供 CRUD 接口（增删改查模型配置），包括模型名称、目标模型、端点、API_KEY、协议类型、代理、分类等字段的维护 | 仅在初始化时从数据库加载，不提供运行时变更接口，所有变更通过 DBA 手工执行 SQL | 影响模型配置模块的接口设计和开发工作量，关系到是否需要管理后台或 API |\n| P0 | 架构设计 | SDK（llm-gateway-g-sdk）与 Web 服务（llm-gateway-g）之间的关系是什么？SDK 是直接调用 LLM 还是经过 Web 服务转发？ | SDK 内部直接通过数据库配置调用 LLM，不经过 Web 服务，避免任何 HTTP 损耗 | SDK 内部还是通过 HTTP 调用 Web 服务，由 Web 服务统一对外提供 OpenAI 协议和鉴权 | 决定 SDK 的实现复杂度、性能和部署形态，影响整体架构 |\n| P0 | 切流策略 | Cybertron 的\"按照模型进行逐渐切流\"具体如何实现？`UseLLMGatewaySDK` 是配置中心热加载还是发布时确定？ | 配置中心热加载，运行时动态生效，新增模型无需重启服务即可切流 | 服务启动时一次性加载，变更后需要重启服务才能生效 | 影响配置变更的响应速度和运维方式，决定是否需要监听配置变更事件 |\n| P0 | API_KEY 鉴权 | 业务方调用 llm-gateway-g 时，API_KEY 的传递和校验机制是什么？ | 通过 HTTP Header（如 Authorization: Bearer xxx）传递，Web 服务校验 api_keys 表中的 source 字段对应的 api_key | 调用方在请求 body 中通过 source_model_api_key 表映射，将 source_api_key 转换为对应厂商的 provider_api_key | 影响 Web 服务的鉴权实现和 source_model_api_key 表的使用方式 |\n| P0 | API_KEY 存储安全 | 数据库中 api_key、provider_api_key 等敏感字段是否需要加密存储？ | 需要加密存储（如 AES），应用层解密后使用，避免数据库泄漏导致凭证外泄 | 明文存储即可，依赖数据库本身的访问控制和网络隔离 | 影响数据安全等级和实现复杂度，关系到是否符合公司安全规范 |\n| P0 | 协议兼容 | llm-gateway-g 对外提供 OpenAI 协议时，如何处理非 OpenAI 协议的厂商（如公司内自研模型）？ | 通过 llm_model_config 中的 interface_protocol 字段标识，Web 服务内部做协议转换，对外统一暴露 OpenAI 格式 | 仅透传 OpenAI 协议，非 OpenAI 协议的模型由调用方自行适配，网关不做转换 | 决定网关的协议适配范围和工作量，影响公司内模型的接入方式 |\n| P1 | 容错降级 | 当某个 LLM 模型调用失败时，网关是否有重试或降级策略？ | 支持配置重试次数和备用模型（fallback），主模型失败后自动切换到备用模型 | 直接透传错误给调用方，不做重试和降级，由业务方自行处理 | 影响网关的可用性和业务连续性，关系到是否需要在 llm_model_config 中增加 fallback 字段 |\n| P1 | 代理配置 | proxy_config 表中 proxy_url 的使用场景是什么？是用于调用 LLM 时的网络代理还是其他用途？ | 用于访问外网 LLM（如 OpenAI）时的 HTTP 代理，解决内网访问限制问题 | 用于内网 LLM 服务的反向代理或负载均衡 | 决定 llm_model_config 中 proxy_id 字段的关联逻辑和代理的实现方式 |\n| P1 | 日志监控 | 网关调用 LLM 时是否需要记录请求/响应日志和调用链路？本次是否包含？ | 需要记录完整的请求/响应日志和耗时，用于问题排查和后续 Token 计量基础 | 仅记录关键信息（模型、调用方、耗时、是否成功），不记录请求/响应内容 | 影响可观测性和后续 Token 计量功能的实现基础 |\n| P1 | protocol_options | llm_model_config 表中 protocol_options（JSON 字段）的用途和结构是什么？ | 存储各厂商特有的协议参数（如 temperature、top_p、max_tokens 等），网关透传给对应厂商 | 存储协议转换规则，用于非 OpenAI 协议到 OpenAI 协议的映射配置 | 影响协议适配的灵活性和配置复杂度 |\n| P1 | SDK 接口 | llm-gateway-g-sdk 暴露给 Go 服务的接口形态是什么？是函数式 API 还是封装了完整 Client 对象？ | 提供高层封装的 Client 对象（如 gatewayClient.Chat()），屏蔽底层 HTTP/协议细节，对业务友好 | 提供底层函数调用，保留与 OpenAI SDK 类似的灵活度，由业务方自行组装请求 | 决定 SDK 的易用性和灵活性，影响业务方接入成本 |\n| P1 | 自动初始化 | 自动初始化流程触发的时机和频率是什么？是否支持运行时配置变更热更新？ | 仅服务启动时执行一次，运行时变更需重启服务 | 启动时执行 + 定时（如每分钟）刷新配置 + 监听配置中心变更事件实现热更新 | 决定配置变更的响应实时性和运维复杂度 |\n| P2 | 多租户隔离 | 不同业务方（source）调用同一个模型时，是否需要隔离或区分？ | 同一模型对所有 source 共享，API_KEY 通过 source_model_api_key 表按调用方分配各自凭证 | 同一模型对所有 source 完全共享 provider_api_key，不区分调用方 | 影响 source_model_api_key 表的业务语义和后续计费/限粒度 |\n| P2 | 流式响应 | 是否需要支持 SSE 流式响应（OpenAI 的 stream 模式）？ | 需要支持，Web 服务和 SDK 都需实现 SSE 流式透传 | 仅支持非流式一次性响应，流式功能后续迭代 | 影响 Web 服务的响应处理和 SDK 的实现方式，对话体验差异显著 |\n| P2 | 超时控制 | 调用 LLM 的超时时间如何配置？是固定值还是按模型可配置？ | 在 llm_model_config 中新增 timeout 字段，按模型灵活配置 | 使用统一的全局默认超时（如 60s），所有模型共用 | 影响大模型调用的响应控制和用户体验 |",
+  "clarification_items": [
+    {
+      "id": "clar-001",
+      "priority": "P0",
+      "module": "模型配置管理",
+      "question": "模型配置管理的具体功能和操作流程是什么？原文该章节只有标题，无任何描述。",
+      "impact": "影响模型配置模块的接口设计和开发工作量，关系到是否需要管理后台或 API"
+    },
+    {
+      "id": "clar-002",
+      "priority": "P0",
+      "module": "架构设计",
+      "question": "SDK（llm-gateway-g-sdk）与 Web 服务（llm-gateway-g）之间的关系是什么？SDK 是直接调用 LLM 还是经过 Web 服务转发？",
+      "impact": "决定 SDK 的实现复杂度、性能和部署形态，影响整体架构"
+    },
+    {
+      "id": "clar-003",
+      "priority": "P0",
+      "module": "切流策略",
+      "question": "Cybertron 的\"按照模型进行逐渐切流\"具体如何实现？`UseLLMGatewaySDK` 是配置中心热加载还是发布时确定？",
+      "impact": "影响配置变更的响应速度和运维方式，决定是否需要监听配置变更事件"
+    },
+    {
+      "id": "clar-004",
+      "priority": "P0",
+      "module": "API_KEY 鉴权",
+      "question": "业务方调用 llm-gateway-g 时，API_KEY 的传递和校验机制是什么？",
+      "impact": "影响 Web 服务的鉴权实现和 source_model_api_key 表的使用方式"
+    },
+    {
+      "id": "clar-005",
+      "priority": "P0",
+      "module": "API_KEY 存储安全",
+      "question": "数据库中 api_key、provider_api_key 等敏感字段是否需要加密存储？",
+      "impact": "影响数据安全等级和实现复杂度，关系到是否符合公司安全规范"
+    },
+    {
+      "id": "clar-006",
+      "priority": "P0",
+      "module": "协议兼容",
+      "question": "llm-gateway-g 对外提供 OpenAI 协议时，如何处理非 OpenAI 协议的厂商（如公司内自研模型）？",
+      "impact": "决定网关的协议适配范围和工作量，影响公司内模型的接入方式"
+    },
+    {
+      "id": "clar-007",
+      "priority": "P1",
+      "module": "容错降级",
+      "question": "当某个 LLM 模型调用失败时，网关是否有重试或降级策略？",
+      "impact": "影响网关的可用性和业务连续性，关系到是否需要在 llm_model_config 中增加 fallback 字段"
+    },
+    {
+      "id": "clar-008",
+      "priority": "P1",
+      "module": "代理配置",
+      "question": "proxy_config 表中 proxy_url 的使用场景是什么？是用于调用 LLM 时的网络代理还是其他用途？",
+      "impact": "决定 llm_model_config 中 proxy_id 字段的关联逻辑和代理的实现方式"
+    },
+    {
+      "id": "clar-009",
+      "priority": "P1",
+      "module": "日志监控",
+      "question": "网关调用 LLM 时是否需要记录请求/响应日志和调用链路？本次是否包含？",
+      "impact": "影响可观测性和后续 Token 计量功能的实现基础"
+    },
+    {
+      "id": "clar-010",
+      "priority": "P1",
+      "module": "protocol_options",
+      "question": "llm_model_config 表中 protocol_options（JSON 字段）的用途和结构是什么？",
+      "impact": "影响协议适配的灵活性和配置复杂度"
+    },
+    {
+      "id": "clar-011",
+      "priority": "P1",
+      "module": "SDK 接口",
+      "question": "llm-gateway-g-sdk 暴露给 Go 服务的接口形态是什么？是函数式 API 还是封装了完整 Client 对象？",
+      "impact": "决定 SDK 的易用性和灵活性，影响业务方接入成本"
+    },
+    {
+      "id": "clar-012",
+      "priority": "P1",
+      "module": "自动初始化",
+      "question": "自动初始化流程触发的时机和频率是什么？是否支持运行时配置变更热更新？",
+      "impact": "决定配置变更的响应实时性和运维复杂度"
+    },
+    {
+      "id": "clar-013",
+      "priority": "P2",
+      "module": "多租户隔离",
+      "question": "不同业务方（source）调用同一个模型时，是否需要隔离或区分？",
+      "impact": "影响 source_model_api_key 表的业务语义和后续计费/限粒度"
+    },
+    {
+      "id": "clar-014",
+      "priority": "P2",
+      "module": "流式响应",
+      "question": "是否需要支持 SSE 流式响应（OpenAI 的 stream 模式）？",
+      "impact": "影响 Web 服务的响应处理和 SDK 的实现方式，对话体验差异显著"
+    },
+    {
+      "id": "clar-015",
+      "priority": "P2",
+      "module": "超时控制",
+      "question": "调用 LLM 的超时时间如何配置？是固定值还是按模型可配置？",
+      "impact": "影响大模型调用的响应控制和用户体验"
+    }
+  ]
+}

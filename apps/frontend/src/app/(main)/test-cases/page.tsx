@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ClipboardCheck, Loader2, Play, Search } from "lucide-react";
+import { ClipboardCheck, Loader2, Play, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
+import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import {
   type ApiExplorationRun,
   type ApiProject,
@@ -47,6 +49,8 @@ type TestCaseSetForm = {
 };
 
 const NO_EXPLORATION_VALUE = "__none__";
+const ACTIVE_GENERATION_STATUSES = new Set(["queued", "running"]);
+const TEST_CASE_SET_POLL_INTERVAL_MS = 5000;
 
 const emptyForm: TestCaseSetForm = {
   name: "",
@@ -62,7 +66,7 @@ const emptyForm: TestCaseSetForm = {
 export default function Page() {
   const { scope: projectScope, currentProjectId, hydrate, hasHydrated } = useProjectContextStore();
   const [projects, setProjects] = useState<ApiProject[]>([]);
-  const [rows, setRows] = useState<ApiTestCaseSet[]>([]);
+  const setSelection = useLocalTableSelection<ApiTestCaseSet>([]);
   const [requirements, setRequirements] = useState<ApiRequirementDocument[]>([]);
   const [explorations, setExplorations] = useState<ApiExplorationRun[]>([]);
   const [searchText, setSearchText] = useState("");
@@ -83,7 +87,7 @@ export default function Page() {
   const selectedProjectName =
     projectScope === "project" ? currentProjectName : (projects.find((item) => item.id === form.projectId)?.name ?? "");
 
-  const filteredRows = rows.filter((item) =>
+  const filteredRows = setSelection.rows.filter((item) =>
     [
       item.name,
       item.requirement_doc_title,
@@ -117,20 +121,29 @@ export default function Page() {
     setExplorations(nextExplorations);
   }, []);
 
-  const loadSets = useCallback(async (nextProjectId: string) => {
-    if (!nextProjectId) {
-      setRows([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const data = await apiRequest<ApiTestCaseSet[]>(`/projects/${nextProjectId}/test-case-sets`);
-      setRows(data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const loadSets = useCallback(
+    async (nextProjectIds: string[], options?: { silent?: boolean }) => {
+      if (nextProjectIds.length === 0) {
+        setSelection.setRows([]);
+        setLoading(false);
+        return;
+      }
+      if (!options?.silent) {
+        setLoading(true);
+      }
+      try {
+        const data = await Promise.all(
+          nextProjectIds.map((projectId) => apiRequest<ApiTestCaseSet[]>(`/projects/${projectId}/test-case-sets`)),
+        );
+        setSelection.setRows(data.flat().sort((first, second) => second.updated_at.localeCompare(first.updated_at)));
+      } finally {
+        if (!options?.silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [setSelection.setRows],
+  );
 
   useEffect(() => {
     void loadProjects();
@@ -148,8 +161,38 @@ export default function Page() {
 
   useEffect(() => {
     void loadProjectInputs(selectedProjectId);
-    void loadSets(selectedProjectId);
-  }, [loadProjectInputs, loadSets, selectedProjectId]);
+    const listProjectIds =
+      projectScope === "project"
+        ? selectedProjectId
+          ? [selectedProjectId]
+          : []
+        : projects.filter((project) => !project.id.startsWith("__")).map((project) => project.id);
+    void loadSets(listProjectIds);
+  }, [loadProjectInputs, loadSets, projectScope, projects, selectedProjectId]);
+
+  useEffect(() => {
+    const hasActiveGeneration = setSelection.rows.some((item) =>
+      item.generation_run ? ACTIVE_GENERATION_STATUSES.has(item.generation_run.status) : false,
+    );
+    if (!hasActiveGeneration) {
+      return;
+    }
+    const listProjectIds =
+      projectScope === "project"
+        ? selectedProjectId
+          ? [selectedProjectId]
+          : []
+        : projects.filter((project) => !project.id.startsWith("__")).map((project) => project.id);
+    if (listProjectIds.length === 0) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void loadSets(listProjectIds, { silent: true });
+    }, TEST_CASE_SET_POLL_INTERVAL_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [loadSets, projectScope, projects, selectedProjectId, setSelection.rows]);
 
   function relatedExplorationForRequirement(requirementId: string) {
     return explorations.find(
@@ -207,11 +250,34 @@ export default function Page() {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      setRows((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setSelection.setRows((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       setDialogOpen(false);
       toast.success("测试用例生成任务已创建");
+      notifyAiTaskStarted();
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function deleteTestCaseSets(ids: string[]) {
+    if (ids.length === 0) {
+      return;
+    }
+    try {
+      await Promise.all(
+        ids.map((id) => {
+          const item = setSelection.rows.find((row) => row.id === id);
+          if (!item) {
+            return Promise.resolve();
+          }
+          return apiRequest(`/projects/${item.project_id}/test-case-sets/${id}`, { method: "DELETE" });
+        }),
+      );
+      setSelection.setRows((current) => current.filter((row) => !ids.includes(row.id)));
+      setSelection.clearSelection();
+      toast.success(`已删除 ${ids.length} 个测试用例集`);
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "测试用例集删除失败");
     }
   }
 
@@ -227,33 +293,43 @@ export default function Page() {
           helper="当前项目测试用例集数量"
           icon={ClipboardCheck}
           label="测试用例集"
-          value={String(rows.length)}
+          value={String(setSelection.rows.length)}
         />
         <MetricCard
           helper="生成完成后展示待评审用例"
           icon={ClipboardCheck}
           label="测试用例"
-          value={String(rows.reduce((total, item) => total + item.case_count, 0))}
+          value={String(setSelection.rows.reduce((total, item) => total + item.case_count, 0))}
         />
         <MetricCard
           helper="生成中的用例集"
           icon={Loader2}
           label="生成中"
-          value={String(rows.filter((item) => item.status === "generating").length)}
+          value={String(setSelection.rows.filter((item) => item.status === "generating").length)}
         />
       </div>
       <ShellSection>
         <ListToolbar
           createLabel="新建测试用例集"
+          onBatchDelete={() => deleteTestCaseSets(setSelection.selectedIds)}
           onCreate={openCreateDialog}
           onSearch={setSearchText}
           placeholder="搜索用例集、需求或探索"
+          selectedCount={setSelection.selectedCount}
           title="测试用例集列表"
         />
         <div className="overflow-hidden rounded-lg border">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    aria-label="选择全部测试用例集"
+                    checked={setSelection.allSelected || (setSelection.partiallySelected ? "indeterminate" : false)}
+                    disabled={loading}
+                    onCheckedChange={(checked) => setSelection.toggleAll(Boolean(checked))}
+                  />
+                </TableHead>
                 <TableHead>用例集名称</TableHead>
                 <TableHead>需求</TableHead>
                 <TableHead>关联探索</TableHead>
@@ -265,10 +341,20 @@ export default function Page() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? <TableLoadingRow colSpan={8} label="测试用例集加载中" /> : null}
+              {loading ? <TableLoadingRow colSpan={9} label="测试用例集加载中" /> : null}
               {!loading
                 ? filteredRows.map((item) => (
-                    <TableRow key={item.id}>
+                    <TableRow
+                      data-state={setSelection.selectedIds.includes(item.id) ? "selected" : undefined}
+                      key={item.id}
+                    >
+                      <TableCell>
+                        <Checkbox
+                          aria-label={`选择 ${item.name}`}
+                          checked={setSelection.selectedIds.includes(item.id)}
+                          onCheckedChange={(checked) => setSelection.toggleOne(item.id, Boolean(checked))}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">{item.name}</TableCell>
                       <TableCell>{item.requirement_doc_title}</TableCell>
                       <TableCell>{item.exploration_run_title || "不使用探索"}</TableCell>
@@ -284,8 +370,16 @@ export default function Page() {
                       <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                       <TableCell>
                         <RowActions
-                          actions={[{ label: "查看", href: `/test-cases?set=${item.id}`, icon: Search }]}
-                          label="打开操作菜单"
+                          actions={[
+                            { label: "查看", href: `/test-cases?set=${item.id}`, icon: Search },
+                            {
+                              label: "删除",
+                              icon: Trash2,
+                              destructive: true,
+                              onSelect: () => deleteTestCaseSets([item.id]),
+                            },
+                          ]}
+                          label={`打开 ${item.name} 操作菜单`}
                         />
                       </TableCell>
                     </TableRow>
@@ -293,7 +387,7 @@ export default function Page() {
                 : null}
               {!loading && filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={8}>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={9}>
                     暂无测试用例。可新建测试用例集，选择需求后生成测试用例。
                   </TableCell>
                 </TableRow>

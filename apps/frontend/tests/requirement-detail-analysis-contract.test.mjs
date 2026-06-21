@@ -8,16 +8,35 @@ const pageSource = readFileSync(
 );
 const alertDialogSource = readFileSync(new URL("../src/components/ui/alert-dialog.tsx", import.meta.url), "utf8");
 
-test("requirement detail exposes the three requirement analysis subtabs", () => {
+test("requirement detail exposes requirement understanding and clarification subtabs", () => {
   assert.match(pageSource, /<TabsTrigger value="analysis">需求分析<\/TabsTrigger>/);
   assert.match(pageSource, /<TabsTrigger value="final">最终需求<\/TabsTrigger>/);
   assert.match(pageSource, /<TabsTrigger value="analysis-report">需求分析<\/TabsTrigger>/);
   assert.match(pageSource, /<TabsTrigger value="clarification">待澄清<\/TabsTrigger>/);
-  assert.match(pageSource, /<TabsTrigger value="quality">质量保障<\/TabsTrigger>/);
+  assert.doesNotMatch(pageSource, /<TabsTrigger value="quality">质量保障<\/TabsTrigger>/);
+  assert.doesNotMatch(pageSource, /<TabsTrigger value="enhanced">初步需求<\/TabsTrigger>/);
   assert.doesNotMatch(pageSource, /<TabsTrigger value="preliminary">初步需求<\/TabsTrigger>/);
   assert.doesNotMatch(pageSource, /<TabsTrigger value="pending">待确认问题<\/TabsTrigger>/);
   assert.doesNotMatch(pageSource, /<TabsTrigger value="report">分析报告<\/TabsTrigger>/);
   assert.doesNotMatch(pageSource, />需求澄清</);
+});
+
+test("requirement analysis page consumes the canonical backend output fields", () => {
+  assert.match(pageSource, /understanding_markdown: string/);
+  assert.match(pageSource, /clarification_markdown: string/);
+  assert.match(pageSource, /clarification_items: RequirementAnalysisQuestion\[\]/);
+  assert.match(pageSource, /const analysisReportMarkdown = analysisResult\?\.output\.understanding_markdown \?\? ""/);
+  assert.match(pageSource, /const clarificationMarkdown = analysisResult\?\.output\.clarification_markdown \?\? ""/);
+  assert.match(
+    pageSource,
+    /const pendingAnalysisItems: RequirementAnalysisPendingItem\[\] = analysisResult\?\.output\.clarification_items \?\? \[\]/,
+  );
+  assert.doesNotMatch(pageSource, /analysis_report_markdown/);
+  assert.doesNotMatch(pageSource, /preliminary_requirement_markdown/);
+  assert.doesNotMatch(pageSource, /quality_assurance_report_markdown/);
+  assert.doesNotMatch(pageSource, /clarification_questions/);
+  assert.doesNotMatch(pageSource, /conflicts/);
+  assert.doesNotMatch(pageSource, /quality_gate/);
 });
 
 test("file tabs share the selected file and default to primary only when none is selected", () => {
@@ -144,9 +163,19 @@ test("clarification tab keeps the clickable answer structure", () => {
 
 test("clarification questions do not render prompt prefixes or guessed fallback answers", () => {
   assert.match(pageSource, /function normalizePendingQuestionText\(question: string\)/);
+  assert.match(pageSource, /function normalizePendingDisplayText\(text: string\)/);
   assert.match(pageSource, /\.replace\(\/\^以下细节需要确认/);
   assert.match(pageSource, /const questionBody = normalizePendingQuestionText\(pendingItemQuestion\(item\)\)/);
-  assert.match(pageSource, /<div className="text-foreground text-sm leading-6">\{questionBody\}<\/div>/);
+  assert.match(
+    pageSource,
+    /const shouldShowQuestionBody =\s*Boolean\(questionBody\) &&\s*normalizePendingDisplayText\(questionBody\) !== normalizePendingDisplayText\(itemHeading\)/,
+  );
+  assert.match(pageSource, /\{shouldShowQuestionBody \? \(/);
+  assert.doesNotMatch(pageSource, /<Badge variant="outline">\{pendingIssueTypeLabels\[issueType\]\}<\/Badge>/);
+  assert.doesNotMatch(pageSource, /className="inline"[\s\S]*content=\{itemImpact\}/);
+  assert.doesNotMatch(pageSource, /<MarkdownPreview[\s\S]*content=\{itemImpact\}/);
+  assert.match(pageSource, /<span className="font-medium">影响：<\/span>/);
+  assert.doesNotMatch(pageSource, /<span>影响<\/span>/);
   assert.match(pageSource, /return \[\];\s*\}/);
   assert.doesNotMatch(pageSource, /function inferPendingLikelyAnswers/);
   assert.doesNotMatch(pageSource, /候选答案 A/);
@@ -154,20 +183,10 @@ test("clarification questions do not render prompt prefixes or guessed fallback 
   assert.doesNotMatch(pageSource, /安全指标：所有接口必须经过身份认证/);
 });
 
-test("quality assurance tab renders only the markdown report", () => {
-  assert.match(pageSource, /quality_assurance_report_markdown/);
-  assert.match(pageSource, /<TabsContent id="quality-assurance-section" value="quality">/);
-  assert.match(pageSource, /content=\{qualityAssuranceMarkdown\}/);
-  assert.match(pageSource, /尚未生成质量保障报告，请先执行需求分析。/);
-  assert.doesNotMatch(pageSource, /const qualityGate = analysisResult\?\.output\.quality_gate/);
-  assert.doesNotMatch(pageSource, /const coverageAudit = analysisResult\?\.output\.coverage_audit \?\? \[\]/);
-  assert.doesNotMatch(pageSource, /function QualityIssueList/);
-});
-
 test("handled clarification answers move behind the managed handled menu", () => {
   assert.match(
     pageSource,
-    /const pendingAnalysisItems: RequirementAnalysisPendingItem\[\] = \[\.\.\.clarificationQuestions, \.\.\.analysisConflicts\]/,
+    /const pendingAnalysisItems: RequirementAnalysisPendingItem\[\] = analysisResult\?\.output\.clarification_items \?\? \[\]/,
   );
   assert.match(pageSource, /const visiblePendingAnalysisItems = pendingAnalysisItems\.filter\(isPendingItemOpen\)/);
   assert.match(pageSource, /isPendingItemHandled\(item\) && !pendingAnswerDrafts\[item\.id\]/);

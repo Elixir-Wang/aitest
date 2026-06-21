@@ -1,5 +1,6 @@
 from pathlib import Path
 import asyncio
+import json
 
 import pytest
 from fastapi import HTTPException
@@ -9,9 +10,9 @@ from app.core import storage
 from app.api.v1 import exploration as exploration_api
 from app.schemas.exploration import ExplorationRunCreateIn, ExplorationRunUpdateIn
 from app.seed.init_db import init_db
-from app.agents.site_exploration.planning.schemas import ExplorationPlanModule, ExplorationPlanOutput
 from app.services.exploration import service as exploration_service
 from app.services.exploration import artifact_service
+from app.services.exploration import event_bus as exploration_event_bus
 from app.services.exploration import site_orchestrator
 
 
@@ -55,60 +56,12 @@ def _seed_requirement_document(document_id: str = "doc-1", project_id: str = "pr
         )
 
 
-def _confirm_plan(run_id: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    _mock_ai_plan_generation(
-        monkeypatch,
-        [
-            ExplorationPlanModule(
-                module_name="首页",
-                reason="页面事实中出现首页内容。",
-                entry_hint="当前页面",
-                steps=["进入首页模块", "记录页面状态"],
-            )
-        ],
-    )
-    exploration_service.generate_project_run_plan("project-1", run_id, ACTOR)
-    exploration_service.confirm_project_run_plan("project-1", run_id, ACTOR)
-
-
 def _mark_run_completed(run_id: str) -> None:
     with core_db.connect() as db:
         db.execute(
             "UPDATE exploration_runs SET artifact_root = ?, status = 'completed' WHERE id = ?",
             (f"project-1/exploration/{run_id}", run_id),
         )
-
-
-def _mock_ai_plan_generation(
-    monkeypatch: pytest.MonkeyPatch,
-    modules: list[ExplorationPlanModule],
-    elements: list[dict] | None = None,
-) -> None:
-    if elements is None:
-        elements = [{"id": "search", "role": "textbox", "name": "搜索", "action_type": "fill"}]
-    monkeypatch.setattr(
-        exploration_service,
-        "_collect_scope_plan_facts",
-        lambda run: {
-            "url": "https://example.test",
-            "normalized_url": "https://example.test",
-            "title": "测试页面",
-            "page_text_summary": "测试页面内容",
-            "elements": elements,
-        },
-    )
-
-    async def fake_generate_exploration_plan(input_data):
-        if modules and modules[0].module_name == "工作台":
-            assert input_data.scope_constraints["scope"] == "工作台"
-            assert "工作台" in input_data.scope_constraints["allowed_terms"]
-        return ExplorationPlanOutput(summary=f"AI 已根据探索范围生成 {len(modules)} 个模块计划项。", modules=modules)
-
-    monkeypatch.setattr(
-        exploration_service.site_exploration_plan_service,
-        "generate_exploration_plan",
-        fake_generate_exploration_plan,
-    )
 
 
 def _write_discovery_artifacts(run_id: str, modules: list[str]) -> None:
@@ -181,12 +134,11 @@ def test_restart_recovers_stale_stopping_run_with_completed_log(monkeypatch: pyt
             goal="",
             notes="",
             max_pages=10,
-            max_actions=20,
+            max_actions=100,
             timeout_minutes=5,
         ),
         ACTOR,
     )
-    _confirm_plan(created["id"], monkeypatch)
     artifact_root = project_root / "project-1" / "exploration" / created["id"]
     (artifact_root / "logs").mkdir(parents=True, exist_ok=True)
     (artifact_root / "run.yaml").write_text("artifact_schema_version: 2\n", encoding="utf-8")
@@ -212,7 +164,6 @@ def test_restart_recovers_stale_stopping_run_with_completed_log(monkeypatch: pyt
     assert restarted["result_summary"] == "探索任务已提交，等待执行。"
     assert not (artifact_root / "run.yaml").exists()
     assert not (artifact_root / "logs" / "run.log").exists()
-    assert (artifact_root / "exploration-plan.yaml").exists()
     with core_db.connect() as db:
         module_count = db.execute(
             "SELECT COUNT(*) AS count FROM exploration_module_coverages WHERE exploration_run_id = ?",
@@ -235,7 +186,7 @@ def test_create_run_has_no_execution_mode_columns(monkeypatch: pytest.MonkeyPatc
             goal="",
             notes="",
             max_pages=10,
-            max_actions=20,
+            max_actions=100,
             timeout_minutes=5,
         ),
         ACTOR,
@@ -249,6 +200,216 @@ def test_create_run_has_no_execution_mode_columns(monkeypatch: pytest.MonkeyPatc
     assert "execution_mode" not in columns
     assert "interaction_mode" not in columns
     assert "agent_turn_count" not in columns
+
+
+def test_running_run_detail_returns_plan_steps_before_page_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_and_environment()
+    created = exploration_service.create_project_run(
+        "project-1",
+        ExplorationRunCreateIn(
+            environment_id="env-1",
+            title="工作台探索",
+            scope="工作台",
+            forbidden_paths="",
+            goal="模块一：进入工作台\n1. 点击智能体卡片。",
+            notes="",
+            max_pages=10,
+            max_actions=100,
+            timeout_minutes=5,
+        ),
+        ACTOR,
+    )
+    artifact_root = project_root / "project-1" / "exploration" / created["id"]
+    artifact_root.mkdir(parents=True)
+    (artifact_root / "exploration-plan.yaml").write_text(
+        """
+plan_id: plan-1
+modules:
+  - 工作台
+steps:
+  - step_id: step-001
+    step_number: 1
+    action_type: click
+    description: 点击智能体卡片
+    target_description: 测试_自主规划智能体
+    expected_result: 进入智能体详情
+    module_name: 工作台
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    with core_db.connect() as db:
+        db.execute(
+            """
+            UPDATE exploration_runs
+            SET status = 'running',
+                artifact_root = ?,
+                result_summary = '开始执行探索计划，共 1 个步骤。'
+            WHERE id = ?
+            """,
+            (f"project-1/exploration/{created['id']}", created["id"]),
+        )
+        db.execute(
+            """
+            UPDATE exploration_module_coverages
+            SET completion_status = 'running',
+                completion_summary = '开始执行探索计划，共 1 个步骤。'
+            WHERE exploration_run_id = ?
+            """,
+            (created["id"],),
+        )
+
+    detail = exploration_service.get_project_run_detail("project-1", created["id"], ACTOR)
+
+    module = detail["modules"][0]
+    assert module["module_name"] == "工作台"
+    assert module["pages"][0]["id"] == "plan-planned-01"
+    assert module["pages"][0]["steps"][0]["title"] == "点击智能体卡片"
+    assert module["pages"][0]["steps"][0]["source"] == "exploration_plan"
+
+
+def test_running_run_detail_recovers_live_progress_without_final_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_and_environment()
+    created = exploration_service.create_project_run(
+        "project-1",
+        ExplorationRunCreateIn(
+            environment_id="env-1",
+            title="工作台探索",
+            scope="工作台",
+            forbidden_paths="",
+            goal="点击智能体卡片",
+            notes="",
+            max_pages=10,
+            max_actions=100,
+            timeout_minutes=5,
+        ),
+        ACTOR,
+    )
+    artifact_root = project_root / "project-1" / "exploration" / created["id"]
+    (artifact_root / "live").mkdir(parents=True)
+    (artifact_root / "live" / "progress.json").write_text(
+        json.dumps(
+            {
+                "run_id": created["id"],
+                "modules": {
+                    "planned-01": {
+                        "pages": {
+                            "lifecycle": {
+                                "id": "lifecycle",
+                                "module_key": "planned-01",
+                                "title": "当前运行阶段",
+                                "status": "running",
+                                "recent_event": "正在分析探索目标并生成执行步骤。",
+                                "steps": [
+                                    {
+                                        "id": "planning-started",
+                                        "type": "planning",
+                                        "title": "生成探索计划",
+                                        "detail": "正在分析探索目标并生成执行步骤。",
+                                        "status": "running",
+                                        "source": "unified_orchestrator",
+                                    }
+                                ],
+                            }
+                        }
+                    }
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    with core_db.connect() as db:
+        db.execute(
+            """
+            UPDATE exploration_runs
+            SET status = 'running',
+                artifact_root = ?,
+                result_summary = '正在智能分析探索目标并生成探索计划。'
+            WHERE id = ?
+            """,
+            (f"project-1/exploration/{created['id']}", created["id"]),
+        )
+        db.execute(
+            """
+            UPDATE exploration_module_coverages
+            SET completion_status = 'running',
+                completion_summary = '正在智能分析探索目标并生成探索计划。'
+            WHERE exploration_run_id = ?
+            """,
+            (created["id"],),
+        )
+
+    detail = exploration_service.get_project_run_detail("project-1", created["id"], ACTOR)
+
+    module = detail["modules"][0]
+    assert module["module_name"] == "工作台"
+    assert module["pages"][0]["id"] == "lifecycle"
+    assert module["pages"][0]["title"] == "当前运行阶段"
+    assert module["pages"][0]["steps"][0]["title"] == "生成探索计划"
+    assert module["pages"][0]["steps"][0]["status"] == "running"
+
+
+def test_detail_does_not_report_zero_page_module_completed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_and_environment()
+
+    created = exploration_service.create_project_run(
+        "project-1",
+        ExplorationRunCreateIn(
+            environment_id="env-1",
+            title="探索",
+            scope="工作台",
+            forbidden_paths="",
+            goal="验证工作台目标",
+            notes="",
+            max_pages=10,
+            max_actions=100,
+            timeout_minutes=5,
+        ),
+        ACTOR,
+    )
+    with core_db.connect() as db:
+        db.execute(
+            """
+            UPDATE exploration_runs
+            SET status = 'partial',
+                result_summary = '目标验证部分完成：未探索到页面。',
+                started_at = CURRENT_TIMESTAMP,
+                finished_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (created["id"],),
+        )
+        db.execute(
+            """
+            INSERT INTO exploration_module_coverages
+              (id, exploration_run_id, module_key, module_name, entry_path, planned_page_count,
+               explored_page_count, blocked_page_count, action_count, field_count,
+               state_transition_count, completion_status, completion_summary)
+            VALUES (?, ?, 'unclassified', '未分组模块', '工作台', 1, 0, 0, 0, 0, 0,
+                    'completed', '已覆盖 0/1 个页面，最近页面：无，无阻塞。')
+            """,
+            (f"expcov-{created['id']}", created["id"]),
+        )
+
+    detail = exploration_service.get_project_run_detail("project-1", created["id"], ACTOR)
+
+    module = detail["modules"][0]
+    assert module["planned_page_count"] == 1
+    assert module["explored_page_count"] == 0
+    assert module["completion_status"] == "partial"
+    assert module["completion_summary"] == "未探索到页面事实，无法确认探索目标已完成。"
 
 
 def test_create_and_update_run_can_link_requirement_document(
@@ -269,7 +430,7 @@ def test_create_and_update_run_can_link_requirement_document(
             goal="",
             notes="",
             max_pages=10,
-            max_actions=20,
+            max_actions=100,
             timeout_minutes=5,
         ),
         ACTOR,
@@ -313,165 +474,13 @@ def test_create_run_rejects_requirement_document_from_other_project(
                 goal="",
                 notes="",
                 max_pages=10,
-                max_actions=20,
+                max_actions=100,
                 timeout_minutes=5,
             ),
             ACTOR,
         )
 
     assert exc_info.value.detail["code"] == "INVALID_REQUIREMENT_DOCUMENT"
-
-
-def test_generate_confirmed_plan_before_starting_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _use_temp_db(monkeypatch, tmp_path)
-    _seed_project_and_environment()
-    created = exploration_service.create_project_run(
-        "project-1",
-        ExplorationRunCreateIn(
-            environment_id="env-1",
-            title="工作台探索",
-            scope="工作台",
-            forbidden_paths="删除\n发布",
-            goal="工作台模块的全部内容",
-            notes="",
-            max_pages=10,
-            max_actions=20,
-            timeout_minutes=5,
-        ),
-        ACTOR,
-    )
-
-    first_discovery = exploration_service.start_project_run("project-1", created["id"], ACTOR)
-    assert first_discovery["status"] == "queued"
-    _mark_run_completed(created["id"])
-    _mock_ai_plan_generation(
-        monkeypatch,
-        [
-            ExplorationPlanModule(
-                module_name="工作台",
-                reason="页面事实中出现工作台导航和内容。",
-                entry_hint="工作台入口",
-                steps=["进入工作台模块", "查看主要页面和状态"],
-            )
-        ],
-    )
-
-    generated = exploration_service.generate_project_run_plan("project-1", created["id"], ACTOR)
-
-    assert generated["plan_status"] == "draft"
-    assert generated["business_boundary"] == "工作台"
-    assert {item["capability_type"] for item in generated["items"]} == {"query_filter"}
-
-    confirmed = exploration_service.confirm_project_run_plan("project-1", created["id"], ACTOR)
-
-    assert confirmed["plan_status"] == "confirmed"
-    started = exploration_service.start_project_run("project-1", created["id"], ACTOR)
-    assert started["status"] == "queued"
-
-
-def test_generate_plan_uses_ai_modules_from_current_scope_facts(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    _use_temp_db(monkeypatch, tmp_path)
-    _seed_project_and_environment()
-    created = exploration_service.create_project_run(
-        "project-1",
-        ExplorationRunCreateIn(
-            environment_id="env-1",
-            title="工作台探索",
-            scope="工作台",
-            forbidden_paths="",
-            goal="采集探索范围全部模块",
-            notes="",
-            max_pages=10,
-            max_actions=20,
-            timeout_minutes=5,
-        ),
-        ACTOR,
-    )
-    _mock_ai_plan_generation(
-        monkeypatch,
-        [
-            ExplorationPlanModule(
-                module_name="查询筛选功能",
-                reason="页面事实中出现搜索框、状态筛选和重置按钮。",
-                entry_hint="搜索框、状态筛选、重置按钮",
-                steps=["检查默认筛选条件", "验证组合筛选和重置行为"],
-            ),
-            ExplorationPlanModule(
-                module_name="资源库",
-                reason="页面事实中出现资源库入口。",
-                entry_hint="资源库导航",
-                steps=["进入资源库模块", "查看资源列表和筛选入口"],
-            ),
-        ],
-        elements=[
-            {"id": "keyword", "role": "textbox", "name": "搜索", "action_type": "fill"},
-            {"id": "status", "role": "combobox", "name": "状态 全部", "action_type": "click"},
-            {"id": "reset", "role": "button", "name": "重置", "action_type": "click"},
-            {"id": "grid", "role": "button", "name": "宫格视图", "action_type": "click"},
-            {"id": "list", "role": "button", "name": "列表视图", "action_type": "click"},
-            {"id": "analysis", "role": "button", "name": "分析", "action_type": "click"},
-            {"id": "use", "role": "button", "name": "使用", "action_type": "click"},
-            {"id": "history", "role": "button", "name": "对话历史", "action_type": "click"},
-            {"id": "more", "role": "button", "name": "更多", "action_type": "click"},
-            {"id": "log", "role": "menuitem", "name": "日志查询", "action_type": "click"},
-            {"id": "export", "role": "menuitem", "name": "导出", "action_type": "click"},
-            {"id": "copy", "role": "menuitem", "name": "复制", "action_type": "click"},
-            {"id": "offline", "role": "menuitem", "name": "下线", "action_type": "click"},
-            {"id": "create", "role": "button", "name": "新增智能体", "action_type": "click"},
-            {"id": "import", "role": "button", "name": "导入", "action_type": "click"},
-        ],
-    )
-
-    generated = exploration_service.generate_project_run_plan("project-1", created["id"], ACTOR)
-
-    assert generated["plan_status"] == "draft"
-    assert generated["summary"] == "AI 已根据探索范围和 DOM 元素分组生成 4 个功能计划项，等待人工确认或补充。 已过滤范围外模块：资源库。"
-    assert [item["business_module"] for item in generated["items"]] == ["工作台", "工作台", "工作台", "工作台"]
-    assert [item["capability_type"] for item in generated["items"]] == [
-        "query_filter",
-        "view_switch",
-        "card_action",
-        "create_import",
-    ]
-    assert [item["title"] for item in generated["items"]] == ["查询筛选功能", "视图切换功能", "卡片功能", "创建导入功能"]
-    assert generated["items"][0]["steps"] == [
-        "完整探索工作台中的查询、筛选、搜索、排序能力，记录可操作项、交互结果、数据变化和过程中发现的问题。"
-    ]
-    assert generated["items"][0]["exploration_points"][0] == "已发现入口：搜索、状态 全部、重置"
-    assert generated["items"][2]["exploration_points"][0] == "已发现入口：分析、使用、对话历史、更多、日志查询、复制、下线、导出"
-    assert generated["items"][0]["entry_path"] == "https://example.test"
-    assert not {"search", "filter", "sort", "create", "import", "empty_state", "import_export"} & {
-        item["capability_type"] for item in generated["items"]
-    }
-
-
-def test_generate_plan_requires_ai_identified_modules(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _use_temp_db(monkeypatch, tmp_path)
-    _seed_project_and_environment()
-    created = exploration_service.create_project_run(
-        "project-1",
-        ExplorationRunCreateIn(
-            environment_id="env-1",
-            title="工作台探索",
-            scope="工作台",
-            forbidden_paths="",
-            goal="采集探索范围全部模块",
-            notes="",
-            max_pages=10,
-            max_actions=20,
-            timeout_minutes=5,
-        ),
-        ACTOR,
-    )
-    _mock_ai_plan_generation(monkeypatch, [], elements=[])
-
-    with pytest.raises(Exception) as missing_modules_error:
-        exploration_service.generate_project_run_plan("project-1", created["id"], ACTOR)
-
-    assert "AI 未能根据当前探索范围识别模块" in str(missing_modules_error.value)
 
 
 def test_detail_recovers_stale_stopping_run_before_frontend_disables_restart(
@@ -490,7 +499,7 @@ def test_detail_recovers_stale_stopping_run_before_frontend_disables_restart(
             goal="",
             notes="",
             max_pages=10,
-            max_actions=20,
+            max_actions=100,
             timeout_minutes=5,
         ),
         ACTOR,
@@ -520,7 +529,71 @@ def test_detail_recovers_stale_stopping_run_before_frontend_disables_restart(
     assert detail["run"]["result_summary"] == "探索已完成，停止请求发生在任务结束后，状态已自动恢复。"
 
 
-def test_orchestrator_marks_queued_run_running_before_agentic_loop(
+def test_stop_running_run_returns_cancelled_and_closes_browser_session(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_and_environment()
+    created = exploration_service.create_project_run(
+        "project-1",
+        ExplorationRunCreateIn(
+            environment_id="env-1",
+            title="首页探索",
+            scope="首页",
+            forbidden_paths="",
+            goal="",
+            notes="",
+            max_pages=10,
+            max_actions=100,
+            timeout_minutes=5,
+        ),
+        ACTOR,
+    )
+    with core_db.connect() as db:
+        db.execute(
+            """
+            UPDATE exploration_runs
+            SET status = 'running',
+                result_summary = 'Agentic Loop 已开始，正在观察页面并决策下一步。'
+            WHERE id = ?
+            """,
+            (created["id"],),
+        )
+        db.execute(
+            """
+            UPDATE exploration_module_coverages
+            SET completion_status = 'running',
+                completion_summary = '探索中'
+            WHERE exploration_run_id = ?
+            """,
+            (created["id"],),
+        )
+
+    closed: dict[str, object] = {}
+
+    def fake_close_run_session(run_id: str, *, timeout_seconds: float = 1.0) -> bool:
+        closed["run_id"] = run_id
+        closed["timeout_seconds"] = timeout_seconds
+        return True
+
+    monkeypatch.setattr(exploration_service.exploration_browser_session, "close_run_session", fake_close_run_session)
+
+    stopped = exploration_service.stop_project_run("project-1", created["id"], ACTOR)
+
+    assert stopped["status"] == "cancelled"
+    assert stopped["result_summary"] == "用户已停止探索，已保留停止前生成的日志和产物。"
+    assert closed == {"run_id": created["id"], "timeout_seconds": 1.0}
+    with core_db.connect() as db:
+        row = db.execute(
+            "SELECT status, finished_at FROM exploration_runs WHERE id = ?",
+            (created["id"],),
+        ).fetchone()
+    assert row["status"] == "cancelled"
+    assert row["finished_at"]
+
+
+def test_persist_runner_result_does_not_override_cancelled_run(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -537,42 +610,97 @@ def test_orchestrator_marks_queued_run_running_before_agentic_loop(
             goal="",
             notes="",
             max_pages=10,
-            max_actions=20,
+            max_actions=100,
             timeout_minutes=5,
         ),
         ACTOR,
     )
-    _confirm_plan(created["id"], monkeypatch)
+    artifact_root = project_root / "project-1" / "exploration" / created["id"]
+    with core_db.connect() as db:
+        db.execute(
+            """
+            UPDATE exploration_runs
+            SET status = 'cancelled',
+                result_summary = '用户已停止探索，已保留停止前生成的日志和产物。',
+                finished_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (created["id"],),
+        )
+
+    site_orchestrator._persist_runner_result(
+        created["id"],
+        artifact_root,
+        {
+            "status": "blocked",
+            "summary": "浏览器会话已关闭。",
+            "reason_type": "browser_closed",
+            "suggested_action": "无需处理。",
+            "log_path": "",
+        },
+    )
+
+    with core_db.connect() as db:
+        row = db.execute(
+            "SELECT status, result_summary FROM exploration_runs WHERE id = ?",
+            (created["id"],),
+        ).fetchone()
+    assert row["status"] == "cancelled"
+    assert row["result_summary"] == "用户已停止探索，已保留停止前生成的日志和产物。"
+
+
+def test_orchestrator_marks_queued_run_running_before_unified_exploration(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = _use_temp_db(monkeypatch, tmp_path)
+    monkeypatch.setattr(site_orchestrator, "PROJECT_FILE_STORAGE_ROOT", project_root)
+    _seed_project_and_environment()
+    created = exploration_service.create_project_run(
+        "project-1",
+        ExplorationRunCreateIn(
+            environment_id="env-1",
+            title="首页探索",
+            scope="首页",
+            forbidden_paths="",
+            goal="",
+            notes="",
+            max_pages=10,
+            max_actions=100,
+            timeout_minutes=5,
+        ),
+        ACTOR,
+    )
     exploration_service.start_project_run("project-1", created["id"], ACTOR)
     captured: dict[str, str] = {}
 
-    def fake_execute_agentic_loop(run_id: str, artifact_root: Path) -> dict:
+    def fake_execute_unified_exploration(run_id: str, artifact_root: Path) -> dict:
         with core_db.connect() as db:
-            captured["status_before_agentic_loop"] = db.execute(
+            captured["status_before_unified_exploration"] = db.execute(
                 "SELECT status FROM exploration_runs WHERE id = ?",
                 (run_id,),
             ).fetchone()["status"]
         return {
             "status": "blocked",
-            "summary": "Agentic Loop 阻塞。",
+            "summary": "统一探索阻塞。",
             "reason_type": "test_blocked",
             "suggested_action": "测试建议。",
             "log_path": "",
-            "log": '{"event":"blocked","type":"test_blocked","reason":"Agentic Loop 阻塞。"}\n',
+            "log": '{"event":"blocked","type":"test_blocked","reason":"统一探索阻塞。"}\n',
         }
 
-    monkeypatch.setattr(site_orchestrator, "_execute_agentic_loop", fake_execute_agentic_loop)
+    monkeypatch.setattr(site_orchestrator, "_execute_unified_exploration", fake_execute_unified_exploration)
 
     site_orchestrator.run_exploration(created["id"])
 
-    assert captured["status_before_agentic_loop"] == "running"
+    assert captured["status_before_unified_exploration"] == "running"
     with core_db.connect() as db:
         row = db.execute(
             "SELECT status, result_summary FROM exploration_runs WHERE id = ?",
             (created["id"],),
         ).fetchone()
     assert row["status"] == "blocked"
-    assert row["result_summary"] == "Agentic Loop 阻塞。"
+    assert row["result_summary"] == "统一探索阻塞。"
 
 
 def test_stream_late_subscription_returns_terminal_run_event(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -588,7 +716,7 @@ def test_stream_late_subscription_returns_terminal_run_event(monkeypatch: pytest
             goal="",
             notes="",
             max_pages=10,
-            max_actions=20,
+            max_actions=100,
             timeout_minutes=5,
         ),
         ACTOR,
@@ -609,10 +737,68 @@ def test_stream_late_subscription_returns_terminal_run_event(monkeypatch: pytest
     response = exploration_api.stream_project_run("project-1", created["id"], ACTOR)
     body = asyncio.run(_streaming_response_text(response))
 
+    assert "event: run_snapshot" in body
     assert "event: run_failed" in body
     assert f'"run_id":"{created["id"]}"' in body
+    assert '"run":{"id":' in body
     assert '"status":"partial"' in body
     assert "已探索 1 个页面。" in body
+
+
+def test_stream_run_replays_snapshot_before_recent_events(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_and_environment()
+    created = exploration_service.create_project_run(
+        "project-1",
+        ExplorationRunCreateIn(
+            environment_id="env-1",
+            title="首页探索",
+            scope="首页",
+            forbidden_paths="",
+            goal="采集首页",
+            notes="",
+            max_pages=10,
+            max_actions=100,
+            timeout_minutes=5,
+        ),
+        ACTOR,
+    )
+    with core_db.connect() as db:
+        db.execute(
+            """
+            UPDATE exploration_runs
+            SET status = 'running',
+                result_summary = '正在执行探索计划。'
+            WHERE id = ?
+            """,
+            (created["id"],),
+        )
+
+    exploration_event_bus.reset_for_tests()
+    exploration_event_bus.publish(created["id"], "planning_completed", {"total_steps": 1})
+    response = exploration_api.stream_project_run("project-1", created["id"], ACTOR)
+    iterator = response.body_iterator
+
+    async def read_first_two_events() -> str:
+        parts = []
+        try:
+            async for chunk in iterator:
+                parts.append(chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk))
+                if sum(part.count("\n\n") for part in parts) >= 2:
+                    break
+        finally:
+            await iterator.aclose()
+            exploration_event_bus.reset_for_tests()
+        return "".join(parts)
+
+    body = asyncio.run(read_first_two_events())
+
+    assert body.index("event: run_snapshot") < body.index("event: planning_completed")
+    assert '"result_summary":"正在执行探索计划。"' in body
+    assert '"total_steps":1' in body
 
 
 async def _streaming_response_text(response) -> str:

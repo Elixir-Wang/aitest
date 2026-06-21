@@ -84,7 +84,7 @@ export function requirementAnalysisStatusTone(status: string): StatusBadgeTone {
 
 export function explorationStatusTone(status: string): StatusBadgeTone {
   if (status === "completed") return "success";
-  if (status === "blocked") return "destructive";
+  if (status === "blocked" || status === "interrupted") return "destructive";
   if (status === "partial") return "warning";
   if (["pending", "queued", "running", "stopping"].includes(status)) return "processing";
   return "neutral";

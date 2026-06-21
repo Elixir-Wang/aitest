@@ -22,6 +22,7 @@ EXPLORATION_STATUS = {
     "running": (RUNNING_GROUP, "探索中"),
     "stopping": (RUNNING_GROUP, "停止中"),
     "cancelled": (COMPLETED_GROUP, "已取消"),
+    "interrupted": (COMPLETED_GROUP, "已中断"),
     "partial": (COMPLETED_GROUP, "部分完成"),
     "completed": (COMPLETED_GROUP, "已完成"),
     "blocked": (FAILED_GROUP, "探索阻塞"),

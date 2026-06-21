@@ -11,7 +11,12 @@ import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
-const AGENT_BACKEND_SOURCE_TYPES = new Set(["exploration_run", "requirement_file", "requirement_analysis_run"]);
+const AGENT_BACKEND_SOURCE_TYPES = new Set([
+  "exploration_run",
+  "requirement_file",
+  "requirement_analysis_run",
+  "test_case_generation_run",
+]);
 const RUNNING_TASK_POLL_INTERVAL_MS = 2_000;
 const TASK_START_GRACE_MS = 8_000;
 

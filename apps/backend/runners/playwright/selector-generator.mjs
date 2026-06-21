@@ -1,4 +1,6 @@
-const SELECTOR_PRIORITY = ["role", "label", "testid", "text", "css"];
+// Playwright 推荐的选择器优先级顺序
+// 参考: https://playwright.dev/docs/locators#locate-by-role
+const SELECTOR_PRIORITY = ["role", "label", "placeholder", "text", "testid", "css"];
 
 export function buildElementSelectors(element = {}) {
   const candidates = buildSelectorCandidates(element);
@@ -17,11 +19,13 @@ export function buildSelectorCandidates(element = {}) {
   const candidates = [];
   const role = clean(element.role);
   const name = clean(element.name || element.accessibleName);
-  const label = clean(element.label || element.ariaLabel || element.placeholder);
+  const label = clean(element.label || element.ariaLabel);
+  const placeholder = clean(element.placeholder);
   const testId = clean(element.testId || element.testid || element.test_id || element.dataTestId);
   const text = clean(element.text || element.innerText || element.visibleText || element.name);
   const css = clean(element.css || element.cssSelector);
 
+  // 1. getByRole - 首选，匹配无障碍树
   if (role && name) {
     candidates.push({
       kind: "role",
@@ -30,6 +34,8 @@ export function buildSelectorCandidates(element = {}) {
       code: `page.getByRole('${escapeSingle(role)}', { name: '${escapeSingle(name)}' })`,
     });
   }
+
+  // 2. getByLabel - 用于表单输入关联的标签
   if (label) {
     candidates.push({
       kind: "label",
@@ -37,13 +43,17 @@ export function buildSelectorCandidates(element = {}) {
       code: `page.getByLabel('${escapeSingle(label)}')`,
     });
   }
-  if (testId) {
+
+  // 3. getByPlaceholder - 当没有标签时
+  if (placeholder) {
     candidates.push({
-      kind: "testid",
-      testId,
-      code: `page.getByTestId('${escapeSingle(testId)}')`,
+      kind: "placeholder",
+      placeholder,
+      code: `page.getByPlaceholder('${escapeSingle(placeholder)}')`,
     });
   }
+
+  // 4. getByText - 用于非交互元素的可见文本
   if (text) {
     candidates.push({
       kind: "text",
@@ -51,6 +61,17 @@ export function buildSelectorCandidates(element = {}) {
       code: `page.getByText('${escapeSingle(text)}')`,
     });
   }
+
+  // 5. getByTestId - 当语义选择器不可行时
+  if (testId) {
+    candidates.push({
+      kind: "testid",
+      testId,
+      code: `page.getByTestId('${escapeSingle(testId)}')`,
+    });
+  }
+
+  // 6. CSS selector - 最后的手段
   if (css) {
     candidates.push({
       kind: "css",

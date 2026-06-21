@@ -27,6 +27,7 @@ type RequirementRow = {
   status: string;
   created_at: string;
   updated_at: string;
+  current_version_id: string | null;
   current_version: {
     version_no: number;
     file_path: string;
@@ -71,7 +72,8 @@ const requirementAnalysisRunStatusLabels: Record<string, string> = {
 
 function requirementDisplayStatus(item: RequirementRow) {
   const latestRun = item.latest_requirement_analysis_run;
-  if (latestRun) {
+  const hasFinalRequirement = Boolean(item.current_version_id ?? item.current_version);
+  if (latestRun && (!hasFinalRequirement || ["queued", "running"].includes(latestRun.status))) {
     return {
       isProcessing: ["queued", "running"].includes(latestRun.status),
       label: requirementAnalysisRunStatusLabels[latestRun.status] ?? latestRun.status,

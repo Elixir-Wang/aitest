@@ -1,117 +1,269 @@
-# Requirement Understanding Reference
+# 需求理解章节分析指南
 
-Use this reference to convert raw requirements into a structured understanding. Record only what the source states or what can be safely inferred from it.
+本文档提供 9 个标准章节的详细分析方法。
 
-## Analysis Steps
+---
 
-### 1. Background
+## 1. background - 需求背景
 
-Identify:
+### 分析要点
+- 为什么要做这个需求？
+- 当前有什么痛点或问题？
+- 不做会有什么影响？
+- 触发原因是什么？
 
-- Why this requirement exists.
-- Current pain points or operational problems.
-- Business impact if the problem remains unsolved.
-- Triggering event, policy, customer request, or product goal.
+### 如果原文未说明
+写"原文未说明"，然后在澄清问题中添加：
+- "请说明该需求的业务背景和触发原因"（P1）
 
-### 2. Goals and Value
+---
 
-Identify:
+## 2. goals - 目标与价值
 
-- Business goal.
-- User value.
-- System or operational value.
-- Measurable outcome if the source provides one.
+### 分析要点
+- 业务目标是什么？
+- 用户价值是什么？
+- 系统或运营价值是什么？
+- 可衡量的成果是什么？
 
-Do not create success metrics that the source does not provide. If a metric is useful but missing, add it to pending clarification.
+### 如果原文未说明
+写"原文未说明"，然后在澄清问题中添加：
+- "请明确该需求要达成的业务目标和衡量指标"（P1）
 
-### 3. Users and Scenarios
+---
 
-Identify:
+## 3. users - 用户角色与使用场景
 
-- Primary users.
-- Secondary users or affected roles.
-- Main usage scenarios.
-- Secondary or edge scenarios described by the source.
+### 分析要点
+- 有哪些用户角色？
+- 主要使用场景是什么？
+- 每个角色的目标是什么？
 
-Use this format when useful:
+### 输出格式
+使用表格：
+```markdown
+| 用户角色 | 使用场景 | 用户目标 | 已知约束 |
+|---------|---------|---------|---------|
+| 管理员 | 后台管理 | 配置系统 | 需要管理员权限 |
+```
 
-| 用户角色 | 场景 | 用户目标 | 已知约束 |
-|---|---|---|---|
+### 如果原文未说明
+写"原文未说明"，然后在澄清问题中添加：
+- "请明确使用该功能的用户角色和典型使用场景"（P0）
 
-### 4. Functional Scope
+---
 
-Split the scope into:
+## 4. scope - 功能范围
 
-- Included capabilities.
-- Explicitly excluded capabilities.
-- Related existing capabilities affected by the requirement.
+### 分析要点
+- 明确包含哪些功能
+- 明确不包含哪些功能（如原文有说明）
+- 与现有功能的关系
 
-If exclusions are not stated, do not infer them. Add missing boundary definitions to pending clarification.
+### 输出格式
+使用列表：
+```markdown
+**包含的功能**：
+1. 功能A
+2. 功能B
 
-### 5. Business Flow
+**不包含的功能**：
+1. 功能X（原文明确说明暂不支持）
+```
 
-Describe the user and system flow from start to finish:
+### 如果边界不清
+在澄清问题中添加：
+- "功能范围是否包含 XXX？边界在哪里？"（P0 或 P1）
 
-1. Entry point.
-2. User action.
-3. System processing.
-4. User feedback.
-5. Completion result.
+---
 
-For branches, describe the condition that creates the branch and the expected result.
+## 5. flow - 业务流程
 
-### 6. State Transitions
+### 分析要点
+- 完整的端到端流程
+- 正常流程
+- 异常分支
 
-Identify core business objects that change state, such as orders, tasks, requests, files, approvals, users, or jobs.
+### 输出格式
+**优先使用 Mermaid 流程图**（当有明确的流程、步骤、状态流转、页面跳转时）：
+```mermaid
+graph TD
+    A[用户打开页面] --> B{是否登录?}
+    B -->|是| C[展示商品列表]
+    B -->|否| D[跳转登录页]
+    D --> C
+```
 
-For each object, capture:
+**或使用步骤列表**（简单流程）：
+```markdown
+1. 用户打开页面
+2. 系统展示商品列表
+3. 用户点击商品
+4. 系统展示商品详情
+```
 
+### 如果流程不完整
+在澄清问题中添加：
+- "XXX 步骤之后的处理流程是什么？"（P0）
+
+---
+
+## 6. states - 状态流转
+
+### 分析要点
+识别核心业务对象（订单、任务、申请等）及其状态：
+- 有哪些状态？
+- 触发条件是什么？
+- 可执行什么操作？
+- 下一状态是什么？
+
+### 输出格式
+**优先使用表格**：
+```markdown
 | 状态 | 触发条件 | 可执行操作 | 下一状态 |
-|---|---|---|---|
+|-----|---------|-----------|---------|
+| 待支付 | 创建订单 | 支付、取消 | 已支付、已取消 |
+| 已支付 | 支付成功 | 发货、退款 | 已发货、已退款 |
+```
 
-If the requirement implies a state but does not define the full lifecycle, add pending clarification.
+**或使用 Mermaid 状态图**（复杂状态机）：
+```mermaid
+stateDiagram-v2
+    [*] --> 待支付
+    待支付 --> 已支付: 支付成功
+    待支付 --> 已取消: 超时/用户取消
+    已支付 --> 已发货: 发货
+```
 
-### 7. Business Rules
+### 如果状态不明确
+在澄清问题中添加：
+- "XXX 对象的完整状态流转是什么？"（P0）
 
-Extract rules from the source:
+---
 
-- Validation rules.
-- Matching rules.
-- Calculation rules.
-- Permission rules.
-- Limit rules.
-- Conflict rules.
-- Time rules.
+## 7. rules - 业务规则
 
-Use this format:
+### 分析要点
+提取各类规则：
+- **校验规则**：字段验证、格式要求
+- **计算规则**：金额计算、积分计算
+- **权限规则**：谁可以做什么
+- **限制规则**：频率限制、数量限制
+- **冲突规则**：互斥条件
+- **时间规则**：有效期、超时
 
+### 输出格式
+使用表格：
+```markdown
 | 规则类型 | 触发条件 | 判断逻辑 | 处理结果 |
-|---|---|---|---|
+|---------|---------|---------|---------|
+| 校验规则 | 提交订单 | 商品库存 > 0 | 库存不足提示"库存不足" |
+| 计算规则 | 结算 | 总价 = 商品价格 × 数量 - 优惠券 | 显示最终价格 |
+| 权限规则 | 删除订单 | 用户角色 = 管理员 | 否则提示"无权限" |
+```
 
-### 8. Page and Interaction Understanding
+### 如果规则不明确
+在澄清问题中添加：
+- "XXX 的校验/计算规则是什么？"（P0）
 
-Identify UI or interaction needs:
+---
 
-- Pages.
-- Dialogs.
-- Forms.
-- Lists.
-- Detail views.
-- Confirmations.
-- Feedback messages.
-- Download or export actions.
+## 8. ui - 页面与交互
 
-Do not design full UX unless asked. Capture what the requirement implies.
+### 分析要点
+- 需要哪些页面
+- 页面元素和布局
+- 交互方式（点击、输入、选择）
+- 反馈机制（成功提示、错误提示、加载状态）
 
-### 9. Data and System Interaction
+### 输出格式
+```markdown
+**商品列表页**：
+- 页面元素：搜索框、商品卡片（图片、名称、价格）、分页
+- 交互：点击商品跳转详情页，搜索实时过滤
+- 反馈：加载显示骨架屏，无结果显示"暂无商品"
 
-Identify:
+**商品详情页**：
+- 页面元素：商品图片、名称、价格、购买按钮
+- 交互：点击购买弹出确认框
+- 反馈：购买成功提示"已加入购物车"
+```
 
-- Input data.
-- Output data.
-- Stored data.
-- Data sources.
-- Data destinations.
-- External systems or internal modules involved.
+### 如果 UI 未明确
+在澄清问题中添加：
+- "XXX 页面需要展示哪些信息和操作？"（P1）
 
-When APIs are not explicitly defined, describe required capabilities instead of inventing endpoint names.
+---
+
+## 9. data - 数据与系统交互
+
+### 分析要点
+- 需要存储的数据（字段、类型、约束）
+- 数据来源和去向
+- 对接的系统（内部系统、第三方系统）
+- API 能力要求
+
+### 输出格式
+```markdown
+**订单表**：
+- order_id（主键）
+- user_id（外键）
+- total_price（金额，非负）
+- status（状态：待支付、已支付、已取消）
+- created_at（创建时间）
+
+**系统交互**：
+- 对接支付系统：调用支付接口，接收支付回调
+- 对接库存系统：查询库存，扣减库存
+
+**API 能力**：
+- POST /orders - 创建订单
+- GET /orders/:id - 查询订单详情
+- PUT /orders/:id/cancel - 取消订单
+```
+
+### 如果数据不明确
+在澄清问题中添加：
+- "XXX 数据从哪里来？需要存储哪些字段？"（P0）
+- "对接 XXX 系统的接口是什么？需要传递哪些参数？"（P0）
+
+---
+
+## 格式要求
+
+### 列表项必须换行
+❌ 错误：
+```
+1. 第一项 2. 第二项 3. 第三项
+```
+
+✅ 正确：
+```
+1. 第一项
+2. 第二项
+3. 第三项
+```
+
+### 段落之间空行分隔
+```markdown
+第一段内容。
+
+第二段内容。
+```
+
+### 表格使用 Markdown 表格
+```markdown
+| 列1 | 列2 | 列3 |
+|-----|-----|-----|
+| 值1 | 值2 | 值3 |
+```
+
+---
+
+## 总结
+
+每个章节的核心原则：
+1. ✅ **只记录事实**：只记录原文明确说明的内容
+2. ✅ **具体而非抽象**：给出具体的内容，而非抽象描述
+3. ✅ **如果原文未说明**：明确标注"原文未说明"并生成澄清问题
+4. ✅ **使用合适的格式**：表格、列表、Mermaid 图

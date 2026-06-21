@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.core.db import connect
-from app.core.environment_auth_state import auth_state_path
+from app.core.environment_auth_state import auth_state_path, auth_state_summary
 from app.core.environment_credentials import load_credentials
 from app.core.settings import PLAYWRIGHT_BROWSER_CHANNEL, PLAYWRIGHT_RUNNER_DIR
 from app.repositories import environment_repo
@@ -192,13 +192,14 @@ def _run_ai_letter_auto_auth(environment_id: str) -> None:
             if kind == "captcha_challenge":
                 attempt = int(event.get("attempt") or 1)
                 image_path = Path(str(event.get("image_path") or ""))
+                expected_length = _safe_expected_captcha_length(event.get("expected_length"))
                 _write_auto_auth_status(
                     environment_id,
                     status="running",
                     message=f"正在识别验证码（第 {attempt}/3 次）",
                 )
                 try:
-                    answer = captcha_solver_service.solve_letter_captcha(image_path)
+                    answer = captcha_solver_service.solve_letter_captcha(image_path, expected_length=expected_length)
                 except captcha_solver_service.CaptchaSolverError as exc:
                     message = str(exc)
                     _write_auto_auth_status(
@@ -229,20 +230,37 @@ def _run_ai_letter_auto_auth(environment_id: str) -> None:
                         "attempt": attempt,
                         "image_path": str(image_path),
                         "answer": answer,
+                        "expected_length": expected_length,
                     },
                 )
                 continue
 
             if kind == "login_succeeded":
+                if _storage_state_is_valid(environment_id, state_path):
+                    _write_auto_auth_status(
+                        environment_id,
+                        status="succeeded",
+                        message="登录态已自动保存。",
+                    )
+                    _record_auto_auth_event(
+                        environment_id,
+                        result="success",
+                        summary="环境自动登录成功，登录态已保存",
+                    )
+                    return
+                message = "自动登录已完成，但保存出的登录态不可复用。"
                 _write_auto_auth_status(
                     environment_id,
-                    status="succeeded",
-                    message="登录态已自动保存。",
+                    status="failed",
+                    message=message,
+                    last_error_code="AUTH_STATE_INVALID",
                 )
                 _record_auto_auth_event(
                     environment_id,
-                    result="success",
-                    summary="环境自动登录成功，登录态已保存",
+                    result="failed",
+                    summary="环境自动登录失败：登录态不可复用",
+                    failure_reason="AUTH_STATE_INVALID",
+                    detail=message,
                 )
                 return
 
@@ -268,7 +286,7 @@ def _run_ai_letter_auto_auth(environment_id: str) -> None:
                 return
 
         return_code = process.wait(timeout=180)
-        if return_code == 0 and state_path.exists():
+        if return_code == 0 and _storage_state_is_valid(environment_id, state_path):
             _write_auto_auth_status(
                 environment_id,
                 status="succeeded",
@@ -398,6 +416,17 @@ def _write_auto_auth_status(
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _storage_state_is_valid(environment_id: str, state_path: Path) -> bool:
+    if not state_path.exists():
+        return False
+    summary = auth_state_summary(
+        environment_id=environment_id,
+        login_strategy="account_password",
+        reuse_auth_state=True,
+    )
+    return summary["status"] == "valid"
+
+
 def _failure_message_for_reason(reason: str) -> str:
     mapping = {
         "login_page_not_ready": "登录页未加载完成或页面为空，请稍后重试。",
@@ -406,6 +435,14 @@ def _failure_message_for_reason(reason: str) -> str:
         "captcha_exhausted": "验证码识别或登录失败，已用尽 3 次重试。",
     }
     return mapping.get(reason, "自动登录失败，请检查账号密码或站点探索模型配置。")
+
+
+def _safe_expected_captcha_length(value: object) -> int | None:
+    try:
+        length = int(value)
+    except (TypeError, ValueError):
+        return None
+    return length if 0 < length <= 12 else None
 
 
 def _record_auto_auth_event(
