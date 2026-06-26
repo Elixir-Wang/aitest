@@ -86,19 +86,6 @@ def environment_actions(role: str) -> list[str]:
     return ["read", "create", "delete"] if role == "admin" else ["read"]
 
 
-def exploration_actions(role: str, status: str) -> list[str]:
-    if role != "admin":
-        return ["read"]
-    actions = ["read", "create"]
-    if status in {"pending", "partial", "completed", "blocked", "cancelled", "interrupted"}:
-        actions.append("start")
-    if status in {"queued", "running"}:
-        actions.append("cancel")
-    if status not in {"queued", "running", "stopping"}:
-        actions.append("delete")
-    return actions
-
-
 def serialize_user(row: Row, actor_role: str | None = None) -> dict:
     role = actor_role or row["role"]
     return {
@@ -213,42 +200,3 @@ def _bool_value(value: object, *, default: bool = False) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     return default
-
-
-def serialize_exploration_run(row: Row, actor_role: str) -> dict:
-    login_strategy, captcha_strategy, reuse_auth_state = _normalize_auth_config_values(
-        _row_value(row, "environment_login_strategy", _row_value(row, "login_strategy", "skip_login")),
-        _row_value(row, "environment_captcha_strategy", "none"),
-        _row_value(row, "environment_reuse_auth_state", True),
-    )
-    has_login_credentials = bool(login_strategy == "account_password" and _row_value(row, "environment_has_password", 0))
-    return {
-        "id": row["id"],
-        "project_id": row["project_id"],
-        "project_name": row["project_name"],
-        "environment_id": row["environment_id"],
-        "environment_name": row["environment_name"],
-        "environment_site_url": row["environment_site_url"] if "environment_site_url" in row.keys() else "",
-        "requirement_doc_id": _row_value(row, "requirement_doc_id", "") or "",
-        "requirement_doc_title": _row_value(row, "requirement_doc_title", "") or "",
-        "title": row["title"],
-        "status": row["status"],
-        "scope": row["scope"],
-        "forbidden_paths": row["forbidden_paths"],
-        "login_strategy": login_strategy,
-        "captcha_strategy": captcha_strategy,
-        "reuse_auth_state": reuse_auth_state,
-        "has_login_credentials": has_login_credentials,
-        "goal": row["goal"] if "goal" in row.keys() else "",
-        "notes": row["notes"] if "notes" in row.keys() else "",
-        "max_pages": row["max_pages"] if "max_pages" in row.keys() else 50,
-        "max_actions": row["max_actions"] if "max_actions" in row.keys() else 1000,
-        "timeout_minutes": row["timeout_minutes"] if "timeout_minutes" in row.keys() else 120,
-        "artifact_root": row["artifact_root"] if "artifact_root" in row.keys() else "",
-        "result_summary": row["result_summary"] if "result_summary" in row.keys() else "",
-        "created_at": row["created_at"],
-        "updated_at": row["updated_at"],
-        "started_at": row["started_at"] if "started_at" in row.keys() else None,
-        "finished_at": row["finished_at"] if "finished_at" in row.keys() else None,
-        "available_actions": exploration_actions(actor_role, row["status"]),
-    }

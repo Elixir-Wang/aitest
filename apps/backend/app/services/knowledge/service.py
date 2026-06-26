@@ -8,10 +8,9 @@ from typing import Any
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
-from app.repositories import document_repo, exploration_repo, knowledge_conversation_repo, project_repo
+from app.repositories import document_repo, knowledge_conversation_repo, project_repo
 from app.agents.knowledge_chat.schemas import (
     KnowledgeConversationHistoryMessage,
-    KnowledgeExplorationInput,
     KnowledgeQueryInput,
     KnowledgeQueryOutput,
     KnowledgeSourceDocumentInput,
@@ -24,11 +23,9 @@ from app.schemas.knowledge import (
     KnowledgeQueryRequest,
 )
 from app.services import operation_log_service
-from app.services.exploration import service as exploration_service
 from app.agents.knowledge_chat import service as knowledge_chat_service
 from app.services.knowledge import query_service as knowledge_query_service
 
-READY_EXPLORATION_STATUSES = {"completed", "partial"}
 MAX_HISTORY_MESSAGES = 12
 ALL_PROJECTS_CONVERSATION_PROJECT_ID = "__all_projects__"
 
@@ -49,17 +46,15 @@ async def query_project_knowledge(project_id: str, actor, request: KnowledgeQuer
     )
 
     source_version_ids: list[str] = []
-    exploration_run_ids: list[str] = []
 
     async def search_project_knowledge(search_question: str) -> KnowledgeQueryOutput:
-        nonlocal source_version_ids, exploration_run_ids
+        nonlocal source_version_ids
         search_request = KnowledgeQueryRequest(
             question=search_question,
             include_requirements=request.include_requirements,
-            include_explorations=request.include_explorations,
             conversation_id=request.conversation_id,
         )
-        input_data, source_version_ids, exploration_run_ids, blockers = _collect_query_input(
+        input_data, source_version_ids, blockers = _collect_query_input(
             project_id,
             search_request,
             history,
@@ -77,17 +72,14 @@ async def query_project_knowledge(project_id: str, actor, request: KnowledgeQuer
     output = await knowledge_chat_service.run_knowledge_chat(chat_input, search_project_knowledge)
     if output.knowledge_queried:
         source_version_ids = output.used_requirement_versions or source_version_ids
-        exploration_run_ids = output.used_exploration_runs or exploration_run_ids
     else:
         source_version_ids = []
-        exploration_run_ids = []
 
     user_message, assistant_message = _append_query_messages(
         conversation["id"],
         question,
         output,
         output.used_requirement_versions or source_version_ids,
-        output.used_exploration_runs or exploration_run_ids,
     )
     operation_log_service.record_success(
         module="knowledge",
@@ -105,7 +97,6 @@ async def query_project_knowledge(project_id: str, actor, request: KnowledgeQuer
             "conversation_id": conversation["id"],
             "knowledge_queried": output.knowledge_queried,
             "source_versions": source_version_ids,
-            "exploration_runs": exploration_run_ids,
         },
     )
     return {
@@ -114,7 +105,6 @@ async def query_project_knowledge(project_id: str, actor, request: KnowledgeQuer
         "answer": output.answer,
         "source_refs": [ref.model_dump() for ref in output.source_refs],
         "used_requirement_versions": output.used_requirement_versions or source_version_ids,
-        "used_exploration_runs": output.used_exploration_runs or exploration_run_ids,
         "knowledge_queried": output.knowledge_queried,
     }
 
@@ -139,15 +129,13 @@ async def stream_project_knowledge_query(
     )
 
     source_version_ids: list[str] = []
-    exploration_run_ids: list[str] = []
     final_output: KnowledgeQueryOutput | None = None
 
     async def search_project_knowledge(search_question: str) -> KnowledgeQueryOutput:
-        nonlocal source_version_ids, exploration_run_ids
+        nonlocal source_version_ids
         search_request = KnowledgeQueryRequest(
             question=search_question,
             include_requirements=request.include_requirements,
-            include_explorations=request.include_explorations,
             conversation_id=request.conversation_id,
         )
         input_data, source_version_ids, exploration_run_ids, blockers = _collect_query_input(
@@ -180,17 +168,14 @@ async def stream_project_knowledge_query(
         raise ValueError("项目知识库聊天智能体未返回结构化结果。")
     if final_output.knowledge_queried:
         source_version_ids = final_output.used_requirement_versions or source_version_ids
-        exploration_run_ids = final_output.used_exploration_runs or exploration_run_ids
     else:
         source_version_ids = []
-        exploration_run_ids = []
 
     user_message, assistant_message = _append_query_messages(
         conversation["id"],
         question,
         final_output,
         final_output.used_requirement_versions or source_version_ids,
-        final_output.used_exploration_runs or exploration_run_ids,
     )
     operation_log_service.record_success(
         module="knowledge",
@@ -208,7 +193,6 @@ async def stream_project_knowledge_query(
             "conversation_id": conversation["id"],
             "knowledge_queried": final_output.knowledge_queried,
             "source_versions": source_version_ids,
-            "exploration_runs": exploration_run_ids,
         },
     )
     yield {
@@ -222,7 +206,6 @@ async def stream_project_knowledge_query(
             "answer": final_output.answer,
             "source_refs": [ref.model_dump() for ref in final_output.source_refs],
             "used_requirement_versions": final_output.used_requirement_versions or source_version_ids,
-            "used_exploration_runs": final_output.used_exploration_runs or exploration_run_ids,
             "knowledge_queried": final_output.knowledge_queried,
         },
     }
@@ -246,18 +229,16 @@ async def stream_all_project_knowledge_query(
         conversation_history=history,
     )
     source_version_ids: list[str] = []
-    exploration_run_ids: list[str] = []
     final_output: KnowledgeQueryOutput | None = None
 
     async def search_all_project_knowledge(search_question: str) -> KnowledgeQueryOutput:
-        nonlocal source_version_ids, exploration_run_ids
+        nonlocal source_version_ids
         search_request = KnowledgeQueryRequest(
             question=search_question,
             include_requirements=request.include_requirements,
-            include_explorations=request.include_explorations,
             conversation_id=request.conversation_id,
         )
-        input_data, source_version_ids, exploration_run_ids, blockers = _collect_all_project_query_input(
+        input_data, source_version_ids, blockers = _collect_all_project_query_input(
             actor,
             search_request,
             history,
@@ -287,17 +268,14 @@ async def stream_all_project_knowledge_query(
         raise ValueError("项目知识库聊天智能体未返回结构化结果。")
     if final_output.knowledge_queried:
         source_version_ids = final_output.used_requirement_versions or source_version_ids
-        exploration_run_ids = final_output.used_exploration_runs or exploration_run_ids
     else:
         source_version_ids = []
-        exploration_run_ids = []
 
     user_message, assistant_message = _append_query_messages(
         conversation["id"],
         question,
         final_output,
         final_output.used_requirement_versions or source_version_ids,
-        final_output.used_exploration_runs or exploration_run_ids,
     )
     operation_log_service.record_success(
         module="knowledge",
@@ -315,7 +293,6 @@ async def stream_all_project_knowledge_query(
             "conversation_id": conversation["id"],
             "knowledge_queried": final_output.knowledge_queried,
             "source_versions": source_version_ids,
-            "exploration_runs": exploration_run_ids,
         },
     )
     yield {
@@ -329,7 +306,6 @@ async def stream_all_project_knowledge_query(
             "answer": final_output.answer,
             "source_refs": [ref.model_dump() for ref in final_output.source_refs],
             "used_requirement_versions": final_output.used_requirement_versions or source_version_ids,
-            "used_exploration_runs": final_output.used_exploration_runs or exploration_run_ids,
             "knowledge_queried": final_output.knowledge_queried,
         },
     }
@@ -434,22 +410,20 @@ def _collect_query_input(
     project_id: str,
     request: KnowledgeQueryRequest,
     history: list[KnowledgeConversationHistoryMessage] | None = None,
-) -> tuple[KnowledgeQueryInput, list[str], list[str], list[str]]:
+) -> tuple[KnowledgeQueryInput, list[str], list[str]]:
     with connect() as db:
         project = _require_project(db, project_id)
-        source_documents, source_version_ids, explorations, exploration_run_ids, blockers = _collect_project_sources(
+        source_documents, source_version_ids, blockers = _collect_project_sources(
             db,
             project,
             request,
         )
 
-    if not source_documents and not explorations:
+    if not source_documents:
         if request.include_requirements:
             blockers.append("当前项目没有可用于查询的最终需求文档版本。")
-        if request.include_explorations:
-            blockers.append("当前项目没有已完成或部分完成的探索结果。")
-        if not request.include_requirements and not request.include_explorations:
-            blockers.append("项目知识库查询至少需要最终需求文档，或已完成/部分完成的探索结果。")
+        else:
+            blockers.append("项目知识库查询需要最终需求文档。")
     return (
         KnowledgeQueryInput(
             project_id=project_id,
@@ -457,10 +431,10 @@ def _collect_query_input(
             question=request.question.strip(),
             conversation_history=history or [],
             source_documents=source_documents,
-            explorations=explorations,
         ),
         source_version_ids,
-        exploration_run_ids,
+        blockers,
+    )
         blockers,
     )
 
@@ -469,35 +443,27 @@ def _collect_all_project_query_input(
     actor,
     request: KnowledgeQueryRequest,
     history: list[KnowledgeConversationHistoryMessage] | None = None,
-) -> tuple[KnowledgeQueryInput, list[str], list[str], list[str]]:
+) -> tuple[KnowledgeQueryInput, list[str], list[str]]:
     with connect() as db:
         projects = project_repo.list_visible(db, actor)
         source_documents: list[KnowledgeSourceDocumentInput] = []
         source_version_ids: list[str] = []
-        explorations: list[KnowledgeExplorationInput] = []
-        exploration_run_ids: list[str] = []
         blockers: list[str] = []
         for project in projects:
             (
                 project_source_documents,
                 project_source_version_ids,
-                project_explorations,
-                project_exploration_run_ids,
                 project_blockers,
             ) = _collect_project_sources(db, project, request)
             source_documents.extend(project_source_documents)
             source_version_ids.extend(project_source_version_ids)
-            explorations.extend(project_explorations)
-            exploration_run_ids.extend(project_exploration_run_ids)
             blockers.extend(project_blockers)
 
-    if not source_documents and not explorations:
+    if not source_documents:
         if request.include_requirements:
             blockers.append("当前可见项目没有可用于查询的最终需求文档版本。")
-        if request.include_explorations:
-            blockers.append("当前可见项目没有已完成或部分完成的探索结果。")
-        if not request.include_requirements and not request.include_explorations:
-            blockers.append("项目知识库查询至少需要最终需求文档，或已完成/部分完成的探索结果。")
+        else:
+            blockers.append("项目知识库查询需要最终需求文档。")
     else:
         blockers = []
     return (
@@ -507,10 +473,8 @@ def _collect_all_project_query_input(
             question=request.question.strip(),
             conversation_history=history or [],
             source_documents=source_documents,
-            explorations=explorations,
         ),
         source_version_ids,
-        exploration_run_ids,
         blockers,
     )
 
@@ -519,7 +483,7 @@ def _collect_project_sources(
     db,
     project,
     request: KnowledgeQueryRequest,
-) -> tuple[list[KnowledgeSourceDocumentInput], list[str], list[KnowledgeExplorationInput], list[str], list[str]]:
+) -> tuple[list[KnowledgeSourceDocumentInput], list[str], list[str]]:
     project_id = project["id"]
     project_name = project["name"]
     source_documents: list[KnowledgeSourceDocumentInput] = []
@@ -549,35 +513,7 @@ def _collect_project_sources(
                 )
             )
 
-    explorations: list[KnowledgeExplorationInput] = []
-    exploration_run_ids: list[str] = []
-    if request.include_explorations:
-        for run in exploration_repo.list_by_project(db, project_id):
-            if run["status"] not in READY_EXPLORATION_STATUSES:
-                continue
-            exploration_run_ids.append(run["id"])
-            artifact_pages, artifact_elements, artifact_blockers = exploration_service._load_run_artifacts(run)
-            modules = []
-            for module in exploration_repo.list_module_coverages(db, run["id"]):
-                module_dict = dict(module)
-                module_dict["pages"] = [page for page in artifact_pages if page["module_key"] == module["module_key"]]
-                module_dict["elements"] = [
-                    element for element in artifact_elements if element["module_key"] == module["module_key"]
-                ]
-                module_dict["blockers"] = [
-                    blocker for blocker in artifact_blockers if blocker["module_key"] == module["module_key"]
-                ]
-                modules.append(module_dict)
-            explorations.append(
-                KnowledgeExplorationInput(
-                    exploration_run_id=run["id"],
-                    title=run["title"],
-                    status=run["status"],
-                    result_summary=run["result_summary"],
-                    modules=modules,
-                )
-            )
-    return source_documents, source_version_ids, explorations, exploration_run_ids, blockers
+    return source_documents, source_version_ids, blockers
 
 
 def _require_project(db, project_id: str):
@@ -654,7 +590,6 @@ def _append_query_messages(
     question: str,
     output: KnowledgeQueryOutput,
     used_requirement_versions: list[str],
-    used_exploration_runs: list[str],
 ):
     with connect() as db:
         user_message = knowledge_conversation_repo.create_message(
@@ -672,7 +607,6 @@ def _append_query_messages(
             content=output.answer,
             source_refs=[ref.model_dump() for ref in output.source_refs],
             used_requirement_versions=used_requirement_versions,
-            used_exploration_runs=used_exploration_runs,
         )
     return user_message, assistant_message
 
@@ -701,7 +635,6 @@ def _message_to_schema(row) -> KnowledgeConversationMessage:
         content=row["content"],
         source_refs=[KnowledgeSourceRef.model_validate(item) for item in _loads_json_array(row["source_refs_json"])],
         used_requirement_versions=[str(item) for item in _loads_json_array(row["used_requirement_versions_json"])],
-        used_exploration_runs=[str(item) for item in _loads_json_array(row["used_exploration_runs_json"])],
         created_at=row["created_at"],
     )
 

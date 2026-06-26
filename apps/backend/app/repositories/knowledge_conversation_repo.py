@@ -80,7 +80,6 @@ def create_message(
     content: str,
     source_refs: list[dict] | None = None,
     used_requirement_versions: list[str] | None = None,
-    used_exploration_runs: list[str] | None = None,
 ) -> Row:
     db.execute(
         """
@@ -95,7 +94,7 @@ def create_message(
             content,
             json.dumps(source_refs or [], ensure_ascii=False),
             json.dumps(used_requirement_versions or [], ensure_ascii=False),
-            json.dumps(used_exploration_runs or [], ensure_ascii=False),
+            json.dumps([], ensure_ascii=False),
         ),
     )
     touch(db, conversation_id)

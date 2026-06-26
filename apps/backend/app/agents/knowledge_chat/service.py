@@ -271,7 +271,6 @@ def _looks_like_structured_output_delta(delta: str) -> bool:
             '"knowledge_queried"',
             '"source_refs"',
             '"used_requirement_versions"',
-            '"used_exploration_runs"',
         )
     )
 
@@ -359,8 +358,6 @@ def _merge_tool_output(output: KnowledgeQueryOutput, tool_output: KnowledgeQuery
         output.source_refs = tool_output.source_refs
     if not output.used_requirement_versions:
         output.used_requirement_versions = tool_output.used_requirement_versions
-    if not output.used_exploration_runs:
-        output.used_exploration_runs = tool_output.used_exploration_runs
     return output
 
 

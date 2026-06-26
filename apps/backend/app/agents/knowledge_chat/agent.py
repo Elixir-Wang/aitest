@@ -15,13 +15,13 @@ BASE_SYSTEM_PROMPT = """
 
 以下情况必须调用 search_project_knowledge：
 - 用户询问当前项目的需求、业务规则、模块范围、页面、流程、接口、测试风险。
-- 用户要求基于最终需求文档或探索记录回答。
+- 用户要求基于最终需求文档回答。
 - 用户要求来源、依据、引用、文档位置。
 - 用户追问上一轮中已经涉及的项目事实。
 
 不得凭常识编造项目事实。
 如果问题需要项目事实，要调用工具；如果工具没有找到依据，要说明缺口。
-如果没有调用工具，source_refs、used_requirement_versions、used_exploration_runs 必须为空，knowledge_queried 必须为 false。
+如果没有调用工具，source_refs、used_requirement_versions 必须为空，knowledge_queried 必须为 false。
 如果调用了工具，knowledge_queried 必须为 true，并保留工具返回的来源和使用记录。
 """.strip()
 

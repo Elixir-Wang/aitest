@@ -7,8 +7,8 @@ from langchain_core.messages import HumanMessage
 
 from app.agents.model_selection import build_agent_model, resolve_model_selection
 
-# 复用站点探索已分配的模型，无需单独注册验证码识别能力。
-CAPTCHA_MODEL_CAPABILITY_ID = "site_exploration"
+# 验证码识别使用独立的模型配置
+CAPTCHA_MODEL_CAPABILITY_ID = "captcha_solver"
 _NORMALIZE_PATTERN = re.compile(r"[^A-Za-z0-9]")
 _THINK_TAG_PATTERN = re.compile(
     r"`(?:think|thinking)`[\s\S]*?`(?:/think|/thinking)`",

@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(git add *)",
-      "WebFetch(domain:www.cnblogs.com)"
+      "WebFetch(domain:www.cnblogs.com)",
+      "Bash(git ls-tree *)"
     ]
   }
 }

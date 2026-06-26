@@ -4,7 +4,6 @@ from pydantic import BaseModel, Field
 
 from app.agents.knowledge_chat.schemas import (
     KnowledgeConversationHistoryMessage,
-    KnowledgeExplorationInput,
     KnowledgeQueryInput,
     KnowledgeQueryOutput,
     KnowledgeSourceDocumentInput,
@@ -15,7 +14,6 @@ from app.agents.knowledge_chat.schemas import (
 class KnowledgeQueryRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=12000)
     include_requirements: bool = True
-    include_explorations: bool = True
     show_thinking: bool = False
     conversation_id: str | None = None
 
@@ -36,7 +34,6 @@ class KnowledgeConversationMessage(BaseModel):
     content: str
     source_refs: list[KnowledgeSourceRef] = Field(default_factory=list)
     used_requirement_versions: list[str] = Field(default_factory=list)
-    used_exploration_runs: list[str] = Field(default_factory=list)
     created_at: str
 
 

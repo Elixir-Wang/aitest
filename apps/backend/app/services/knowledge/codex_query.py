@@ -55,10 +55,6 @@ def _write_query_inputs(workdir: Path, input_data: KnowledgeQueryInput, prompt: 
     for index, document in enumerate(input_data.source_documents, start=1):
         filename = f"{index:03d}-{_safe_filename(document.document_name)}-v{document.version_no}.md"
         (workdir / "input" / "requirements" / filename).write_text(document.markdown_content, encoding="utf-8")
-    (workdir / "input" / "explorations.json").write_text(
-        json.dumps([item.model_dump() for item in input_data.explorations], ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
     (workdir / "prompt.md").write_text(prompt, encoding="utf-8")
 
 
@@ -75,26 +71,23 @@ def _build_query_prompt(input_data: KnowledgeQueryInput) -> str:
             }
         ],
         "used_requirement_versions": ["version-id"],
-        "used_exploration_runs": ["run-id"],
     }
     return "\n".join(
         [
             "你是 AI 测试系统的项目知识库问答智能体。",
-            "这是一次非交互式查询任务；必须直接读取 input/ 下的最终需求文档和探索记录回答用户问题。",
+            "这是一次非交互式查询任务；必须直接读取 input/ 下的最终需求文档回答用户问题。",
             "可以使用 Codex CLI 的 agentic search 能力定位、比对和归纳输入文件；项目事实只能来自 input/，不得把外部搜索结果写成项目事实。",
             "不要创建离线知识库产物，不要写 wiki 页面，不要修改 input/，只允许写 output/query.json 与 output/answer.md。",
             "",
             "回答要求：",
             "- 使用中文 Markdown 直接回答用户问题。",
-            "- 结论必须基于最终需求文档或已完成/部分完成探索记录。",
+            "- 结论必须基于最终需求文档。",
             "- 涉及业务事实、页面事实、测试关注点时，必须在 source_refs 中提供来源引用。",
             "- 如果来源不足，明确说明缺口，不要假装已确认。",
-            "- 如果需求和探索冲突，单独列出冲突点和各自来源。",
             "",
             "输入文件：",
             "- input/knowledge-query-input.json：完整结构化输入和用户问题。",
             "- input/requirements/*.md：项目最终需求文档版本。",
-            "- input/explorations.json：项目探索记录。",
             "",
             "输出要求：",
             "- 必须生成 output/query.json，内容符合 KnowledgeQueryOutput。",
@@ -105,7 +98,6 @@ def _build_query_prompt(input_data: KnowledgeQueryInput) -> str:
             "",
             f"项目：{input_data.project_name} ({input_data.project_id})",
             f"需求版本数量：{len(input_data.source_documents)}",
-            f"探索结果数量：{len(input_data.explorations)}",
             "",
             "最近对话上下文：",
             _format_conversation_history(input_data),

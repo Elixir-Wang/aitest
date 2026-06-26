@@ -6,17 +6,13 @@ import { useParams } from "next/navigation";
 
 import {
   AlertTriangle,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
   FileText,
+  ListChecks,
   Pencil,
   Play,
   RefreshCw,
   Route,
-  Search,
   Square,
-  ListChecks,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,7 +23,6 @@ import { useProjectName } from "@/components/ai-testing/use-project-name";
 import { AgentPlan, type AgentPlanStatus, type AgentPlanTask } from "@/components/ui/agent-plan";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
-import { Button as PaginationButton } from "@/components/ui/button-1";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -39,10 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
-import { logLevelTone, StatusBadge, type StatusBadgeTone } from "@/components/ui/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Textarea } from "@/components/ui/textarea";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import { API_BASE_URL, apiAuthHeaders, apiRequest, formatDateTime, parseApiTimestamp } from "@/lib/api-client";
@@ -169,37 +161,6 @@ type ExplorationSelector = {
   [key: string]: unknown;
 };
 
-type ExplorationLog = {
-  run_id: string;
-  log_content: string;
-  log_path: string;
-  updated_at: string | null;
-  items?: ApiExplorationLogItem[];
-  total?: number;
-  page?: number;
-  page_size?: number;
-};
-
-type ApiExplorationLogItem = {
-  id: string;
-  timestamp: string;
-  event: string;
-  event_label: string;
-  category: string;
-  level: string;
-  page_id: string;
-  page_title: string;
-  url: string;
-  action_name: string;
-  result: string;
-  source_label?: string;
-  target_label?: string;
-  artifact_path: string;
-  summary: string;
-  raw: string;
-  payload: Record<string, unknown>;
-};
-
 type ExplorationStreamEvent = {
   event_id?: number;
   type: string;
@@ -309,29 +270,7 @@ type ExplorationForm = {
   timeoutMinutes: string;
 };
 
-type ParsedLogEntry = {
-  id: string;
-  timestamp: string;
-  type: string;
-  typeLabel: string;
-  category: LogCategory;
-  level: LogLevel;
-  pageId: string;
-  pageTitle: string;
-  url: string;
-  actionName: string;
-  result: string;
-  sourceLabel: string;
-  targetLabel: string;
-  artifactPath: string;
-  summary: string;
-  raw: string;
-  payload: Record<string, unknown>;
-};
-
-type LogCategory = "all" | "run" | "page" | "action" | "artifact" | "blocked" | "error" | "raw";
-type LogLevel = "all" | "info" | "warning" | "error";
-type PageItem = number | "ellipsis-start" | "ellipsis-end";
+type PageItem = { type: "page"; page: number; id: string } | { type: "ellipsis"; id: string };
 
 const statusLabels: Record<string, string> = {
   pending: "待执行",
@@ -396,27 +335,6 @@ const emptyMonitorState: ExplorationMonitorState = {
   events: [],
 };
 
-const logCategoryLabels: Record<LogCategory, string> = {
-  all: "全部类型",
-  run: "运行",
-  page: "页面",
-  action: "动作",
-  artifact: "产物",
-  blocked: "阻塞",
-  error: "错误",
-  raw: "原始",
-};
-
-const logLevelLabels: Record<LogLevel, string> = {
-  all: "全部级别",
-  info: "信息",
-  warning: "警告",
-  error: "错误",
-};
-
-const logCategoryOptions: LogCategory[] = ["all", "run", "page", "action", "artifact", "blocked", "error", "raw"];
-const logLevelOptions: LogLevel[] = ["all", "info", "warning", "error"];
-
 const autoRefreshStatuses = new Set(["queued", "running", "stopping", "in-progress"]);
 const stoppableStatuses = new Set(["queued", "running"]);
 const explorationPlaceholders = {
@@ -445,18 +363,49 @@ function parsePositiveInteger(value: string): number | null {
 
 function getVisiblePages(currentPage: number, pageCount: number): PageItem[] {
   if (pageCount <= 7) {
-    return Array.from({ length: pageCount }, (_, index) => index + 1);
+    return Array.from({ length: pageCount }, (_, index) => ({
+      type: "page" as const,
+      page: index + 1,
+      id: `page-${index + 1}`,
+    }));
   }
 
+  const createPage = (page: number): PageItem => ({ type: "page" as const, page, id: `page-${page}` });
+  const createEllipsis = (id: string): PageItem => ({ type: "ellipsis" as const, id });
+
   if (currentPage <= 4) {
-    return [1, 2, 3, 4, 5, "ellipsis-end", pageCount];
+    return [
+      createPage(1),
+      createPage(2),
+      createPage(3),
+      createPage(4),
+      createPage(5),
+      createEllipsis("ellipsis-end"),
+      createPage(pageCount),
+    ];
   }
 
   if (currentPage >= pageCount - 3) {
-    return [1, "ellipsis-start", pageCount - 4, pageCount - 3, pageCount - 2, pageCount - 1, pageCount];
+    return [
+      createPage(1),
+      createEllipsis("ellipsis-start"),
+      createPage(pageCount - 4),
+      createPage(pageCount - 3),
+      createPage(pageCount - 2),
+      createPage(pageCount - 1),
+      createPage(pageCount),
+    ];
   }
 
-  return [1, "ellipsis-start", currentPage - 1, currentPage, currentPage + 1, "ellipsis-end", pageCount];
+  return [
+    createPage(1),
+    createEllipsis("ellipsis-start"),
+    createPage(currentPage - 1),
+    createPage(currentPage),
+    createPage(currentPage + 1),
+    createEllipsis("ellipsis-end"),
+    createPage(pageCount),
+  ];
 }
 
 function parseStreamEvent(chunk: string): ExplorationStreamEvent | null {
@@ -1286,8 +1235,6 @@ export default function Page() {
   const [report, setReport] = useState<ExplorationReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState("");
-  const [log, setLog] = useState<ExplorationLog | null>(null);
-  const [logError, setLogError] = useState("");
   const [streamDetail, setStreamDetail] = useState<ExplorationRunDetail | null>(null);
   const [monitor, setMonitor] = useState<ExplorationMonitorState>(emptyMonitorState);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -1440,31 +1387,12 @@ export default function Page() {
     }
   }, [activeTab, loadReport]);
 
-  const loadLog = useCallback(async () => {
-    try {
-      const data = await apiRequest<ExplorationLog>(
-        `/projects/${params.projectId}/exploration-runs/${params.runId}/log`,
-      );
-      setLog(data);
-    } catch (requestError) {
-      setLogError(requestError instanceof Error ? requestError.message : "探索日志加载失败");
-    }
-  }, [params.projectId, params.runId]);
-
-  useEffect(() => {
-    if (activeTab === "探索日志") {
-      void loadLog();
-    }
-  }, [activeTab, loadLog]);
-
   function clearExplorationOutputs() {
     setDetail(null);
     setStreamDetail(null);
     setReport(null);
     setReportError("");
     setReportLoading(false);
-    setLog(null);
-    setLogError("");
   }
 
   async function startExploration() {
@@ -1708,7 +1636,7 @@ export default function Page() {
       projectScope="project"
       activeTab={activeTab}
       onTabChange={setActiveTab}
-      tabs={["探索计划", "探索概览", "探索日志", "探索报告"]}
+      tabs={["探索计划", "探索概览", "探索报告"]}
       title={run?.title ?? "探索任务"}
     >
       {activeTab === "探索概览" && error && failureVisible ? (
@@ -1749,23 +1677,9 @@ export default function Page() {
                   <p className="text-muted-foreground text-xs">展示模块、页面状态和页面探索步骤</p>
                 </div>
               </div>
-              {loading ? (
-                <div className="py-10 text-center text-muted-foreground text-sm">探索任务加载中</div>
-              ) : run ? (
-                <div className="space-y-3">
-                  {isUnsupportedArtifact ? (
-                    <UnsupportedArtifactNotice
-                      onOpenLog={() => setActiveTab("探索日志")}
-                      onRestart={startExploration}
-                      reason={unsupportedArtifactReason}
-                      restarting={starting}
-                    />
-                  ) : null}
-                  {isUnsupportedArtifact ? null : (
-                    <AgentPlan completedTaskDecoration="none" emptyLabel="暂无探索模块" tasks={agentPlanTasks} />
-                  )}
-                </div>
-              ) : null}
+              <div className="rounded-lg border bg-muted/20 p-8 text-center text-muted-foreground text-sm">
+                暂无探索模块进度信息
+              </div>
             </ShellSection>
 
             <div className="min-w-0">
@@ -1795,17 +1709,6 @@ export default function Page() {
             </div>
           </div>
         </>
-      ) : null}
-
-      {activeTab === "探索日志" ? (
-        <ExplorationLogPanel
-          initialError={logError}
-          initialLog={log}
-          failureDetail={failureDetail}
-          projectId={params.projectId}
-          run={run}
-          runId={params.runId}
-        />
       ) : null}
 
       {activeTab === "探索报告" ? (
@@ -2002,7 +1905,7 @@ function ExplorationFailureNotice({ error, onClose }: { error: string; onClose: 
     <div className="flex min-h-10 items-center gap-2 rounded-lg border border-destructive/35 bg-destructive/8 px-3 text-sm shadow-sm">
       <AlertTriangle className="size-4 shrink-0 text-destructive" />
       <div className="min-w-0 flex-1 truncate text-destructive">
-        探索任务加载失败：{error}，详细信息请查看“探索日志”。
+        探索任务加载失败：{error}。
       </div>
       <Button aria-label="关闭探索失败信息" onClick={onClose} size="icon-xs" type="button" variant="ghost">
         <X className="size-4" />
@@ -2287,12 +2190,10 @@ function TaskSection({ children, title }: { children: ReactNode; title: string }
 }
 
 function UnsupportedArtifactNotice({
-  onOpenLog,
   onRestart,
   reason,
   restarting,
 }: {
-  onOpenLog?: () => void;
   onRestart: () => Promise<void> | void;
   reason: string;
   restarting: boolean;
@@ -2308,11 +2209,6 @@ function UnsupportedArtifactNotice({
           <p className="text-amber-800 dark:text-amber-200">{reason || "历史产物格式不支持新版详情，请重新探索。"}</p>
         </div>
         <div className="flex shrink-0 gap-2">
-          {onOpenLog ? (
-            <Button onClick={onOpenLog} size="sm" type="button" variant="outline">
-              查看日志
-            </Button>
-          ) : null}
           <Button disabled={restarting} onClick={() => void onRestart()} size="sm" type="button">
             <Play className="size-4" />
             重新探索
@@ -2320,296 +2216,6 @@ function UnsupportedArtifactNotice({
         </div>
       </div>
     </div>
-  );
-}
-
-function ExplorationLogPanel({
-  initialError,
-  initialLog,
-  failureDetail,
-  projectId,
-  run,
-  runId,
-}: {
-  initialError: string;
-  initialLog: ExplorationLog | null;
-  failureDetail: {
-    error: string;
-    projectId: string;
-    requestPath: string;
-    runId: string;
-    failedAt: string;
-  } | null;
-  projectId: string;
-  run: ExplorationRun | null;
-  runId: string;
-}) {
-  const [category, setCategory] = useState<LogCategory>("all");
-  const [level, setLevel] = useState<LogLevel>("all");
-  const [pageFilter, setPageFilter] = useState("all");
-  const [keyword, setKeyword] = useState("");
-  const [draftKeyword, setDraftKeyword] = useState("");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [log, setLog] = useState<ExplorationLog | null>(initialLog);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(initialError);
-  const [selectedEntry, setSelectedEntry] = useState<ParsedLogEntry | null>(null);
-  const entries = useMemo(() => logEntriesFromResponse(log), [log]);
-  const fallbackMode = !log?.items && Boolean(log?.log_content);
-  const pageOptions = useMemo(() => buildLogPageOptions(entries), [entries]);
-  const hasPagedLogResponse = Array.isArray(log?.items);
-  const localFilteredEntries = useMemo(
-    () => (fallbackMode ? filterLogEntries(entries, { category, keyword, level, page: pageFilter }) : entries),
-    [category, entries, fallbackMode, keyword, level, pageFilter],
-  );
-  const total = fallbackMode ? localFilteredEntries.length : (log?.total ?? 0);
-  const pageCount = Math.max(1, Math.ceil(total / pageSize));
-  const safePage = Math.min(Math.max(page, 1), pageCount);
-  const visiblePages = getVisiblePages(safePage, pageCount);
-  const pagedEntries = fallbackMode
-    ? localFilteredEntries.slice((safePage - 1) * pageSize, safePage * pageSize)
-    : entries;
-
-  useEffect(() => {
-    setLog(initialLog);
-    setError(initialError);
-    setSelectedEntry(null);
-  }, [initialError, initialLog]);
-
-  const loadPagedLog = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const query = new URLSearchParams({
-        page: String(page),
-        page_size: String(pageSize),
-      });
-      if (keyword.trim()) query.set("keyword", keyword.trim());
-      if (category !== "all") query.set("type", category);
-      if (level !== "all") query.set("level", level);
-      if (pageFilter !== "all") query.set("page_ref", pageFilter);
-      const data = await apiRequest<ExplorationLog>(`/projects/${projectId}/exploration-runs/${runId}/log?${query}`);
-      setLog(data);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "探索日志加载失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [category, keyword, level, page, pageFilter, pageSize, projectId, runId]);
-
-  useEffect(() => {
-    void loadPagedLog();
-  }, [loadPagedLog]);
-
-  function resetLogPage() {
-    setPage(1);
-    setSelectedEntry(null);
-  }
-
-  function submitKeywordSearch() {
-    const nextKeyword = draftKeyword.trim();
-    if (nextKeyword === keyword) {
-      return;
-    }
-    setKeyword(nextKeyword);
-    resetLogPage();
-  }
-
-  function clearKeywordSearch() {
-    if (!keyword && !draftKeyword) {
-      return;
-    }
-    setDraftKeyword("");
-    setKeyword("");
-    resetLogPage();
-  }
-
-  function goToPage(nextPage: number) {
-    setPage(Math.min(Math.max(nextPage, 1), pageCount));
-    setSelectedEntry(null);
-  }
-
-  return (
-    <ShellSection>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h2 className="font-medium text-sm">探索日志</h2>
-          <p className="text-muted-foreground text-xs">按事件展示页面访问、动作、阻塞、关系和产物写入记录</p>
-        </div>
-        <Button disabled={loading} onClick={() => void loadPagedLog()} size="sm" type="button" variant="outline">
-          <RefreshCw className="size-4" />
-          刷新日志
-        </Button>
-      </div>
-
-      {failureDetail ? (
-        <div className="space-y-3 rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm">
-          <div className="flex items-center gap-2 font-medium text-destructive">
-            <AlertTriangle className="size-4" />
-            探索任务加载失败
-          </div>
-          <div className="grid gap-2">
-            <InfoRow label="失败原因" value={failureDetail.error} />
-            <InfoRow label="项目 ID" value={failureDetail.projectId} />
-            <InfoRow label="请求接口" value={failureDetail.requestPath} />
-            <InfoRow label="失败时间" value={failureDetail.failedAt} />
-            <InfoRow label="建议操作" value="检查后端服务、网络连接和当前账号权限后点击刷新重试。" />
-          </div>
-        </div>
-      ) : error ? (
-        <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-destructive text-sm">
-          探索日志加载失败：{error}
-        </div>
-      ) : entries.length > 0 || loading || hasPagedLogResponse ? (
-        <div className="space-y-4">
-          <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="relative sm:w-72">
-                <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  className="pr-16 pl-8"
-                  onChange={(event) => setDraftKeyword(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      submitKeywordSearch();
-                    }
-                  }}
-                  placeholder="搜索页面、摘要或错误原因"
-                  value={draftKeyword}
-                />
-                {draftKeyword ? (
-                  <button
-                    aria-label="清空搜索词"
-                    className="absolute top-1/2 right-1 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground outline-none transition-none hover:bg-transparent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                    onClick={clearKeywordSearch}
-                    type="button"
-                  >
-                    <X className="size-4" />
-                  </button>
-                ) : null}
-              </div>
-              <Button onClick={submitKeywordSearch} type="button" variant="outline">
-                <Search className="size-4" />
-                搜索
-              </Button>
-              <NativeSelect
-                aria-label="事件类型"
-                onChange={(event) => {
-                  setCategory(event.target.value as LogCategory);
-                  resetLogPage();
-                }}
-                value={category}
-              >
-                {logCategoryOptions.map((option) => (
-                  <NativeSelectOption key={option} value={option}>
-                    {logCategoryLabels[option]}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-              <NativeSelect
-                aria-label="级别"
-                onChange={(event) => {
-                  setLevel(event.target.value as LogLevel);
-                  resetLogPage();
-                }}
-                value={level}
-              >
-                {logLevelOptions.map((option) => (
-                  <NativeSelectOption key={option} value={option}>
-                    {logLevelLabels[option]}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-              <NativeSelect
-                aria-label="页面"
-                onChange={(event) => {
-                  setPageFilter(event.target.value);
-                  resetLogPage();
-                }}
-                value={pageFilter}
-              >
-                <NativeSelectOption value="all">全部页面</NativeSelectOption>
-                {pageOptions.map((option) => (
-                  <NativeSelectOption key={option.value} value={option.value}>
-                    {option.label}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </div>
-          </div>
-
-          <div className="overflow-hidden rounded-lg border">
-            <Table className="table-fixed">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[15%]">时间</TableHead>
-                  <TableHead className="w-[10%]">类型</TableHead>
-                  <TableHead className="w-[26%]">页面</TableHead>
-                  <TableHead className="w-[10%]">级别</TableHead>
-                  <TableHead className="w-[33%]">摘要</TableHead>
-                  <TableHead className="w-[6%]">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
-                      探索日志加载中
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  pagedEntries.map((entry) => (
-                    <LogEntryRows entry={entry} key={entry.id} onOpen={() => setSelectedEntry(entry)} />
-                  ))
-                )}
-                {!loading && total === 0 ? (
-                  <TableRow>
-                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
-                      没有符合筛选条件的日志。
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </div>
-
-          <LogPagination
-            goToPage={goToPage}
-            pageCount={pageCount}
-            pageSize={pageSize}
-            safePage={safePage}
-            setPage={setPage}
-            setPageSize={setPageSize}
-            total={total}
-            visiblePages={visiblePages}
-          />
-          <Dialog onOpenChange={(open) => !open && setSelectedEntry(null)} open={Boolean(selectedEntry)}>
-            <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-5xl">
-              <DialogHeader className="shrink-0 gap-2 px-6 pt-6 pb-4">
-                <DialogTitle>日志详情</DialogTitle>
-                <DialogDescription>
-                  {selectedEntry ? `${selectedEntry.typeLabel} / ${selectedEntry.summary}` : "加载中"}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="min-h-0 overflow-auto px-6 pb-6">
-                {selectedEntry ? <LogEntryDetail entry={selectedEntry} /> : null}
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      ) : log?.log_content ? (
-        <div className="rounded-lg border bg-background p-4">
-          <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6">{log.log_content}</pre>
-        </div>
-      ) : (
-        <div className="rounded-lg border bg-muted/20 p-4 text-muted-foreground text-sm">
-          暂无失败日志。
-          {run?.result_summary ? `最近执行摘要：${run.result_summary}` : "任务执行后会在这里展示日志信息。"}
-        </div>
-      )}
-    </ShellSection>
   );
 }
 
@@ -2663,450 +2269,6 @@ function ExplorationReportPanel({
   );
 }
 
-function LogEntryRows({ entry, onOpen }: { entry: ParsedLogEntry; onOpen: () => void }) {
-  const pageLabel = formatLogPageLabel(entry);
-  const summary = formatLogSummary(entry);
-  return (
-    <TableRow>
-      <TableCell className="truncate text-muted-foreground text-xs">{entry.timestamp || "-"}</TableCell>
-      <TableCell>{entry.typeLabel}</TableCell>
-      <TableCell className="truncate" title={pageLabel}>
-        {pageLabel}
-      </TableCell>
-      <TableCell>
-        <StatusBadge tone={logLevelTone(entry.level)}>{logLevelLabels[entry.level]}</StatusBadge>
-      </TableCell>
-      <TableCell className="truncate" title={summary}>
-        {summary}
-      </TableCell>
-      <TableCell>
-        <Button aria-label="查看日志详情" onClick={onOpen} size="icon-sm" variant="ghost">
-          <Eye className="size-4" />
-        </Button>
-      </TableCell>
-    </TableRow>
-  );
-}
-
-function formatLogPageLabel(entry: ParsedLogEntry): string {
-  if (entry.pageTitle) return entry.pageTitle;
-  if (entry.sourceLabel && entry.sourceLabel !== entry.pageId) return entry.sourceLabel;
-  if (entry.url && !entry.url.startsWith("page-")) return entry.url;
-  return entry.pageId || "-";
-}
-
-function formatLogSummary(entry: ParsedLogEntry): string {
-  if (entry.type === "edge_created") {
-    const relation = edgeRelationLabel(entry.result);
-    const source = entry.sourceLabel || entry.pageTitle || entry.pageId || "-";
-    const target = entry.targetLabel || entry.url || entry.result || "-";
-    return `${relation}：${source} -> ${target}`;
-  }
-  return entry.summary;
-}
-
-function edgeRelationLabel(value: string): string {
-  if (value === "navigation") return "同域链接";
-  if (value === "external_link") return "外部链接";
-  if (value === "form_submit") return "表单动作";
-  if (value === "button_click") return "页面动作";
-  return value || "页面关系";
-}
-
-function LogEntryDetail({ entry }: { entry: ParsedLogEntry }) {
-  const payloadJson = Object.keys(entry.payload).length > 0 ? JSON.stringify(entry.payload, null, 2) : "";
-
-  return (
-    <div className="space-y-4 text-sm">
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-2">
-          <h3 className="font-medium text-muted-foreground text-xs">上下文</h3>
-          <InfoRow label="页面 ID" value={entry.pageId || "-"} />
-          <InfoRow label="页面标题" value={entry.pageTitle || "-"} />
-          <InfoRow label="URL" value={entry.url || "-"} />
-        </div>
-        <div className="space-y-2">
-          <h3 className="font-medium text-muted-foreground text-xs">动作与结果</h3>
-          <InfoRow label="动作" value={entry.actionName || "-"} />
-          <InfoRow label="结果" value={entry.result || "-"} />
-          <InfoRow label="产物" value={entry.artifactPath || "-"} />
-        </div>
-      </div>
-      {payloadJson ? (
-        <div className="mt-4 space-y-2">
-          <h3 className="font-medium text-muted-foreground text-xs">结构化字段</h3>
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-background p-3 font-mono text-[12px] leading-5">
-            {payloadJson}
-          </pre>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function LogPagination({
-  goToPage,
-  pageCount,
-  pageSize,
-  safePage,
-  setPage,
-  setPageSize,
-  total,
-  visiblePages,
-}: {
-  goToPage: (nextPage: number) => void;
-  pageCount: number;
-  pageSize: number;
-  safePage: number;
-  setPage: React.Dispatch<React.SetStateAction<number>>;
-  setPageSize: React.Dispatch<React.SetStateAction<number>>;
-  total: number;
-  visiblePages: PageItem[];
-}) {
-  return (
-    <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-end">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Pagination className="mx-0 w-auto justify-start sm:justify-end">
-          <PaginationContent>
-            <PaginationItem className="mr-2 text-muted-foreground">共 {total} 条数据</PaginationItem>
-            <PaginationItem>
-              <PaginationButton
-                disabled={safePage <= 1}
-                onClick={() => goToPage(safePage - 1)}
-                type="button"
-                variant="ghost"
-              >
-                <ChevronLeft className="rtl:rotate-180" /> 上一页
-              </PaginationButton>
-            </PaginationItem>
-            {visiblePages.map((item) =>
-              typeof item === "number" ? (
-                <PaginationItem key={item}>
-                  <PaginationButton
-                    aria-current={item === safePage ? "page" : undefined}
-                    mode="icon"
-                    onClick={() => goToPage(item)}
-                    selected={item === safePage}
-                    type="button"
-                    variant={item === safePage ? "outline" : "ghost"}
-                  >
-                    {item}
-                  </PaginationButton>
-                </PaginationItem>
-              ) : (
-                <PaginationItem key={item}>
-                  <PaginationEllipsis />
-                </PaginationItem>
-              ),
-            )}
-            <PaginationItem>
-              <PaginationButton
-                disabled={safePage >= pageCount}
-                onClick={() => goToPage(safePage + 1)}
-                type="button"
-                variant="ghost"
-              >
-                下一页 <ChevronRight className="rtl:rotate-180" />
-              </PaginationButton>
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
-        <label className="flex items-center gap-1 text-muted-foreground">
-          <span>每页</span>
-          <select
-            aria-label="每页显示条数"
-            className="h-8 rounded-md border border-input bg-background px-2 text-foreground text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-            onChange={(event) => {
-              setPageSize(Number(event.target.value));
-              setPage(1);
-            }}
-            value={pageSize}
-          >
-            {[10, 15, 20, 50, 100].map((option) => (
-              <option key={option} value={option}>
-                {option} 条
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-    </div>
-  );
-}
-
-function parseLogEntries(content: string): ParsedLogEntry[] {
-  const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  const entries: ParsedLogEntry[] = [];
-  const timePrefixPattern =
-    /^(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d{3,6})?)?|\d{2}:\d{2}:\d{2}(?:[.,]\d{3,6})?)(?:\s*[|:-]\s*|\s+)(.*)$/;
-
-  for (const line of lines) {
-    const jsonEntry = parseJsonLogLine(line, entries.length);
-    if (jsonEntry) {
-      entries.push(jsonEntry);
-      continue;
-    }
-
-    const matched = line.match(timePrefixPattern);
-    if (matched) {
-      entries.push(createRawLogEntry(entries.length, line, matched[1], matched[2]?.trim() || line.trim()));
-      continue;
-    }
-
-    const lastEntry = entries.at(-1);
-    if (lastEntry?.type === "raw") {
-      lastEntry.raw = `${lastEntry.raw}\n${line}`;
-      lastEntry.summary = `${lastEntry.summary}\n${line}`;
-    } else {
-      entries.push(createRawLogEntry(entries.length, line, "", line.trim()));
-    }
-  }
-
-  return entries;
-}
-
-function logEntriesFromResponse(log: ExplorationLog | null): ParsedLogEntry[] {
-  if (!log) {
-    return [];
-  }
-  if (Array.isArray(log.items)) {
-    return log.items.map((item) => ({
-      actionName: item.action_name,
-      artifactPath: item.artifact_path,
-      category: normalizeLogCategory(item.category),
-      id: item.id,
-      level: normalizeLogLevel(item.level),
-      pageId: item.page_id,
-      pageTitle: item.page_title,
-      payload: item.payload ?? {},
-      raw: item.raw,
-      result: item.result,
-      sourceLabel: item.source_label ?? "",
-      summary: item.summary,
-      targetLabel: item.target_label ?? "",
-      timestamp: item.timestamp,
-      type: item.event,
-      typeLabel: item.event_label || item.event,
-      url: item.url,
-    }));
-  }
-  return parseLogEntries(log.log_content ?? "");
-}
-
-function normalizeLogCategory(value: string): LogCategory {
-  return logCategoryOptions.includes(value as LogCategory) ? (value as LogCategory) : "raw";
-}
-
-function normalizeLogLevel(value: string): LogLevel {
-  return logLevelOptions.includes(value as LogLevel) ? (value as LogLevel) : "info";
-}
-
-function parseJsonLogLine(line: string, index: number): ParsedLogEntry | null {
-  try {
-    const parsed = JSON.parse(line) as Record<string, unknown>;
-    if (!parsed || typeof parsed !== "object") {
-      return null;
-    }
-
-    const event = stringValue(parsed.event) || "raw";
-    const level = inferLogLevel(event, parsed);
-    const pageId = firstString(parsed, ["page_id", "page", "source"]);
-    const pageTitle = firstString(parsed, ["page_title", "title"]);
-    const url = firstString(parsed, ["url", "target"]);
-    const actionName = firstString(parsed, ["action", "name", "locator_hint"]);
-    const result = firstString(parsed, ["status", "reason", "type", "target", "edge_id"]);
-    const artifactPath = firstString(parsed, ["artifact_path", "evidence_path", "file_path", "log_path"]);
-
-    return {
-      actionName,
-      artifactPath,
-      category: inferLogCategory(event),
-      id: `log-${index}`,
-      level,
-      pageId,
-      pageTitle,
-      payload: parsed,
-      raw: line,
-      result,
-      summary: buildLogEntrySummary(event, parsed),
-      sourceLabel: "",
-      targetLabel: "",
-      timestamp: formatLogTimestamp(firstString(parsed, ["ts", "time", "timestamp"])),
-      type: event,
-      typeLabel: logTypeLabels[event] ?? event,
-      url,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function createRawLogEntry(index: number, raw: string, timestamp: string, summary: string): ParsedLogEntry {
-  const level = /error|traceback|typeerror|exception|failed|失败/i.test(raw) ? "error" : "info";
-  return {
-    actionName: "",
-    artifactPath: "",
-    category: level === "error" ? "error" : "raw",
-    id: `log-${index}`,
-    level,
-    pageId: "",
-    pageTitle: "",
-    payload: {},
-    raw,
-    result: "",
-    sourceLabel: "",
-    summary,
-    targetLabel: "",
-    timestamp,
-    type: "raw",
-    typeLabel: logTypeLabels.raw,
-    url: "",
-  };
-}
-
-function inferLogCategory(event: string): LogCategory {
-  if (event === "blocked") return "blocked";
-  if (event === "error") return "error";
-  if (
-    event.includes("page") ||
-    event === "accessibility_captured" ||
-    event === "agent_observed" ||
-    event === "observe"
-  ) {
-    return "page";
-  }
-  if (
-    event.includes("action") ||
-    event.includes("edge") ||
-    event === "agent_decision" ||
-    event === "agent_decision_fallback"
-  ) {
-    return "action";
-  }
-  if (event.includes("artifact")) return "artifact";
-  if (event.includes("run") || event.includes("login") || event === "skipped") return "run";
-  return "raw";
-}
-
-function inferLogLevel(event: string, payload: Record<string, unknown>): LogLevel {
-  const explicit = stringValue(payload.level).toLowerCase();
-  if (explicit === "error" || explicit === "warning" || explicit === "info") return explicit;
-  if (event === "error" || stringValue(payload.status) === "failed") return "error";
-  if (event === "blocked" || event === "skipped") {
-    return "warning";
-  }
-  return "info";
-}
-
-function buildLogEntrySummary(event: string, payload: Record<string, unknown>): string {
-  if (event === "run_started") {
-    return `开始探索 ${firstString(payload, ["url"]) || "目标站点"}`;
-  }
-  if (event === "run_completed") {
-    return `探索完成，状态 ${firstString(payload, ["status"]) || "completed"}`;
-  }
-  if (
-    event === "page_captured" ||
-    event === "page_visited" ||
-    event === "page_discovered" ||
-    event === "agent_observed" ||
-    event === "observe"
-  ) {
-    return `采集页面 ${firstString(payload, ["title", "page_id", "url"]) || "-"}`;
-  }
-  if (event === "edge_created") {
-    return `记录关系 ${firstString(payload, ["edge_id"]) || ""}：${firstString(payload, ["source"]) || "-"} -> ${firstString(payload, ["target"]) || "-"}`;
-  }
-  if (event === "agent_decision") {
-    return `Agent 决策 ${firstString(payload, ["decision_type"]) || "-"}：${firstString(payload, ["action", "action_type"]) || "-"}`;
-  }
-  if (event === "agent_decision_fallback") {
-    return `Agent 决策降级：${firstString(payload, ["reason"]) || "-"}`;
-  }
-  if (event === "action_executed") {
-    return `执行动作 ${firstString(payload, ["action", "name", "locator_hint"]) || "-"}`;
-  }
-  if (event === "action_started" || event === "action_result" || event === "action_completed") {
-    return `动作 ${firstString(payload, ["action", "action_type"]) || "-"}：${firstString(payload, ["status", "target"]) || "-"}`;
-  }
-  if (event === "blocked" || event === "skipped") {
-    return firstString(payload, ["reason", "action", "page_id", "page"]) || logTypeLabels[event] || event;
-  }
-  if (event === "artifact_written") {
-    return `写入产物 ${firstString(payload, ["artifact_path", "file_path"]) || "-"}`;
-  }
-  if (event === "error") {
-    return firstString(payload, ["message", "reason", "error"]) || "探索执行错误";
-  }
-  return (
-    firstString(payload, ["summary", "recent_event", "message", "url", "page_id"]) || logTypeLabels[event] || event
-  );
-}
-
-function buildLogPageOptions(entries: ParsedLogEntry[]) {
-  const pages = new Map<string, string>();
-  for (const entry of entries) {
-    const value = entry.pageId || entry.pageTitle || entry.url;
-    if (!value) continue;
-    pages.set(value, entry.pageTitle || entry.pageId || entry.url);
-  }
-  return Array.from(pages, ([value, label]) => ({ label, value }));
-}
-
-function filterLogEntries(
-  entries: ParsedLogEntry[],
-  filters: { category: LogCategory; keyword: string; level: LogLevel; page: string },
-) {
-  const keyword = filters.keyword.trim().toLowerCase();
-  return entries.filter((entry) => {
-    if (filters.category !== "all" && entry.category !== filters.category) return false;
-    if (filters.level !== "all" && entry.level !== filters.level) return false;
-    if (filters.page !== "all" && ![entry.pageId, entry.pageTitle, entry.url].includes(filters.page)) return false;
-    if (!keyword) return true;
-    return [
-      entry.summary,
-      entry.raw,
-      entry.url,
-      entry.pageTitle,
-      entry.pageId,
-      entry.actionName,
-      entry.result,
-      entry.artifactPath,
-    ]
-      .join("\n")
-      .toLowerCase()
-      .includes(keyword);
-  });
-}
-
-function firstString(payload: Record<string, unknown>, keys: string[]): string {
-  for (const key of keys) {
-    const value = stringValue(payload[key]);
-    if (value) return value;
-  }
-  return "";
-}
-
-function stringValue(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return "";
-}
-
-function formatLogTimestamp(value: string): string {
-  if (!value) return "";
-  const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    timeZone: "Asia/Shanghai",
-  }).format(parsed);
-}
 
 function formatExplorationDuration(run: ExplorationRun, now: number = Date.now()): string {
   if (!run.started_at) {
