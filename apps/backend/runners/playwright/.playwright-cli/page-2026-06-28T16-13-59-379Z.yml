@@ -1,0 +1,1283 @@
+- generic [ref=e7]:
+  - banner [ref=e8]:
+    - navigation [ref=e9]:
+      - complementary [ref=e10]:
+        - button "下载" [ref=e11] [cursor=pointer]
+        - button "企业登录" [ref=e12] [cursor=pointer]
+        - button "注册" [ref=e13] [cursor=pointer]
+      - link [ref=e14] [cursor=pointer]:
+        - /url: ./
+        - heading [level=1] [ref=e15]
+      - list [ref=e18]:
+        - listitem [ref=e19]:
+          - link "产品功能" [ref=e20] [cursor=pointer]:
+            - /url: javascript:;
+            - generic [ref=e21]: 产品功能
+          - list:
+            - listitem [ref=e23]:
+              - link "智能办公" [ref=e24] [cursor=pointer]:
+                - /url: "#indexAIOffice"
+            - listitem [ref=e25]:
+              - link "连接微信" [ref=e26] [cursor=pointer]:
+                - /url: "#indexWxContacts"
+            - listitem [ref=e27]:
+              - link "内外协作" [ref=e28] [cursor=pointer]:
+                - /url: "#indexCollaboration"
+            - listitem [ref=e29]:
+              - link "效率与办公" [ref=e30] [cursor=pointer]:
+                - /url: "#indexSubFeature"
+            - listitem [ref=e31]:
+              - link "高级功能" [ref=e32] [cursor=pointer]:
+                - /url: https://work.weixin.qq.com/business/mall#/?from=offical
+        - listitem [ref=e33]:
+          - link "行业方案" [ref=e34] [cursor=pointer]:
+            - /url: "#indexIndustry"
+            - generic [ref=e35]: 行业方案
+        - listitem [ref=e36]:
+          - link "开放能力" [ref=e37] [cursor=pointer]:
+            - /url: "#indexOpen"
+            - generic [ref=e38]: 开放能力
+        - listitem [ref=e39]:
+          - link "私有部署" [ref=e40] [cursor=pointer]:
+            - /url: "#indexServerDeploy"
+            - generic [ref=e41]: 私有部署
+        - listitem [ref=e42]:
+          - link "客户案例" [ref=e43] [cursor=pointer]:
+            - /url: "#indexCase"
+            - generic [ref=e44]: 客户案例
+        - listitem [ref=e45]:
+          - link "学习与帮助" [ref=e46] [cursor=pointer]:
+            - /url: javascript:;
+            - generic [ref=e47]: 学习与帮助
+          - list:
+            - listitem [ref=e49]:
+              - link "学习园地" [ref=e50] [cursor=pointer]:
+                - /url: https://work.weixin.qq.com/nl/learning
+            - listitem [ref=e51]:
+              - link "使用手册" [ref=e52] [cursor=pointer]:
+                - /url: https://open.work.weixin.qq.com/wwopen/helpguide/index
+            - listitem [ref=e53]:
+              - link "帮助中心" [ref=e54] [cursor=pointer]:
+                - /url: https://work.weixin.qq.com/help
+  - generic [ref=e57]:
+    - generic [ref=e58]: 连接创造价值
+    - generic [ref=e59]:
+      - generic [ref=e60]: 智能连接创造更大的价值
+      - link "5.0.9 新版本发布" [ref=e61] [cursor=pointer]:
+        - /url: https://work.weixin.qq.com/nl/learning/24488323395827072?from=wwindex
+        - generic [ref=e62]: 5.0.9 新版本发布
+    - button "立即注册" [ref=e64] [cursor=pointer]
+  - main [ref=e71]:
+    - generic [ref=e72]:
+      - link "面向 AI 场景的数据开放能力一览 06-23" [ref=e74] [cursor=pointer]:
+        - /url: /nl/index/openclaw
+        - generic [ref=e76]:
+          - generic [ref=e77]: 面向 AI 场景的数据开放能力一览
+          - generic [ref=e78]: 06-23
+      - generic [ref=e83]:
+        - generic [ref=e84]:
+          - generic [ref=e87]: 连接微信
+          - list [ref=e88]:
+            - listitem [ref=e89]: 添加客户的微信，在单聊、群聊、朋友圈、视频号中向客户提供持续的服务，还可结合小程序、支付等能力；更有「微信客服」，为客户提供临时咨询服务。
+        - generic [ref=e90]:
+          - generic [ref=e93]: AI助力智能办公
+          - list [ref=e94]:
+            - listitem [ref=e95]: 提供智能搜索、智能总结、智能机器人、智能服务总结等丰富的 AI 功能，让 AI 融入内外协作场景，为办公和对外服务提质增效。
+        - generic [ref=e96]:
+          - generic [ref=e99]: 协作工具与OA应用
+          - list [ref=e100]:
+            - listitem [ref=e101]: 集成智能表格、文档、邮件、日程、会议等协作工具及打卡、审批等OA应用，提供丰富的第三方应用，同时支持接入由服务商代开发及企业自建的应用。
+        - generic [ref=e102]:
+          - generic [ref=e105]: 全面安全保障
+          - list [ref=e106]:
+            - listitem [ref=e107]: 国内首家通过SOC2Type2审计的企业办公产品，国际权威认证，银行级加密水平，为企业数据安全提供可靠保障，提供企业级信息安全管控能力。
+            - listitem [ref=e108]:
+              - link "安全详情与隐私政策" [ref=e109] [cursor=pointer]:
+                - /url: /nl/index/security
+                - generic [ref=e110]: 安全详情与隐私政策
+      - generic [ref=e112]:
+        - generic [ref=e113]:
+          - text: 智能办公
+          - img [ref=e114]
+        - generic [ref=e115]:
+          - list [ref=e118]:
+            - listitem [ref=e119] [cursor=pointer]:
+              - link "智能搜索":
+                - /url: javascript:;
+                - text: 智能搜索
+            - listitem [ref=e120] [cursor=pointer]:
+              - link "智能总结":
+                - /url: javascript:;
+                - text: 智能总结
+            - listitem [ref=e121] [cursor=pointer]:
+              - link "智能机器人":
+                - /url: javascript:;
+                - text: 智能机器人
+            - listitem [ref=e122] [cursor=pointer]:
+              - link "智能服务总结":
+                - /url: javascript:;
+                - text: 智能服务总结
+            - listitem [ref=e123] [cursor=pointer]:
+              - link "更多 AI 能力":
+                - /url: javascript:;
+                - text: 更多
+                - generic: AI
+                - text: 能力
+          - list [ref=e125]:
+            - listitem [ref=e126]:
+              - generic [ref=e129]:
+                - paragraph [ref=e130]: 智能搜索
+                - paragraph [ref=e131]: 快速查找记忆模糊的内容，AI 总结后直接给出准确答案。
+                - link "查看详情" [ref=e132] [cursor=pointer]:
+                  - /url: /nl/index/aioffice?category=search
+                  - generic [ref=e133]: 查看详情
+      - generic [ref=e137]:
+        - generic [ref=e138]: 连接微信
+        - generic [ref=e139]:
+          - list [ref=e142]:
+            - listitem [ref=e143] [cursor=pointer]:
+              - link "客户联系":
+                - /url: javascript:;
+                - text: 客户联系
+            - listitem [ref=e144] [cursor=pointer]:
+              - link "客户群":
+                - /url: javascript:;
+                - text: 客户群
+            - listitem [ref=e145] [cursor=pointer]:
+              - link "客户朋友圈":
+                - /url: javascript:;
+                - text: 客户朋友圈
+            - listitem [ref=e146] [cursor=pointer]:
+              - link "微信客服":
+                - /url: javascript:;
+                - text: 微信客服
+            - listitem [ref=e147] [cursor=pointer]:
+              - link "企业名片":
+                - /url: javascript:;
+                - text: 企业名片
+            - listitem [ref=e148] [cursor=pointer]:
+              - link "上下游":
+                - /url: javascript:;
+                - text: 上下游
+            - listitem [ref=e149] [cursor=pointer]:
+              - link "更多能力":
+                - /url: javascript:;
+                - text: 更多能力
+          - list [ref=e151]:
+            - listitem [ref=e152]:
+              - generic [ref=e155]:
+                - generic [ref=e156]: 客户联系
+                - generic [ref=e157]: 添加客户的微信为好友，通过单聊或群聊为客户提供服务。企业可查看并管理成员添加的微信客户，对离职成员的客户再分配。
+                - link "查看详情" [ref=e158] [cursor=pointer]:
+                  - /url: /nl/index/wxconnection?category=msgcontacts&from=catDetail
+                  - generic [ref=e159]: 查看详情
+      - generic [ref=e163]:
+        - generic [ref=e164]: 内外协作
+        - generic [ref=e165]:
+          - list [ref=e168]:
+            - listitem [ref=e169] [cursor=pointer]:
+              - link "智能表格":
+                - /url: javascript:;
+                - text: 智能表格
+            - listitem [ref=e170] [cursor=pointer]:
+              - link "文档":
+                - /url: javascript:;
+                - text: 文档
+            - listitem [ref=e171] [cursor=pointer]:
+              - link "邮件":
+                - /url: javascript:;
+                - text: 邮件
+            - listitem [ref=e172] [cursor=pointer]:
+              - link "日程":
+                - /url: javascript:;
+                - text: 日程
+            - listitem [ref=e173] [cursor=pointer]:
+              - link "会议":
+                - /url: javascript:;
+                - text: 会议
+            - listitem [ref=e174] [cursor=pointer]:
+              - link "微盘":
+                - /url: javascript:;
+                - text: 微盘
+          - list [ref=e176]:
+            - listitem [ref=e177]:
+              - generic [ref=e180]:
+                - generic [ref=e181]: 智能表格
+                - generic [ref=e182]: 串联内外部办公协作，可以收集或导入客户、项目等数据，转化成多种视图、仪表盘，一张表管项目、管业务、管客户。
+                - link "查看详情" [ref=e183] [cursor=pointer]:
+                  - /url: /nl/index/collaboration?category=sheet&from=catDetail
+                  - generic [ref=e184]: 查看详情
+      - generic [ref=e188]:
+        - generic [ref=e189]: 效率与办公
+        - generic [ref=e192]:
+          - generic [ref=e193]:
+            - generic [ref=e194]: 高效的沟通方式
+            - list [ref=e196]:
+              - listitem [ref=e197]: 发出的消息可以查看对方的已读未读状态，沟通工作更高效。
+          - generic [ref=e198]:
+            - generic [ref=e199]: 打卡
+            - list [ref=e201]:
+              - listitem [ref=e202]: 手机、考勤机均可打卡，结合审批单自动生成考勤报表。支持固定时间上下班、排班、自由上下班、外出打卡。
+          - generic [ref=e203]:
+            - generic [ref=e204]: 审批
+            - list [ref=e206]:
+              - listitem [ref=e207]: 在手机上就可以自定义审批模板，管理更方便。支持关联控件，可智能显示表单内容，流程更高效。
+          - generic [ref=e208]:
+            - generic [ref=e209]: 人事助手
+            - list [ref=e211]:
+              - listitem [ref=e212]: 可管理员工花名册信息，支持入职、离职流程管 理，在线发放考勤确认，提升人事管理效率。
+        - link "工资条等其他10项" [ref=e216] [cursor=pointer]:
+          - /url: javascript:;
+          - generic [ref=e217]: 工资条等其他10项
+      - generic [ref=e219]:
+        - generic [ref=e220]: 国际化支持
+        - generic [ref=e223]:
+          - generic [ref=e224]:
+            - generic [ref=e225]:
+              - img [ref=e226]
+              - text: 全球可使用
+            - list [ref=e227]:
+              - listitem [ref=e228]: 全球可下载，16个全球加速点保障顺畅使用
+              - listitem [ref=e229]: 邮箱、手机号等多种登录方式
+              - listitem [ref=e230]: 可用上下游连接全球分公司
+          - generic [ref=e231]:
+            - generic [ref=e232]:
+              - img [ref=e233]
+              - text: 多语言
+            - list [ref=e234]:
+              - listitem [ref=e235]: 支持11种界面语言
+              - listitem [ref=e236]: 自动翻译收到的外语消息，发消息边写边译
+              - listitem [ref=e237]: 支持17种会议字幕和实时转写语言
+          - generic [ref=e238]:
+            - generic [ref=e239]:
+              - img [ref=e240]
+              - text: 跨时区协作
+            - list [ref=e241]:
+              - listitem [ref=e242]: 跨时区沟通无需计算时差
+              - listitem [ref=e243]: 预定跨时区日程，看到参与人当地时间
+          - generic [ref=e244]:
+            - generic [ref=e245]:
+              - img [ref=e246]
+              - text: 安全合规
+            - list [ref=e247]:
+              - listitem [ref=e248]: 符合国际合规标准
+              - listitem [ref=e249]: 国际服务器部署
+              - listitem [ref=e250]: SOC2、SOC3、ISO权威安全认证
+        - link "了解更多" [ref=e253] [cursor=pointer]:
+          - /url: /nl/international?from=wwindex
+          - generic [ref=e254]: 了解更多
+      - generic [ref=e256]:
+        - generic [ref=e257]: 行业方案
+        - list [ref=e260]:
+          - listitem [ref=e261]:
+            - link "零售行业 客户联系 群管理工具 客户朋友圈 离职继承" [ref=e262] [cursor=pointer]:
+              - /url: /nl/index/industry?category=retail
+              - generic [ref=e266]: 零售行业
+              - list [ref=e267]:
+                - listitem [ref=e268]: 客户联系
+                - listitem [ref=e270]: 群管理工具
+                - listitem [ref=e272]: 客户朋友圈
+                - listitem [ref=e274]: 离职继承
+          - listitem [ref=e276]:
+            - link "教育行业 家长无需下载应用 班级群 通知、作业、课外打卡 局校互联" [ref=e277] [cursor=pointer]:
+              - /url: /nl/index/industry?category=education
+              - generic [ref=e281]: 教育行业
+              - list [ref=e282]:
+                - listitem [ref=e283]: 家长无需下载应用
+                - listitem [ref=e285]: 班级群
+                - listitem [ref=e287]: 通知、作业、课外打卡
+                - listitem [ref=e289]: 局校互联
+          - listitem [ref=e291]:
+            - link "政务行业 居民群 政民朋友圈 居民上报 巡查上报" [ref=e292] [cursor=pointer]:
+              - /url: /nl/index/industry?category=govsass
+              - generic [ref=e296]: 政务行业
+              - list [ref=e297]:
+                - listitem [ref=e298]: 居民群
+                - listitem [ref=e300]: 政民朋友圈
+                - listitem [ref=e302]: 居民上报
+                - listitem [ref=e304]: 巡查上报
+          - listitem [ref=e306]:
+            - link "制造行业 上下游 设备巡检 客户联系 离职继承" [ref=e307] [cursor=pointer]:
+              - /url: /nl/index/industry?category=manufacturing
+              - generic [ref=e311]: 制造行业
+              - list [ref=e312]:
+                - listitem [ref=e313]: 上下游
+                - listitem [ref=e315]: 设备巡检
+                - listitem [ref=e317]: 客户联系
+                - listitem [ref=e319]: 离职继承
+          - listitem [ref=e321]:
+            - link "餐饮行业 客户群 永不过期的群二维码 客户联系" [ref=e322] [cursor=pointer]:
+              - /url: /nl/index/industry?category=food
+              - generic [ref=e326]: 餐饮行业
+              - list [ref=e327]:
+                - listitem [ref=e328]: 客户群
+                - listitem [ref=e330]: 永不过期的群二维码
+                - listitem [ref=e332]: 客户联系
+          - listitem [ref=e334]:
+            - link "金融行业 服务会话合规存档 服务质量合规审计 服务沟通安全管理 聊天敏感词" [ref=e335] [cursor=pointer]:
+              - /url: /nl/index/industry?category=financial
+              - generic [ref=e339]: 金融行业
+              - list [ref=e340]:
+                - listitem [ref=e341]: 服务会话合规存档
+                - listitem [ref=e343]: 服务质量合规审计
+                - listitem [ref=e345]: 服务沟通安全管理
+                - listitem [ref=e347]: 聊天敏感词
+      - generic [ref=e349]:
+        - generic [ref=e350]: 开放能力
+        - generic [ref=e351]:
+          - generic [ref=e352]:
+            - generic [ref=e353]: 企业身份校验
+            - generic [ref=e355]: 通过开放协议识别企业身份，企业员工通过企业微信访问企业网页或小程序时可以免密码安全登录。
+          - generic [ref=e356]:
+            - generic [ref=e357]: 消息收发通道
+            - generic [ref=e359]: 调用消息收发接口，企业通知可快速触达员工，也可以接收成员发来的消息，让信息传递更高效。
+          - generic [ref=e360]:
+            - generic [ref=e361]: 客户联系管理
+            - generic [ref=e363]: 基于与微信的连接, 对客户、客户群、发表的朋友圈信息进行开发, 满足企业更个性化的管理需求。
+          - generic [ref=e364]:
+            - generic [ref=e365]: 应用与小程序
+            - generic [ref=e367]: 将企业已有的业务系统以应用或小程序的方式接入企业微信，通过丰富的办公应用，提升办公效率。
+          - generic [ref=e368]:
+            - generic [ref=e369]: 基础应用服务
+            - generic [ref=e371]: 开放日程、会议等效率工具，与打卡、审批等办公应用，通过接口自定义，获得更适合自身的服务。
+          - generic [ref=e372]:
+            - generic [ref=e373]: 移动端SDK
+            - generic [ref=e375]: 借助丰富的JS-SDK，可直接调用企业微信原生客户端的能力，为企业员工使用提供更优质的体验。
+          - generic [ref=e376]:
+            - generic [ref=e377]: 第三方应用
+            - generic [ref=e379]: 根据应用的推荐及搜索，企业管理员和成员可快速查找、添加所需应用，覆盖业务中各种场景。
+          - generic [ref=e380]:
+            - generic [ref=e381]: 服务商接口广场
+            - generic [ref=e383]: 获取第三方合作伙伴的开放接口，通过安全调用，丰富应用产品功能，满足企业多样化需求。
+          - generic [ref=e384]:
+            - generic [ref=e385]: 开发者中心
+            - generic [ref=e387]: 依托社区提供的问答、互动、分享能力，企业内的开发者们可相互解惑、交流经验，共同进步。
+        - generic [ref=e388]:
+          - link "服务商官网" [ref=e389] [cursor=pointer]:
+            - /url: https://open.work.weixin.qq.com/?from=ww_index
+            - text: 服务商官网
+          - link "开发者中心" [ref=e392] [cursor=pointer]:
+            - /url: https://developer.work.weixin.qq.com/?from=ww_index
+            - text: 开发者中心
+      - generic [ref=e394]:
+        - generic [ref=e395]: 私有部署
+        - generic [ref=e396]:
+          - generic [ref=e397]:
+            - generic [ref=e398]:
+              - generic [ref=e399]:
+                - img "自主可控" [ref=e400]
+                - generic [ref=e401]: 自主可控
+              - generic [ref=e402]: 数据以及计算服务可部署在企业自有服务器上，实现自主可控。
+            - generic [ref=e403]:
+              - generic [ref=e404]:
+                - img "安全合规" [ref=e405]
+                - generic [ref=e406]: 安全合规
+              - generic [ref=e407]: 支持国家商用密码算法，通过国家信息安全等级保护三级认证，协助企业建立安全合规体系。
+            - generic [ref=e408]:
+              - generic [ref=e409]:
+                - img "信创适配" [ref=e410]
+                - generic [ref=e411]: 信创适配
+              - generic [ref=e412]: 服务端可部署在国产服务器以及操作系统上，同时也支持Linux桌面端使用。
+            - generic [ref=e413]:
+              - generic [ref=e414]:
+                - img "部署成本低" [ref=e415]
+                - generic [ref=e416]: 部署成本低
+              - generic [ref=e417]: 机器资源消耗少，单台即可完成部署使用，且支持灵活弹性扩展，满足不同规模企业的需求。
+            - generic [ref=e418]:
+              - generic [ref=e419]:
+                - img "适配复杂网络" [ref=e420]
+                - generic [ref=e421]: 适配复杂网络
+              - generic [ref=e422]: 适配多网、跨网、跨地区等复杂网络，满足复杂网络访问的同时，还支持各种安全管控策略。
+            - generic [ref=e423]:
+              - generic [ref=e424]:
+                - img "升级维护简单" [ref=e425]
+                - generic [ref=e426]: 升级维护简单
+              - generic [ref=e427]: 支持可视化自助升级，日常运维操作简单，服务高可用、自动监控告警，降低企业运营成本。
+          - generic [ref=e430]:
+            - generic [ref=e432]:
+              - text: 众多政府部门、央企、国企以及金融机构等大型组织，已使用企业微信私有部署版，满足数据合规性要求，实现自主可控。
+              - link "查看企业案例" [ref=e433] [cursor=pointer]:
+                - /url: https://work.weixin.qq.com/nl/index/caselist?from=serverDeploy
+                - text: 查看企业案例
+            - link "立即使用" [ref=e436] [cursor=pointer]:
+              - /url: https://work.weixin.qq.com/server
+              - generic [ref=e437]: 立即使用
+      - generic [ref=e438]:
+        - generic [ref=e439]: 与 1400万 企业与组织共创连接的价值
+        - link "1400万领先企业客户证言" [ref=e441] [cursor=pointer]:
+          - /url: javascript:;
+          - generic [ref=e443]: 1400万领先企业客户证言
+        - generic [ref=e445]:
+          - generic [ref=e446]:
+            - generic [ref=e449]:
+              - img
+            - generic [ref=e452]:
+              - img
+          - generic [ref=e453]:
+            - button "Go to slide 1" [ref=e454] [cursor=pointer]
+            - button "Go to slide 2" [ref=e455] [cursor=pointer]
+        - generic [ref=e456]:
+          - generic [ref=e459]:
+            - link "中山大学 数字化如何为高校师生提供生活便利？" [ref=e460] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=zsdx
+              - generic:
+                - img
+              - generic:
+                - generic: 中山大学
+                - generic: 数字化如何为高校师生提供生活便利？
+            - link "劲浪体育 私域让线下门店「坪效跃升」" [ref=e461] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/uU4J0N_UqjL-ZmbuCxVbWw
+              - generic:
+                - img
+              - generic:
+                - generic: 劲浪体育
+                - generic: 私域让线下门店「坪效跃升」
+            - link "名创优品 私域里的爆款制造机" [ref=e462] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/sOt-Qh_i2IHPi9cI2Jxg-w
+              - generic:
+                - img
+              - generic:
+                - generic: 名创优品
+                - generic: 私域里的爆款制造机
+            - link "蓝天救援队 挺身而出的凡人，和他们的数字化工具" [ref=e463] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/p1N75PCKkChRVoKQH22DHA
+              - generic:
+                - img
+              - generic:
+                - generic: 蓝天救援队
+                - generic: 挺身而出的凡人，和他们的数字化工具
+            - link "玛丝菲尔 服装品牌的高端服务之路" [ref=e464] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/nNjNZnCs8uYDkg-QIO0pGQ
+              - generic:
+                - img
+              - generic:
+                - generic: 玛丝菲尔
+                - generic: 服装品牌的高端服务之路
+            - link "住友 一家叫“住友”的酒店集团, 决定逆风翻盘" [ref=e465] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/m63lXzfKxENOBF8ofWlqbw
+              - generic:
+                - img
+              - generic:
+                - generic: 住友
+                - generic: 一家叫“住友”的酒店集团, 决定逆风翻盘
+            - link "浔兴拉链 一条拉链的数字化实验" [ref=e466] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/pCjIqgqAnk3-HjE-AfeFeg
+              - generic:
+                - img
+              - generic:
+                - generic: 浔兴拉链
+                - generic: 一条拉链的数字化实验
+            - link "自如 高管多是90后, 这家企业的年轻人如何极速成长？" [ref=e467] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/dAn0MEZbNFthyB9GnG1C2A
+              - generic:
+                - img
+              - generic:
+                - generic: 自如
+                - generic: 高管多是90后, 这家企业的年轻人如何极速成长？
+            - link "周大生 私域是珠宝品牌的“金银岛”" [ref=e468] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/ESLNlbuxNeHSuHwU6rHbLQ
+              - generic:
+                - img
+              - generic:
+                - generic: 周大生
+                - generic: 私域是珠宝品牌的“金银岛”
+            - link "广西贵港覃塘三中 是乡镇学校，也是「温暖而智慧」的校园" [ref=e469] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/ZeGRRUD7nnhulNnmqlJZtg
+              - generic:
+                - img
+              - generic:
+                - generic: 广西贵港覃塘三中
+                - generic: 是乡镇学校，也是「温暖而智慧」的校园
+            - link "CFB餐饮集团 从DQ到棒约翰，如何经营广受欢迎的美食品牌？" [ref=e470] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/_yor4y4BTX-RVjPF_F0eqw
+              - generic:
+                - img
+              - generic:
+                - generic: CFB餐饮集团
+                - generic: 从DQ到棒约翰，如何经营广受欢迎的美食品牌？
+            - link "贵州省政府 政务移动化，如何一个App就够了？" [ref=e471] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=gzszf
+              - generic:
+                - img
+              - generic:
+                - generic: 贵州省政府
+                - generic: 政务移动化，如何一个App就够了？
+            - link "国家电网 用企业微信私有部署打造安全、稳定的数字化底座" [ref=e472] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=gjdw
+              - generic:
+                - img
+              - generic:
+                - generic: 国家电网
+                - generic: 用企业微信私有部署打造安全、稳定的数字化底座
+            - link "尤伦斯当代艺术中心 顶级「当代艺术中心」，如何协作一场艺术盛宴？" [ref=e473] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/vQ2KOQVyqelXe0KW9abAIw
+              - generic:
+                - img
+              - generic:
+                - generic: 尤伦斯当代艺术中心
+                - generic: 顶级「当代艺术中心」，如何协作一场艺术盛宴？
+            - link "大师兄 「回头客」养成记：善用社群工具，让顾客留下来" [ref=e474] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/DbTxBY4ShPSLqGj8IafRlA
+              - generic:
+                - img
+              - generic:
+                - generic: 大师兄
+                - generic: 「回头客」养成记：善用社群工具，让顾客留下来
+            - link "日丰 神奇的中国工厂 · 在日丰" [ref=e475] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/YRj0XjHmIXHdXxRcAHdBDQ
+              - generic:
+                - img
+              - generic:
+                - generic: 日丰
+                - generic: 神奇的中国工厂 · 在日丰
+            - link "松赞度假酒店集团 藏地最美酒店打造好口碑的秘密" [ref=e476] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/aCNGtdG9XBmwUy1UOwdwSw
+              - generic:
+                - img
+              - generic:
+                - generic: 松赞度假酒店集团
+                - generic: 藏地最美酒店打造好口碑的秘密
+            - link "百果园 消费品，如何最大化降低库存损耗？" [ref=e477] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=bgy
+              - generic:
+                - img
+              - generic:
+                - generic: 百果园
+                - generic: 消费品，如何最大化降低库存损耗？
+            - link "北京大学第一医院 一年服务300万患者，揭秘这所顶级医院的“数字基建”" [ref=e478] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/pOdXY10q9hqFZuanLBCcUQ
+              - generic:
+                - img
+              - generic:
+                - generic: 北京大学第一医院
+                - generic: 一年服务300万患者，揭秘这所顶级医院的“数字基建”
+            - link "招商银行 银行如何打造线上五星级营业厅？" [ref=e479] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=zsyh
+              - generic:
+                - img
+              - generic:
+                - generic: 招商银行
+                - generic: 银行如何打造线上五星级营业厅？
+            - link "优比熊 一家佛山母婴连锁店，如何用私域逆战大商场？" [ref=e480] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/TYZs5juY03uajGl5LwBP7Q
+              - generic:
+                - img
+              - generic:
+                - generic: 优比熊
+                - generic: 一家佛山母婴连锁店，如何用私域逆战大商场？
+            - link "极米科技 谁给了这家科技公司「创新」的底气？" [ref=e481] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/FxBwIsjVWKIVcmhK_a-yzw
+              - generic:
+                - img
+              - generic:
+                - generic: 极米科技
+                - generic: 谁给了这家科技公司「创新」的底气？
+            - link "天虹 如何打破时空限制，在闭店时也能多成交？" [ref=e482] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=th
+              - generic:
+                - img
+              - generic:
+                - generic: 天虹
+                - generic: 如何打破时空限制，在闭店时也能多成交？
+            - link "万科物业 如何让社区服务少跑几趟, 简单高效?" [ref=e483] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=wkwy
+              - generic:
+                - img
+              - generic:
+                - generic: 万科物业
+                - generic: 如何让社区服务少跑几趟, 简单高效?
+            - link "山西大学 全国双一流、百年名校的「数字化新故事」" [ref=e484] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/7sKGGDbvXZp6zkejQjzz8w
+              - generic:
+                - img
+              - generic:
+                - generic: 山西大学
+                - generic: 全国双一流、百年名校的「数字化新故事」
+            - link "迪卡侬 从不花钱打广告的迪卡侬，为什么要坚持做私域？" [ref=e485] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/fBl6U8Fmxh8sSiDKipzl1A
+              - generic:
+                - img
+              - generic:
+                - generic: 迪卡侬
+                - generic: 从不花钱打广告的迪卡侬，为什么要坚持做私域？
+            - link "日谈公园 天南海北的团队, 如何打造出10亿播放量的播客?" [ref=e486] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/IhUtIwIc28mEyc-uaPuL8w
+              - generic:
+                - img
+              - generic:
+                - generic: 日谈公园
+                - generic: 天南海北的团队, 如何打造出10亿播放量的播客?
+            - link "佳叽 潮流品牌，如何一直保持品牌热度？" [ref=e487] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/W-jOhqJLMxC97saTediyqA
+              - generic:
+                - img
+              - generic:
+                - generic: 佳叽
+                - generic: 潮流品牌，如何一直保持品牌热度？
+            - link "西贝莜面村 餐饮门店如何服务周边忠实食客？" [ref=e488] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=xb
+              - generic:
+                - img
+              - generic:
+                - generic: 西贝莜面村
+                - generic: 餐饮门店如何服务周边忠实食客？
+            - link "广东省政府 用企业微信私有部署打造全省公务员的好帮手" [ref=e489] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=gdzf
+              - generic:
+                - img
+              - generic:
+                - generic: 广东省政府
+                - generic: 用企业微信私有部署打造全省公务员的好帮手
+            - link "中国交建 用企业微信私有部署，让信息系统不再隔阂" [ref=e490] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=zgjj
+              - generic:
+                - img
+              - generic:
+                - generic: 中国交建
+                - generic: 用企业微信私有部署，让信息系统不再隔阂
+            - link "雷士照明 传统制造业的数字化转型雄心" [ref=e491] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/2RzXEq35iNco2ZSPsd6rUQ
+              - generic:
+                - img
+              - generic:
+                - generic: 雷士照明
+                - generic: 传统制造业的数字化转型雄心
+            - link "上海电信 私域里做好服务，增长会随之而来" [ref=e492] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/nZhJdK9u32lYcZXvIaSkoA
+              - generic:
+                - img
+              - generic:
+                - generic: 上海电信
+                - generic: 私域里做好服务，增长会随之而来
+            - link "深圳明德实验学校 学生成绩好、综合素质高, 他们是如何做到的？" [ref=e493] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/YGkGvG5iVoIlqc27ORbdJw
+              - generic:
+                - img
+              - generic:
+                - generic: 深圳明德实验学校
+                - generic: 学生成绩好、综合素质高, 他们是如何做到的？
+            - link "周大福 如何轻松记住650万顾客的重要日子？" [ref=e494] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=zdf
+              - generic:
+                - img
+              - generic:
+                - generic: 周大福
+                - generic: 如何轻松记住650万顾客的重要日子？
+            - link "洲明科技 45 天交付冬奥舞台, 复杂协作如何快如闪电？" [ref=e495] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=zm
+              - generic:
+                - img
+              - generic:
+                - generic: 洲明科技
+                - generic: 45 天交付冬奥舞台, 复杂协作如何快如闪电？
+            - link "平安银行 金融服务，如何赢得上千万客户的信赖？" [ref=e496] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/U6Yz7d7lmOnrdB0xS95N-A
+              - generic:
+                - img
+              - generic:
+                - generic: 平安银行
+                - generic: 金融服务，如何赢得上千万客户的信赖？
+            - link "钇虹精密 「世界工厂」的数字化，并不「高大上」" [ref=e497] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/SBZNNHA6tAYF0JboJxBmZg
+              - generic:
+                - img
+              - generic:
+                - generic: 钇虹精密
+                - generic: 「世界工厂」的数字化，并不「高大上」
+            - link "锅圈 开在家门口的锅圈，如何做好“邻里生意”？" [ref=e498] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/uHfuIFYSHSG5mbh56U4dAA
+              - generic:
+                - img
+              - generic:
+                - generic: 锅圈
+                - generic: 开在家门口的锅圈，如何做好“邻里生意”？
+            - link "塔莎园艺 如何运营品牌社群，让顾客有聊不完的话题？" [ref=e499] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=tsyy
+              - generic:
+                - img
+              - generic:
+                - generic: 塔莎园艺
+                - generic: 如何运营品牌社群，让顾客有聊不完的话题？
+            - link "索菲亚 如何连接全产业链，为消费者交付满意的家？" [ref=e500] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=sfy
+              - generic:
+                - img
+              - generic:
+                - generic: 索菲亚
+                - generic: 如何连接全产业链，为消费者交付满意的家？
+            - link "唯品客蛋糕 返乡青年创业记" [ref=e501] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/rDy4l9kRrHybWaowGbZA0A
+              - generic:
+                - img
+              - generic:
+                - generic: 唯品客蛋糕
+                - generic: 返乡青年创业记
+            - link "成都地铁 安全隐患如何排查最及时？" [ref=e502] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=cddt
+              - generic:
+                - img
+              - generic:
+                - generic: 成都地铁
+                - generic: 安全隐患如何排查最及时？
+            - link "华夏银行 用企业微信私有部署，只进“一扇门”能办所有事" [ref=e503] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=hxyh
+              - generic:
+                - img
+              - generic:
+                - generic: 华夏银行
+                - generic: 用企业微信私有部署，只进“一扇门”能办所有事
+            - link "李宁 都说门店不好管，看看李宁怎么做" [ref=e504] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/UKtzy6dolNy_vlDjF1w9rQ
+              - generic:
+                - img
+              - generic:
+                - generic: 李宁
+                - generic: 都说门店不好管，看看李宁怎么做
+            - link "五菱宏光 设计师如何找到产品创新灵感？" [ref=e505] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=wlqc
+              - generic:
+                - img
+              - generic:
+                - generic: 五菱宏光
+                - generic: 设计师如何找到产品创新灵感？
+            - link "老百姓大药房 如何让老百姓看病、找药更容易？" [ref=e506] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=lbxdyf
+              - generic:
+                - img
+              - generic:
+                - generic: 老百姓大药房
+                - generic: 如何让老百姓看病、找药更容易？
+            - link "触典未来 12人的团队, 如何创作出打动大公司的广告作品？" [ref=e507] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/t1cedh4aXsMLY47rxtzM-A
+              - generic:
+                - img
+              - generic:
+                - generic: 触典未来
+                - generic: 12人的团队, 如何创作出打动大公司的广告作品？
+            - link "君乐宝 中国乳业的「优等生」，有哪些管理创新？" [ref=e508] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/G6ZLAkgjuV61KvwsDa1HXA
+              - generic:
+                - img
+              - generic:
+                - generic: 君乐宝
+                - generic: 中国乳业的「优等生」，有哪些管理创新？
+            - link "美图 如何打造出2.46亿用户都爱不释手的App？" [ref=e509] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/lPje3Qa6F85SvBa4iJVVMA
+              - generic:
+                - img
+              - generic:
+                - generic: 美图
+                - generic: 如何打造出2.46亿用户都爱不释手的App？
+            - link "新瑞鹏 宠物赛道的独角兽是如何养成的？" [ref=e510] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/cFaS7yGDwQT6ZdscPhmTkg
+              - generic:
+                - img
+              - generic:
+                - generic: 新瑞鹏
+                - generic: 宠物赛道的独角兽是如何养成的？
+            - link "艾克飞盘 艾克飞盘如何抓住风口？" [ref=e511] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/PpiBSlCbx8A9gvqg5DrEtQ
+              - generic:
+                - img
+              - generic:
+                - generic: 艾克飞盘
+                - generic: 艾克飞盘如何抓住风口？
+            - link "泡泡玛特 如何吸引年轻人玩到一起？" [ref=e512] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=ppmt
+              - generic:
+                - img
+              - generic:
+                - generic: 泡泡玛特
+                - generic: 如何吸引年轻人玩到一起？
+            - link "北京师范大学 高校如何实现数字化、人性化管理？" [ref=e513] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/9cmCqgwP5LH0U9a1jqcijw
+              - generic:
+                - img
+              - generic:
+                - generic: 北京师范大学
+                - generic: 高校如何实现数字化、人性化管理？
+            - link "官渡区教师进修学校 教育质量提升难？看看这个地区怎么做" [ref=e514] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/H-loM3vQdyMfx3jhfjkgpA
+              - generic:
+                - img
+              - generic:
+                - generic: 官渡区教师进修学校
+                - generic: 教育质量提升难？看看这个地区怎么做
+            - link "上海新黄浦实验学校 如何让老师家长「携手共育未来」？" [ref=e515] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=shxx
+              - generic:
+                - img
+              - generic:
+                - generic: 上海新黄浦实验学校
+                - generic: 如何让老师家长「携手共育未来」？
+            - link "贝壳 数字化如何助力「贝壳」 行业领先？" [ref=e516] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/ug3qt_GCmy5UxUzn1E8-0g
+              - generic:
+                - img
+              - generic:
+                - generic: 贝壳
+                - generic: 数字化如何助力「贝壳」 行业领先？
+            - link "同程旅行 既要「新客源」又要「高复购」，同程旅行私域的新思路" [ref=e517] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/xTF2A_Q-kn-0zmr9PRI8iw
+              - generic:
+                - img
+              - generic:
+                - generic: 同程旅行
+                - generic: 既要「新客源」又要「高复购」，同程旅行私域的新思路
+            - link "京师律师事务所 亚洲前三的律所，如何提升专业性和安全性？" [ref=e518] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/vy5ufnSqRQLml5aldOJ88g
+              - generic:
+                - img
+              - generic:
+                - generic: 京师律师事务所
+                - generic: 亚洲前三的律所，如何提升专业性和安全性？
+            - link "物业百强 用数字化为服务提效，让业主更满意" [ref=e519] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/0DXYKl1FVOnCIlB9SGixTA
+              - generic:
+                - img
+              - generic:
+                - generic: 物业百强
+                - generic: 用数字化为服务提效，让业主更满意
+            - link "宝岛眼镜 新私域经营启示录" [ref=e520] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/gaJHZtLRD3iXLpX2ajf_Ng
+              - generic:
+                - img
+              - generic:
+                - generic: 宝岛眼镜
+                - generic: 新私域经营启示录
+            - link "中国铜业 如何让重要的信息飞速流转？" [ref=e521] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=zgty
+              - generic:
+                - img
+              - generic:
+                - generic: 中国铜业
+                - generic: 如何让重要的信息飞速流转？
+            - link "盈米基金 长期主义者的私域「掘金」之路" [ref=e522] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/L7SP68uKl6AD7IfpRSEtcw
+              - generic:
+                - img
+              - generic:
+                - generic: 盈米基金
+                - generic: 长期主义者的私域「掘金」之路
+            - link "阜阳医保局 数字化是用来「做实事」的" [ref=e523] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/AJK5ULeYjJLF9M-HMaZgvg
+              - generic:
+                - img
+              - generic:
+                - generic: 阜阳医保局
+                - generic: 数字化是用来「做实事」的
+            - link "知识星球 50人的团队，如何做出影响千万用户的好产品？" [ref=e524] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/FSyTKJ2BzUHrmGvWQ0BaKw
+              - generic:
+                - img
+              - generic:
+                - generic: 知识星球
+                - generic: 50人的团队，如何做出影响千万用户的好产品？
+            - link "名创优品 连锁零售的进化：从经营位置，到经营人" [ref=e525] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/xIm1DQpx-7xRWT828SgTDQ
+              - generic:
+                - img
+              - generic:
+                - generic: 名创优品
+                - generic: 连锁零售的进化：从经营位置，到经营人
+            - link "南方医院 疫情期间，如何接诊、培训0风险？" [ref=e526] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=nfyy
+              - generic:
+                - img
+              - generic:
+                - generic: 南方医院
+                - generic: 疫情期间，如何接诊、培训0风险？
+            - link "大疆农业 贴近你的消费者：如何教会农户使用无人机？" [ref=e527] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=djny
+              - generic:
+                - img
+              - generic:
+                - generic: 大疆农业
+                - generic: 贴近你的消费者：如何教会农户使用无人机？
+            - link "BJHG 服装电商：利润都被流量成本吞掉了，怎么办？" [ref=e528] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/czxGOwdy8GBqSlwDZ98QqQ
+              - generic:
+                - img
+              - generic:
+                - generic: BJHG
+                - generic: 服装电商：利润都被流量成本吞掉了，怎么办？
+            - link "美素佳儿 私域的价值，远远不止GMV" [ref=e529] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/xiG1_-SMxwq3ScKf7xK0vw
+              - generic:
+                - img
+              - generic:
+                - generic: 美素佳儿
+                - generic: 私域的价值，远远不止GMV
+            - link "驰加 服务业标准化之困：如何让连锁店个个都像旗舰店？" [ref=e530] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/Jy18To95Ky7ESvov2lCCZQ
+              - generic:
+                - img
+              - generic:
+                - generic: 驰加
+                - generic: 服务业标准化之困：如何让连锁店个个都像旗舰店？
+            - link "探鱼 让消费者喜新不厌旧，探鱼有何妙招？" [ref=e531] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/xyIiebo5tJYv5zIG9z7HMw
+              - generic:
+                - img
+              - generic:
+                - generic: 探鱼
+                - generic: 让消费者喜新不厌旧，探鱼有何妙招？
+            - link "bilibili 如何让00后新员工也能快速融入？" [ref=e532] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=bilibili
+              - generic:
+                - img
+              - generic:
+                - generic: bilibili
+                - generic: 如何让00后新员工也能快速融入？
+            - link "宝鸡市教育局 这座城市的教育，让学校、家长都满意" [ref=e533] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/kIULbAPFfrX39XFiDWsN6g
+              - generic:
+                - img
+              - generic:
+                - generic: 宝鸡市教育局
+                - generic: 这座城市的教育，让学校、家长都满意
+            - link "太古可口可乐 如何让每次员工培训更有效果？" [ref=e534] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=kkkl
+              - generic:
+                - img
+              - generic:
+                - generic: 太古可口可乐
+                - generic: 如何让每次员工培训更有效果？
+            - link "百瑞源枸杞 农产品也能卖出好价钱" [ref=e535] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/Gx3cBAxjm4IWp9NEb-dbeg
+              - generic:
+                - img
+              - generic:
+                - generic: 百瑞源枸杞
+                - generic: 农产品也能卖出好价钱
+            - link "立邦 不会说话的产品，靠什么赢得口碑？" [ref=e536] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/3F3uva4x_uIIWD0NI9qbfQ
+              - generic:
+                - img
+              - generic:
+                - generic: 立邦
+                - generic: 不会说话的产品，靠什么赢得口碑？
+            - link "极氪汽车 极氪速度背后：用户型企业，极致协同" [ref=e537] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/noMLKF6pnHcqJ9yM8jBg7g
+              - generic:
+                - img
+              - generic:
+                - generic: 极氪汽车
+                - generic: 极氪速度背后：用户型企业，极致协同
+            - link "优衣库中国 高增长背后，如何打造优秀人才队伍？" [ref=e538] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/F38kixvqImyXPqZYDgXv9g
+              - generic:
+                - img
+              - generic:
+                - generic: 优衣库中国
+                - generic: 高增长背后，如何打造优秀人才队伍？
+            - link "宜家 如何让员工永远充满笑容, 热情专业？" [ref=e539] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=yj
+              - generic:
+                - img
+              - generic:
+                - generic: 宜家
+                - generic: 如何让员工永远充满笑容, 热情专业？
+            - link "海珠区教育局 如何让教育工作减负增效？" [ref=e540] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=hzqjyj
+              - generic:
+                - img
+              - generic:
+                - generic: 海珠区教育局
+                - generic: 如何让教育工作减负增效？
+            - link "壹号土猪 科学养猪，共同致富" [ref=e541] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/llI6Y6nxo1l0JBCHNQphTQ
+              - generic:
+                - img
+              - generic:
+                - generic: 壹号土猪
+                - generic: 科学养猪，共同致富
+            - link "劲松口腔医院 红海突围，如何靠服务赢人心？" [ref=e542] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/znHSv-LJ1fW6OeQS3dXipA
+              - generic:
+                - img
+              - generic:
+                - generic: 劲松口腔医院
+                - generic: 红海突围，如何靠服务赢人心？
+            - link "中山大学 数字化如何为高校师生提供生活便利？" [ref=e543] [cursor=pointer]:
+              - /url: /nl/index/caselist?id=zsdx
+              - generic:
+                - img
+              - generic:
+                - generic: 中山大学
+                - generic: 数字化如何为高校师生提供生活便利？
+            - link "劲浪体育 私域让线下门店「坪效跃升」" [ref=e544] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/uU4J0N_UqjL-ZmbuCxVbWw
+              - generic:
+                - img
+              - generic:
+                - generic: 劲浪体育
+                - generic: 私域让线下门店「坪效跃升」
+            - link "名创优品 私域里的爆款制造机" [ref=e545] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/sOt-Qh_i2IHPi9cI2Jxg-w
+              - generic:
+                - img
+              - generic:
+                - generic: 名创优品
+                - generic: 私域里的爆款制造机
+            - link "蓝天救援队 挺身而出的凡人，和他们的数字化工具" [ref=e546] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/p1N75PCKkChRVoKQH22DHA
+              - generic:
+                - img
+              - generic:
+                - generic: 蓝天救援队
+                - generic: 挺身而出的凡人，和他们的数字化工具
+            - link "玛丝菲尔 服装品牌的高端服务之路" [ref=e547] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/nNjNZnCs8uYDkg-QIO0pGQ
+              - generic:
+                - img
+              - generic:
+                - generic: 玛丝菲尔
+                - generic: 服装品牌的高端服务之路
+            - link "住友 一家叫“住友”的酒店集团, 决定逆风翻盘" [ref=e548] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/m63lXzfKxENOBF8ofWlqbw
+              - generic:
+                - img
+              - generic:
+                - generic: 住友
+                - generic: 一家叫“住友”的酒店集团, 决定逆风翻盘
+            - link "浔兴拉链 一条拉链的数字化实验" [ref=e549] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/pCjIqgqAnk3-HjE-AfeFeg
+              - generic:
+                - img
+              - generic:
+                - generic: 浔兴拉链
+                - generic: 一条拉链的数字化实验
+            - link "自如 高管多是90后, 这家企业的年轻人如何极速成长？" [ref=e550] [cursor=pointer]:
+              - /url: https://mp.weixin.qq.com/s/dAn0MEZbNFthyB9GnG1C2A
+              - generic:
+                - img
+              - generic:
+                - generic: 自如
+                - generic: 高管多是90后, 这家企业的年轻人如何极速成长？
+          - generic [ref=e551]:
+            - button "Previous slide" [ref=e552] [cursor=pointer]
+            - button "Next slide" [ref=e553] [cursor=pointer]
+          - link "认识更多企业微信用户" [ref=e555] [cursor=pointer]:
+            - /url: https://work.weixin.qq.com/nl/index/caselist?from=wwindex
+            - text: 认识更多企业微信用户
+      - generic [ref=e558]:
+        - button "Mac桌面端 点击直接下载" [ref=e559]:
+          - generic [ref=e563]: Mac桌面端
+          - generic [ref=e564]: 点击直接下载
+        - text: ‌
+        - button "Windows桌面端 点击直接下载" [ref=e565] [cursor=pointer]:
+          - generic [ref=e569]: Windows桌面端
+          - generic [ref=e570]: 点击直接下载
+        - text: ‌
+        - button "iOS版 扫描二维码下载" [ref=e571] [cursor=pointer]:
+          - img [ref=e574]
+          - generic [ref=e575]: iOS版
+          - generic [ref=e576]: 扫描二维码下载
+        - text: ‌
+        - button "Android版 扫描二维码下载" [ref=e577] [cursor=pointer]:
+          - img [ref=e580]
+          - generic [ref=e581]: Android版
+          - generic [ref=e582]: 扫描二维码下载
+        - text: ‌
+      - generic [ref=e583]:
+        - generic [ref=e584]:
+          - generic [ref=e585]: 最新动态
+          - generic [ref=e586]:
+            - link "企业微信 5.0.9 2026-06-23" [ref=e587] [cursor=pointer]:
+              - /url: javascript:;
+              - text: 企业微信 5.0.9
+              - time [ref=e589]: 2026-06-23
+            - list [ref=e590]:
+              - listitem [ref=e591]:
+                - paragraph [ref=e592]:
+                  - img [ref=e593]
+                  - text: AI 助力业务经营与办公提效
+                - list [ref=e594]:
+                  - generic [ref=e595]: 1. 服务总结
+                  - generic [ref=e596]:
+                    - generic [ref=e597]: 根据成员与客户的服务记录，AI 能自动总结客户的需求、意向和成交卡点等服务字段，并每天推荐可重点服务的客户，助力业务增收（功能逐步打开）。
+                    - list [ref=e598]:
+                      - listitem [ref=e599]: 成员服务客户时，可在聊天工具栏查看服务总结，快速查看客户信息。
+                      - listitem [ref=e600]: AI 每天推荐可重点服务的客户，提醒成员及时跟进。
+                      - listitem [ref=e601]: 支持添加和修改 AI 服务字段，满足个性化的业务需求。
+                  - generic [ref=e602]: 2. 智能助理
+                  - generic [ref=e603]:
+                    - generic [ref=e604]: 智能助理 · 大圆，现已开启内测。
+                    - list [ref=e605]:
+                      - listitem [ref=e606]: 通过手机端的贴边把手和电脑端快捷键可随时唤起大圆，自然衔接当前功能和上下文，辅助你更高效使用各项功能。
+                      - listitem [ref=e607]: 大圆能帮你总结聊天内容、读写文档表格、汇总项目进展，也支持设置定时任务，自动整理工作待办、联网搜索行业动态。
+                  - generic [ref=e608]: 3. 智能表格
+                  - list [ref=e610]:
+                    - listitem [ref=e611]: AI 字段支持解析文件、处理图片。
+                    - list [ref=e612]:
+                      - listitem [ref=e613]: 解析文件：可帮你从文件中提取合同到期日、发票金额、候选人学历等信息。
+                      - listitem [ref=e614]: 处理图片：可帮你添加图片水印、移除图片背景、提升清晰度、生成二维码。
+                  - generic [ref=e615]: 4. 智能文档
+                  - list [ref=e617]:
+                    - listitem [ref=e618]: 新增目录功能，阅读长篇内容更高效。同时支持划词评论，可选中文档任意内容进行评论。
+                    - listitem [ref=e619]: 支持更丰富的内容块。可添加流程图和思维导图，用图呈现复杂步骤和思路。链接可展示为带标题和封面图的卡片样式，适用于搭建知识库目录或资料导航。
+                  - generic [ref=e620]: 5. 记录面聊
+                  - list [ref=e622]:
+                    - listitem [ref=e623]: 记录面聊入口更丰富快捷：可在日程开始时，提醒我开始记录面聊；也可在手机屏幕上添加记录面聊的小组件、快捷指令，或添加录音设备，快速启动记录。
+                    - listitem [ref=e624]: 支持从工作台打开记录面聊，找回历史面聊。也支持了关键词查找面聊内容。
+              - listitem [ref=e625]:
+                - paragraph [ref=e626]:
+                  - img [ref=e627]
+                  - text: 效率工具与基础体验
+                - list [ref=e628]:
+                  - generic [ref=e629]: 1. 聊天和基础体验
+                  - list [ref=e631]:
+                    - listitem [ref=e632]: 新增分支回复，适用于在项目大群、部门群中，部分成员针对一件事情展开讨论。无需再新建小群或重复私聊。
+                    - listitem [ref=e633]: 分支回复不会通知未参与的群成员，减少打扰。所有群成员都能按需查看内容。转发后也能聚合展示。
+                    - listitem [ref=e634]: 贴表情新增 3 个表情，表达更丰富。
+                    - listitem [ref=e635]: 搜索可以找到收藏、存储空间等功能了。当单聊、群聊中@的成员账号暂不可用时，可以看到提示“对方无法收发消息”，避免无效等待。
+                  - generic [ref=e636]: 2. 话题
+                  - generic [ref=e637]:
+                    - generic [ref=e638]: 话题，是以事情为主题，成员共同参与的一种协作方式。适合公告通知、意见收集、知识分享等场景（功能灰度中）。
+                    - list [ref=e639]:
+                      - listitem [ref=e640]: 一件事情一个话题帖，新人加入也可以看到全部帖子。
+                      - listitem [ref=e641]: 可对帖子贴表情及评论，围绕事情的讨论、进展聚焦于一处。
+                  - generic [ref=e642]: 3. 待办
+                  - list [ref=e644]:
+                    - listitem [ref=e645]: 待办新增更多快捷入口，智能文档的内容可一键添加至待办，方便跟进，完成状态也会自动同步。待办描述中可添加图片、文档和文件了。
+                  - generic [ref=e646]: 4. 跨境沟通与境外用户体验
+                  - list [ref=e648]:
+                    - listitem [ref=e649]: 支持葡萄牙语、匈牙利语 2 种界面语言，提升境外用户的使用体验。
+              - listitem [ref=e650]:
+                - paragraph [ref=e651]:
+                  - img [ref=e652]
+                  - text: 开放能力
+                - list [ref=e653]:
+                  - list [ref=e655]:
+                    - listitem [ref=e656]: 使用企业应用时，可一键添加到待办，例如可将业务系统中的任务汇总到待办，方便统一跟进。
+                    - listitem [ref=e657]: 支持通过接口配置成员的通讯录查看权限，批量配置更便捷。
+        - link "全部更新日志" [ref=e659] [cursor=pointer]:
+          - /url: javascript:;
+          - text: 全部更新日志
+        - generic [ref=e661]: 活动及资讯
+        - list [ref=e662]
+        - link "更多活动及资讯" [ref=e664] [cursor=pointer]:
+          - /url: /nl/index/news?from=ww_index
+          - generic [ref=e665]: 更多活动及资讯
+      - generic [ref=e668]:
+        - link "回顾2025年发布会" [ref=e669] [cursor=pointer]:
+          - /url: https://work.weixin.qq.com/cgi-bin/launch/tmpl?intro=2025
+          - text: 回顾2025年发布会
+        - link "更多品牌内容" [ref=e672] [cursor=pointer]:
+          - /url: javascript:;
+          - text: 更多品牌内容
+  - generic:
+    - contentinfo [ref=e674]:
+      - generic [ref=e675]:
+        - navigation [ref=e677]:
+          - generic [ref=e678]:
+            - generic [ref=e679]: 企业微信服务
+            - list [ref=e680]:
+              - listitem [ref=e681]:
+                - link "开发者中心" [ref=e682] [cursor=pointer]:
+                  - /url: https://developer.work.weixin.qq.com/?from=wwindex
+              - listitem [ref=e683]:
+                - link "API/SDK" [ref=e684] [cursor=pointer]:
+                  - /url: https://developer.work.weixin.qq.com/document?from=wwindex
+              - listitem [ref=e685]:
+                - link "微信客服" [ref=e686] [cursor=pointer]:
+                  - /url: https://work.weixin.qq.com/kf?from=wwindex
+              - listitem [ref=e687]:
+                - link "私有部署" [ref=e688] [cursor=pointer]:
+                  - /url: https://work.weixin.qq.com/server?from=wwindex
+          - generic [ref=e689]:
+            - generic [ref=e690]: 第三方服务
+            - list [ref=e691]:
+              - listitem [ref=e692]:
+                - link "服务商官网" [ref=e693] [cursor=pointer]:
+                  - /url: https://open.work.weixin.qq.com/?from=wwindex
+              - listitem [ref=e694]:
+                - link "第三方应用" [ref=e695] [cursor=pointer]:
+                  - /url: https://open.work.weixin.qq.com/app?from=wwindex
+          - generic [ref=e696]:
+            - generic [ref=e697]: 智慧硬件
+            - list [ref=e698]:
+              - listitem [ref=e699]:
+                - link "智慧考勤" [ref=e700] [cursor=pointer]:
+                  - /url: https://open.work.weixin.qq.com/app?activeTab=Hardware&from=wwindex#anchor_%E6%99%BA%E6%85%A7%E8%80%83%E5%8B%A4
+              - listitem [ref=e701]:
+                - link "智慧会议" [ref=e702] [cursor=pointer]:
+                  - /url: https://open.work.weixin.qq.com/app?activeTab=Hardware&from=wwindex#anchor_%E6%99%BA%E6%85%A7%E4%BC%9A%E8%AE%AE
+              - listitem [ref=e703]:
+                - link "智慧打印" [ref=e704] [cursor=pointer]:
+                  - /url: https://open.work.weixin.qq.com/app?activeTab=Hardware&from=wwindex#anchor_%E6%99%BA%E6%85%A7%E6%89%93%E5%8D%B0
+          - generic [ref=e705]:
+            - generic [ref=e706]: 学习与帮助
+            - list [ref=e707]:
+              - listitem [ref=e708]:
+                - link "学习园地" [ref=e709] [cursor=pointer]:
+                  - /url: https://work.weixin.qq.com/nl/learning?from=wwindex
+              - listitem [ref=e710]:
+                - link "使用手册" [ref=e711] [cursor=pointer]:
+                  - /url: https://open.work.weixin.qq.com/wwopen/helpguide/index?from=wwindex
+              - listitem [ref=e712]:
+                - link "帮助中心" [ref=e713] [cursor=pointer]:
+                  - /url: https://work.weixin.qq.com/help?from=wwindex
+          - generic [ref=e714]:
+            - generic [ref=e715]: 更多
+            - list [ref=e716]:
+              - listitem [ref=e717]:
+                - link "客户案例" [ref=e718] [cursor=pointer]:
+                  - /url: https://work.weixin.qq.com/nl/index/caselist?from=wwindex
+              - listitem [ref=e719]:
+                - link "安全中心" [ref=e720] [cursor=pointer]:
+                  - /url: https://security.tencent.com/qywx
+              - listitem [ref=e721]:
+                - link "国际化支持" [ref=e722] [cursor=pointer]:
+                  - /url: https://work.weixin.qq.com/nl/international?from=wwindex
+          - generic [ref=e723]:
+            - generic [ref=e724]: 联系我们
+            - generic [ref=e725]:
+              - generic [ref=e726]:
+                - link "企业微信客服" [ref=e727] [cursor=pointer]:
+                  - /url: javascript:;
+                - text: .
+              - generic [ref=e728]:
+                - link "企业微信公众号" [ref=e729] [cursor=pointer]:
+                  - /url: javascript:;
+                - text: .
+              - link "新浪微博" [ref=e731] [cursor=pointer]:
+                - /url: http://weibo.com/u/5877022208
+        - generic [ref=e732]:
+          - generic [ref=e733]:
+            - link "中文" [ref=e734] [cursor=pointer]:
+              - /url: ""
+            - text: "|"
+            - link "English" [ref=e735] [cursor=pointer]:
+              - /url: ""
+          - generic [ref=e736]:
+            - link "关于腾讯" [ref=e737] [cursor=pointer]:
+              - /url: http://www.tencent.com/
+            - text: "|"
+            - link "用户协议" [ref=e738] [cursor=pointer]:
+              - /url: /eula
+            - text: "|"
+            - link "使用规范" [ref=e739] [cursor=pointer]:
+              - /url: /norm
+            - text: "|"
+            - link "隐私政策" [ref=e740] [cursor=pointer]:
+              - /url: /privacy
+            - generic [ref=e741]: © 1998 - 2026 Tencent Inc. All Rights Reserved
+          - generic [ref=e742]:
+            - text: 粤公网安备
+            - link "44030002000001号" [ref=e743] [cursor=pointer]:
+              - /url: http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=44030002000001
+            - text: ICP备案号
+            - link "粤B2-20090059" [ref=e744] [cursor=pointer]:
+              - /url: https://beian.miit.gov.cn/
+            - text: 增值电信业务经营许可证
+            - link "粤B2-20090059" [ref=e745] [cursor=pointer]:
+              - /url: https://wwcdn.weixin.qq.com/node/wework/images/B2_20090059.0787ca6af3.jpg
+    - generic [ref=e746]:
+      - generic [ref=e750]: 在微信中搜索“企业微信"公众号
+      - generic [ref=e751]:
+        - link "取消" [ref=e752] [cursor=pointer]:
+          - /url: javascript:;
+        - link "打开微信" [ref=e753] [cursor=pointer]:
+          - /url: weixin://

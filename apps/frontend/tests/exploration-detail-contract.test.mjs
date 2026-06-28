@@ -6,6 +6,14 @@ const pageSource = readFileSync(
   new URL("../src/app/(main)/projects/[projectId]/exploration/[runId]/page.tsx", import.meta.url),
   "utf8",
 );
+const explorationRunRepoSource = readFileSync(
+  new URL("../../backend/app/repositories/exploration_run_repo.py", import.meta.url),
+  "utf8",
+);
+const explorationServiceSource = readFileSync(
+  new URL("../../backend/app/services/exploration/page_exploration_service.py", import.meta.url),
+  "utf8",
+);
 
 test("exploration detail keeps only the page-level stop exploration action", () => {
   assert.doesNotMatch(pageSource, /<h2 className="font-medium text-sm">探索模块进度<\/h2>[\s\S]*>\s*停止\s*<\/Button>/);
@@ -123,4 +131,15 @@ test("exploration detail removes the exploration plan module", () => {
 test("exploration task text keeps single newlines inside one rendered paragraph", () => {
   assert.match(pageSource, /\.split\(\s*\/\\n\{2,\}\/\s*\)/);
   assert.doesNotMatch(pageSource, /\.split\(\s*\/\\n\+\/\s*\)/);
+});
+
+test("exploration detail query includes environment summary fields", () => {
+  assert.match(explorationRunRepoSource, /def find_detail_by_id\(db: Connection, run_id: str\) -> Row \| None:/);
+  assert.match(explorationRunRepoSource, /p\.name AS project_name/);
+  assert.match(explorationRunRepoSource, /pe\.name AS environment_name/);
+  assert.match(explorationRunRepoSource, /pe\.site_url AS environment_site_url/);
+  assert.match(explorationRunRepoSource, /pe\.login_strategy AS environment_login_strategy/);
+  assert.match(explorationRunRepoSource, /COALESCE\(sd\.name, ''\) AS requirement_doc_title/);
+  assert.match(explorationServiceSource, /def _normalize_exploration_run_detail\(run: dict\) -> dict:/);
+  assert.match(explorationServiceSource, /run\["login_strategy"\] = environment_login_strategy/);
 });

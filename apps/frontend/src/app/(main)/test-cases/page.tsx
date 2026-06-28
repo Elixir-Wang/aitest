@@ -115,7 +115,7 @@ export default function Page() {
     }
     const [nextRequirements, nextExplorations] = await Promise.all([
       apiRequest<ApiRequirementDocument[]>(`/projects/${nextProjectId}/requirements`),
-      apiRequest<ApiExplorationRun[]>(`/projects/${nextProjectId}/exploration-runs`),
+      apiRequest<ApiExplorationRun[]>(`/page-exploration/runs?project_id=${nextProjectId}`),
     ]);
     setRequirements(nextRequirements);
     setExplorations(nextExplorations);

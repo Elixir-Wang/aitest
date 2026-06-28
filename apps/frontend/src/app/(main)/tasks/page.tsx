@@ -144,7 +144,7 @@ export default function Page() {
                 <TableHead>任务种类</TableHead>
                 <TableHead>项目</TableHead>
                 <TableHead>状态</TableHead>
-                <TableHead>创建时间</TableHead>
+                <TableHead>更新时间</TableHead>
                 <TableHead className="w-16">操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -157,7 +157,7 @@ export default function Page() {
                   <TableCell>
                     <TaskStatusBadge task={task} />
                   </TableCell>
-                  <TableCell>{formatDateTime(task.created_at)}</TableCell>
+                  <TableCell>{formatDateTime(task.updated_at)}</TableCell>
                   <TableCell>
                     <Button
                       aria-label="查看任务详情"
@@ -271,7 +271,7 @@ function TaskDetail({ task }: { task: ApiTaskItem }) {
     ["任务种类", task.module_label],
     ["任务名称", task.title],
     ["状态", task.status_label],
-    ["创建时间", formatDateTime(task.created_at)],
+    ["更新时间", formatDateTime(task.updated_at)],
     ["任务 ID", task.source_id],
     ["任务来源", task.source_type],
     ["摘要", task.summary || "-"],

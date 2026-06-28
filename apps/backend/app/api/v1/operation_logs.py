@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import Response
 
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.operation_log import ClientErrorReport, OperationLogCleanupRequest, OperationLogRetentionPolicyUpdate
@@ -50,6 +51,11 @@ def get_retention_policy(actor=Depends(require_admin)) -> dict:
     return operation_log_service.get_retention_policy(actor)
 
 
+@router.get("/filter-options")
+def list_filter_options(project_id: str | None = None, actor=Depends(current_user)) -> dict:
+    return operation_log_service.list_filter_options(actor, project_id=project_id)
+
+
 @router.put("/retention-policy")
 def update_retention_policy(payload: OperationLogRetentionPolicyUpdate, actor=Depends(require_admin)) -> dict:
     return operation_log_service.update_retention_policy(payload, actor)
@@ -61,8 +67,43 @@ def cleanup_logs(payload: OperationLogCleanupRequest, actor=Depends(require_admi
 
 
 @router.get("/export")
-def export_logs(actor=Depends(require_admin)) -> dict:
-    return {"status": "pending", "message": "日志导出将在前端页面接入后补充文件生成。"}
+def export_logs(
+    project_id: str | None = None,
+    log_type: str | None = None,
+    module: str | None = None,
+    action: str | None = None,
+    object_type: str | None = None,
+    actor_id: str | None = None,
+    result: str | None = None,
+    keyword: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    actor=Depends(require_admin),
+) -> Response:
+    from app.schemas.operation_log import OperationLogQuery
+
+    content = operation_log_service.export_logs(
+        OperationLogQuery(
+            page=1,
+            page_size=200,
+            project_id=project_id,
+            log_type=log_type,
+            module=module,
+            action=action,
+            object_type=object_type,
+            actor_id=actor_id,
+            result=result,
+            keyword=keyword,
+            start_time=start_time,
+            end_time=end_time,
+        ),
+        actor,
+    )
+    return Response(
+        content="\ufeff" + content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="operation-logs.csv"'},
+    )
 
 
 @router.post("/client-errors")
@@ -115,4 +156,49 @@ def list_project_logs(
             end_time=end_time,
         ),
         actor,
+    )
+
+
+@project_router.get("/filter-options")
+def list_project_filter_options(project_id: str, actor=Depends(current_user)) -> dict:
+    return operation_log_service.list_filter_options(actor, project_id=project_id)
+
+
+@project_router.get("/export")
+def export_project_logs(
+    project_id: str,
+    log_type: str | None = None,
+    module: str | None = None,
+    action: str | None = None,
+    object_type: str | None = None,
+    actor_id: str | None = None,
+    result: str | None = None,
+    keyword: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    actor=Depends(current_user),
+) -> Response:
+    from app.schemas.operation_log import OperationLogQuery
+
+    content = operation_log_service.export_logs(
+        OperationLogQuery(
+            page=1,
+            page_size=200,
+            log_type=log_type,
+            module=module,
+            action=action,
+            object_type=object_type,
+            actor_id=actor_id,
+            result=result,
+            keyword=keyword,
+            start_time=start_time,
+            end_time=end_time,
+        ),
+        actor,
+        project_id=project_id,
+    )
+    return Response(
+        content="\ufeff" + content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{project_id}-operation-logs.csv"'},
     )

@@ -1,4 +1,19 @@
 {
   "cookies": [],
-  "origins": []
+  "origins": [
+    {
+      "origin": "https://www.cybotstar.cn",
+      "localStorage": [
+        {
+          "name": "sbtToken",
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzgzMDEzNjU1LCJpYXQiOjE3ODI1ODE2NTUsImp0aSI6IjdkZWNkY2ZiZGUwNDQ2NTg4OGUxMGNjMTAxMWY3ZTI3IiwidXNlcl9pZCI6NDU3MH0.OOp2aCx3G4qlxTDJJLW_fhujrFrxDSVfI2SO7P4IbgM"
+        },
+        {
+          "name": "vuex",
+          "value": "{\"app\":{\"menuTheme\":\"dark\",\"avatar\":\"-user\",\"isBlur\":false,\"currentRole\":\"\",\"currentBot\":{\"id\":\"\",\"agent_type\":\"\"},\"operates\":[\"homeland_plugin\",\"homeland_chatflow\",\"homeland_long_memory\",\"homeland_knowledge\",\"homeland_database\"],\"botUserInfo\":{\"token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzgzMDEzNjU1LCJpYXQiOjE3ODI1ODE2NTUsImp0aSI6IjdkZWNkY2ZiZGUwNDQ2NTg4OGUxMGNjMTAxMWY3ZTI3IiwidXNlcl9pZCI6NDU3MH0.OOp2aCx3G4qlxTDJJLW_fhujrFrxDSVfI2SO7P4IbgM\",\"refresh_token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc4MzQ0NTY1NSwiaWF0IjoxNzgyNTgxNjU1LCJqdGkiOiJmOTcwNGExMzcwNTM0NjgzODhlNWNmZDM5YzFjYmQyNCIsInVzZXJfaWQiOjQ1NzB9.dqjciIFkrmrNP4QVeKL8IR_gCYHnE3U1AbdZwTJLs8M\",\"userId\":4570,\"userName\":\"hongbao.wang@brgroup.com\",\"nickname\":\"hongbao.wang1\",\"homeLandId\":4981,\"email\":\"hongbao.wang@brgroup.com\",\"mobile\":\"\",\"avatar\":\"/api/media/file/image/avatar/user_avatar.png\",\"expire_time\":\"2999-12-31 23:59:59\",\"need_bind_mobile\":true},\"homelandInfo\":{\"homeland\":4981,\"user\":4570,\"homeland_name\":\"hongbao.wang\",\"homeland_type\":1,\"homeland_owner\":\"hongbao.wang1\",\"homeland_owner_id\":4981,\"role\":\"home_owner\",\"response_role\":\"所有者\"},\"showConversationList\":false,\"isCompanyUser\":false,\"companyPermissions\":[],\"companyAgentPermissions\":[],\"companyAiWritePermissions\":[],\"companyKnowledgePermissions\":[],\"companyPluginPermissions\":[],\"companyDatabasePermissions\":[],\"workspaceListState\":null},\"aiWrite\":{\"articleReadonly\":false}}"
+        }
+      ],
+      "indexedDB": []
+    }
+  ]
 }

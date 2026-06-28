@@ -35,10 +35,10 @@
   "login_button_selector": "",
   "has_agreement_checkbox": true,
   "created_from": "successful_login",
-  "created_at": "2026-06-21T23:16:01.463Z",
+  "created_at": "2026-06-27T17:34:16.710Z",
   "dom_fingerprint": {
     "host": "www.cybotstar.cn",
     "title": "百融百工",
-    "element_count": 21
+    "element_count": 76
   }
 }

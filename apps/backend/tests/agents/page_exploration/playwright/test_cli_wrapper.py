@@ -19,20 +19,18 @@ def mock_subprocess():
 
 def test_snap_success(mock_subprocess):
     """Test successful snap command with YAML parsing."""
-    mock_output = """url: https://test.com/workspace
-title: 智能体工作台
-elements:
-  - ref: e15
-    role: button
-    name: 创建智能体
-    visible: true
-  - ref: e20
-    role: textbox
-    name: 搜索
-    text: ''
-    visible: true
+    mock_output = """### Page
+- Page URL: https://test.com/workspace
+- Page Title: 智能体工作台
+### Snapshot
+- generic [ref=e1]:
+  - button "创建智能体" [ref=e15]
+  - textbox "搜索" [ref=e20]
 """
-    mock_subprocess.return_value = Mock(returncode=0, stdout=mock_output, stderr="")
+    mock_subprocess.side_effect = [
+        Mock(returncode=0, stdout="", stderr=""),
+        Mock(returncode=0, stdout=mock_output, stderr=""),
+    ]
 
     cli = PlaywrightCLI()
     result = cli.snap("https://test.com/workspace")
@@ -46,6 +44,9 @@ elements:
     assert result.elements[0].name == "创建智能体"
     assert result.elements[0].visible is True
     assert result.raw_output == mock_output
+    assert mock_subprocess.call_count == 2
+    assert mock_subprocess.call_args_list[0][0][0][-2:] == ["open", "https://test.com/workspace"]
+    assert mock_subprocess.call_args_list[1][0][0][-1:] == ["snapshot"]
 
 
 def test_snap_timeout(mock_subprocess):
@@ -57,6 +58,22 @@ def test_snap_timeout(mock_subprocess):
 
     with pytest.raises(subprocess.TimeoutExpired):
         cli.snap("https://test.com/slow")
+
+
+def test_snap_failure(mock_subprocess):
+    """测试快照失败（非超时）"""
+    mock_subprocess.side_effect = [Mock(
+        returncode=1,
+        stdout="",
+        stderr="Page not found"
+    )]
+
+    cli = PlaywrightCLI()
+    result = cli.snap("https://test.com/404")
+
+    assert result.error == "Page not found"
+    assert result.title == ""
+    assert len(result.elements) == 0
 
 
 def test_navigate_success(mock_subprocess):
@@ -74,7 +91,7 @@ def test_navigate_success(mock_subprocess):
     mock_subprocess.assert_called_once()
     args = mock_subprocess.call_args[0][0]
     assert "playwright-cli" in args
-    assert "navigate" in args
+    assert "goto" in args
     assert "https://test.com/page" in args
 
 
@@ -138,6 +155,17 @@ def test_fill_success(mock_subprocess):
     assert "test input" in args
 
 
+def test_fill_failure(mock_subprocess):
+    """测试填写失败"""
+    mock_subprocess.return_value = Mock(returncode=1, stdout="", stderr="Element not found")
+
+    cli = PlaywrightCLI()
+    result = cli.fill("getByLabel('missing')", "value")
+
+    assert result.success is False
+    assert result.error == "Element not found"
+
+
 def test_session_id_usage(mock_subprocess):
     """Test that session_id is appended to commands."""
     mock_subprocess.return_value = Mock(returncode=0, stdout="", stderr="")
@@ -146,5 +174,4 @@ def test_session_id_usage(mock_subprocess):
     cli.click("e15")
 
     args = mock_subprocess.call_args[0][0]
-    assert "--session" in args
-    assert "test-session-123" in args
+    assert "-s=test-session-123" in args

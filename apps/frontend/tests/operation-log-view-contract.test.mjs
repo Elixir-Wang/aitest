@@ -27,3 +27,33 @@ test("operation log action labels cover requirement analysis lifecycle actions",
   assert.match(apiClientSource, /fail_requirement_analysis: "需求分析失败"/);
   assert.match(apiClientSource, /finish_requirement_analysis: "完成需求分析"/);
 });
+
+test("operation log filters load dynamic options from the backend with static fallback", () => {
+  assert.match(apiClientSource, /export type ApiOperationLogFilterOptions = \{/);
+  assert.match(viewSource, /apiRequest<ApiOperationLogFilterOptions>\(`\$\{endpoint\}\/filter-options\$\{suffix\}`\)/);
+  assert.match(viewSource, /params\.set\("project_id", projectId\);/);
+  assert.match(viewSource, /setProjects\(await apiRequest<ApiProject\[\]>\("\/projects"\)\);/);
+  assert.match(viewSource, /function mergeOptions\(fallback: string\[\], dynamicOptions: string\[\] \| undefined\)/);
+  assert.match(viewSource, /const moduleOptions = useMemo\(/);
+  assert.match(viewSource, /const actionOptions = useMemo\(/);
+  assert.match(viewSource, /const resultOptions = useMemo\(/);
+});
+
+test("operation log view exports the current filters as a csv download", () => {
+  assert.match(viewSource, /apiBlobRequest\(`\$\{endpoint\}\/export\$\{exportQuery\}`\)/);
+  assert.match(viewSource, /function queryForExport\(query: string\)/);
+  assert.match(viewSource, /params\.delete\("page"\);/);
+  assert.match(viewSource, /params\.delete\("page_size"\);/);
+  assert.match(viewSource, /function downloadBlob\(blob: Blob, filename: string\)/);
+  assert.match(viewSource, /<Download className="size-4" \/>/);
+});
+
+test("operation log labels cover persisted system actions and modules", () => {
+  assert.match(apiClientSource, /auto_auth_login: "自动登录"/);
+  assert.match(apiClientSource, /query: "查询"/);
+  assert.match(apiClientSource, /delete_conversation: "删除会话"/);
+  assert.match(apiClientSource, /cancel_requirement_analysis: "取消需求分析"/);
+  assert.match(apiClientSource, /interrupt_exploration: "中断探索"/);
+  assert.match(apiClientSource, /stop_stale_test_case_generation: "停止过期用例生成"/);
+  assert.match(apiClientSource, /test_case: "测试用例"/);
+});

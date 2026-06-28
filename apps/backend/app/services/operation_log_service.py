@@ -2,6 +2,8 @@ import json
 import logging
 import re
 import secrets
+from csv import writer
+from io import StringIO
 from sqlite3 import Row
 from typing import Any
 from urllib.parse import urlsplit
@@ -16,6 +18,7 @@ from app.schemas.operation_log import (
     OperationLogCleanupRequest,
     OperationLogCleanupResult,
     OperationLogCreate,
+    OperationLogFilterOptionsOut,
     OperationLogListOut,
     OperationLogQuery,
     OperationLogRetentionPolicyOut,
@@ -150,6 +153,86 @@ def list_project_logs(project_id: str, query: OperationLogQuery, actor: Row) -> 
             page=query.page,
             page_size=query.page_size,
         ).model_dump()
+
+
+def list_filter_options(actor: Row, *, project_id: str | None = None) -> dict:
+    if project_id:
+        _ensure_project_access(project_id, actor)
+    else:
+        _require_admin(actor)
+    with connect() as db:
+        options = operation_log_repo.list_filter_options(db, {"project_id": project_id})
+    return OperationLogFilterOptionsOut(
+        modules=options["module"],
+        actions=options["action"],
+        results=options["result"],
+        log_types=options["log_type"],
+    ).model_dump()
+
+
+def export_logs(query: OperationLogQuery, actor: Row, *, project_id: str | None = None) -> str:
+    if project_id:
+        _ensure_project_access(project_id, actor)
+    else:
+        _require_admin(actor)
+    filters = query.model_dump(exclude_none=True)
+    filters["page"] = 1
+    filters["page_size"] = 10000
+    if project_id:
+        filters["project_id"] = project_id
+    with connect() as db:
+        rows = operation_log_repo.list_logs_for_export(db, filters)
+
+    output = StringIO()
+    csv_writer = writer(output)
+    csv_writer.writerow(
+        [
+            "日志ID",
+            "时间",
+            "类型",
+            "模块",
+            "动作",
+            "对象类型",
+            "对象ID",
+            "对象名称",
+            "项目ID",
+            "操作人ID",
+            "操作人",
+            "来源",
+            "结果",
+            "摘要",
+            "失败原因",
+            "任务ID",
+            "请求ID",
+            "IP",
+            "User-Agent",
+        ]
+    )
+    for row in rows:
+        csv_writer.writerow(
+            [
+                row["id"],
+                row["created_at"],
+                row["log_type"],
+                row["module"],
+                row["action"],
+                row["object_type"],
+                row["object_id"] or "",
+                row["object_name"],
+                row["project_id"] or "",
+                row["actor_id"],
+                row["actor_name"],
+                row["source"],
+                row["result"],
+                row["summary"],
+                row["failure_reason"],
+                row["task_id"] or "",
+                row["request_id"],
+                row["ip_address"],
+                row["user_agent"],
+            ]
+        )
+    return output.getvalue()
 
 
 def get_log(log_id: str, actor: Row) -> dict:

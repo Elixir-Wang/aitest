@@ -1,5 +1,9 @@
 import secrets
 
+from pydantic import SecretStr
+from langchain_openai import ChatOpenAI
+
+from app.agents.model_selection import resolve_model_selection, build_agent_model
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.repositories import project_repo
@@ -9,6 +13,9 @@ from app.presentation.serializers import serialize_project
 from app.services import operation_log_service
 
 STATUSES = {"active", "archived"}
+
+# 使用站点探索智能体的模型配置来优化探索目标
+EXPLORATION_GOAL_OPTIMIZE_CAPABILITY_ID = "site_exploration"
 
 
 def list_projects(actor) -> list[dict]:
@@ -149,3 +156,64 @@ def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
 
 def _actor_display_name(actor) -> str:
     return operation_log_service.actor_display_name(actor)
+
+
+def optimize_exploration_goal(project_id: str, goal: str, actor) -> dict:
+    """使用AI优化探索目标
+
+    Args:
+        project_id: 项目ID
+        goal: 原始探索目标
+        actor: 当前用户
+
+    Returns:
+        包含优化后目标的字典
+    """
+    # 验证项目是否存在
+    with connect() as db:
+        project = project_repo.find_by_id(db, project_id)
+        if not project:
+            raise api_error(404, "NOT_FOUND", "项目不存在。")
+
+    # 获取模型配置
+    try:
+        selection = resolve_model_selection(EXPLORATION_GOAL_OPTIMIZE_CAPABILITY_ID)
+        llm = build_agent_model(selection)
+    except (ValueError, KeyError) as e:
+        raise api_error(500, "MODEL_NOT_CONFIGURED", f"AI模型未配置：{str(e)}")
+
+    # 构建优化提示词
+    system_prompt = """你是一个专业的测试工程师助手，负责优化用户输入的页面探索目标。
+
+你的任务是：
+1. 理解用户的原始探索意图
+2. 将模糊的描述转换为清晰、具体、可执行的探索目标
+3. 补充必要的细节，如需要验证的内容、预期结果等
+4. 使用简洁、专业的语言
+
+要求：
+- 保持原始意图不变
+- 目标应该具体、可衡量
+- 包含需要验证的关键点
+- 如果原始目标已经很清晰，可以适当优化措辞即可
+- 不要添加用户未提及的额外需求
+- 返回优化后的目标文本，不需要解释"""
+
+    user_prompt = f"""请优化以下探索目标：
+
+{goal}
+
+请直接返回优化后的探索目标文本，不需要前缀或解释。"""
+
+    try:
+        # 调用LLM进行优化
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        response = llm.invoke(messages)
+        optimized_goal = response.content.strip()
+
+        return {"optimized_goal": optimized_goal}
+    except Exception as e:
+        raise api_error(500, "OPTIMIZATION_FAILED", f"探索目标优化失败：{str(e)}")

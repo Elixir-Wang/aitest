@@ -4,7 +4,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useSearchParams } from "next/navigation";
 
-import { CircleHelp, Eye, EyeOff, LogIn, Pencil, Play, Plus, Save, Sparkles, Square, Trash2, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  CircleHelp,
+  Eye,
+  EyeOff,
+  FileText,
+  Folder,
+  FolderOpen,
+  LogIn,
+  Pencil,
+  Play,
+  Plus,
+  Save,
+  Sparkles,
+  Square,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
@@ -95,6 +113,51 @@ type ExplorationRun = {
 
 type ExplorationGoalOptimizeResult = {
   optimized_goal: string;
+};
+
+type ExplorationArtifact = {
+  id: string;
+  run_id: string;
+  run_title: string;
+  project_id: string;
+  project_name: string;
+  artifact_type: string;
+  file_path: string;
+  file_name: string;
+  file_size: number;
+  created_at: string;
+};
+
+type ProjectArtifactRow = {
+  project_id: string;
+  project_name: string;
+  artifact_count: number;
+  latest_created_at: string | null;
+  latest_run_id: string | null;
+};
+
+type ExplorationPageRecord = {
+  id: string;
+  exploration_run_id: string;
+  module_key: string;
+  title: string;
+  url: string;
+  entry_path: string;
+  structure_summary: string;
+  screenshot_path: string;
+  snapshot_path: string;
+  trace_path: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type ExplorationPageTreeNode = {
+  id: string;
+  name: string;
+  path: string;
+  type: "folder" | "page";
+  children: ExplorationPageTreeNode[];
+  page?: ExplorationPageRecord;
 };
 
 type ExplorationWorkspaceProps = {
@@ -212,7 +275,7 @@ const environmentLoginStrategyOptions = ["skip_login", "account_password"];
 const captchaStrategyOptions = ["none", "ai_letter", "manual"];
 const reuseAuthStateOptions = ["enabled", "disabled"];
 
-const explorationTabs = ["探索列表", "探索环境"];
+const explorationTabs = ["探索列表", "探索环境", "探索产物"];
 const NO_REQUIREMENT_VALUE = "__none__";
 const EXPLORATION_GOAL_MAX_LENGTH = 4000;
 const STOPPABLE_EXPLORATION_STATUSES = new Set(["queued", "running"]);
@@ -324,6 +387,263 @@ function parsePositiveInteger(value: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function pageDisplayPath(page: ExplorationPageRecord) {
+  return (
+    page.entry_path ||
+    (() => {
+      try {
+        return new URL(page.url).pathname || "/";
+      } catch {
+        return page.url || "/";
+      }
+    })()
+  );
+}
+
+function buildPageTree(pages: ExplorationPageRecord[]): ExplorationPageTreeNode {
+  const root: ExplorationPageTreeNode = {
+    id: "root",
+    name: "页面",
+    path: "/",
+    type: "folder",
+    children: [],
+  };
+
+  for (const page of pages) {
+    const path = pageDisplayPath(page);
+    const segments = path.split("/").filter(Boolean);
+    const nodeSegments = segments.length > 0 ? segments : ["首页"];
+    let current = root;
+    let currentPath = "";
+
+    nodeSegments.forEach((segment, index) => {
+      currentPath = segment === "首页" && path === "/" ? "/" : `${currentPath}/${segment}`;
+      const isPage = index === nodeSegments.length - 1;
+      const nodeId = isPage ? page.id : `folder:${currentPath}`;
+      let child = current.children.find((item) => item.id === nodeId);
+      if (!child) {
+        child = {
+          id: nodeId,
+          name: isPage ? page.title || segment : segment,
+          path: isPage ? path : currentPath,
+          type: isPage ? "page" : "folder",
+          children: [],
+          page: isPage ? page : undefined,
+        };
+        current.children.push(child);
+      }
+      if (isPage) {
+        child.page = page;
+        child.name = page.title || child.name;
+      }
+      current = child;
+    });
+  }
+
+  return root;
+}
+
+function collectPageFolderIds(node: ExplorationPageTreeNode): string[] {
+  return node.children.flatMap((child) => [
+    ...(child.type === "folder" ? [child.id] : []),
+    ...collectPageFolderIds(child),
+  ]);
+}
+
+function findPageNode(node: ExplorationPageTreeNode, pageId: string): ExplorationPageTreeNode | null {
+  if (node.id === pageId) {
+    return node;
+  }
+  for (const child of node.children) {
+    const found = findPageNode(child, pageId);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+}
+
+function ExplorationProjectPagesTree({
+  expandedNodeIds,
+  loading,
+  onPageSelect,
+  onToggleNode,
+  pages,
+  projectName,
+  selectedPageId,
+}: {
+  expandedNodeIds: string[];
+  loading: boolean;
+  onPageSelect: (pageId: string) => void;
+  onToggleNode: (nodeId: string) => void;
+  pages: ExplorationPageRecord[];
+  projectName: string;
+  selectedPageId: string;
+}) {
+  const tree = useMemo(() => buildPageTree(pages), [pages]);
+  const selectedNode = selectedPageId ? findPageNode(tree, selectedPageId) : null;
+  const selectedPage = selectedNode?.page ?? pages[0] ?? null;
+  const effectiveExpandedIds = expandedNodeIds.length > 0 ? expandedNodeIds : collectPageFolderIds(tree);
+
+  useEffect(() => {
+    if (!selectedPageId && pages[0]) {
+      onPageSelect(pages[0].id);
+    }
+  }, [onPageSelect, pages, selectedPageId]);
+
+  return (
+    <div className="overflow-hidden rounded-lg border bg-background">
+      <div className="flex h-12 items-center gap-2 border-b px-3">
+        <div className="min-w-0">
+          <h2 className="truncate font-medium text-sm">{projectName}</h2>
+        </div>
+      </div>
+      {loading ? (
+        <div className="p-6">
+          <Table>
+            <TableBody>
+              <TableLoadingRow colSpan={1} label="页面信息加载中" />
+            </TableBody>
+          </Table>
+        </div>
+      ) : pages.length === 0 ? (
+        <div className="p-8 text-center text-muted-foreground text-sm">暂无页面信息。</div>
+      ) : (
+        <div className="grid min-h-[30rem] lg:grid-cols-[18rem_minmax(0,1fr)]">
+          <aside className="min-h-0 border-b bg-muted/20 lg:border-r lg:border-b-0">
+            <div className="border-b px-3 py-2 font-medium text-sm">页面目录</div>
+            <div className="max-h-[34rem] overflow-auto p-2">
+              {tree.children.map((node) => (
+                <ExplorationPageTreeItem
+                  activePageId={selectedPage?.id ?? ""}
+                  depth={0}
+                  expandedNodeIds={effectiveExpandedIds}
+                  key={node.id}
+                  node={node}
+                  onPageSelect={onPageSelect}
+                  onToggleNode={onToggleNode}
+                />
+              ))}
+            </div>
+          </aside>
+          <main className="min-w-0 p-4">
+            {selectedPage ? (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-medium text-base">{selectedPage.title || "未命名页面"}</h3>
+                  <p className="mt-1 break-all text-muted-foreground text-xs">{pageDisplayPath(selectedPage)}</p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <PageInfoTile label="页面地址" value={selectedPage.url || "-"} />
+                  <PageInfoTile label="模块" value={selectedPage.module_key || "-"} />
+                  <PageInfoTile label="截图" value={selectedPage.screenshot_path || "-"} />
+                  <PageInfoTile label="快照" value={selectedPage.snapshot_path || "-"} />
+                </div>
+                <div className="rounded-lg border p-4">
+                  <div className="mb-2 font-medium text-sm">页面信息</div>
+                  <p className="whitespace-pre-wrap text-muted-foreground text-sm">
+                    {selectedPage.structure_summary || "暂无页面结构摘要。"}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+          </main>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExplorationPageTreeItem({
+  activePageId,
+  depth,
+  expandedNodeIds,
+  node,
+  onPageSelect,
+  onToggleNode,
+}: {
+  activePageId: string;
+  depth: number;
+  expandedNodeIds: string[];
+  node: ExplorationPageTreeNode;
+  onPageSelect: (pageId: string) => void;
+  onToggleNode: (nodeId: string) => void;
+}) {
+  const isFolder = node.type === "folder";
+  const expanded = isFolder && expandedNodeIds.includes(node.id);
+  const active = node.type === "page" && node.id === activePageId;
+
+  return (
+    <div>
+      <div
+        className={
+          active
+            ? "flex h-8 items-center gap-1 rounded-md bg-primary/10 px-1 text-primary"
+            : "flex h-8 items-center gap-1 rounded-md px-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+        }
+        style={{ paddingLeft: `${depth * 14 + 4}px` }}
+      >
+        {isFolder ? (
+          <button
+            aria-label={expanded ? "收起页面分组" : "展开页面分组"}
+            className="flex size-5 items-center justify-center rounded-sm hover:bg-background"
+            onClick={() => onToggleNode(node.id)}
+            type="button"
+          >
+            {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+          </button>
+        ) : (
+          <span className="size-5" />
+        )}
+        <button
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm"
+          onClick={() => {
+            if (isFolder) {
+              onToggleNode(node.id);
+            } else {
+              onPageSelect(node.id);
+            }
+          }}
+          type="button"
+        >
+          {isFolder ? (
+            expanded ? (
+              <FolderOpen className="size-4 shrink-0" />
+            ) : (
+              <Folder className="size-4 shrink-0" />
+            )
+          ) : (
+            <FileText className="size-4 shrink-0" />
+          )}
+          <span className="truncate">{node.name}</span>
+        </button>
+      </div>
+      {isFolder && expanded
+        ? node.children.map((child) => (
+            <ExplorationPageTreeItem
+              activePageId={activePageId}
+              depth={depth + 1}
+              expandedNodeIds={expandedNodeIds}
+              key={child.id}
+              node={child}
+              onPageSelect={onPageSelect}
+              onToggleNode={onToggleNode}
+            />
+          ))
+        : null}
+    </div>
+  );
+}
+
+function PageInfoTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border bg-muted/10 p-3">
+      <div className="text-muted-foreground text-xs">{label}</div>
+      <div className="mt-1 break-all text-sm">{value}</div>
+    </div>
+  );
+}
+
 export function ExplorationWorkspace({
   breadcrumbs,
   description,
@@ -363,6 +683,13 @@ export function ExplorationWorkspace({
   const [goalOptimizeLoading, setGoalOptimizeLoading] = useState(false);
   const [goalOptimizeSource, setGoalOptimizeSource] = useState("");
   const [goalOptimizeResult, setGoalOptimizeResult] = useState("");
+  const [artifacts, setArtifacts] = useState<ExplorationArtifact[]>([]);
+  const [artifactsLoading, setArtifactsLoading] = useState(false);
+  const [selectedArtifactProjectId, setSelectedArtifactProjectId] = useState("");
+  const [projectPages, setProjectPages] = useState<ExplorationPageRecord[]>([]);
+  const [projectPagesLoading, setProjectPagesLoading] = useState(false);
+  const [selectedPageId, setSelectedPageId] = useState("");
+  const [expandedPageNodeIds, setExpandedPageNodeIds] = useState<string[]>([]);
   const explorationSelection = useLocalTableSelection<ExplorationRun>([]);
   const {
     allSelected,
@@ -488,7 +815,9 @@ export function ExplorationWorkspace({
       setError("");
       try {
         const path =
-          projectScope === "project" && projectId ? `/projects/${projectId}/exploration-runs` : "/exploration-runs";
+          projectScope === "project" && projectId
+            ? `/page-exploration/runs?project_id=${projectId}`
+            : "/page-exploration/runs-all";
         const data = await apiRequest<ExplorationRun[]>(path);
         if (!ignore) {
           explorationSelection.setRows(data);
@@ -559,6 +888,64 @@ export function ExplorationWorkspace({
     };
   }, [selectedProjectId]);
 
+  const refreshArtifacts = useCallback(async () => {
+    setArtifactsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (projectId) {
+        params.append("project_id", projectId);
+      }
+      const queryString = params.toString();
+      const path = `/page-exploration/artifacts${queryString ? `?${queryString}` : ""}`;
+      setArtifacts(await apiRequest<ExplorationArtifact[]>(path));
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "产物列表加载失败",
+        actionLabel: "加载产物",
+        method: "GET",
+        path: "/page-exploration/artifacts",
+      });
+    } finally {
+      setArtifactsLoading(false);
+    }
+  }, [projectId]);
+
+  const loadProjectPages = useCallback(async (project: ProjectArtifactRow) => {
+    setProjectPagesLoading(true);
+    setProjectPages([]);
+    setSelectedPageId("");
+    setExpandedPageNodeIds([]);
+    try {
+      const pages = await apiRequest<ExplorationPageRecord[]>(`/page-exploration/runs/${project.latest_run_id}/pages`);
+      setProjectPages(pages);
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "探索页面加载失败",
+        actionLabel: "加载探索页面",
+        method: "GET",
+        path: `/page-exploration/runs/${project.latest_run_id}/pages`,
+      });
+    } finally {
+      setProjectPagesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== "探索产物") {
+      return;
+    }
+
+    let ignore = false;
+    void (async () => {
+      if (ignore) return;
+      await refreshArtifacts();
+    })();
+
+    return () => {
+      ignore = true;
+    };
+  }, [activeTab, refreshArtifacts]);
+
   const filteredRows = useMemo(
     () =>
       rows.filter((item) =>
@@ -570,7 +957,7 @@ export function ExplorationWorkspace({
           captchaStrategyLabels[item.captcha_strategy] ?? item.captcha_strategy,
           authStateStatusLabels[item.auth_state_status] ?? item.auth_state_status,
           item.updated_at,
-        ].some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase())),
+        ].some((value) => (value ?? "").toLowerCase().includes(searchText.trim().toLowerCase())),
       ),
     [rows, searchText],
   );
@@ -588,10 +975,93 @@ export function ExplorationWorkspace({
           item.goal,
           item.notes,
           item.updated_at,
-        ].some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase())),
+        ].some((value) => (value ?? "").toLowerCase().includes(searchText.trim().toLowerCase())),
       ),
     [explorationSelection.rows, searchText],
   );
+
+  const artifactRowsByProject = useMemo(() => {
+    const byProject = new Map<string, ProjectArtifactRow>();
+    for (const item of artifacts) {
+      const existing = byProject.get(item.project_id);
+      if (!existing) {
+        byProject.set(item.project_id, {
+          project_id: item.project_id,
+          project_name:
+            projects.find((project) => project.id === item.project_id)?.name ?? item.project_name ?? item.project_id,
+          artifact_count: 1,
+          latest_created_at: item.created_at,
+          latest_run_id: item.run_id,
+        });
+        continue;
+      }
+      existing.artifact_count += 1;
+      if (!existing.latest_created_at || item.created_at > existing.latest_created_at) {
+        existing.latest_created_at = item.created_at;
+        existing.latest_run_id = item.run_id;
+        existing.project_name =
+          projects.find((project) => project.id === item.project_id)?.name ??
+          item.project_name ??
+          existing.project_name;
+      }
+    }
+
+    return byProject;
+  }, [artifacts, projects]);
+
+  const artifactProjectOptions = useMemo(() => {
+    const visibleProjects = projectId ? projects.filter((project) => project.id === projectId) : projects;
+    return visibleProjects
+      .filter((project) => project.status !== "archived")
+      .map(
+        (project): ProjectArtifactRow =>
+          artifactRowsByProject.get(project.id) ?? {
+            project_id: project.id,
+            project_name: project.name,
+            artifact_count: 0,
+            latest_created_at: null,
+            latest_run_id: null,
+          },
+      );
+  }, [artifactRowsByProject, projectId, projects]);
+
+  useEffect(() => {
+    if (activeTab !== "探索产物") {
+      return;
+    }
+
+    if (artifactProjectOptions.length === 0) {
+      setSelectedArtifactProjectId("");
+      setProjectPages([]);
+      setSelectedPageId("");
+      setExpandedPageNodeIds([]);
+      return;
+    }
+
+    if (!artifactProjectOptions.some((item) => item.project_id === selectedArtifactProjectId)) {
+      setSelectedArtifactProjectId(artifactProjectOptions[0].project_id);
+    }
+  }, [activeTab, artifactProjectOptions, selectedArtifactProjectId]);
+
+  const selectedArtifactProject =
+    artifactProjectOptions.find((item) => item.project_id === selectedArtifactProjectId) ??
+    artifactProjectOptions[0] ??
+    null;
+
+  useEffect(() => {
+    if (activeTab !== "探索产物" || !selectedArtifactProject) {
+      return;
+    }
+
+    if (!selectedArtifactProject.latest_run_id) {
+      setProjectPages([]);
+      setSelectedPageId("");
+      setExpandedPageNodeIds([]);
+      return;
+    }
+
+    void loadProjectPages(selectedArtifactProject);
+  }, [activeTab, loadProjectPages, selectedArtifactProject]);
 
   const scopedProjectName =
     (projectName.trim() ? projectName : undefined) ??
@@ -1001,17 +1471,14 @@ export function ExplorationWorkspace({
         timeout_minutes: timeoutMinutes,
       };
       if (editingExploration) {
-        const updated = await apiRequest<ExplorationRun>(
-          `/projects/${editingExploration.project_id}/exploration-runs/${editingExploration.id}`,
-          {
-            method: "PATCH",
-            body: JSON.stringify(payload),
-          },
-        );
+        const updated = await apiRequest<ExplorationRun>(`/page-exploration/runs/${editingExploration.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
         explorationSelection.setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
         toast.success("探索任务已更新");
       } else {
-        const created = await apiRequest<ExplorationRun>(`/projects/${targetProjectId}/exploration-runs`, {
+        const created = await apiRequest<ExplorationRun>(`/page-exploration/runs`, {
           method: "POST",
           body: JSON.stringify({
             project_id: targetProjectId,
@@ -1046,7 +1513,7 @@ export function ExplorationWorkspace({
           if (!run) {
             return Promise.resolve();
           }
-          return apiRequest(`/projects/${run.project_id}/exploration-runs/${id}`, { method: "DELETE" });
+          return apiRequest(`/page-exploration/runs/${id}`, { method: "DELETE" });
         }),
       );
       explorationSelection.setRows((current) => current.filter((row) => !ids.includes(row.id)));
@@ -1065,7 +1532,7 @@ export function ExplorationWorkspace({
   async function stopExplorationRun(run: ExplorationRun) {
     setStoppingExplorationId(run.id);
     try {
-      const updated = await apiRequest<ExplorationRun>(`/projects/${run.project_id}/exploration-runs/${run.id}/stop`, {
+      const updated = await apiRequest<ExplorationRun>(`/page-exploration/runs/${run.id}/stop`, {
         method: "POST",
       });
       explorationSelection.setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
@@ -1076,7 +1543,7 @@ export function ExplorationWorkspace({
         fallbackMessage: "探索任务停止失败",
         actionLabel: "停止探索任务",
         method: "POST",
-        path: `/projects/${run.project_id}/exploration-runs/${run.id}/stop`,
+        path: `/page-exploration/runs/${run.id}/stop`,
       });
     } finally {
       setStoppingExplorationId("");
@@ -1086,7 +1553,7 @@ export function ExplorationWorkspace({
   async function startExplorationRun(run: ExplorationRun) {
     setStartingExplorationId(run.id);
     try {
-      const updated = await apiRequest<ExplorationRun>(`/projects/${run.project_id}/exploration-runs/${run.id}/start`, {
+      const updated = await apiRequest<ExplorationRun>(`/page-exploration/runs/${run.id}/start`, {
         method: "POST",
       });
       explorationSelection.setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
@@ -1097,7 +1564,7 @@ export function ExplorationWorkspace({
         fallbackMessage: "探索任务启动失败",
         actionLabel: run.status === "pending" ? "启动探索任务" : "重新探索",
         method: "POST",
-        path: `/projects/${run.project_id}/exploration-runs/${run.id}/start`,
+        path: `/page-exploration/runs/${run.id}/start`,
       });
     } finally {
       setStartingExplorationId("");
@@ -1340,7 +1807,7 @@ export function ExplorationWorkspace({
                             icon: Pencil,
                             onSelect: () => openEditExplorationDialog(item),
                           },
-                          ...(item.available_actions.includes("start")
+                          ...((item.available_actions ?? []).includes("start")
                             ? [
                                 {
                                   label: item.status === "pending" ? "开始探索" : "重新探索",
@@ -1487,6 +1954,64 @@ export function ExplorationWorkspace({
               </TableBody>
             </Table>
           </div>
+        </ShellSection>
+      ) : null}
+
+      {activeTab === "探索产物" ? (
+        <ShellSection>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-medium text-sm">项目列表</h2>
+            <div className="flex items-center gap-3">
+              <span className="font-medium text-muted-foreground text-sm">项目选择</span>
+              <Select
+                className="w-56"
+                disabled={artifactsLoading || artifactProjectOptions.length === 0}
+                placeholder="选择项目"
+                setValue={setSelectedArtifactProjectId}
+                value={selectedArtifactProject?.project_id ?? ""}
+              >
+                {artifactProjectOptions.map((artifact) => (
+                  <SelectOption key={artifact.project_id} value={artifact.project_id}>
+                    {artifact.project_name}
+                  </SelectOption>
+                ))}
+              </Select>
+            </div>
+          </div>
+          {artifactsLoading ? (
+            <div className="rounded-lg border p-6">
+              <Table>
+                <TableBody>
+                  <TableLoadingRow colSpan={1} label="产物信息加载中" />
+                </TableBody>
+              </Table>
+            </div>
+          ) : null}
+          {!artifactsLoading && selectedArtifactProject && selectedArtifactProject.artifact_count === 0 ? (
+            <div className="rounded-lg border p-8 text-center text-muted-foreground text-sm">
+              当前项目暂无探索产物。探索任务完成后，会在这里显示。
+            </div>
+          ) : null}
+          {!artifactsLoading && artifactProjectOptions.length === 0 ? (
+            <div className="rounded-lg border p-8 text-center text-muted-foreground text-sm">暂无可切换项目。</div>
+          ) : null}
+          {selectedArtifactProject && selectedArtifactProject.artifact_count > 0 ? (
+            <div>
+              <ExplorationProjectPagesTree
+                expandedNodeIds={expandedPageNodeIds}
+                loading={projectPagesLoading}
+                onPageSelect={setSelectedPageId}
+                onToggleNode={(nodeId) =>
+                  setExpandedPageNodeIds((ids) =>
+                    ids.includes(nodeId) ? ids.filter((id) => id !== nodeId) : [...ids, nodeId],
+                  )
+                }
+                pages={projectPages}
+                projectName={selectedArtifactProject.project_name}
+                selectedPageId={selectedPageId}
+              />
+            </div>
+          ) : null}
         </ShellSection>
       ) : null}
 

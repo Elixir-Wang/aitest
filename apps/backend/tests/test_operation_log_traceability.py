@@ -71,6 +71,81 @@ def test_operation_log_keyword_search_includes_trace_task_and_object_id(
     assert by_task["items"][0]["object_id"] == "reqrun-1"
 
 
+def test_operation_log_filter_options_include_persisted_values(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    operation_log_service.record_task_event(
+        module="environment",
+        action="auto_auth_login",
+        object_type="exploration_environment",
+        object_id="env-1",
+        object_name="测试环境",
+        project_id="project-1",
+        actor_id="system",
+        actor_name="系统",
+        source="system",
+        result="failed",
+        failure_reason="验证码识别失败。",
+        summary="自动登录失败。",
+    )
+
+    options = operation_log_service.list_filter_options(ACTOR)
+    project_options = operation_log_service.list_filter_options(ACTOR, project_id="project-1")
+
+    assert "environment" in options["modules"]
+    assert "auto_auth_login" in options["actions"]
+    assert "failed" in options["results"]
+    assert "task" in options["log_types"]
+    assert project_options["modules"] == ["environment"]
+    assert project_options["actions"] == ["auto_auth_login"]
+
+
+def test_operation_log_export_reuses_filters_and_masks_sensitive_values(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    operation_log_service.record_task_event(
+        module="environment",
+        action="auto_auth_login",
+        object_type="exploration_environment",
+        object_id="env-1",
+        object_name="测试环境",
+        project_id="project-1",
+        actor_id="system",
+        actor_name="系统",
+        source="system",
+        result="failed",
+        failure_reason="登录失败 token=abc123",
+        summary="自动登录失败。",
+    )
+    operation_log_service.record_success(
+        module="project",
+        action="create",
+        object_type="project",
+        object_id="project-2",
+        object_name="其他项目",
+        project_id="project-2",
+        actor_id="u-admin",
+        actor_name="管理员",
+        source="web",
+        summary="新建项目。",
+    )
+
+    csv_content = operation_log_service.export_logs(
+        OperationLogQuery(project_id="project-1", module="environment"),
+        ACTOR,
+    )
+
+    assert "日志ID,时间,类型,模块,动作" in csv_content
+    assert "auto_auth_login" in csv_content
+    assert "project-1" in csv_content
+    assert "project-2" not in csv_content
+    assert "token=abc123" not in csv_content
+
+
 def test_record_client_error_writes_failed_frontend_log_with_trace_and_project(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,

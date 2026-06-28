@@ -38,8 +38,39 @@ def list_logs(db: Connection, filters: dict) -> tuple[list[Row], int]:
     return rows, total
 
 
+def list_logs_for_export(db: Connection, filters: dict, *, limit: int = 10000) -> list[Row]:
+    where, params = _build_where(filters)
+    return db.execute(
+        f"""
+        SELECT *
+        FROM operation_logs
+        {where}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+        """,
+        (*params, limit),
+    ).fetchall()
+
+
 def get_log(db: Connection, log_id: str) -> Row | None:
     return db.execute("SELECT * FROM operation_logs WHERE id = ?", (log_id,)).fetchone()
+
+
+def list_filter_options(db: Connection, filters: dict) -> dict[str, list[str]]:
+    where, params = _build_options_where(filters)
+    options = {}
+    for column in ("module", "action", "result", "log_type"):
+        rows = db.execute(
+            f"""
+            SELECT DISTINCT {column} AS value
+            FROM operation_logs
+            {where}
+            ORDER BY value ASC
+            """,
+            params,
+        ).fetchall()
+        options[column] = [row["value"] for row in rows if row["value"]]
+    return options
 
 
 def get_retention_policy(db: Connection) -> Row:
@@ -100,6 +131,16 @@ def _build_where(filters: dict) -> tuple[str, tuple]:
             "(object_name LIKE ? OR summary LIKE ? OR failure_reason LIKE ? OR request_id LIKE ? OR task_id LIKE ? OR object_id LIKE ?)"
         )
         params.extend([keyword, keyword, keyword, keyword, keyword, keyword])
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    return where, tuple(params)
+
+
+def _build_options_where(filters: dict) -> tuple[str, tuple]:
+    clauses = []
+    params: list[object] = []
+    if filters.get("project_id"):
+        clauses.append("project_id = ?")
+        params.append(filters["project_id"])
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     return where, tuple(params)
 

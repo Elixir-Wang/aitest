@@ -1,6 +1,6 @@
 {
-  "status": "failed",
-  "message": "自动登录已完成，但保存出的登录态不可复用。",
-  "updated_at": "2026-06-21T23:16:01.464117+00:00",
-  "last_error_code": "AUTH_STATE_INVALID"
+  "status": "succeeded",
+  "message": "登录态已存在且有效，无需重新登录。",
+  "updated_at": "2026-06-27T17:38:27.617854+00:00",
+  "last_error_code": ""
 }

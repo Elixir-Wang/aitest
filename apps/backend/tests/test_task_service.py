@@ -119,6 +119,40 @@ def test_list_running_tasks_includes_active_exploration(monkeypatch: pytest.Monk
     assert tasks[0]["status_label"] == "探索中"
 
 
+def test_restart_exploration_clears_stale_completion_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_project(db)
+        db.execute(
+            """
+            INSERT INTO project_environments (id, project_id, name, site_url, created_by)
+            VALUES ('env-1', 'project-1', '测试环境', 'https://example.test', 'u-admin')
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO exploration_runs
+              (id, project_id, environment_id, title, status, result_summary, started_at, finished_at, created_by)
+            VALUES
+              ('run-1', 'project-1', 'env-1', '首页探索', 'completed', '探索完成，共探索 1 个页面', '2026-06-04T10:00:00Z', '2026-06-04T10:05:00Z', 'u-admin')
+            """
+        )
+
+    with core_db.connect() as db:
+        exploration_service.start_exploration_async(ACTOR, "run-1")
+
+    with core_db.connect() as db:
+        run = db.execute(
+            "SELECT status, result_summary, started_at, finished_at FROM exploration_runs WHERE id = ?",
+            ("run-1",),
+        ).fetchone()
+
+    assert run["status"] in {"queued", "running"}
+    assert run["result_summary"] == ""
+    assert run["finished_at"] is None
+    assert run["started_at"] is None or run["started_at"] != "2026-06-04T10:00:00Z"
+
+
 def test_requirement_file_task_uses_file_mapping_created_timestamp(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     with core_db.connect() as db:

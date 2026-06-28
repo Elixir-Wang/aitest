@@ -70,9 +70,9 @@ def test_build_agent_model_passes_extra_body(monkeypatch: pytest.MonkeyPatch) ->
 
     model = build_agent_model(
         ModelSelection(
-            provider="Minimax",
-            model="MiniMax-M3",
-            base_url="https://minimax.example/v1",
+            provider="deepseek",
+            model="deepseek-chat",
+            base_url="https://api.deepseek.com",
             api_key="sk-test",
         ),
         extra_body={"thinking": {"type": "disabled"}},
@@ -80,6 +80,20 @@ def test_build_agent_model_passes_extra_body(monkeypatch: pytest.MonkeyPatch) ->
 
     assert model == "chat-model"
     assert calls["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_build_agent_model_rejects_unsupported_tool_provider() -> None:
+    from app.agents.model_selection import build_agent_model
+
+    with pytest.raises(ValueError, match="不适合用于带工具调用的 Agent"):
+        build_agent_model(
+            ModelSelection(
+                provider="Minimax",
+                model="MiniMax-M3",
+                base_url="https://minimax.example/v1",
+                api_key="sk-test",
+            )
+        )
 
 
 def test_document_editor_service_returns_structured_response(monkeypatch: pytest.MonkeyPatch) -> None:

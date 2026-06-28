@@ -34,6 +34,11 @@ AI_CAPABILITIES: tuple[AiCapability, ...] = (
         name="测试用例生成智能体",
         description="根据最终需求文档生成完整、系统、可执行的测试用例集。",
     ),
+    AiCapability(
+        id="site_exploration",
+        name="站点探索智能体",
+        description="负责自动化探索 Web 应用，包括页面分析、元素识别、登录表单分析和验证码识别等多模态任务。",
+    ),
 )
 
 

@@ -80,6 +80,13 @@ class OperationLogListOut(BaseModel):
     page_size: int
 
 
+class OperationLogFilterOptionsOut(BaseModel):
+    modules: list[str]
+    actions: list[str]
+    results: list[str]
+    log_types: list[str]
+
+
 class OperationLogRetentionPolicyOut(BaseModel):
     id: str
     retention_days: int

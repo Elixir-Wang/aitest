@@ -60,6 +60,23 @@ def trigger_ai_letter_auto_auth(environment_id: str) -> None:
         }
     ):
         raise ValueError("environment is not eligible for ai letter auto auth")
+
+    # 🔧 修复：先检查登录态是否有效，避免不必要的重新登录
+    auth_summary = auth_state_summary(
+        environment_id=environment_id,
+        login_strategy=environment["login_strategy"],
+        reuse_auth_state=bool(environment.get("reuse_auth_state")),
+    )
+
+    if auth_summary["status"] == "valid":
+        # 登录态有效，直接标记为成功，无需重新登录
+        _write_auto_auth_status(
+            environment_id,
+            status="succeeded",
+            message="登录态已存在且有效，无需重新登录。",
+        )
+        return
+
     schedule_ai_letter_auto_auth(environment_id)
 
 
@@ -247,6 +264,8 @@ def _run_ai_letter_auto_auth(environment_id: str) -> None:
                         result="success",
                         summary="环境自动登录成功，登录态已保存",
                     )
+                    # 🔧 修复：更新环境的 updated_at 时间
+                    _update_environment_timestamp(environment_id)
                     return
                 message = "自动登录已完成，但保存出的登录态不可复用。"
                 _write_auto_auth_status(
@@ -297,6 +316,8 @@ def _run_ai_letter_auto_auth(environment_id: str) -> None:
                 result="success",
                 summary="环境自动登录成功，登录态已保存",
             )
+            # 🔧 修复：更新环境的 updated_at 时间
+            _update_environment_timestamp(environment_id)
             return
 
         message = "自动登录失败，请检查账号密码或站点探索模型配置。"
@@ -492,3 +513,19 @@ def _record_auto_auth_event(
         after=after,
         source="system",
     )
+
+
+def _update_environment_timestamp(environment_id: str) -> None:
+    """更新环境的 updated_at 时间戳，用于登录成功后刷新列表时间"""
+    try:
+        with connect() as db:
+            environment_repo.update(
+                db,
+                environment_id,
+                assignments=["updated_at = CURRENT_TIMESTAMP"],
+                values=[],
+            )
+            db.commit()
+    except Exception:
+        # 更新时间戳失败不影响登录流程
+        pass

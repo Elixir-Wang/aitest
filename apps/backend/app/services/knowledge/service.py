@@ -435,8 +435,6 @@ def _collect_query_input(
         source_version_ids,
         blockers,
     )
-        blockers,
-    )
 
 
 def _collect_all_project_query_input(

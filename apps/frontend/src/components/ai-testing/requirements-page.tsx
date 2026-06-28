@@ -28,12 +28,6 @@ type RequirementRow = {
   created_at: string;
   updated_at: string;
   current_version_id: string | null;
-  current_version: {
-    version_no: number;
-    file_path: string;
-    change_summary: string;
-    created_at: string;
-  } | null;
   latest_requirement_analysis_run: {
     id: string;
     status: string;
@@ -72,7 +66,7 @@ const requirementAnalysisRunStatusLabels: Record<string, string> = {
 
 function requirementDisplayStatus(item: RequirementRow) {
   const latestRun = item.latest_requirement_analysis_run;
-  const hasFinalRequirement = Boolean(item.current_version_id ?? item.current_version);
+  const hasFinalRequirement = Boolean(item.current_version_id);
   if (latestRun && (!hasFinalRequirement || ["queued", "running"].includes(latestRun.status))) {
     return {
       isProcessing: ["queued", "running"].includes(latestRun.status),
@@ -120,10 +114,7 @@ export function RequirementsPage({
       setLoading(true);
       setError("");
       try {
-        const path =
-          projectScope === "project" && projectId
-            ? `/projects/${projectId}/requirements`
-            : "/requirements";
+        const path = projectScope === "project" && projectId ? `/projects/${projectId}/requirements` : "/requirements";
         const data = await apiRequest<RequirementRow[]>(path);
         if (!ignore) {
           setRows(data);
@@ -134,10 +125,7 @@ export function RequirementsPage({
             fallbackMessage: "需求文档加载失败",
             actionLabel: "加载需求文档",
             method: "GET",
-            path:
-              projectScope === "project" && projectId
-                ? `/projects/${projectId}/requirements`
-                : "/requirements",
+            path: projectScope === "project" && projectId ? `/projects/${projectId}/requirements` : "/requirements",
           });
           setError(requestError instanceof Error ? requestError.message : "需求文档加载失败");
         }
@@ -167,7 +155,6 @@ export function RequirementsPage({
           displayStatus.label,
           item.latest_requirement_analysis_run?.summary ?? "",
           item.latest_requirement_analysis_run?.failure_reason ?? "",
-          item.current_version?.change_summary ?? "",
           item.updated_at,
         ].some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase()));
       }),
@@ -233,7 +220,6 @@ export function RequirementsPage({
                 {showProjectColumn ? <TableHead>所属项目</TableHead> : null}
                 <TableHead>文件数量</TableHead>
                 <TableHead>状态</TableHead>
-                <TableHead>当前版本</TableHead>
                 <TableHead>更新时间</TableHead>
                 <TableHead className="w-16">操作</TableHead>
               </TableRow>
@@ -272,7 +258,6 @@ export function RequirementsPage({
                         )}
                       </StatusBadge>
                     </TableCell>
-                    <TableCell>{item.current_version ? `v${item.current_version.version_no}` : "-"}</TableCell>
                     <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                     <TableCell>
                       <RowActions
@@ -295,11 +280,11 @@ export function RequirementsPage({
                 );
               })}
               {loading && filteredRows.length === 0 ? (
-                <TableLoadingRow colSpan={showProjectColumn ? 8 : 7} label="需求文档加载中" />
+                <TableLoadingRow colSpan={showProjectColumn ? 7 : 6} label="需求文档加载中" />
               ) : null}
               {!loading && filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={showProjectColumn ? 8 : 7}>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={showProjectColumn ? 7 : 6}>
                     暂无需求文档。上传或新建需求后，可在这里查看分析结果和版本记录。
                   </TableCell>
                 </TableRow>

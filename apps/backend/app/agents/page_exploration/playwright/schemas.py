@@ -19,6 +19,7 @@ class SnapshotResult(BaseModel):
     title: str
     elements: list[ElementInfo]
     raw_output: str
+    error: Optional[str] = None
 
 
 class NavigateResult(BaseModel):

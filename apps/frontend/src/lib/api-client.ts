@@ -237,6 +237,13 @@ export type ApiOperationLogList = {
   page_size: number;
 };
 
+export type ApiOperationLogFilterOptions = {
+  modules: string[];
+  actions: string[];
+  results: string[];
+  log_types: string[];
+};
+
 export type ApiAvailableAction = {
   key: string;
   label: string;
@@ -686,32 +693,38 @@ export function operationLogActionToLabel(action: string) {
     (
       {
         archive: "归档",
+        archive_global_knowledge: "归档全局知识",
         answer_requirement_clarification: "答复澄清问题",
+        assign_model: "分配模型",
+        auto_auth_login: "自动登录",
         cancel: "取消",
+        cancel_requirement_analysis: "取消需求分析",
         confirm: "确认",
         create: "新增",
         create_global_knowledge_version: "新增知识版本",
         delete: "删除",
+        delete_conversation: "删除会话",
         export: "导出",
         fail_requirement_analysis: "需求分析失败",
         finalize_requirement_analysis: "确认最终需求",
         finish: "完成",
         finish_requirement_analysis: "完成需求分析",
         generate: "生成",
+        interrupt_exploration: "中断探索",
         login: "登录",
         logout: "登出",
         publish: "发布",
+        query: "查询",
         resolve_conflict: "解决冲突",
         restore: "恢复",
         retry: "重试",
         run: "执行",
         set_primary_file: "设置主文件",
-        assign_model: "分配模型",
-        archive_global_knowledge: "归档全局知识",
         cleanup: "清理",
         client_error: "客户端错误",
         start: "开始",
         start_requirement_analysis: "开始需求分析",
+        stop_stale_test_case_generation: "停止过期用例生成",
         submit_requirement_analysis: "提交需求分析",
         update: "编辑",
         update_global_knowledge: "编辑全局知识",
@@ -751,6 +764,7 @@ export function operationLogModuleToLabel(module: string) {
         project: "项目",
         requirement: "需求",
         system_setting: "系统设置",
+        test_case: "测试用例",
         task: "任务",
         user: "用户",
       } as Record<string, string>

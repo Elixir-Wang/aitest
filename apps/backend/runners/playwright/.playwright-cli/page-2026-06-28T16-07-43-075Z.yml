@@ -1,0 +1,42 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e232]:
+      - generic [ref=e234]:
+        - generic [ref=e235]:
+          - generic [ref=e236]:
+            - generic [ref=e237] [cursor=pointer]: 账号密码
+            - generic [ref=e238]: "|"
+            - generic [ref=e239] [cursor=pointer]: 短信验证
+          - generic [ref=e241]:
+            - generic [ref=e242]:
+              - generic [ref=e244]: "* 账号"
+              - textbox "请输入邮箱/手机号" [ref=e248]
+            - generic [ref=e249]:
+              - generic [ref=e251]: "* 密码"
+              - generic [ref=e255]:
+                - textbox "请输入密码" [ref=e256]
+                - img [ref=e259] [cursor=pointer]
+            - generic [ref=e261]:
+              - generic [ref=e263]: "* 验证码"
+              - textbox "请输入图形验证码" [ref=e268]
+            - generic [ref=e272] [cursor=pointer]: 忘记密码?
+            - button "登录" [ref=e275] [cursor=pointer]:
+              - generic: 登录
+        - generic [ref=e276]:
+          - paragraph [ref=e277] [cursor=pointer]
+          - generic [ref=e279]:
+            - generic [ref=e280]: 我已阅读并同意
+            - link "《用户协议》" [ref=e281] [cursor=pointer]:
+              - /url: /agreement
+            - generic [ref=e282]: 和
+            - link "《隐私政策》" [ref=e283] [cursor=pointer]:
+              - /url: /privacyPolicy
+        - generic [ref=e286]:
+          - generic [ref=e287]: 没有账号?
+          - generic [ref=e288] [cursor=pointer]: 去注册
+      - generic [ref=e290] [cursor=pointer]:
+        - img [ref=e291]
+        - generic [ref=e293]: 简体中文
+    - link "京公网安备11010502055440号" [ref=e295] [cursor=pointer]:
+      - /url: https://beian.mps.gov.cn/#/query/webSearch?code=11010502055440
+  - img

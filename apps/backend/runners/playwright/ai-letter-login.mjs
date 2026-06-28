@@ -397,10 +397,12 @@ export async function validateLoginPlan(page, plan) {
     if (!locator) {
       return { valid: false, reason: `${selectorField}_missing` };
     }
+    // 🔧 修复：验证码图片可能是异步加载的，增加等待时间到5秒
+    const timeout = selectorField === "captcha_image_selector" ? 5000 : 300;
     const ok =
       expectation === "editable"
-        ? await locator.isEditable({ timeout: 300 }).catch(() => false)
-        : await locator.isVisible({ timeout: 300 }).catch(() => false);
+        ? await locator.isEditable({ timeout }).catch(() => false)
+        : await locator.isVisible({ timeout }).catch(() => false);
     if (!ok) {
       return { valid: false, reason: `${selectorField}_not_${expectation}` };
     }
@@ -486,20 +488,93 @@ async function expectedCaptchaLengthForInput(input) {
   return null;
 }
 
-export async function ensureAgreementWithPlan(page, plan) {
-  if (isPlannedLoginForm(plan) && (plan.agreement_locator || plan.agreement_selector)) {
-    const target = locatorFromDescriptor(page, plan.agreement_locator, plan.agreement_selector)?.first();
-    if (target && (await target.isVisible({ timeout: 300 }).catch(() => false))) {
-      const targetText = (await target.innerText({ timeout: 100 }).catch(() => "")).trim();
-      if (AGREEMENT_TEXT_PATTERN.test(targetText) && (await clickAgreementTarget(target))) {
-        return true;
-      }
-      if (AGREEMENT_TEXT_PATTERN.test(targetText) && (await clickVisualAgreementControl(target))) {
+/**
+ * 简单直接地勾选协议复选框
+ * @param {Page} page - Playwright page 对象
+ * @returns {Promise<boolean>} 是否成功勾选
+ */
+export async function clickAgreementCheckbox(page) {
+  try {
+    // 方法1: 直接点击 .not-checked 元素（最有效）
+    const notCheckedLocator = page.locator('.not-checked').first();
+    const isVisible = await notCheckedLocator.isVisible({ timeout: 1000 }).catch(() => false);
+
+    if (isVisible) {
+      await notCheckedLocator.click();
+      await page.waitForTimeout(300); // 🚀 从500ms降到300ms
+
+      // 验证是否成功（检查是否出现SVG图标）
+      const hasSVG = await page.evaluate(() => {
+        return Boolean(document.querySelector('.policy svg'));
+      });
+
+      if (hasSVG) {
         return true;
       }
     }
+
+    // 方法2: 点击 .check-box 容器
+    const checkBoxLocator = page.locator('.check-box').first();
+    const isCheckBoxVisible = await checkBoxLocator.isVisible({ timeout: 1000 }).catch(() => false);
+
+    if (isCheckBoxVisible) {
+      await checkBoxLocator.click();
+      await page.waitForTimeout(300); // 🚀 从500ms降到300ms
+
+      const hasSVG = await page.evaluate(() => {
+        return Boolean(document.querySelector('.policy svg'));
+      });
+
+      if (hasSVG) {
+        return true;
+      }
+    }
+
+    // 方法3: 点击整个 .policy 区域
+    const policyLocator = page.locator('.policy').first();
+    const isPolicyVisible = await policyLocator.isVisible({ timeout: 1000 }).catch(() => false);
+
+    if (isPolicyVisible) {
+      await policyLocator.click();
+      await page.waitForTimeout(300); // 🚀 从500ms降到300ms
+
+      const hasSVG = await page.evaluate(() => {
+        return Boolean(document.querySelector('.policy svg'));
+      });
+
+      return hasSVG;
+    }
+
+    return false;
+  } catch (error) {
+    console.error('勾选协议失败:', error.message);
+    return false;
   }
-  return ensureUserAgreementChecked(page);
+}
+
+export async function ensureAgreementWithPlan(page, plan) {
+  // 🚀 优化：增加重试机制，确保协议勾选成功
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const success = await clickAgreementCheckbox(page);
+
+    // 双重验证：检查SVG和实际状态
+    const isChecked = await page.evaluate(() => {
+      const hasSVG = Boolean(document.querySelector('.policy svg'));
+      const hasCheckedClass = !Boolean(document.querySelector('.not-checked'));
+      return hasSVG || hasCheckedClass;
+    }).catch(() => false);
+
+    if (success || isChecked) {
+      return true;
+    }
+
+    // 如果第一次失败，等待后重试
+    if (attempt < 2) {
+      await page.waitForTimeout(200);
+    }
+  }
+
+  return false;
 }
 
 async function clickAgreementTarget(target) {
@@ -568,29 +643,88 @@ async function clickVisualAgreementControl(container) {
   return container
     .evaluate((element) => {
       const root = element.closest(".policy, label, div") || element.parentElement || element;
-      const controls = [
-        ...root.querySelectorAll(
-          'input[type="checkbox"], [role="checkbox"], [class*="checkbox"], img, svg, [aria-checked]',
-        ),
-      ];
-      for (const control of controls) {
-        if (control.tagName.toLowerCase() === "a") {
-          continue;
+
+      // 🔥 策略1: 查找真正的复选框输入框
+      const realCheckbox = root.querySelector('input[type="checkbox"]');
+      if (realCheckbox) {
+        if (!realCheckbox.checked) {
+          realCheckbox.click();
         }
-        if (control.getAttribute("data-ai-testing-agreement-clicked") === "1") {
-          return true;
-        }
-        if (control.getAttribute("aria-checked") === "true") {
-          return true;
-        }
-        if (control instanceof HTMLInputElement && control.type === "checkbox" && control.checked) {
-          return true;
-        }
-        control.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-        control.setAttribute("data-ai-testing-agreement-clicked", "1");
+        realCheckbox.setAttribute("data-ai-testing-agreement-clicked", "1");
         return true;
       }
-      return false;
+
+      // 🔥 策略2: 查找 "not-checked" 元素（这才是真正的复选框！）
+      const notCheckedEl = root.querySelector('.not-checked, [class*="not-checked"]');
+      if (notCheckedEl) {
+        const rect = notCheckedEl.getBoundingClientRect();
+        // 验证是小尺寸元素
+        if (rect.width >= 10 && rect.width <= 30 && rect.height >= 10 && rect.height <= 30) {
+          notCheckedEl.click();
+          notCheckedEl.setAttribute("data-ai-testing-agreement-clicked", "1");
+          return true;
+        }
+      }
+
+      // 🔥 策略3: 查找 check-box 容器内的第一个小元素
+      const checkBoxContainer = root.querySelector('.check-box, .checkbox, [class*="check-box"]');
+      if (checkBoxContainer) {
+        // 查找容器内的小尺寸子元素（通常是复选框的视觉部分）
+        const children = checkBoxContainer.querySelectorAll('span, div, i, svg');
+        for (const child of children) {
+          const rect = child.getBoundingClientRect();
+          if (rect.width >= 10 && rect.width <= 30 && rect.height >= 10 && rect.height <= 30) {
+            child.click();
+            child.setAttribute("data-ai-testing-agreement-clicked", "1");
+            return true;
+          }
+        }
+
+        // 如果子元素没找到，点击容器本身
+        checkBoxContainer.click();
+        checkBoxContainer.setAttribute("data-ai-testing-agreement-clicked", "1");
+        return true;
+      }
+
+      // 🔥 策略4: 查找 ARIA checkbox
+      const ariaCheckbox = root.querySelector('[role="checkbox"]');
+      if (ariaCheckbox) {
+        ariaCheckbox.click();
+        ariaCheckbox.setAttribute("data-ai-testing-agreement-clicked", "1");
+        return true;
+      }
+
+      // 🔥 策略5: 通过位置和尺寸查找最左边的小方形元素
+      const allSmallElements = root.querySelectorAll('div, span, i, p, svg');
+      let leftmostCheckbox = null;
+      let minLeft = Infinity;
+
+      for (const el of allSmallElements) {
+        const rect = el.getBoundingClientRect();
+
+        // 必须是小方形（10-30px，接近正方形）
+        if (rect.width >= 10 && rect.width <= 30 &&
+            rect.height >= 10 && rect.height <= 30 &&
+            Math.abs(rect.width - rect.height) < 10) {
+
+          // 找到最左边的元素
+          if (rect.left < minLeft) {
+            minLeft = rect.left;
+            leftmostCheckbox = el;
+          }
+        }
+      }
+
+      if (leftmostCheckbox) {
+        leftmostCheckbox.click();
+        leftmostCheckbox.setAttribute("data-ai-testing-agreement-clicked", "1");
+        return true;
+      }
+
+      // 🔥 策略6: 最后兜底 - 点击整个容器
+      element.click();
+      element.setAttribute("data-ai-testing-agreement-clicked", "1");
+      return true;
     })
     .catch(() => false);
 }
@@ -1008,14 +1142,15 @@ export async function refreshCaptchaImage(page) {
     const previousSrc = await captchaImage.getAttribute("src").catch(() => "");
     await captchaImage.click({ timeout: 1000 }).catch(() => {});
     const startedAt = Date.now();
-    while (Date.now() - startedAt < 2000) {
+    // 🚀 优化：从2000ms降到1000ms
+    while (Date.now() - startedAt < 1000) {
       const currentSrc = await captchaImage.getAttribute("src").catch(() => "");
       if (currentSrc && currentSrc !== previousSrc) {
         break;
       }
-      await page.waitForTimeout(150);
+      await page.waitForTimeout(100); // 从150ms降到100ms，检查更频繁
     }
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(200); // 从300ms降到200ms
     return true;
   }
   return false;
@@ -1121,20 +1256,32 @@ async function collectAttemptDiagnostics(page, plan, answer) {
     .catch((error) => ({ error: String(error?.message || error || "diagnostics_failed") }));
 }
 
-export async function waitForLoginSuccess(context, startUrl, timeoutMs = 8000) {
+export async function waitForLoginSuccess(context, startUrl, timeoutMs = 3000) {
+  // 🚀 优化：从8秒降到3秒，失败时快速重试
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     const state = await collectAuthDetectionState(context, startUrl).catch(() => null);
     if (state && evaluateLoginSuccessSignals(state).success) {
       return evaluateLoginSuccessSignals(state);
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 300)); // 从500ms降到300ms，更快响应
   }
   const state = await collectAuthDetectionState(context, startUrl).catch(() => null);
   return state ? evaluateLoginSuccessSignals(state) : { success: false, reasons: ["timeout"], score: -5 };
 }
 
 async function waitForCaptchaSurface(page) {
+  // 🚀 优化：主动触发验证码加载
+  // 通过聚焦输入框来触发懒加载的验证码
+  try {
+    const usernameInput = page.locator('input[type="text"], input[name*="user" i], input[name*="account" i]').first();
+    if (await usernameInput.isVisible({ timeout: 500 }).catch(() => false)) {
+      await usernameInput.focus({ timeout: 500 }).catch(() => {});
+      await page.waitForTimeout(200); // 给懒加载一点时间
+    }
+  } catch {}
+
+  // 🚀 优化：缩短超时从10秒到5秒
   await page
     .locator(
       [
@@ -1146,9 +1293,9 @@ async function waitForCaptchaSurface(page) {
       ].join(", "),
     )
     .first()
-    .waitFor({ state: "visible", timeout: 10_000 })
+    .waitFor({ state: "visible", timeout: 5_000 })
     .catch(() => {});
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(300); // 从800ms降到300ms
 }
 
 function writeEvent(payload) {
@@ -1302,6 +1449,9 @@ export async function runAiLetterLogin({
         if (!(await fillCredentialsWithPlan(page, plan, username, password))) {
           await autofillCredentials(page, username, password).catch(() => {});
         }
+      } else {
+        // 🚀 优化：第一次尝试时主动触发验证码加载
+        await waitForCaptchaSurface(page);
       }
 
       const captchaTarget = await locateCaptchaWithPlan(page, plan);

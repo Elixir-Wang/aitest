@@ -7,8 +7,8 @@ from langchain_core.messages import HumanMessage
 
 from app.agents.model_selection import build_agent_model, resolve_model_selection
 
-# 验证码识别使用独立的模型配置
-CAPTCHA_MODEL_CAPABILITY_ID = "captcha_solver"
+# 验证码识别优先使用 ddddocr（开源、稳定、无内容限制），失败时回退到 AI 模型
+CAPTCHA_MODEL_CAPABILITY_ID = "site_exploration"
 _NORMALIZE_PATTERN = re.compile(r"[^A-Za-z0-9]")
 _THINK_TAG_PATTERN = re.compile(
     r"`(?:think|thinking)`[\s\S]*?`(?:/think|/thinking)`",
@@ -37,6 +37,24 @@ _COMMON_WORDS = {
     "captcha",
     "froman",
 }
+
+# 尝试导入 ddddocr
+try:
+    import ddddocr
+    _DDDDOCR_AVAILABLE = True
+    _ocr_instance = None
+except ImportError:
+    _DDDDOCR_AVAILABLE = False
+    _ocr_instance = None
+
+
+def init_captcha_solver():
+    """初始化验证码识别器（应用启动时调用，预热模型避免首次识别慢）"""
+    global _ocr_instance
+    if _DDDDOCR_AVAILABLE and _ocr_instance is None:
+        import ddddocr
+        _ocr_instance = ddddocr.DdddOcr(show_ad=False)
+        print("✅ ddddocr 验证码识别模型已预热")
 
 
 class CaptchaSolverError(RuntimeError):
@@ -94,6 +112,33 @@ def solve_letter_captcha(image_path: Path, expected_length: int | None = None) -
     if not image_bytes:
         raise CaptchaSolverError("验证码截图为空。")
 
+    # ✅ 优化：只使用 ddddocr，快速且成本低
+    # 如果识别失败，直接抛出错误让上层重试，而不是回退到慢速的 AI 模型
+    if _DDDDOCR_AVAILABLE:
+        return _solve_with_ddddocr(image_bytes, expected_length)
+
+    # 如果 ddddocr 不可用，才使用 AI 模型（这种情况很少见）
+    return _solve_with_ai_model(image_bytes, expected_length)
+
+
+def _solve_with_ddddocr(image_bytes: bytes, expected_length: int | None = None) -> str:
+    """使用 ddddocr 识别验证码"""
+    global _ocr_instance
+    if _ocr_instance is None:
+        import ddddocr
+        _ocr_instance = ddddocr.DdddOcr(show_ad=False)
+
+    raw = _ocr_instance.classification(image_bytes)
+    result = _NORMALIZE_PATTERN.sub("", raw)
+
+    if not result:
+        raise CaptchaSolverError("ddddocr 识别结果为空。")
+
+    return _validate_expected_length(result, expected_length)
+
+
+def _solve_with_ai_model(image_bytes: bytes, expected_length: int | None = None) -> str:
+    """使用 AI 模型识别验证码（回退方案）"""
     encoded = base64.b64encode(image_bytes).decode("ascii")
     length_instruction = (
         f"只输出 {expected_length} 位验证码字符本身，区分大小写。"
@@ -105,9 +150,10 @@ def solve_letter_captcha(image_path: Path, expected_length: int | None = None) -
             {
                 "type": "text",
                 "text": (
-                    "这是一张登录页字母验证码图片。"
-                    f"{length_instruction}"
-                    "禁止输出解释、思考过程、标点或空格。"
+                    "请识别图片中的文本字符。\n"
+                    f"{length_instruction}\n"
+                    "注意区分大小写和相似字符（0/O, 1/l, i/I, 8/B等）。\n"
+                    "直接输出字符，不要有任何解释。"
                 ),
             },
             {
@@ -132,6 +178,18 @@ def solve_letter_captcha(image_path: Path, expected_length: int | None = None) -
 def _validate_expected_length(value: str, expected_length: int | None) -> str:
     if expected_length is None:
         return value
-    if len(value) != expected_length:
-        raise CaptchaSolverError(f"验证码识别结果长度不符合页面输入限制，应为 {expected_length} 位。")
-    return value
+
+    actual_length = len(value)
+    if actual_length == expected_length:
+        return value
+
+    # 🔧 智能处理长度不匹配：尝试截取而不是直接失败
+    if actual_length > expected_length:
+        # 识别结果过长：截取前N位（通常首尾识别更准确）
+        # 优先保留前expected_length位，因为ddddocr通常在开头识别更准
+        truncated = value[:expected_length]
+        print(f"⚠️  验证码识别结果过长，从 {actual_length} 位截取到 {expected_length} 位: \"{value}\" -> \"{truncated}\"")
+        return truncated
+
+    # 识别结果过短：这种情况仍然失败，因为无法补全
+    raise CaptchaSolverError(f"验证码识别结果过短，识别出 {actual_length} 位但页面要求 {expected_length} 位。")

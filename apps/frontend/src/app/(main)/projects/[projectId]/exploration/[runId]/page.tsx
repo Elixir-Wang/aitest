@@ -2,10 +2,11 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import {
   AlertTriangle,
+  ArrowLeft,
   FileText,
   ListChecks,
   Pencil,
@@ -34,7 +35,8 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { StatusBadge, type StatusBadgeTone } from "@/components/ui/status-badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import { API_BASE_URL, apiAuthHeaders, apiRequest, formatDateTime, parseApiTimestamp } from "@/lib/api-client";
@@ -802,6 +804,10 @@ function monitorTimelineStatus(eventType: string): AgentPlanStatus {
   return "pending";
 }
 
+function stringValue(value: unknown): string {
+  return value ? String(value) : "";
+}
+
 function arrayOfStrings(value: unknown): string[] {
   return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
 }
@@ -1018,7 +1024,7 @@ function mergeBlockerEvent(
 }
 
 function buildAgentPlanTasks(detail: ExplorationRunDetail | null): AgentPlanTask[] {
-  if (!detail) {
+  if (!detail || !detail.modules) {
     return [];
   }
   const hideEmptyPlanModules = isTerminalStatus(detail.run.status);
@@ -1223,6 +1229,7 @@ function hasExplorationStarted(run: ExplorationRun): boolean {
 
 export default function Page() {
   const params = useParams<{ projectId: string; runId: string }>();
+  const router = useRouter();
   const projectName = useProjectName(params.projectId);
   const [run, setRun] = useState<ExplorationRun | null>(null);
   const [detail, setDetail] = useState<ExplorationRunDetail | null>(null);
@@ -1256,7 +1263,7 @@ export default function Page() {
       setFailureVisible(true);
       try {
         const data = await apiRequest<ExplorationRunDetail>(
-          `/projects/${params.projectId}/exploration-runs/${params.runId}/detail`,
+          `/page-exploration/runs/${params.runId}`,
         );
         const normalizedData = normalizeExplorationRunDetail(data);
         setDetail(normalizedData);
@@ -1313,7 +1320,7 @@ export default function Page() {
       try {
         const headers = apiAuthHeaders();
         const response = await fetch(
-          `${API_BASE_URL}/projects/${params.projectId}/exploration-runs/${params.runId}/stream`,
+          `${API_BASE_URL}/page-exploration/runs/${params.runId}/stream`,
           {
             headers,
             signal: controller.signal,
@@ -1371,7 +1378,7 @@ export default function Page() {
     setReportError("");
     try {
       const data = await apiRequest<ExplorationReport>(
-        `/projects/${params.projectId}/exploration-runs/${params.runId}/report`,
+        `/page-exploration/runs/${params.runId}/artifacts`,
       );
       setReport(data);
     } catch (requestError) {
@@ -1379,13 +1386,20 @@ export default function Page() {
     } finally {
       setReportLoading(false);
     }
-  }, [params.projectId, params.runId]);
+  }, [params.runId]);
 
   useEffect(() => {
     if (activeTab === "探索报告") {
       void loadReport();
     }
   }, [activeTab, loadReport]);
+
+  async function refreshCurrentTab() {
+    await loadRun();
+    if (activeTab === "探索报告") {
+      await loadReport();
+    }
+  }
 
   function clearExplorationOutputs() {
     setDetail(null);
@@ -1402,7 +1416,7 @@ export default function Page() {
     const restarting = hasExplorationStarted(run);
     setStarting(true);
     try {
-      const updated = await apiRequest<ExplorationRun>(`/projects/${run.project_id}/exploration-runs/${run.id}/start`, {
+      const updated = await apiRequest<ExplorationRun>(`/page-exploration/runs/${run.id}/start`, {
         method: "POST",
       });
       setRun(updated);
@@ -1415,7 +1429,7 @@ export default function Page() {
         fallbackMessage: "探索任务启动失败",
         actionLabel: restarting ? "重新探索" : "启动探索任务",
         method: "POST",
-        path: `/projects/${run.project_id}/exploration-runs/${run.id}/start`,
+        path: `/page-exploration/runs/${run.id}/start`,
       });
     } finally {
       setStarting(false);
@@ -1428,7 +1442,7 @@ export default function Page() {
     }
     setStopping(true);
     try {
-      const updated = await apiRequest<ExplorationRun>(`/projects/${run.project_id}/exploration-runs/${run.id}/stop`, {
+      const updated = await apiRequest<ExplorationRun>(`/page-exploration/runs/${run.id}/stop`, {
         method: "POST",
       });
       setRun(updated);
@@ -1441,7 +1455,7 @@ export default function Page() {
         fallbackMessage: "探索任务停止失败",
         actionLabel: "停止探索任务",
         method: "POST",
-        path: `/projects/${run.project_id}/exploration-runs/${run.id}/stop`,
+        path: `/page-exploration/runs/${run.id}/stop`,
       });
     } finally {
       setStopping(false);
@@ -1533,7 +1547,7 @@ export default function Page() {
 
     setSaving(true);
     try {
-      const updated = await apiRequest<ExplorationRun>(`/projects/${run.project_id}/exploration-runs/${run.id}`, {
+      const updated = await apiRequest<ExplorationRun>(`/page-exploration/runs/${run.id}`, {
         method: "PATCH",
         body: JSON.stringify({
           environment_id: explorationForm.environmentId,
@@ -1558,7 +1572,7 @@ export default function Page() {
         fallbackMessage: "探索任务更新失败",
         actionLabel: "更新探索任务",
         method: "PATCH",
-        path: `/projects/${run.project_id}/exploration-runs/${run.id}`,
+        path: `/page-exploration/runs/${run.id}`,
       });
     } finally {
       setSaving(false);
@@ -1606,32 +1620,40 @@ export default function Page() {
       breadcrumbs={["项目", projectName, "探索", run?.title ?? "探索任务"]}
       description="查看探索任务运行概览、执行日志和探索报告。"
       tabActions={
-        showRunActions ? (
-          <>
-            <Button disabled={loading} onClick={() => void loadRun()} size="sm" variant="outline">
+        <>
+          <Button onClick={() => router.push("/exploration")} size="sm" variant="outline">
+            <ArrowLeft className="size-4" />
+            返回列表
+          </Button>
+          {activeTab === "探索概览" ? (
+            <Button disabled={loading} onClick={() => void refreshCurrentTab()} size="sm" variant="outline">
               <RefreshCw className="size-4" />
               刷新
             </Button>
-            {activeTab === "探索计划" ? (
-              <Button disabled={!canEdit} onClick={openEditDialog} size="sm" variant="outline">
-                <Pencil className="size-4" />
-                编辑
-              </Button>
-            ) : null}
-            {canStart ? (
-              <Button disabled={starting} onClick={() => void startExploration()} size="sm">
-                <Play className="size-4" />
-                {run && hasExplorationStarted(run) ? "重新探索" : "开始探索"}
-              </Button>
-            ) : null}
-            {canStop ? (
-              <Button disabled={stopping} onClick={() => setStopDialogOpen(true)} size="sm" variant="destructive">
-                <Square className="size-4" />
-                停止探索
-              </Button>
-            ) : null}
-          </>
-        ) : null
+          ) : null}
+          {showRunActions ? (
+            <>
+              {activeTab === "探索计划" ? (
+                <Button disabled={!canEdit} onClick={openEditDialog} size="sm" variant="outline">
+                  <Pencil className="size-4" />
+                  编辑
+                </Button>
+              ) : null}
+              {canStart ? (
+                <Button disabled={starting} onClick={() => void startExploration()} size="sm">
+                  <Play className="size-4" />
+                  {run && hasExplorationStarted(run) ? "重新探索" : "开始探索"}
+                </Button>
+              ) : null}
+              {canStop ? (
+                <Button disabled={stopping} onClick={() => setStopDialogOpen(true)} size="sm" variant="destructive">
+                  <Square className="size-4" />
+                  停止探索
+                </Button>
+              ) : null}
+            </>
+          ) : null}
+        </>
       }
       projectScope="project"
       activeTab={activeTab}
@@ -1677,9 +1699,23 @@ export default function Page() {
                   <p className="text-muted-foreground text-xs">展示模块、页面状态和页面探索步骤</p>
                 </div>
               </div>
-              <div className="rounded-lg border bg-muted/20 p-8 text-center text-muted-foreground text-sm">
-                暂无探索模块进度信息
-              </div>
+              {loading ? (
+                <div className="rounded-lg border bg-muted/20 p-8 text-center text-muted-foreground text-sm">
+                  探索进度加载中...
+                </div>
+              ) : isUnsupportedArtifact ? (
+                <UnsupportedArtifactNotice
+                  onRestart={startExploration}
+                  reason={unsupportedArtifactReason}
+                  restarting={starting}
+                />
+              ) : agentPlanTasks.length > 0 ? (
+                <AgentPlan tasks={agentPlanTasks} />
+              ) : (
+                <div className="rounded-lg border bg-muted/20 p-8 text-center text-muted-foreground text-sm">
+                  {run?.status === "pending" ? "任务尚未开始，点击「开始探索」后将显示进度信息。" : "暂无探索模块进度信息"}
+                </div>
+              )}
             </ShellSection>
 
             <div className="min-w-0">

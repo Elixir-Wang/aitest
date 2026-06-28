@@ -212,7 +212,7 @@ export default function Page() {
                 <TableHead className="w-[20%]">项目名称</TableHead>
                 <TableHead className="w-[30%]">项目描述</TableHead>
                 <TableHead className="w-[10%]">状态</TableHead>
-                <TableHead className="w-[26%]">最近更新时间</TableHead>
+                <TableHead className="w-[26%]">更新时间</TableHead>
                 <TableHead className="w-[8%]">操作</TableHead>
               </TableRow>
             </TableHeader>

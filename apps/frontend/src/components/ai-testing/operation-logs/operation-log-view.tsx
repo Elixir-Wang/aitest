@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ChevronLeft, ChevronRight, Eye, RefreshCw, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Eye, RefreshCw, Search } from "lucide-react";
 
 import { OperationLogDetailContent } from "@/components/ai-testing/operation-logs/operation-log-detail-content";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
@@ -16,8 +16,11 @@ import { operationLogResultTone, StatusBadge } from "@/components/ui/status-badg
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   type ApiOperationLogDetail,
+  type ApiOperationLogFilterOptions,
   type ApiOperationLogList,
   type ApiOperationLogListItem,
+  type ApiProject,
+  apiBlobRequest,
   apiRequest,
   formatDateTime,
   operationLogActionToLabel,
@@ -81,6 +84,12 @@ const actions = [
   "update_retention_policy",
   "cleanup",
   "client_error",
+  "auto_auth_login",
+  "query",
+  "delete_conversation",
+  "cancel_requirement_analysis",
+  "interrupt_exploration",
+  "stop_stale_test_case_generation",
 ];
 const results = ["", "success", "failed", "partial_success", "cancelled"];
 
@@ -120,12 +129,19 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
   const [module, setModule] = useState("");
   const [action, setAction] = useState("");
   const [result, setResult] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [projects, setProjects] = useState<ApiProject[]>([]);
+  const [filterOptions, setFilterOptions] = useState<ApiOperationLogFilterOptions | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ApiOperationLogDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(Math.max(page, 1), pageCount);
   const visiblePages = getVisiblePages(safePage, pageCount);
+  const moduleOptions = useMemo(() => mergeOptions(modules, filterOptions?.modules), [filterOptions?.modules]);
+  const actionOptions = useMemo(() => mergeOptions(actions, filterOptions?.actions), [filterOptions?.actions]);
+  const resultOptions = useMemo(() => mergeOptions(results, filterOptions?.results), [filterOptions?.results]);
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
@@ -141,8 +157,11 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
     if (result) {
       params.set("result", result);
     }
+    if (showProjectFilter && projectId) {
+      params.set("project_id", projectId);
+    }
     return params.toString();
-  }, [action, keyword, module, page, pageSize, result]);
+  }, [action, keyword, module, page, pageSize, projectId, result, showProjectFilter]);
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -165,9 +184,71 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
     }
   }, [endpoint, query]);
 
+  const loadFilterOptions = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (showProjectFilter && projectId) {
+        params.set("project_id", projectId);
+      }
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      setFilterOptions(await apiRequest<ApiOperationLogFilterOptions>(`${endpoint}/filter-options${suffix}`));
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "日志筛选项加载失败",
+        actionLabel: "加载日志筛选项",
+        method: "GET",
+        path: `${endpoint}/filter-options`,
+      });
+    }
+  }, [endpoint, projectId, showProjectFilter]);
+
+  const loadProjects = useCallback(async () => {
+    if (!showProjectFilter) {
+      return;
+    }
+    try {
+      setProjects(await apiRequest<ApiProject[]>("/projects"));
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "项目筛选项加载失败",
+        actionLabel: "加载项目筛选项",
+        method: "GET",
+        path: "/projects",
+      });
+    }
+  }, [showProjectFilter]);
+
   useEffect(() => {
     void loadLogs();
   }, [loadLogs]);
+
+  useEffect(() => {
+    void loadFilterOptions();
+  }, [loadFilterOptions]);
+
+  useEffect(() => {
+    void loadProjects();
+  }, [loadProjects]);
+
+  async function exportLogs() {
+    setExporting(true);
+    setError("");
+    try {
+      const exportQuery = queryForExport(query);
+      const blob = await apiBlobRequest(`${endpoint}/export${exportQuery}`);
+      downloadBlob(blob, showProjectFilter && projectId ? `${projectId}-operation-logs.csv` : "operation-logs.csv");
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "日志导出失败",
+        actionLabel: "导出操作日志",
+        method: "GET",
+        path: `${endpoint}/export`,
+      });
+      setError(requestError instanceof Error ? requestError.message : "日志导出失败");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   async function openDetail(row: ApiOperationLogListItem) {
     setSelectedId(row.id);
@@ -223,12 +304,29 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
             }}
             value={module}
           >
-            {modules.map((item) => (
+            {moduleOptions.map((item) => (
               <NativeSelectOption key={item || "all"} value={item}>
                 {item ? operationLogModuleToLabel(item) : "全部模块"}
               </NativeSelectOption>
             ))}
           </NativeSelect>
+          {showProjectFilter ? (
+            <NativeSelect
+              aria-label="项目"
+              onChange={(event) => {
+                setProjectId(event.target.value);
+                setPage(1);
+              }}
+              value={projectId}
+            >
+              <NativeSelectOption value="">全部项目</NativeSelectOption>
+              {projects.map((project) => (
+                <NativeSelectOption key={project.id} value={project.id}>
+                  {project.name}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          ) : null}
           <NativeSelect
             aria-label="动作"
             onChange={(event) => {
@@ -237,7 +335,7 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
             }}
             value={action}
           >
-            {actions.map((item) => (
+            {actionOptions.map((item) => (
               <NativeSelectOption key={item || "all"} value={item}>
                 {item ? operationLogActionToLabel(item) : "全部动作"}
               </NativeSelectOption>
@@ -251,17 +349,23 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
             }}
             value={result}
           >
-            {results.map((item) => (
+            {resultOptions.map((item) => (
               <NativeSelectOption key={item || "all"} value={item}>
                 {item ? operationLogResultToLabel(item) : "全部结果"}
               </NativeSelectOption>
             ))}
           </NativeSelect>
         </div>
-        <Button onClick={loadLogs} variant="outline">
-          <RefreshCw className="size-4" />
-          刷新
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          <Button disabled={exporting} onClick={exportLogs} variant="outline">
+            <Download className="size-4" />
+            导出
+          </Button>
+          <Button onClick={loadLogs} variant="outline">
+            <RefreshCw className="size-4" />
+            刷新
+          </Button>
+        </div>
       </div>
       <div className="overflow-hidden rounded-lg border">
         <Table className="min-w-[1080px] table-fixed">
@@ -422,4 +526,27 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
       </Dialog>
     </div>
   );
+}
+
+function mergeOptions(fallback: string[], dynamicOptions: string[] | undefined) {
+  return Array.from(new Set([...fallback, ...(dynamicOptions ?? [])]));
+}
+
+function queryForExport(query: string) {
+  const params = new URLSearchParams(query);
+  params.delete("page");
+  params.delete("page_size");
+  const value = params.toString();
+  return value ? `?${value}` : "";
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
