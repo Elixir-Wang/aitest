@@ -76,14 +76,17 @@ test("exploration overview owns realtime stream beside module progress", () => {
   assert.match(pageSource, /function ExplorationToolCallCard\(/);
   assert.match(pageSource, /function ExplorationEventCard\(/);
   assert.match(pageSource, /function ExplorationModuleEmptyState\(/);
-  assert.match(pageSource, /function ProgressPill\(/);
   assert.match(pageSource, /<ExplorationModuleProgressPanel[\s\S]*monitor=\{monitor\}/);
   assert.match(
     pageSource,
     /<ExplorationRealtimeStreamPanel[\s\S]*completedCount=\{completedCount\}[\s\S]*monitor=\{monitor\}[\s\S]*run=\{run\}/,
   );
-  assert.match(pageSource, /xl:grid-cols-\[minmax\(520px,1fr\)_440px\]/);
-  assert.match(pageSource, /xl:sticky xl:top-4/);
+  assert.match(pageSource, /h-\[min\(640px,calc\(100vh-12rem\)\)\]/);
+  assert.match(pageSource, /max-h-\[calc\(100vh-12rem\)\]/);
+  assert.match(pageSource, /lg:grid-cols-\[320px_minmax\(0,1fr\)\]/);
+  assert.match(pageSource, /className="min-h-0 min-w-0 overflow-y-auto/);
+  assert.match(pageSource, /className="h-full"/);
+  assert.match(pageSource, /className="min-h-0 flex-1 space-y-2 overflow-y-auto/);
   assert.match(pageSource, /function isToolLikeMonitorEvent\(type: string\): boolean/);
   assert.match(pageSource, /defaultExpanded=\{event\.status === "running" \|\| event\.status === "in-progress"\}/);
 });

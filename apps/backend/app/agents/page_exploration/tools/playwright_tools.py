@@ -13,7 +13,7 @@ from app.agents.page_exploration.playwright.schemas import (
 
 
 @tool
-def playwright_snap_tool(url: str, session_id: Optional[str] = None) -> dict:
+def playwright_snap_tool(url: Optional[str] = None, session_id: Optional[str] = None) -> dict:
     """
     Capture a snapshot of a web page with element information.
 
@@ -23,7 +23,7 @@ def playwright_snap_tool(url: str, session_id: Optional[str] = None) -> dict:
     - Get element roles, names, and visibility
 
     Args:
-        url: The URL to capture (e.g., "https://example.com/page")
+        url: Optional URL to navigate before capture. Omit it to snapshot the current page.
         session_id: Optional session ID to maintain browser state across calls
 
     Returns:
@@ -47,7 +47,7 @@ def playwright_snap_tool(url: str, session_id: Optional[str] = None) -> dict:
         # }
     """
     cli = PlaywrightCLI(session_id=session_id)
-    result = cli.snap(url)
+    result = cli.snap(url) if url else cli.snap_current()
 
     return {
         "url": result.url,

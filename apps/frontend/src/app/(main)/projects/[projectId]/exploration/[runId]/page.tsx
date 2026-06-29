@@ -29,7 +29,7 @@ import { toast } from "sonner";
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { useProjectName } from "@/components/ai-testing/use-project-name";
-import { AgentPlan, type AgentPlanStatus, type AgentPlanTask } from "@/components/ui/agent-plan";
+import type { AgentPlanStatus, AgentPlanTask } from "@/components/ui/agent-plan";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1913,28 +1913,20 @@ function ExplorationModuleProgressPanel({
   unsupportedArtifactReason: string;
 }) {
   const completedCount = agentPlanTasks.filter((task) => task.status === "completed").length;
-  const activeCount = agentPlanTasks.filter((task) =>
-    ["queued", "running", "in-progress", "stopping"].includes(task.status),
-  ).length;
-  const failedCount = agentPlanTasks.filter((task) => task.status === "failed" || task.status === "blocked").length;
+  const moduleCount = agentPlanTasks.length;
+  const moduleProgress = moduleCount > 0 ? Math.round((completedCount / moduleCount) * 100) : 0;
 
   return (
     <ShellSection className="min-w-0 lg:col-span-2">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
         <div className="space-y-1">
           <h2 className="font-medium text-sm">探索模块进度</h2>
-          <p className="text-muted-foreground text-xs">左侧跟踪模块进度，右侧实时展示探索输出和工具调用</p>
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-xs md:w-[360px]">
-          <ProgressPill label="模块" value={agentPlanTasks.length ? `${agentPlanTasks.length}` : "-"} />
-          <ProgressPill label="进行中" value={`${activeCount}`} />
-          <ProgressPill label="异常" value={`${failedCount}`} />
         </div>
       </div>
-      <div className="grid min-h-[460px] gap-4 xl:grid-cols-[minmax(520px,1fr)_440px]">
-        <div className="min-w-0 rounded-lg border bg-muted/10 p-3">
+      <div className="grid h-[min(640px,calc(100vh-12rem))] max-h-[calc(100vh-12rem)] min-h-[480px] gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="min-h-0 min-w-0 overflow-y-auto rounded-lg border bg-muted/10 p-2">
           {loading ? (
-            <div className="grid min-h-[360px] place-items-center rounded-md border border-dashed bg-background/70 p-8 text-center text-muted-foreground text-sm">
+            <div className="grid min-h-[360px] place-items-center rounded-md bg-background/70 p-6 text-center text-muted-foreground text-sm">
               探索进度加载中...
             </div>
           ) : isUnsupportedArtifact ? (
@@ -1944,9 +1936,10 @@ function ExplorationModuleProgressPanel({
               restarting={restarting}
             />
           ) : agentPlanTasks.length > 0 ? (
-            <AgentPlan
-              className="rounded-md bg-background/80 p-2"
-              completedTaskDecoration="none"
+            <ExplorationModuleIndex
+              completedCount={completedCount}
+              moduleCount={moduleCount}
+              moduleProgress={moduleProgress}
               tasks={agentPlanTasks}
             />
           ) : (
@@ -1954,7 +1947,7 @@ function ExplorationModuleProgressPanel({
           )}
         </div>
         <ExplorationRealtimeStreamPanel
-          className="xl:sticky xl:top-4 xl:max-h-[calc(100vh-8rem)]"
+          className="h-full"
           completedCount={completedCount}
           monitor={monitor}
           run={run}
@@ -1964,11 +1957,98 @@ function ExplorationModuleProgressPanel({
   );
 }
 
-function ProgressPill({ label, value }: { label: string; value: string }) {
+function ExplorationModuleIndex({
+  completedCount,
+  moduleCount,
+  moduleProgress,
+  tasks,
+}: {
+  completedCount: number;
+  moduleCount: number;
+  moduleProgress: number;
+  tasks: AgentPlanTask[];
+}) {
   return (
-    <div className="rounded-md border bg-background px-3 py-2">
-      <div className="text-muted-foreground">{label}</div>
-      <div className="mt-0.5 font-semibold text-foreground">{value}</div>
+    <div className="space-y-2">
+      <div className="rounded-md border bg-background p-3">
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <span className="text-muted-foreground">模块完成度</span>
+          <span className="font-semibold text-foreground">{moduleCount ? `${moduleProgress}%` : "-"}</span>
+        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-primary" style={{ width: `${moduleCount ? moduleProgress : 0}%` }} />
+        </div>
+        <div className="mt-2 flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">模块</span>
+          <span className="font-semibold text-foreground">
+            {moduleCount ? `${completedCount}/${moduleCount}` : "-"}
+          </span>
+        </div>
+      </div>
+      {tasks.map((task) => {
+        const pages = task.subtasks ?? [];
+        const pageCount = pages.length;
+        const failedPages = pages.filter((page) => page.status === "failed" || page.status === "blocked").length;
+        const activePages = pages.filter((page) =>
+          ["queued", "running", "in-progress", "stopping"].includes(page.status),
+        ).length;
+        return (
+          <div className="rounded-md border bg-background p-3" key={task.id}>
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate font-medium text-sm" title={task.title}>
+                  {task.title}
+                </div>
+                {task.description ? (
+                  <div className="mt-1 line-clamp-2 text-muted-foreground text-xs" title={task.description}>
+                    {task.description}
+                  </div>
+                ) : null}
+              </div>
+              <StatusBadge tone={monitorStepTone(task.status)}>{monitorStepLabel(task.status)}</StatusBadge>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
+              <span className="rounded bg-muted px-1.5 py-0.5">{pageCount ? `${pageCount} 页面` : "暂无页面"}</span>
+              {activePages ? (
+                <span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700">{activePages} 进行中</span>
+              ) : null}
+              {failedPages ? (
+                <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-700">{failedPages} 异常</span>
+              ) : null}
+              {task.meta?.map((item) => (
+                <span className="rounded bg-muted px-1.5 py-0.5" key={item}>
+                  {item}
+                </span>
+              ))}
+            </div>
+            {pages.length ? (
+              <div className="mt-3 space-y-1 border-muted border-l pl-3">
+                {pages.slice(0, 8).map((page) => (
+                  <div className="min-w-0 rounded px-2 py-1 hover:bg-muted/60" key={page.id}>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <MonitorStatusIcon status={page.status} />
+                      <span className="truncate text-xs" title={page.title}>
+                        {page.title}
+                      </span>
+                    </div>
+                    {page.description ? (
+                      <div
+                        className="mt-0.5 line-clamp-1 pl-5 text-[11px] text-muted-foreground"
+                        title={page.description}
+                      >
+                        {page.description}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {pages.length > 8 ? (
+                  <div className="pl-2 text-[11px] text-muted-foreground">还有 {pages.length - 8} 个页面</div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1976,7 +2056,7 @@ function ProgressPill({ label, value }: { label: string; value: string }) {
 function ExplorationModuleEmptyState({ run }: { run: ExplorationRun | null }) {
   const pending = run?.status === "pending";
   return (
-    <div className="grid min-h-[360px] place-items-center rounded-md border border-dashed bg-background/70 p-8 text-center">
+    <div className="grid min-h-full place-items-center rounded-md bg-background/70 p-6 text-center">
       <div className="max-w-sm space-y-2">
         <div className="mx-auto flex size-9 items-center justify-center rounded-md bg-muted text-muted-foreground">
           <ListChecks className="size-4" />
@@ -2011,10 +2091,10 @@ function ExplorationRealtimeStreamPanel({
 
   return (
     <Card
-      className={`min-w-0 self-start border-blue-100/80 bg-blue-50/20 dark:border-blue-500/20 dark:bg-blue-500/5 ${className}`}
+      className={`min-h-0 min-w-0 overflow-hidden border-blue-100/80 bg-background dark:border-blue-500/20 ${className}`}
       size="sm"
     >
-      <CardHeader className="border-b bg-background/80 pb-3">
+      <CardHeader className="border-b bg-blue-50/50 pb-3 dark:bg-blue-500/5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle className="flex items-center gap-2 text-sm">
@@ -2026,13 +2106,15 @@ function ExplorationRealtimeStreamPanel({
           <StatusBadge tone={monitorPhaseTone(monitor.phase, run?.status)}>{phaseLabel}</StatusBadge>
         </div>
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-col gap-3">
-        <div className="grid grid-cols-4 gap-2">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           <MonitorStat label="步骤" value={totalSteps ? `${totalSteps}` : "-"} />
           <MonitorStat label="已完成" value={`${completedCount}`} />
           <MonitorStat label="失败" value={`${failedCount}`} />
           <MonitorStat label="当前" value={runningStep ? `#${runningStep.step_number}` : "-"} />
         </div>
+
+        {monitor.plan ? <MonitorPlanSummary plan={monitor.plan} /> : null}
 
         {runningStep ? <MonitorCurrentStep step={runningStep} /> : null}
 
@@ -2042,7 +2124,7 @@ function ExplorationRealtimeStreamPanel({
             <div className="text-muted-foreground">{events.length ? `最近 ${events.length} 条` : "等待事件"}</div>
           </div>
           {events.length ? (
-            <div className="min-h-[240px] flex-1 space-y-2 overflow-y-auto rounded-md border bg-background p-2 xl:max-h-[calc(100vh-24rem)]">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-md border bg-muted/20 p-2">
               {events.map((event) =>
                 isToolLikeMonitorEvent(event.type) ? (
                   <ExplorationToolCallCard
@@ -2056,7 +2138,7 @@ function ExplorationRealtimeStreamPanel({
               )}
             </div>
           ) : (
-            <div className="grid min-h-[240px] place-items-center rounded-md border border-dashed bg-background p-4 text-center text-muted-foreground text-sm">
+            <div className="grid min-h-0 flex-1 place-items-center rounded-md bg-muted/20 p-4 text-center text-muted-foreground text-sm">
               {isActiveStatus(run?.status ?? "") ? "等待后端推送探索事件。" : "开始探索后会在这里显示实时执行流。"}
             </div>
           )}
@@ -2066,9 +2148,29 @@ function ExplorationRealtimeStreamPanel({
   );
 }
 
+function MonitorPlanSummary({ plan }: { plan: NonNullable<ExplorationMonitorState["plan"]> }) {
+  const compactModules = plan.modules.slice(0, 4).join("、");
+  return (
+    <div className="rounded-md border bg-muted/20 p-3 text-sm">
+      <div className="grid gap-2 md:grid-cols-2">
+        <CompactInfo label="目标" value={plan.goal_summary} />
+        <CompactInfo label="策略" value={plan.strategy} />
+        <CompactInfo label="范围" value={plan.scope_summary} />
+        <CompactInfo label="模块" value={compactModules || "-"} />
+      </div>
+      {plan.risk_assessment || plan.success_criteria.length ? (
+        <div className="mt-2 grid gap-2 border-t pt-2 md:grid-cols-2">
+          <CompactInfo label="风险" value={plan.risk_assessment} />
+          <CompactInfo label="成功标准" value={plan.success_criteria.join("；")} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ExplorationEventCard({ event }: { event: ExplorationMonitorEvent }) {
   return (
-    <div className="rounded-md border bg-card px-3 py-2 text-sm shadow-sm">
+    <div className="rounded-md border bg-background px-3 py-2 text-sm">
       <div className="flex min-w-0 items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <MonitorStatusIcon status={event.status} />
@@ -2102,7 +2204,7 @@ function ExplorationToolCallCard({
     event.summary;
 
   return (
-    <div className="overflow-hidden rounded-md border bg-card text-sm shadow-sm">
+    <div className="overflow-hidden rounded-md border bg-background text-sm">
       <button
         className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-blue-50/60 dark:hover:bg-blue-500/10"
         onClick={() => setExpanded((current) => !current)}
@@ -2117,7 +2219,7 @@ function ExplorationToolCallCard({
       </button>
       {expanded ? (
         <div className="space-y-3 border-t bg-muted/10 px-3 py-3">
-          <div className="grid gap-2">
+          <div className="grid gap-2 md:grid-cols-2">
             <EventDetailRow label="时间" value={formatDateTime(event.occurred_at)} />
             <EventDetailRow
               label="目标"
@@ -2201,7 +2303,7 @@ function formatDurationValue(value: unknown): string {
 
 function MonitorStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border bg-background px-2 py-2">
+    <div className="rounded-md border bg-muted/20 px-3 py-2">
       <div className="truncate text-[11px] text-muted-foreground">{label}</div>
       <div className="mt-0.5 truncate font-semibold text-base">{value}</div>
     </div>
@@ -2212,18 +2314,36 @@ function MonitorCurrentStep({ step }: { step: ExplorationMonitorStep }) {
   const matchedLabel = step.matched_element.name || step.matched_element.id || "-";
   return (
     <div className="rounded-md border border-blue-200 bg-blue-50/70 p-3 text-sm dark:border-blue-500/30 dark:bg-blue-500/10">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <div className="font-medium">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0 font-medium">
           正在执行 #{step.step_number}：{step.description}
         </div>
         <span className="text-muted-foreground text-xs">第 {step.attempt || 1} 次</span>
       </div>
-      <div className="grid gap-2 md:grid-cols-2">
-        <InfoRow label="目标" value={displayValue(step.target_description)} compact />
-        <InfoRow label="预期" value={displayValue(step.expected_result)} compact />
-        <InfoRow label="匹配元素" value={matchedLabel} compact />
-        <InfoRow label="当前页面" value={step.page_state.url || step.page_state.title || "-"} compact />
+      <div className="grid gap-2 lg:grid-cols-2">
+        <CompactInfo label="模块" value={step.module_name} />
+        <CompactInfo label="动作" value={step.action_type} />
+        <CompactInfo label="目标" value={step.target_description} />
+        <CompactInfo label="预期" value={step.expected_result} />
+        <CompactInfo label="选择器" mono value={step.target_selector} />
+        <CompactInfo label="输入" mono value={step.value} />
+        <CompactInfo label="匹配元素" value={matchedLabel} />
+        <CompactInfo label="当前页面" value={step.page_state.url || step.page_state.title} />
+        {step.error ? <CompactInfo label="错误" value={step.error} /> : null}
+        {step.message ? <CompactInfo label="结果" value={step.message} /> : null}
       </div>
+    </div>
+  );
+}
+
+function CompactInfo({ label, mono = false, value }: { label: string; mono?: boolean; value: string }) {
+  if (!value) {
+    return null;
+  }
+  return (
+    <div className="min-w-0">
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className={`mt-0.5 break-words text-xs ${mono ? "font-mono" : "font-medium"}`}>{value}</div>
     </div>
   );
 }

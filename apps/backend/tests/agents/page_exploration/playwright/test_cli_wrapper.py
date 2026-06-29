@@ -50,7 +50,7 @@ def test_snap_success(mock_subprocess):
     assert result.elements[1].name == "创建智能体"
     assert result.raw_output == mock_output
     assert mock_subprocess.call_count == 2
-    assert mock_subprocess.call_args_list[0][0][0][-2:] == ["open", "https://test.com/workspace"]
+    assert mock_subprocess.call_args_list[0][0][0][-2:] == ["goto", "https://test.com/workspace"]
     assert mock_subprocess.call_args_list[1][0][0][-1:] == ["snapshot"]
 
 
@@ -64,12 +64,12 @@ def test_snap_uses_action_timeouts(mock_subprocess):
     cli = PlaywrightCLI()
     cli.snap("https://test.com/slow")
 
-    assert mock_subprocess.call_args_list[0].kwargs["timeout"] == settings.PLAYWRIGHT_CLI_OPEN_TIMEOUT_SECONDS
+    assert mock_subprocess.call_args_list[0].kwargs["timeout"] == settings.PLAYWRIGHT_CLI_GOTO_TIMEOUT_SECONDS
     assert mock_subprocess.call_args_list[1].kwargs["timeout"] == settings.PLAYWRIGHT_CLI_SNAPSHOT_TIMEOUT_SECONDS
 
 
-def test_snap_retries_open_once(mock_subprocess):
-    """Test snap retries open once before failing."""
+def test_snap_retries_goto_once(mock_subprocess):
+    """Test snap retries goto once before failing."""
     mock_subprocess.side_effect = [
         Mock(returncode=1, stdout="", stderr="temporary error"),
         Mock(returncode=1, stdout="", stderr="temporary error"),
@@ -80,8 +80,27 @@ def test_snap_retries_open_once(mock_subprocess):
 
     assert result.error == "temporary error"
     assert mock_subprocess.call_count == 2
-    assert mock_subprocess.call_args_list[0][0][0][-2:] == ["open", "https://test.com/slow"]
-    assert mock_subprocess.call_args_list[1][0][0][-2:] == ["open", "https://test.com/slow"]
+    assert mock_subprocess.call_args_list[0][0][0][-2:] == ["goto", "https://test.com/slow"]
+    assert mock_subprocess.call_args_list[1][0][0][-2:] == ["goto", "https://test.com/slow"]
+
+
+def test_snap_current_observes_without_navigation(mock_subprocess):
+    """Test current-page snapshot does not navigate or open a new page."""
+    mock_output = """### Page
+- Page URL: https://test.com/current
+- Page Title: Current
+### Snapshot
+- button "Save" [ref=e1]
+"""
+    mock_subprocess.return_value = Mock(returncode=0, stdout=mock_output, stderr="")
+
+    cli = PlaywrightCLI()
+    result = cli.snap_current(fallback_url="https://test.com/fallback")
+
+    assert result.url == "https://test.com/current"
+    assert result.title == "Current"
+    assert mock_subprocess.call_count == 1
+    assert mock_subprocess.call_args[0][0][-1:] == ["snapshot"]
 
 
 def test_click_retries_timeout_once(mock_subprocess):

@@ -8,7 +8,6 @@ from typing import Optional
 
 from app.core.settings import (
     PLAYWRIGHT_RUNNER_DIR,
-    PLAYWRIGHT_CLI_OPEN_TIMEOUT_SECONDS,
     PLAYWRIGHT_CLI_GOTO_TIMEOUT_SECONDS,
     PLAYWRIGHT_CLI_SNAPSHOT_TIMEOUT_SECONDS,
     PLAYWRIGHT_CLI_CLICK_TIMEOUT_SECONDS,
@@ -50,7 +49,6 @@ class PlaywrightCLI:
             "AI_TESTING_PLAYWRIGHT_CLI_COMMAND",
             DEFAULT_PLAYWRIGHT_CLI_COMMAND,
         )
-        self.open_timeout = PLAYWRIGHT_CLI_OPEN_TIMEOUT_SECONDS
         self.goto_timeout = PLAYWRIGHT_CLI_GOTO_TIMEOUT_SECONDS
         self.snapshot_timeout = PLAYWRIGHT_CLI_SNAPSHOT_TIMEOUT_SECONDS
         self.click_timeout = PLAYWRIGHT_CLI_CLICK_TIMEOUT_SECONDS
@@ -67,9 +65,7 @@ class PlaywrightCLI:
     def snap(self, url: str) -> SnapshotResult:
         """Capture page snapshot with element info."""
         try:
-            nav_result = self._retry_once("open", url, timeout=self.open_timeout)
-            if nav_result.returncode != 0 and "already" in f"{nav_result.stdout}\n{nav_result.stderr}".lower():
-                nav_result = self._retry_once("goto", url, timeout=self.goto_timeout)
+            nav_result = self._retry_once("goto", url, timeout=self.goto_timeout)
             if nav_result.returncode != 0:
                 return SnapshotResult(
                     url=url,
@@ -96,6 +92,30 @@ class PlaywrightCLI:
         except Exception as e:
             return SnapshotResult(
                 url=url,
+                title="",
+                elements=[],
+                raw_output="",
+                error=str(e),
+            )
+
+    def snap_current(self, fallback_url: str = "") -> SnapshotResult:
+        """Capture a snapshot of the current page without changing navigation state."""
+        try:
+            snapshot_result = self._retry_once("snapshot", timeout=self.snapshot_timeout)
+            if snapshot_result.returncode != 0:
+                return SnapshotResult(
+                    url=fallback_url,
+                    title="",
+                    elements=[],
+                    raw_output=snapshot_result.stdout,
+                    error=snapshot_result.stderr,
+                )
+            return self._parse_snapshot_output(fallback_url, snapshot_result.stdout)
+        except subprocess.TimeoutExpired:
+            raise
+        except Exception as e:
+            return SnapshotResult(
+                url=fallback_url,
                 title="",
                 elements=[],
                 raw_output="",
