@@ -25,6 +25,7 @@ MAPPING_PENDING_MERGE_STATUS = "pending_merge"
 
 
 def sync_document_status(db, document_id: str) -> None:
+    ensure_single_file_is_primary(db, document_id)
     files = document_repo.list_file_mappings(db, document_id)
     if not files:
         return
@@ -33,6 +34,12 @@ def sync_document_status(db, document_id: str) -> None:
         document_repo.update_document_status(db, document_id, DOCUMENT_PENDING_REVIEW_STATUS)
     else:
         document_repo.update_document_status(db, document_id, DOCUMENT_PENDING_MERGE_STATUS)
+
+
+def ensure_single_file_is_primary(db, document_id: str) -> None:
+    files = document_repo.list_file_mappings(db, document_id)
+    if len(files) == 1 and files[0]["file_role"] != "primary":
+        document_repo.set_primary_file_mapping(db, document_id, files[0]["id"])
 
 
 async def upload_documents(
@@ -75,9 +82,11 @@ async def upload_documents(
             if not existing:
                 raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
 
+        existing_file_count = len(document_repo.list_file_mappings(db, document_id))
         created_mapping_ids: list[str] = []
         for index, upload in enumerate(files, start=1):
-            file_role = "primary" if mode == "new" and index == 1 else "supporting"
+            should_be_primary = (mode == "new" or existing_file_count == 0) and index == 1
+            file_role = "primary" if should_be_primary else "supporting"
             created_mapping_ids.append(
                 await save_source_file(db, project_id, document_id, upload, index, actor, file_role=file_role)
             )
@@ -236,6 +245,8 @@ def delete_source_file(mapping_id: str, actor) -> dict:
         markdown_path_value = row["markdown_file_path"]
         assets_dir = converted_assets_dir(row, markdown_path_value)
         document_repo.delete_file_mapping(db, mapping_id)
+        ensure_single_file_is_primary(db, row["document_id"])
+        sync_document_status(db, row["document_id"])
 
     if source_path:
         path = resolve_stored_path(source_path) or Path(source_path)
@@ -399,7 +410,7 @@ async def convert_to_markdown(
         source_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.write_bytes(raw_bytes)
 
-    local_markdown, local_summary = convert_requirement_file_to_markdown(
+    local_markdown, _local_summary = convert_requirement_file_to_markdown(
         filename,
         source_path.read_bytes(),
         assets_dir=assets_dir,
@@ -412,21 +423,11 @@ async def convert_to_markdown(
         filename=filename,
         markdown_content=local_markdown,
     )
-    try:
-        agent_output = await convert_requirement_file(conversion_input)
-    except Exception as exc:
-        logger.warning(
-            "Requirement standardization agent output failed; using local conversion fallback | filename={filename} file_format={file_format} error={error_type}: {error}",
-            filename=filename,
-            file_format=file_format_for_filename(filename),
-            error_type=type(exc).__name__,
-            error=str(exc),
-        )
-        return local_markdown, f"{local_summary}（智能体标准化失败，已使用本地转换结果：{type(exc).__name__}。）"
+    agent_output = await convert_requirement_file(conversion_input)
 
     markdown = _normalize_converted_markdown(agent_output.markdown_content).strip()
     if not markdown:
-        return local_markdown, f"{local_summary}（智能体未返回有效 Markdown，已使用本地转换结果。）"
+        raise ValueError("需求标准化智能体未生成有效 Markdown。")
 
     summary = agent_output.conversion_summary.strip() or "已通过需求标准化智能体生成标准 Markdown。"
     return markdown + "\n", summary

@@ -75,13 +75,16 @@ def record_client_error(payload: ClientErrorReport, actor: Row | None, *, ip_add
     if effective_trace_id == "-":
         effective_trace_id = ""
     project_id = _client_error_project_id(payload, actor)
+    module = _client_error_module(payload)
+    action = "api_error" if _is_backend_api_error(payload) else "client_error"
     actor_id = actor["id"] if actor else "anonymous"
     actor_name = actor_display_name(actor) if actor else "匿名用户"
     path = _safe_text(payload.path, 500)
     method = _safe_text(payload.method.upper(), 12)
     status = f"HTTP {payload.status}" if payload.status else "前端异常"
     endpoint = " ".join(part for part in (method, path) if part)
-    summary_parts = [f"前端错误：{payload.title}", status]
+    prefix = "接口错误" if action == "api_error" else "前端错误"
+    summary_parts = [f"{prefix}：{payload.title}", status]
     if endpoint:
         summary_parts.append(endpoint)
     summary = "；".join(summary_parts)
@@ -92,8 +95,8 @@ def record_client_error(payload: ClientErrorReport, actor: Row | None, *, ip_add
 
     log_id = record_failure(
         log_type="audit",
-        module="frontend",
-        action="client_error",
+        module=module,
+        action=action,
         object_type="client_error",
         object_id=effective_trace_id or None,
         object_name=payload.title,
@@ -360,6 +363,35 @@ def _client_error_project_id(payload: ClientErrorReport, actor: Row | None) -> s
     except Exception:
         return None
     return project_id
+
+
+def _is_backend_api_error(payload: ClientErrorReport) -> bool:
+    return bool(payload.status and payload.path)
+
+
+def _client_error_module(payload: ClientErrorReport) -> str:
+    if not _is_backend_api_error(payload):
+        return "frontend"
+    path = urlsplit(payload.path).path
+    if "/requirements" in path or "/requirement-files" in path:
+        return "requirement"
+    if "/projects" in path:
+        return "project"
+    if "/page-exploration" in path or "/exploration" in path or "/environments" in path:
+        return "exploration"
+    if "/test-case" in path:
+        return "test_case"
+    if "/knowledge" in path:
+        return "knowledge"
+    if "/models" in path:
+        return "model"
+    if "/users" in path:
+        return "user"
+    if "/auth" in path:
+        return "auth"
+    if "/operation-logs" in path:
+        return "operation_log"
+    return "api"
 
 
 def _extract_project_id(value: str) -> str | None:

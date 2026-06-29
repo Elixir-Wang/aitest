@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Button as PaginationButton } from "@/components/ui/button-1";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
-import { StatusBadge, taskStatusGroupTone } from "@/components/ui/status-badge";
+import { StatusBadge, taskStatusTone } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { type ApiTaskItem, type ApiTaskList, apiRequest, formatDateTime } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -20,7 +20,7 @@ function TaskStatusBadge({ task }: { task: ApiTaskItem }) {
   const isRunning = task.status_group === "running";
 
   return (
-    <StatusBadge tone={taskStatusGroupTone(task.status_group)}>
+    <StatusBadge tone={taskStatusTone(task.status_group, task.status)}>
       {isRunning || task.status === "processing" ? <ProcessingState label={task.status_label} /> : task.status_label}
     </StatusBadge>
   );

@@ -6,7 +6,14 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from app.core.settings import PLAYWRIGHT_RUNNER_DIR
+from app.core.settings import (
+    PLAYWRIGHT_RUNNER_DIR,
+    PLAYWRIGHT_CLI_OPEN_TIMEOUT_SECONDS,
+    PLAYWRIGHT_CLI_GOTO_TIMEOUT_SECONDS,
+    PLAYWRIGHT_CLI_SNAPSHOT_TIMEOUT_SECONDS,
+    PLAYWRIGHT_CLI_CLICK_TIMEOUT_SECONDS,
+    PLAYWRIGHT_CLI_FILL_TIMEOUT_SECONDS,
+)
 
 from .schemas import (
     SnapshotResult,
@@ -35,16 +42,19 @@ class PlaywrightCLI:
 
     def __init__(
         self,
-        timeout: int = 30,
         session_id: Optional[str] = None,
         command: Optional[str] = None,
     ):
-        self.timeout = timeout
         self.session_id = session_id
         self.command = command or os.getenv(
             "AI_TESTING_PLAYWRIGHT_CLI_COMMAND",
             DEFAULT_PLAYWRIGHT_CLI_COMMAND,
         )
+        self.open_timeout = PLAYWRIGHT_CLI_OPEN_TIMEOUT_SECONDS
+        self.goto_timeout = PLAYWRIGHT_CLI_GOTO_TIMEOUT_SECONDS
+        self.snapshot_timeout = PLAYWRIGHT_CLI_SNAPSHOT_TIMEOUT_SECONDS
+        self.click_timeout = PLAYWRIGHT_CLI_CLICK_TIMEOUT_SECONDS
+        self.fill_timeout = PLAYWRIGHT_CLI_FILL_TIMEOUT_SECONDS
 
     def _build_command(self, *args: str) -> list[str]:
         """Build command with optional session_id."""
@@ -57,9 +67,9 @@ class PlaywrightCLI:
     def snap(self, url: str) -> SnapshotResult:
         """Capture page snapshot with element info."""
         try:
-            nav_result = self._run("open", url)
+            nav_result = self._retry_once("open", url, timeout=self.open_timeout)
             if nav_result.returncode != 0 and "already" in f"{nav_result.stdout}\n{nav_result.stderr}".lower():
-                nav_result = self._run("goto", url)
+                nav_result = self._retry_once("goto", url, timeout=self.goto_timeout)
             if nav_result.returncode != 0:
                 return SnapshotResult(
                     url=url,
@@ -69,7 +79,7 @@ class PlaywrightCLI:
                     error=nav_result.stderr,
                 )
 
-            snapshot_result = self._run("snapshot")
+            snapshot_result = self._retry_once("snapshot", timeout=self.snapshot_timeout)
 
             if snapshot_result.returncode != 0:
                 return SnapshotResult(
@@ -94,7 +104,7 @@ class PlaywrightCLI:
 
     def navigate(self, url: str) -> NavigateResult:
         """Navigate to URL."""
-        result = self._run("goto", url)
+        result = self._retry_once("goto", url, timeout=self.goto_timeout)
 
         if result.returncode == 0:
             return NavigateResult(url=url, success=True)
@@ -103,7 +113,7 @@ class PlaywrightCLI:
 
     def click(self, locator: str) -> ClickResult:
         """Click element by locator."""
-        result = self._run("click", locator)
+        result = self._retry_once("click", locator, timeout=self.click_timeout)
 
         if result.returncode == 0:
             return ClickResult(success=True)
@@ -112,22 +122,32 @@ class PlaywrightCLI:
 
     def fill(self, locator: str, value: str) -> FillResult:
         """Fill input element with value."""
-        result = self._run("fill", locator, value)
+        result = self._retry_once("fill", locator, value, timeout=self.fill_timeout)
 
         if result.returncode == 0:
             return FillResult(success=True)
         else:
             return FillResult(success=False, error=result.stderr)
 
-    def _run(self, *args: str) -> subprocess.CompletedProcess[str]:
+    def _run(self, *args: str, timeout: int) -> subprocess.CompletedProcess[str]:
         """Run playwright-cli with a deterministic cwd for its session files."""
         return subprocess.run(
             self._build_command(*args),
             capture_output=True,
             text=True,
-            timeout=self.timeout,
+            timeout=timeout,
             cwd=Path(PLAYWRIGHT_RUNNER_DIR),
         )
+
+    def _retry_once(self, *args: str, timeout: int) -> subprocess.CompletedProcess[str]:
+        """Run a command once, retrying a single time on failure."""
+        try:
+            result = self._run(*args, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return self._run(*args, timeout=timeout)
+        if result.returncode == 0:
+            return result
+        return self._run(*args, timeout=timeout)
 
     def _parse_snapshot_output(self, fallback_url: str, output: str) -> SnapshotResult:
         """Convert playwright-cli snapshot text into the legacy structured result."""

@@ -1,0 +1,76 @@
+page:
+  id: page-login
+  title: 百融百工 - 登录页
+  normalized_path: /login
+  explored_at: '2026-06-29T11:11:24.954816Z'
+  elements:
+  - id: account_password_tab
+    name: 账号密码
+    role: tab
+    locators:
+    - kind: role
+      code: getByText('账号密码')
+      priority: 1
+  - id: sms_verification_tab
+    name: 短信验证
+    role: tab
+    locators:
+    - kind: role
+      code: getByText('短信验证')
+      priority: 1
+  - id: account_input
+    name: 账号输入框
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入邮箱/手机号'' })'
+      priority: 1
+  - id: password_input
+    name: 密码输入框
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入密码'' })'
+      priority: 1
+  - id: captcha_input
+    name: 图形验证码输入框
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入图形验证码'' })'
+      priority: 1
+  - id: forgot_password_link
+    name: 忘记密码
+    role: link
+    locators:
+    - kind: role
+      code: getByText('忘记密码?')
+      priority: 1
+  - id: login_button
+    name: 登录
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''登录'' })'
+      priority: 1
+  - id: user_agreement_link
+    name: 用户协议
+    role: link
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《用户协议》'' })'
+      priority: 1
+  - id: privacy_policy_link
+    name: 隐私政策
+    role: link
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《隐私政策》'' })'
+      priority: 1
+  - id: register_link
+    name: 去注册
+    role: link
+    locators:
+    - kind: role
+      code: getByText('去注册')
+      priority: 1

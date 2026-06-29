@@ -87,7 +87,7 @@ def list_tasks(
     recover_stale_requirement_analysis_runs(project_id=project_id)
     tasks = _collect_visible_tasks(actor)
     tasks = _filter_tasks(tasks, project_id=project_id, status_group=status_group, module=module, keyword=keyword)
-    tasks.sort(key=lambda item: (item["created_at"], item["id"]), reverse=True)
+    tasks.sort(key=lambda item: (item["updated_at"], item["created_at"], item["id"]), reverse=True)
     total = len(tasks)
     page = max(1, page)
     page_size = min(max(1, page_size), 100)

@@ -49,6 +49,11 @@ export function taskStatusGroupTone(statusGroup: string): StatusBadgeTone {
   return "neutral";
 }
 
+export function taskStatusTone(statusGroup: string, status: string): StatusBadgeTone {
+  if (["blocked", "failed", "interrupted"].includes(status)) return "destructive";
+  return taskStatusGroupTone(statusGroup);
+}
+
 export function operationLogResultTone(result: string): StatusBadgeTone {
   if (result === "failed") return "destructive";
   if (result === "success") return "success";

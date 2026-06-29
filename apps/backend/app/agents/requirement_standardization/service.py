@@ -3,7 +3,7 @@ from app.agents.requirement_standardization.agent import requirement_standardiza
 from app.agents.requirement_standardization.schemas import RequirementConversionInput, RequirementConversionOutput
 
 
-CAPABILITY_ID = "raw_requirement_format_converter"
+CAPABILITY_ID = "requirement_standardization"
 
 
 async def convert_requirement_file(input_data: RequirementConversionInput) -> RequirementConversionOutput:

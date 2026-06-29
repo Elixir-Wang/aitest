@@ -1,6 +1,7 @@
 """Tests for Playwright tools"""
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from app.agents.page_exploration.tools.playwright_tools import (
@@ -24,8 +25,8 @@ def test_playwright_snap_tool_success(mock_cli):
         url="https://test.com/page",
         title="Test Page",
         elements=[
-            Mock(ref="e15", role="button", name="Click Me", text=None, visible=True),
-            Mock(ref="e20", role="textbox", name="Input", text="", visible=True),
+            SimpleNamespace(ref="e15", role="button", name="Click Me", text=None, visible=True),
+            SimpleNamespace(ref="e20", role="textbox", name="Input", text="", visible=True),
         ],
         raw_output="yaml output",
         error=None,

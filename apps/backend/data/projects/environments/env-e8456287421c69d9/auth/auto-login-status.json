@@ -1,6 +1,6 @@
 {
-  "status": "succeeded",
-  "message": "登录态已自动保存。",
-  "updated_at": "2026-06-16T11:59:35.936468+00:00",
+  "status": "running",
+  "message": "正在分析登录页元素",
+  "updated_at": "2026-06-29T06:34:29.082688+00:00",
   "last_error_code": ""
 }

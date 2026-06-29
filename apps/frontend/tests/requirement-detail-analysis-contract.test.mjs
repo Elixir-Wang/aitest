@@ -61,6 +61,11 @@ test("original and standard file tabs show the selected file role badge", () => 
   assert.equal((pageSource.match(/<FileRoleBadge file=\{selectedFile\} \/>/g) ?? []).length, 2);
 });
 
+test("primary source file row does not show an already-primary action", () => {
+  assert.doesNotMatch(pageSource, /已是主需求/);
+  assert.match(pageSource, /\.\.\.\(file\.file_role !== "primary"[\s\S]*\? \[[\s\S]*label: "设为主需求"/);
+});
+
 test("overview uses requirement progress steps instead of summary metric cards", () => {
   assert.match(pageSource, /<RequirementProgressSteps steps=\{requirementProgressSteps\} \/>/);
   assert.match(pageSource, /title: "原始需求"/);
@@ -152,7 +157,7 @@ test("clarification tab keeps the clickable answer structure", () => {
   assert.match(pageSource, /setActiveRestoredPendingItemId\(item\.id\)/);
   assert.doesNotMatch(pageSource, /scrollIntoView/);
   assert.match(pageSource, />\s*移回编辑\s*</);
-  assert.match(pageSource, /撤回已写入初步需求的补充内容/);
+  assert.doesNotMatch(pageSource, /撤回已写入初步需求的补充内容/);
   assert.match(pageSource, /澄清：/);
   assert.doesNotMatch(pageSource, /暂未写入初步需求，移回后可选择推荐口径或填写自定义答复/);
   assert.match(pageSource, /保存答复/);
@@ -211,7 +216,16 @@ test("handled clarification answers move behind the managed handled menu", () =>
   assert.doesNotMatch(pageSource, /clarificationAnswerStatusLabel/);
 });
 
+test("handled clarification item heading stays aligned under the number column", () => {
+  assert.match(pageSource, /className="absolute flex h-7 w-\[10\.5rem\] items-center gap-2"/);
+  assert.match(pageSource, /className="block min-w-0 break-words text-foreground text-sm leading-6 indent-\[10\.5rem\]"/);
+});
+
 test("legacy query tabs route into requirement analysis", () => {
   assert.match(pageSource, /queryTab === "initial"[\s\S]*setActiveTab\("analysis"\)/);
   assert.match(pageSource, /queryTab === "clarification"[\s\S]*setActiveTab\("analysis"\)/);
+});
+
+test("requirement detail no longer accepts the removed source-files query tab", () => {
+  assert.doesNotMatch(pageSource, /queryTab === "source-files"/);
 });

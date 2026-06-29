@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import {
@@ -34,8 +35,6 @@ import {
 import {
   isFinalRequirementVersion,
   type RequirementVersionDetail,
-  RequirementVersionDetailContent,
-  requirementVersionActionLabel,
   requirementVersionSummary,
 } from "@/components/ai-testing/requirement-version-detail-content";
 import { StandardMarkdownEditor } from "@/components/ai-testing/standard-markdown-editor";
@@ -507,11 +506,8 @@ export default function DocumentDetailPage() {
   const [settingPrimaryFileId, setSettingPrimaryFileId] = useState("");
   const [analysisResult, setAnalysisResult] = useState<RequirementAnalysisResult | null>(null);
   const [requirementVersions, setRequirementVersions] = useState<RequirementVersion[]>([]);
-  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [, setVersionsLoading] = useState(false);
   const [versionsError, setVersionsError] = useState("");
-  const [selectedRequirementVersion, setSelectedRequirementVersion] = useState<RequirementVersion | null>(null);
-  const [selectedRequirementVersionLoading, setSelectedRequirementVersionLoading] = useState(false);
-  const [switchingRequirementVersionId, setSwitchingRequirementVersionId] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
   const [activeReviewRunId, setActiveReviewRunId] = useState("");
   const [stoppingReview, setStoppingReview] = useState(false);
@@ -646,7 +642,13 @@ export default function DocumentDetailPage() {
   const requirementReviewPassed = Boolean(
     analysisResult?.status && ["completed", "needs_clarification"].includes(analysisResult.status) && !isBlocked,
   );
-  const canFinalizeRequirement = Boolean(requirementReviewPassed && !finalizeDisabledReason);
+  const requiredPendingAnalysisItems = pendingAnalysisItems.filter(
+    (item) => item.priority === "P0" || item.priority === "P1",
+  );
+  const requiredPendingAnalysisHandled = requiredPendingAnalysisItems.every(isPendingItemHandled);
+  const canFinalizeRequirement = Boolean(
+    requirementReviewPassed && !finalizeDisabledReason && requiredPendingAnalysisHandled,
+  );
   const requirementProgressSteps: RequirementProgressStep[] = [
     {
       id: "raw",
@@ -679,15 +681,6 @@ export default function DocumentDetailPage() {
     () => requirementVersions.filter(isFinalRequirementVersion),
     [requirementVersions],
   );
-  const currentRequirementVersion = useMemo(
-    () => finalRequirementVersions.find((version) => version.id === overview?.document.current_version_id) ?? null,
-    [finalRequirementVersions, overview?.document.current_version_id],
-  );
-  const currentRequirementVersionText = overview?.document.current_version_id
-    ? currentRequirementVersion
-      ? `当前生效版本 v${currentRequirementVersion.version_no}`
-      : "当前最终需求版本已生成"
-    : "当前没有生效最终需求";
   const selectedFileEffectKey = selectedFile
     ? [selectedFile.id, selectedFile.conversion_status, selectedFile.standard_file_status].join(":")
     : "";
@@ -1291,50 +1284,6 @@ export default function DocumentDetailPage() {
     }
   }
 
-  async function openRequirementVersionDetail(version: RequirementVersion) {
-    setSelectedRequirementVersion(version);
-    setSelectedRequirementVersionLoading(true);
-    try {
-      const detail = await apiRequest<RequirementVersion>(
-        `/projects/${projectId}/requirements/${documentId}/versions/${version.id}`,
-      );
-      setSelectedRequirementVersion(detail);
-    } catch (requestError) {
-      reportError(requestError, {
-        fallbackMessage: "版本详情加载失败",
-        actionLabel: "查看需求版本",
-        method: "GET",
-        path: `/projects/${projectId}/requirements/${documentId}/versions/${version.id}`,
-      });
-      setSelectedRequirementVersion(null);
-    } finally {
-      setSelectedRequirementVersionLoading(false);
-    }
-  }
-
-  async function switchRequirementVersion(version: RequirementVersion) {
-    setSwitchingRequirementVersionId(version.id);
-    try {
-      await apiRequest(`/projects/${projectId}/requirements/${documentId}/versions/${version.id}/current`, {
-        method: "PUT",
-      });
-      toast.success(`已切换为 v${version.version_no}`);
-      setSelectedRequirementVersion((current) => (current ? { ...current, is_current: true } : current));
-      await loadOverview({ silent: true });
-      await loadRequirementVersions({ silent: true });
-      setActiveTab("final");
-    } catch (requestError) {
-      reportError(requestError, {
-        fallbackMessage: "版本切换失败",
-        actionLabel: "切换最终需求版本",
-        method: "PUT",
-        path: `/projects/${projectId}/requirements/${documentId}/versions/${version.id}/current`,
-      });
-    } finally {
-      setSwitchingRequirementVersionId("");
-    }
-  }
-
   function updatePendingAnswerDraft(questionId: string, patch: Partial<PendingAnswerDraft>) {
     setPendingAnswerDrafts((current) => {
       const existing = current[questionId] ?? {
@@ -1718,15 +1667,18 @@ export default function DocumentDetailPage() {
                               onSelect: () => selectFileForTab(file.id, "standard"),
                               disabled: !["success", "warning", "failed"].includes(file.conversion_status),
                             },
-                            {
-                              label: file.file_role === "primary" ? "已是主需求" : "设为主需求",
-                              icon: Check,
-                              onSelect: () => setPrimaryFile(file),
-                              disabled:
-                                file.file_role === "primary" ||
-                                settingPrimaryFileId === file.id ||
-                                !["success", "warning"].includes(file.conversion_status),
-                            },
+                            ...(file.file_role !== "primary"
+                              ? [
+                                  {
+                                    label: "设为主需求",
+                                    icon: Check,
+                                    onSelect: () => setPrimaryFile(file),
+                                    disabled:
+                                      settingPrimaryFileId === file.id ||
+                                      !["success", "warning"].includes(file.conversion_status),
+                                  },
+                                ]
+                              : []),
                             {
                               label: "删除",
                               icon: Trash2,
@@ -2208,22 +2160,8 @@ export default function DocumentDetailPage() {
 
         <TabsContent value="versions">
           <ShellSection>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-medium text-sm">版本记录</h2>
-                <p className="mt-1 text-muted-foreground text-xs">{currentRequirementVersionText}。</p>
-              </div>
-              <Button
-                disabled={versionsLoading}
-                onClick={() => {
-                  void loadRequirementVersions();
-                }}
-                type="button"
-                variant="outline"
-              >
-                {versionsLoading ? <Loader2 className="size-4 animate-spin" /> : <History className="size-4" />}
-                刷新
-              </Button>
+            <div className="mb-3">
+              <h2 className="font-medium text-sm">版本记录</h2>
             </div>
             {versionsError ? (
               <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-destructive text-sm">
@@ -2231,41 +2169,53 @@ export default function DocumentDetailPage() {
               </div>
             ) : (
               <div className="overflow-hidden rounded-lg border">
-                <Table>
+                <Table className="table-fixed">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>版本</TableHead>
+                      <TableHead className="w-24 pl-5">版本</TableHead>
                       <TableHead>摘要</TableHead>
-                      <TableHead>创建时间</TableHead>
-                      <TableHead className="w-20">操作</TableHead>
+                      <TableHead className="w-28 text-center">生效版本</TableHead>
+                      <TableHead className="w-48">创建时间</TableHead>
+                      <TableHead className="w-20 text-center">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {finalRequirementVersions.map((version) => (
-                      <TableRow key={version.id}>
-                        <TableCell>{`v${version.version_no}`}</TableCell>
-                        <TableCell className="max-w-2xl whitespace-normal">
-                          {requirementVersionSummary(version)}
-                        </TableCell>
-                        <TableCell>{formatDateTime(version.created_at)}</TableCell>
-                        <TableCell>
-                          <Button
-                            aria-label="查看版本详情"
-                            onClick={() => {
-                              void openRequirementVersionDetail(version);
-                            }}
-                            size="icon-sm"
-                            type="button"
-                            variant="ghost"
-                          >
-                            <Eye className="size-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {finalRequirementVersions.map((version) => {
+                      const versionHref = `/projects/${projectId}/requirements/${documentId}/versions/${version.id}`;
+                      const summary = requirementVersionSummary(version);
+                      const isCurrentVersion = version.id === overview.document.current_version_id;
+
+                      return (
+                        <TableRow key={version.id}>
+                          <TableCell className="pl-5">
+                            <Link className="font-medium text-primary hover:underline" href={versionHref}>
+                              {`v${version.version_no}`}
+                            </Link>
+                          </TableCell>
+                          <TableCell>
+                            <div className="truncate text-foreground" title={summary}>
+                              {summary}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant={isCurrentVersion ? "default" : "secondary"}>
+                              {isCurrentVersion ? "是" : "否"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{formatDateTime(version.created_at)}</TableCell>
+                          <TableCell className="text-center">
+                            <Button aria-label="预览版本" asChild size="icon-sm" variant="ghost">
+                              <Link href={versionHref}>
+                                <Eye className="size-4" />
+                              </Link>
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                     {finalRequirementVersions.length === 0 ? (
                       <TableRow>
-                        <TableCell className="py-8 text-center text-muted-foreground text-sm" colSpan={4}>
+                        <TableCell className="py-8 text-center text-muted-foreground text-sm" colSpan={5}>
                           尚未生成最终需求版本
                         </TableCell>
                       </TableRow>
@@ -2302,7 +2252,7 @@ export default function DocumentDetailPage() {
         </DialogContent>
       </Dialog>
       <Dialog onOpenChange={setHandledClarificationDialogOpen} open={handledClarificationDialogOpen}>
-        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-4xl">
           <DialogHeader className="shrink-0 gap-3 border-b bg-muted/10 py-5 pr-24 pl-6">
             <DialogTitle>管理已处理</DialogTitle>
             <Tabs
@@ -2344,8 +2294,8 @@ export default function DocumentDetailPage() {
                       <div className={isDeferredAnswer ? "bg-slate-400 dark:bg-slate-500" : "bg-emerald-500"} />
                       <div className="p-4">
                         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-                          <div className="min-w-0">
-                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <div className="relative min-w-0">
+                            <div className="absolute flex h-7 w-[10.5rem] items-center gap-2">
                               <span className="inline-flex h-7 min-w-8 items-center justify-center rounded-sm border border-border bg-muted/40 px-2 font-medium text-[11px] text-muted-foreground tabular-nums">
                                 {itemNumber}
                               </span>
@@ -2354,7 +2304,9 @@ export default function DocumentDetailPage() {
                               </Badge>
                               <Badge variant={pendingItemSeverityVariant(item)}>{pendingItemSeverityLabel(item)}</Badge>
                             </div>
-                            <div className="mt-3 break-words text-foreground text-sm leading-6">{itemHeading}</div>
+                            <span className="block min-w-0 break-words indent-[10.5rem] text-foreground text-sm leading-6">
+                              {itemHeading}
+                            </span>
                           </div>
                           <Button
                             className="h-8 shrink-0 justify-self-end px-3 text-xs"
@@ -2371,11 +2323,6 @@ export default function DocumentDetailPage() {
                           <div className="mt-3 border-muted-foreground/20 border-l-2 pl-3 text-muted-foreground text-sm leading-6">
                             <span className="mr-2 font-medium text-foreground">澄清：</span>
                             {answerText}
-                          </div>
-                        ) : null}
-                        {!isDeferredAnswer ? (
-                          <div className="mt-2 text-muted-foreground text-xs leading-5">
-                            移回后选择“暂不处理”并保存，会撤回已写入初步需求的补充内容。
                           </div>
                         ) : null}
                       </div>
@@ -2397,68 +2344,6 @@ export default function DocumentDetailPage() {
               </div>
             )}
           </div>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedRequirementVersion(null);
-            setSelectedRequirementVersionLoading(false);
-          }
-        }}
-        open={Boolean(selectedRequirementVersion)}
-      >
-        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-4xl">
-          <DialogHeader className="shrink-0 gap-2 px-6 pt-6 pb-4">
-            <DialogTitle>版本详情</DialogTitle>
-            <DialogDescription>
-              {selectedRequirementVersion
-                ? `v${selectedRequirementVersion.version_no} / ${requirementVersionActionLabel()}`
-                : "加载中"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="min-h-0 space-y-4 overflow-auto px-6 pb-6">
-            {selectedRequirementVersionLoading ? (
-              <div className="flex items-center gap-2 rounded-lg border bg-muted/20 p-4 text-muted-foreground text-sm">
-                <Loader2 className="size-4 animate-spin" />
-                正在加载版本最终需求
-              </div>
-            ) : null}
-            {selectedRequirementVersion ? (
-              <RequirementVersionDetailContent version={selectedRequirementVersion} />
-            ) : null}
-          </div>
-          <DialogFooter className="border-t px-6 py-4">
-            <Button
-              disabled={[
-                !selectedRequirementVersion,
-                selectedRequirementVersionLoading,
-                selectedRequirementVersion ? switchingRequirementVersionId === selectedRequirementVersion.id : false,
-                selectedRequirementVersion
-                  ? selectedRequirementVersion.id === overview.document.current_version_id
-                  : false,
-                selectedRequirementVersion?.is_current === true,
-              ].some(Boolean)}
-              onClick={() => {
-                if (selectedRequirementVersion) {
-                  void switchRequirementVersion(selectedRequirementVersion);
-                }
-              }}
-              type="button"
-            >
-              {selectedRequirementVersion && switchingRequirementVersionId === selectedRequirementVersion.id ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Check className="size-4" />
-              )}
-              {[
-                selectedRequirementVersion?.id === overview.document.current_version_id,
-                selectedRequirementVersion?.is_current,
-              ].some(Boolean)
-                ? "当前生效版本"
-                : "切换为当前版本"}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
       <AlertDialog onOpenChange={setReviewStopConfirmOpen} open={reviewStopConfirmOpen}>

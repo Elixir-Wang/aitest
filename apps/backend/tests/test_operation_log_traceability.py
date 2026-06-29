@@ -146,7 +146,7 @@ def test_operation_log_export_reuses_filters_and_masks_sensitive_values(
     assert "token=abc123" not in csv_content
 
 
-def test_record_client_error_writes_failed_frontend_log_with_trace_and_project(
+def test_record_client_api_error_writes_failed_business_log_with_trace_and_project(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ) -> None:
@@ -177,8 +177,8 @@ def test_record_client_error_writes_failed_frontend_log_with_trace_and_project(
     assert result["log_id"]
     detail = operation_log_service.get_log(result["log_id"], ACTOR)
 
-    assert detail["module"] == "frontend"
-    assert detail["action"] == "client_error"
+    assert detail["module"] == "requirement"
+    assert detail["action"] == "api_error"
     assert detail["result"] == "failed"
     assert detail["project_id"] == "project-1"
     assert detail["request_id"] == "trace_client123"
@@ -190,6 +190,66 @@ def test_record_client_error_writes_failed_frontend_log_with_trace_and_project(
     assert "token=abc123" not in str(detail["before"])
     assert "password=secret123" not in str(detail["before"])
     assert "token=abc123" not in detail["user_agent"]
+
+
+def test_backend_api_error_report_uses_business_module_from_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        db.execute(
+            "INSERT INTO projects (id, name, status, description) VALUES ('project-1', '测试项目', 'active', '')"
+        )
+
+    result = operation_log_service.record_client_error(
+        ClientErrorReport(
+            title="需求文档删除失败",
+            message="该需求文档已关联测试用例集：通用模型网关设计。",
+            code="DOCUMENT_HAS_TEST_CASE_SETS",
+            status=409,
+            trace_id="trace_delete_requirement123",
+            method="DELETE",
+            path="/projects/project-1/requirements/doc-1",
+            page_url="http://localhost:3000/projects/project-1/requirements",
+            action_label="删除需求文档：通用模型网关设计",
+        ),
+        ACTOR,
+    )
+
+    assert result["log_id"]
+    detail = operation_log_service.get_log(result["log_id"], ACTOR)
+
+    assert detail["module"] == "requirement"
+    assert detail["action"] == "api_error"
+    assert detail["source"] == "web"
+    assert detail["project_id"] == "project-1"
+    assert detail["request_id"] == "trace_delete_requirement123"
+    assert "接口错误：需求文档删除失败" in detail["summary"]
+
+
+def test_browser_only_client_error_stays_in_frontend_module(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = operation_log_service.record_client_error(
+        ClientErrorReport(
+            title="页面渲染失败",
+            message="Cannot read properties of undefined",
+            page_url="http://localhost:3000/projects",
+            action_label="打开项目列表",
+        ),
+        ACTOR,
+    )
+
+    assert result["log_id"]
+    detail = operation_log_service.get_log(result["log_id"], ACTOR)
+
+    assert detail["module"] == "frontend"
+    assert detail["action"] == "client_error"
+    assert "前端错误：页面渲染失败" in detail["summary"]
 
 
 def test_record_client_error_without_actor_creates_system_level_anonymous_log(
@@ -215,8 +275,8 @@ def test_record_client_error_without_actor_creates_system_level_anonymous_log(
     assert result["log_id"]
     detail = operation_log_service.get_log(result["log_id"], ACTOR)
 
-    assert detail["module"] == "frontend"
-    assert detail["action"] == "client_error"
+    assert detail["module"] == "auth"
+    assert detail["action"] == "api_error"
     assert detail["project_id"] is None
     assert detail["actor_id"] == "anonymous"
     assert detail["actor_name"] == "匿名用户"
@@ -253,7 +313,7 @@ def test_client_error_api_requires_auth_and_writes_log(monkeypatch: pytest.Monke
     data = response.json()["data"]
     assert data["log_id"]
     detail = operation_log_service.get_log(data["log_id"], ACTOR)
-    assert detail["module"] == "frontend"
-    assert detail["action"] == "client_error"
+    assert detail["module"] == "model"
+    assert detail["action"] == "api_error"
     assert detail["request_id"] == "trace_api_client123"
     assert "token=abc123" not in detail["failure_reason"]

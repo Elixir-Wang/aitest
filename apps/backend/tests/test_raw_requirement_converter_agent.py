@@ -144,7 +144,13 @@ async def test_requirement_standardization_service_returns_structured_response(m
             assert "# 登录\n支持账号密码登录。" in content
             return {"structured_response": expected}
 
-    monkeypatch.setattr("app.agents.requirement_standardization.service.resolve_model_selection", lambda capability_id: "selection")
+    captured = {}
+
+    def fake_resolve_model_selection(capability_id):
+        captured["capability_id"] = capability_id
+        return "selection"
+
+    monkeypatch.setattr("app.agents.requirement_standardization.service.resolve_model_selection", fake_resolve_model_selection)
     monkeypatch.setattr("app.agents.requirement_standardization.service.build_agent_model", lambda selection: "model")
     monkeypatch.setattr("app.agents.requirement_standardization.service.requirement_standardization_agent", lambda model: FakeAgent())
 
@@ -156,6 +162,7 @@ async def test_requirement_standardization_service_returns_structured_response(m
     )
 
     assert result is expected
+    assert captured["capability_id"] == "requirement_standardization"
 
 
 @pytest.mark.anyio
@@ -261,6 +268,57 @@ flowchart TD
 
     assert 'F[提示"产品未开通"<br>或"联系管理员"]' in markdown
     assert summary == "已标准化候选 Markdown。"
+
+
+@pytest.mark.anyio
+async def test_document_file_service_raises_when_standardization_fails(monkeypatch, tmp_path) -> None:
+    from app.services.document import file_service as document_file_service
+
+    source_path = tmp_path / "demo.md"
+    source_path.write_text("# 登录\n支持账号密码登录。", encoding="utf-8")
+
+    def fake_local_convert(filename, raw_bytes, *, assets_dir=None):
+        return "# 登录\n支持账号密码登录。", "文本文件直接保存为 Markdown 转换稿。"
+
+    async def fake_standardize(input_data):
+        raise ValueError("模型不支持工具调用。")
+
+    monkeypatch.setattr(document_file_service, "convert_requirement_file_to_markdown", fake_local_convert)
+    monkeypatch.setattr(document_file_service, "convert_requirement_file", fake_standardize)
+
+    with pytest.raises(ValueError, match="模型不支持工具调用。"):
+        await document_file_service.convert_to_markdown(
+            "demo.md",
+            source_path=source_path,
+            assets_dir=tmp_path / "assets",
+        )
+
+
+@pytest.mark.anyio
+async def test_document_file_service_raises_when_standardization_returns_empty_markdown(monkeypatch, tmp_path) -> None:
+    from app.services.document import file_service as document_file_service
+
+    source_path = tmp_path / "demo.md"
+    source_path.write_text("# 登录\n支持账号密码登录。", encoding="utf-8")
+
+    def fake_local_convert(filename, raw_bytes, *, assets_dir=None):
+        return "# 登录\n支持账号密码登录。", "文本文件直接保存为 Markdown 转换稿。"
+
+    async def fake_standardize(input_data):
+        return RequirementConversionOutput(
+            markdown_content="  ",
+            conversion_summary="标准化返回空内容。",
+        )
+
+    monkeypatch.setattr(document_file_service, "convert_requirement_file_to_markdown", fake_local_convert)
+    monkeypatch.setattr(document_file_service, "convert_requirement_file", fake_standardize)
+
+    with pytest.raises(ValueError, match="需求标准化智能体未生成有效 Markdown。"):
+        await document_file_service.convert_to_markdown(
+            "demo.md",
+            source_path=source_path,
+            assets_dir=tmp_path / "assets",
+        )
 
 
 def test_raw_requirement_converter_legacy_package_removed() -> None:

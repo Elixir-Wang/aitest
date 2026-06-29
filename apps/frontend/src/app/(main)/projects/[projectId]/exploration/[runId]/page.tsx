@@ -7,8 +7,16 @@ import { useParams, useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowLeft,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Circle,
+  CircleAlert,
+  CircleDotDashed,
+  CircleX,
   FileText,
   ListChecks,
+  Loader2,
   Pencil,
   Play,
   RefreshCw,
@@ -36,7 +44,6 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { StatusBadge, type StatusBadgeTone } from "@/components/ui/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import { API_BASE_URL, apiAuthHeaders, apiRequest, formatDateTime, parseApiTimestamp } from "@/lib/api-client";
@@ -219,6 +226,7 @@ type ExplorationMonitorEvent = {
   summary: string;
   occurred_at: string;
   status: AgentPlanStatus;
+  payload?: Record<string, unknown>;
 };
 
 type ExplorationMonitorState = {
@@ -271,8 +279,6 @@ type ExplorationForm = {
   maxActions: string;
   timeoutMinutes: string;
 };
-
-type PageItem = { type: "page"; page: number; id: string } | { type: "ellipsis"; id: string };
 
 const statusLabels: Record<string, string> = {
   pending: "待执行",
@@ -361,53 +367,6 @@ const emptyExplorationForm: ExplorationForm = {
 function parsePositiveInteger(value: string): number | null {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-function getVisiblePages(currentPage: number, pageCount: number): PageItem[] {
-  if (pageCount <= 7) {
-    return Array.from({ length: pageCount }, (_, index) => ({
-      type: "page" as const,
-      page: index + 1,
-      id: `page-${index + 1}`,
-    }));
-  }
-
-  const createPage = (page: number): PageItem => ({ type: "page" as const, page, id: `page-${page}` });
-  const createEllipsis = (id: string): PageItem => ({ type: "ellipsis" as const, id });
-
-  if (currentPage <= 4) {
-    return [
-      createPage(1),
-      createPage(2),
-      createPage(3),
-      createPage(4),
-      createPage(5),
-      createEllipsis("ellipsis-end"),
-      createPage(pageCount),
-    ];
-  }
-
-  if (currentPage >= pageCount - 3) {
-    return [
-      createPage(1),
-      createEllipsis("ellipsis-start"),
-      createPage(pageCount - 4),
-      createPage(pageCount - 3),
-      createPage(pageCount - 2),
-      createPage(pageCount - 1),
-      createPage(pageCount),
-    ];
-  }
-
-  return [
-    createPage(1),
-    createEllipsis("ellipsis-start"),
-    createPage(currentPage - 1),
-    createPage(currentPage),
-    createPage(currentPage + 1),
-    createEllipsis("ellipsis-end"),
-    createPage(pageCount),
-  ];
 }
 
 function parseStreamEvent(chunk: string): ExplorationStreamEvent | null {
@@ -742,7 +701,10 @@ function emptyMonitorStep(planStep: ExplorationMonitorPlanStep): ExplorationMoni
   };
 }
 
-function upsertMonitorStep(steps: ExplorationMonitorStep[], incoming: ExplorationMonitorStep): ExplorationMonitorStep[] {
+function upsertMonitorStep(
+  steps: ExplorationMonitorStep[],
+  incoming: ExplorationMonitorStep,
+): ExplorationMonitorStep[] {
   const existingIndex = steps.findIndex((step) => step.step_id === incoming.step_id);
   if (existingIndex < 0) {
     return [...steps, incoming].sort((a, b) => a.step_number - b.step_number);
@@ -791,8 +753,10 @@ function monitorTimelineEvent(event: ExplorationStreamEvent): ExplorationMonitor
     type: event.type,
     label: logTypeLabels[event.type] ?? event.type,
     summary: `${stepNumber}${summary || "收到探索事件"}`,
-    occurred_at: stringValue(payload.completed_at || payload.started_at || payload.occurred_at) || new Date().toISOString(),
+    occurred_at:
+      stringValue(payload.completed_at || payload.started_at || payload.occurred_at) || new Date().toISOString(),
     status: monitorTimelineStatus(event.type),
+    payload,
   };
 }
 
@@ -1024,7 +988,7 @@ function mergeBlockerEvent(
 }
 
 function buildAgentPlanTasks(detail: ExplorationRunDetail | null): AgentPlanTask[] {
-  if (!detail || !detail.modules) {
+  if (!detail?.modules) {
     return [];
   }
   const hideEmptyPlanModules = isTerminalStatus(detail.run.status);
@@ -1262,9 +1226,7 @@ export default function Page() {
       setError("");
       setFailureVisible(true);
       try {
-        const data = await apiRequest<ExplorationRunDetail>(
-          `/page-exploration/runs/${params.runId}`,
-        );
+        const data = await apiRequest<ExplorationRunDetail>(`/page-exploration/runs/${params.runId}`);
         const normalizedData = normalizeExplorationRunDetail(data);
         setDetail(normalizedData);
         setStreamDetail(normalizedData);
@@ -1278,7 +1240,7 @@ export default function Page() {
         }
       }
     },
-    [params.projectId, params.runId],
+    [params.runId],
   );
 
   useEffect(() => {
@@ -1319,13 +1281,10 @@ export default function Page() {
       controller = new AbortController();
       try {
         const headers = apiAuthHeaders();
-        const response = await fetch(
-          `${API_BASE_URL}/page-exploration/runs/${params.runId}/stream`,
-          {
-            headers,
-            signal: controller.signal,
-          },
-        );
+        const response = await fetch(`${API_BASE_URL}/page-exploration/runs/${params.runId}/stream`, {
+          headers,
+          signal: controller.signal,
+        });
 
         if (!response.ok || !response.body) {
           throw new Error("探索实时流连接失败");
@@ -1371,15 +1330,13 @@ export default function Page() {
         window.clearTimeout(retryTimer);
       }
     };
-  }, [loadRun, params.projectId, params.runId, runStatus]);
+  }, [loadRun, params.runId, runStatus]);
 
   const loadReport = useCallback(async () => {
     setReportLoading(true);
     setReportError("");
     try {
-      const data = await apiRequest<ExplorationReport>(
-        `/page-exploration/runs/${params.runId}/artifacts`,
-      );
+      const data = await apiRequest<ExplorationReport>(`/page-exploration/runs/${params.runId}/artifacts`);
       setReport(data);
     } catch (requestError) {
       setReportError(requestError instanceof Error ? requestError.message : "探索报告加载失败");
@@ -1605,16 +1562,6 @@ export default function Page() {
   const explorationDuration = run ? formatExplorationDuration(run, durationNow) : "-";
   const agentPlanTasks = buildAgentPlanTasks(activeDetail);
   const showRunActions = activeTab === "探索计划" || activeTab === "探索概览";
-  const failureDetail = error
-    ? {
-        error,
-        projectId: params.projectId,
-        requestPath: `/projects/${params.projectId}/exploration-runs/${params.runId}/detail`,
-        runId: params.runId,
-        failedAt: formatDateTime(new Date().toISOString()),
-      }
-    : null;
-
   return (
     <PageShell
       breadcrumbs={["项目", projectName, "探索", run?.title ?? "探索任务"]}
@@ -1665,7 +1612,7 @@ export default function Page() {
         <ExplorationFailureNotice error={error} onClose={() => setFailureVisible(false)} />
       ) : null}
 
-      {activeTab === "探索计划" ? <ExplorationTaskInfoPanel monitor={monitor} run={run} /> : null}
+      {activeTab === "探索计划" ? <ExplorationTaskInfoPanel run={run} /> : null}
 
       {activeTab === "探索概览" ? (
         <>
@@ -1691,59 +1638,16 @@ export default function Page() {
             <MetricCard helper="从开始探索到结束的耗时" icon={FileText} label="探索时长" value={explorationDuration} />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <ShellSection className="min-w-0">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-medium text-sm">探索模块进度</h2>
-                  <p className="text-muted-foreground text-xs">展示模块、页面状态和页面探索步骤</p>
-                </div>
-              </div>
-              {loading ? (
-                <div className="rounded-lg border bg-muted/20 p-8 text-center text-muted-foreground text-sm">
-                  探索进度加载中...
-                </div>
-              ) : isUnsupportedArtifact ? (
-                <UnsupportedArtifactNotice
-                  onRestart={startExploration}
-                  reason={unsupportedArtifactReason}
-                  restarting={starting}
-                />
-              ) : agentPlanTasks.length > 0 ? (
-                <AgentPlan tasks={agentPlanTasks} />
-              ) : (
-                <div className="rounded-lg border bg-muted/20 p-8 text-center text-muted-foreground text-sm">
-                  {run?.status === "pending" ? "任务尚未开始，点击「开始探索」后将显示进度信息。" : "暂无探索模块进度信息"}
-                </div>
-              )}
-            </ShellSection>
-
-            <div className="min-w-0">
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle className="text-sm">执行时间线</CardTitle>
-                  <CardDescription>按北京时间展示关键阶段</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  <TimelineItem
-                    active={Boolean(run)}
-                    label="创建任务"
-                    value={run ? formatDateTime(run.created_at) : "-"}
-                  />
-                  <TimelineItem
-                    active={Boolean(run?.started_at)}
-                    label="开始探索"
-                    value={run?.started_at ? formatDateTime(run.started_at) : "待执行"}
-                  />
-                  <TimelineItem
-                    active={Boolean(run?.finished_at)}
-                    label={run?.status === "cancelled" ? "中止探索" : "完成探索"}
-                    value={run?.finished_at ? formatDateTime(run.finished_at) : "等待结果"}
-                  />
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+          <ExplorationModuleProgressPanel
+            agentPlanTasks={agentPlanTasks}
+            isUnsupportedArtifact={isUnsupportedArtifact}
+            loading={loading}
+            monitor={monitor}
+            onRestart={startExploration}
+            restarting={starting}
+            run={run}
+            unsupportedArtifactReason={unsupportedArtifactReason}
+          />
         </>
       ) : null}
 
@@ -1940,9 +1844,7 @@ function ExplorationFailureNotice({ error, onClose }: { error: string; onClose: 
   return (
     <div className="flex min-h-10 items-center gap-2 rounded-lg border border-destructive/35 bg-destructive/8 px-3 text-sm shadow-sm">
       <AlertTriangle className="size-4 shrink-0 text-destructive" />
-      <div className="min-w-0 flex-1 truncate text-destructive">
-        探索任务加载失败：{error}。
-      </div>
+      <div className="min-w-0 flex-1 truncate text-destructive">探索任务加载失败：{error}。</div>
       <Button aria-label="关闭探索失败信息" onClick={onClose} size="icon-xs" type="button" variant="ghost">
         <X className="size-4" />
       </Button>
@@ -1950,7 +1852,7 @@ function ExplorationFailureNotice({ error, onClose }: { error: string; onClose: 
   );
 }
 
-function ExplorationTaskInfoPanel({ monitor, run }: { monitor: ExplorationMonitorState; run: ExplorationRun | null }) {
+function ExplorationTaskInfoPanel({ run }: { run: ExplorationRun | null }) {
   const loginStrategy = run ? (loginStrategyLabels[run.login_strategy] ?? run.login_strategy) : "-";
   const scopeParagraphs = formatTaskText(run?.scope);
   const forbiddenPathParagraphs = formatTaskText(run?.forbidden_paths);
@@ -1958,7 +1860,6 @@ function ExplorationTaskInfoPanel({ monitor, run }: { monitor: ExplorationMonito
 
   return (
     <div className="space-y-4">
-      <ExplorationRealtimeMonitor monitor={monitor} run={run} />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">
           <TaskTextSection paragraphs={scopeParagraphs} title="探索范围" />
@@ -1992,138 +1893,317 @@ function ExplorationTaskInfoPanel({ monitor, run }: { monitor: ExplorationMonito
   );
 }
 
-function ExplorationRealtimeMonitor({
+function ExplorationModuleProgressPanel({
+  agentPlanTasks,
+  isUnsupportedArtifact,
+  loading,
+  monitor,
+  onRestart,
+  restarting,
+  run,
+  unsupportedArtifactReason,
+}: {
+  agentPlanTasks: AgentPlanTask[];
+  isUnsupportedArtifact: boolean;
+  loading: boolean;
+  monitor: ExplorationMonitorState;
+  onRestart: () => Promise<void> | void;
+  restarting: boolean;
+  run: ExplorationRun | null;
+  unsupportedArtifactReason: string;
+}) {
+  const completedCount = agentPlanTasks.filter((task) => task.status === "completed").length;
+  const activeCount = agentPlanTasks.filter((task) =>
+    ["queued", "running", "in-progress", "stopping"].includes(task.status),
+  ).length;
+  const failedCount = agentPlanTasks.filter((task) => task.status === "failed" || task.status === "blocked").length;
+
+  return (
+    <ShellSection className="min-w-0 lg:col-span-2">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-1">
+          <h2 className="font-medium text-sm">探索模块进度</h2>
+          <p className="text-muted-foreground text-xs">左侧跟踪模块进度，右侧实时展示探索输出和工具调用</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-xs md:w-[360px]">
+          <ProgressPill label="模块" value={agentPlanTasks.length ? `${agentPlanTasks.length}` : "-"} />
+          <ProgressPill label="进行中" value={`${activeCount}`} />
+          <ProgressPill label="异常" value={`${failedCount}`} />
+        </div>
+      </div>
+      <div className="grid min-h-[460px] gap-4 xl:grid-cols-[minmax(520px,1fr)_440px]">
+        <div className="min-w-0 rounded-lg border bg-muted/10 p-3">
+          {loading ? (
+            <div className="grid min-h-[360px] place-items-center rounded-md border border-dashed bg-background/70 p-8 text-center text-muted-foreground text-sm">
+              探索进度加载中...
+            </div>
+          ) : isUnsupportedArtifact ? (
+            <UnsupportedArtifactNotice
+              onRestart={onRestart}
+              reason={unsupportedArtifactReason}
+              restarting={restarting}
+            />
+          ) : agentPlanTasks.length > 0 ? (
+            <AgentPlan
+              className="rounded-md bg-background/80 p-2"
+              completedTaskDecoration="none"
+              tasks={agentPlanTasks}
+            />
+          ) : (
+            <ExplorationModuleEmptyState run={run} />
+          )}
+        </div>
+        <ExplorationRealtimeStreamPanel
+          className="xl:sticky xl:top-4 xl:max-h-[calc(100vh-8rem)]"
+          completedCount={completedCount}
+          monitor={monitor}
+          run={run}
+        />
+      </div>
+    </ShellSection>
+  );
+}
+
+function ProgressPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border bg-background px-3 py-2">
+      <div className="text-muted-foreground">{label}</div>
+      <div className="mt-0.5 font-semibold text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function ExplorationModuleEmptyState({ run }: { run: ExplorationRun | null }) {
+  const pending = run?.status === "pending";
+  return (
+    <div className="grid min-h-[360px] place-items-center rounded-md border border-dashed bg-background/70 p-8 text-center">
+      <div className="max-w-sm space-y-2">
+        <div className="mx-auto flex size-9 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          <ListChecks className="size-4" />
+        </div>
+        <div className="font-medium text-sm">{pending ? "等待开始探索" : "暂无模块进度"}</div>
+        <p className="text-muted-foreground text-xs">
+          {pending ? "点击「开始探索」后会在这里生成模块轨道。" : "实时事件仍会在右侧持续展示。"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ExplorationRealtimeStreamPanel({
+  className = "",
+  completedCount: moduleCompletedCount,
   monitor,
   run,
 }: {
+  className?: string;
+  completedCount?: number;
   monitor: ExplorationMonitorState;
   run: ExplorationRun | null;
 }) {
-  const runningStep = monitor.steps.find((step) => step.status === "running");
-  const completedCount = monitor.steps.filter((step) => step.status === "completed").length;
+  const runningStep = monitor.steps.find((step) => step.status === "running" || step.status === "in-progress");
+  const streamCompletedCount = monitor.steps.filter((step) => step.status === "completed").length;
+  const completedCount = streamCompletedCount > 0 ? streamCompletedCount : (moduleCompletedCount ?? 0);
   const failedCount = monitor.steps.filter((step) => step.status === "failed").length;
   const totalSteps = monitor.plan?.total_steps || monitor.steps.length;
   const phaseLabel = monitorPhaseLabel(monitor.phase, run?.status);
+  const events = monitor.events.slice(0, 24);
 
   return (
-    <Card size="sm">
-      <CardHeader>
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
+    <Card
+      className={`min-w-0 self-start border-blue-100/80 bg-blue-50/20 dark:border-blue-500/20 dark:bg-blue-500/5 ${className}`}
+      size="sm"
+    >
+      <CardHeader className="border-b bg-background/80 pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <CardTitle className="flex items-center gap-2 text-sm">
               <ListChecks className="size-4" />
-              实时执行监控
+              实时执行流
             </CardTitle>
-            <CardDescription>展示规划结果、当前步骤和后台事件流水</CardDescription>
+            <CardDescription className="text-xs">Agent 输出、动作结果和工具调用</CardDescription>
           </div>
           <StatusBadge tone={monitorPhaseTone(monitor.phase, run?.status)}>{phaseLabel}</StatusBadge>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-4">
-          <MonitorStat label="规划步骤" value={totalSteps ? `${totalSteps}` : "-"} />
+      <CardContent className="flex min-h-0 flex-col gap-3">
+        <div className="grid grid-cols-4 gap-2">
+          <MonitorStat label="步骤" value={totalSteps ? `${totalSteps}` : "-"} />
           <MonitorStat label="已完成" value={`${completedCount}`} />
           <MonitorStat label="失败" value={`${failedCount}`} />
-          <MonitorStat label="当前步骤" value={runningStep ? `#${runningStep.step_number}` : "-"} />
+          <MonitorStat label="当前" value={runningStep ? `#${runningStep.step_number}` : "-"} />
         </div>
-
-        {monitor.plan ? (
-          <div className="grid gap-3 rounded-lg border bg-muted/15 p-3 text-sm lg:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="min-w-0 space-y-2">
-              <InfoRow label="目标摘要" value={displayValue(monitor.plan.goal_summary)} compact />
-              <InfoRow label="探索策略" value={displayValue(monitor.plan.strategy)} compact />
-              <InfoRow label="范围摘要" value={displayValue(monitor.plan.scope_summary)} compact />
-              {monitor.plan.risk_assessment ? (
-                <InfoRow label="风险提示" value={monitor.plan.risk_assessment} compact />
-              ) : null}
-            </div>
-            <div className="min-w-0 space-y-2">
-              <InfoRow label="计划 ID" value={displayValue(monitor.plan.plan_id)} compact />
-              <InfoRow
-                label="模块"
-                value={monitor.plan.modules.length ? monitor.plan.modules.join("、") : "-"}
-                compact
-              />
-              <InfoRow
-                label="成功标准"
-                value={monitor.plan.success_criteria.length ? monitor.plan.success_criteria.join("；") : "-"}
-                compact
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-lg border bg-muted/15 p-3 text-muted-foreground text-sm">
-            {isActiveStatus(run?.status ?? "") ? "等待后端推送探索规划。" : "开始探索后会在这里展示实时规划和步骤。"}
-          </div>
-        )}
 
         {runningStep ? <MonitorCurrentStep step={runningStep} /> : null}
 
-        {monitor.steps.length ? (
-          <div className="overflow-hidden rounded-lg border">
-            <Table className="table-fixed">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[8%]">序号</TableHead>
-                  <TableHead className="w-[14%]">状态</TableHead>
-                  <TableHead className="w-[18%]">动作</TableHead>
-                  <TableHead className="w-[30%]">目标</TableHead>
-                  <TableHead className="w-[18%]">结果</TableHead>
-                  <TableHead className="w-[12%]">耗时</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {monitor.steps.map((step) => (
-                  <TableRow key={step.step_id}>
-                    <TableCell className="font-mono text-xs">#{step.step_number}</TableCell>
-                    <TableCell>
-                      <StatusBadge tone={monitorStepTone(step.status)}>{monitorStepLabel(step.status)}</StatusBadge>
-                    </TableCell>
-                    <TableCell className="truncate" title={step.description}>
-                      {step.action_type}
-                    </TableCell>
-                    <TableCell className="truncate" title={step.target_description || step.description}>
-                      {step.target_description || step.description}
-                    </TableCell>
-                    <TableCell className="truncate" title={step.message || step.error || step.expected_result}>
-                      {step.message || step.error || step.expected_result || "-"}
-                    </TableCell>
-                    <TableCell>{step.duration_ms === null ? "-" : `${step.duration_ms}ms`}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
+          <div className="flex items-center justify-between text-xs">
+            <div className="font-medium text-muted-foreground">实时事件</div>
+            <div className="text-muted-foreground">{events.length ? `最近 ${events.length} 条` : "等待事件"}</div>
           </div>
-        ) : null}
-
-        {monitor.events.length ? (
-          <div className="space-y-2">
-            <div className="font-medium text-muted-foreground text-xs">实时事件</div>
-            <div className="max-h-56 space-y-2 overflow-auto rounded-lg border bg-background p-2">
-              {monitor.events.slice(0, 12).map((event) => (
-                <div className="grid gap-1 rounded-md px-2 py-1.5 text-sm" key={event.id}>
-                  <div className="flex min-w-0 items-center justify-between gap-2">
-                    <span className="font-medium">{event.label}</span>
-                    <span className="shrink-0 text-muted-foreground text-xs">{formatDateTime(event.occurred_at)}</span>
-                  </div>
-                  <div className="truncate text-muted-foreground text-xs" title={event.summary}>
-                    {event.summary}
-                  </div>
-                </div>
-              ))}
+          {events.length ? (
+            <div className="min-h-[240px] flex-1 space-y-2 overflow-y-auto rounded-md border bg-background p-2 xl:max-h-[calc(100vh-24rem)]">
+              {events.map((event) =>
+                isToolLikeMonitorEvent(event.type) ? (
+                  <ExplorationToolCallCard
+                    defaultExpanded={event.status === "running" || event.status === "in-progress"}
+                    event={event}
+                    key={event.id}
+                  />
+                ) : (
+                  <ExplorationEventCard event={event} key={event.id} />
+                ),
+              )}
             </div>
-          </div>
-        ) : null}
+          ) : (
+            <div className="grid min-h-[240px] place-items-center rounded-md border border-dashed bg-background p-4 text-center text-muted-foreground text-sm">
+              {isActiveStatus(run?.status ?? "") ? "等待后端推送探索事件。" : "开始探索后会在这里显示实时执行流。"}
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
 }
 
+function ExplorationEventCard({ event }: { event: ExplorationMonitorEvent }) {
+  return (
+    <div className="rounded-md border bg-card px-3 py-2 text-sm shadow-sm">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <MonitorStatusIcon status={event.status} />
+          <span className="truncate font-medium">{event.label}</span>
+        </div>
+        <span className="shrink-0 pt-0.5 text-[11px] text-muted-foreground">{formatDateTime(event.occurred_at)}</span>
+      </div>
+      <div className="mt-1 line-clamp-2 text-muted-foreground text-xs" title={event.summary}>
+        {event.summary}
+      </div>
+    </div>
+  );
+}
+
+function ExplorationToolCallCard({
+  defaultExpanded = false,
+  event,
+}: {
+  defaultExpanded?: boolean;
+  event: ExplorationMonitorEvent;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const payload = event.payload ?? {};
+  const statusTone = monitorStepTone(event.status);
+  const actionName = getToolLikeEventName(event);
+  const resultText =
+    stringValue(payload.result) ||
+    stringValue(payload.message) ||
+    stringValue(payload.error) ||
+    stringValue(payload.reason) ||
+    event.summary;
+
+  return (
+    <div className="overflow-hidden rounded-md border bg-card text-sm shadow-sm">
+      <button
+        className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-blue-50/60 dark:hover:bg-blue-500/10"
+        onClick={() => setExpanded((current) => !current)}
+        type="button"
+      >
+        <span className="shrink-0 text-muted-foreground">
+          {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+        </span>
+        <MonitorStatusIcon status={event.status} />
+        <span className="min-w-0 flex-1 truncate font-medium">{actionName}</span>
+        <StatusBadge tone={statusTone}>{monitorStepLabel(event.status)}</StatusBadge>
+      </button>
+      {expanded ? (
+        <div className="space-y-3 border-t bg-muted/10 px-3 py-3">
+          <div className="grid gap-2">
+            <EventDetailRow label="时间" value={formatDateTime(event.occurred_at)} />
+            <EventDetailRow
+              label="目标"
+              value={stringValue(payload.target_description || payload.target || payload.description)}
+            />
+            <EventDetailRow label="选择器" value={stringValue(payload.target_selector || payload.selector)} mono />
+            <EventDetailRow label="输入" value={stringValue(payload.value || payload.input || payload.query)} mono />
+            <EventDetailRow label="预期" value={stringValue(payload.expected_result)} />
+            <EventDetailRow label="结果" value={resultText} />
+            <EventDetailRow label="耗时" value={formatDurationValue(payload.duration_ms)} />
+          </div>
+          {event.status === "running" || event.status === "in-progress" ? (
+            <div className="flex items-center gap-2 text-muted-foreground text-xs">
+              <Loader2 className="size-3 animate-spin" />
+              执行中...
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function EventDetailRow({ label, mono = false, value }: { label: string; mono?: boolean; value: string }) {
+  if (!value) {
+    return null;
+  }
+  return (
+    <div className="grid gap-1">
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className={mono ? "break-words rounded bg-background p-2 font-mono text-xs" : "break-words text-xs"}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function MonitorStatusIcon({ status }: { status: AgentPlanStatus }) {
+  if (status === "completed") {
+    return <Check className="size-3.5 shrink-0 text-green-500" />;
+  }
+  if (status === "running" || status === "in-progress" || status === "queued" || status === "stopping") {
+    return <CircleDotDashed className="size-3.5 shrink-0 text-blue-500" />;
+  }
+  if (status === "failed" || status === "blocked") {
+    return <CircleX className="size-3.5 shrink-0 text-red-500" />;
+  }
+  if (status === "partial" || status === "cancelled" || status === "waiting_human") {
+    return <CircleAlert className="size-3.5 shrink-0 text-amber-500" />;
+  }
+  return <Circle className="size-3.5 shrink-0 text-muted-foreground" />;
+}
+
+function isToolLikeMonitorEvent(type: string): boolean {
+  return (
+    type.startsWith("action_") ||
+    type.startsWith("step_") ||
+    type.startsWith("agent_") ||
+    type === "observe" ||
+    type === "direct_step_started" ||
+    type === "agentic_step_started"
+  );
+}
+
+function getToolLikeEventName(event: ExplorationMonitorEvent): string {
+  const payload = event.payload ?? {};
+  const stepNumber = payload.step_number ? `#${payload.step_number} ` : "";
+  const name =
+    stringValue(payload.action_type) ||
+    stringValue(payload.tool_name) ||
+    stringValue(payload.name) ||
+    stringValue(payload.description) ||
+    event.label;
+  return `${stepNumber}${name}`;
+}
+
+function formatDurationValue(value: unknown): string {
+  const duration = Number(value);
+  return Number.isFinite(duration) && duration >= 0 ? `${duration}ms` : "";
+}
+
 function MonitorStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border bg-background p-3">
-      <div className="text-muted-foreground text-xs">{label}</div>
-      <div className="mt-1 font-semibold text-lg">{value}</div>
+    <div className="rounded-md border bg-background px-2 py-2">
+      <div className="truncate text-[11px] text-muted-foreground">{label}</div>
+      <div className="mt-0.5 truncate font-semibold text-base">{value}</div>
     </div>
   );
 }
@@ -2131,9 +2211,11 @@ function MonitorStat({ label, value }: { label: string; value: string }) {
 function MonitorCurrentStep({ step }: { step: ExplorationMonitorStep }) {
   const matchedLabel = step.matched_element.name || step.matched_element.id || "-";
   return (
-    <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-3 text-sm dark:border-blue-500/30 dark:bg-blue-500/10">
+    <div className="rounded-md border border-blue-200 bg-blue-50/70 p-3 text-sm dark:border-blue-500/30 dark:bg-blue-500/10">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <div className="font-medium">正在执行 #{step.step_number}：{step.description}</div>
+        <div className="font-medium">
+          正在执行 #{step.step_number}：{step.description}
+        </div>
         <span className="text-muted-foreground text-xs">第 {step.attempt || 1} 次</span>
       </div>
       <div className="grid gap-2 md:grid-cols-2">
@@ -2305,7 +2387,6 @@ function ExplorationReportPanel({
   );
 }
 
-
 function formatExplorationDuration(run: ExplorationRun, now: number = Date.now()): string {
   if (!run.started_at) {
     return "-";
@@ -2357,21 +2438,4 @@ function formatTaskText(value: string | null | undefined): string[] {
     .split(/\n{2,}/)
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function TimelineItem({ active, label, value }: { active: boolean; label: string; value: string }) {
-  return (
-    <div className="flex gap-3">
-      <div className="flex flex-col items-center">
-        <div
-          className={active ? "mt-1 size-2 rounded-full bg-primary" : "mt-1 size-2 rounded-full bg-muted-foreground/30"}
-        />
-        <div className="mt-1 h-8 w-px bg-border" />
-      </div>
-      <div className="min-w-0">
-        <div className="font-medium">{label}</div>
-        <div className="text-muted-foreground text-xs">{value}</div>
-      </div>
-    </div>
-  );
 }

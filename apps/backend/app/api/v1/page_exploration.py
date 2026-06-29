@@ -272,53 +272,60 @@ async def stream_exploration_progress(
                 })
                 return
 
+            event_queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=200)
             subscription = event_bus.subscribe(run_id)
-            while True:
-                event_task = asyncio.create_task(subscription.__anext__())
-                sleep_task = asyncio.create_task(asyncio.sleep(1))
-                done, pending = await asyncio.wait({event_task, sleep_task}, return_when=asyncio.FIRST_COMPLETED)
-                for task in pending:
-                    task.cancel()
 
-                if event_task in done:
+            async def pump_events() -> None:
+                async for event in subscription:
+                    await event_queue.put(event)
+
+            pump_task = asyncio.create_task(pump_events())
+            try:
+                while True:
                     try:
-                        event = event_task.result()
-                    except StopAsyncIteration:
-                        break
-                    yield sse(event)
-                    if event.get("type") in {"run_completed", "run_failed", "run_cancelled"}:
-                        break
-                    continue
+                        event = await asyncio.wait_for(event_queue.get(), timeout=1)
+                    except asyncio.TimeoutError:
+                        event = None
 
-                status = page_exploration_service.get_exploration_status(run_id)
-                if not status:
-                    yield sse({
-                        "type": "error",
-                        "run_id": run_id,
-                        "payload": {"message": "探索任务不存在"},
-                    })
-                    break
-                current_status = status.get("status")
-                current_updated = status.get("updated_at")
-                if current_status != last_status or current_updated != last_updated:
-                    yield sse({
-                        "type": "run_snapshot",
-                        "run_id": run_id,
-                        "payload": page_exploration_service.get_exploration_run(actor, run_id),
-                    })
-                    last_status = current_status
-                    last_updated = current_updated
-                if current_status in terminal_statuses:
-                    yield sse({
-                        "type": "run_completed" if current_status not in {"blocked", "failed"} else "run_failed",
-                        "run_id": run_id,
-                        "payload": {
-                            "status": current_status,
-                            "result_summary": status.get("result_summary", ""),
-                            "finished_at": status.get("finished_at"),
-                        },
-                    })
-                    break
+                    if event is not None:
+                        yield sse(event)
+                        if event.get("type") in {"run_completed", "run_failed", "run_cancelled"}:
+                            break
+                        continue
+
+                    status = page_exploration_service.get_exploration_status(run_id)
+                    if not status:
+                        yield sse({
+                            "type": "error",
+                            "run_id": run_id,
+                            "payload": {"message": "探索任务不存在"},
+                        })
+                        break
+                    current_status = status.get("status")
+                    current_updated = status.get("updated_at")
+                    if current_status != last_status or current_updated != last_updated:
+                        yield sse({
+                            "type": "run_snapshot",
+                            "run_id": run_id,
+                            "payload": page_exploration_service.get_exploration_run(actor, run_id),
+                        })
+                        last_status = current_status
+                        last_updated = current_updated
+                    if current_status in terminal_statuses:
+                        yield sse({
+                            "type": "run_completed" if current_status not in {"blocked", "failed"} else "run_failed",
+                            "run_id": run_id,
+                            "payload": {
+                                "status": current_status,
+                                "result_summary": status.get("result_summary", ""),
+                                "finished_at": status.get("finished_at"),
+                            },
+                        })
+                        break
+            finally:
+                pump_task.cancel()
+                await asyncio.gather(pump_task, return_exceptions=True)
+                await subscription.aclose()
 
         except Exception as e:
             yield sse({

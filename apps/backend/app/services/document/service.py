@@ -18,7 +18,8 @@ from app.agents.requirement_analysis.service import (
     next_analysis_id,
     run_requirement_analysis,
 )
-from app.repositories import document_repo, requirement_analysis_run_repo, requirement_clarification_answer_repo
+from app.agents.requirement_finalization.service import run_requirement_finalization
+from app.repositories import document_repo, requirement_analysis_run_repo, requirement_clarification_answer_repo, test_case_repo
 from app.schemas.document import (
     RequirementAnalysisFinalizeIn,
     RequirementClarificationAnswerIn,
@@ -27,6 +28,7 @@ from app.schemas.document import (
 )
 from app.services import operation_log_service, task_service
 from app.services.document import file_service as document_file_service
+from app.services.document.finalization_context import build_finalization_context
 from app.services.document import serializer as document_serializer
 
 DOCUMENT_VERSIONED_STATUS = "versioned"
@@ -1055,12 +1057,13 @@ def save_requirement_clarification_answer(
     }
 
 
-def finalize_requirement_analysis(
+async def finalize_requirement_analysis(
     project_id: str,
     document_id: str,
     payload: RequirementAnalysisFinalizeIn,
     actor,
 ) -> dict:
+    finalization_input = None
     with connect() as db:
         document = document_repo.find_by_project_and_id(db, project_id, document_id)
         if not document:
@@ -1111,21 +1114,37 @@ def finalize_requirement_analysis(
             if not current_primary or current_primary["id"] != primary_mapping_id:
                 raise api_error(409, "REQUIREMENT_ANALYSIS_PRIMARY_CHANGED", "主需求文件已变更，请重新执行需求分析。")
 
-        unresolved_count = _active_unresolved_count(output)
-        if unresolved_count > 0 and not payload.confirm_unresolved:
-            raise api_error(
-                409,
-                "REQUIREMENT_ANALYSIS_CONFIRM_REQUIRED",
-                "当前初步需求仍存在待确认问题，请确认后再转为最终需求。",
-            )
+        finalization_input = build_finalization_context(
+            db,
+            project_id=project_id,
+            document_id=document_id,
+            analysis=analysis,
+        )
 
-        supplement_count = len(output.get("applied_supplements") or [])
+    try:
+        finalization_output = await run_requirement_finalization(finalization_input)
+    except Exception as exc:
+        raise api_error(502, "REQUIREMENT_FINALIZATION_AGENT_FAILED", f"最终需求智能体运行失败：{exc}") from exc
+
+    final_markdown = finalization_output.final_requirement_markdown.strip()
+    if not final_markdown:
+        raise api_error(502, "REQUIREMENT_FINALIZATION_EMPTY_OUTPUT", "最终需求智能体返回内容为空。")
+
+    with connect() as db:
+        document = document_repo.find_by_project_and_id(db, project_id, document_id)
+        if not document:
+            raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
+        analysis = document_repo.find_requirement_analysis(db, payload.analysis_id)
+        if not analysis or analysis["project_id"] != project_id or analysis["document_id"] != document_id:
+            raise api_error(404, "REQUIREMENT_ANALYSIS_NOT_FOUND", "需求分析结果不存在。")
+
         version_id = f"docver-{secrets.token_hex(8)}"
         version_no = document_repo.next_version_no(db, document_id)
         version_path = _version_markdown_path(project_id, document_id, version_no)
         version_path.parent.mkdir(parents=True, exist_ok=True)
-        version_path.write_text(preliminary_markdown + "\n", encoding="utf-8")
-        diff_summary = f"由需求分析结果生成最终需求。辅助补强 {supplement_count} 项，待确认 {unresolved_count} 项。"
+        version_path.write_text(final_markdown + "\n", encoding="utf-8")
+        handled_count = len(finalization_input.handled_clarifications)
+        diff_summary = finalization_output.change_summary or f"由最终需求智能体生成最终需求，回填已处理澄清 {handled_count} 项。"
 
         document_repo.create_version(
             db,
@@ -1186,7 +1205,7 @@ def finalize_requirement_analysis(
             "id": document_id,
             "current_version_id": version_id,
         },
-        "markdown_content": preliminary_markdown + "\n",
+        "markdown_content": final_markdown + "\n",
     }
 
 
@@ -1294,10 +1313,39 @@ def delete_document(project_id: str, document_id: str, actor) -> dict:
 
         document_dir = project_requirement_dir(project_id, document_id)
         snapshot = {"name": existing["name"], "status": existing["status"], "current_version_id": existing["current_version_id"]}
+        linked_test_case_sets = test_case_repo.list_by_requirement_document(db, document_id)
+        if linked_test_case_sets:
+            names = "、".join(row["name"] for row in linked_test_case_sets[:3])
+            suffix = "等" if len(linked_test_case_sets) > 3 else ""
+            raise api_error(
+                409,
+                "DOCUMENT_HAS_TEST_CASE_SETS",
+                f"该需求文档已关联测试用例集：{names}{suffix}。请先删除关联测试用例集后再删除需求文档。",
+            )
         document_repo.delete_graph(db, document_id)
 
     if document_dir.exists():
-        shutil.rmtree(document_dir)
+        try:
+            shutil.rmtree(document_dir)
+        except OSError as exc:
+            message = f"需求文档数据已删除，但文件目录清理失败：{document_dir}。请检查文件占用或目录权限后手动清理。"
+            operation_log_service.record_failure(
+                log_type="audit",
+                module="requirement",
+                action="delete",
+                object_type="requirement",
+                object_id=document_id,
+                object_name=snapshot["name"],
+                project_id=project_id,
+                actor_id=actor["id"],
+                actor_name=operation_log_service.actor_display_name(actor),
+                source="web",
+                summary=f"删除需求文件清理失败：{snapshot['name']}",
+                failure_reason=f"{message} 原因：{exc}",
+                before=snapshot,
+                after={"document_dir": str(document_dir)},
+            )
+            raise api_error(500, "DOCUMENT_FILE_DELETE_FAILED", message) from exc
 
     operation_log_service.record_change(
         log_type="audit",

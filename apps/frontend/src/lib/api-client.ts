@@ -695,6 +695,7 @@ export function operationLogActionToLabel(action: string) {
         archive: "归档",
         archive_global_knowledge: "归档全局知识",
         answer_requirement_clarification: "答复澄清问题",
+        api_error: "接口错误",
         assign_model: "分配模型",
         auto_auth_login: "自动登录",
         cancel: "取消",
@@ -767,6 +768,7 @@ export function operationLogModuleToLabel(module: string) {
         test_case: "测试用例",
         task: "任务",
         user: "用户",
+        api: "接口",
       } as Record<string, string>
     )[module] ?? module
   );

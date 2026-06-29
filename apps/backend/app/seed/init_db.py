@@ -618,6 +618,7 @@ def init_db() -> None:
         _migrate_requirement_analysis_run_statuses(db)
         _migrate_agent_model_assignments(db)
         _migrate_knowledge_query_model_assignment(db)
+        _migrate_requirement_standardization_model_assignment(db)
         _migrate_remove_retired_model_assignments(db)
         _migrate_stored_paths(db)
         _seed_operation_log_retention_policy(db)
@@ -1124,6 +1125,20 @@ def _migrate_knowledge_query_model_assignment(db: sqlite3.Connection) -> None:
         """
     )
     db.execute("DELETE FROM model_assignments WHERE capability_id = 'knowledge_builder'")
+
+
+def _migrate_requirement_standardization_model_assignment(db: sqlite3.Connection) -> None:
+    db.execute(
+        """
+        UPDATE model_assignments
+        SET capability_id = 'requirement_standardization', updated_at = CURRENT_TIMESTAMP
+        WHERE capability_id = 'raw_requirement_format_converter'
+          AND NOT EXISTS (
+            SELECT 1 FROM model_assignments existing WHERE existing.capability_id = 'requirement_standardization'
+          )
+        """
+    )
+    db.execute("DELETE FROM model_assignments WHERE capability_id = 'raw_requirement_format_converter'")
 
 
 def _migrate_remove_retired_model_assignments(db: sqlite3.Connection) -> None:

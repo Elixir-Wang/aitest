@@ -66,20 +66,65 @@ test("exploration stream updates the displayed detail snapshot", () => {
   assert.match(pageSource, /setters\.setStreamDetail\(\(current\) => mergeModuleEvent\(current, event\)\);/);
   assert.doesNotMatch(pageSource, /applyStreamEvent\(event, \{ setDetail, setRun \}\);/);
   assert.match(pageSource, /const runStatus = run\?\.status;/);
-  assert.match(pageSource, /\}, \[loadRun, params\.projectId, params\.runId, runStatus\]\);/);
+  assert.match(pageSource, /\}, \[loadRun, params\.runId, runStatus\]\);/);
+});
+
+test("exploration overview owns realtime stream beside module progress", () => {
+  assert.match(pageSource, /payload\?: Record<string, unknown>;/);
+  assert.match(pageSource, /function ExplorationModuleProgressPanel\(/);
+  assert.match(pageSource, /function ExplorationRealtimeStreamPanel\(/);
+  assert.match(pageSource, /function ExplorationToolCallCard\(/);
+  assert.match(pageSource, /function ExplorationEventCard\(/);
+  assert.match(pageSource, /function ExplorationModuleEmptyState\(/);
+  assert.match(pageSource, /function ProgressPill\(/);
+  assert.match(pageSource, /<ExplorationModuleProgressPanel[\s\S]*monitor=\{monitor\}/);
+  assert.match(
+    pageSource,
+    /<ExplorationRealtimeStreamPanel[\s\S]*completedCount=\{completedCount\}[\s\S]*monitor=\{monitor\}[\s\S]*run=\{run\}/,
+  );
+  assert.match(pageSource, /xl:grid-cols-\[minmax\(520px,1fr\)_440px\]/);
+  assert.match(pageSource, /xl:sticky xl:top-4/);
+  assert.match(pageSource, /function isToolLikeMonitorEvent\(type: string\): boolean/);
+  assert.match(pageSource, /defaultExpanded=\{event\.status === "running" \|\| event\.status === "in-progress"\}/);
+});
+
+test("exploration overview does not render the empty module progress card", () => {
+  assert.doesNotMatch(pageSource, /暂无探索模块进度信息/);
+  assert.doesNotMatch(pageSource, /任务尚未开始，点击「开始探索」后将显示进度信息。/);
+});
+
+test("exploration overview does not render the execution timeline card", () => {
+  assert.doesNotMatch(pageSource, /执行时间线/);
+  assert.doesNotMatch(pageSource, /按北京时间展示关键阶段/);
+  assert.doesNotMatch(pageSource, /function TimelineItem/);
+});
+
+test("exploration plan tab no longer renders realtime execution monitor", () => {
+  assert.match(pageSource, /function ExplorationTaskInfoPanel\(\{ run \}: \{ run: ExplorationRun \| null \}\)/);
+  assert.match(pageSource, /activeTab === "探索计划" \? <ExplorationTaskInfoPanel run=\{run\} \/> : null/);
+  assert.doesNotMatch(pageSource, /<ExplorationTaskInfoPanel monitor=\{monitor\} run=\{run\} \/>/);
+  assert.doesNotMatch(pageSource, /function ExplorationTaskInfoPanel\(\{ monitor, run \}/);
+  assert.doesNotMatch(pageSource, /<ExplorationRealtimeMonitor monitor=\{monitor\} run=\{run\} \/>/);
+  assert.doesNotMatch(pageSource, /function ExplorationRealtimeMonitor\(/);
 });
 
 test("exploration stream snapshot rebuilds realtime monitor without fuzzy module matching", () => {
   assert.match(pageSource, /function monitorFromRunDetail\(detail: ExplorationRunDetail\): ExplorationMonitorState/);
-  assert.match(pageSource, /function monitorStepsFromDetail\(detail: ExplorationRunDetail\): ExplorationMonitorStep\[\]/);
-  assert.match(pageSource, /function findStreamModuleIndex\(modules: ExplorationRunDetail\["modules"\], moduleId: string\): number/);
+  assert.match(
+    pageSource,
+    /function monitorStepsFromDetail\(detail: ExplorationRunDetail\): ExplorationMonitorStep\[\]/,
+  );
+  assert.match(
+    pageSource,
+    /function findStreamModuleIndex\(modules: ExplorationRunDetail\["modules"\], moduleId: string\): number/,
+  );
   assert.doesNotMatch(pageSource, /module\.module_name\.includes\(moduleId\)/);
   assert.doesNotMatch(pageSource, /moduleId\.includes\(module\.module_name\)/);
 });
 
 test("exploration detail exposes no execution or interaction mode controls", () => {
   assert.match(pageSource, /const restarting = hasExplorationStarted\(run\);/);
-  assert.match(pageSource, /\/projects\/\$\{run\.project_id\}\/exploration-runs\/\$\{run\.id\}\/start/);
+  assert.match(pageSource, /\/page-exploration\/runs\/\$\{run\.id\}\/start/);
   assert.doesNotMatch(pageSource, /explorationExecutionModeOptions/);
   assert.doesNotMatch(pageSource, /explorationInteractionModeOptions/);
   assert.doesNotMatch(pageSource, /executionMode/);
@@ -114,7 +159,7 @@ test("interrupted exploration runs are terminal and restartable", () => {
 });
 
 test("exploration detail removes the exploration plan module", () => {
-  assert.match(pageSource, /tabs=\{\["探索计划", "探索概览", "探索日志", "探索报告"\]\}/);
+  assert.match(pageSource, /tabs=\{\["探索计划", "探索概览", "探索报告"\]\}/);
   assert.doesNotMatch(pageSource, /type ExplorationPlan = \{/);
   assert.doesNotMatch(pageSource, /plan_status:/);
   assert.doesNotMatch(pageSource, /async function generateExplorationPlan\(\)/);

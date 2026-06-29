@@ -149,13 +149,13 @@ def get_requirement_analysis(project_id: str, document_id: str, actor=Depends(cu
 
 
 @router.post("/{document_id}/analysis/finalize")
-def finalize_requirement_analysis(
+async def finalize_requirement_analysis(
     project_id: str,
     document_id: str,
     payload: RequirementAnalysisFinalizeIn,
     actor=Depends(current_user),
 ) -> dict:
-    return document_service.finalize_requirement_analysis(project_id, document_id, payload, actor)
+    return await document_service.finalize_requirement_analysis(project_id, document_id, payload, actor)
 
 
 @router.put("/{document_id}/analysis/{analysis_id}/preliminary")

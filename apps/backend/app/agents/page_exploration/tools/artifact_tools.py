@@ -109,13 +109,107 @@ def write_page_artifact_tool(
     with open(file_path, "w", encoding="utf-8") as f:
         yaml.dump(artifact, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
 
+    doc_path = file_path.with_suffix(".md")
+    doc_path.write_text(
+        _render_human_page_doc(
+            title=title,
+            url=url,
+            normalized_path=normalized_path,
+            elements=elements,
+        ),
+        encoding="utf-8",
+    )
+
     return {
         "success": True,
         "page_id": page_id,
         "file_path": str(file_path),
+        "doc_path": str(doc_path),
         "normalized_path": normalized_path,
         "element_count": len(elements),
     }
+
+
+def _render_human_page_doc(
+    *,
+    title: str,
+    url: str,
+    normalized_path: str,
+    elements: List[Dict],
+) -> str:
+    page_title = title.strip() or normalized_path or url
+    lines = [
+        f"# {page_title}",
+        "",
+        "## 页面用途",
+        "",
+        f"该页面位于 `{normalized_path}`，本产物基于页面探索事实生成，用于帮助人工理解页面内容和后续测试范围。",
+        "",
+        "## 页面内容",
+        "",
+        f"- 页面地址：`{url}`",
+        f"- 归一化路径：`{normalized_path}`",
+        f"- 已记录元素数：{len(elements)}",
+        "",
+        "## 页面功能",
+        "",
+    ]
+    if elements:
+        for element in elements:
+            name = str(element.get("name") or element.get("id") or "未命名元素")
+            role = str(element.get("role") or "element")
+            lines.append(f"- {name}（{role}）")
+    else:
+        lines.append("- 本次探索未记录可交互元素。")
+
+    lines.extend([
+        "",
+        "## 关键元素",
+        "",
+        "| 名称 | 类型 | 作用 | 推荐定位器 |",
+        "|---|---|---|---|",
+    ])
+    if elements:
+        for element in elements:
+            name = str(element.get("name") or element.get("id") or "")
+            role = str(element.get("role") or "")
+            locator = _first_locator_code(element)
+            purpose = str(element.get("description") or element.get("purpose") or "页面交互元素")
+            lines.append(f"| {name} | {role} | {purpose} | `{locator}` |")
+    else:
+        lines.append("| 无 |  |  |  |")
+
+    lines.extend([
+        "",
+        "## 已探索交互",
+        "",
+        "| 操作 | 结果 | 状态 |",
+        "|---|---|---|",
+        "| 页面结构采集 | 已生成页面机器可读产物和人工说明文档 | completed |",
+        "",
+        "## 跳过和阻塞",
+        "",
+        "- 当前产物未记录跳过操作或阻塞项。",
+        "",
+        "## 测试建议",
+        "",
+    ])
+    if elements:
+        lines.append("- 基于关键元素补充可见性、可点击性和主要交互流程测试。")
+    else:
+        lines.append("- 页面暂无可交互元素记录，建议先补充页面快照或人工确认页面加载状态。")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _first_locator_code(element: Dict) -> str:
+    locators = element.get("locators")
+    if not isinstance(locators, list):
+        return ""
+    for locator in locators:
+        if isinstance(locator, dict) and locator.get("code"):
+            return str(locator["code"])
+    return ""
 
 
 @tool

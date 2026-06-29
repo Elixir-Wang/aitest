@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import inspect
 import json
 import secrets
 import threading
@@ -590,7 +591,7 @@ def _run_exploration_background(run_id: str) -> None:
 def _execute_exploration(run_id: str, run_config: dict) -> None:
     """执行探索逻辑 - 集成deepagents Agent"""
     import asyncio
-    from app.agents.model_selection import resolve_model_selection, build_agent_model, TOOL_CALLING_UNSUPPORTED_PROVIDERS
+    from app.agents.model_selection import resolve_model_selection, build_agent_model
     from app.agents.page_exploration.agent import page_exploration_agent
 
     project_id = run_config["project_id"]
@@ -601,14 +602,6 @@ def _execute_exploration(run_id: str, run_config: dict) -> None:
     try:
         # 1. 解析模型配置
         model_selection = resolve_model_selection("site_exploration")
-
-        # 2. 提前检查模型是否支持工具调用
-        if model_selection.provider.strip().lower() in TOOL_CALLING_UNSUPPORTED_PROVIDERS:
-            raise ValueError(
-                f"探索任务需要工具调用能力，但当前模型 {model_selection.provider}/{model_selection.model} "
-                f"不支持 OpenAI tools/function calling 格式。"
-                f"请为 'site_exploration' 能力分配支持工具调用的模型（如 OpenAI、Anthropic、DeepSeek 等）。"
-            )
 
         model = build_agent_model(model_selection)
 
@@ -717,7 +710,14 @@ async def _execute_exploration_async(
             }
         ]
     }
-    result = await _invoke_agent_with_realtime_events(agent, payload, run_id, plan_steps)
+    result = await _invoke_agent_with_realtime_events(
+        agent,
+        payload,
+        run_id,
+        plan_steps,
+        project_id=project_id,
+        max_pages=max_pages,
+    )
 
     # 更新状态为完成
     with connect() as db:
@@ -774,9 +774,18 @@ def _initial_exploration_plan_steps(start_url: str, max_pages: int) -> list[dict
     ]
 
 
-async def _invoke_agent_with_realtime_events(agent, payload: dict, run_id: str, plan_steps: list[dict]):
+async def _invoke_agent_with_realtime_events(
+    agent,
+    payload: dict,
+    run_id: str,
+    plan_steps: list[dict],
+    *,
+    project_id: str = "",
+    max_pages: int = 50,
+):
     agent_step = plan_steps[1]
     started_at = datetime.now(timezone.utc).isoformat()
+    event_log = _ExplorationEventLog(project_id=project_id, run_id=run_id)
     event_bus.publish(
         run_id,
         "step_started",
@@ -788,17 +797,20 @@ async def _invoke_agent_with_realtime_events(agent, payload: dict, run_id: str, 
             "message": "页面探索 Agent 已开始执行。",
         },
     )
+    event_log.append("agent_step_started", {"step": agent_step, "message": "页面探索 Agent 已开始执行。"})
     try:
+        config = _agent_recursion_config(max_pages)
         if hasattr(agent, "astream_events"):
             final_result = None
-            async for event in agent.astream_events(payload, version="v2"):
+            async for event in agent.astream_events(payload, version="v2", config=config):
                 _publish_agent_stream_event(run_id, event)
+                event_log.append("agent_stream_event", _compact_agent_event(event))
                 data = event.get("data") if isinstance(event, dict) else {}
                 if isinstance(data, dict) and "output" in data:
                     final_result = data["output"]
             result = final_result if final_result is not None else {}
         else:
-            result = await agent.ainvoke(payload)
+            result = await _ainvoke_agent(agent, payload, config)
         event_bus.publish(
             run_id,
             "step_completed",
@@ -813,6 +825,7 @@ async def _invoke_agent_with_realtime_events(agent, payload: dict, run_id: str, 
                 "message": _agent_result_summary(result),
             },
         )
+        event_log.append("agent_step_completed", {"message": _agent_result_summary(result)})
         return result
     except Exception as exc:
         event_bus.publish(
@@ -831,7 +844,83 @@ async def _invoke_agent_with_realtime_events(agent, payload: dict, run_id: str, 
                 "message": "页面探索 Agent 执行失败。",
             },
         )
+        event_log.append(
+            "agent_step_failed",
+            {
+                "error": str(exc),
+                "failure_type": exc.__class__.__name__,
+                "message": _agent_failure_message(exc),
+            },
+        )
         raise
+
+
+def _agent_recursion_config(max_pages: int) -> dict:
+    try:
+        page_budget = int(max_pages or 0)
+    except (TypeError, ValueError):
+        page_budget = 0
+    return {"recursion_limit": max(100, page_budget * 8)}
+
+
+async def _ainvoke_agent(agent, payload: dict, config: dict):
+    signature = inspect.signature(agent.ainvoke)
+    parameters = signature.parameters.values()
+    accepts_config = "config" in signature.parameters or any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters
+    )
+    if accepts_config:
+        return await agent.ainvoke(payload, config=config)
+    return await agent.ainvoke(payload)
+
+
+class _ExplorationEventLog:
+    def __init__(self, *, project_id: str, run_id: str) -> None:
+        self.project_id = project_id
+        self.run_id = run_id
+        self.sequence = 0
+        self.path = self._resolve_path()
+
+    def append(self, event_type: str, payload: dict) -> None:
+        if self.path is None:
+            return
+        self.sequence += 1
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        event = {
+            "event_id": f"evt-{self.sequence:06d}",
+            "run_id": self.run_id,
+            "type": event_type,
+            "payload": payload,
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+        }
+        with self.path.open("a", encoding="utf-8") as file:
+            file.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+    def _resolve_path(self) -> Path | None:
+        if not self.project_id or not self.run_id:
+            return None
+        return settings.PROJECT_FILE_STORAGE_ROOT / self.project_id / "page_exploration" / "runs" / self.run_id / "events.jsonl"
+
+
+def _compact_agent_event(event: dict) -> dict:
+    if not isinstance(event, dict):
+        return {"event": str(event)}
+    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    return {
+        "event": str(event.get("event") or ""),
+        "name": str(event.get("name") or ""),
+        "run_id": str(event.get("run_id") or ""),
+        "input": _compact_event_payload(data.get("input")),
+        "output": _compact_event_payload(data.get("output")),
+        "error": _compact_event_payload(data.get("error")),
+    }
+
+
+def _agent_failure_message(exc: Exception) -> str:
+    message = str(exc)
+    if "Recursion limit" in message or "GRAPH_RECURSION_LIMIT" in message:
+        return "页面探索触发技术保险丝，目标未确认完成；请查看 events.jsonl 定位循环原因。"
+    return "页面探索 Agent 执行失败。"
 
 
 def _publish_agent_stream_event(run_id: str, event: dict) -> None:

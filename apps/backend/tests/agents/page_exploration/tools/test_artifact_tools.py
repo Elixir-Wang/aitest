@@ -81,6 +81,15 @@ def test_write_page_artifact_tool_basic(temp_base_dir):
     assert data["page"]["elements"][0]["id"] == "create_agent_btn"
     assert data["page"]["elements"][0]["name"] == "创建智能体"
 
+    doc_path = file_path.with_suffix(".md")
+    assert doc_path.exists()
+    doc = doc_path.read_text(encoding="utf-8")
+    assert "# 智能体工作台" in doc
+    assert "## 页面用途" in doc
+    assert "## 页面功能" in doc
+    assert "创建智能体" in doc
+    assert "getByRole('button', { name: '创建智能体' })" in doc
+
 
 def test_write_page_artifact_tool_auto_generate_page_id(temp_base_dir):
     """Test auto-generating page_id from URL"""

@@ -1,0 +1,101 @@
+page:
+  id: page-login
+  title: 登录页 - 百融百工
+  normalized_path: /login
+  explored_at: '2026-06-29T09:12:58.775842Z'
+  elements:
+  - id: login_tab_account
+    name: 账号密码登录tab
+    role: tab
+    locators:
+    - kind: role
+      code: 'getByRole(''tab'', { name: ''账号密码'' })'
+      priority: 1
+    - kind: text
+      code: getByText('账号密码')
+      priority: 2
+  - id: login_tab_sms
+    name: 短信验证登录tab
+    role: tab
+    locators:
+    - kind: role
+      code: 'getByRole(''tab'', { name: ''短信验证'' })'
+      priority: 1
+    - kind: text
+      code: getByText('短信验证')
+      priority: 2
+  - id: account_input
+    name: 账号输入框
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入邮箱/手机号'' })'
+      priority: 1
+    - kind: placeholder
+      code: getByPlaceholder('请输入邮箱/手机号')
+      priority: 2
+  - id: password_input
+    name: 密码输入框
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入密码'' })'
+      priority: 1
+    - kind: placeholder
+      code: getByPlaceholder('请输入密码')
+      priority: 2
+  - id: captcha_input
+    name: 图形验证码输入框
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入图形验证码'' })'
+      priority: 1
+    - kind: placeholder
+      code: getByPlaceholder('请输入图形验证码')
+      priority: 2
+  - id: password_toggle_btn
+    name: 密码显示/隐藏按钮
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''显示密码'' })'
+      priority: 1
+  - id: forgot_password_link
+    name: 忘记密码链接
+    role: link
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''忘记密码?'' })'
+      priority: 1
+    - kind: text
+      code: getByText('忘记密码?')
+      priority: 2
+  - id: login_btn
+    name: 登录按钮
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''登录'' })'
+      priority: 1
+  - id: user_agreement_link
+    name: 用户协议链接
+    role: link
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《用户协议》'' })'
+      priority: 1
+  - id: privacy_policy_link
+    name: 隐私政策链接
+    role: link
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《隐私政策》'' })'
+      priority: 1
+  - id: register_link
+    name: 注册链接
+    role: link
+    locators:
+    - kind: text
+      code: getByText('去注册')
+      priority: 1

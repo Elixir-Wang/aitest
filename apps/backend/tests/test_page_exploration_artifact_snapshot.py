@@ -1,8 +1,10 @@
 import json
 from pathlib import Path
+import inspect
 
 from app.services.exploration import event_bus
 from app.services.exploration import page_exploration_service
+from app.api.v1 import page_exploration as page_exploration_api
 
 
 def test_execute_exploration_async_invokes_deep_agent_with_user_message(monkeypatch) -> None:
@@ -61,6 +63,66 @@ def test_execute_exploration_async_invokes_deep_agent_with_user_message(monkeypa
     }
     assert "input" not in captured["payload"]
     assert updates
+
+
+def test_invoke_agent_writes_event_log_and_passes_recursion_config(monkeypatch, tmp_path: Path) -> None:
+    captured = {}
+
+    class FakeAgent:
+        async def astream_events(self, payload, **kwargs):
+            captured["payload"] = payload
+            captured["kwargs"] = kwargs
+            yield {
+                "event": "on_tool_start",
+                "name": "playwright_snap_tool",
+                "run_id": "tool-run-1",
+                "data": {"input": {"url": "https://example.test/workspace"}},
+            }
+            yield {
+                "event": "on_tool_end",
+                "name": "playwright_snap_tool",
+                "run_id": "tool-run-1",
+                "data": {"output": {"title": "工作台"}},
+            }
+            yield {
+                "event": "on_chain_end",
+                "name": "agent",
+                "run_id": "agent-run-1",
+                "data": {"output": {"messages": [{"content": "探索完成"}]}},
+            }
+
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+
+    event_bus.clear("run-log")
+
+    import asyncio
+
+    result = asyncio.run(
+        page_exploration_service._invoke_agent_with_realtime_events(
+            FakeAgent(),
+            {"messages": [{"role": "user", "content": "探索工作台"}]},
+            "run-log",
+            page_exploration_service._initial_exploration_plan_steps("https://example.test/workspace", 3),
+            project_id="project-1",
+            max_pages=3,
+        )
+    )
+
+    assert result["messages"][0]["content"] == "探索完成"
+    assert captured["kwargs"]["version"] == "v2"
+    assert captured["kwargs"]["config"]["recursion_limit"] >= 100
+
+    events_path = tmp_path / "project-1" / "page_exploration" / "runs" / "run-log" / "events.jsonl"
+    assert events_path.exists()
+    events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+    assert [event["type"] for event in events] == [
+        "agent_step_started",
+        "agent_stream_event",
+        "agent_stream_event",
+        "agent_stream_event",
+        "agent_step_completed",
+    ]
+    assert events[1]["payload"]["event"] == "on_tool_start"
 
 
 def test_execute_exploration_async_publishes_realtime_events(monkeypatch) -> None:
@@ -155,6 +217,13 @@ def test_event_bus_replays_history_and_delivers_live_events() -> None:
     first, second = asyncio.run(collect_events())
     assert first["type"] == "planning_completed"
     assert second["type"] == "step_started"
+
+
+def test_exploration_stream_does_not_cancel_event_bus_subscription() -> None:
+    source = inspect.getsource(page_exploration_api.stream_exploration_progress)
+
+    assert "event_task.cancel()" not in source
+    assert "pump_events" in source
 
 
 def test_modules_from_artifacts_builds_frontend_progress_when_db_pages_are_empty(tmp_path: Path) -> None:

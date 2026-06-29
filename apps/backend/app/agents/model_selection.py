@@ -14,11 +14,6 @@ class ModelSelection:
     api_key: str
 
 
-TOOL_CALLING_UNSUPPORTED_PROVIDERS = {
-    "minimax",
-}
-
-
 def resolve_model_selection(capability_id: str) -> ModelSelection:
     capability = get_ai_capability(capability_id)
     with connect() as db:
@@ -41,11 +36,6 @@ def build_agent_model(selection: ModelSelection, *, extra_body: dict | None = No
     kwargs = {}
     if extra_body is not None:
         kwargs["extra_body"] = extra_body
-    if selection.provider.strip().lower() in TOOL_CALLING_UNSUPPORTED_PROVIDERS:
-        raise ValueError(
-            f"当前模型提供方 {selection.provider} / {selection.model} 不适合用于带工具调用的 Agent。"
-            "请为该能力分配支持 OpenAI tools/function calling 的模型配置。"
-        )
     return ChatOpenAI(
         model=selection.model,
         api_key=SecretStr(selection.api_key),

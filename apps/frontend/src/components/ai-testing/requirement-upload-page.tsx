@@ -77,7 +77,6 @@ export function RequirementUploadPage({
   const [uploadStates, setUploadStates] = useState<
     Record<string, { progress: number; status: "idle" | "uploading" | "completed" | "error" }>
   >({});
-  const selectedProjectName = projects.find((project) => project.id === projectId)?.name ?? "";
   const selectedRequirement = requirements.find((item) => item.id === existingDocumentId);
 
   useEffect(() => {
@@ -168,7 +167,7 @@ export function RequirementUploadPage({
         toast.success("文件已添加，可在原始文件列表中设为主需求");
       }
       notifyAiTaskStarted();
-      router.push(`/projects/${result.document.project_id}/requirements/${result.document.id}?tab=source-files`);
+      router.push(`/projects/${result.document.project_id}/requirements/${result.document.id}?tab=original`);
       router.refresh();
     } catch (requestError) {
       reportError(requestError, {
@@ -259,9 +258,6 @@ export function RequirementUploadPage({
                 </SelectOption>
               ))}
             </Select>
-            <FieldDescription>
-              {selectedProjectName ? `需求将上传到：${selectedProjectName}` : "请选择本次需求所属项目。"}
-            </FieldDescription>
           </Field>
 
           <Field>

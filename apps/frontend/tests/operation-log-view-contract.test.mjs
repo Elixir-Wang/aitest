@@ -52,8 +52,10 @@ test("operation log labels cover persisted system actions and modules", () => {
   assert.match(apiClientSource, /auto_auth_login: "自动登录"/);
   assert.match(apiClientSource, /query: "查询"/);
   assert.match(apiClientSource, /delete_conversation: "删除会话"/);
+  assert.match(apiClientSource, /api_error: "接口错误"/);
   assert.match(apiClientSource, /cancel_requirement_analysis: "取消需求分析"/);
   assert.match(apiClientSource, /interrupt_exploration: "中断探索"/);
   assert.match(apiClientSource, /stop_stale_test_case_generation: "停止过期用例生成"/);
   assert.match(apiClientSource, /test_case: "测试用例"/);
+  assert.match(apiClientSource, /api: "接口"/);
 });

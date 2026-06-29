@@ -134,14 +134,25 @@ def test_deterministic_requirement_file_conversion_lives_outside_agent_package()
     assert not (NEW_AGENTS_ROOT / "requirement_standardization" / "converters").exists()
 
 
-def test_raw_requirement_format_converter_capability_is_displayed_as_requirement_standardization() -> None:
+def test_requirement_standardization_capability_uses_canonical_id() -> None:
     from app.agents.capabilities import get_ai_capability
 
-    capability = get_ai_capability("raw_requirement_format_converter")
+    capability = get_ai_capability("requirement_standardization")
 
     assert capability.name == "需求标准化智能体"
     assert "标准 Markdown" in capability.description
     assert "解析为 Markdown 工作稿" not in capability.description
+
+
+def test_raw_requirement_format_converter_capability_id_removed() -> None:
+    from app.agents.capabilities import get_ai_capability
+
+    try:
+        get_ai_capability("raw_requirement_format_converter")
+    except KeyError:
+        return
+
+    raise AssertionError("raw_requirement_format_converter compatibility capability id should be removed")
 
 
 def test_document_editor_no_longer_uses_llm_task_module() -> None:

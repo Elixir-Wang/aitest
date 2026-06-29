@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { Eye, History } from "lucide-react";
+import { Eye, History, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
@@ -47,6 +47,47 @@ type RequirementPageProps = {
   projectId?: string;
   uploadHref: string;
 };
+
+export type RequirementDeleteResult = {
+  id: string;
+  name: string;
+  ok: boolean;
+  error?: unknown;
+};
+
+export function requirementDeleteErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message === "Failed to fetch") {
+    return "网络异常，未收到后端响应";
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "未知错误";
+}
+
+function summarizeRequirementDeleteReason(error: unknown) {
+  const message = requirementDeleteErrorMessage(error);
+  if (message.includes("已关联测试用例集")) {
+    return "已关联测试用例集，需先删除测试用例集";
+  }
+  return message;
+}
+
+export function summarizeRequirementDeleteResults(results: RequirementDeleteResult[]) {
+  const successful = results.filter((item) => item.ok);
+  const failed = results.filter((item) => !item.ok);
+  const failedNames = failed.map((item) => item.name).join("、");
+  const failedReasons = Array.from(new Set(failed.map((item) => summarizeRequirementDeleteReason(item.error))));
+  const reasonSummary = failedReasons.join("；");
+
+  return {
+    successfulIds: successful.map((item) => item.id),
+    successCount: successful.length,
+    failedCount: failed.length,
+    failedNames,
+    failureMessage: failed.length > 0 ? `删除失败：${reasonSummary}` : "",
+  };
+}
 
 const statusLabels: Record<string, string> = {
   parsing: "解析中",
@@ -166,25 +207,37 @@ export function RequirementsPage({
       return;
     }
     const targets = rows.filter((row) => ids.includes(row.id));
-    try {
-      await Promise.all(
-        targets.map((row) =>
-          apiRequest(`/projects/${row.project_id}/requirements/${row.id}`, {
+    const results = await Promise.all(
+      targets.map(async (row): Promise<RequirementDeleteResult> => {
+        try {
+          await apiRequest(`/projects/${row.project_id}/requirements/${row.id}`, {
             method: "DELETE",
-          }),
-        ),
-      );
-      setRows((current) => current.filter((row) => !ids.includes(row.id)));
+          });
+          return { id: row.id, name: row.name, ok: true };
+        } catch (error) {
+          return { id: row.id, name: row.name, ok: false, error };
+        }
+      }),
+    );
+    const summary = summarizeRequirementDeleteResults(results);
+
+    if (summary.successCount > 0) {
+      const successfulIds = summary.successfulIds;
+      setRows((current) => current.filter((row) => !successfulIds.includes(row.id)));
       clearSelection();
-      toast.success(`已删除 ${ids.length} 个需求文档`);
-    } catch (requestError) {
-      reportError(requestError, {
-        fallbackMessage: "需求文档删除失败",
-        actionLabel: "删除需求文档",
-        method: "DELETE",
-        path: "/projects/{projectId}/requirements/{documentId}",
-      });
     }
+
+    if (summary.failedCount === 0) {
+      toast.success(`已删除 ${summary.successCount} 个需求文档`);
+      return;
+    }
+
+    reportError(new Error(summary.failureMessage), {
+      fallbackMessage: summary.successCount > 0 ? "部分需求文档删除失败" : "需求文档删除失败",
+      actionLabel: `删除需求文档：${summary.failedNames}`,
+      method: "DELETE",
+      path: "/projects/{projectId}/requirements/{documentId}",
+    });
   }
 
   return (
@@ -271,6 +324,12 @@ export function RequirementsPage({
                             label: "版本记录",
                             href: `/projects/${item.project_id}/requirements/${item.id}/versions`,
                             icon: History,
+                          },
+                          {
+                            label: "删除",
+                            icon: Trash2,
+                            destructive: true,
+                            onSelect: () => deleteDocuments([item.id]),
                           },
                         ]}
                         label={`打开 ${item.name} 操作菜单`}

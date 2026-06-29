@@ -87,13 +87,12 @@ async function submitClientErrorLog(error: ReportedError): Promise<ClientErrorRe
 
 async function openLogDetail(logPromise: Promise<ClientErrorReportOut | null>, traceId?: string) {
   const result = await logPromise;
-  if (result?.log_id) {
-    window.location.assign(`/settings/logs/${encodeURIComponent(result.log_id)}`);
-    return;
-  }
-  const fallbackTraceId = result?.trace_id || traceId;
-  const query = fallbackTraceId ? `?keyword=${encodeURIComponent(fallbackTraceId)}` : "";
-  window.location.assign(`/settings/logs${query}`);
+  window.location.assign(operationLogListUrl(result?.log_id || result?.trace_id || traceId));
+}
+
+function operationLogListUrl(keyword?: string) {
+  const query = keyword ? `?keyword=${encodeURIComponent(keyword)}` : "";
+  return `/settings/logs${query}`;
 }
 
 function safeErrorMessage(error: unknown, fallbackMessage: string) {

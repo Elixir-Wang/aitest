@@ -15,7 +15,7 @@ AI_CAPABILITIES: tuple[AiCapability, ...] = (
         description="根据用户指令修改 Markdown 文档，返回修改后的文档、修改摘要和风险提示。",
     ),
     AiCapability(
-        id="raw_requirement_format_converter",
+        id="requirement_standardization",
         name="需求标准化智能体",
         description="负责将上传的 PDF、Word、TXT 和 Markdown 需求文件标准化为结构稳定的标准 Markdown。",
     ),

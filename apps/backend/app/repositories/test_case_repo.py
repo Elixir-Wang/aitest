@@ -24,6 +24,18 @@ def list_by_project(db: Connection, project_id: str) -> list[Row]:
     ).fetchall()
 
 
+def list_by_requirement_document(db: Connection, requirement_doc_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT id, name, status
+        FROM test_case_sets
+        WHERE requirement_doc_id = ?
+        ORDER BY updated_at DESC, created_at DESC
+        """,
+        (requirement_doc_id,),
+    ).fetchall()
+
+
 def find_set_by_id(db: Connection, set_id: str) -> Row | None:
     return db.execute(f"{BASE_SET_SELECT} WHERE tcs.id = ?", (set_id,)).fetchone()
 
