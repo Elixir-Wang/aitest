@@ -1,6 +1,9 @@
 import asyncio
+import io
 
 import pytest
+from starlette.datastructures import Headers
+from starlette.datastructures import UploadFile
 
 
 def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -45,6 +48,10 @@ async def _collect_async_events(iterator):
     return [event async for event in iterator]
 
 
+def _upload(filename: str, content: bytes) -> UploadFile:
+    return UploadFile(file=io.BytesIO(content), filename=filename, headers=Headers({}))
+
+
 def test_knowledge_query_persists_conversation_and_uses_history(monkeypatch, tmp_path) -> None:
     from app.schemas.knowledge import KnowledgeQueryOutput
     from app.services.knowledge import service
@@ -54,19 +61,9 @@ def test_knowledge_query_persists_conversation_and_uses_history(monkeypatch, tmp
     captured_questions: list[str] = []
     captured_history_lengths: list[int] = []
 
-    async def fake_run_knowledge_chat(input_data, search_project_knowledge):
+    async def fake_run_knowledge_agent(input_data):
         captured_questions.append(input_data.question)
         captured_history_lengths.append(len(input_data.conversation_history))
-        output = await search_project_knowledge(input_data.question)
-        return KnowledgeQueryOutput(
-            answer=f"回答：{input_data.question}",
-            source_refs=output.source_refs,
-            used_requirement_versions=output.used_requirement_versions,
-            used_exploration_runs=output.used_exploration_runs,
-            knowledge_queried=output.knowledge_queried,
-        )
-
-    async def fake_run_knowledge_query(input_data):
         return KnowledgeQueryOutput(
             answer=f"检索：{input_data.question}",
             used_requirement_versions=["version-1"],
@@ -74,23 +71,21 @@ def test_knowledge_query_persists_conversation_and_uses_history(monkeypatch, tmp
             knowledge_queried=True,
         )
 
-    monkeypatch.setattr(service.knowledge_chat_service, "run_knowledge_chat", fake_run_knowledge_chat)
-    monkeypatch.setattr(service.knowledge_query_service, "run_knowledge_query", fake_run_knowledge_query)
+    monkeypatch.setattr(service.knowledge_agent_service, "run_knowledge_agent", fake_run_knowledge_agent)
     actor = {"id": "u-admin", "username": "admin", "nickname": "平台管理员"}
 
     async def run_queries():
         first_result = await service.query_project_knowledge(
             "project-1",
             actor,
-            service.KnowledgeQueryRequest(question="登录规则是什么？", include_explorations=False),
+            service.KnowledgeQueryRequest(question="登录规则是什么？", ),
         )
         second_result = await service.query_project_knowledge(
             "project-1",
             actor,
             service.KnowledgeQueryRequest(
                 question="这个模块还要补哪些测试？",
-                include_explorations=False,
-                conversation_id=first_result["conversation"]["id"],
+                                conversation_id=first_result["conversation"]["id"],
             ),
         )
         return first_result, second_result
@@ -112,43 +107,127 @@ def test_knowledge_query_persists_conversation_and_uses_history(monkeypatch, tmp
     assert service.list_project_knowledge_conversations("project-1", actor) == []
 
 
-def test_knowledge_chat_can_answer_without_querying_project_sources(monkeypatch, tmp_path) -> None:
+def test_knowledge_agent_can_answer_without_querying_project_sources(monkeypatch, tmp_path) -> None:
     from app.schemas.knowledge import KnowledgeQueryOutput
     from app.services.knowledge import service
 
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project(monkeypatch, tmp_path)
-    query_called = False
+    captured_source_counts: list[int] = []
 
-    async def fake_run_knowledge_query(_input_data):
-        nonlocal query_called
-        query_called = True
-        raise AssertionError("普通对话不应查询项目知识库。")
-
-    async def fake_run_knowledge_chat(input_data, search_project_knowledge):
+    async def fake_run_knowledge_agent(input_data):
         assert input_data.question == "你好"
-        assert input_data.source_documents == []
-        assert input_data.explorations == []
+        captured_source_counts.append(len(input_data.source_documents))
         return KnowledgeQueryOutput(answer="你好，我是项目知识库 AI。", knowledge_queried=False)
 
-    monkeypatch.setattr(service.knowledge_query_service, "run_knowledge_query", fake_run_knowledge_query)
-    monkeypatch.setattr(service.knowledge_chat_service, "run_knowledge_chat", fake_run_knowledge_chat)
+    monkeypatch.setattr(service.knowledge_agent_service, "run_knowledge_agent", fake_run_knowledge_agent)
     actor = {"id": "u-admin", "username": "admin", "nickname": "平台管理员"}
 
     result = asyncio.run(
         service.query_project_knowledge(
             "project-1",
             actor,
-            service.KnowledgeQueryRequest(question="你好", include_explorations=False),
+            service.KnowledgeQueryRequest(question="你好", ),
         )
     )
 
-    assert query_called is False
+    assert captured_source_counts == [1]
     assert result["answer"] == "你好，我是项目知识库 AI。"
     assert result["knowledge_queried"] is False
     assert result["source_refs"] == []
     assert result["used_requirement_versions"] == []
     assert result["used_exploration_runs"] == []
+
+
+def test_project_knowledge_query_collects_company_knowledge_by_default(monkeypatch, tmp_path) -> None:
+    from app.services.knowledge import global_service, service
+    from app.schemas.knowledge import KnowledgeQueryOutput
+
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project(monkeypatch, tmp_path)
+    base = global_service.create_base(name="测试规范", description="", actor={"id": "u-admin", "role": "admin"})
+    uploaded = asyncio.run(
+        global_service.upload_files_to_folder(
+            base["id"],
+            base["root_folder_id"],
+            [_upload("login.md", b"# Login Test\n\nCover success and failure.")],
+            actor={"id": "u-admin", "role": "admin"},
+        )
+    )
+    company_file_id = uploaded["files"][0]["id"]
+    captured_sources: list[list[str]] = []
+
+    async def fake_run_knowledge_agent(input_data):
+        captured_sources.append([doc.source_type for doc in input_data.source_documents])
+        return KnowledgeQueryOutput(
+            answer="已结合项目需求和公司知识库。",
+            used_requirement_versions=["version-1"],
+            used_company_knowledge_files=[company_file_id],
+            knowledge_queried=True,
+        )
+
+    monkeypatch.setattr(service.knowledge_agent_service, "run_knowledge_agent", fake_run_knowledge_agent)
+    actor = {"id": "u-admin", "username": "admin", "nickname": "平台管理员", "role": "admin"}
+
+    result = asyncio.run(
+        service.query_project_knowledge(
+            "project-1",
+            actor,
+            service.KnowledgeQueryRequest(question="登录测试怎么设计？"),
+        )
+    )
+
+    assert captured_sources == [["requirement", "company_knowledge"]]
+    assert result["used_requirement_versions"] == ["version-1"]
+    assert result["used_company_knowledge_files"] == [company_file_id]
+
+
+def test_project_knowledge_stream_timeout_persists_conversation(monkeypatch, tmp_path) -> None:
+    from app.services.knowledge import service
+
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project(monkeypatch, tmp_path)
+
+    class ImmediateTimeout:
+        async def __aenter__(self):
+            raise TimeoutError
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(service.asyncio, "timeout", lambda _seconds: ImmediateTimeout())
+    actor = {"id": "u-admin", "username": "admin", "nickname": "平台管理员"}
+
+    events = asyncio.run(
+        _collect_async_events(
+            service.stream_project_knowledge_query(
+                "project-1",
+                actor,
+                service.KnowledgeQueryRequest(question="这个需求有哪些规则？", include_requirements=False),
+            )
+        )
+    )
+
+    assert events == [
+        {
+            "type": "error",
+            "code": "KNOWLEDGE_AGENT_TIMEOUT",
+            "message": service.KNOWLEDGE_QUERY_TIMEOUT_MESSAGE,
+            "result": events[0]["result"],
+        }
+    ]
+    result = events[0]["result"]
+    conversation_id = result["conversation"]["id"]
+    assert result["answer"] == service.KNOWLEDGE_QUERY_TIMEOUT_MESSAGE
+    assert [message["role"] for message in result["messages"]] == ["user", "assistant"]
+    assert [message["content"] for message in result["messages"]] == [
+        "这个需求有哪些规则？",
+        service.KNOWLEDGE_QUERY_TIMEOUT_MESSAGE,
+    ]
+
+    detail = service.get_project_knowledge_conversation("project-1", conversation_id, actor)
+    assert [message["role"] for message in detail["messages"]] == ["user", "assistant"]
+    assert detail["messages"][1]["content"] == service.KNOWLEDGE_QUERY_TIMEOUT_MESSAGE
 
 
 def test_all_project_knowledge_query_collects_active_project_sources(monkeypatch, tmp_path) -> None:
@@ -206,15 +285,9 @@ def test_all_project_knowledge_query_collects_active_project_sources(monkeypatch
 
     captured_project_names: list[list[str]] = []
 
-    async def fake_stream_knowledge_chat(input_data, search_project_knowledge, **_kwargs):
-        assert input_data.project_name == "全部项目"
-        output = await search_project_knowledge(input_data.question)
-        yield {"type": "message_delta", "delta": output.answer}
-        yield {"type": "metadata", "output": output}
-
-    async def fake_run_knowledge_query(input_data):
+    async def fake_stream_knowledge_agent(input_data, **_kwargs):
         captured_project_names.append([doc.project_name for doc in input_data.source_documents])
-        return KnowledgeQueryOutput(
+        output = KnowledgeQueryOutput(
             answer="已查询全部项目。",
             source_refs=[
                 KnowledgeSourceRef(
@@ -229,9 +302,10 @@ def test_all_project_knowledge_query_collects_active_project_sources(monkeypatch
             used_requirement_versions=[doc.version_id for doc in input_data.source_documents],
             knowledge_queried=True,
         )
+        yield {"type": "message_delta", "delta": output.answer}
+        yield {"type": "metadata", "output": output}
 
-    monkeypatch.setattr(service.knowledge_chat_service, "stream_knowledge_chat", fake_stream_knowledge_chat)
-    monkeypatch.setattr(service.knowledge_query_service, "run_knowledge_query", fake_run_knowledge_query)
+    monkeypatch.setattr(service.knowledge_agent_service, "stream_knowledge_agent", fake_stream_knowledge_agent)
     actor = {
         "id": "u-admin",
         "username": "admin",
@@ -244,7 +318,7 @@ def test_all_project_knowledge_query_collects_active_project_sources(monkeypatch
         _collect_async_events(
             service.stream_all_project_knowledge_query(
                 actor,
-                service.KnowledgeQueryRequest(question="有哪些需求？", include_explorations=False),
+                service.KnowledgeQueryRequest(question="有哪些需求？", ),
             )
         )
     )
@@ -319,20 +393,16 @@ def test_all_project_knowledge_query_tolerates_partial_missing_files(monkeypatch
 
     captured_project_names: list[list[str]] = []
 
-    async def fake_stream_knowledge_chat(input_data, search_project_knowledge, **_kwargs):
-        output = await search_project_knowledge(input_data.question)
-        yield {"type": "metadata", "output": output}
-
-    async def fake_run_knowledge_query(input_data):
+    async def fake_stream_knowledge_agent(input_data, **_kwargs):
         captured_project_names.append([doc.project_name for doc in input_data.source_documents])
-        return KnowledgeQueryOutput(
+        output = KnowledgeQueryOutput(
             answer="已使用可用项目来源回答。",
             used_requirement_versions=[doc.version_id for doc in input_data.source_documents],
             knowledge_queried=True,
         )
+        yield {"type": "metadata", "output": output}
 
-    monkeypatch.setattr(service.knowledge_chat_service, "stream_knowledge_chat", fake_stream_knowledge_chat)
-    monkeypatch.setattr(service.knowledge_query_service, "run_knowledge_query", fake_run_knowledge_query)
+    monkeypatch.setattr(service.knowledge_agent_service, "stream_knowledge_agent", fake_stream_knowledge_agent)
     actor = {
         "id": "u-admin",
         "username": "admin",
@@ -345,7 +415,7 @@ def test_all_project_knowledge_query_tolerates_partial_missing_files(monkeypatch
         _collect_async_events(
             service.stream_all_project_knowledge_query(
                 actor,
-                service.KnowledgeQueryRequest(question="有哪些可用需求？", include_explorations=False),
+                service.KnowledgeQueryRequest(question="有哪些可用需求？", ),
             )
         )
     )
@@ -367,20 +437,16 @@ def test_all_project_knowledge_query_persists_conversation_and_uses_history(monk
     _seed_project(monkeypatch, tmp_path)
     captured_history_lengths: list[int] = []
 
-    async def fake_stream_knowledge_chat(input_data, search_project_knowledge, **_kwargs):
+    async def fake_stream_knowledge_agent(input_data, **_kwargs):
         captured_history_lengths.append(len(input_data.conversation_history))
-        output = await search_project_knowledge(input_data.question)
-        yield {"type": "metadata", "output": output}
-
-    async def fake_run_knowledge_query(input_data):
-        return KnowledgeQueryOutput(
+        output = KnowledgeQueryOutput(
             answer=f"检索：{input_data.question}",
             used_requirement_versions=["version-1"],
             knowledge_queried=True,
         )
+        yield {"type": "metadata", "output": output}
 
-    monkeypatch.setattr(service.knowledge_chat_service, "stream_knowledge_chat", fake_stream_knowledge_chat)
-    monkeypatch.setattr(service.knowledge_query_service, "run_knowledge_query", fake_run_knowledge_query)
+    monkeypatch.setattr(service.knowledge_agent_service, "stream_knowledge_agent", fake_stream_knowledge_agent)
     actor = {
         "id": "u-admin",
         "username": "admin",
@@ -393,7 +459,7 @@ def test_all_project_knowledge_query_persists_conversation_and_uses_history(monk
         first_events = await _collect_async_events(
             service.stream_all_project_knowledge_query(
                 actor,
-                service.KnowledgeQueryRequest(question="登录规则是什么？", include_explorations=False),
+                service.KnowledgeQueryRequest(question="登录规则是什么？", ),
             )
         )
         first_result = first_events[-2]["result"]
@@ -402,8 +468,7 @@ def test_all_project_knowledge_query_persists_conversation_and_uses_history(monk
                 actor,
                 service.KnowledgeQueryRequest(
                     question="这个模块还要补哪些测试？",
-                    include_explorations=False,
-                    conversation_id=first_result["conversation"]["id"],
+                                        conversation_id=first_result["conversation"]["id"],
                 ),
             )
         )
@@ -429,16 +494,17 @@ def test_all_project_knowledge_query_forwards_visible_thinking(monkeypatch, tmp_
     from app.services.knowledge import service
 
     _use_temp_db(monkeypatch, tmp_path)
+    _seed_project(monkeypatch, tmp_path)
 
     captured_show_thinking: list[bool] = []
 
-    async def fake_stream_knowledge_chat(input_data, _search_project_knowledge, *, show_thinking=False):
+    async def fake_stream_knowledge_agent(input_data, *, show_thinking=False):
         assert input_data.project_name == "全部项目"
         captured_show_thinking.append(show_thinking)
         yield {"type": "thinking_delta", "delta": "先判断是否需要查询。"}
         yield {"type": "metadata", "output": KnowledgeQueryOutput(answer="不需要查询。", knowledge_queried=False)}
 
-    monkeypatch.setattr(service.knowledge_chat_service, "stream_knowledge_chat", fake_stream_knowledge_chat)
+    monkeypatch.setattr(service.knowledge_agent_service, "stream_knowledge_agent", fake_stream_knowledge_agent)
     actor = {
         "id": "u-admin",
         "username": "admin",
@@ -460,3 +526,77 @@ def test_all_project_knowledge_query_forwards_visible_thinking(monkeypatch, tmp_
     assert events[0] == {"type": "thinking_delta", "delta": "先判断是否需要查询。"}
     assert events[1]["type"] == "metadata"
     assert events[1]["result"]["answer"] == "不需要查询。"
+
+
+def test_project_knowledge_stream_strips_think_blocks_from_visible_answer(monkeypatch, tmp_path) -> None:
+    from app.schemas.knowledge import KnowledgeQueryOutput
+    from app.services.knowledge import service
+
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project(monkeypatch, tmp_path)
+
+    async def fake_stream_knowledge_agent(input_data, *, show_thinking=False):
+        assert show_thinking is False
+        yield {"type": "message_delta", "delta": "<think>我要先读文件"}
+        yield {"type": "message_delta", "delta": "，不能直接回答。</think>"}
+        yield {"type": "message_delta", "delta": "百工集成到钉钉需要先完成钉钉应用配置。"}
+        yield {
+            "type": "metadata",
+            "output": KnowledgeQueryOutput(
+                answer="<think>hidden</think>百工集成到钉钉需要先完成钉钉应用配置。",
+                knowledge_queried=True,
+                used_requirement_versions=["version-1"],
+            ),
+        }
+
+    monkeypatch.setattr(service.knowledge_agent_service, "stream_knowledge_agent", fake_stream_knowledge_agent)
+    actor = {"id": "u-admin", "username": "admin", "nickname": "平台管理员"}
+
+    events = asyncio.run(
+        _collect_async_events(
+            service.stream_project_knowledge_query(
+                "project-1",
+                actor,
+                service.KnowledgeQueryRequest(question="百工如何集成到钉钉"),
+            )
+        )
+    )
+
+    visible_deltas = [event["delta"] for event in events if event["type"] == "message_delta"]
+    assert visible_deltas == ["百工集成到钉钉需要先完成钉钉应用配置。"]
+    metadata = next(event for event in events if event["type"] == "metadata")
+    assert metadata["result"]["answer"] == "百工集成到钉钉需要先完成钉钉应用配置。"
+    assert "<think>" not in metadata["result"]["messages"][1]["content"]
+
+
+def test_knowledge_agent_payload_uses_deepagents_file_data_format() -> None:
+    from app.agents.knowledge import service as knowledge_agent_service
+    from app.schemas.knowledge import KnowledgeQueryInput, KnowledgeSourceDocumentInput
+
+    payload = knowledge_agent_service._agent_payload(
+        KnowledgeQueryInput(
+            project_id="project-1",
+            project_name="测试项目",
+            question="登录规则是什么？",
+            source_documents=[
+                KnowledgeSourceDocumentInput(
+                    source_type="requirement",
+                    source_id="version-1",
+                    source_title="最终需求 v1",
+                    project_id="project-1",
+                    project_name="测试项目",
+                    document_id="doc-1",
+                    document_name="最终需求",
+                    version_id="version-1",
+                    version_no=1,
+                    markdown_content="# 登录\n用户可以登录。",
+                )
+            ],
+        )
+    )
+
+    files = payload["files"]
+    assert files["/README.md"]["encoding"] == "utf-8"
+    requirement_file = next(path for path in files if path.startswith("/requirements/"))
+    assert files[requirement_file]["content"].startswith("<!-- source_metadata:")
+    assert isinstance(files[requirement_file]["content"], str)

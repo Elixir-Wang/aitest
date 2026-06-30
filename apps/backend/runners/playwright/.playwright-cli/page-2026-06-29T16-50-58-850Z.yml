@@ -1,0 +1,136 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - img [ref=e6]
+      - generic [ref=e8]:
+        - img "Logo" [ref=e9]
+        - generic [ref=e10]:
+          - generic [ref=e11] [cursor=pointer]: 产品手册
+          - generic [ref=e12] [cursor=pointer]: 立即体验
+      - img "Header Logo" [ref=e14]
+      - heading "首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户" [level=2] [ref=e16]
+      - generic [ref=e17]:
+        - generic [ref=e18] [cursor=pointer]: 立即体验
+        - generic [ref=e19] [cursor=pointer]: 我要咨询
+    - generic [ref=e20]:
+      - heading "卓越的响应速度，精准的回答效果" [level=3] [ref=e21]
+      - generic [ref=e65]:
+        - generic [ref=e66]:
+          - text: 首字响应耗时
+          - heading "<0s(均值)" [level=1] [ref=e67]
+        - generic [ref=e68]:
+          - generic [ref=e69]: 回复准确率
+          - heading "> 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 暂无数据 % (均值)" [level=1] [ref=e71]:
+            - generic [ref=e72]: ">"
+            - generic [ref=e73]:
+              - list [ref=e76]:
+                - listitem [ref=e77]:
+                  - generic [ref=e79]:
+                    - generic [ref=e80]: "0"
+                    - generic [ref=e81]: "1"
+                    - generic [ref=e82]: "2"
+                    - generic [ref=e83]: "3"
+                    - generic [ref=e84]: "4"
+                    - generic [ref=e85]: "5"
+                    - generic [ref=e86]: "6"
+                    - generic [ref=e87]: "7"
+                    - generic [ref=e88]: "8"
+                    - generic [ref=e89]: "9"
+                    - generic [ref=e90]: .
+                    - generic [ref=e91]: "0"
+                    - generic [ref=e92]: "1"
+                    - generic [ref=e93]: "2"
+                    - generic [ref=e94]: "3"
+                    - generic [ref=e95]: "4"
+                    - generic [ref=e96]: "5"
+                    - generic [ref=e97]: "6"
+                    - generic [ref=e98]: "7"
+                    - generic [ref=e99]: "8"
+                    - generic [ref=e100]: "9"
+                    - generic [ref=e101]: .
+              - generic [ref=e102]:
+                - img [ref=e105]
+                - generic [ref=e123]: 暂无数据
+            - generic [ref=e124]: "%"
+            - generic [ref=e125]: (均值)
+    - generic [ref=e129]:
+      - generic [ref=e131]: 全面的平台功能，轻松应对多样化业务挑战
+      - generic [ref=e132]:
+        - generic [ref=e135]:
+          - generic [ref=e137]: 知识精准检索 尽在掌握
+          - list [ref=e138]:
+            - listitem [ref=e139]: 智能文件解析，内容分段，清晰呈现
+            - listitem [ref=e140]: 多策略检索，确保信息精准召回
+            - listitem [ref=e141]: 图文结合，回复内容清晰呈现
+            - listitem [ref=e142]: 知识溯源，关键句定位，引文精准
+        - generic [ref=e148]:
+          - generic [ref=e150]:
+            - text: Chat Flow
+            - text: 智能编排
+            - text: 灵活定制客户服务
+          - list [ref=e151]:
+            - listitem [ref=e152]: 引导式交流
+            - listitem [ref=e153]: 多功能节点编排
+            - listitem [ref=e154]: 业务目标驱动
+            - listitem [ref=e155]: 易于扩展
+            - listitem [ref=e156]: 意图识别触发
+        - generic [ref=e161]:
+          - generic [ref=e163]: 拥有AI Agent 核心能力
+          - list [ref=e164]:
+            - listitem [ref=e165]: 精准意图识别：洞悉需求，即时响应
+            - listitem [ref=e166]: 功能插件融合：扩展服务，增强体验
+            - listitem [ref=e167]: 实时网页检索：动态更新，确保信息前沿
+        - generic [ref=e173]:
+          - generic [ref=e175]: 数据分析洞察能力
+          - list [ref=e176]:
+            - listitem [ref=e177]: 支持多种对话日志查看方式
+            - listitem [ref=e178]: 完善的对话记录巡检功能
+            - listitem [ref=e179]: 可视化数据指标统计界面
+    - generic [ref=e183]:
+      - generic [ref=e186]:
+        - generic [ref=e187]: 接入百融百工，覆盖您全场景的需求
+        - generic [ref=e188]:
+          - generic [ref=e189]:
+            - generic:
+              - paragraph: 文字对话场景
+            - generic:
+              - paragraph: 智能语音场景
+            - generic:
+              - paragraph: 虚拟人场景
+          - generic [ref=e190]:
+            - generic [ref=e191]:
+              - heading "产品客服" [level=2] [ref=e193]
+              - paragraph [ref=e194]: 通过我们独有的结构化知识检索技术，成功解决了复杂知识库带来的挑战，实现了对C端用户提问的精准应答，另外还降低了人力客服成本，提高了服务效率。
+              - generic [ref=e195]:
+                - generic [ref=e196]:
+                  - strong [ref=e197]: 95%以上
+                  - generic [ref=e198]: 平均回复准确率
+                - generic [ref=e199]:
+                  - strong [ref=e200]: 多轮对话
+                  - generic [ref=e201]: 实时数据查询支持
+            - generic [ref=e202]:
+              - heading "网站客服" [level=2] [ref=e204]
+              - paragraph [ref=e205]: 我们的图文提取分段技术可以精准捕捉网页中的图文信息，实现了网页型知识的准确提取和切分，极大提升了用户获取图文信息的准确性。
+              - generic [ref=e206]:
+                - generic [ref=e207]:
+                  - strong [ref=e208]: 89%以上
+                  - generic [ref=e209]: 平均回复准确率
+                - generic [ref=e210]:
+                  - strong [ref=e211]: 92%
+                  - generic [ref=e212]: 图文回复准确率
+      - generic [ref=e215]:
+        - generic [ref=e216]: 开始构建您的智能机器人
+        - generic [ref=e217]: 多模型兼容·精准图文检索·Chat-Flow编排·AI Agent·数据洞察
+        - generic [ref=e218]:
+          - button "立即体验" [ref=e219] [cursor=pointer]
+          - button "我要咨询" [ref=e220] [cursor=pointer]
+      - generic [ref=e224]:
+        - generic [ref=e225]: 联系我们：rc_agentos@brgroup.com
+        - list [ref=e226]:
+          - listitem [ref=e227] [cursor=pointer]: 用户协议
+          - listitem [ref=e228] [cursor=pointer]: 隐私政策
+          - listitem [ref=e229]:
+            - link "京公网安备11010502055440号" [ref=e230] [cursor=pointer]:
+              - /url: https://beian.mps.gov.cn/#/query/webSearch?code=11010502055440
+    - img [ref=e231] [cursor=pointer]
+  - img

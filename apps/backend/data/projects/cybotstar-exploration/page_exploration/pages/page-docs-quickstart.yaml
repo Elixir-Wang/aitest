@@ -1,0 +1,83 @@
+page:
+  id: page-docs-quickstart
+  title: CybotStar - Product Manual (Quick Start)
+  normalized_path: /document/manual/82
+  explored_at: '2026-06-29T16:52:45.908123Z'
+  elements:
+  - id: quickstart_heading
+    name: Quick Start Heading
+    role: heading
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''快速开始'' }).last()'
+      priority: 1
+  - id: create_agent_heading
+    name: Create Agent Heading
+    role: heading
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''创建智能体'' })'
+      priority: 1
+  - id: configure_agent_heading
+    name: Configure Agent Heading
+    role: heading
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''配置并调试智能体'' })'
+      priority: 1
+  - id: configure_model_heading
+    name: Configure Model Heading
+    role: heading
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''配置模型'' })'
+      priority: 1
+  - id: role_setting_heading
+    name: Role Setting Heading
+    role: heading
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''角色设定'' }).last()'
+      priority: 1
+  - id: add_skill_heading
+    name: Add Skill Heading
+    role: heading
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''为智能体添加技能（可选）'' })'
+      priority: 1
+  - id: add_knowledge_heading
+    name: Add Knowledge Heading
+    role: heading
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''添加知识'' })'
+      priority: 1
+  - id: add_function_heading
+    name: Add Function Heading
+    role: heading
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''添加功能'' })'
+      priority: 1
+  - id: publish_agent_heading
+    name: Publish Agent Heading
+    role: heading
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''发布智能体'' })'
+      priority: 1
+  - id: workspace_mention
+    name: Workspace Mention
+    role: strong
+    locators:
+    - kind: text
+      code: getByText('工作台')
+      priority: 1
+  - id: breadcrumb_product_manual
+    name: Breadcrumb Product Manual
+    role: generic
+    locators:
+    - kind: text
+      code: getByText('产品手册').last()
+      priority: 1

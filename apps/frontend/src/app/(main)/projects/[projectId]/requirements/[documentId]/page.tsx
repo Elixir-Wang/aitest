@@ -503,6 +503,10 @@ export default function DocumentDetailPage() {
   const [savingStandard, setSavingStandard] = useState(false);
   const [editingStandardWithAi, setEditingStandardWithAi] = useState(false);
   const [editingPreliminaryWithAi, setEditingPreliminaryWithAi] = useState(false);
+  const [finalRequirementDraft, setFinalRequirementDraft] = useState("");
+  const [editingFinalRequirement, setEditingFinalRequirement] = useState(false);
+  const [savingFinalRequirement, setSavingFinalRequirement] = useState(false);
+  const [editingFinalRequirementWithAi, setEditingFinalRequirementWithAi] = useState(false);
   const [settingPrimaryFileId, setSettingPrimaryFileId] = useState("");
   const [analysisResult, setAnalysisResult] = useState<RequirementAnalysisResult | null>(null);
   const [requirementVersions, setRequirementVersions] = useState<RequirementVersion[]>([]);
@@ -627,6 +631,9 @@ export default function DocumentDetailPage() {
   const latestRequirementAnalysisRunId = overview?.document.latest_requirement_analysis_run?.id ?? "";
   const requirementReviewRunning =
     reviewLoading || REQUIREMENT_REVIEW_ACTIVE_STATUSES.has(latestRequirementAnalysisRunStatus);
+  const canEditFinalRequirement = Boolean(
+    hasFinalRequirementContent && !requirementReviewRunning && !finalizingRequirement,
+  );
   const requirementReviewRunningRef = useRef(false);
   const hasRunningConversionsRef = useRef(false);
   const autoContinueNotifiedRef = useRef(false);
@@ -860,6 +867,10 @@ export default function DocumentDetailPage() {
   }, [activeTab, loadReadableOriginalPreview, loadStandardPreview, selectedFileEffectKey]);
 
   useEffect(() => {
+    setFinalRequirementDraft(initialMarkdownContent);
+  }, [initialMarkdownContent]);
+
+  useEffect(() => {
     autoContinueNotifiedRef.current = false;
     hasRunningConversionsRef.current = false;
   }, []);
@@ -1087,6 +1098,80 @@ export default function DocumentDetailPage() {
       });
     } finally {
       setEditingPreliminaryWithAi(false);
+    }
+  }
+
+  async function saveFinalRequirementMarkdown(markdownContent: string, changeSummary: string) {
+    if (!overview) {
+      return null;
+    }
+    const savedResult = await apiRequest<{
+      document: RequirementOverviewResponse["document"];
+      markdown_content: string;
+      versions: RequirementVersion[];
+    }>(`/projects/${projectId}/requirements/${documentId}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name: overview.document.name,
+        markdown_content: markdownContent,
+        change_summary: changeSummary,
+      }),
+    });
+    await loadOverview({ silent: true });
+    await loadRequirementVersions({ silent: true });
+    return savedResult;
+  }
+
+  async function saveFinalRequirementDraft() {
+    if (!overview) {
+      return;
+    }
+    setSavingFinalRequirement(true);
+    try {
+      await saveFinalRequirementMarkdown(finalRequirementDraft, "人工修订最终需求");
+      setEditingFinalRequirement(false);
+      toast.success("最终需求已保存");
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "最终需求保存失败",
+        actionLabel: "保存最终需求",
+        method: "PUT",
+        path: `/projects/${projectId}/requirements/${documentId}`,
+      });
+    } finally {
+      setSavingFinalRequirement(false);
+    }
+  }
+
+  async function editFinalRequirementWithAi(instruction: string) {
+    if (!overview || !initialMarkdownContent.trim()) {
+      return;
+    }
+    setEditingFinalRequirementWithAi(true);
+    try {
+      const editResult = await apiRequest<DocumentEditResponse>("/agents/document-editor/run", {
+        method: "POST",
+        body: JSON.stringify({
+          content: initialMarkdownContent,
+          instruction,
+        }),
+      });
+      if (!editResult.edited_content.trim()) {
+        toast.info(editResult.change_summary || "AI 未修改文档");
+        return;
+      }
+      await saveFinalRequirementMarkdown(editResult.edited_content, `AI修改：${editResult.change_summary}`);
+      setEditingFinalRequirement(false);
+      toast.success(editResult.change_summary || "AI修改已保存");
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "智能修改失败",
+        actionLabel: "AI 修改最终需求",
+        method: "POST",
+        path: "/agents/document-editor/run",
+      });
+    } finally {
+      setEditingFinalRequirementWithAi(false);
     }
   }
 
@@ -1550,7 +1635,7 @@ export default function DocumentDetailPage() {
   const showRequirementToc =
     (activeTab === "standard" && !editingStandard && Boolean(currentStandardPreview?.markdownContent.trim())) ||
     (activeTab === "analysis" && analysisTab === "analysis-report" && Boolean(analysisReportMarkdown.trim())) ||
-    (activeTab === "final" && Boolean(overview.initial_markdown_content.trim()));
+    (activeTab === "final" && !editingFinalRequirement && Boolean(overview.initial_markdown_content.trim()));
   const requirementTocRefreshKey = [
     activeTab,
     analysisTab,
@@ -1559,6 +1644,7 @@ export default function DocumentDetailPage() {
     analysisReportMarkdown.length,
     clarificationMarkdown.length,
     initialMarkdownContent.length,
+    editingFinalRequirement ? "editing-final" : "",
     analysisResult?.finalized_version_id ?? "",
   ].join(":");
   const requirementTocAnchorSelector =
@@ -2145,16 +2231,62 @@ export default function DocumentDetailPage() {
 
         <TabsContent value="final">
           <ShellSection id={FINAL_REQUIREMENT_SECTION_ID}>
-            <div className="mb-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-medium text-sm">最终需求</h2>
-              <p className="mt-1 text-muted-foreground text-xs">当前已生效的需求版本内容。</p>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {editingFinalRequirement ? (
+                  <>
+                    <Button disabled={savingFinalRequirement} onClick={saveFinalRequirementDraft} type="button">
+                      <Save className="size-4" />
+                      {savingFinalRequirement ? "保存中" : "保存"}
+                    </Button>
+                    <Button
+                      disabled={savingFinalRequirement}
+                      onClick={() => {
+                        setFinalRequirementDraft(initialMarkdownContent);
+                        setEditingFinalRequirement(false);
+                      }}
+                      type="button"
+                      variant="outline"
+                    >
+                      <X className="size-4" />
+                      取消
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <AiEditInput
+                      disabled={!canEditFinalRequirement || editingFinalRequirementWithAi}
+                      loading={editingFinalRequirementWithAi}
+                      onSubmit={editFinalRequirementWithAi}
+                      placeholder="描述你希望如何修改当前最终需求..."
+                    />
+                    <Button
+                      disabled={!canEditFinalRequirement}
+                      onClick={() => {
+                        setFinalRequirementDraft(initialMarkdownContent);
+                        setEditingFinalRequirement(true);
+                      }}
+                      type="button"
+                      variant="outline"
+                    >
+                      <Pencil className="size-4" />
+                      修改
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
-            <MarkdownPreview
-              className="requirement-document-preview"
-              content={overview.initial_markdown_content}
-              emptyClassName="flex items-center justify-center text-center"
-              emptyText={finalRequirementEmptyText}
-            />
+            {editingFinalRequirement ? (
+              <StandardMarkdownEditor content={finalRequirementDraft} onChange={setFinalRequirementDraft} />
+            ) : (
+              <MarkdownPreview
+                className="requirement-document-preview"
+                content={overview.initial_markdown_content}
+                emptyClassName="flex items-center justify-center text-center"
+                emptyText={finalRequirementEmptyText}
+              />
+            )}
           </ShellSection>
         </TabsContent>
 

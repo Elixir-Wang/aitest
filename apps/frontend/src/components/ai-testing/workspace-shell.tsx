@@ -39,6 +39,7 @@ export async function WorkspaceShell({ children }: Readonly<{ children: ReactNod
           "[html[data-content-layout=centered]_&>*]:w-full",
           "[html[data-content-layout=centered]_&>*]:max-w-screen-2xl",
           "peer-data-[variant=inset]:border",
+          "min-h-0",
         )}
       >
         <header
@@ -64,7 +65,7 @@ export async function WorkspaceShell({ children }: Readonly<{ children: ReactNod
             </div>
           </div>
         </header>
-        <div className="h-full p-4 md:p-6">
+        <div className="flex min-h-0 flex-1 flex-col p-4 md:p-6">
           <AuthGuard>{children}</AuthGuard>
         </div>
       </SidebarInset>

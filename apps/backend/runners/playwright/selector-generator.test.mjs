@@ -17,8 +17,8 @@ describe("buildElementSelectors", () => {
 
     assert.equal(selectors.primary_selector.kind, "role");
     assert.equal(selectors.primary_selector.code, "page.getByRole('button', { name: '新建用户' })");
-    assert.equal(selectors.fallback_selector.kind, "label");
-    assert.equal(selectors.fallback_selector.code, "page.getByLabel('新建用户')");
+    assert.equal(selectors.fallback_selector.kind, "testid");
+    assert.equal(selectors.fallback_selector.code, "page.getByTestId('create-user')");
     assert.deepEqual(Object.keys(selectors).sort(), ["fallback_selector", "primary_selector"]);
     assert.doesNotMatch(JSON.stringify(selectors), /xpath|\/\/button/i);
   });
@@ -35,6 +35,23 @@ describe("buildElementSelectors", () => {
     assert.equal(selectors.primary_selector.code, "page.getByTestId('search-submit')");
     assert.equal(selectors.fallback_selector.kind, "text");
     assert.equal(selectors.fallback_selector.code, "page.getByText('搜索')");
+  });
+
+  it("builds contextual selectors before css for repeated card actions", () => {
+    const candidates = buildElementSelectors({
+      role: "button",
+      name: "对话历史",
+      text: "对话历史",
+      css: "div:nth-of-type(2) > span:nth-of-type(3)",
+      context: {
+        container_name: "测试_自主规划智能体",
+      },
+    });
+
+    assert.equal(candidates.primary_selector.kind, "role");
+    assert.equal(candidates.fallback_selector.kind, "contextual");
+    assert.match(candidates.fallback_selector.code, /测试_自主规划智能体/);
+    assert.doesNotMatch(candidates.fallback_selector.code, /nth-of-type/);
   });
 
   it("does not create fake selectors for unnamed elements", () => {

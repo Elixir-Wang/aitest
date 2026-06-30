@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import {
   ChevronDown,
@@ -51,6 +51,7 @@ import { type ApiProject, ApiRequestError, apiRequest, formatDateTime } from "@/
 import { reportError } from "@/lib/error-feedback";
 
 type ProjectScope = "all" | "project";
+type ExplorationMode = "goal" | "autonomous";
 
 type ExplorationEnvironment = {
   id: string;
@@ -98,6 +99,7 @@ type ExplorationRun = {
   requirement_doc_title: string;
   title: string;
   status: string;
+  exploration_mode: ExplorationMode;
   scope: string;
   forbidden_paths: string;
   login_strategy: string;
@@ -194,6 +196,7 @@ type ExplorationForm = {
   projectId: string;
   environmentId: string;
   requirementDocId: string;
+  explorationMode: ExplorationMode;
   scope: string;
   forbiddenPaths: string;
   goal: string;
@@ -219,6 +222,7 @@ const emptyExplorationForm: ExplorationForm = {
   projectId: "",
   environmentId: "",
   requirementDocId: "",
+  explorationMode: "goal",
   scope: "",
   forbiddenPaths: "",
   goal: "",
@@ -285,7 +289,49 @@ const explorationPlaceholders = {
   scope: "填写本次要探索的页面范围，例如全站、指定菜单、指定 URL 或核心模块。",
   forbiddenPaths: "填写禁止进入或点击的路径/动作，例如删除、支付、外发、批量通知、退出登录。",
   goal: "填写本次探索要验证的目标，例如遍历元素和链接，检查 401/403、登录跳转和异常页。",
+  autonomousGoal: "可选补充本次自主盘点的关注点，不用于判断探索方式。",
 };
+
+const explorationModeLabels: Record<ExplorationMode, string> = {
+  goal: "目标探索",
+  autonomous: "自主探索",
+};
+
+function ExplorationModeSwitch({
+  value,
+  onChange,
+}: {
+  value: ExplorationMode;
+  onChange: (value: ExplorationMode) => void;
+}) {
+  return (
+    <div className="grid gap-2">
+      <FieldLabel>探索方式</FieldLabel>
+      <div className="relative grid h-10 w-full max-w-sm grid-cols-2 rounded-full bg-muted p-1">
+        <span
+          className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full bg-background shadow-sm transition-transform ${
+            value === "autonomous" ? "translate-x-full" : "translate-x-0"
+          }`}
+        />
+        {(["goal", "autonomous"] as const).map((mode) => (
+          <button
+            className={`relative z-10 rounded-full px-3 font-medium text-sm transition-colors ${
+              value === mode ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+            key={mode}
+            onClick={() => onChange(mode)}
+            type="button"
+          >
+            {explorationModeLabels[mode]}
+          </button>
+        ))}
+      </div>
+      <p className="text-muted-foreground text-xs">
+        {value === "goal" ? "围绕明确目标验证页面流程。" : "自动盘点当前页面或范围内的主要功能。"}
+      </p>
+    </div>
+  );
+}
 
 function formFromEnvironment(environment: ExplorationEnvironment): EnvironmentForm {
   return {
@@ -652,6 +698,7 @@ export function ExplorationWorkspace({
   projectScope,
   title,
 }: ExplorationWorkspaceProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const createParamHandledRef = useRef(false);
   const authStateToastRef = useRef<Record<string, string>>({});
@@ -1208,15 +1255,8 @@ export function ExplorationWorkspace({
   }
 
   const openCreateExplorationDialog = useCallback(() => {
-    const targetProjectId = projectId ?? projects[0]?.id ?? "";
-    setEditingExploration(null);
-    setExplorationForm({
-      ...emptyExplorationForm,
-      projectId: targetProjectId,
-      environmentId: "",
-    });
-    setExplorationDialogOpen(true);
-  }, [projectId, projects]);
+    router.push(projectId ? `/projects/${projectId}/exploration/new` : "/exploration/new");
+  }, [projectId, router]);
 
   useEffect(() => {
     if (searchParams.get("create") !== "exploration" || createParamHandledRef.current) {
@@ -1271,21 +1311,7 @@ export function ExplorationWorkspace({
   }
 
   function openEditExplorationDialog(run: ExplorationRun) {
-    setEditingExploration(run);
-    setExplorationForm({
-      title: run.title,
-      projectId: run.project_id,
-      environmentId: run.environment_id,
-      requirementDocId: run.requirement_doc_id,
-      scope: run.scope,
-      forbiddenPaths: run.forbidden_paths,
-      goal: run.goal,
-      notes: run.notes,
-      maxPages: String(run.max_pages ?? 50),
-      maxActions: String(run.max_actions ?? 1000),
-      timeoutMinutes: String(run.timeout_minutes ?? 120),
-    });
-    setExplorationDialogOpen(true);
+    router.push(`/projects/${run.project_id}/exploration/${run.id}/edit`);
   }
 
   async function requestGoalOptimization(sourceGoal: string) {
@@ -1461,6 +1487,7 @@ export function ExplorationWorkspace({
       const payload = {
         environment_id: explorationForm.environmentId,
         requirement_doc_id: explorationForm.requirementDocId,
+        exploration_mode: explorationForm.explorationMode,
         title: explorationForm.title,
         scope: explorationForm.scope,
         forbidden_paths: explorationForm.forbiddenPaths,
@@ -2387,6 +2414,12 @@ export function ExplorationWorkspace({
               ) : null}
             </Field>
             <Field className="sm:col-span-2">
+              <ExplorationModeSwitch
+                onChange={(explorationMode) => setExplorationForm((current) => ({ ...current, explorationMode }))}
+                value={explorationForm.explorationMode}
+              />
+            </Field>
+            <Field className="sm:col-span-2">
               <FieldLabel htmlFor="exploration-scope">探索范围</FieldLabel>
               <Textarea
                 className="min-h-24"
@@ -2428,7 +2461,11 @@ export function ExplorationWorkspace({
                 id="exploration-goal"
                 maxLength={EXPLORATION_GOAL_MAX_LENGTH}
                 onChange={(event) => setExplorationForm((current) => ({ ...current, goal: event.target.value }))}
-                placeholder={explorationPlaceholders.goal}
+                placeholder={
+                  explorationForm.explorationMode === "autonomous"
+                    ? explorationPlaceholders.autonomousGoal
+                    : explorationPlaceholders.goal
+                }
                 value={explorationForm.goal}
               />
             </Field>

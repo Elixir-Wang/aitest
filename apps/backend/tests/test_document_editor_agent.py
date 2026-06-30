@@ -55,6 +55,7 @@ def test_build_agent_model_uses_openai_compatible_client(monkeypatch: pytest.Mon
     assert calls["api_key"].get_secret_value() == "sk-test"
     assert calls["base_url"] == "https://api.deepseek.com"
     assert calls["temperature"] == 0
+    assert calls["use_responses_api"] is False
 
 
 def test_build_agent_model_passes_extra_body(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -80,6 +81,7 @@ def test_build_agent_model_passes_extra_body(monkeypatch: pytest.MonkeyPatch) ->
 
     assert model == "chat-model"
     assert calls["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert calls["use_responses_api"] is False
 
 
 def test_build_agent_model_accepts_minimax_openai_tools_model(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -105,6 +107,31 @@ def test_build_agent_model_accepts_minimax_openai_tools_model(monkeypatch: pytes
     assert model == "chat-model"
     assert calls["model"] == "MiniMax-M3"
     assert calls["base_url"] == "https://minimax.example/v1"
+    assert calls["use_responses_api"] is False
+
+
+def test_build_agent_model_keeps_official_openai_responses_api_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.agents.model_selection import build_agent_model
+
+    calls = {}
+
+    def fake_chat_openai(**kwargs):
+        calls.update(kwargs)
+        return "chat-model"
+
+    monkeypatch.setattr("app.agents.model_selection.ChatOpenAI", fake_chat_openai)
+
+    model = build_agent_model(
+        ModelSelection(
+            provider="OpenAI",
+            model="gpt-5.5",
+            base_url="https://api.openai.com/v1",
+            api_key="sk-test",
+        )
+    )
+
+    assert model == "chat-model"
+    assert calls["use_responses_api"] is None
 
 
 def test_document_editor_service_returns_structured_response(monkeypatch: pytest.MonkeyPatch) -> None:

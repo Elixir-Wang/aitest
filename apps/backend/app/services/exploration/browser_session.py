@@ -45,6 +45,10 @@ class PlaywrightBrowserSession:
             encoding="utf-8",
         )
         started = self._read_message()
+        if started.get("kind") == "session_failed":
+            self.close()
+            error_summary = started.get("error_summary") or started.get("error") or started
+            raise BrowserSessionError(f"Browser session failed to start: {error_summary}")
         if started.get("kind") != "session_started" or started.get("status") not in {"started", "ok"}:
             self.close()
             raise BrowserSessionError(f"Browser session failed to start: {started}")

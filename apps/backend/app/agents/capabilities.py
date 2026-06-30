@@ -27,7 +27,7 @@ AI_CAPABILITIES: tuple[AiCapability, ...] = (
     AiCapability(
         id="knowledge_query",
         name="项目知识库查询智能体",
-        description="直接读取最终需求文档和探索记录，使用 Codex agentic search 返回带来源引用的项目知识库答案。",
+        description="基于最终需求文档执行 agentic 检索，返回带来源引用的项目知识库答案。",
     ),
     AiCapability(
         id="test_case_generation",

@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -101,6 +102,69 @@ def test_should_not_schedule_for_manual_or_none_captcha() -> None:
             "has_saved_credentials": True,
         }
     )
+
+
+def test_get_auto_auth_status_marks_stale_running_status_failed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    old_updated_at = datetime.now(timezone.utc) - timedelta(
+        seconds=auto_auth_service.AUTO_AUTH_STALE_AFTER_SECONDS + 1,
+    )
+    status_path = auto_auth_service._auto_auth_status_path("env-stale")
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(
+        json.dumps(
+            {
+                "status": "running",
+                "message": "正在分析登录页元素",
+                "updated_at": old_updated_at.isoformat(),
+                "last_error_code": "",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    status = auto_auth_service.get_auto_auth_status("env-stale")
+
+    assert status["status"] == "failed"
+    assert status["last_error_code"] == "AUTO_AUTH_STALE"
+    assert "中断" in status["message"]
+
+    persisted = json.loads(status_path.read_text(encoding="utf-8"))
+    assert persisted["status"] == "failed"
+    assert persisted["last_error_code"] == "AUTO_AUTH_STALE"
+
+
+def test_get_auto_auth_status_keeps_active_running_status(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    old_updated_at = datetime.now(timezone.utc) - timedelta(
+        seconds=auto_auth_service.AUTO_AUTH_STALE_AFTER_SECONDS + 1,
+    )
+    status_path = auto_auth_service._auto_auth_status_path("env-active")
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(
+        json.dumps(
+            {
+                "status": "running",
+                "message": "正在识别验证码",
+                "updated_at": old_updated_at.isoformat(),
+                "last_error_code": "",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    with auto_auth_service._running_lock:
+        auto_auth_service._running_environments.add("env-active")
+
+    try:
+        status = auto_auth_service.get_auto_auth_status("env-active")
+    finally:
+        with auto_auth_service._running_lock:
+            auto_auth_service._running_environments.discard("env-active")
+
+    assert status["status"] == "running"
+    assert status["message"] == "正在识别验证码"
 
 
 def test_run_auto_auth_writes_storage_state_on_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -44,6 +44,7 @@ interface PageShellProps {
   actions?: ReactNode;
   tabActions?: ReactNode;
   children: ReactNode;
+  fillViewport?: boolean;
 }
 
 interface MetricCardProps {
@@ -65,9 +66,10 @@ export function PageShell({
   actions,
   tabActions,
   children,
+  fillViewport = false,
 }: PageShellProps) {
   return (
-    <div className="@container/main flex flex-col gap-4 md:gap-6">
+    <div className={cn("@container/main flex flex-col gap-4 md:gap-6", fillViewport && "min-h-0 flex-1")}>
       <PageHeader
         breadcrumbs={breadcrumbs}
         description={description}

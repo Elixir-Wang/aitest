@@ -15,6 +15,7 @@ def find_detail_by_id(db: Connection, run_id: str) -> Row | None:
                pe.name AS environment_name,
                pe.site_url AS environment_site_url,
                pe.login_strategy AS environment_login_strategy,
+               pe.reuse_auth_state AS environment_reuse_auth_state,
                COALESCE(sd.name, '') AS requirement_doc_title
         FROM exploration_runs er
         JOIN projects p ON p.id = er.project_id
@@ -45,7 +46,7 @@ def list_running(db: Connection, project_id: str | None = None) -> list[Row]:
         return db.execute(
             """
             SELECT * FROM exploration_runs
-            WHERE project_id = ? AND status IN ('running', 'queued')
+            WHERE project_id = ? AND status IN ('running', 'queued', 'stopping')
             ORDER BY created_at DESC
             """,
             (project_id,),
@@ -53,7 +54,7 @@ def list_running(db: Connection, project_id: str | None = None) -> list[Row]:
     return db.execute(
         """
         SELECT * FROM exploration_runs
-        WHERE status IN ('running', 'queued')
+        WHERE status IN ('running', 'queued', 'stopping')
         ORDER BY created_at DESC
         """
     ).fetchall()
@@ -89,6 +90,7 @@ def create(
     environment_id: str,
     title: str,
     created_by: str,
+    exploration_mode: str,
     scope: str = "",
     forbidden_paths: str = "",
     goal: str = "",
@@ -104,10 +106,10 @@ def create(
         """
         INSERT INTO exploration_runs (
             id, project_id, environment_id, requirement_doc_id,
-            title, status, scope, forbidden_paths, login_strategy,
+            title, status, exploration_mode, scope, forbidden_paths, login_strategy,
             goal, notes, max_pages, max_actions, timeout_minutes,
             created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run_id,
@@ -116,6 +118,7 @@ def create(
             requirement_doc_id,
             title,
             "pending",
+            exploration_mode,
             scope,
             forbidden_paths,
             _resolve_environment_login_strategy(db, environment_id, login_strategy),
@@ -169,11 +172,12 @@ def update_status(
 
 
 def reset_completion_state(db: Connection, run_id: str) -> None:
-    """清理探索任务的完成态字段，避免重启时残留上一次结果"""
+    """清理上一轮完成态，准备记录本轮探索输出。"""
     db.execute(
         """
         UPDATE exploration_runs
         SET
+            artifact_root = '',
             result_summary = '',
             started_at = NULL,
             finished_at = NULL,
@@ -200,12 +204,12 @@ def update(
     """更新探索任务字段
 
     支持的字段：
-    - title, scope, forbidden_paths, goal, notes
+    - title, exploration_mode, scope, forbidden_paths, goal, notes
     - environment_id, requirement_doc_id
     - max_pages, max_actions, timeout_minutes
     """
     allowed_fields = {
-        "title", "scope", "forbidden_paths", "goal", "notes",
+        "title", "exploration_mode", "scope", "forbidden_paths", "goal", "notes",
         "environment_id", "requirement_doc_id",
         "max_pages", "max_actions", "timeout_minutes"
     }

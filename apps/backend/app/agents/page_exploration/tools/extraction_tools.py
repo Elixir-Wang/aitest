@@ -10,6 +10,7 @@ from typing import Optional
 from langchain_core.tools import tool
 
 from app.agents.page_exploration.playwright.cli_wrapper import PlaywrightCLI
+from app.agents.page_exploration.tools.runtime_context import snapshot_with_runtime_context
 
 
 @tool
@@ -46,8 +47,10 @@ def playwright_snap_tool(url: Optional[str] = None, session_id: Optional[str] = 
         #   ]
         # }
     """
-    cli = PlaywrightCLI(session_id=session_id)
-    result = cli.snap(url) if url else cli.snap_current()
+    result = snapshot_with_runtime_context(url)
+    if result is None:
+        cli = PlaywrightCLI(session_id=session_id)
+        result = cli.snap(url) if url else cli.snap_current()
 
     return {
         "url": result.url,

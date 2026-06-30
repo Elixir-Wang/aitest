@@ -1,11 +1,13 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useParams, useRouter } from "next/navigation";
 
 import {
+  Activity,
   AlertTriangle,
+  ArrowDown,
   ArrowLeft,
   Check,
   ChevronDown,
@@ -14,20 +16,18 @@ import {
   CircleAlert,
   CircleDotDashed,
   CircleX,
-  FileText,
   ListChecks,
   Loader2,
   Pencil,
   Play,
   RefreshCw,
-  Route,
   Square,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
-import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { useProjectName } from "@/components/ai-testing/use-project-name";
 import type { AgentPlanStatus, AgentPlanTask } from "@/components/ui/agent-plan";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
@@ -46,8 +46,10 @@ import { Input } from "@/components/ui/input";
 import { StatusBadge, type StatusBadgeTone } from "@/components/ui/status-badge";
 import { Textarea } from "@/components/ui/textarea";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
-import { API_BASE_URL, apiAuthHeaders, apiRequest, formatDateTime, parseApiTimestamp } from "@/lib/api-client";
+import { API_BASE_URL, apiAuthHeaders, apiRequest, formatDateTime } from "@/lib/api-client";
 import { reportError as reportApiError } from "@/lib/error-feedback";
+
+type ExplorationMode = "goal" | "autonomous";
 
 type ExplorationRun = {
   id: string;
@@ -60,6 +62,7 @@ type ExplorationRun = {
   requirement_doc_title: string;
   title: string;
   status: string;
+  exploration_mode: ExplorationMode;
   scope: string;
   forbidden_paths: string;
   login_strategy: string;
@@ -229,6 +232,41 @@ type ExplorationMonitorEvent = {
   payload?: Record<string, unknown>;
 };
 
+type ReadableExecutionCardKind =
+  | "run_start"
+  | "model_analysis"
+  | "navigate"
+  | "click"
+  | "snapshot"
+  | "artifact_write"
+  | "todo_update"
+  | "url_record"
+  | "error"
+  | "run_summary"
+  | "debug";
+
+type ReadableExecutionField = {
+  label: string;
+  value: string;
+  mono?: boolean;
+  tone?: "default" | "success" | "warning" | "danger";
+};
+
+type ReadableExecutionCard = {
+  id: string;
+  kind: ReadableExecutionCardKind;
+  title: string;
+  summary: string;
+  status: AgentPlanStatus;
+  occurred_at: string;
+  completed_at?: string;
+  duration_ms?: number | null;
+  fields: ReadableExecutionField[];
+  chips?: string[];
+  raw_events: ExplorationMonitorEvent[];
+  defaultExpanded?: boolean;
+};
+
 type ExplorationMonitorState = {
   phase: string;
   plan: {
@@ -271,6 +309,7 @@ type ExplorationForm = {
   title: string;
   environmentId: string;
   requirementDocId: string;
+  explorationMode: ExplorationMode;
   scope: string;
   forbiddenPaths: string;
   goal: string;
@@ -290,11 +329,6 @@ const statusLabels: Record<string, string> = {
   partial: "部分完成",
   completed: "已完成",
   blocked: "阻塞",
-};
-
-const loginStrategyLabels: Record<string, string> = {
-  account_password: "账号密码",
-  skip_login: "无需登录",
 };
 
 const logTypeLabels: Record<string, string> = {
@@ -348,13 +382,19 @@ const stoppableStatuses = new Set(["queued", "running"]);
 const explorationPlaceholders = {
   scope: "填写本次要探索的页面范围，例如全站、指定菜单、指定 URL 或核心模块。",
   forbiddenPaths: "填写禁止进入或点击的路径/动作，例如删除、支付、外发、批量通知、退出登录。",
-  goal: "填写本次探索要验证的目标，例如遍历元素和链接，检查 401/403、登录跳转和异常页。",
+  goal: "填写本次探索要完成或验证的具体流程，例如新建自主规划 agent，进入草稿页，在调试预览对话框输入 hi。",
+  autonomousGoal: "可选补充本次自主盘点的关注点，例如重点覆盖创建、配置、对话、分析相关模块。",
+};
+const explorationModeLabels: Record<ExplorationMode, string> = {
+  goal: "目标探索",
+  autonomous: "自主探索",
 };
 const NO_REQUIREMENT_VALUE = "__none__";
 const emptyExplorationForm: ExplorationForm = {
   title: "",
   environmentId: "",
   requirementDocId: "",
+  explorationMode: "goal",
   scope: "",
   forbiddenPaths: "",
   goal: "",
@@ -363,6 +403,42 @@ const emptyExplorationForm: ExplorationForm = {
   maxActions: "1000",
   timeoutMinutes: "120",
 };
+
+function ExplorationModeSwitch({
+  value,
+  onChange,
+}: {
+  value: ExplorationMode;
+  onChange: (value: ExplorationMode) => void;
+}) {
+  return (
+    <div className="grid gap-2">
+      <FieldLabel>探索方式</FieldLabel>
+      <div className="relative grid h-10 w-full max-w-sm grid-cols-2 rounded-full bg-muted p-1">
+        <span
+          className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full bg-background shadow-sm transition-transform ${
+            value === "autonomous" ? "translate-x-full" : "translate-x-0"
+          }`}
+        />
+        {(["goal", "autonomous"] as const).map((mode) => (
+          <button
+            className={`relative z-10 rounded-full px-3 font-medium text-sm transition-colors ${
+              value === mode ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+            key={mode}
+            onClick={() => onChange(mode)}
+            type="button"
+          >
+            {explorationModeLabels[mode]}
+          </button>
+        ))}
+      </div>
+      <p className="text-muted-foreground text-xs">
+        {value === "goal" ? "围绕明确目标验证页面流程。" : "自动盘点当前页面或范围内的主要功能。"}
+      </p>
+    </div>
+  );
+}
 
 function parsePositiveInteger(value: string): number | null {
   const parsed = Number.parseInt(value, 10);
@@ -398,8 +474,8 @@ function applyStreamEvent(
   if (event.type === "run_snapshot") {
     const snapshot = normalizeExplorationRunDetail(event.payload as ExplorationRunDetail);
     setters.setRun(snapshot.run);
-    setters.setStreamDetail(snapshot);
-    setters.setMonitor(monitorFromRunDetail(snapshot));
+    setters.setStreamDetail((current) => mergeDetailSnapshot(current, snapshot));
+    setters.setMonitor(finalizeRunningMonitorSteps(monitorFromRunDetail(snapshot), snapshot.run.status));
     return;
   }
 
@@ -417,6 +493,10 @@ function applyStreamEvent(
     setters.setStreamDetail((current) =>
       current ? { ...current, run: { ...current.run, ...(event.payload as Partial<ExplorationRun>) } } : current,
     );
+    const status = stringValue((event.payload as Partial<ExplorationRun>).status);
+    if (isTerminalStatus(status)) {
+      setters.setMonitor((current) => finalizeRunningMonitorSteps(current, status));
+    }
   }
 
   // 处理规划和执行阶段事件
@@ -490,7 +570,73 @@ function mergeMonitorEvent(current: ExplorationMonitorState, event: ExplorationS
 
   return {
     ...next,
-    events: [monitorTimelineEvent(event), ...next.events].slice(0, 80),
+    events: [monitorTimelineEvent(event), ...next.events],
+  };
+}
+
+function finalizeRunningMonitorSteps(monitor: ExplorationMonitorState, runStatus: string): ExplorationMonitorState {
+  if (!isTerminalStatus(runStatus)) {
+    return monitor;
+  }
+  const finalStatus = finalMonitorStepStatusFromRunStatus(runStatus);
+  if (!finalStatus) {
+    return monitor;
+  }
+  const hasRunningSteps = monitor.steps.some((step) => step.status === "running" || step.status === "in-progress");
+  if (!hasRunningSteps) {
+    return monitor;
+  }
+  return {
+    ...monitor,
+    steps: monitor.steps.map((step) =>
+      step.status === "running" || step.status === "in-progress"
+        ? {
+            ...step,
+            status: finalStatus,
+            completed_at: step.completed_at || new Date().toISOString(),
+            message: step.message || finalMonitorStepMessage(runStatus),
+          }
+        : step,
+    ),
+  };
+}
+
+function finalMonitorStepStatusFromRunStatus(runStatus: string): AgentPlanStatus | null {
+  if (runStatus === "completed" || runStatus === "partial") {
+    return "completed";
+  }
+  if (runStatus === "failed" || runStatus === "blocked" || runStatus === "interrupted") {
+    return "failed";
+  }
+  if (runStatus === "cancelled") {
+    return "cancelled";
+  }
+  return null;
+}
+
+function finalMonitorStepMessage(runStatus: string): string {
+  if (runStatus === "completed" || runStatus === "partial") {
+    return "探索任务已结束。";
+  }
+  if (runStatus === "cancelled") {
+    return "探索任务已中止。";
+  }
+  return "探索任务失败，执行流已终止。";
+}
+
+function mergeDetailSnapshot(
+  current: ExplorationRunDetail | null,
+  incoming: ExplorationRunDetail,
+): ExplorationRunDetail {
+  if (!current || incoming.modules.length > 0) {
+    return incoming;
+  }
+  if (current.run.id !== incoming.run.id || current.modules.length === 0) {
+    return incoming;
+  }
+  return {
+    ...incoming,
+    modules: current.modules,
   };
 }
 
@@ -570,7 +716,6 @@ function monitorEventsFromDetail(
 ): ExplorationMonitorEvent[] {
   const events = steps
     .filter((step) => step.message || step.status !== "pending")
-    .slice(-20)
     .reverse()
     .map((step) => ({
       id: `snapshot-${step.step_id}`,
@@ -766,6 +911,743 @@ function monitorTimelineStatus(eventType: string): AgentPlanStatus {
   if (eventType.includes("cancelled")) return "cancelled";
   if (eventType.includes("started") || eventType === "step_retrying") return "running";
   return "pending";
+}
+
+function buildReadableExecutionCards(
+  events: ExplorationMonitorEvent[],
+  detail: ExplorationRunDetail | null,
+  run: ExplorationRun | null,
+): ReadableExecutionCard[] {
+  const chronologicalEvents = [...events].reverse();
+  const cards: ReadableExecutionCard[] = [];
+  const toolCards = new Map<string, ReadableExecutionCard>();
+  let latestTodoCardId = "";
+  let lastModelRunId = "";
+
+  for (const event of chronologicalEvents) {
+    const payload = event.payload ?? {};
+    if (event.type === "agent_stream_event") {
+      const streamEvent = stringValue(payload.event);
+      const streamName = stringValue(payload.name);
+      const streamRunId = stringValue(payload.run_id) || event.id;
+
+      if (isHiddenAgentStreamEvent(streamEvent, streamName)) {
+        continue;
+      }
+
+      if (streamEvent === "on_tool_start") {
+        const card = readableToolCardFromEvent(event, "running");
+        toolCards.set(streamRunId, card);
+        cards.push(card);
+        if (card.kind === "todo_update") {
+          latestTodoCardId = card.id;
+        }
+        continue;
+      }
+
+      if (streamEvent === "on_tool_end" || streamEvent === "on_tool_error") {
+        const existing = toolCards.get(streamRunId);
+        const card = readableToolCardFromEvent(
+          event,
+          streamEvent === "on_tool_error" ? "failed" : "completed",
+          existing,
+        );
+        toolCards.set(streamRunId, card);
+        if (existing) {
+          const index = cards.findIndex((item) => item.id === existing.id);
+          if (index >= 0) {
+            cards[index] = card;
+          } else {
+            cards.push(card);
+          }
+        } else {
+          cards.push(card);
+        }
+        if (card.kind === "todo_update") {
+          latestTodoCardId = card.id;
+        }
+        continue;
+      }
+
+      if (streamEvent === "on_chat_model_end") {
+        if (lastModelRunId === streamRunId) {
+          continue;
+        }
+        const modelCard = readableModelCardFromEvent(event);
+        if (modelCard) {
+          cards.push(modelCard);
+          lastModelRunId = streamRunId;
+        }
+        continue;
+      }
+
+      if (streamEvent === "on_chain_end" && streamName === "model" && !lastModelRunId) {
+        const modelCard = readableModelCardFromEvent(event);
+        if (modelCard) {
+          cards.push(modelCard);
+        }
+        continue;
+      }
+
+      if (payload.error) {
+        cards.push(readableErrorCardFromEvent(event));
+      }
+      continue;
+    }
+
+    if (event.type === "agent_step_started" || event.type === "run_started" || event.type === "planning_completed") {
+      cards.push(readableRunStartCardFromEvent(event, run));
+      continue;
+    }
+
+    if (event.type === "agent_step_failed" || event.type === "run_failed" || event.type === "error") {
+      cards.push(readableErrorCardFromEvent(event));
+      continue;
+    }
+
+    if (event.type === "agent_step_completed" || event.type === "run_completed") {
+      cards.push(readableSummaryCardFromState(event, detail, run, cards));
+      continue;
+    }
+
+    if (!isDebugOnlyMonitorEvent(event)) {
+      cards.push(readableDebugCardFromEvent(event));
+    }
+  }
+
+  const visibleCards = latestTodoCardId
+    ? cards.filter((card) => card.kind !== "todo_update" || card.id === latestTodoCardId)
+    : cards;
+  if (run && isTerminalStatus(run.status) && !visibleCards.some((card) => card.kind === "run_summary")) {
+    visibleCards.push(readableSummaryCardFromState(null, detail, run, visibleCards));
+  }
+  return visibleCards;
+}
+
+function readableRunStartCardFromEvent(
+  event: ExplorationMonitorEvent,
+  run: ExplorationRun | null,
+): ReadableExecutionCard {
+  const payload = event.payload ?? {};
+  const fields: ReadableExecutionField[] = [
+    { label: "目标", value: run?.goal || event.summary },
+    { label: "入口", value: compactUrl(run?.environment_site_url || stringValue(payload.url)), mono: true },
+    { label: "范围", value: run?.scope || stringValue(payload.scope_summary) },
+    { label: "上限", value: run?.max_pages ? `最多 ${run.max_pages} 个页面` : "" },
+    { label: "策略", value: stringValue(payload.strategy) || "使用浏览器工具探索页面并生成页面事实。" },
+  ].filter((field) => field.value);
+  return {
+    id: `readable-${event.id}`,
+    kind: "run_start",
+    title: "页面探索开始",
+    summary: stringValue(payload.message) || event.summary || "页面探索 Agent 已开始执行。",
+    status: event.status,
+    occurred_at: event.occurred_at,
+    fields,
+    raw_events: [event],
+    defaultExpanded: true,
+  };
+}
+
+function readableModelCardFromEvent(event: ExplorationMonitorEvent): ReadableExecutionCard | null {
+  const payload = event.payload ?? {};
+  const output = stringValue(payload.output);
+  const error = stringValue(payload.error);
+  if (!output && !error) {
+    return null;
+  }
+  const modelName = extractModelName(output) || stringValue(payload.name);
+  const intent = extractModelIntent(output);
+  const toolNames = extractToolNames(output);
+  if (!intent && !toolNames.length && !/finish_reason.*tool_calls|tool_calls/.test(output)) {
+    return null;
+  }
+  return {
+    id: `readable-${event.id}`,
+    kind: "model_analysis",
+    title: "模型分析",
+    summary: intent || "模型请求工具调用，准备继续执行页面探索。",
+    status: error ? "failed" : "completed",
+    occurred_at: event.occurred_at,
+    fields: [
+      { label: "模型", value: modelName },
+      { label: "意图", value: intent },
+      { label: "下一步", value: toolNames.slice(0, 4).join(" / ") },
+      { label: "结束原因", value: extractFinishReason(output) },
+    ].filter((field) => field.value),
+    chips: toolNames.slice(0, 3),
+    raw_events: [event],
+  };
+}
+
+function readableToolCardFromEvent(
+  event: ExplorationMonitorEvent,
+  status: AgentPlanStatus,
+  existing?: ReadableExecutionCard,
+): ReadableExecutionCard {
+  const payload = event.payload ?? {};
+  const toolName = stringValue(payload.name);
+  const input = parseJsonLikePayload(stringValue(payload.input));
+  const output = parseJsonLikePayload(stringValue(payload.output));
+  const error = stringValue(payload.error) || extractToolError(output);
+  const baseEvents = existing?.raw_events ?? [];
+  const rawEvents = [...baseEvents, event];
+  const occurredAt = existing?.occurred_at || event.occurred_at;
+  const durationMs = status === "running" ? null : durationBetween(occurredAt, event.occurred_at);
+  const finalStatus: AgentPlanStatus = error ? "failed" : status;
+
+  if (toolName === "playwright_navigate_tool") {
+    const targetUrl = stringFromRecord(input, "url");
+    const currentUrl = stringFromRecord(output, "url");
+    return createReadableToolCard({
+      event,
+      existing,
+      kind: "navigate",
+      title: error ? "打开页面失败" : "打开页面",
+      summary: error ? explainError(error).reason : `打开 ${compactUrl(currentUrl || targetUrl) || "目标页面"}`,
+      status: finalStatus,
+      fields: [
+        { label: "目标 URL", value: compactUrl(targetUrl), mono: true },
+        { label: "当前页面", value: compactUrl(currentUrl), mono: true },
+        {
+          label: "结果",
+          value: error ? "失败" : status === "running" ? "执行中" : "成功",
+          tone: error ? "danger" : "success",
+        },
+        { label: "原因", value: error ? explainError(error).detail : "" },
+        { label: "耗时", value: formatDurationValue(durationMs) },
+      ],
+      rawEvents,
+      occurredAt,
+      durationMs,
+    });
+  }
+
+  if (toolName === "playwright_click_tool") {
+    const locator = stringFromRecord(input, "locator") || firstRecordValue(input);
+    const explanation = error ? explainError(error) : null;
+    return createReadableToolCard({
+      event,
+      existing,
+      kind: "click",
+      title: error ? "点击失败" : "点击元素",
+      summary: error ? explanation?.reason || "点击元素失败。" : `点击 ${locatorLabel(locator) || "页面元素"}`,
+      status: finalStatus,
+      fields: [
+        { label: "目标", value: locatorLabel(locator) },
+        { label: "定位器", value: locator, mono: true },
+        {
+          label: "结果",
+          value: error ? "失败" : status === "running" ? "执行中" : "成功",
+          tone: error ? "danger" : "success",
+        },
+        { label: "原因", value: explanation?.detail || "" },
+        { label: "建议", value: explanation?.suggestion || "" },
+        { label: "耗时", value: formatDurationValue(durationMs) },
+      ],
+      rawEvents,
+      occurredAt,
+      durationMs,
+    });
+  }
+
+  if (toolName === "playwright_snap_tool" || toolName === "playwright_extract_elements_tool") {
+    const elements = arrayFromRecord(output, "elements");
+    const roleCounts = summarizeElementRoles(elements);
+    const keyElements = summarizeKeyElements(elements);
+    const url = stringFromRecord(output, "url") || stringFromRecord(input, "url");
+    const title = stringFromRecord(output, "title");
+    return createReadableToolCard({
+      event,
+      existing,
+      kind: "snapshot",
+      title: "采集页面快照",
+      summary:
+        title || compactUrl(url) ? `采集 ${title || compactUrl(url)} 的页面结构` : "采集当前页面结构和可交互元素。",
+      status: finalStatus,
+      fields: [
+        { label: "页面", value: title },
+        { label: "URL", value: compactUrl(url), mono: true },
+        { label: "发现元素", value: roleCounts },
+        { label: "关键元素", value: keyElements },
+        {
+          label: "结果",
+          value: error ? "失败" : status === "running" ? "执行中" : "成功",
+          tone: error ? "danger" : "success",
+        },
+        { label: "原因", value: error ? explainError(error).detail : "" },
+        { label: "耗时", value: formatDurationValue(durationMs) },
+      ],
+      rawEvents,
+      occurredAt,
+      durationMs,
+    });
+  }
+
+  if (toolName === "write_page_artifact_tool") {
+    const path =
+      stringFromRecord(output, "path") || stringFromRecord(input, "path") || stringFromRecord(input, "artifact_path");
+    const title =
+      stringFromRecord(input, "title") || stringFromRecord(input, "page_title") || stringFromRecord(output, "title");
+    return createReadableToolCard({
+      event,
+      existing,
+      kind: "artifact_write",
+      title: "写入页面事实",
+      summary: path ? `写入 ${path.split("/").pop()}` : "写入页面结构、元素定位器和操作路径。",
+      status: finalStatus,
+      fields: [
+        { label: "页面", value: title || compactUrl(stringFromRecord(input, "url")) },
+        { label: "产物", value: path, mono: true },
+        { label: "包含", value: "页面结构、元素定位器、操作路径" },
+        {
+          label: "结果",
+          value: error ? "失败" : status === "running" ? "执行中" : "成功",
+          tone: error ? "danger" : "success",
+        },
+        { label: "原因", value: error ? explainError(error).detail : "" },
+      ],
+      rawEvents,
+      occurredAt,
+      durationMs,
+    });
+  }
+
+  if (toolName === "write_todos") {
+    const todos = arrayFromRecord(input, "todos");
+    const currentTodo = todos.find((todo) => recordString(todo, "status") === "in_progress") ?? todos[0];
+    const pendingTodos = todos.filter((todo) => recordString(todo, "status") === "pending").slice(0, 3);
+    return createReadableToolCard({
+      event,
+      existing,
+      kind: "todo_update",
+      title: "探索计划更新",
+      summary: recordString(currentTodo, "content") || "更新探索待办计划。",
+      status: finalStatus,
+      fields: [
+        { label: "当前进行", value: recordString(currentTodo, "content") },
+        {
+          label: "待处理",
+          value: pendingTodos.map((todo, index) => `${index + 1}. ${recordString(todo, "content")}`).join("\n"),
+        },
+        {
+          label: "结果",
+          value: error ? "失败" : status === "running" ? "执行中" : "完成",
+          tone: error ? "danger" : "success",
+        },
+      ],
+      rawEvents,
+      occurredAt,
+      durationMs,
+      defaultExpanded: false,
+    });
+  }
+
+  if (toolName === "update_explored_url_tool") {
+    const url = stringFromRecord(input, "url") || stringFromRecord(output, "url");
+    return createReadableToolCard({
+      event,
+      existing,
+      kind: "url_record",
+      title: "记录已探索页面",
+      summary: compactUrl(url) ? `记录 ${compactUrl(url)} 已访问` : "记录已探索 URL。",
+      status: finalStatus,
+      fields: [
+        { label: "URL", value: compactUrl(url), mono: true },
+        { label: "状态", value: error ? "记录失败" : status === "running" ? "记录中" : "已访问" },
+      ],
+      rawEvents,
+      occurredAt,
+      durationMs,
+    });
+  }
+
+  if (error) {
+    return readableErrorCardFromEvent(event, existing);
+  }
+
+  return createReadableToolCard({
+    event,
+    existing,
+    kind: toolName === "read_file" ? "debug" : "debug",
+    title: toolName === "read_file" ? "加载探索规则" : `执行 ${toolName || "工具调用"}`,
+    summary: toolName === "read_file" ? "读取探索规则或定位器最佳实践。" : event.summary,
+    status: finalStatus,
+    fields: [
+      { label: "工具", value: toolName },
+      { label: "输入", value: stringValue(payload.input), mono: true },
+      { label: "结果", value: status === "running" ? "执行中" : "完成" },
+    ],
+    rawEvents,
+    occurredAt,
+    durationMs,
+    defaultExpanded: false,
+  });
+}
+
+function createReadableToolCard({
+  durationMs,
+  event,
+  existing,
+  fields,
+  kind,
+  occurredAt,
+  rawEvents,
+  status,
+  summary,
+  title,
+  defaultExpanded,
+}: {
+  durationMs: number | null;
+  event: ExplorationMonitorEvent;
+  existing?: ReadableExecutionCard;
+  fields: ReadableExecutionField[];
+  kind: ReadableExecutionCardKind;
+  occurredAt: string;
+  rawEvents: ExplorationMonitorEvent[];
+  status: AgentPlanStatus;
+  summary: string;
+  title: string;
+  defaultExpanded?: boolean;
+}): ReadableExecutionCard {
+  return {
+    id: existing?.id ?? `readable-${event.id}`,
+    kind,
+    title,
+    summary,
+    status,
+    occurred_at: occurredAt,
+    completed_at: status === "running" ? "" : event.occurred_at,
+    duration_ms: durationMs,
+    fields: fields.filter((field) => field.value),
+    raw_events: rawEvents,
+    defaultExpanded: defaultExpanded ?? (status === "running" || status === "failed"),
+  };
+}
+
+function readableErrorCardFromEvent(
+  event: ExplorationMonitorEvent,
+  existing?: ReadableExecutionCard,
+): ReadableExecutionCard {
+  const payload = event.payload ?? {};
+  const error = stringValue(payload.error || payload.reason || payload.message) || event.summary;
+  const explanation = explainError(error);
+  return {
+    id: existing?.id ?? `readable-${event.id}`,
+    kind: "error",
+    title: event.type === "run_failed" || event.type === "agent_step_failed" ? "探索中断" : "执行失败",
+    summary: explanation.reason,
+    status: "failed",
+    occurred_at: existing?.occurred_at || event.occurred_at,
+    completed_at: event.occurred_at,
+    duration_ms: existing ? durationBetween(existing.occurred_at, event.occurred_at) : null,
+    fields: [
+      { label: "原因", value: explanation.detail || explanation.reason, tone: "danger" },
+      { label: "影响", value: explanation.impact },
+      { label: "建议", value: explanation.suggestion },
+    ].filter((field): field is ReadableExecutionField => Boolean(field.value)),
+    raw_events: [...(existing?.raw_events ?? []), event],
+    defaultExpanded: true,
+  };
+}
+
+function readableSummaryCardFromState(
+  event: ExplorationMonitorEvent | null,
+  detail: ExplorationRunDetail | null,
+  run: ExplorationRun | null,
+  cards: ReadableExecutionCard[],
+): ReadableExecutionCard {
+  const sourceRun = run ?? detail?.run ?? null;
+  const counts = summarizeExecutionCounts(cards);
+  const lastError = [...cards].reverse().find((card) => card.status === "failed");
+  const pageCount = detail?.modules.reduce((total, module) => total + module.pages.length, 0) ?? 0;
+  const status = normalizeAgentPlanStatus(sourceRun?.status || event?.status || "completed");
+  const fields: ReadableExecutionField[] = [
+    { label: "入口", value: compactUrl(sourceRun?.environment_site_url || ""), mono: true },
+    { label: "范围", value: sourceRun?.scope || "" },
+    { label: "执行概况", value: counts },
+    { label: "产物结果", value: `页面产物数 ${pageCount}` },
+    { label: "失败原因", value: lastError?.summary || "", tone: lastError ? "danger" : "default" },
+  ];
+  return {
+    id: event ? `readable-${event.id}` : "readable-run-summary",
+    kind: "run_summary",
+    title: `探索结束：${sourceRun?.status ? (statusLabels[sourceRun.status] ?? sourceRun.status) : monitorStepLabel(status)}`,
+    summary: sourceRun?.result_summary || event?.summary || "探索任务已结束。",
+    status,
+    occurred_at: event?.occurred_at || sourceRun?.updated_at || new Date().toISOString(),
+    fields: fields.filter((field) => field.value),
+    raw_events: event ? [event] : [],
+    defaultExpanded: true,
+  };
+}
+
+function readableDebugCardFromEvent(event: ExplorationMonitorEvent): ReadableExecutionCard {
+  return {
+    id: `readable-${event.id}`,
+    kind: "debug",
+    title: event.label,
+    summary: event.summary,
+    status: event.status,
+    occurred_at: event.occurred_at,
+    fields: [{ label: "事件类型", value: event.type }],
+    raw_events: [event],
+  };
+}
+
+function isHiddenAgentStreamEvent(streamEvent: string, name: string): boolean {
+  if (streamEvent === "on_chat_model_stream" || streamEvent === "on_chain_stream") {
+    return true;
+  }
+  if (streamEvent === "on_chat_model_start") {
+    return true;
+  }
+  if (name === "LangGraph") {
+    return true;
+  }
+  if (/Middleware\./.test(name)) {
+    return true;
+  }
+  if (name === "tools" && (streamEvent === "on_chain_start" || streamEvent === "on_chain_end")) {
+    return true;
+  }
+  if (streamEvent === "on_chain_start" && name === "model") {
+    return true;
+  }
+  return false;
+}
+
+function isDebugOnlyMonitorEvent(event: ExplorationMonitorEvent): boolean {
+  if (event.type === "run_snapshot") {
+    return false;
+  }
+  return event.type === "agent_stream_event";
+}
+
+function parseJsonLikePayload(value: string): Record<string, unknown> {
+  if (!value) {
+    return {};
+  }
+  const direct = tryParseJsonObject(value);
+  if (direct) {
+    return direct;
+  }
+  const contentMatch = value.match(/content=(['"])([\s\S]*?)\1(?:\s|$)/);
+  if (contentMatch) {
+    const parsedContent = tryParseJsonObject(contentMatch[2]);
+    if (parsedContent) {
+      return parsedContent;
+    }
+  }
+  const objectMatch = value.match(/\{[\s\S]*\}/);
+  if (objectMatch) {
+    const parsedObject = tryParseJsonObject(objectMatch[0]);
+    if (parsedObject) {
+      return parsedObject;
+    }
+  }
+  return {};
+}
+
+function tryParseJsonObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function stringFromRecord(record: Record<string, unknown>, key: string): string {
+  return stringValue(record[key]);
+}
+
+function arrayFromRecord(record: Record<string, unknown>, key: string): Record<string, unknown>[] {
+  const value = record[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    : [];
+}
+
+function recordString(value: unknown, key: string): string {
+  return value && typeof value === "object" ? stringValue((value as Record<string, unknown>)[key]) : "";
+}
+
+function firstRecordValue(record: Record<string, unknown>): string {
+  const firstValue = Object.values(record).find((value) => value);
+  return stringValue(firstValue);
+}
+
+function compactUrl(value: string): string {
+  if (!value) {
+    return "";
+  }
+  try {
+    const url = new URL(value);
+    const searchParams = Array.from(url.searchParams.entries()).slice(0, 3);
+    const search = searchParams.length ? `?${searchParams.map(([key, item]) => `${key}=${item}`).join("&")}` : "";
+    return `${url.pathname || "/"}${search}`;
+  } catch {
+    return value.length > 96 ? `${value.slice(0, 93)}...` : value;
+  }
+}
+
+function locatorLabel(locator: string): string {
+  if (!locator) {
+    return "";
+  }
+  const roleName = locator.match(/name:\s*['"]([^'"]+)['"]/);
+  if (roleName?.[1]) {
+    return roleName[1];
+  }
+  const refMatch = locator.match(/^[a-zA-Z]+-(.+?)-\d+$/);
+  if (refMatch?.[1]) {
+    return refMatch[1]
+      .split("-")
+      .filter((part) => part && !/^\d+$/.test(part))
+      .join(" / ");
+  }
+  return locator.length > 64 ? `${locator.slice(0, 61)}...` : locator;
+}
+
+function summarizeElementRoles(elements: Record<string, unknown>[]): string {
+  if (!elements.length) {
+    return "";
+  }
+  const roleLabels: Record<string, string> = {
+    button: "按钮",
+    link: "链接",
+    textbox: "输入框",
+    checkbox: "复选框",
+    tab: "标签",
+  };
+  const counts = elements.reduce<Record<string, number>>((acc, element) => {
+    const role = stringValue(element.role || "generic");
+    if (role === "generic") {
+      return acc;
+    }
+    acc[role] = (acc[role] ?? 0) + 1;
+    return acc;
+  }, {});
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([role, count]) => `${roleLabels[role] ?? role} ${count}`)
+    .join(" · ");
+}
+
+function summarizeKeyElements(elements: Record<string, unknown>[]): string {
+  return elements
+    .filter((element) => element.visible !== false)
+    .map((element) => stringValue(element.name || element.text || element.ref))
+    .filter(Boolean)
+    .slice(0, 5)
+    .join("、");
+}
+
+function extractToolError(output: Record<string, unknown>): string {
+  return stringValue(output.error);
+}
+
+function extractModelName(output: string): string {
+  const match = output.match(/['"]model_name['"]:\s*['"]([^'"]+)['"]/);
+  return match?.[1] ?? "";
+}
+
+function extractFinishReason(output: string): string {
+  const match = output.match(/['"]finish_reason['"]:\s*['"]([^'"]+)['"]/);
+  return match?.[1] ?? "";
+}
+
+function extractToolNames(output: string): string[] {
+  const names = new Set<string>();
+  for (const match of output.matchAll(/['"]name['"]:\s*['"]([^'"]+)['"]/g)) {
+    if (match[1] && /tool|read_file|write_todos/.test(match[1])) {
+      names.add(match[1]);
+    }
+  }
+  for (const match of output.matchAll(
+    /\b(playwright_[a-z_]+|write_page_artifact_tool|update_explored_url_tool|write_todos|read_file)\b/g,
+  )) {
+    names.add(match[1]);
+  }
+  return Array.from(names);
+}
+
+function extractModelIntent(output: string): string {
+  const thinkMatch = output.match(/<think>([\s\S]*?)<\/think>/);
+  const rawIntent = thinkMatch?.[1] || output.match(/content=(['"])([\s\S]*?)\1/)?.[2] || "";
+  return cleanupModelText(rawIntent);
+}
+
+function cleanupModelText(value: string): string {
+  return value
+    .replace(/\\n/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^The user wants me to/i, "准备")
+    .trim()
+    .slice(0, 160);
+}
+
+function explainError(error: string): { reason: string; detail: string; impact: string; suggestion: string } {
+  if (/rate_limit_exceeded|429/.test(error)) {
+    return {
+      reason: "模型配额限制",
+      detail: error,
+      impact: "探索未完成，后续页面事实和产物可能缺失。",
+      suggestion: "等待配额恢复、更换模型，或降低最大页面数后重试。",
+    };
+  }
+  if (/stale_ref|Unknown element id/.test(error)) {
+    return {
+      reason: "元素引用已失效",
+      detail: "当前页面快照中找不到该元素。",
+      impact: "本次点击未执行，后续路径可能无法继续。",
+      suggestion: "重新采集页面快照后再点击。",
+    };
+  }
+  if (/timeout/i.test(error)) {
+    return {
+      reason: "操作超时",
+      detail: error,
+      impact: "目标页面或元素没有在限定时间内返回。",
+      suggestion: "检查页面加载、登录状态或放宽等待时间后重试。",
+    };
+  }
+  if (/Not yet implemented/i.test(error)) {
+    return {
+      reason: "工具未实现或不可用",
+      detail: error,
+      impact: "该探索动作无法执行。",
+      suggestion: "检查工具注册或改用已支持的页面操作。",
+    };
+  }
+  return {
+    reason: "执行异常",
+    detail: error,
+    impact: "当前动作失败，探索结果可能不完整。",
+    suggestion: "展开原始事件查看完整输入输出。",
+  };
+}
+
+function durationBetween(startedAt: string, completedAt: string): number | null {
+  const start = Date.parse(startedAt);
+  const end = Date.parse(completedAt);
+  return Number.isFinite(start) && Number.isFinite(end) && end >= start ? end - start : null;
+}
+
+function summarizeExecutionCounts(cards: ReadableExecutionCard[]): string {
+  const counts = cards.reduce(
+    (acc, card) => {
+      if (card.kind === "navigate") acc.navigate += 1;
+      if (card.kind === "click") acc.click += 1;
+      if (card.kind === "snapshot") acc.snapshot += 1;
+      if (card.kind === "artifact_write") acc.artifact += 1;
+      return acc;
+    },
+    { artifact: 0, click: 0, navigate: 0, snapshot: 0 },
+  );
+  return `导航 ${counts.navigate} 次 · 点击 ${counts.click} 次 · 快照 ${counts.snapshot} 次 · 写产物 ${counts.artifact} 次`;
 }
 
 function stringValue(value: unknown): string {
@@ -987,12 +1869,12 @@ function mergeBlockerEvent(
   return { ...detail, modules };
 }
 
-function buildAgentPlanTasks(detail: ExplorationRunDetail | null): AgentPlanTask[] {
-  if (!detail?.modules) {
-    return [];
+function buildAgentPlanTasks(detail: ExplorationRunDetail | null, monitor?: ExplorationMonitorState): AgentPlanTask[] {
+  if (!detail?.modules?.length) {
+    return buildMonitorModuleTasks(monitor);
   }
   const hideEmptyPlanModules = isTerminalStatus(detail.run.status);
-  return detail.modules
+  const tasks = detail.modules
     .filter((module) => !(hideEmptyPlanModules && isEmptyPlannedModule(module)))
     .map((module) => ({
       id: module.id,
@@ -1003,6 +1885,74 @@ function buildAgentPlanTasks(detail: ExplorationRunDetail | null): AgentPlanTask
       ],
       subtasks: buildModulePlanSubtasks(detail, module),
     }));
+  return tasks.length ? tasks : buildMonitorModuleTasks(monitor);
+}
+
+function buildMonitorModuleTasks(monitor?: ExplorationMonitorState): AgentPlanTask[] {
+  if (!monitor) {
+    return [];
+  }
+  const moduleNames = [
+    ...(monitor.plan?.modules ?? []),
+    ...monitor.steps.map((step) => step.module_name).filter(Boolean),
+  ];
+  const uniqueModuleNames = Array.from(new Set(moduleNames.map((name) => name.trim()).filter(Boolean)));
+  const fallbackModuleNames = uniqueModuleNames.length
+    ? uniqueModuleNames
+    : monitor.events.length
+      ? ["主探索模块"]
+      : [];
+
+  return fallbackModuleNames.map((moduleName, index) => {
+    const moduleSteps = monitor.steps.filter(
+      (step) => step.module_name === moduleName || uniqueModuleNames.length === 0,
+    );
+    const completedSteps = moduleSteps.filter((step) => step.status === "completed").length;
+    const failedSteps = moduleSteps.filter((step) => step.status === "failed" || step.status === "blocked").length;
+    const runningSteps = moduleSteps.filter(
+      (step) => step.status === "running" || step.status === "in-progress",
+    ).length;
+    const status: AgentPlanStatus = failedSteps
+      ? "failed"
+      : runningSteps
+        ? "running"
+        : moduleSteps.length > 0 && completedSteps === moduleSteps.length
+          ? "completed"
+          : "queued";
+
+    return {
+      id: `monitor-module-${index}-${moduleName}`,
+      title: moduleName,
+      description: monitor.plan?.scope_summary || monitor.plan?.goal_summary || "正在根据实时事件建立探索地图。",
+      status,
+      meta: moduleSteps.length
+        ? [`${completedSteps}/${moduleSteps.length} 步骤`, `${failedSteps} 异常`]
+        : ["等待页面事实"],
+      subtasks: moduleSteps.slice(0, 8).map((step) => ({
+        id: step.step_id,
+        title: buildMonitorStepTaskTitle(step),
+        description: step.message || step.target_description || step.expected_result || "等待工具返回结果。",
+        status: step.status,
+        meta: [step.action_type, step.page_state.title || step.page_state.url].filter(Boolean),
+      })),
+    };
+  });
+}
+
+function buildMonitorStepTaskTitle(step: ExplorationMonitorStep): string {
+  if (step.action_type === "write_page_artifact_tool") {
+    return "写入页面事实";
+  }
+  if (step.action_type?.startsWith("playwright_")) {
+    return step.description || step.action_type.replace(/^playwright_/, "页面操作：");
+  }
+  if (step.action_type === "model") {
+    return "分析页面与下一步动作";
+  }
+  if (step.action_type === "tools") {
+    return "执行工具调用";
+  }
+  return step.description || step.action_type || "探索步骤";
 }
 
 function buildModulePlanSubtasks(
@@ -1216,7 +2166,7 @@ export default function Page() {
   const [requirements, setRequirements] = useState<RequirementDocument[]>([]);
   const [requirementLoading, setRequirementLoading] = useState(false);
   const [explorationForm, setExplorationForm] = useState<ExplorationForm>(emptyExplorationForm);
-  const [durationNow, setDurationNow] = useState(() => Date.now());
+  const [reportPrefetchedForRunId, setReportPrefetchedForRunId] = useState("");
 
   const loadRun = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -1229,8 +2179,11 @@ export default function Page() {
         const data = await apiRequest<ExplorationRunDetail>(`/page-exploration/runs/${params.runId}`);
         const normalizedData = normalizeExplorationRunDetail(data);
         setDetail(normalizedData);
-        setStreamDetail(normalizedData);
-        setMonitor(emptyMonitorState);
+        setStreamDetail((current) => mergeDetailSnapshot(current, normalizedData));
+        setMonitor((current) => {
+          const snapshot = finalizeRunningMonitorSteps(monitorFromRunDetail(normalizedData), normalizedData.run.status);
+          return current.events.length ? { ...snapshot, events: current.events } : snapshot;
+        });
         setRun(normalizedData.run);
       } catch (requestError) {
         setError(requestError instanceof Error ? requestError.message : "探索任务加载失败");
@@ -1248,25 +2201,6 @@ export default function Page() {
   }, [loadRun]);
 
   const runStatus = run?.status;
-
-  useEffect(() => {
-    const runStartedAt = run?.started_at ?? null;
-    const runFinishedAt = run?.finished_at ?? null;
-    const runStatus = run?.status;
-
-    const shouldTickRunDuration = Boolean(runStartedAt && !runFinishedAt && runStatus && isActiveStatus(runStatus));
-
-    if (!shouldTickRunDuration) {
-      return undefined;
-    }
-
-    setDurationNow(Date.now());
-    const timer = window.setInterval(() => {
-      setDurationNow(Date.now());
-    }, 1000);
-
-    return () => window.clearInterval(timer);
-  }, [run]);
 
   useEffect(() => {
     if (!runStatus || !autoRefreshStatuses.has(runStatus)) {
@@ -1351,19 +2285,19 @@ export default function Page() {
     }
   }, [activeTab, loadReport]);
 
+  useEffect(() => {
+    if (run?.status !== "completed" || reportPrefetchedForRunId === run.id) {
+      return;
+    }
+    setReportPrefetchedForRunId(run.id);
+    void loadReport();
+  }, [loadReport, reportPrefetchedForRunId, run?.id, run?.status]);
+
   async function refreshCurrentTab() {
     await loadRun();
     if (activeTab === "探索报告") {
       await loadReport();
     }
-  }
-
-  function clearExplorationOutputs() {
-    setDetail(null);
-    setStreamDetail(null);
-    setReport(null);
-    setReportError("");
-    setReportLoading(false);
   }
 
   async function startExploration() {
@@ -1377,7 +2311,6 @@ export default function Page() {
         method: "POST",
       });
       setRun(updated);
-      clearExplorationOutputs();
       notifyAiTaskStarted();
       toast.success(restarting ? "重新探索已开始" : "探索任务已开始");
       window.setTimeout(() => void loadRun({ silent: true }), 800);
@@ -1469,6 +2402,7 @@ export default function Page() {
       title: run.title,
       environmentId: run.environment_id,
       requirementDocId: run.requirement_doc_id,
+      explorationMode: run.exploration_mode,
       scope: run.scope,
       forbiddenPaths: run.forbidden_paths,
       goal: run.goal,
@@ -1509,6 +2443,7 @@ export default function Page() {
         body: JSON.stringify({
           environment_id: explorationForm.environmentId,
           requirement_doc_id: explorationForm.requirementDocId,
+          exploration_mode: explorationForm.explorationMode,
           title: explorationForm.title,
           scope: explorationForm.scope,
           forbidden_paths: explorationForm.forbiddenPaths,
@@ -1559,9 +2494,7 @@ export default function Page() {
   const activeDetail = streamDetail ?? detail;
   const isUnsupportedArtifact = Boolean(activeDetail?.unsupported_artifact);
   const unsupportedArtifactReason = activeDetail?.unsupported_reason || "历史产物格式不支持新版详情，请重新探索。";
-  const explorationDuration = run ? formatExplorationDuration(run, durationNow) : "-";
-  const agentPlanTasks = buildAgentPlanTasks(activeDetail);
-  const showRunActions = activeTab === "探索计划" || activeTab === "探索概览";
+  const agentPlanTasks = buildAgentPlanTasks(activeDetail, monitor);
   return (
     <PageShell
       breadcrumbs={["项目", projectName, "探索", run?.title ?? "探索任务"]}
@@ -1578,14 +2511,12 @@ export default function Page() {
               刷新
             </Button>
           ) : null}
-          {showRunActions ? (
+          {activeTab === "探索概览" ? (
             <>
-              {activeTab === "探索计划" ? (
-                <Button disabled={!canEdit} onClick={openEditDialog} size="sm" variant="outline">
-                  <Pencil className="size-4" />
-                  编辑
-                </Button>
-              ) : null}
+              <Button disabled={!canEdit} onClick={openEditDialog} size="sm" variant="outline">
+                <Pencil className="size-4" />
+                编辑
+              </Button>
               {canStart ? (
                 <Button disabled={starting} onClick={() => void startExploration()} size="sm">
                   <Play className="size-4" />
@@ -1604,51 +2535,26 @@ export default function Page() {
       }
       projectScope="project"
       activeTab={activeTab}
+      fillViewport
       onTabChange={setActiveTab}
-      tabs={["探索计划", "探索概览", "探索报告"]}
+      tabs={["探索概览", "探索报告"]}
       title={run?.title ?? "探索任务"}
     >
       {activeTab === "探索概览" && error && failureVisible ? (
         <ExplorationFailureNotice error={error} onClose={() => setFailureVisible(false)} />
       ) : null}
-
-      {activeTab === "探索计划" ? <ExplorationTaskInfoPanel run={run} /> : null}
-
       {activeTab === "探索概览" ? (
-        <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard
-              helper="当前探索任务状态"
-              icon={Route}
-              label="任务状态"
-              value={run ? (statusLabels[run.status] ?? run.status) : "-"}
-            />
-            <MetricCard
-              helper="用于页面访问和探索执行"
-              icon={Play}
-              label="探索环境"
-              value={run?.environment_name ?? "-"}
-            />
-            <MetricCard
-              helper="最近一次状态变更"
-              icon={RefreshCw}
-              label="更新时间"
-              value={run ? formatDateTime(run.updated_at) : "-"}
-            />
-            <MetricCard helper="从开始探索到结束的耗时" icon={FileText} label="探索时长" value={explorationDuration} />
-          </div>
-
-          <ExplorationModuleProgressPanel
-            agentPlanTasks={agentPlanTasks}
-            isUnsupportedArtifact={isUnsupportedArtifact}
-            loading={loading}
-            monitor={monitor}
-            onRestart={startExploration}
-            restarting={starting}
-            run={run}
-            unsupportedArtifactReason={unsupportedArtifactReason}
-          />
-        </>
+        <ExplorationModuleProgressPanel
+          agentPlanTasks={agentPlanTasks}
+          isUnsupportedArtifact={isUnsupportedArtifact}
+          loading={loading}
+          detail={activeDetail}
+          monitor={monitor}
+          onRestart={startExploration}
+          restarting={starting}
+          run={run}
+          unsupportedArtifactReason={unsupportedArtifactReason}
+        />
       ) : null}
 
       {activeTab === "探索报告" ? (
@@ -1719,6 +2625,12 @@ export default function Page() {
               ) : null}
             </Field>
             <Field className="sm:col-span-2">
+              <ExplorationModeSwitch
+                onChange={(explorationMode) => setExplorationForm((current) => ({ ...current, explorationMode }))}
+                value={explorationForm.explorationMode}
+              />
+            </Field>
+            <Field className="sm:col-span-2">
               <FieldLabel htmlFor="exploration-scope">探索范围</FieldLabel>
               <Textarea
                 className="min-h-24"
@@ -1741,12 +2653,18 @@ export default function Page() {
               />
             </Field>
             <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="exploration-goal">探索目标</FieldLabel>
+              <FieldLabel htmlFor="exploration-goal">
+                {explorationForm.explorationMode === "autonomous" ? "补充关注点" : "探索目标"}
+              </FieldLabel>
               <Textarea
                 className="min-h-20"
                 id="exploration-goal"
                 onChange={(event) => setExplorationForm((current) => ({ ...current, goal: event.target.value }))}
-                placeholder={explorationPlaceholders.goal}
+                placeholder={
+                  explorationForm.explorationMode === "autonomous"
+                    ? explorationPlaceholders.autonomousGoal
+                    : explorationPlaceholders.goal
+                }
                 value={explorationForm.goal}
               />
             </Field>
@@ -1852,51 +2770,11 @@ function ExplorationFailureNotice({ error, onClose }: { error: string; onClose: 
   );
 }
 
-function ExplorationTaskInfoPanel({ run }: { run: ExplorationRun | null }) {
-  const loginStrategy = run ? (loginStrategyLabels[run.login_strategy] ?? run.login_strategy) : "-";
-  const scopeParagraphs = formatTaskText(run?.scope);
-  const forbiddenPathParagraphs = formatTaskText(run?.forbidden_paths);
-  const goalParagraphs = formatTaskText(run?.goal);
-
-  return (
-    <div className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="space-y-4">
-          <TaskTextSection paragraphs={scopeParagraphs} title="探索范围" />
-          <TaskTextSection paragraphs={forbiddenPathParagraphs} title="禁止路径" />
-          <TaskTextSection paragraphs={goalParagraphs} title="探索目标" />
-        </div>
-
-        <div className="space-y-4">
-          <TaskSection title="环境">
-            <InfoRow label="所属项目" value={displayValue(run?.project_name)} compact />
-            <InfoRow label="关联需求" value={displayValue(run?.requirement_doc_title)} compact />
-            <InfoRow label="探索环境" value={displayValue(run?.environment_name)} compact />
-            <InfoRow label="登录策略" value={loginStrategy} compact />
-            <InfoRow label="站点地址" value={displayValue(run?.environment_site_url)} compact />
-          </TaskSection>
-
-          <TaskSection title="执行边界">
-            <div className="grid grid-cols-3 gap-2">
-              <LimitTile label="页面" value={run ? `${run.max_pages ?? 50}` : "-"} unit="页" />
-              <LimitTile label="操作" value={run ? `${run.max_actions ?? 1000}` : "-"} unit="次" />
-              <LimitTile label="超时" value={run ? `${run.timeout_minutes ?? 120}` : "-"} unit="分钟" />
-            </div>
-          </TaskSection>
-
-          <TaskSection title="补充信息">
-            <InfoRow label="备注" value={displayValue(run?.notes)} compact />
-          </TaskSection>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ExplorationModuleProgressPanel({
   agentPlanTasks,
   isUnsupportedArtifact,
   loading,
+  detail,
   monitor,
   onRestart,
   restarting,
@@ -1906,6 +2784,7 @@ function ExplorationModuleProgressPanel({
   agentPlanTasks: AgentPlanTask[];
   isUnsupportedArtifact: boolean;
   loading: boolean;
+  detail: ExplorationRunDetail | null;
   monitor: ExplorationMonitorState;
   onRestart: () => Promise<void> | void;
   restarting: boolean;
@@ -1915,16 +2794,13 @@ function ExplorationModuleProgressPanel({
   const completedCount = agentPlanTasks.filter((task) => task.status === "completed").length;
   const moduleCount = agentPlanTasks.length;
   const moduleProgress = moduleCount > 0 ? Math.round((completedCount / moduleCount) * 100) : 0;
+  const activeStep = monitor.steps.find((step) => step.status === "running" || step.status === "in-progress");
 
   return (
-    <ShellSection className="min-w-0 lg:col-span-2">
-      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-        <div className="space-y-1">
-          <h2 className="font-medium text-sm">探索模块进度</h2>
-        </div>
-      </div>
-      <div className="grid h-[min(640px,calc(100vh-12rem))] max-h-[calc(100vh-12rem)] min-h-[480px] gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+    <ShellSection className="flex min-h-0 min-w-0 flex-1 lg:col-span-2">
+      <div className="grid min-h-[480px] flex-1 gap-4 lg:min-h-0 lg:grid-cols-[360px_minmax(0,1fr)]">
         <div className="min-h-0 min-w-0 overflow-y-auto rounded-lg border bg-muted/10 p-2">
+          {!loading ? <ExplorationMapFocus detail={detail} monitor={monitor} run={run} /> : null}
           {loading ? (
             <div className="grid min-h-[360px] place-items-center rounded-md bg-background/70 p-6 text-center text-muted-foreground text-sm">
               探索进度加载中...
@@ -1943,17 +2819,60 @@ function ExplorationModuleProgressPanel({
               tasks={agentPlanTasks}
             />
           ) : (
-            <ExplorationModuleEmptyState run={run} />
+            <ExplorationModuleEmptyState activeStep={activeStep} monitor={monitor} run={run} />
           )}
         </div>
-        <ExplorationRealtimeStreamPanel
-          className="h-full"
-          completedCount={completedCount}
-          monitor={monitor}
-          run={run}
-        />
+        <ExplorationRealtimeStreamPanel className="h-full" monitor={monitor} run={run} streamDetail={detail} />
       </div>
     </ShellSection>
+  );
+}
+
+function ExplorationMapFocus({
+  detail,
+  monitor,
+  run,
+}: {
+  detail: ExplorationRunDetail | null;
+  monitor: ExplorationMonitorState;
+  run: ExplorationRun | null;
+}) {
+  const activeStep = monitor.steps.find((step) => step.status === "running" || step.status === "in-progress");
+  const firstModule = detail?.modules?.[0];
+  const title = activeStep?.module_name || firstModule?.module_name || monitor.plan?.modules[0] || "主探索模块";
+  const summary =
+    activeStep?.message ||
+    activeStep?.description ||
+    firstModule?.completion_summary ||
+    detail?.run.result_summary ||
+    monitor.plan?.scope_summary ||
+    run?.scope ||
+    "等待页面事实生成。";
+  const status = activeStep
+    ? activeStep.status
+    : normalizeAgentPlanStatus(firstModule?.completion_status || run?.status || "pending");
+
+  return (
+    <div className="mb-2 rounded-md border bg-background p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] text-muted-foreground">当前焦点</div>
+          <div className="mt-1 truncate font-medium text-sm" title={title}>
+            {title}
+          </div>
+        </div>
+        <StatusBadge tone={monitorStepTone(status)}>{monitorStepLabel(status)}</StatusBadge>
+      </div>
+      <div className="mt-2 line-clamp-2 text-muted-foreground text-xs" title={summary}>
+        {summary}
+      </div>
+      {activeStep?.action_type ? (
+        <div className="mt-2 inline-flex max-w-full items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[11px] text-blue-700 dark:bg-blue-500/10 dark:text-blue-200">
+          <Activity className="size-3 shrink-0" />
+          <span className="truncate">{activeStep.action_type}</span>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -2053,18 +2972,39 @@ function ExplorationModuleIndex({
   );
 }
 
-function ExplorationModuleEmptyState({ run }: { run: ExplorationRun | null }) {
+function ExplorationModuleEmptyState({
+  activeStep,
+  monitor,
+  run,
+}: {
+  activeStep?: ExplorationMonitorStep;
+  monitor: ExplorationMonitorState;
+  run: ExplorationRun | null;
+}) {
   const pending = run?.status === "pending";
+  const hasEvents = monitor.events.length > 0 || monitor.steps.length > 0;
+  const title = pending ? "等待开始探索" : hasEvents ? "正在建立探索地图" : "尚未形成页面产物";
+  const description = pending
+    ? "点击「开始探索」后会在这里生成模块轨道。"
+    : hasEvents
+      ? "已收到实时执行事件，页面事实写入后会自动挂到模块下面。"
+      : "实时流启动后会先显示当前模块，页面产物生成后展示页面覆盖。";
   return (
     <div className="grid min-h-full place-items-center rounded-md bg-background/70 p-6 text-center">
       <div className="max-w-sm space-y-2">
         <div className="mx-auto flex size-9 items-center justify-center rounded-md bg-muted text-muted-foreground">
           <ListChecks className="size-4" />
         </div>
-        <div className="font-medium text-sm">{pending ? "等待开始探索" : "暂无模块进度"}</div>
-        <p className="text-muted-foreground text-xs">
-          {pending ? "点击「开始探索」后会在这里生成模块轨道。" : "实时事件仍会在右侧持续展示。"}
-        </p>
+        <div className="font-medium text-sm">{title}</div>
+        <p className="text-muted-foreground text-xs">{description}</p>
+        {activeStep ? (
+          <div className="mx-auto mt-3 max-w-full rounded-md border bg-muted/20 px-3 py-2 text-left text-xs">
+            <div className="text-muted-foreground">当前动作</div>
+            <div className="mt-1 truncate font-medium" title={activeStep.description || activeStep.action_type}>
+              {activeStep.description || activeStep.action_type}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -2072,22 +3012,94 @@ function ExplorationModuleEmptyState({ run }: { run: ExplorationRun | null }) {
 
 function ExplorationRealtimeStreamPanel({
   className = "",
-  completedCount: moduleCompletedCount,
   monitor,
   run,
+  streamDetail,
 }: {
   className?: string;
-  completedCount?: number;
   monitor: ExplorationMonitorState;
   run: ExplorationRun | null;
+  streamDetail: ExplorationRunDetail | null;
 }) {
-  const runningStep = monitor.steps.find((step) => step.status === "running" || step.status === "in-progress");
-  const streamCompletedCount = monitor.steps.filter((step) => step.status === "completed").length;
-  const completedCount = streamCompletedCount > 0 ? streamCompletedCount : (moduleCompletedCount ?? 0);
-  const failedCount = monitor.steps.filter((step) => step.status === "failed").length;
-  const totalSteps = monitor.plan?.total_steps || monitor.steps.length;
   const phaseLabel = monitorPhaseLabel(monitor.phase, run?.status);
-  const events = monitor.events.slice(0, 24);
+  const events = monitor.events;
+  const readableCards = useMemo(
+    () => buildReadableExecutionCards(events, streamDetail, run),
+    [events, run, streamDetail],
+  );
+  const debugEventCount = Math.max(
+    events.length - readableCards.reduce((total, card) => total + card.raw_events.length, 0),
+    0,
+  );
+  const latestEventKey = useMemo(() => {
+    const latestCard = readableCards.at(-1);
+    if (!latestCard) {
+      return "";
+    }
+    return JSON.stringify([
+      readableCards.length,
+      latestCard.id,
+      latestCard.status,
+      latestCard.summary,
+      latestCard.completed_at || latestCard.occurred_at,
+      latestCard.raw_events.length,
+    ]);
+  }, [readableCards]);
+  const eventListRef = useRef<HTMLDivElement | null>(null);
+  const shouldFollowBottomRef = useRef(true);
+  const previousLatestEventKeyRef = useRef("");
+  const [unreadEventCount, setUnreadEventCount] = useState(0);
+
+  const isEventListAtBottom = useCallback((list: HTMLDivElement) => {
+    const distanceToBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
+    return distanceToBottom < 96;
+  }, []);
+
+  const scrollToLatestEvent = useCallback(() => {
+    const list = eventListRef.current;
+    if (!list) {
+      return;
+    }
+    list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+    shouldFollowBottomRef.current = true;
+    setUnreadEventCount(0);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!latestEventKey) {
+      return;
+    }
+    if (previousLatestEventKeyRef.current === latestEventKey) {
+      return;
+    }
+    previousLatestEventKeyRef.current = latestEventKey;
+    const list = eventListRef.current;
+    if (!list) {
+      return;
+    }
+    const shouldFollowLatest = shouldFollowBottomRef.current || isEventListAtBottom(list);
+    if (!shouldFollowLatest) {
+      setUnreadEventCount((current) => current + 1);
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      list.scrollTo({ top: list.scrollHeight });
+      shouldFollowBottomRef.current = true;
+      setUnreadEventCount(0);
+    });
+  }, [isEventListAtBottom, latestEventKey]);
+
+  const handleEventListScroll = useCallback(() => {
+    const list = eventListRef.current;
+    if (!list) {
+      return;
+    }
+    const isAtBottom = isEventListAtBottom(list);
+    shouldFollowBottomRef.current = isAtBottom;
+    if (isAtBottom) {
+      setUnreadEventCount(0);
+    }
+  }, [isEventListAtBottom]);
 
   return (
     <Card
@@ -2098,44 +3110,40 @@ function ExplorationRealtimeStreamPanel({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle className="flex items-center gap-2 text-sm">
-              <ListChecks className="size-4" />
+              <Activity className="size-4" />
               实时执行流
             </CardTitle>
-            <CardDescription className="text-xs">Agent 输出、动作结果和工具调用</CardDescription>
+            <CardDescription className="text-xs">关键动作摘要，原始事件保留在卡片调试区</CardDescription>
           </div>
           <StatusBadge tone={monitorPhaseTone(monitor.phase, run?.status)}>{phaseLabel}</StatusBadge>
         </div>
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col gap-4">
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          <MonitorStat label="步骤" value={totalSteps ? `${totalSteps}` : "-"} />
-          <MonitorStat label="已完成" value={`${completedCount}`} />
-          <MonitorStat label="失败" value={`${failedCount}`} />
-          <MonitorStat label="当前" value={runningStep ? `#${runningStep.step_number}` : "-"} />
-        </div>
-
-        {monitor.plan ? <MonitorPlanSummary plan={monitor.plan} /> : null}
-
-        {runningStep ? <MonitorCurrentStep step={runningStep} /> : null}
-
+      <CardContent className="flex min-h-0 flex-1 flex-col">
         <div className="flex min-h-0 flex-1 flex-col gap-2">
+          <ReadableExecutionOverview cards={readableCards} debugEventCount={debugEventCount} run={run} />
           <div className="flex items-center justify-between text-xs">
-            <div className="font-medium text-muted-foreground">实时事件</div>
-            <div className="text-muted-foreground">{events.length ? `最近 ${events.length} 条` : "等待事件"}</div>
+            <div className="font-medium text-muted-foreground">关键执行流</div>
+            <div className="text-muted-foreground">
+              {readableCards.length ? `${readableCards.length} 张卡片 · 原始 ${events.length} 条` : "等待事件"}
+            </div>
           </div>
-          {events.length ? (
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-md border bg-muted/20 p-2">
-              {events.map((event) =>
-                isToolLikeMonitorEvent(event.type) ? (
-                  <ExplorationToolCallCard
-                    defaultExpanded={event.status === "running" || event.status === "in-progress"}
-                    event={event}
-                    key={event.id}
-                  />
-                ) : (
-                  <ExplorationEventCard event={event} key={event.id} />
-                ),
-              )}
+          {readableCards.length ? (
+            <div
+              className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-md border bg-muted/20 p-2"
+              onScroll={handleEventListScroll}
+              ref={eventListRef}
+            >
+              {readableCards.map((card) => (
+                <ReadableExecutionCardView card={card} key={card.id} />
+              ))}
+              {unreadEventCount > 0 ? (
+                <div className="sticky bottom-2 z-10 flex justify-center">
+                  <Button className="h-8 rounded-md shadow-md" onClick={scrollToLatestEvent} size="sm" type="button">
+                    <ArrowDown className="size-3.5" />
+                    {unreadEventCount} 条新内容
+                  </Button>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="grid min-h-0 flex-1 place-items-center rounded-md bg-muted/20 p-4 text-center text-muted-foreground text-sm">
@@ -2148,111 +3156,146 @@ function ExplorationRealtimeStreamPanel({
   );
 }
 
-function MonitorPlanSummary({ plan }: { plan: NonNullable<ExplorationMonitorState["plan"]> }) {
-  const compactModules = plan.modules.slice(0, 4).join("、");
-  return (
-    <div className="rounded-md border bg-muted/20 p-3 text-sm">
-      <div className="grid gap-2 md:grid-cols-2">
-        <CompactInfo label="目标" value={plan.goal_summary} />
-        <CompactInfo label="策略" value={plan.strategy} />
-        <CompactInfo label="范围" value={plan.scope_summary} />
-        <CompactInfo label="模块" value={compactModules || "-"} />
-      </div>
-      {plan.risk_assessment || plan.success_criteria.length ? (
-        <div className="mt-2 grid gap-2 border-t pt-2 md:grid-cols-2">
-          <CompactInfo label="风险" value={plan.risk_assessment} />
-          <CompactInfo label="成功标准" value={plan.success_criteria.join("；")} />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function ExplorationEventCard({ event }: { event: ExplorationMonitorEvent }) {
-  return (
-    <div className="rounded-md border bg-background px-3 py-2 text-sm">
-      <div className="flex min-w-0 items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <MonitorStatusIcon status={event.status} />
-          <span className="truncate font-medium">{event.label}</span>
-        </div>
-        <span className="shrink-0 pt-0.5 text-[11px] text-muted-foreground">{formatDateTime(event.occurred_at)}</span>
-      </div>
-      <div className="mt-1 line-clamp-2 text-muted-foreground text-xs" title={event.summary}>
-        {event.summary}
-      </div>
-    </div>
-  );
-}
-
-function ExplorationToolCallCard({
-  defaultExpanded = false,
-  event,
+function ReadableExecutionOverview({
+  cards,
+  debugEventCount,
+  run,
 }: {
-  defaultExpanded?: boolean;
-  event: ExplorationMonitorEvent;
+  cards: ReadableExecutionCard[];
+  debugEventCount: number;
+  run: ExplorationRun | null;
 }) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  const payload = event.payload ?? {};
-  const statusTone = monitorStepTone(event.status);
-  const actionName = getToolLikeEventName(event);
-  const resultText =
-    stringValue(payload.result) ||
-    stringValue(payload.message) ||
-    stringValue(payload.error) ||
-    stringValue(payload.reason) ||
-    event.summary;
+  const counts = summarizeExecutionCounts(cards);
+  const latestError = cards.find((card) => card.status === "failed");
+  const latestRunning = cards.find((card) => card.status === "running" || card.status === "in-progress");
+  return (
+    <div className="rounded-md border bg-background px-3 py-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusBadge tone={monitorPhaseTone("", run?.status)}>
+          {run?.status ? (statusLabels[run.status] ?? run.status) : "待开始"}
+        </StatusBadge>
+        {run?.goal ? <span className="min-w-0 flex-1 truncate text-muted-foreground">目标：{run.goal}</span> : null}
+      </div>
+      <div className="mt-2 grid gap-1 text-muted-foreground">
+        {run?.environment_site_url ? (
+          <div className="truncate">入口：{compactUrl(run.environment_site_url)}</div>
+        ) : null}
+        <div className="truncate">关键动作：{counts}</div>
+        {latestError ? (
+          <div className="text-red-600 dark:text-red-400">最后异常：{latestError.summary}</div>
+        ) : latestRunning ? (
+          <div>
+            当前动作：{latestRunning.title}，{latestRunning.summary}
+          </div>
+        ) : debugEventCount ? (
+          <div>已隐藏调试事件：{debugEventCount} 条，可在卡片原始事件中查看关键输入输出。</div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
+function ReadableExecutionCardView({ card }: { card: ReadableExecutionCard }) {
+  const [expanded, setExpanded] = useState(Boolean(card.defaultExpanded));
+  const hasRawEvents = card.raw_events.length > 0;
   return (
     <div className="overflow-hidden rounded-md border bg-background text-sm">
       <button
-        className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-blue-50/60 dark:hover:bg-blue-500/10"
+        className="flex w-full min-w-0 items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-blue-50/60 dark:hover:bg-blue-500/10"
         onClick={() => setExpanded((current) => !current)}
         type="button"
       >
-        <span className="shrink-0 text-muted-foreground">
+        <span className="mt-0.5 shrink-0 text-muted-foreground">
           {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
         </span>
-        <MonitorStatusIcon status={event.status} />
-        <span className="min-w-0 flex-1 truncate font-medium">{actionName}</span>
-        <StatusBadge tone={statusTone}>{monitorStepLabel(event.status)}</StatusBadge>
+        <MonitorStatusIcon status={card.status} />
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="truncate font-medium">{card.title}</span>
+            <StatusBadge tone={monitorStepTone(card.status)}>{monitorStepLabel(card.status)}</StatusBadge>
+            {card.chips?.slice(0, 3).map((chip) => (
+              <span className="rounded border bg-muted/30 px-1.5 py-0.5 text-[11px] text-muted-foreground" key={chip}>
+                {chip}
+              </span>
+            ))}
+          </span>
+          <span className="mt-1 line-clamp-2 block text-muted-foreground text-xs" title={card.summary}>
+            {card.summary}
+          </span>
+        </span>
+        <span className="shrink-0 pt-0.5 text-[11px] text-muted-foreground">{formatDateTime(card.occurred_at)}</span>
       </button>
       {expanded ? (
         <div className="space-y-3 border-t bg-muted/10 px-3 py-3">
           <div className="grid gap-2 md:grid-cols-2">
-            <EventDetailRow label="时间" value={formatDateTime(event.occurred_at)} />
-            <EventDetailRow
-              label="目标"
-              value={stringValue(payload.target_description || payload.target || payload.description)}
-            />
-            <EventDetailRow label="选择器" value={stringValue(payload.target_selector || payload.selector)} mono />
-            <EventDetailRow label="输入" value={stringValue(payload.value || payload.input || payload.query)} mono />
-            <EventDetailRow label="预期" value={stringValue(payload.expected_result)} />
-            <EventDetailRow label="结果" value={resultText} />
-            <EventDetailRow label="耗时" value={formatDurationValue(payload.duration_ms)} />
+            {card.fields.map((field) => (
+              <ReadableExecutionFieldRow field={field} key={`${field.label}-${field.value}`} />
+            ))}
           </div>
-          {event.status === "running" || event.status === "in-progress" ? (
+          {card.status === "running" || card.status === "in-progress" ? (
             <div className="flex items-center gap-2 text-muted-foreground text-xs">
               <Loader2 className="size-3 animate-spin" />
               执行中...
             </div>
           ) : null}
+          {hasRawEvents ? <RawExecutionEvents events={card.raw_events} /> : null}
         </div>
       ) : null}
     </div>
   );
 }
 
-function EventDetailRow({ label, mono = false, value }: { label: string; mono?: boolean; value: string }) {
-  if (!value) {
-    return null;
-  }
+function ReadableExecutionFieldRow({ field }: { field: ReadableExecutionField }) {
+  const toneClass =
+    field.tone === "danger"
+      ? "text-red-600 dark:text-red-400"
+      : field.tone === "warning"
+        ? "text-amber-600 dark:text-amber-400"
+        : field.tone === "success"
+          ? "text-green-600 dark:text-green-400"
+          : "";
   return (
     <div className="grid gap-1">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className={mono ? "break-words rounded bg-background p-2 font-mono text-xs" : "break-words text-xs"}>
-        {value}
+      <div className="text-[11px] text-muted-foreground">{field.label}</div>
+      <div
+        className={
+          field.mono
+            ? `whitespace-pre-wrap break-words rounded bg-background p-2 font-mono text-xs ${toneClass}`
+            : `whitespace-pre-wrap break-words text-xs ${toneClass}`
+        }
+      >
+        {field.value}
       </div>
+    </div>
+  );
+}
+
+function RawExecutionEvents({ events }: { events: ExplorationMonitorEvent[] }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="rounded-md border bg-background">
+      <button
+        className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-muted-foreground text-xs hover:bg-muted/40"
+        onClick={() => setExpanded((current) => !current)}
+        type="button"
+      >
+        <span>原始事件 / 输入输出 / 调试信息（{events.length}）</span>
+        {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+      </button>
+      {expanded ? (
+        <pre className="max-h-64 overflow-auto border-t p-2 text-[11px] leading-relaxed">
+          {JSON.stringify(
+            events.map((event) => ({
+              type: event.type,
+              occurred_at: event.occurred_at,
+              status: event.status,
+              payload: event.payload,
+            })),
+            null,
+            2,
+          )}
+        </pre>
+      ) : null}
     </div>
   );
 }
@@ -2273,79 +3316,9 @@ function MonitorStatusIcon({ status }: { status: AgentPlanStatus }) {
   return <Circle className="size-3.5 shrink-0 text-muted-foreground" />;
 }
 
-function isToolLikeMonitorEvent(type: string): boolean {
-  return (
-    type.startsWith("action_") ||
-    type.startsWith("step_") ||
-    type.startsWith("agent_") ||
-    type === "observe" ||
-    type === "direct_step_started" ||
-    type === "agentic_step_started"
-  );
-}
-
-function getToolLikeEventName(event: ExplorationMonitorEvent): string {
-  const payload = event.payload ?? {};
-  const stepNumber = payload.step_number ? `#${payload.step_number} ` : "";
-  const name =
-    stringValue(payload.action_type) ||
-    stringValue(payload.tool_name) ||
-    stringValue(payload.name) ||
-    stringValue(payload.description) ||
-    event.label;
-  return `${stepNumber}${name}`;
-}
-
 function formatDurationValue(value: unknown): string {
   const duration = Number(value);
   return Number.isFinite(duration) && duration >= 0 ? `${duration}ms` : "";
-}
-
-function MonitorStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border bg-muted/20 px-3 py-2">
-      <div className="truncate text-[11px] text-muted-foreground">{label}</div>
-      <div className="mt-0.5 truncate font-semibold text-base">{value}</div>
-    </div>
-  );
-}
-
-function MonitorCurrentStep({ step }: { step: ExplorationMonitorStep }) {
-  const matchedLabel = step.matched_element.name || step.matched_element.id || "-";
-  return (
-    <div className="rounded-md border border-blue-200 bg-blue-50/70 p-3 text-sm dark:border-blue-500/30 dark:bg-blue-500/10">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0 font-medium">
-          正在执行 #{step.step_number}：{step.description}
-        </div>
-        <span className="text-muted-foreground text-xs">第 {step.attempt || 1} 次</span>
-      </div>
-      <div className="grid gap-2 lg:grid-cols-2">
-        <CompactInfo label="模块" value={step.module_name} />
-        <CompactInfo label="动作" value={step.action_type} />
-        <CompactInfo label="目标" value={step.target_description} />
-        <CompactInfo label="预期" value={step.expected_result} />
-        <CompactInfo label="选择器" mono value={step.target_selector} />
-        <CompactInfo label="输入" mono value={step.value} />
-        <CompactInfo label="匹配元素" value={matchedLabel} />
-        <CompactInfo label="当前页面" value={step.page_state.url || step.page_state.title} />
-        {step.error ? <CompactInfo label="错误" value={step.error} /> : null}
-        {step.message ? <CompactInfo label="结果" value={step.message} /> : null}
-      </div>
-    </div>
-  );
-}
-
-function CompactInfo({ label, mono = false, value }: { label: string; mono?: boolean; value: string }) {
-  if (!value) {
-    return null;
-  }
-  return (
-    <div className="min-w-0">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className={`mt-0.5 break-words text-xs ${mono ? "font-mono" : "font-medium"}`}>{value}</div>
-    </div>
-  );
 }
 
 function monitorPhaseLabel(phase: string, runStatus?: string): string {
@@ -2384,47 +3357,6 @@ function monitorStepTone(status: AgentPlanStatus): StatusBadgeTone {
   if (status === "running" || status === "in-progress") return "processing";
   if (status === "partial" || status === "cancelled") return "warning";
   return "neutral";
-}
-
-function TaskTextSection({ paragraphs, title }: { paragraphs: string[]; title: string }) {
-  return (
-    <TaskSection title={title}>
-      {paragraphs.length ? (
-        <div className="space-y-3 text-foreground text-sm leading-7">
-          {paragraphs.map((paragraph) => (
-            <p className="max-w-5xl whitespace-pre-wrap break-words" key={paragraph}>
-              {paragraph}
-            </p>
-          ))}
-        </div>
-      ) : (
-        <div className="text-muted-foreground text-sm">未设置</div>
-      )}
-    </TaskSection>
-  );
-}
-
-function LimitTile({ label, unit, value }: { label: string; unit: string; value: string }) {
-  return (
-    <div className="rounded-md border bg-muted/20 p-3">
-      <div className="text-muted-foreground text-xs">{label}</div>
-      <div className="mt-1 flex items-baseline gap-1">
-        <span className="font-semibold text-lg">{value}</span>
-        <span className="text-muted-foreground text-xs">{unit}</span>
-      </div>
-    </div>
-  );
-}
-
-function TaskSection({ children, title }: { children: ReactNode; title: string }) {
-  return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle className="text-sm">{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm">{children}</CardContent>
-    </Card>
-  );
 }
 
 function UnsupportedArtifactNotice({
@@ -2507,25 +3439,6 @@ function ExplorationReportPanel({
   );
 }
 
-function formatExplorationDuration(run: ExplorationRun, now: number = Date.now()): string {
-  if (!run.started_at) {
-    return "-";
-  }
-
-  const startedAt = parseApiTimestamp(run.started_at);
-  const finishedAt = run.finished_at ? parseApiTimestamp(run.finished_at) : now;
-  if (!Number.isFinite(startedAt) || !Number.isFinite(finishedAt) || finishedAt < startedAt) {
-    return "-";
-  }
-
-  const totalSeconds = Math.floor((finishedAt - startedAt) / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
-}
-
 function InfoRow({ compact = false, label, value }: { compact?: boolean; label: string; value: string }) {
   return (
     <div
@@ -2539,23 +3452,4 @@ function InfoRow({ compact = false, label, value }: { compact?: boolean; label: 
       <div className="min-w-0 break-words font-medium">{value}</div>
     </div>
   );
-}
-
-function displayValue(value: string | null | undefined): string {
-  return value?.trim() || "-";
-}
-
-function formatTaskText(value: string | null | undefined): string[] {
-  const text = value?.trim();
-  if (!text || text === "-") {
-    return [];
-  }
-  const normalized = text
-    .replace(/\s+(模块[一二三四五六七八九十]+[：:])/g, "\n$1")
-    .replace(/\s+(整体目标[：:])/g, "\n$1")
-    .replace(/\s+(\d+[.、]\s*)/g, "\n$1");
-  return normalized
-    .split(/\n{2,}/)
-    .map((item) => item.trim())
-    .filter(Boolean);
 }

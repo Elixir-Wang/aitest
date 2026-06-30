@@ -129,6 +129,12 @@ export default function RequirementVersionPreviewPage() {
               <Info className="size-4" />
               摘要信息
             </Button>
+            {!isCurrent ? (
+              <Button disabled={switching} onClick={() => void switchVersion()} type="button">
+                {switching ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+                切换到当前版本
+              </Button>
+            ) : null}
           </>
         }
         breadcrumbs={["项目", "需求", documentName || "需求文档", `v${version.version_no}`]}
@@ -136,18 +142,6 @@ export default function RequirementVersionPreviewPage() {
         title={`v${version.version_no} 版本预览`}
       >
         <ShellSection>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="font-medium text-sm">{documentName || "需求文档"}</h2>
-              <p className="mt-1 text-muted-foreground text-xs">
-                {isCurrent ? "当前生效版本" : "历史版本，可预览后切换为当前版本。"}
-              </p>
-            </div>
-            <Button disabled={isCurrent || switching} onClick={() => void switchVersion()} type="button">
-              {switching ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-              {isCurrent ? "当前生效版本" : "切换为当前版本"}
-            </Button>
-          </div>
           <RequirementVersionDetailContent version={version} />
         </ShellSection>
       </PageShell>

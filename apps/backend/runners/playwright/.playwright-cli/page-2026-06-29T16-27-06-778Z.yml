@@ -1,0 +1,51 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]:
+        - generic [ref=e85]:
+          - generic [ref=e88]: Sign up Agent Studio
+          - generic [ref=e89]:
+            - generic [ref=e91]: "* Email"
+            - generic [ref=e92]:
+              - textbox "Email" [ref=e95]
+              - generic [ref=e96]: or usePhone Number Registration
+          - generic [ref=e97]:
+            - generic [ref=e99]: "* Graphic Verification Code"
+            - textbox "Verification code" [ref=e104]
+          - generic [ref=e105]:
+            - generic [ref=e107]: "* SMS Verification Code"
+            - generic [ref=e110]:
+              - textbox "Verification Code" [ref=e112]
+              - button "Verification Code" [ref=e114] [cursor=pointer]:
+                - generic: Verification Code
+          - generic [ref=e115]:
+            - generic [ref=e117]: "* Password"
+            - generic [ref=e121]:
+              - textbox "Please enter a password" [ref=e122]
+              - img [ref=e125] [cursor=pointer]
+          - generic [ref=e127]:
+            - generic [ref=e129]: "* Confirm Password"
+            - generic [ref=e133]:
+              - textbox "Please enter the confirm password" [ref=e134]
+              - img [ref=e137] [cursor=pointer]
+          - button "Register and Sign in" [ref=e141] [cursor=pointer]:
+            - generic: Register and Sign in
+        - generic [ref=e47]:
+          - paragraph [ref=e48] [cursor=pointer]
+          - generic [ref=e50]:
+            - generic [ref=e51]: Checking the checkbox indicates that you have read and agreed to the
+            - link "《User Agreement》" [ref=e52] [cursor=pointer]:
+              - /url: /agreement
+            - generic [ref=e53]: and
+            - link "《Privacy Policy》" [ref=e54] [cursor=pointer]:
+              - /url: /privacyPolicy
+        - generic [ref=e142]:
+          - text: Have an account,
+          - generic [ref=e143] [cursor=pointer]: Sign in
+      - generic [ref=e61] [cursor=pointer]:
+        - img [ref=e62]
+        - generic [ref=e64]: English
+    - generic:
+      - link:
+        - /url: https://beian.mps.gov.cn/#/query/webSearch?code=11010502055440
+  - img

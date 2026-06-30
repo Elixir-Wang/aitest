@@ -1,0 +1,139 @@
+page:
+  id: page-workspace-main
+  title: 工作台 - 百融百工
+  normalized_path: /workspace
+  explored_at: '2026-06-30T13:14:36.294257Z'
+  elements:
+  - id: create_agent_btn
+    name: 创建智能体
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''创建智能体'' })'
+      priority: 1
+  - id: explore_plaza_btn
+    name: 探索广场
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''探索广场'' })'
+      priority: 1
+  - id: batch_task_btn
+    name: 批量任务
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''批量任务'' })'
+      priority: 1
+  - id: workbench_btn
+    name: 工作台
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''工作台'' })'
+      priority: 1
+  - id: resource_library_btn
+    name: 资源库
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''资源库'' })'
+      priority: 1
+  - id: effect_evaluation_btn
+    name: 效果评测
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''效果评测'' })'
+      priority: 1
+  - id: publish_manage_btn
+    name: 发布管理
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''发布管理'' })'
+      priority: 1
+  - id: online_observation_btn
+    name: 线上观测
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''线上观测'' })'
+      priority: 1
+  - id: auto_optimize_btn
+    name: 自动优化
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''自动优化'' })'
+      priority: 1
+  - id: space_manage_btn
+    name: 空间管理
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''空间管理'' })'
+      priority: 1
+  - id: doc_center_btn
+    name: 文档中心
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''文档中心'' })'
+      priority: 1
+  - id: search_agent_input
+    name: 搜索智能体
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''搜索智能体'' })'
+      priority: 1
+  - id: all_filter_btn
+    name: 全部
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''全部'' }).first()'
+      priority: 1
+  - id: sort_btn
+    name: 按创建时间排序
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''按创建时间排序'' })'
+      priority: 1
+  - id: create_btn
+    name: 创建
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''创建'' })'
+      priority: 1
+  - id: analyze_action_btn
+    name: 分析
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''分析'' }).first()'
+      priority: 1
+  - id: use_action_btn
+    name: 使用
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''使用'' }).first()'
+      priority: 1
+  - id: chat_history_btn
+    name: 对话历史
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''对话历史'' }).first()'
+      priority: 1
+  - id: page_size_btn
+    name: 12条/页
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''12条/页'' })'
+      priority: 1

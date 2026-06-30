@@ -1,6 +1,6 @@
 {
-  "status": "running",
-  "message": "正在分析登录页元素",
-  "updated_at": "2026-06-29T06:34:29.082688+00:00",
-  "last_error_code": ""
+  "status": "failed",
+  "message": "自动登录任务已中断，请重新登录。",
+  "updated_at": "2026-06-29T16:12:01.558979+00:00",
+  "last_error_code": "AUTO_AUTH_STALE"
 }

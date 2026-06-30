@@ -1,0 +1,34 @@
+page:
+  id: page-botsetting-realtime
+  title: 智能体实时互动配置 - 百融百工
+  normalized_path: /botsetting
+  explored_at: '2026-06-30T13:17:53.031189Z'
+  elements:
+  - id: history_version_btn
+    name: 历史版本
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''历史版本'' })'
+      priority: 1
+  - id: publish_btn
+    name: 发布
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''发布'' })'
+      priority: 1
+  - id: text_dialog_btn
+    name: 文本对话
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''文本对话'' })'
+      priority: 1
+  - id: realtime_question_input
+    name: 请输入问题，按Shift+Enter换行
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入问题，按Shift+Enter换行'' })'
+      priority: 1

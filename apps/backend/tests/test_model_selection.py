@@ -84,3 +84,44 @@ def test_resolve_model_selection_rejects_missing_assignment(monkeypatch: pytest.
 
     with pytest.raises(ValueError, match="未分配可用模型配置"):
         resolve_model_selection("document_editor")
+
+
+def test_model_provider_health_check_disables_responses_api_for_compatible_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        model_repo.create_provider(
+            db,
+            provider_id="mp-minimax",
+            provider="Minimax",
+            model="MiniMax-M3",
+            base_url="https://minimax.example/v1",
+            api_key="sk-test",
+            description="test",
+            status="enabled",
+            created_by="u-admin",
+        )
+
+    calls = {}
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            calls.update(kwargs)
+
+        def invoke(self, _message):
+            class Response:
+                content = "ok"
+
+            return Response()
+
+    monkeypatch.setattr(model_service, "ChatOpenAI", FakeChatOpenAI)
+
+    result = model_service.test_model_provider(
+        "mp-minimax",
+        actor={"id": "u-admin", "role": "admin", "nickname": "管理员", "username": "admin"},
+    )
+
+    assert result["success"] is True
+    assert calls["use_responses_api"] is False

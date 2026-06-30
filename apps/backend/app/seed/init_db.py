@@ -298,6 +298,7 @@ def init_db() -> None:
               requirement_doc_id TEXT NOT NULL DEFAULT '',
               title TEXT NOT NULL,
               status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'interrupted', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
+              exploration_mode TEXT NOT NULL DEFAULT 'goal' CHECK(exploration_mode IN ('goal', 'autonomous')),
               scope TEXT NOT NULL DEFAULT '',
               forbidden_paths TEXT NOT NULL DEFAULT '',
               login_strategy TEXT NOT NULL DEFAULT 'skip_login',
@@ -780,7 +781,7 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
     if not table:
         return
     columns = {row["name"] for row in db.execute("PRAGMA table_info(exploration_runs)").fetchall()}
-    required_columns = {"goal", "notes"}
+    required_columns = {"goal", "notes", "exploration_mode"}
     legacy_columns = {"environment_type", "description", "execution_mode", "interaction_mode", "agent_turn_count"}
     if (
         "'stopping'" in table["sql"]
@@ -800,6 +801,7 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
     started_at_expr = "started_at" if "started_at" in columns else "NULL"
     finished_at_expr = "finished_at" if "finished_at" in columns else "NULL"
     requirement_doc_id_expr = "requirement_doc_id" if "requirement_doc_id" in columns else "''"
+    exploration_mode_expr = "exploration_mode" if "exploration_mode" in columns else "'goal'"
 
     db.execute("PRAGMA foreign_keys=off")
     db.executescript(
@@ -812,6 +814,7 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
           requirement_doc_id TEXT NOT NULL DEFAULT '',
           title TEXT NOT NULL,
           status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'interrupted', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
+          exploration_mode TEXT NOT NULL DEFAULT 'goal' CHECK(exploration_mode IN ('goal', 'autonomous')),
           scope TEXT NOT NULL DEFAULT '',
           forbidden_paths TEXT NOT NULL DEFAULT '',
           login_strategy TEXT NOT NULL DEFAULT 'skip_login',
@@ -835,7 +838,7 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
     db.execute(
         f"""
         INSERT OR IGNORE INTO exploration_runs_new
-          (id, project_id, environment_id, requirement_doc_id, title, status, scope, forbidden_paths, login_strategy, goal, notes,
+          (id, project_id, environment_id, requirement_doc_id, title, status, exploration_mode, scope, forbidden_paths, login_strategy, goal, notes,
            max_pages, max_actions, timeout_minutes, artifact_root, result_summary, created_by, created_at, updated_at,
            started_at, finished_at)
         SELECT id, project_id, environment_id, {requirement_doc_id_expr}, title,
@@ -844,7 +847,7 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
                  WHEN status = 'waiting_human' THEN 'partial'
                  ELSE status
                END,
-               scope, forbidden_paths, login_strategy, {goal_expr}, {notes_expr},
+               {exploration_mode_expr}, scope, forbidden_paths, login_strategy, {goal_expr}, {notes_expr},
                {max_pages_expr}, {max_actions_expr}, {timeout_minutes_expr},
                {artifact_root_expr}, {result_summary_expr},
                created_by, created_at, updated_at, {started_at_expr}, {finished_at_expr}

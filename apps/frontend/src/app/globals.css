@@ -266,6 +266,17 @@ These serve as the fallback; there is no separate default.css file. */
     padding: 1rem;
   }
 
+  .requirement-version-preview {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .requirement-version-preview:hover {
+    border-color: transparent;
+    box-shadow: none;
+  }
+
   .requirement-markdown-editor-empty {
     color: var(--muted-foreground);
   }

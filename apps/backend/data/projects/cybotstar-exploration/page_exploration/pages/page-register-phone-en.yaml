@@ -1,0 +1,70 @@
+page:
+  id: page-register-phone-en
+  title: CybotStar - Sign Up (Phone Number)
+  normalized_path: /login
+  explored_at: '2026-06-29T16:27:50.275027Z'
+  elements:
+  - id: register_phone_title_en
+    name: Sign up Agent Studio
+    role: heading
+    locators:
+    - kind: text
+      code: getByText('Sign up Agent Studio')
+      priority: 1
+  - id: phone_input_register_en
+    name: Phone Number
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''Please enter a phone number'' })'
+      priority: 1
+  - id: email_register_link_en
+    name: Use Email to Register
+    role: generic
+    locators:
+    - kind: text
+      code: getByText('email to register')
+      priority: 1
+  - id: graphic_captcha_register_en
+    name: Graphic Verification Code
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''Verification code'' })'
+      priority: 1
+  - id: sms_code_register_en
+    name: SMS Verification Code
+    role: textbox
+    locators:
+    - kind: text
+      code: getByLabel('* SMS Verification Code').getByRole('textbox')
+      priority: 1
+  - id: get_code_register_en
+    name: Get Verification Code
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''Verification Code'' })'
+      priority: 1
+  - id: password_register_en
+    name: Password
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''Please enter a password'' })'
+      priority: 1
+  - id: confirm_password_register_en
+    name: Confirm Password
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''Please enter the confirm password''
+        })'
+      priority: 1
+  - id: register_submit_en
+    name: Register and Sign in
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''Register and Sign in'' })'
+      priority: 1

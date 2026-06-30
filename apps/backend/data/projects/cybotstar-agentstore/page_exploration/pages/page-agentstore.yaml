@@ -1,0 +1,125 @@
+page:
+  id: page-agentstore
+  title: 智能体广场 - 百融百工
+  normalized_path: /agentstore
+  explored_at: '2026-06-30T13:25:11.849511Z'
+  elements:
+  - id: store_search_input
+    name: 搜索
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''搜索'' })'
+      priority: 1
+  - id: all_btn
+    name: 全部
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''全部'' }).first()'
+      priority: 1
+  - id: subscribed_btn
+    name: 已订阅
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''已订阅'' })'
+      priority: 1
+  - id: recent_used_btn
+    name: 最近使用
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''最近使用'' })'
+      priority: 1
+  - id: language_select_btn
+    name: 选择语言
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''选择语言'' })'
+      priority: 1
+  - id: sort_btn_store
+    name: 按发布时间排序
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''按发布时间排序'' })'
+      priority: 1
+  - id: official_category_btn
+    name: 官方
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''官方'' })'
+      priority: 1
+  - id: customer_service_category_btn
+    name: 客服场景
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''客服场景'' })'
+      priority: 1
+  - id: marketing_category_btn
+    name: 营销场景
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''营销场景'' })'
+      priority: 1
+  - id: compliance_category_btn
+    name: 合规与风控
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''合规与风控'' })'
+      priority: 1
+  - id: finance_category_btn
+    name: 金融业务
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''金融业务'' })'
+      priority: 1
+  - id: insurance_category_btn
+    name: 保险场景
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''保险场景'' })'
+      priority: 1
+  - id: product_category_btn
+    name: 产品服务
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''产品服务'' })'
+      priority: 1
+  - id: retail_category_btn
+    name: 零售场景
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''零售场景'' })'
+      priority: 1
+  - id: hr_category_btn
+    name: 人力资源
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''人力资源'' })'
+      priority: 1
+  - id: report_category_btn
+    name: 报告生成
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''报告生成'' })'
+      priority: 1
+  - id: other_category_btn
+    name: 其他
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''其他'' })'
+      priority: 1

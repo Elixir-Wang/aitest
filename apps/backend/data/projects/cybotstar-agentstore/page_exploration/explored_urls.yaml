@@ -1,0 +1,8 @@
+version: '1.0'
+project_id: cybotstar-agentStore
+urls:
+- normalized_path: /workspace
+  page_id: page-workspace-main
+  page_file: pages/page-workspace-main.yaml
+  last_explored_at: '2026-06-30T13:14:36.294335Z'
+  last_run_id: run-001

@@ -1,0 +1,69 @@
+page:
+  id: page-login-sms-en
+  title: CybotStar - Login (SMS Code Tab)
+  normalized_path: /login
+  explored_at: '2026-06-29T16:27:05.669839Z'
+  elements:
+  - id: account_tab_en
+    name: Account Tab
+    role: generic
+    locators:
+    - kind: text
+      code: getByText('Account')
+      priority: 1
+  - id: sms_tab_en
+    name: SMS Code Tab
+    role: generic
+    locators:
+    - kind: text
+      code: getByText('SMS Code')
+      priority: 1
+  - id: phone_input
+    name: Phone Number
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''Please enter a phone number'' })'
+      priority: 1
+  - id: sms_code_input
+    name: SMS Verification Code
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''Verification Code'' })'
+      priority: 1
+  - id: get_sms_code_button
+    name: Get Verification Code
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''Verification Code'' })'
+      priority: 1
+  - id: login_button_en
+    name: Log In
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''Log In'' })'
+      priority: 1
+  - id: user_agreement_link_en
+    name: User Agreement
+    role: link
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《User Agreement》'' })'
+      priority: 1
+  - id: privacy_policy_link_en
+    name: Privacy Policy
+    role: link
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《Privacy Policy》'' })'
+      priority: 1
+  - id: sign_up_link_en
+    name: Sign Up
+    role: generic
+    locators:
+    - kind: text
+      code: getByText('Sign up')
+      priority: 1

@@ -10,13 +10,16 @@ import asyncio
 import inspect
 import json
 import secrets
+import shutil
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any
+from urllib.parse import urlparse
 
 from app.core import settings
 from app.core.db import connect
+from app.core.environment_auth_state import auth_state_path, auth_state_summary
 from app.repositories import exploration_artifact_repo, exploration_page_repo, exploration_run_repo
 from app.services.exploration import event_bus
 
@@ -28,11 +31,16 @@ _running_explorations: Dict[str, Dict[str, Any]] = {}
 _exploration_lock = threading.Lock()
 
 
+class ExplorationCancelledError(Exception):
+    """Raised when a user-requested exploration stop is observed."""
+
+
 def create_exploration_run(
     actor,
     project_id: str,
     environment_id: str,
     title: str,
+    exploration_mode: str,
     scope: str,
     goal: str = "",
     forbidden_paths: str = "",
@@ -54,6 +62,7 @@ def create_exploration_run(
             environment_id=environment_id,
             title=title,
             created_by=actor["id"],
+            exploration_mode=exploration_mode,
             scope=scope,
             forbidden_paths=forbidden_paths,
             goal=goal,
@@ -78,45 +87,9 @@ def get_exploration_run(actor, run_id: str) -> dict:
             raise ValueError(f"探索任务不存在: {run_id}")
 
         pages = exploration_page_repo.list_by_run(db, run_id)
-        artifacts = exploration_artifact_repo.list_by_run(db, run_id)
         run_dict = _normalize_exploration_run_detail(dict(run))
 
-        # 转换为前端期望的modules结构
-        modules = []
-        if pages:
-            modules.append({
-                "id": "main-module",
-                "module_key": "main",
-                "module_name": "主探索模块",
-                "entry_path": dict(run).get("scope", ""),
-                "planned_page_count": dict(run).get("max_pages", 0),
-                "explored_page_count": len(pages),
-                "blocked_page_count": 0,
-                "action_count": 0,
-                "field_count": 0,
-                "state_transition_count": 0,
-                "completion_status": dict(run).get("status", "pending"),
-                "completion_summary": dict(run).get("result_summary", ""),
-                "pages": [
-                    {
-                        "id": p["id"],
-                        "title": p.get("title", ""),
-                        "url": p.get("url", ""),
-                        "entry_path": p.get("normalized_path", ""),
-                        "yaml_path": p.get("yaml_path", ""),
-                        "status": p.get("status", "explored"),
-                        "blocker_reason": "",
-                        "recent_event": "",
-                        "structure_summary": f"发现 {p.get('element_count', 0)} 个元素",
-                        "steps": [],
-                    }
-                    for p in [dict(page) for page in pages]
-                ],
-                "elements": [],
-                "blockers": [],
-            })
-        else:
-            modules = _modules_from_artifacts(run_dict)
+        modules = _modules_from_db_pages(run_dict, [dict(page) for page in pages]) if pages else _modules_from_artifacts(run_dict)
 
         return {
             "run": run_dict,
@@ -148,6 +121,30 @@ def _modules_from_artifacts(run: dict) -> list[dict]:
     summary = _read_yaml_file(artifact_root / "summary.yaml")
     page_artifacts = _read_page_artifacts(artifact_root / "pages")
     return _modules_from_summary_and_pages(run, summary, page_artifacts)
+
+
+def _modules_from_db_pages(run: dict, pages: list[dict]) -> list[dict]:
+    """Build frontend module progress from registered exploration_pages rows."""
+    modules_by_key: dict[str, dict] = {}
+    for page in pages:
+        module_key = _string(page.get("module_key") or "main")
+        module = modules_by_key.setdefault(
+            module_key,
+            _module_shell(
+                run,
+                {
+                    "module_key": module_key,
+                    "module_name": module_key,
+                    "entry_path": run.get("scope", ""),
+                    "planned_page_count": run.get("max_pages", 0),
+                },
+                len(modules_by_key),
+            ),
+        )
+        module["pages"].append(_page_from_db_page(page))
+
+    _refresh_module_counts(modules_by_key.values())
+    return list(modules_by_key.values())
 
 
 def _normalize_exploration_run_detail(run: dict) -> dict:
@@ -359,6 +356,21 @@ def _page_from_page_artifact(artifact: dict) -> dict:
     }
 
 
+def _page_from_db_page(page: dict) -> dict:
+    return {
+        "id": _string(page.get("id")),
+        "title": _string(page.get("title")),
+        "url": _string(page.get("url")),
+        "entry_path": _string(page.get("entry_path")),
+        "yaml_path": _string(page.get("snapshot_path")),
+        "status": _string(page.get("status") or "completed"),
+        "blocker_reason": "",
+        "recent_event": "",
+        "structure_summary": _string(page.get("structure_summary")),
+        "steps": [],
+    }
+
+
 def _normalize_progress_page(page_id: str, page: dict) -> dict:
     return {
         "id": _string(page.get("id") or page_id),
@@ -476,8 +488,8 @@ def start_exploration_async(actor, run_id: str) -> dict:
             return run_dict
 
         event_bus.clear(run_id)
+        _clear_previous_exploration_outputs(run_dict)
 
-        # 更新状态为queued（准备启动）
         exploration_run_repo.reset_completion_state(db, run_id)
         exploration_run_repo.update_status(db, run_id, "queued")
         run = exploration_run_repo.find_by_id(db, run_id)
@@ -511,6 +523,8 @@ def stop_exploration_async(actor, run_id: str) -> dict:
         run_dict = dict(run)
 
         # 只有运行中的任务才能停止
+        if run_dict["status"] == "stopping":
+            return run_dict
         if run_dict["status"] not in ["running", "queued"]:
             raise ValueError(f"探索任务当前状态为 {run_dict['status']}，无法停止")
 
@@ -526,6 +540,48 @@ def stop_exploration_async(actor, run_id: str) -> dict:
         return dict(updated_run) if updated_run else {}
 
 
+def _exploration_run_is_stopping(run_id: str) -> bool:
+    with _exploration_lock:
+        runtime = _running_explorations.get(run_id)
+        if runtime and runtime.get("should_stop"):
+            return True
+
+    with connect() as db:
+        run = exploration_run_repo.find_by_id(db, run_id)
+        return bool(run and run["status"] in {"stopping", "cancelled"})
+
+
+def _ensure_exploration_not_stopping(run_id: str) -> None:
+    if _exploration_run_is_stopping(run_id):
+        raise ExplorationCancelledError("用户已停止探索任务。")
+
+
+def _finalize_cancelled_exploration_run(run_id: str) -> None:
+    finished_at = datetime.now(timezone.utc).isoformat()
+    with connect() as db:
+        run = exploration_run_repo.find_by_id(db, run_id)
+        if not run:
+            return
+        if run["status"] == "cancelled":
+            return
+        exploration_run_repo.update_status(
+            db,
+            run_id,
+            "cancelled",
+            finished_at=finished_at,
+            result_summary="探索任务已由用户停止。",
+        )
+    event_bus.publish(
+        run_id,
+        "run_cancelled",
+        {
+            "status": "cancelled",
+            "result_summary": "探索任务已由用户停止。",
+            "finished_at": finished_at,
+        },
+    )
+
+
 def _run_exploration_background(run_id: str) -> None:
     """后台执行探索任务"""
     try:
@@ -538,6 +594,9 @@ def _run_exploration_background(run_id: str) -> None:
 
         # 更新状态为running
         with connect() as db:
+            run = exploration_run_repo.find_by_id(db, run_id)
+            if run and run["status"] in {"stopping", "cancelled"}:
+                raise ExplorationCancelledError("用户已停止探索任务。")
             exploration_run_repo.update_status(
                 db,
                 run_id,
@@ -561,7 +620,13 @@ def _run_exploration_background(run_id: str) -> None:
         # 执行探索逻辑（简化版）
         _execute_exploration(run_id, run_dict)
 
+    except ExplorationCancelledError:
+        _finalize_cancelled_exploration_run(run_id)
     except Exception as e:
+        artifact_summary = _register_failed_exploration_outputs(run_id)
+        result_summary = f"探索失败: {str(e)}"
+        if artifact_summary:
+            result_summary = f"{result_summary}；{artifact_summary}"
         # 更新状态为blocked（数据库约束不允许failed状态）
         with connect() as db:
             exploration_run_repo.update_status(
@@ -569,7 +634,7 @@ def _run_exploration_background(run_id: str) -> None:
                 run_id,
                 "blocked",
                 finished_at=datetime.now(timezone.utc).isoformat(),
-                result_summary=f"探索失败: {str(e)}",
+                result_summary=result_summary,
             )
         event_bus.publish(
             run_id,
@@ -577,7 +642,7 @@ def _run_exploration_background(run_id: str) -> None:
             {
                 "status": "blocked",
                 "error": str(e),
-                "result_summary": f"探索失败: {str(e)}",
+                "result_summary": result_summary,
                 "finished_at": datetime.now(timezone.utc).isoformat(),
             },
         )
@@ -597,7 +662,10 @@ def _execute_exploration(run_id: str, run_config: dict) -> None:
     project_id = run_config["project_id"]
     start_url = _exploration_start_url(run_config)
     scope = str(run_config.get("scope") or "").strip()
+    goal = str(run_config.get("goal") or "").strip()
+    exploration_mode = str(run_config["exploration_mode"]).strip()
     max_pages = run_config["max_pages"]
+    storage_state_path = _exploration_auth_state_path(run_config)
 
     try:
         # 1. 解析模型配置
@@ -611,21 +679,79 @@ def _execute_exploration(run_id: str, run_config: dict) -> None:
             project_id=project_id,
             run_id=run_id,
             start_url=start_url,
+            exploration_mode=exploration_mode,
             max_pages=max_pages,
             scope=scope,
+            goal=goal,
+            storage_state_path=storage_state_path,
         ))
 
-    except Exception as e:
-        # 发生错误，更新状态为blocked（数据库约束不允许failed状态）
-        with connect() as db:
-            exploration_run_repo.update_status(
-                db,
-                run_id,
-                "blocked",
-                finished_at=datetime.now(timezone.utc).isoformat(),
-                result_summary=f"探索阻塞: {str(e)}",
-            )
+    except ExplorationCancelledError:
         raise
+    except Exception:
+        raise
+
+
+def _clear_previous_exploration_outputs(run: dict) -> None:
+    """重新探索开始前清空上一轮展示产物，避免旧结果混入本轮。"""
+    run_id = str(run.get("id") or "")
+    project_id = str(run.get("project_id") or "")
+    if not run_id:
+        return
+
+    artifact_root = str(run.get("artifact_root") or "").strip()
+    candidates: list[Path] = []
+    if artifact_root:
+        root = Path(artifact_root)
+        candidates.append(root)
+        if not root.is_absolute():
+            candidates.append(settings.PROJECT_FILE_STORAGE_ROOT / artifact_root)
+            candidates.append(settings.DATA_DIR / "projects" / artifact_root)
+            candidates.append(settings.DATA_DIR / artifact_root)
+    if project_id:
+        candidates.append(settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration" / "runs" / run_id)
+
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if _is_run_artifact_dir(resolved, run_id) and resolved.exists() and resolved.is_dir():
+            shutil.rmtree(resolved)
+
+    with connect() as db:
+        db.execute("DELETE FROM exploration_artifacts WHERE exploration_run_id = ?", (run_id,))
+        db.execute("DELETE FROM exploration_elements WHERE exploration_run_id = ?", (run_id,))
+        db.execute("DELETE FROM exploration_blockers WHERE exploration_run_id = ?", (run_id,))
+        db.execute("DELETE FROM exploration_module_coverages WHERE exploration_run_id = ?", (run_id,))
+        db.execute("DELETE FROM exploration_pages WHERE exploration_run_id = ?", (run_id,))
+
+
+def _is_run_artifact_dir(path: Path, run_id: str) -> bool:
+    parts = path.parts
+    return path.name == run_id and "page_exploration" in parts and "runs" in parts
+
+
+def _register_failed_exploration_outputs(run_id: str) -> str:
+    """失败时登记本轮已写出的部分产物，供探索概览展示完整上下文。"""
+    try:
+        with connect() as db:
+            run = exploration_run_repo.find_detail_by_id(db, run_id)
+            if not run:
+                return ""
+            run_dict = _normalize_exploration_run_detail(dict(run))
+
+        return _register_exploration_outputs(
+            project_id=run_dict["project_id"],
+            run_id=run_id,
+            start_url=_exploration_start_url(run_dict),
+            scope=str(run_dict.get("scope") or "").strip(),
+            exploration_mode=str(run_dict.get("exploration_mode") or "goal").strip(),
+            max_pages=int(run_dict.get("max_pages") or 0),
+            result_status="failed",
+        )
+    except Exception:
+        return ""
 
 
 def _exploration_start_url(run_config: dict) -> str:
@@ -636,10 +762,60 @@ def _exploration_start_url(run_config: dict) -> str:
     return start_url
 
 
-def _exploration_agent_prompt(start_url: str, scope: str, max_pages: int) -> str:
+def _exploration_auth_state_path(run_config: dict) -> Path | None:
+    environment_id = str(run_config.get("environment_id") or "").strip()
+    if not environment_id:
+        return None
+
+    summary = auth_state_summary(
+        environment_id=environment_id,
+        login_strategy=str(run_config.get("environment_login_strategy") or ""),
+        reuse_auth_state=bool(run_config.get("environment_reuse_auth_state")),
+    )
+    if summary.get("status") != "valid":
+        return None
+
+    path = auth_state_path(environment_id)
+    return path if path.exists() else None
+
+
+def _exploration_mode_label(exploration_mode: str) -> str:
+    return "自主探索" if exploration_mode == "autonomous" else "目标探索"
+
+
+def _exploration_agent_prompt(
+    start_url: str,
+    exploration_mode: str,
+    scope: str,
+    max_pages: int,
+    goal: str = "",
+) -> str:
     lines = [f"请探索网站: {start_url}"]
+    mode_label = _exploration_mode_label(exploration_mode)
+    lines.append(f"探索方式: {mode_label}")
     if scope.strip():
         lines.append(f"探索范围: {scope.strip()}")
+    if goal.strip():
+        lines.append(f"探索目标: {goal.strip()}")
+    lines.append("")
+    if exploration_mode == "autonomous":
+        lines.extend(
+            [
+                "执行策略:",
+                "- 这是自主探索：以探索范围为覆盖边界，自动识别范围内的主要模块、页面、入口和可测元素。",
+                "- 如果提供了探索目标，它只是补充关注点，不作为单一路径完成条件。",
+                "- 按模块盘点，不要因为某个具体动作完成就提前停止；达到范围覆盖或预算上限后总结。",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "执行策略:",
+                "- 这是目标探索：以探索目标为主线和完成条件，优先执行目标描述的页面流程。",
+                "- 不要扩展为全量功能盘点；只探索完成目标所必需的页面、弹窗、字段和状态。",
+                "- 目标完成、被阻塞或达到预算上限后停止并总结，不要继续无关分支。",
+            ]
+        )
     lines.append(f"最多探索 {max_pages} 个页面。")
     return "\n".join(lines)
 
@@ -649,11 +825,17 @@ async def _execute_exploration_async(
     project_id: str,
     run_id: str,
     start_url: str,
+    exploration_mode: str,
     max_pages: int,
     scope: str = "",
+    goal: str = "",
+    storage_state_path: Path | None = None,
 ) -> None:
     """异步执行探索"""
     from app.agents.page_exploration.agent import page_exploration_agent
+    from app.agents.page_exploration.tools.runtime_context import browser_session_context
+
+    _ensure_exploration_not_stopping(run_id)
 
     # 创建agent实例
     agent = page_exploration_agent(model, project_id, run_id)
@@ -664,13 +846,19 @@ async def _execute_exploration_async(
         "planning_completed",
         {
             "plan_id": f"{run_id}-plan",
-            "goal_summary": f"探索 {start_url}",
+            "goal_summary": goal or f"{_exploration_mode_label(exploration_mode)}：探索 {start_url}",
             "scope_summary": scope or start_url,
-            "strategy": "使用页面探索 Agent 调用浏览器和产物工具，逐步发现页面结构与可测元素。",
+            "strategy": (
+                "围绕明确探索目标执行页面流程，并在目标完成或阻塞后停止。"
+                if exploration_mode == "goal"
+                else "按探索范围自动盘点主要模块、页面入口和可测元素。"
+            ),
             "modules": [scope or "主探索模块"],
             "estimated_duration_minutes": None,
             "risk_assessment": "",
-            "success_criteria": [f"最多探索 {max_pages} 个页面，并记录页面事实与关键操作。"],
+            "success_criteria": [
+                goal or f"最多探索 {max_pages} 个页面，并记录页面事实与关键操作。"
+            ],
             "total_steps": len(plan_steps),
             "steps": plan_steps,
         },
@@ -706,37 +894,435 @@ async def _execute_exploration_async(
         "messages": [
             {
                 "role": "user",
-                "content": _exploration_agent_prompt(start_url, scope, max_pages),
+                "content": _exploration_agent_prompt(
+                    start_url,
+                    exploration_mode,
+                    scope,
+                    max_pages,
+                    goal=goal,
+                ),
             }
         ]
     }
-    result = await _invoke_agent_with_realtime_events(
-        agent,
-        payload,
-        run_id,
-        plan_steps,
+    with browser_session_context(start_url=start_url, storage_state_path=storage_state_path):
+        result = await _invoke_agent_with_realtime_events(
+            agent,
+            payload,
+            run_id,
+            plan_steps,
+            project_id=project_id,
+            max_pages=max_pages,
+        )
+    _ensure_exploration_not_stopping(run_id)
+
+    artifact_summary = _register_exploration_outputs(
         project_id=project_id,
+        run_id=run_id,
+        start_url=start_url,
+        scope=scope,
+        exploration_mode=exploration_mode,
         max_pages=max_pages,
     )
+    _ensure_exploration_not_stopping(run_id)
 
     # 更新状态为完成
     with connect() as db:
+        run = exploration_run_repo.find_by_id(db, run_id)
+        if run and run["status"] in {"stopping", "cancelled"}:
+            raise ExplorationCancelledError("用户已停止探索任务。")
         exploration_run_repo.update_status(
             db,
             run_id,
             "completed",
             finished_at=datetime.now(timezone.utc).isoformat(),
-            result_summary=f"探索完成",
+            result_summary=artifact_summary,
         )
     event_bus.publish(
         run_id,
         "run_completed",
         {
             "status": "completed",
-            "result_summary": "探索完成",
+            "result_summary": artifact_summary,
             "finished_at": datetime.now(timezone.utc).isoformat(),
         },
     )
+
+
+def _register_exploration_outputs(
+    *,
+    project_id: str,
+    run_id: str,
+    start_url: str,
+    scope: str,
+    exploration_mode: str,
+    max_pages: int,
+    result_status: str = "completed",
+) -> str:
+    """Register file artifacts produced by the new page exploration agent."""
+    run_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration" / "runs" / run_id
+    pages_dir = run_dir / "pages"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    pages_dir.mkdir(parents=True, exist_ok=True)
+
+    page_artifacts = _collect_page_artifact_files(pages_dir)
+    if not (run_dir / "summary.yaml").exists():
+        _write_exploration_summary(
+            run_dir=run_dir,
+            run_id=run_id,
+            start_url=start_url,
+            scope=scope,
+            exploration_mode=exploration_mode,
+            max_pages=max_pages,
+            page_artifacts=page_artifacts,
+        )
+
+    report_path = _write_exploration_report(
+        run_dir=run_dir,
+        run_id=run_id,
+        start_url=start_url,
+        exploration_mode=exploration_mode,
+        page_artifacts=page_artifacts,
+    )
+
+    with connect() as db:
+        exploration_run_repo.update_artifact_root(db, run_id, str(run_dir))
+        for path, artifact in page_artifacts:
+            page = artifact.get("page") if isinstance(artifact.get("page"), dict) else {}
+            page_id = _string(page.get("id") or path.stem)
+            title = _string(page.get("semantic_title") or page.get("title") or path.stem)
+            url = _string(page.get("url") or page.get("env_url") or "")
+            entry_path = _string(page.get("normalized_url") or page.get("normalized_path") or page.get("entry_path") or "")
+            module_key = _string(page.get("module_key") or page.get("module") or scope or "主探索模块")
+            structure_summary = _string(page.get("structure_summary") or _page_structure_summary(artifact))
+            _upsert_exploration_page(
+                db,
+                page_id=page_id,
+                run_id=run_id,
+                title=title,
+                url=url,
+                entry_path=entry_path,
+                module_key=module_key,
+                structure_summary=structure_summary,
+                snapshot_path=str(path),
+            )
+
+            _upsert_exploration_artifact(
+                db,
+                artifact_id=f"{run_id}-{page_id}-yaml",
+                run_id=run_id,
+                artifact_type="page_yaml",
+                file_path=str(path),
+                title=title,
+                summary=structure_summary,
+            )
+
+        _upsert_exploration_artifact(
+            db,
+            artifact_id=f"{run_id}-report",
+            run_id=run_id,
+            artifact_type="report",
+            file_path=str(report_path),
+            title="探索报告",
+            summary=f"本次探索记录 {len(page_artifacts)} 个页面。",
+        )
+
+    if result_status == "failed":
+        return f"已保留本次失败前生成的 {len(page_artifacts)} 个页面产物。"
+    return f"探索完成，已登记 {len(page_artifacts)} 个页面产物。"
+
+
+def _collect_page_artifact_files(*directories: Path) -> list[tuple[Path, dict]]:
+    artifacts: list[tuple[Path, dict]] = []
+    seen: set[Path] = set()
+    for directory in directories:
+        if not directory.exists():
+            continue
+        for path in sorted(directory.glob("*.yaml")):
+            resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            artifact = _read_yaml_file(path)
+            if artifact.get("page"):
+                artifacts.append((path, artifact))
+    return artifacts
+
+
+def _write_exploration_summary(
+    *,
+    run_dir: Path,
+    run_id: str,
+    start_url: str,
+    scope: str,
+    exploration_mode: str,
+    max_pages: int,
+    page_artifacts: list[tuple[Path, dict]],
+) -> None:
+    module_counts: dict[str, int] = {}
+    for _, artifact in page_artifacts:
+        page = artifact.get("page") if isinstance(artifact.get("page"), dict) else {}
+        module_key = _string(page.get("module_key") or page.get("module") or scope or "主探索模块")
+        module_counts[module_key] = module_counts.get(module_key, 0) + 1
+    modules = [
+        {
+            "module_key": module_key,
+            "module_name": module_key,
+            "status": "completed",
+            "entry_path": scope or start_url,
+            "planned_page_count": max_pages,
+            "explored_page_count": count,
+        }
+        for module_key, count in module_counts.items()
+    ]
+    _write_yaml_file(
+        run_dir / "summary.yaml",
+        {
+            "run_id": run_id,
+            "artifact_schema_version": 2,
+            "start_url": start_url,
+            "exploration_mode": exploration_mode,
+            "scope": scope,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "modules": modules,
+        },
+    )
+
+
+def _write_exploration_report(
+    *,
+    run_dir: Path,
+    run_id: str,
+    start_url: str,
+    exploration_mode: str,
+    page_artifacts: list[tuple[Path, dict]],
+) -> Path:
+    report_path = run_dir / "report.md"
+    lines = [
+        "# 探索报告",
+        "",
+        f"- 运行 ID：`{run_id}`",
+        f"- 入口 URL：`{start_url}`",
+        f"- 探索方式：{_exploration_mode_label(exploration_mode)}",
+        f"- 页面产物数：{len(page_artifacts)}",
+        "",
+        "## 页面清单",
+        "",
+    ]
+    if page_artifacts:
+        for path, artifact in page_artifacts:
+            page = artifact.get("page") if isinstance(artifact.get("page"), dict) else {}
+            title = _string(page.get("semantic_title") or page.get("title") or path.stem)
+            url = _string(page.get("url") or "")
+            lines.append(f"- {title}：`{url}`（{path.name}）")
+    else:
+        lines.append("- 本次探索未登记页面产物。")
+    lines.append("")
+    report_path.write_text("\n".join(lines), encoding="utf-8")
+    return report_path
+
+
+def _write_yaml_file(path: Path, payload: dict) -> None:
+    import yaml
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+
+def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, run_id: str) -> Path | None:
+    """Persist a minimal page artifact whenever the browser snapshot tool succeeds."""
+    if not project_id or not run_id or not isinstance(event, dict):
+        return None
+    if event.get("event") != "on_tool_end" or event.get("name") != "playwright_snap_tool":
+        return None
+
+    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    snapshot = _coerce_tool_output_dict(data.get("output"))
+    if not snapshot or snapshot.get("error"):
+        return None
+
+    url = _string(snapshot.get("url")).strip()
+    title = _string(snapshot.get("title")).strip() or url or "探索页面"
+    if not url:
+        return None
+
+    normalized_path = _normalize_snapshot_url_path(url)
+    page_id = _snapshot_page_id(normalized_path)
+    elements = snapshot.get("elements") if isinstance(snapshot.get("elements"), list) else []
+    artifact_elements = _snapshot_elements_for_artifact(elements)
+    captured_at = datetime.now(timezone.utc).isoformat()
+    artifact = {
+        "page": {
+            "id": page_id,
+            "title": title,
+            "url": url,
+            "normalized_url": normalized_path,
+            "module": "主探索模块",
+            "status": "explored",
+            "structure_summary": f"自动保存页面快照，发现 {len(artifact_elements)} 个元素。",
+            "elements": artifact_elements,
+        },
+        "states": [
+            {
+                "id": "snapshot-current",
+                "title": title,
+                "url": url,
+                "elements": artifact_elements,
+                "raw_output": _string(snapshot.get("raw_output")),
+            }
+        ],
+        "actions": [
+            {
+                "id": "snapshot-captured",
+                "type": "snapshot",
+                "target": title,
+                "result": "浏览器快照已自动保存为页面产物。",
+                "status": "completed",
+                "occurred_at": captured_at,
+                "source": "playwright_snap_tool",
+            }
+        ],
+        "metadata": {
+            "captured_at": captured_at,
+            "source": "snapshot_checkpoint",
+        },
+    }
+
+    pages_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration" / "runs" / run_id / "pages"
+    path = pages_dir / f"{page_id}.yaml"
+    _write_yaml_file(path, artifact)
+    return path
+
+
+def _coerce_tool_output_dict(output) -> dict:
+    if isinstance(output, dict):
+        return output
+    content = getattr(output, "content", None)
+    if content is None and isinstance(output, str):
+        content = output
+    if not isinstance(content, str):
+        return {}
+    try:
+        loaded = json.loads(content)
+    except json.JSONDecodeError:
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _normalize_snapshot_url_path(url: str) -> str:
+    parsed = urlparse(url)
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    return path
+
+
+def _snapshot_page_id(normalized_path: str) -> str:
+    value = normalized_path.strip("/") or "home"
+    for char in ("?", "&", "=", "#", "%", ":"):
+        value = value.replace(char, "-")
+    value = value.replace("/", "-")
+    value = "-".join(part for part in value.split("-") if part)
+    return f"page-{value or 'home'}"
+
+
+def _snapshot_elements_for_artifact(elements: list) -> list[dict]:
+    result = []
+    for index, element in enumerate(elements, start=1):
+        if not isinstance(element, dict):
+            continue
+        name = _string(element.get("name") or element.get("text") or element.get("ref") or f"element-{index}")
+        role = _string(element.get("role") or "element")
+        result.append(
+            {
+                "id": _string(element.get("ref") or f"element-{index}"),
+                "name": name,
+                "role": role,
+                "text": element.get("text"),
+                "visible": bool(element.get("visible", True)),
+                "locators": _semantic_locator_candidates(role, name),
+            }
+        )
+    return result
+
+
+def _semantic_locator_candidates(role: str, name: str) -> list[dict]:
+    if not role or role == "element" or not name:
+        return []
+    escaped_name = name.replace("\\", "\\\\").replace("'", "\\'")
+    return [
+        {
+            "kind": "role",
+            "code": f"getByRole('{role}', {{ name: '{escaped_name}' }})",
+            "priority": 1,
+        }
+    ]
+
+
+def _upsert_exploration_page(db, **kwargs) -> None:
+    db.execute(
+        """
+        INSERT INTO exploration_pages (
+            id, exploration_run_id, module_key, title, url,
+            entry_path, structure_summary, screenshot_path,
+            snapshot_path, trace_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            module_key = excluded.module_key,
+            title = excluded.title,
+            url = excluded.url,
+            entry_path = excluded.entry_path,
+            structure_summary = excluded.structure_summary,
+            snapshot_path = excluded.snapshot_path
+        """,
+        (
+            kwargs["page_id"],
+            kwargs["run_id"],
+            kwargs["module_key"],
+            kwargs["title"],
+            kwargs["url"],
+            kwargs["entry_path"],
+            kwargs["structure_summary"],
+            "",
+            kwargs["snapshot_path"],
+            "",
+        ),
+    )
+
+
+def _upsert_exploration_artifact(db, **kwargs) -> None:
+    db.execute(
+        """
+        INSERT INTO exploration_artifacts (
+            id, exploration_run_id, artifact_type, file_path, title, summary
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            artifact_type = excluded.artifact_type,
+            file_path = excluded.file_path,
+            title = excluded.title,
+            summary = excluded.summary
+        """,
+        (
+            kwargs["artifact_id"],
+            kwargs["run_id"],
+            kwargs["artifact_type"],
+            kwargs["file_path"],
+            kwargs["title"],
+            kwargs["summary"],
+        ),
+    )
+
+
+def _page_structure_summary(artifact: dict) -> str:
+    page = artifact.get("page") if isinstance(artifact.get("page"), dict) else {}
+    elements = page.get("elements")
+    if not isinstance(elements, list):
+        states = artifact.get("states")
+        elements = []
+        if isinstance(states, list):
+            for state in states:
+                if isinstance(state, dict) and isinstance(state.get("elements"), list):
+                    elements.extend(state["elements"])
+    return f"发现 {len(elements)} 个元素"
 
 
 def _initial_exploration_plan_steps(start_url: str, max_pages: int) -> list[dict]:
@@ -803,14 +1389,21 @@ async def _invoke_agent_with_realtime_events(
         if hasattr(agent, "astream_events"):
             final_result = None
             async for event in agent.astream_events(payload, version="v2", config=config):
+                _ensure_exploration_not_stopping(run_id)
                 _publish_agent_stream_event(run_id, event)
                 event_log.append("agent_stream_event", _compact_agent_event(event))
+                _checkpoint_snapshot_artifact_from_event(
+                    event,
+                    project_id=project_id,
+                    run_id=run_id,
+                )
                 data = event.get("data") if isinstance(event, dict) else {}
                 if isinstance(data, dict) and "output" in data:
                     final_result = data["output"]
             result = final_result if final_result is not None else {}
         else:
             result = await _ainvoke_agent(agent, payload, config)
+            _ensure_exploration_not_stopping(run_id)
         event_bus.publish(
             run_id,
             "step_completed",
@@ -927,12 +1520,13 @@ def _publish_agent_stream_event(run_id: str, event: dict) -> None:
     event_name = str(event.get("event") or "")
     name = str(event.get("name") or "")
     data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    lifecycle_step_id = _agent_stream_lifecycle_step_id(event_name, event, name)
     if event_name in {"on_tool_start", "on_chain_start"}:
         event_bus.publish(
             run_id,
             "step_started",
             {
-                "step_id": f"agent-{event_name}-{event.get('run_id') or name}",
+                "step_id": lifecycle_step_id,
                 "step_number": 2,
                 "module_name": "主探索模块",
                 "action_type": name or event_name,
@@ -954,7 +1548,7 @@ def _publish_agent_stream_event(run_id: str, event: dict) -> None:
             run_id,
             "step_completed",
             {
-                "step_id": f"agent-{event_name.replace('_end', '_start')}-{event.get('run_id') or name}",
+                "step_id": lifecycle_step_id,
                 "step_number": 2,
                 "module_name": "主探索模块",
                 "action_type": name or event_name,
@@ -977,7 +1571,7 @@ def _publish_agent_stream_event(run_id: str, event: dict) -> None:
             run_id,
             "step_failed",
             {
-                "step_id": f"agent-{event_name}-{event.get('run_id') or name}",
+                "step_id": lifecycle_step_id,
                 "step_number": 2,
                 "module_name": "主探索模块",
                 "action_type": name or event_name,
@@ -996,6 +1590,15 @@ def _publish_agent_stream_event(run_id: str, event: dict) -> None:
                 "message": f"{name or event_name} 执行失败",
             },
         )
+
+
+def _agent_stream_lifecycle_step_id(event_name: str, event: dict, name: str) -> str:
+    run_key = event.get("run_id") or name
+    if event_name.startswith("on_tool_"):
+        return f"agent-on_tool-{run_key}"
+    if event_name.startswith("on_chain_"):
+        return f"agent-on_chain-{run_key}"
+    return f"agent-{event_name}-{run_key}"
 
 
 def _agent_result_summary(result) -> str:
@@ -1056,21 +1659,98 @@ def get_exploration_status(run_id: str) -> dict:
 def list_exploration_runs(actor, project_id: str, limit: int = 100) -> list[dict]:
     """列出项目的探索任务"""
     with connect() as db:
-        runs = exploration_run_repo.list_by_project(db, project_id, limit)
+        runs = db.execute(
+            """
+            SELECT er.*,
+                   p.name AS project_name,
+                   pe.name AS environment_name,
+                   COALESCE(sd.name, '') AS requirement_doc_title
+            FROM exploration_runs er
+            JOIN projects p ON p.id = er.project_id
+            JOIN project_environments pe ON pe.id = er.environment_id
+            LEFT JOIN source_documents sd ON sd.id = er.requirement_doc_id
+            WHERE er.project_id = ?
+            ORDER BY er.created_at DESC
+            LIMIT ?
+            """,
+            (project_id, limit),
+        ).fetchall()
         return [dict(r) for r in runs]
 
 
 def list_running_runs(actor, project_id: str | None = None) -> list[dict]:
     """列出运行中的探索任务"""
     with connect() as db:
-        runs = exploration_run_repo.list_running(db, project_id)
+        if project_id:
+            runs = db.execute(
+                """
+                SELECT er.*,
+                       p.name AS project_name,
+                       pe.name AS environment_name,
+                       COALESCE(sd.name, '') AS requirement_doc_title
+                FROM exploration_runs er
+                JOIN projects p ON p.id = er.project_id
+                JOIN project_environments pe ON pe.id = er.environment_id
+                LEFT JOIN source_documents sd ON sd.id = er.requirement_doc_id
+                WHERE er.project_id = ? AND er.status IN ('running', 'queued', 'stopping')
+                ORDER BY er.created_at DESC
+                """,
+                (project_id,),
+            ).fetchall()
+        else:
+            runs = db.execute(
+                """
+                SELECT er.*,
+                       p.name AS project_name,
+                       pe.name AS environment_name,
+                       COALESCE(sd.name, '') AS requirement_doc_title
+                FROM exploration_runs er
+                JOIN projects p ON p.id = er.project_id
+                JOIN project_environments pe ON pe.id = er.environment_id
+                LEFT JOIN source_documents sd ON sd.id = er.requirement_doc_id
+                WHERE er.status IN ('running', 'queued', 'stopping')
+                ORDER BY er.created_at DESC
+                """
+            ).fetchall()
         return [dict(r) for r in runs]
 
 
 def list_all_runs(actor, project_id: str | None = None, limit: int = 100) -> list[dict]:
     """列出所有探索任务（支持全局和按项目筛选）"""
     with connect() as db:
-        runs = exploration_run_repo.list_all(db, project_id, limit)
+        if project_id:
+            runs = db.execute(
+                """
+                SELECT er.*,
+                       p.name AS project_name,
+                       pe.name AS environment_name,
+                       COALESCE(sd.name, '') AS requirement_doc_title
+                FROM exploration_runs er
+                JOIN projects p ON p.id = er.project_id
+                JOIN project_environments pe ON pe.id = er.environment_id
+                LEFT JOIN source_documents sd ON sd.id = er.requirement_doc_id
+                WHERE er.project_id = ?
+                ORDER BY er.created_at DESC
+                LIMIT ?
+                """,
+                (project_id, limit),
+            ).fetchall()
+        else:
+            runs = db.execute(
+                """
+                SELECT er.*,
+                       p.name AS project_name,
+                       pe.name AS environment_name,
+                       COALESCE(sd.name, '') AS requirement_doc_title
+                FROM exploration_runs er
+                JOIN projects p ON p.id = er.project_id
+                JOIN project_environments pe ON pe.id = er.environment_id
+                LEFT JOIN source_documents sd ON sd.id = er.requirement_doc_id
+                ORDER BY er.created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
         return [dict(r) for r in runs]
 
 
@@ -1116,7 +1796,7 @@ def get_exploration_report(actor, run_id: str) -> dict:
             "markdown_content": report_content,
             "change_summary": "",
             "created_at": run_dict.get("finished_at") or run_dict.get("updated_at"),
-            "artifact_schema_version": 1,
+            "artifact_schema_version": 2,
             "unsupported_artifact": False,
             "unsupported_reason": "",
         }

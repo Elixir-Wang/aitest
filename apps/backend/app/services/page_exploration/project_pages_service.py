@@ -10,7 +10,6 @@ from datetime import datetime
 import yaml
 import logging
 
-from app.agents.page_exploration.schemas import PageArtifact, CacheEntry
 from app.agents.page_exploration.utils.url_normalizer import URLNormalizer
 
 logger = logging.getLogger(__name__)

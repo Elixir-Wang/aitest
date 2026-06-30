@@ -123,6 +123,7 @@ export type ApiExplorationRun = {
   requirement_doc_title: string;
   title: string;
   status: string;
+  exploration_mode: "goal" | "autonomous";
   scope: string;
   forbidden_paths: string;
   login_strategy: string;
@@ -256,7 +257,7 @@ export type ApiAvailableAction = {
 export type ApiKnowledgeSourceRef = {
   project_id: string | null;
   project_name: string | null;
-  source_type: "requirement" | "exploration" | "manual";
+  source_type: "requirement" | "company_knowledge" | "exploration" | "manual";
   source_id: string;
   source_title: string;
   location: string;

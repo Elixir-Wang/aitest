@@ -118,7 +118,7 @@ type ProjectKnowledgeStreamEvent =
   | { type: "thinking_delta"; delta: string }
   | { type: "metadata"; result: ApiKnowledgeQueryResult }
   | { type: "done" }
-  | { type: "error"; message: string };
+  | { type: "error"; code?: string; message: string; result?: ApiKnowledgeQueryResult };
 
 function companyTreeContainsNode(node: ApiCompanyKnowledgeTreeNode, nodeId: string): boolean {
   if (node.id === nodeId) {
@@ -325,6 +325,7 @@ export default function Page() {
   const projectQueryAbortControllerRef = useRef<AbortController | null>(null);
   const projectConversationLoadRunIdRef = useRef(0);
   const projectConversationOpenRunIdRef = useRef(0);
+  const projectAutoOpenConversationKeyRef = useRef("");
   const [companyFiles, setCompanyFiles] = useState<File[]>([]);
   const [companyUploadStates, setCompanyUploadStates] = useState<
     Record<string, { progress: number; status: "idle" | "uploading" | "completed" | "error" }>
@@ -355,16 +356,6 @@ export default function Page() {
         : null;
   const projectId = effectiveProjectId;
   const projectResetKey = `${effectiveKnowledgeScope}:${effectiveProjectId ?? ""}`;
-  const knowledgeProjectScopeOptions = [
-    { value: "all", label: "全部项目知识库" },
-    ...activeProjects.map((project) => ({
-      value: project.id,
-      label: project.name,
-      locked: globalProjectScope === "project" && project.id === activeCurrentProject?.id,
-    })),
-  ];
-  const selectedProjectScope = effectiveKnowledgeScope === "project" ? (effectiveProjectId ?? "") : "all";
-
   useEffect(() => {
     hydrate();
   }, [hydrate]);
@@ -454,6 +445,7 @@ export default function Page() {
     projectConversationLoadRunIdRef.current += 1;
     projectConversationOpenRunIdRef.current += 1;
     latestProjectQueryScopeRef.current = projectResetKey;
+    projectAutoOpenConversationKeyRef.current = "";
     setProjectMessages([]);
     setProjectChatDraft("");
     setProjectConversations([]);
@@ -466,34 +458,6 @@ export default function Page() {
   function stopProjectKnowledgeQuery() {
     projectQueryAbortControllerRef.current?.abort();
   }
-
-  const loadProjectConversations = useCallback(async (scope: "all" | "project", targetProjectId?: string) => {
-    const scopeKey = scope === "all" ? "all:" : `project:${targetProjectId ?? ""}`;
-    const conversationLoadRunId = projectConversationLoadRunIdRef.current + 1;
-    projectConversationLoadRunIdRef.current = conversationLoadRunId;
-    const isCurrentConversationLoad = () =>
-      projectConversationLoadRunIdRef.current === conversationLoadRunId &&
-      latestProjectQueryScopeRef.current === scopeKey;
-    setLoading(true);
-    setError("");
-    try {
-      const conversationsPath =
-        scope === "all" ? "/knowledge/conversations" : `/projects/${targetProjectId}/knowledge/conversations`;
-      const conversations = await apiRequest<ApiKnowledgeConversation[]>(conversationsPath);
-      if (isCurrentConversationLoad()) {
-        setProjectConversations(conversations);
-      }
-    } catch (nextError) {
-      if (isCurrentConversationLoad()) {
-        setError(nextError instanceof Error ? nextError.message : "加载项目知识库对话失败。");
-        setProjectConversations([]);
-      }
-    } finally {
-      if (isCurrentConversationLoad()) {
-        setLoading(false);
-      }
-    }
-  }, []);
 
   const openProjectConversation = useCallback(
     async (scope: "all" | "project", conversationId: string, targetProjectId?: string) => {
@@ -529,6 +493,42 @@ export default function Page() {
     [],
   );
 
+  const loadProjectConversations = useCallback(
+    async (scope: "all" | "project", targetProjectId?: string) => {
+      const scopeKey = scope === "all" ? "all:" : `project:${targetProjectId ?? ""}`;
+      const conversationLoadRunId = projectConversationLoadRunIdRef.current + 1;
+      projectConversationLoadRunIdRef.current = conversationLoadRunId;
+      const isCurrentConversationLoad = () =>
+        projectConversationLoadRunIdRef.current === conversationLoadRunId &&
+        latestProjectQueryScopeRef.current === scopeKey;
+      setLoading(true);
+      setError("");
+      try {
+        const conversationsPath =
+          scope === "all" ? "/knowledge/conversations" : `/projects/${targetProjectId}/knowledge/conversations`;
+        const conversations = await apiRequest<ApiKnowledgeConversation[]>(conversationsPath);
+        if (isCurrentConversationLoad()) {
+          setProjectConversations(conversations);
+          const latestConversation = conversations[0];
+          if (latestConversation && projectAutoOpenConversationKeyRef.current !== scopeKey) {
+            projectAutoOpenConversationKeyRef.current = scopeKey;
+            void openProjectConversation(scope, latestConversation.id, targetProjectId);
+          }
+        }
+      } catch (nextError) {
+        if (isCurrentConversationLoad()) {
+          setError(nextError instanceof Error ? nextError.message : "加载项目知识库对话失败。");
+          setProjectConversations([]);
+        }
+      } finally {
+        if (isCurrentConversationLoad()) {
+          setLoading(false);
+        }
+      }
+    },
+    [openProjectConversation],
+  );
+
   useEffect(() => {
     if (isCompanyKnowledge) {
       return;
@@ -548,16 +548,6 @@ export default function Page() {
     setProjectMessages([]);
     setProjectChatDraft("");
     setError("");
-  }
-
-  function changeKnowledgeProjectScope(value: string) {
-    if (value === "all") {
-      setKnowledgeScope("all");
-      setKnowledgeProjectId(null);
-      return;
-    }
-    setKnowledgeScope("project");
-    setKnowledgeProjectId(value);
   }
 
   async function deleteProjectConversation(conversationId: string) {
@@ -685,6 +675,7 @@ export default function Page() {
       role: "assistant",
       body: "",
     };
+    let errorResultPersisted = false;
     setProjectMessages((messages) => [...messages, userMessage, assistantMessage]);
     setProjectChatDraft("");
     setRunning(true);
@@ -738,11 +729,15 @@ export default function Page() {
               );
             }
           } else if (event.type === "thinking_delta") {
+            const thinkingDelta = sanitizeThinkingText(event.delta);
+            if (!thinkingDelta) {
+              continue;
+            }
             if (isCurrentProjectQueryScope()) {
               setProjectMessages((messages) =>
                 messages.map((message) =>
                   message.id === assistantMessageId
-                    ? { ...message, thinking: `${message.thinking ?? ""}${event.delta}` }
+                    ? { ...message, thinking: `${message.thinking ?? ""}${thinkingDelta}\n` }
                     : message,
                 ),
               );
@@ -762,6 +757,18 @@ export default function Page() {
               );
             }
           } else if (event.type === "error") {
+            const errorResult = event.result;
+            const errorConversation = errorResult?.conversation;
+            if (errorResult && errorConversation && isCurrentProjectQueryScope()) {
+              errorResultPersisted = true;
+              setActiveProjectConversationId(errorConversation.id);
+              setProjectConversations((items) => upsertConversation(items, errorConversation));
+              setProjectMessages((messages) =>
+                messages.map((message) =>
+                  message.id === assistantMessageId ? mergeAssistantStreamResult(message, errorResult) : message,
+                ),
+              );
+            }
             throw new Error(event.message || "查询项目知识库失败。");
           }
         }
@@ -782,7 +789,9 @@ export default function Page() {
           );
         } else {
           setError(nextError instanceof Error ? nextError.message : "查询项目知识库失败。");
-          setProjectMessages((messages) => messages.filter((message) => message.id !== assistantMessageId));
+          if (!errorResultPersisted) {
+            setProjectMessages((messages) => messages.filter((message) => message.id !== assistantMessageId));
+          }
         }
       }
     } finally {
@@ -1300,16 +1309,13 @@ export default function Page() {
           onConversationCreate={createProjectConversation}
           onConversationDelete={(conversationId) => void deleteProjectConversation(conversationId)}
           onModelProviderChange={(modelProviderId) => void updateKnowledgeQueryModelProvider(modelProviderId)}
-          onProjectScopeChange={changeKnowledgeProjectScope}
           onShowThinkingChange={setShowProjectThinking}
           onStop={stopProjectKnowledgeQuery}
           onSubmit={(question) => void queryProjectKnowledge(question)}
-          projectScopeOptions={knowledgeProjectScopeOptions}
           projectSelected={effectiveKnowledgeScope === "all" || Boolean(projectId)}
           projectConversationEnabled={effectiveKnowledgeScope === "all" || Boolean(projectId)}
           running={running}
           selectedModelProviderId={selectedKnowledgeModelProviderId}
-          selectedProjectScope={selectedProjectScope}
           showThinking={showProjectThinking}
           value={projectChatDraft}
           onValueChange={setProjectChatDraft}
@@ -1424,6 +1430,48 @@ function parseProjectKnowledgeStreamEvent(chunk: string): ProjectKnowledgeStream
   }
 }
 
+function sanitizeThinkingText(value: string): string {
+  return value
+    .replace(/<!--\s*source_metadata:[\s\S]*?-->/gi, "")
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        .replace(/^\s*\d+\s+(?=\S)/, "")
+        .replace(/^\s*(read_file|grep|glob|ls)\b.*$/i, "")
+        .trim(),
+    )
+    .filter(Boolean)
+    .join("\n");
+}
+
+function formatThinkingItems(value: string): string[] {
+  const seen = new Set<string>();
+  return sanitizeThinkingText(value)
+    .split(/\r?\n+/)
+    .map((line) => line.replace(/^[-*]\s+/, "").trim())
+    .filter((line) => {
+      if (!line || seen.has(line)) {
+        return false;
+      }
+      seen.add(line);
+      return true;
+    })
+    .slice(0, 8);
+}
+
+function knowledgeSourceRefLabel(sourceType: ApiKnowledgeQueryResult["source_refs"][number]["source_type"]): string {
+  if (sourceType === "requirement") {
+    return "需求";
+  }
+  if (sourceType === "company_knowledge") {
+    return "文档";
+  }
+  if (sourceType === "exploration") {
+    return "探索";
+  }
+  return "手动";
+}
+
 function upsertConversation(
   conversations: ApiKnowledgeConversation[],
   conversation: ApiKnowledgeConversation,
@@ -1444,16 +1492,13 @@ function ProjectKnowledgeWorkspace({
   onConversationDelete,
   onConversationOpen,
   onModelProviderChange,
-  onProjectScopeChange,
   onShowThinkingChange,
   onStop,
   onSubmit,
   projectConversationEnabled,
-  projectScopeOptions,
   projectSelected,
   running,
   selectedModelProviderId,
-  selectedProjectScope,
   showThinking,
   value,
   onValueChange,
@@ -1470,16 +1515,13 @@ function ProjectKnowledgeWorkspace({
   onConversationDelete: (conversationId: string) => void;
   onConversationOpen: (conversationId: string) => void;
   onModelProviderChange: (modelProviderId: string) => void;
-  onProjectScopeChange: (value: string) => void;
   onShowThinkingChange: (value: boolean) => void;
   onStop: () => void;
   onSubmit: (instruction: string) => void;
   projectConversationEnabled: boolean;
-  projectScopeOptions: Array<{ value: string; label: string; locked?: boolean }>;
   projectSelected: boolean;
   running: boolean;
   selectedModelProviderId: string;
-  selectedProjectScope: string;
   showThinking: boolean;
   value: string;
   onValueChange: (value: string) => void;
@@ -1499,8 +1541,27 @@ function ProjectKnowledgeWorkspace({
     projectHistoryOpen,
     running,
   ].join("|");
-  const projectScopeDisabled = projectScopeOptions.some(
-    (option) => option.value === selectedProjectScope && option.locked,
+  const chatControl = (
+    <KnowledgeChatTopControls
+      historyOpen={projectHistoryOpen}
+      onConversationCreate={onConversationCreate}
+      onHistoryOpen={() => {
+        if (!projectSelected || running) {
+          return;
+        }
+        setHistoryOpen(true);
+      }}
+      onHistoryClose={() => {
+        if (!projectSelected || running) {
+          return;
+        }
+        setHistoryOpen(false);
+      }}
+      onShowThinkingChange={onShowThinkingChange}
+      projectSelected={projectSelected}
+      running={running}
+      showThinking={showThinking}
+    />
   );
 
   useLayoutEffect(() => {
@@ -1522,29 +1583,16 @@ function ProjectKnowledgeWorkspace({
   }, [projectSelected]);
 
   return (
-    <ShellSection className="h-[clamp(30rem,calc(100dvh-14rem),42rem)] p-0">
+    <ShellSection className="h-[calc(100dvh-14rem)] min-h-[28rem] overflow-hidden p-0">
       <div
         className={
           projectHistoryOpen
-            ? "grid h-full overflow-hidden rounded-lg border bg-background lg:grid-cols-[18rem_minmax(0,1fr)]"
-            : "relative grid h-full overflow-hidden rounded-lg border bg-background"
+            ? "grid h-full min-h-0 rounded-lg border bg-background lg:grid-cols-[18rem_minmax(0,1fr)]"
+            : "relative grid h-full min-h-0 rounded-lg border bg-background"
         }
       >
-        {!projectHistoryOpen ? (
-          <KnowledgeChatTopControls
-            onConversationCreate={onConversationCreate}
-            onHistoryOpen={() => {
-              if (!projectSelected || running) {
-                return;
-              }
-              setHistoryOpen(true);
-            }}
-            projectSelected={projectSelected}
-            running={running}
-          />
-        ) : null}
         {projectHistoryOpen ? (
-          <aside className="flex min-h-0 flex-col border-b bg-muted/20 lg:border-r lg:border-b-0">
+          <aside className="flex min-h-[16rem] flex-col border-b bg-muted/20 lg:border-r lg:border-b-0">
             <div className="flex items-center justify-between gap-2 border-b bg-muted/30 p-3">
               <div className="flex items-center gap-2 font-medium text-sm">
                 <MessageSquare className="size-4 text-primary" />
@@ -1565,7 +1613,7 @@ function ProjectKnowledgeWorkspace({
                 </Button>
               </div>
             </div>
-            <div className="min-h-0 flex-1 space-y-1 overflow-auto p-2">
+            <div className="max-h-[calc(100dvh-20rem)] min-h-0 flex-1 space-y-1 overflow-auto p-2 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-18rem)]">
               {loading ? (
                 <div className="px-2 py-3 text-muted-foreground text-sm">正在加载对话。</div>
               ) : conversations.length === 0 ? (
@@ -1607,7 +1655,7 @@ function ProjectKnowledgeWorkspace({
         ) : null}
 
         {!hasConversation ? (
-          <div className="relative flex min-h-0 flex-col items-center justify-center overflow-hidden px-4 py-6 min-[900px]:py-10">
+          <div className="relative flex min-h-[calc(100dvh-14rem)] flex-col items-center justify-center px-4 py-6 min-[900px]:py-10">
             <div className="relative mb-5 text-center min-[900px]:mb-8">
               <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-lg border bg-primary text-primary-foreground shadow-sm min-[900px]:mb-6 min-[900px]:size-20">
                 <Command className="size-8 min-[900px]:size-10" />
@@ -1625,21 +1673,16 @@ function ProjectKnowledgeWorkspace({
             <KnowledgeChatInput
               compact
               disabled={!projectSelected}
+              leadingControl={chatControl}
               loading={running}
               modelLoading={modelLoading}
               modelProviders={modelProviders}
               modelSaving={modelSaving}
               onModelProviderChange={onModelProviderChange}
-              onProjectScopeChange={onProjectScopeChange}
-              onShowThinkingChange={onShowThinkingChange}
               onStop={onStop}
               onSubmit={onSubmit}
               onValueChange={onValueChange}
-              projectScopeDisabled={projectScopeDisabled}
-              projectScopeOptions={projectScopeOptions}
               selectedModelProviderId={selectedModelProviderId}
-              selectedProjectScope={selectedProjectScope}
-              showThinking={showThinking}
               value={value}
             />
             <div className="relative mt-4 flex max-w-2xl flex-wrap justify-center gap-2 px-4 min-[900px]:mt-5">
@@ -1663,14 +1706,8 @@ function ProjectKnowledgeWorkspace({
             ) : null}
           </div>
         ) : (
-          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-            <div
-              className={
-                projectHistoryOpen
-                  ? "min-h-0 flex-1 space-y-4 overflow-auto bg-muted/20 p-4"
-                  : "min-h-0 flex-1 space-y-4 overflow-auto bg-muted/20 px-4 pt-16 pb-4"
-              }
-            >
+          <div className="relative flex h-full min-h-0 min-w-0 flex-col">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-muted/20 px-4 pt-4 pb-32">
               {messages.map((message) => (
                 <ChatMessage
                   body={message.body}
@@ -1688,14 +1725,14 @@ function ProjectKnowledgeWorkspace({
                 >
                   {message.sourceRefs?.length ? (
                     <div className="mt-3 space-y-2 border-t pt-3">
-                      <div className="font-medium text-muted-foreground text-xs">来源引用</div>
+                      <div className="font-medium text-muted-foreground text-xs">参考文档</div>
                       {message.sourceRefs.slice(0, 6).map((ref) => (
                         <div
                           className="rounded-md border bg-muted/30 p-2 text-xs"
                           key={`${ref.source_type}-${ref.source_id}-${ref.location}-${ref.excerpt}`}
                         >
                           <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="outline">{ref.source_type === "requirement" ? "需求" : "探索"}</Badge>
+                            <Badge variant="outline">{knowledgeSourceRefLabel(ref.source_type)}</Badge>
                             {ref.project_name ? <Badge variant="secondary">{ref.project_name}</Badge> : null}
                             <span className="font-medium">{ref.source_title}</span>
                           </div>
@@ -1712,26 +1749,22 @@ function ProjectKnowledgeWorkspace({
               {error ? <ChatMessage body={error} icon={TriangleAlert} title="查询失败" tone="warning" /> : null}
               <div ref={messagesEndRef} />
             </div>
-            <div className="bg-muted/20 p-4">
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-muted/80 via-muted/45 to-transparent px-4 pt-8 pb-4">
               <KnowledgeChatInput
                 compact
                 disabled={!projectSelected}
+                leadingControl={chatControl}
                 loading={running}
                 modelLoading={modelLoading}
                 modelProviders={modelProviders}
                 modelSaving={modelSaving}
                 onModelProviderChange={onModelProviderChange}
-                onProjectScopeChange={onProjectScopeChange}
-                onShowThinkingChange={onShowThinkingChange}
                 onStop={onStop}
                 onSubmit={onSubmit}
                 onValueChange={onValueChange}
-                projectScopeDisabled={projectScopeDisabled}
-                projectScopeOptions={projectScopeOptions}
                 selectedModelProviderId={selectedModelProviderId}
-                selectedProjectScope={selectedProjectScope}
-                showThinking={showThinking}
                 value={value}
+                wrapperClassName="pointer-events-auto"
               />
             </div>
           </div>
@@ -1742,44 +1775,70 @@ function ProjectKnowledgeWorkspace({
 }
 
 function KnowledgeChatTopControls({
+  historyOpen,
   onConversationCreate,
+  onHistoryClose,
   onHistoryOpen,
   projectSelected,
   running,
+  showThinking,
+  onShowThinkingChange,
 }: {
+  historyOpen: boolean;
   onConversationCreate: () => void;
+  onHistoryClose: () => void;
   onHistoryOpen: () => void;
   projectSelected: boolean;
   running: boolean;
+  showThinking: boolean;
+  onShowThinkingChange: (value: boolean) => void;
 }) {
   const controlDisabledReason = !projectSelected ? "请选择知识库后使用对话" : "查询中";
-  const historyTitle = projectSelected && !running ? "展开对话历史" : controlDisabledReason;
-  const createTitle = projectSelected && !running ? "新建对话" : controlDisabledReason;
+  const createTitle = projectSelected && !running ? "新增会话" : controlDisabledReason;
+  const historyTitle = projectSelected && !running ? (historyOpen ? "关闭历史" : "展开历史") : controlDisabledReason;
+  const thinkingTitle = showThinking ? "关闭深度思考显示" : "显示深度思考内容";
 
   return (
-    <div className="pointer-events-none absolute top-4 left-4 z-50 flex items-center gap-3">
-      <div className="pointer-events-auto flex h-10 items-center gap-1 rounded-lg border bg-background/95 px-2 shadow-sm backdrop-blur">
-        <button
-          aria-label="展开对话历史"
-          className="inline-flex size-8 items-center justify-center rounded-md text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45"
-          disabled={!projectSelected || running}
-          onClick={onHistoryOpen}
-          title={historyTitle}
-          type="button"
-        >
-          <PanelLeftOpen className="size-4" />
-        </button>
-        <button
-          aria-label="新建对话"
-          className="inline-flex size-8 items-center justify-center rounded-md text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45"
-          disabled={!projectSelected || running}
-          onClick={onConversationCreate}
-          title={createTitle}
-          type="button"
-        >
-          <Plus className="size-4" />
-        </button>
-      </div>
+    <div className="flex shrink-0 items-center gap-1">
+      <button
+        aria-label="新建对话"
+        className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+        disabled={!projectSelected || running}
+        onClick={onConversationCreate}
+        title={createTitle}
+        type="button"
+      >
+        <Plus className="size-4" />
+      </button>
+      <button
+        aria-label="深度思考"
+        aria-pressed={showThinking}
+        className={
+          showThinking
+            ? "inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-45"
+            : "inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+        }
+        disabled={!projectSelected || running}
+        onClick={() => onShowThinkingChange(!showThinking)}
+        title={thinkingTitle}
+        type="button"
+      >
+        <Brain className="size-4" />
+      </button>
+      <button
+        aria-label="展开对话历史"
+        className={
+          historyOpen
+            ? "inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground transition-colors hover:bg-muted/80 disabled:cursor-not-allowed disabled:opacity-45"
+            : "inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+        }
+        disabled={!projectSelected || running}
+        onClick={historyOpen ? onHistoryClose : onHistoryOpen}
+        title={historyTitle}
+        type="button"
+      >
+        {historyOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
+      </button>
     </div>
   );
 }
@@ -1802,7 +1861,8 @@ function ChatMessage({
   tone: "assistant" | "user" | "warning";
 }) {
   const isUser = tone === "user";
-  const showThinking = tone === "assistant" && thinking.trim().length > 0;
+  const thinkingItems = formatThinkingItems(thinking);
+  const showThinking = tone === "assistant" && thinkingItems.length > 0;
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div className={isUser ? "max-w-[82%]" : "max-w-[88%]"}>
@@ -1824,12 +1884,27 @@ function ChatMessage({
           }
         >
           {showThinking ? (
-            <details className="mb-3 rounded-md border bg-muted/30 p-2 text-muted-foreground text-xs" open={loading}>
-              <summary className="flex cursor-pointer list-none items-center gap-1.5 font-medium text-foreground">
-                <Brain className="size-3.5" />
-                深度思考
+            <details
+              className="mb-3 overflow-hidden rounded-md border border-border/80 bg-muted/25 text-xs"
+              open={loading}
+            >
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-2.5 py-2 font-medium text-foreground">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <Brain className="size-3.5 shrink-0 text-primary" />
+                  <span>深度思考</span>
+                </span>
+                <span className="shrink-0 text-muted-foreground">{thinkingItems.length} 步</span>
               </summary>
-              <p className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap leading-5">{thinking.trim()}</p>
+              <ol className="max-h-44 space-y-1 overflow-auto border-t px-2.5 py-2 text-muted-foreground">
+                {thinkingItems.map((item, index) => (
+                  <li className="flex gap-2 leading-5" key={item}>
+                    <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border bg-background font-medium text-[10px] text-muted-foreground">
+                      {index + 1}
+                    </span>
+                    <span className="min-w-0 break-words">{item}</span>
+                  </li>
+                ))}
+              </ol>
             </details>
           ) : null}
           {loading && body.length === 0 ? (

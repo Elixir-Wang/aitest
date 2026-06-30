@@ -1,0 +1,69 @@
+page:
+  id: page-chathistory
+  title: 对话历史 - 百融百工
+  normalized_path: /chathistory
+  explored_at: '2026-06-30T13:18:50.421927Z'
+  elements:
+  - id: username_filter
+    name: 用户名
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''用户名'' })'
+      priority: 1
+  - id: source_filter
+    name: 来源
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''来源'' })'
+      priority: 1
+  - id: admin_feedback_filter
+    name: 管理员反馈
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''管理员反馈'' })'
+      priority: 1
+  - id: agent_jump_filter
+    name: Agent跳转
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''Agent跳转'' })'
+      priority: 1
+  - id: start_date_input
+    name: 开始日期
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''开始日期'' })'
+      priority: 1
+  - id: end_date_input
+    name: 结束日期
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''结束日期'' })'
+      priority: 1
+  - id: search_keyword_input
+    name: 请输入关键字查找
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入关键字查找'' })'
+      priority: 1
+  - id: export_btn
+    name: 导出
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''导出'' })'
+      priority: 1
+  - id: page_size_btn
+    name: 10条/页
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''10条/页'' })'
+      priority: 1

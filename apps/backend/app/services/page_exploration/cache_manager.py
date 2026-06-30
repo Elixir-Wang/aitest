@@ -170,11 +170,15 @@ class CacheManager:
 
         total_size = 0
         for page in pages:
-            page_file = Path(page['file'])
+            page_file = self.pages_service.pages_dir / page["file"]
             if page_file.exists():
                 total_size += page_file.stat().st_size
 
+        cache_size_mb = round(total_size / (1024 * 1024), 2)
+        if total_size > 0 and cache_size_mb == 0:
+            cache_size_mb = 0.01
+
         return {
             'total_pages': len(pages),
-            'cache_size_mb': round(total_size / (1024 * 1024), 2)
+            'cache_size_mb': cache_size_mb
         }

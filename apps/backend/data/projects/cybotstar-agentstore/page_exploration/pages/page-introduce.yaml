@@ -1,0 +1,104 @@
+page:
+  id: page-introduce
+  title: 百融百工 - 产品介绍
+  normalized_path: /introduce
+  explored_at: '2026-06-29T15:32:23.383536Z'
+  elements:
+  - id: logo_img
+    name: Logo图片
+    role: img
+    locators:
+    - kind: role
+      code: 'getByRole(''img'', { name: ''Logo'' })'
+      priority: 1
+  - id: product_manual_btn
+    name: 产品手册
+    role: button
+    locators:
+    - kind: text
+      code: getByText('产品手册')
+      priority: 1
+  - id: try_now_btn
+    name: 立即体验按钮
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''立即体验'' })'
+      priority: 1
+    - kind: text
+      code: getByText('立即体验')
+      priority: 2
+  - id: consult_btn
+    name: 我要咨询按钮
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''我要咨询'' })'
+      priority: 1
+  - id: main_heading
+    name: 主标题
+    role: heading
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户''
+        })'
+      priority: 1
+  - id: knowledge_search_section
+    name: 知识精准检索
+    role: region
+    locators:
+    - kind: text
+      code: getByText('知识精准检索 尽在掌握')
+      priority: 1
+  - id: chatflow_section
+    name: Chat Flow智能编排
+    role: region
+    locators:
+    - kind: text
+      code: getByText('Chat Flow')
+      priority: 1
+    - kind: text
+      code: getByText('智能编排')
+      priority: 2
+  - id: ai_agent_section
+    name: AI Agent核心能力
+    role: region
+    locators:
+    - kind: text
+      code: getByText('拥有AI Agent 核心能力')
+      priority: 1
+  - id: data_analysis_section
+    name: 数据分析洞察能力
+    role: region
+    locators:
+    - kind: text
+      code: getByText('数据分析洞察能力')
+      priority: 1
+  - id: product_cs_section
+    name: 产品客服
+    role: region
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''产品客服'' })'
+      priority: 1
+  - id: website_cs_section
+    name: 网站客服
+    role: region
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''网站客服'' })'
+      priority: 1
+  - id: user_agreement_footer
+    name: 用户协议footer链接
+    role: link
+    locators:
+    - kind: text
+      code: getByText('用户协议').last()
+      priority: 1
+  - id: privacy_policy_footer
+    name: 隐私政策footer链接
+    role: link
+    locators:
+    - kind: text
+      code: getByText('隐私政策').last()
+      priority: 1

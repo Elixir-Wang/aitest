@@ -110,6 +110,52 @@ describe("browser session observation", () => {
       await session.close();
     }
   });
+
+  it("prefers contextual semantic selectors for repeated card action buttons", async () => {
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <title>工作台</title>
+          <style>
+            .agent-card { display: inline-block; width: 280px; padding: 16px; margin: 8px; border: 1px solid #ddd; }
+            .actions { margin-top: 16px; }
+            .actions button { margin-right: 8px; }
+          </style>
+        </head>
+        <body>
+          <article class="agent-card">
+            <h3>无插件智能体2</h3>
+            <div class="actions">
+              <button>分析</button>
+              <button>使用</button>
+              <button>对话历史</button>
+            </div>
+          </article>
+          <article class="agent-card">
+            <h3>测试_自主规划智能体</h3>
+            <div class="actions">
+              <button>分析</button>
+              <button>使用</button>
+              <button>对话历史</button>
+            </div>
+          </article>
+        </body>
+      </html>
+    `;
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      const observed = await session.command({ type: "observe" });
+      const target = observed.elements.find((element) => element.name === "对话历史" && element.context?.container_name === "测试_自主规划智能体");
+
+      assert.ok(target);
+      assert.equal(target.primary_selector.kind, "contextual");
+      assert.match(target.primary_selector.code, /测试_自主规划智能体/);
+      assert.notEqual(target.primary_selector.kind, "css");
+    } finally {
+      await session.close();
+    }
+  });
 });
 
 async function startSession(url) {

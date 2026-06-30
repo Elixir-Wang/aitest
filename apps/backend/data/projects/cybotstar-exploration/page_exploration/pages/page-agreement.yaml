@@ -1,0 +1,20 @@
+page:
+  id: page-agreement
+  title: CybotStar - User Agreement
+  normalized_path: /agreement
+  explored_at: '2026-06-29T16:48:44.602897Z'
+  elements:
+  - id: agreement_title
+    name: Agreement Title
+    role: heading
+    locators:
+    - kind: text
+      code: getByText('百融百工用户协议')
+      priority: 1
+  - id: agreement_effective_date
+    name: Agreement Effective Date
+    role: generic
+    locators:
+    - kind: text
+      code: getByText('生效日期：2025年04月17日')
+      priority: 1

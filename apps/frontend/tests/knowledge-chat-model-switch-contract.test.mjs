@@ -48,6 +48,8 @@ test("project knowledge chat history is collapsed behind the top controls by def
   assert.match(pageSource, /function KnowledgeChatTopControls/);
   assert.match(pageSource, /aria-label="展开对话历史"/);
   assert.match(pageSource, /aria-label="新建对话"/);
+  assert.match(pageSource, /aria-label="深度思考"/);
+  assert.doesNotMatch(pageSource, /aria-label="会话操作"/);
   assert.doesNotMatch(pageSource, /lg:grid-cols-\[3\.5rem_minmax\(0,1fr\)\]/);
 });
 
@@ -66,11 +68,16 @@ test("project knowledge chat history controls open for selected knowledge scope 
   assert.match(pageSource, /const projectHistoryOpen = historyOpen/);
   assert.match(pageSource, /if \(!projectSelected \|\| running\)/);
   assert.match(pageSource, /setHistoryOpen\(true\)/);
+  assert.match(pageSource, /setHistoryOpen\(false\)/);
   assert.match(pageSource, /暂无历史对话。/);
   assert.match(pageSource, /\{projectHistoryOpen \? \(\s+<aside/);
   assert.match(
     pageSource,
-    /aria-label="展开对话历史"[\s\S]*?disabled=\{!projectSelected \|\| running\}[\s\S]*?onClick=\{onHistoryOpen\}/,
+    /aria-label="展开对话历史"[\s\S]*?disabled=\{!projectSelected \|\| running\}[\s\S]*?onClick=\{historyOpen \? onHistoryClose : onHistoryOpen\}/,
+  );
+  assert.match(
+    pageSource,
+    /aria-label="新建对话"[\s\S]*?disabled=\{!projectSelected \|\| running\}[\s\S]*?onClick=\{onConversationCreate\}/,
   );
   assert.match(projectHistoryPanelSource, /onClick=\{\(\) => onConversationOpen\(conversation\.id\)\}/);
   assert.match(projectHistoryPanelSource, /onClick=\{\(\) => onConversationDelete\(conversation\.id\)\}/);
@@ -93,10 +100,6 @@ test("knowledge page derives chat scope from global project context and local se
   );
   assert.match(pageSource, /const effectiveKnowledgeScope =/);
   assert.match(pageSource, /const effectiveProjectId =/);
-  assert.match(
-    pageSource,
-    /const selectedProjectScope = effectiveKnowledgeScope === "project" \? \(effectiveProjectId \?\? ""\) : "all"/,
-  );
   assert.doesNotMatch(pageSource, /currentProjectId \?\? activeProjects\[0\]\?\.id \?\? null/);
   assert.doesNotMatch(pageSource, /activeProjects\[0\]/);
   assert.doesNotMatch(pageSource, /activeProjects\.at\(0\)/);
@@ -155,6 +158,23 @@ test("knowledge page loads conversation endpoints for all and project scopes", (
   assert.match(pageSource, /conversation_id: submittedConversationId/);
 });
 
+test("knowledge page auto opens the latest conversation after loading history once per scope", () => {
+  const resetSource = sourceBetween("void projectResetKey;", "const loadProjectConversations = useCallback");
+  const conversationLoadSource = sourceBetween("const loadProjectConversations = useCallback", "useEffect(() => {");
+  assert.match(pageSource, /const projectAutoOpenConversationKeyRef = useRef\(""\)/);
+  assert.match(resetSource, /projectAutoOpenConversationKeyRef\.current = ""/);
+  assert.match(conversationLoadSource, /const latestConversation = conversations\[0\]/);
+  assert.match(
+    conversationLoadSource,
+    /if \(latestConversation && projectAutoOpenConversationKeyRef\.current !== scopeKey\)/,
+  );
+  assert.match(conversationLoadSource, /projectAutoOpenConversationKeyRef\.current = scopeKey/);
+  assert.match(
+    conversationLoadSource,
+    /void openProjectConversation\(scope, latestConversation\.id, targetProjectId\)/,
+  );
+});
+
 test("knowledge page guards stale stream metadata writes after scope changes", () => {
   assert.match(pageSource, /const projectQueryRunIdRef = useRef\(0\)/);
   assert.match(pageSource, /const latestProjectQueryScopeRef = useRef\(""\)/);
@@ -186,6 +206,21 @@ test("knowledge page guards stale stream deltas and lifecycle writes", () => {
   assert.match(streamSource, /finally \{\s+if \(isCurrentProjectQueryScope\(\)\) \{[\s\S]*?setRunning\(false\)/);
 });
 
+test("knowledge page keeps persisted timeout stream results visible", () => {
+  const streamSource = sourceAfter("async function queryProjectKnowledge");
+  assert.match(
+    pageSource,
+    /\| \{ type: "error"; code\?: string; message: string; result\?: ApiKnowledgeQueryResult \}/,
+  );
+  assert.match(streamSource, /let errorResultPersisted = false/);
+  assert.match(streamSource, /const errorResult = event\.result/);
+  assert.match(streamSource, /const errorConversation = errorResult\?\.conversation/);
+  assert.match(streamSource, /if \(errorResult && errorConversation && isCurrentProjectQueryScope\(\)\)/);
+  assert.match(streamSource, /errorResultPersisted = true/);
+  assert.match(streamSource, /mergeAssistantStreamResult\(message, event\.result\)/);
+  assert.match(streamSource, /if \(!errorResultPersisted\) \{/);
+});
+
 test("knowledge assistant messages render markdown while user messages stay plain text", () => {
   assert.match(pageSource, /import \{ MarkdownPreview \} from "@\/components\/ai-testing\/markdown-preview"/);
   const chatMessageSource = sourceAfter("function ChatMessage");
@@ -209,10 +244,7 @@ test("knowledge page resets async lifecycle state when project scope changes", (
 });
 
 test("knowledge page guards stale project conversation list loads", () => {
-  const conversationLoadSource = sourceBetween(
-    "const loadProjectConversations = useCallback",
-    "const openProjectConversation = useCallback",
-  );
+  const conversationLoadSource = sourceBetween("const loadProjectConversations = useCallback", "useEffect(() => {");
   assert.match(pageSource, /const projectConversationLoadRunIdRef = useRef\(0\)/);
   assert.match(conversationLoadSource, /const conversationLoadRunId = projectConversationLoadRunIdRef\.current \+ 1/);
   assert.match(conversationLoadSource, /projectConversationLoadRunIdRef\.current = conversationLoadRunId/);
@@ -251,11 +283,12 @@ test("knowledge source refs display project attribution when present", () => {
   assert.match(sourceRefRenderSource, /<Badge variant="secondary">\{ref\.project_name\}<\/Badge>/);
 });
 
-test("knowledge chat input consumes project scope selector props", () => {
-  assert.match(inputSource, /projectScopeOptions/);
-  assert.match(inputSource, /selectedProjectScope/);
-  assert.match(inputSource, /onProjectScopeChange/);
-  assert.match(inputSource, /aria-label="选择知识检索项目"/);
+test("knowledge chat input leaves project scope to top navigation", () => {
+  assert.doesNotMatch(inputSource, /projectScopeOptions/);
+  assert.doesNotMatch(inputSource, /selectedProjectScope/);
+  assert.doesNotMatch(inputSource, /onProjectScopeChange/);
+  assert.doesNotMatch(inputSource, /aria-label="选择知识检索项目"/);
+  assert.doesNotMatch(pageSource, /全部项目知识库/);
   assert.doesNotMatch(pageSource, /void onProjectScopeChange/);
   assert.doesNotMatch(pageSource, /void projectScopeOptions/);
   assert.doesNotMatch(pageSource, /void selectedProjectScope/);
@@ -271,13 +304,15 @@ test("knowledge chat input keeps removed fake context controls out", () => {
 });
 
 test("knowledge chat supports real visible thinking toggle", () => {
-  assert.match(inputSource, /showThinking: boolean/);
-  assert.match(inputSource, /onShowThinkingChange: \(value: boolean\) => void/);
-  assert.match(inputSource, /aria-label="深度思考"/);
+  assert.match(pageSource, /showThinking: boolean/);
+  assert.match(pageSource, /onShowThinkingChange: \(value: boolean\) => void/);
+  assert.match(pageSource, /aria-label="深度思考"/);
   assert.match(pageSource, /const \[showProjectThinking, setShowProjectThinking\] = useState\(false\)/);
   assert.match(pageSource, /show_thinking: submittedShowThinking/);
   assert.match(pageSource, /\| \{ type: "thinking_delta"; delta: string \}/);
-  assert.match(pageSource, /thinking: `\$\{message\.thinking \?\? ""\}\$\{event\.delta\}`/);
+  assert.match(pageSource, /sanitizeThinkingText\(event\.delta\)/);
+  assert.match(pageSource, /thinking: `\$\{message\.thinking \?\? ""\}\$\{thinkingDelta\}\\n`/);
+  assert.match(pageSource, /formatThinkingItems\(thinking\)/);
   assert.match(pageSource, /thinking=\{message\.thinking\}/);
   assert.match(pageSource, /深度思考/);
 });

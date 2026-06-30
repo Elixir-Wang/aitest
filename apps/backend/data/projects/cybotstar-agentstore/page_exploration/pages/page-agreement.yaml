@@ -1,0 +1,20 @@
+page:
+  id: page-agreement
+  title: 百融百工 - 用户协议
+  normalized_path: /agreement
+  explored_at: '2026-06-29T15:32:29.630878Z'
+  elements:
+  - id: agreement_title
+    name: 用户协议标题
+    role: heading
+    locators:
+    - kind: text
+      code: getByText('百融百工用户协议')
+      priority: 1
+  - id: agreement_effective_date
+    name: 生效日期
+    role: paragraph
+    locators:
+    - kind: text
+      code: getByText('生效日期：2025年04月17日')
+      priority: 1

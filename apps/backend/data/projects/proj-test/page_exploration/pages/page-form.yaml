@@ -1,0 +1,26 @@
+page:
+  id: page-form
+  title: 表单页
+  normalized_path: /form
+  explored_at: '2026-06-29T16:13:51.828704Z'
+  elements:
+  - id: submit_btn
+    name: 提交表单
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''提交'' })'
+      priority: 1
+      validation:
+        is_unique: true
+        is_visible: true
+        match_count: 1
+    - kind: testid
+      code: getByTestId('submit-form-btn')
+      priority: 2
+      validation:
+        is_unique: true
+        is_visible: true
+    - kind: text
+      code: getByText('提交')
+      priority: 3

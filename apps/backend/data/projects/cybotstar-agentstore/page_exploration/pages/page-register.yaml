@@ -1,0 +1,105 @@
+page:
+  id: page-register
+  title: 百融百工 - 注册页
+  normalized_path: /login
+  explored_at: '2026-06-29T15:32:23.383139Z'
+  elements:
+  - id: register_title
+    name: 注册标题
+    role: heading
+    locators:
+    - kind: text
+      code: getByText('注册百融百工')
+      priority: 1
+  - id: email_input
+    name: 邮箱输入框
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入邮箱'' })'
+      priority: 1
+    - kind: placeholder
+      code: getByPlaceholder('请输入邮箱')
+      priority: 2
+  - id: switch_to_phone_link
+    name: 使用手机号注册
+    role: link
+    locators:
+    - kind: text
+      code: getByText('或使用手机号注册')
+      priority: 1
+  - id: captcha_input_register
+    name: 图形验证码输入框
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入图形验证码'' })'
+      priority: 1
+    - kind: placeholder
+      code: getByPlaceholder('请输入图形验证码')
+      priority: 2
+  - id: email_code_input
+    name: 邮箱验证码输入框
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入邮箱验证码'' })'
+      priority: 1
+    - kind: placeholder
+      code: getByPlaceholder('请输入邮箱验证码')
+      priority: 2
+  - id: get_code_button
+    name: 获取验证码按钮
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''获取验证码'' })'
+      priority: 1
+  - id: password_input_register
+    name: 密码输入框
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入密码'' })'
+      priority: 1
+    - kind: placeholder
+      code: getByPlaceholder('请输入密码')
+      priority: 2
+  - id: confirm_password_input
+    name: 确认密码输入框
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入确认密码'' })'
+      priority: 1
+    - kind: placeholder
+      code: getByPlaceholder('请输入确认密码')
+      priority: 2
+  - id: register_login_button
+    name: 注册并登录按钮
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''注册并登录'' })'
+      priority: 1
+  - id: go_login_link
+    name: 去登录链接
+    role: link
+    locators:
+    - kind: text
+      code: getByText('去登录')
+      priority: 1
+  - id: user_agreement_link_register
+    name: 用户协议链接
+    role: link
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《用户协议》'' })'
+      priority: 1
+  - id: privacy_policy_link_register
+    name: 隐私政策链接
+    role: link
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《隐私政策》'' })'
+      priority: 1

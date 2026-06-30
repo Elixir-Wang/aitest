@@ -1,0 +1,10 @@
+page:
+  id: page-workspace-agents
+  title: Prod
+  normalized_path: /workspace/agents
+  explored_at: '2026-06-29T16:13:51.827591Z'
+  elements:
+  - id: btn1
+    name: Button
+    role: button
+    locators: []

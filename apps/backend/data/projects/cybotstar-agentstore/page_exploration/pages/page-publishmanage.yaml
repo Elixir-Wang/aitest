@@ -1,0 +1,27 @@
+page:
+  id: page-publishmanage
+  title: 发布管理 - 百融百工
+  normalized_path: /publishmanage
+  explored_at: '2026-06-30T13:22:35.168100Z'
+  elements:
+  - id: publish_search_input
+    name: 搜索智能体名称或发布人
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''搜索智能体名称或发布人'' })'
+      priority: 1
+  - id: chat_history_action_btn
+    name: 对话历史
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''对话历史'' }).first()'
+      priority: 1
+  - id: data_analysis_btn
+    name: 数据分析
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''数据分析'' }).first()'
+      priority: 1

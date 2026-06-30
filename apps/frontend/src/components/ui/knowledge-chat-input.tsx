@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { Archive, ArrowUp, Brain, FileText, Square, X } from "lucide-react";
+import { Archive, ArrowUp, FileText, Square, X } from "lucide-react";
 
 import type { ApiModelProvider } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -13,24 +13,18 @@ type PastedContent = {
   content: string;
 };
 
-type KnowledgeProjectScopeOption = { value: string; label: string; locked?: boolean };
-
 type KnowledgeChatInputProps = {
   compact?: boolean;
   disabled?: boolean;
+  leadingControl?: React.ReactNode;
   loading?: boolean;
   value: string;
+  wrapperClassName?: string;
   modelProviders: ApiModelProvider[];
   modelLoading?: boolean;
   modelSaving?: boolean;
-  projectScopeOptions: KnowledgeProjectScopeOption[];
-  projectScopeDisabled?: boolean;
   selectedModelProviderId: string;
-  selectedProjectScope: string;
-  showThinking: boolean;
   onModelProviderChange: (modelProviderId: string) => void;
-  onProjectScopeChange: (value: string) => void;
-  onShowThinkingChange: (value: boolean) => void;
   onStop?: () => void;
   onSubmit: (instruction: string) => void;
   onValueChange: (value: string) => void;
@@ -39,19 +33,15 @@ type KnowledgeChatInputProps = {
 export function KnowledgeChatInput({
   compact = false,
   disabled = false,
+  leadingControl,
   loading = false,
   value,
+  wrapperClassName,
   modelProviders,
   modelLoading = false,
   modelSaving = false,
-  projectScopeOptions,
-  projectScopeDisabled = false,
   selectedModelProviderId,
-  selectedProjectScope,
-  showThinking,
   onModelProviderChange,
-  onProjectScopeChange,
-  onShowThinkingChange,
   onStop,
   onSubmit,
   onValueChange,
@@ -66,10 +56,6 @@ export function KnowledgeChatInput({
     : modelLoading
       ? "加载模型"
       : "选择模型";
-  const selectedProjectScopeOption =
-    projectScopeOptions.find((option) => option.value === selectedProjectScope) ?? projectScopeOptions[0] ?? null;
-  const projectScopeSelectorDisabled =
-    disabled || loading || projectScopeDisabled || projectScopeOptions.length <= 1 || selectedProjectScopeOption?.locked;
   const hasContent = value.trim().length > 0 || pastedContents.length > 0;
 
   React.useEffect(() => {
@@ -126,7 +112,7 @@ export function KnowledgeChatInput({
 
   return (
     <div
-      className="relative mx-auto w-full max-w-3xl font-sans"
+      className={cn("relative mx-auto w-full max-w-3xl font-sans", wrapperClassName)}
       onDragLeave={(event) => {
         event.preventDefault();
         setIsDragging(false);
@@ -139,7 +125,7 @@ export function KnowledgeChatInput({
     >
       <div
         className={cn(
-          "relative z-10 flex flex-col items-stretch overflow-hidden rounded-lg border bg-background shadow-sm transition-all duration-200 hover:border-ring/50 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20",
+          "relative z-10 flex flex-col items-stretch overflow-hidden rounded-2xl border bg-background shadow-lg shadow-foreground/10 transition-all duration-200 hover:border-ring/50 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20",
           disabled && "opacity-70",
         )}
       >
@@ -182,42 +168,10 @@ export function KnowledgeChatInput({
 
           <div className={cn("flex w-full items-center gap-2", compact ? "pt-1.5" : "pt-2")}>
             <div className="flex min-w-0 flex-1 items-center gap-1">
-              <Select
-                disabled={projectScopeSelectorDisabled}
-                onValueChange={onProjectScopeChange}
-                value={selectedProjectScope}
-              >
-                <SelectTrigger
-                  aria-label="选择知识检索项目"
-                  className={cn(
-                    "max-w-full min-w-0 gap-2 bg-background shadow-sm **:data-[slot=select-value]:truncate",
-                    compact ? "h-7 px-2 text-xs" : "h-8 px-2.5 text-sm",
-                  )}
-                  size={compact ? "sm" : "default"}
-                  title={selectedProjectScopeOption?.locked ? "跟随右上角项目上下文" : selectedProjectScopeOption?.label}
-                >
-                  <SelectValue placeholder="选择知识库" />
-                </SelectTrigger>
-                <SelectContent
-                  align="center"
-                  className="w-max min-w-0"
-                  position="popper"
-                  side="top"
-                  viewportClassName="w-max"
-                >
-                  {projectScopeOptions.map((option) => (
-                    <SelectItem
-                      className={cn("whitespace-nowrap", compact ? "text-xs" : "text-sm")}
-                      disabled={option.locked}
-                      key={option.value}
-                      value={option.value}
-                    >
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {leadingControl}
+            </div>
 
+            <div className="flex shrink-0 items-center gap-1">
               <Select
                 disabled={disabled || loading || modelLoading || modelSaving || modelProviders.length === 0}
                 onValueChange={onModelProviderChange}
@@ -226,8 +180,8 @@ export function KnowledgeChatInput({
                 <SelectTrigger
                   aria-label="选择知识库查询模型"
                   className={cn(
-                    "max-w-56 min-w-28 gap-2 bg-background shadow-sm **:data-[slot=select-value]:truncate",
-                    compact ? "h-7 px-2 text-xs" : "h-8 px-2.5 text-sm",
+                    "max-w-44 min-w-24 rounded-xl border-0 bg-transparent text-muted-foreground shadow-none hover:bg-muted hover:text-foreground **:data-[slot=select-value]:truncate",
+                    compact ? "h-8 px-2 text-xs" : "h-8 px-2.5 text-sm",
                   )}
                   size={compact ? "sm" : "default"}
                 >
@@ -256,31 +210,11 @@ export function KnowledgeChatInput({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1">
-              <button
-                aria-label="深度思考"
-                aria-pressed={showThinking}
-                className={cn(
-                  "inline-flex shrink-0 items-center justify-center rounded-md border transition-colors",
-                  compact ? "size-7" : "size-8",
-                  showThinking
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-                disabled={disabled || loading}
-                onClick={() => onShowThinkingChange(!showThinking)}
-                title={showThinking ? "关闭深度思考显示" : "显示深度思考内容"}
-                type="button"
-              >
-                <Brain className="size-4" />
-              </button>
               <button
                 aria-label={loading ? "停止生成" : "发送消息"}
                 className={cn(
-                  "inline-flex shrink-0 items-center justify-center rounded-md transition-colors active:scale-95",
-                  compact ? "size-7" : "size-8",
+                  "inline-flex shrink-0 items-center justify-center rounded-xl transition-colors active:scale-95",
+                  compact ? "size-8" : "size-8",
                   loading
                     ? "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
                     : hasContent && !disabled

@@ -1,0 +1,38 @@
+version: '1.0'
+project_id: cybotstar-exploration
+urls:
+- normalized_path: /introduce
+  page_id: page-homepage
+  page_file: pages/page-homepage.yaml
+  last_explored_at: '2026-06-29T16:47:35.116112Z'
+  last_run_id: run-001
+- normalized_path: /login
+  page_id: page-signup
+  page_file: pages/page-signup.yaml
+  last_explored_at: '2026-06-29T16:48:23.124010Z'
+  last_run_id: run-001
+- normalized_path: /agreement
+  page_id: page-agreement
+  page_file: pages/page-agreement.yaml
+  last_explored_at: '2026-06-29T16:48:50.223141Z'
+  last_run_id: run-001
+- normalized_path: /privacypolicy
+  page_id: page-privacy-policy
+  page_file: pages/page-privacy-policy.yaml
+  last_explored_at: '2026-06-29T16:49:06.969156Z'
+  last_run_id: run-001
+- normalized_path: /document/manual/87
+  page_id: page-docs-manual-welcome
+  page_file: pages/page-docs-manual-welcome.yaml
+  last_explored_at: '2026-06-29T16:52:02.552376Z'
+  last_run_id: run-001
+- normalized_path: /document/manual/82
+  page_id: page-docs-quickstart
+  page_file: pages/page-docs-quickstart.yaml
+  last_explored_at: '2026-06-29T16:52:50.722333Z'
+  last_run_id: run-001
+- normalized_path: /agentstore
+  page_id: page-agentstore
+  page_file: pages/page-agentstore.yaml
+  last_explored_at: '2026-06-30T14:17:01.198451Z'
+  last_run_id: run-001

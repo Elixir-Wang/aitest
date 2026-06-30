@@ -16,7 +16,6 @@ from app.agents.page_exploration.tools.navigation_tools import (
 
 from app.agents.page_exploration.tools.extraction_tools import (
     playwright_snap_tool,
-    playwright_extract_elements_tool,
 )
 
 from app.agents.page_exploration.tools.state_tools import (
@@ -41,7 +40,6 @@ NAVIGATION_TOOLS = [
 
 EXTRACTION_TOOLS = [
     playwright_snap_tool,
-    playwright_extract_elements_tool,
 ]
 
 STATE_TOOLS = [
@@ -91,7 +89,6 @@ __all__ = [
     "playwright_fill_tool",
     # 提取工具
     "playwright_snap_tool",
-    "playwright_extract_elements_tool",
     # 状态工具
     "check_explored_url_tool",
     "update_explored_url_tool",

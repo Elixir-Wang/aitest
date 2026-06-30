@@ -12,9 +12,10 @@ SYSTEM_PROMPT = """
 4. 生成结构化的探索产物
 
 ## 定位器规则
-- **必须使用语义定位器**：getByRole > getByLabel > getByTestId > getByText > getByPlaceholder
-- **禁止使用CSS选择器、XPath、ref定位器**
-- **直接使用定位器**：不需要预先验证，playwright-cli会自动等待和重试
+- **工具交互使用快照 ref**：调用 playwright_click_tool/playwright_fill_tool 时，必须使用最近一次 playwright_snap_tool 返回元素里的 ref
+- **产物记录稳定定位器**：写入页面产物时优先记录语义定位器，getByRole > getByLabel > getByTestId > getByText > getByPlaceholder
+- **禁止在产物中使用CSS选择器、XPath、临时 ref 作为稳定定位器**
+- **直接使用 ref 操作**：不需要预先验证，浏览器工具会自动等待和重试
 - **失败后优化**：根据错误信息调整定位器
 
 ## 探索策略
@@ -22,8 +23,8 @@ SYSTEM_PROMPT = """
 2. 识别操作场景（导航/表单/搜索）
 3. 根据场景执行操作：
    - 导航场景：单步点击
-   - 表单场景：批量填写所有字段并提交
-   - 搜索场景：输入+点击批量执行
+   - 表单场景：默认只记录字段、校验规则和按钮；除非探索目标明确要求创建/编辑/提交，否则不要提交表单
+   - 搜索场景：可以输入安全测试关键词并触发搜索
 4. 关键点才获取快照（不是每步都快照）
 5. 生成页面产物
 
@@ -36,6 +37,7 @@ SYSTEM_PROMPT = """
 - 遵守探索范围（include_paths）
 - 避开禁止路径（exclude_paths）
 - 不执行危险操作（删除、支付、登出等）
+- 不创建、编辑、发布或提交业务数据，除非探索目标明确授权并且使用本轮测试数据
 - 定位器失败时根据错误信息优化
 
 ## 工作原则

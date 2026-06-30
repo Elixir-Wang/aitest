@@ -11,7 +11,7 @@ if (!startUrl || !artifactRoot) {
 
 const maxPages = Number(process.env.AI_TESTING_EXPLORATION_MAX_PAGES || "50");
 const maxActions = Number(process.env.AI_TESTING_EXPLORATION_MAX_ACTIONS || "1000");
-const navigationTimeout = Number(process.env.AI_TESTING_EXPLORATION_NAV_TIMEOUT_MS || "10000");
+const navigationTimeout = Number(process.env.AI_TESTING_EXPLORATION_NAV_TIMEOUT_MS || "20000");
 const runTimeout = Number(process.env.AI_TESTING_EXPLORATION_TIMEOUT_MS || "7200000");
 
 const browser = await chromium.launch({
@@ -464,6 +464,28 @@ async function collectDomFacts(browserPage) {
       }
       return parts.join(" > ");
     };
+    const contextOf = (el, ownName = "") => {
+      const container = el.closest('article,[role="listitem"],[data-testid*="card" i],[data-test-id*="card" i],[data-test*="card" i],[class*="card" i]');
+      if (!container || container === el) return {};
+      const heading = container.querySelector('h1,h2,h3,h4,h5,h6,[role="heading"]');
+      const titleCandidates = [
+        heading?.textContent,
+        ...Array.from(container.querySelectorAll("h1,h2,h3,h4,h5,h6,[role='heading'],strong,b"))
+          .map((node) => node.textContent),
+      ];
+      const texts = Array.from(container.querySelectorAll("*"))
+        .filter(visible)
+        .map((node) => (node.textContent || "").trim().replace(/\s+/g, " ").slice(0, 80))
+        .filter((text) => text && text !== ownName && text.length <= 80 && !/^(已发布|未发布|分析|使用|对话历史|更多|编辑|删除|\.\.\.)$/.test(text));
+      const containerName = firstMeaningful([...titleCandidates, ...texts]);
+      if (!containerName || containerName === ownName) return {};
+      return {
+        container_role: container.getAttribute("role") || container.tagName.toLowerCase(),
+        container_name: containerName,
+        container_test_id: container.getAttribute("data-testid") || container.getAttribute("data-test-id") || container.getAttribute("data-test") || "",
+        stable_text: containerName,
+      };
+    };
     const elementFacts = (root) => Array.from(root.querySelectorAll("a,button,input,textarea,select,[role='button'],[role='link'],[role='tab'],[role='menuitem'],[role='option'],[role='checkbox'],[role='radio']"))
       .filter(visible)
       .slice(0, 120)
@@ -479,6 +501,7 @@ async function collectDomFacts(browserPage) {
           testId: el.getAttribute("data-testid") || el.getAttribute("data-test-id") || el.getAttribute("data-test") || "",
           text: (el.innerText || el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 120),
           css: cssSelectorOf(el),
+          context: contextOf(el, name),
           action_type: ["input", "textarea", "select"].includes(tagName) && !["button", "checkbox", "radio"].includes(role) ? "fill" : "click",
           locator_hint: role && name ? `getByRole('${role}', { name: ${JSON.stringify(name)} })` : "",
           href: el.href || "",
@@ -726,8 +749,18 @@ async function verifyBestElementSelectors(browserPage, action) {
     verified.push(await verifySelectorCandidate(browserPage, candidate));
   }
   const usable = verified.filter(selectorUsable);
-  const primary = usable[0] || verified[0];
-  const fallback = usable.find((candidate) => candidate.code !== primary?.code)
+  const semanticUsable = usable.filter((candidate) => candidate.kind !== "css");
+  const cssUsable = usable.filter((candidate) => candidate.kind === "css");
+  const semanticVerified = verified.filter((candidate) => candidate.kind !== "css");
+  const primary = semanticUsable[0] || cssUsable[0] || semanticVerified[0] || verified[0];
+  if (primary?.kind === "css") {
+    primary.locator_confidence = "low";
+    primary.needs_confirmation = true;
+    primary.degraded_reason = "semantic_locators_unavailable";
+  }
+  const fallback = semanticUsable.find((candidate) => candidate.code !== primary?.code)
+    || cssUsable.find((candidate) => candidate.code !== primary?.code)
+    || semanticVerified.find((candidate) => candidate.code !== primary?.code)
     || verified.find((candidate) => candidate.code !== primary?.code)
     || null;
   return {

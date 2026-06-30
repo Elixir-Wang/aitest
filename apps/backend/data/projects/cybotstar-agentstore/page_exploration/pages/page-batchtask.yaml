@@ -1,0 +1,13 @@
+page:
+  id: page-batchtask
+  title: 批量任务 - 百融百工
+  normalized_path: /batchtask
+  explored_at: '2026-06-30T13:19:32.013709Z'
+  elements:
+  - id: create_now_btn
+    name: 立即创建
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''立即创建'' })'
+      priority: 1

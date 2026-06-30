@@ -229,7 +229,7 @@ def save_page_snapshot_tool(
     - Generate exploration reports
 
     The snapshot will be saved to:
-    data/projects/{project_id}/page_exploration/runs/{run_id}/discovered_pages.yaml
+    data/projects/{project_id}/page_exploration/runs/{run_id}/pages/{page_id}.yaml
 
     Args:
         url: The full URL of the page
@@ -255,40 +255,71 @@ def save_page_snapshot_tool(
     """
     normalized_path = normalize_url(url)
 
-    # Prepare snapshot structure
-    snapshot = {
-        "url": url,
-        "normalized_path": normalized_path,
-        "title": title,
-        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-        "data": page_data,
+    run_dir = PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration" / "runs" / run_id
+    pages_dir = run_dir / "pages"
+    pages_dir.mkdir(parents=True, exist_ok=True)
+
+    page_id = str(page_data.get("page_id") or page_data.get("id") or "")
+    if not page_id:
+        page_id = "page-" + normalized_path.strip("/").replace("/", "-")
+    if page_id == "page-":
+        page_id = "page-home"
+
+    artifact = {
+        "page": {
+            "id": page_id,
+            "title": title,
+            "url": url,
+            "normalized_url": normalized_path,
+            "module": str(page_data.get("module") or page_data.get("module_key") or "主探索模块"),
+            "status": str(page_data.get("status") or "explored"),
+            "structure_summary": str(page_data.get("structure_summary") or ""),
+        },
+        "states": page_data.get("states", []),
+        "actions": page_data.get("actions", []),
+        "metadata": {
+            "captured_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "source": "page_exploration_agent",
+        },
     }
 
-    # Determine file path
-    run_dir = PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration" / "runs" / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    file_path = run_dir / "discovered_pages.yaml"
-
-    # Append to or create discovered_pages.yaml
-    pages = []
-    if file_path.exists():
-        with open(file_path, "r", encoding="utf-8") as f:
-            existing = yaml.safe_load(f)
-            if existing and "pages" in existing:
-                pages = existing["pages"]
-
-    pages.append(snapshot)
-
-    # Write back
+    file_path = pages_dir / f"{page_id}.yaml"
     with open(file_path, "w", encoding="utf-8") as f:
-        yaml.dump({"pages": pages}, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+        yaml.dump(artifact, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+
+    summary_path = run_dir / "summary.yaml"
+    summary = {}
+    if summary_path.exists():
+        with open(summary_path, "r", encoding="utf-8") as f:
+            summary = yaml.safe_load(f) or {}
+    modules = summary.get("modules")
+    if not isinstance(modules, list):
+        modules = []
+    module_key = artifact["page"]["module"]
+    if not any(isinstance(module, dict) and module.get("module_key") == module_key for module in modules):
+        modules.append({
+            "module_key": module_key,
+            "module_name": module_key,
+            "status": "running",
+            "entry_path": normalized_path,
+            "planned_page_count": 0,
+            "explored_page_count": 0,
+        })
+    summary.update({
+        "run_id": run_id,
+        "artifact_schema_version": 2,
+        "updated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "modules": modules,
+    })
+    with open(summary_path, "w", encoding="utf-8") as f:
+        yaml.dump(summary, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
 
     return {
         "success": True,
         "run_id": run_id,
+        "page_id": page_id,
         "file_path": str(file_path),
-        "pages_count": len(pages),
+        "summary_path": str(summary_path),
     }
 
 

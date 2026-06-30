@@ -32,7 +32,7 @@ export function requirementVersionSummary(version: RequirementVersionDetail) {
 export function RequirementVersionDetailContent({ version }: { version: RequirementVersionDetail }) {
   return (
     <MarkdownPreview
-      className="requirement-document-preview"
+      className="requirement-document-preview requirement-version-preview"
       content={version.markdown_content ?? ""}
       emptyClassName="flex min-h-32 items-center justify-center text-center"
       emptyText="该版本暂无最终需求内容"

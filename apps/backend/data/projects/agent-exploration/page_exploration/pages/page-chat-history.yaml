@@ -1,0 +1,89 @@
+page:
+  id: page-chat-history
+  title: 对话历史 - 工作台 - 百融百工
+  normalized_path: /chathistory
+  explored_at: '2026-06-30T09:02:45.506458Z'
+  elements:
+  - id: username_filter_btn
+    name: 用户名筛选
+    role: button
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''button'', { name: ''用户名'' })'
+        priority: '1'
+  - id: source_filter_btn
+    name: 来源筛选
+    role: button
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''button'', { name: ''来源'' })'
+        priority: '1'
+  - id: admin_feedback_filter_btn
+    name: 管理员反馈筛选
+    role: button
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''button'', { name: ''管理员反馈'' })'
+        priority: '1'
+  - id: agent_jump_filter_btn
+    name: Agent跳转筛选
+    role: button
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''button'', { name: ''Agent跳转'' })'
+        priority: '1'
+  - id: chat_history_start_date
+    name: 对话历史-开始日期
+    role: textbox
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''textbox'', { name: ''开始日期'' })'
+        priority: '1'
+  - id: chat_history_end_date
+    name: 对话历史-结束日期
+    role: textbox
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''textbox'', { name: ''结束日期'' })'
+        priority: '1'
+  - id: chat_history_keyword_input
+    name: 关键字查找
+    role: textbox
+    locators:
+      item:
+      - kind: role
+        code: 'getByRole(''textbox'', { name: ''请输入关键字查找'' })'
+        priority: '1'
+      - kind: placeholder
+        code: getByPlaceholder('请输入关键字查找')
+        priority: '2'
+  - id: export_btn
+    name: 导出
+    role: button
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''button'', { name: ''导出'' })'
+        priority: '1'
+  - id: chat_history_page_size
+    name: 每页条数
+    role: button
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''button'', { name: ''10条/页'' })'
+        priority: '1'
+  - id: next_page_btn
+    name: 下一页
+    role: button
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''button'', { name: ''下一页'' })'
+        priority: '1'

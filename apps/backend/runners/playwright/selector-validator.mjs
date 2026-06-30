@@ -42,14 +42,47 @@ export function locatorForCandidate(page, candidate = {}) {
   if (kind === "label") {
     return page.getByLabel(String(candidate.label || ""));
   }
+  if (kind === "placeholder") {
+    return page.getByPlaceholder(String(candidate.placeholder || ""));
+  }
   if (kind === "testid") {
     return page.getByTestId(String(candidate.testId || candidate.test_id || ""));
   }
   if (kind === "text") {
     return page.getByText(String(candidate.text || ""));
   }
+  if (kind === "contextual") {
+    const container = contextualContainerLocator(page, candidate.container || {});
+    const target = candidate.target || {};
+    if (target.kind === "role") {
+      return container.getByRole(String(target.role || ""), { name: String(target.name || "") });
+    }
+    if (target.kind === "testid") {
+      return container.getByTestId(String(target.testId || target.test_id || ""));
+    }
+    if (target.kind === "text") {
+      return container.getByText(String(target.text || ""));
+    }
+    throw new Error(`Unsupported contextual target kind: ${target.kind || "unknown"}`);
+  }
   if (kind === "css") {
     return page.locator(String(candidate.css || ""));
   }
   throw new Error(`Unsupported selector kind: ${kind || "unknown"}`);
+}
+
+function contextualContainerLocator(page, container = {}) {
+  const kind = String(container.kind || "");
+  if (kind === "testid") {
+    const locator = page.getByTestId(String(container.testId || container.test_id || ""));
+    const hasText = String(container.hasText || container.text || "");
+    return hasText ? locator.filter({ hasText }) : locator;
+  }
+  const text = String(container.text || container.hasText || "");
+  if (!text) {
+    throw new Error("Contextual selector is missing container text.");
+  }
+  return page
+    .getByText(text)
+    .locator('xpath=ancestor::*[self::article or @role="listitem" or contains(concat(" ", normalize-space(@class), " "), " card ")][1]');
 }

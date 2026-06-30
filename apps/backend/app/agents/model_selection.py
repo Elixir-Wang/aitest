@@ -36,6 +36,7 @@ def build_agent_model(selection: ModelSelection, *, extra_body: dict | None = No
     kwargs = {}
     if extra_body is not None:
         kwargs["extra_body"] = extra_body
+    kwargs["use_responses_api"] = should_use_responses_api(selection)
     return ChatOpenAI(
         model=selection.model,
         api_key=SecretStr(selection.api_key),
@@ -43,3 +44,16 @@ def build_agent_model(selection: ModelSelection, *, extra_body: dict | None = No
         temperature=0,
         **kwargs,
     )
+
+
+def should_use_responses_api(selection: ModelSelection) -> bool | None:
+    if _is_official_openai_endpoint(selection):
+        return None
+    return False
+
+
+def _is_official_openai_endpoint(selection: ModelSelection) -> bool:
+    if selection.provider.strip().lower() != "openai":
+        return False
+    base_url = (selection.base_url or "").rstrip("/")
+    return base_url in {"", "https://api.openai.com/v1", "https://api.openai.com"}

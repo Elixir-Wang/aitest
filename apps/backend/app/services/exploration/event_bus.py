@@ -77,6 +77,12 @@ def close(run_id: str) -> None:
             pass
 
 
+def get_history(run_id: str) -> list[dict[str, Any]]:
+    """Return a snapshot of recent events for diagnostics and tests."""
+    with _lock:
+        return list(_history.get(run_id, ()))
+
+
 def clear(run_id: str | None = None) -> None:
     """Clear event history. Intended for tests and run restarts."""
     with _lock:

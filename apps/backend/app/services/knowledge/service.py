@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import uuid
@@ -8,8 +9,8 @@ from typing import Any
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
-from app.repositories import document_repo, knowledge_conversation_repo, project_repo
-from app.agents.knowledge_chat.schemas import (
+from app.repositories import document_repo, global_knowledge_repo, knowledge_conversation_repo, project_repo
+from app.agents.knowledge.schemas import (
     KnowledgeConversationHistoryMessage,
     KnowledgeQueryInput,
     KnowledgeQueryOutput,
@@ -23,10 +24,12 @@ from app.schemas.knowledge import (
     KnowledgeQueryRequest,
 )
 from app.services import operation_log_service
-from app.agents.knowledge_chat import service as knowledge_chat_service
-from app.services.knowledge import query_service as knowledge_query_service
+from app.agents.knowledge import service as knowledge_agent_service
+from app.agents.knowledge.service import ThinkBlockFilter, sanitize_visible_answer
 
 MAX_HISTORY_MESSAGES = 12
+KNOWLEDGE_QUERY_TIMEOUT_SECONDS = 300
+KNOWLEDGE_QUERY_TIMEOUT_MESSAGE = "项目知识库查询超时，请稍后继续。"
 ALL_PROJECTS_CONVERSATION_PROJECT_ID = "__all_projects__"
 
 
@@ -38,42 +41,24 @@ async def query_project_knowledge(project_id: str, actor, request: KnowledgeQuer
     conversation = _get_or_create_conversation(project_id, actor_id, request.conversation_id, question)
     history = _conversation_history(conversation["id"])
     project = _get_project(project_id)
-    chat_input = KnowledgeQueryInput(
-        project_id=project_id,
-        project_name=project["name"],
-        question=question,
-        conversation_history=history,
-    )
-
-    source_version_ids: list[str] = []
-
-    async def search_project_knowledge(search_question: str) -> KnowledgeQueryOutput:
-        nonlocal source_version_ids
-        search_request = KnowledgeQueryRequest(
-            question=search_question,
-            include_requirements=request.include_requirements,
-            conversation_id=request.conversation_id,
+    input_data, source_version_ids, company_file_ids, blockers = _collect_query_input(project_id, request, history)
+    if blockers and not input_data.source_documents:
+        output = KnowledgeQueryOutput(
+            answer="无法查询知识库：\n\n" + "\n".join(f"- {item}" for item in blockers),
+            knowledge_queried=True,
         )
-        input_data, source_version_ids, blockers = _collect_query_input(
-            project_id,
-            search_request,
-            history,
-        )
-        if blockers:
-            answer = "无法查询项目知识库：\n\n" + "\n".join(f"- {item}" for item in blockers)
-            return KnowledgeQueryOutput(answer=answer, knowledge_queried=True)
+    else:
         try:
-            output = await knowledge_query_service.run_knowledge_query(input_data)
+            output = await knowledge_agent_service.run_knowledge_agent(input_data)
         except Exception:
             output = _fallback_query_output(input_data)
-        output.knowledge_queried = True
-        return output
-
-    output = await knowledge_chat_service.run_knowledge_chat(chat_input, search_project_knowledge)
     if output.knowledge_queried:
         source_version_ids = output.used_requirement_versions or source_version_ids
+        company_file_ids = output.used_company_knowledge_files or company_file_ids
     else:
         source_version_ids = []
+        company_file_ids = []
+    output.answer = sanitize_visible_answer(output.answer)
 
     user_message, assistant_message = _append_query_messages(
         conversation["id"],
@@ -86,7 +71,7 @@ async def query_project_knowledge(project_id: str, actor, request: KnowledgeQuer
         action="query",
         object_type="project_knowledge",
         object_id=project_id,
-        object_name=chat_input.project_name,
+        object_name=project["name"],
         project_id=project_id,
         actor_id=actor["id"],
         actor_name=operation_log_service.actor_display_name(actor),
@@ -97,6 +82,7 @@ async def query_project_knowledge(project_id: str, actor, request: KnowledgeQuer
             "conversation_id": conversation["id"],
             "knowledge_queried": output.knowledge_queried,
             "source_versions": source_version_ids,
+            "company_knowledge_files": company_file_ids,
         },
     )
     return {
@@ -105,6 +91,8 @@ async def query_project_knowledge(project_id: str, actor, request: KnowledgeQuer
         "answer": output.answer,
         "source_refs": [ref.model_dump() for ref in output.source_refs],
         "used_requirement_versions": output.used_requirement_versions or source_version_ids,
+        "used_company_knowledge_files": output.used_company_knowledge_files or company_file_ids,
+        "used_exploration_runs": output.used_exploration_runs,
         "knowledge_queried": output.knowledge_queried,
     }
 
@@ -121,55 +109,67 @@ async def stream_project_knowledge_query(
     conversation = _get_or_create_conversation(project_id, actor_id, request.conversation_id, question)
     history = _conversation_history(conversation["id"])
     project = _get_project(project_id)
-    chat_input = KnowledgeQueryInput(
-        project_id=project_id,
-        project_name=project["name"],
-        question=question,
-        conversation_history=history,
-    )
-
-    source_version_ids: list[str] = []
+    input_data, source_version_ids, company_file_ids, blockers = _collect_query_input(project_id, request, history)
     final_output: KnowledgeQueryOutput | None = None
+    visible_filter = ThinkBlockFilter()
 
-    async def search_project_knowledge(search_question: str) -> KnowledgeQueryOutput:
-        nonlocal source_version_ids
-        search_request = KnowledgeQueryRequest(
-            question=search_question,
-            include_requirements=request.include_requirements,
-            conversation_id=request.conversation_id,
+    try:
+        async with asyncio.timeout(KNOWLEDGE_QUERY_TIMEOUT_SECONDS):
+            if blockers and not input_data.source_documents:
+                final_output = KnowledgeQueryOutput(
+                    answer="无法查询知识库：\n\n" + "\n".join(f"- {item}" for item in blockers),
+                    knowledge_queried=True,
+                )
+                yield {"type": "message_delta", "delta": final_output.answer}
+            else:
+                async for event in knowledge_agent_service.stream_knowledge_agent(input_data, show_thinking=request.show_thinking):
+                    event_type = event.get("type")
+                    if event_type == "message_delta":
+                        delta = visible_filter.feed(str(event.get("delta", "")))
+                        if delta:
+                            yield {**event, "delta": delta}
+                    elif event_type == "thinking_delta":
+                        yield event
+                    elif event_type == "metadata":
+                        final_output = event["output"]
+                if final_output is None:
+                    final_output = _fallback_query_output(input_data)
+    except TimeoutError:
+        user_message, assistant_message = _append_query_messages(
+            conversation["id"],
+            question,
+            KnowledgeQueryOutput(answer=KNOWLEDGE_QUERY_TIMEOUT_MESSAGE, knowledge_queried=False),
+            [],
         )
-        input_data, source_version_ids, exploration_run_ids, blockers = _collect_query_input(
-            project_id,
-            search_request,
-            history,
-        )
-        if blockers:
-            answer = "无法查询项目知识库：\n\n" + "\n".join(f"- {item}" for item in blockers)
-            return KnowledgeQueryOutput(answer=answer, knowledge_queried=True)
-        try:
-            output = await knowledge_query_service.run_knowledge_query(input_data)
-        except Exception:
-            output = _fallback_query_output(input_data)
-        output.knowledge_queried = True
-        return output
-
-    async for event in knowledge_chat_service.stream_knowledge_chat(
-        chat_input,
-        search_project_knowledge,
-        show_thinking=request.show_thinking,
-    ):
-        event_type = event.get("type")
-        if event_type in {"message_delta", "thinking_delta"}:
-            yield event
-        elif event_type == "metadata":
-            final_output = event["output"]
+        yield {
+            "type": "error",
+            "code": "KNOWLEDGE_AGENT_TIMEOUT",
+            "message": KNOWLEDGE_QUERY_TIMEOUT_MESSAGE,
+            "result": {
+                "conversation": _conversation_to_schema(conversation).model_dump(),
+                "messages": [
+                    _message_to_schema(user_message).model_dump(),
+                    _message_to_schema(assistant_message).model_dump(),
+                ],
+                "answer": KNOWLEDGE_QUERY_TIMEOUT_MESSAGE,
+                "source_refs": [],
+                "used_requirement_versions": [],
+                "used_company_knowledge_files": [],
+                "used_exploration_runs": [],
+                "knowledge_queried": False,
+            },
+        }
+        return
 
     if final_output is None:
-        raise ValueError("项目知识库聊天智能体未返回结构化结果。")
+        raise ValueError("项目知识库智能体未返回结构化结果。")
     if final_output.knowledge_queried:
         source_version_ids = final_output.used_requirement_versions or source_version_ids
+        company_file_ids = final_output.used_company_knowledge_files or company_file_ids
     else:
         source_version_ids = []
+        company_file_ids = []
+    final_output.answer = sanitize_visible_answer(final_output.answer)
 
     user_message, assistant_message = _append_query_messages(
         conversation["id"],
@@ -182,7 +182,7 @@ async def stream_project_knowledge_query(
         action="query",
         object_type="project_knowledge",
         object_id=project_id,
-        object_name=chat_input.project_name,
+        object_name=project["name"],
         project_id=project_id,
         actor_id=actor["id"],
         actor_name=operation_log_service.actor_display_name(actor),
@@ -193,6 +193,7 @@ async def stream_project_knowledge_query(
             "conversation_id": conversation["id"],
             "knowledge_queried": final_output.knowledge_queried,
             "source_versions": source_version_ids,
+            "company_knowledge_files": company_file_ids,
         },
     )
     yield {
@@ -206,6 +207,8 @@ async def stream_project_knowledge_query(
             "answer": final_output.answer,
             "source_refs": [ref.model_dump() for ref in final_output.source_refs],
             "used_requirement_versions": final_output.used_requirement_versions or source_version_ids,
+            "used_company_knowledge_files": final_output.used_company_knowledge_files or company_file_ids,
+            "used_exploration_runs": final_output.used_exploration_runs,
             "knowledge_queried": final_output.knowledge_queried,
         },
     }
@@ -222,54 +225,67 @@ async def stream_all_project_knowledge_query(
     actor_id = actor["id"]
     conversation = _get_or_create_all_projects_conversation(actor_id, request.conversation_id, question)
     history = _conversation_history(conversation["id"])
-    chat_input = KnowledgeQueryInput(
-        project_id="",
-        project_name="全部项目",
-        question=question,
-        conversation_history=history,
-    )
-    source_version_ids: list[str] = []
+    input_data, source_version_ids, company_file_ids, blockers = _collect_all_project_query_input(actor, request, history)
     final_output: KnowledgeQueryOutput | None = None
+    visible_filter = ThinkBlockFilter()
 
-    async def search_all_project_knowledge(search_question: str) -> KnowledgeQueryOutput:
-        nonlocal source_version_ids
-        search_request = KnowledgeQueryRequest(
-            question=search_question,
-            include_requirements=request.include_requirements,
-            conversation_id=request.conversation_id,
+    try:
+        async with asyncio.timeout(KNOWLEDGE_QUERY_TIMEOUT_SECONDS):
+            if blockers and not input_data.source_documents:
+                final_output = KnowledgeQueryOutput(
+                    answer="无法查询知识库：\n\n" + "\n".join(f"- {item}" for item in blockers),
+                    knowledge_queried=True,
+                )
+                yield {"type": "message_delta", "delta": final_output.answer}
+            else:
+                async for event in knowledge_agent_service.stream_knowledge_agent(input_data, show_thinking=request.show_thinking):
+                    event_type = event.get("type")
+                    if event_type == "message_delta":
+                        delta = visible_filter.feed(str(event.get("delta", "")))
+                        if delta:
+                            yield {**event, "delta": delta}
+                    elif event_type == "thinking_delta":
+                        yield event
+                    elif event_type == "metadata":
+                        final_output = event["output"]
+                if final_output is None:
+                    final_output = _fallback_query_output(input_data)
+    except TimeoutError:
+        user_message, assistant_message = _append_query_messages(
+            conversation["id"],
+            question,
+            KnowledgeQueryOutput(answer=KNOWLEDGE_QUERY_TIMEOUT_MESSAGE, knowledge_queried=False),
+            [],
         )
-        input_data, source_version_ids, blockers = _collect_all_project_query_input(
-            actor,
-            search_request,
-            history,
-        )
-        if blockers:
-            answer = "无法查询项目知识库：\n\n" + "\n".join(f"- {item}" for item in blockers)
-            return KnowledgeQueryOutput(answer=answer, knowledge_queried=True)
-        try:
-            output = await knowledge_query_service.run_knowledge_query(input_data)
-        except Exception:
-            output = _fallback_query_output(input_data)
-        output.knowledge_queried = True
-        return output
-
-    async for event in knowledge_chat_service.stream_knowledge_chat(
-        chat_input,
-        search_all_project_knowledge,
-        show_thinking=request.show_thinking,
-    ):
-        event_type = event.get("type")
-        if event_type in {"message_delta", "thinking_delta"}:
-            yield event
-        elif event_type == "metadata":
-            final_output = event["output"]
+        yield {
+            "type": "error",
+            "code": "KNOWLEDGE_AGENT_TIMEOUT",
+            "message": KNOWLEDGE_QUERY_TIMEOUT_MESSAGE,
+            "result": {
+                "conversation": _conversation_to_schema(conversation).model_dump(),
+                "messages": [
+                    _message_to_schema(user_message).model_dump(),
+                    _message_to_schema(assistant_message).model_dump(),
+                ],
+                "answer": KNOWLEDGE_QUERY_TIMEOUT_MESSAGE,
+                "source_refs": [],
+                "used_requirement_versions": [],
+                "used_company_knowledge_files": [],
+                "used_exploration_runs": [],
+                "knowledge_queried": False,
+            },
+        }
+        return
 
     if final_output is None:
-        raise ValueError("项目知识库聊天智能体未返回结构化结果。")
+        raise ValueError("项目知识库智能体未返回结构化结果。")
     if final_output.knowledge_queried:
         source_version_ids = final_output.used_requirement_versions or source_version_ids
+        company_file_ids = final_output.used_company_knowledge_files or company_file_ids
     else:
         source_version_ids = []
+        company_file_ids = []
+    final_output.answer = sanitize_visible_answer(final_output.answer)
 
     user_message, assistant_message = _append_query_messages(
         conversation["id"],
@@ -293,6 +309,7 @@ async def stream_all_project_knowledge_query(
             "conversation_id": conversation["id"],
             "knowledge_queried": final_output.knowledge_queried,
             "source_versions": source_version_ids,
+            "company_knowledge_files": company_file_ids,
         },
     )
     yield {
@@ -306,6 +323,8 @@ async def stream_all_project_knowledge_query(
             "answer": final_output.answer,
             "source_refs": [ref.model_dump() for ref in final_output.source_refs],
             "used_requirement_versions": final_output.used_requirement_versions or source_version_ids,
+            "used_company_knowledge_files": final_output.used_company_knowledge_files or company_file_ids,
+            "used_exploration_runs": final_output.used_exploration_runs,
             "knowledge_queried": final_output.knowledge_queried,
         },
     }
@@ -410,7 +429,7 @@ def _collect_query_input(
     project_id: str,
     request: KnowledgeQueryRequest,
     history: list[KnowledgeConversationHistoryMessage] | None = None,
-) -> tuple[KnowledgeQueryInput, list[str], list[str]]:
+) -> tuple[KnowledgeQueryInput, list[str], list[str], list[str]]:
     with connect() as db:
         project = _require_project(db, project_id)
         source_documents, source_version_ids, blockers = _collect_project_sources(
@@ -418,12 +437,15 @@ def _collect_query_input(
             project,
             request,
         )
+        company_sources, company_file_ids, company_blockers = _collect_company_knowledge_sources(db, request)
+        source_documents.extend(company_sources)
+        blockers.extend(company_blockers)
 
     if not source_documents:
         if request.include_requirements:
             blockers.append("当前项目没有可用于查询的最终需求文档版本。")
-        else:
-            blockers.append("项目知识库查询需要最终需求文档。")
+        if request.include_company_knowledge:
+            blockers.append("当前没有可读取的公司知识库文件。")
     return (
         KnowledgeQueryInput(
             project_id=project_id,
@@ -433,6 +455,7 @@ def _collect_query_input(
             source_documents=source_documents,
         ),
         source_version_ids,
+        company_file_ids,
         blockers,
     )
 
@@ -441,7 +464,7 @@ def _collect_all_project_query_input(
     actor,
     request: KnowledgeQueryRequest,
     history: list[KnowledgeConversationHistoryMessage] | None = None,
-) -> tuple[KnowledgeQueryInput, list[str], list[str]]:
+) -> tuple[KnowledgeQueryInput, list[str], list[str], list[str]]:
     with connect() as db:
         projects = project_repo.list_visible(db, actor)
         source_documents: list[KnowledgeSourceDocumentInput] = []
@@ -456,12 +479,15 @@ def _collect_all_project_query_input(
             source_documents.extend(project_source_documents)
             source_version_ids.extend(project_source_version_ids)
             blockers.extend(project_blockers)
+        company_sources, company_file_ids, company_blockers = _collect_company_knowledge_sources(db, request)
+        source_documents.extend(company_sources)
+        blockers.extend(company_blockers)
 
     if not source_documents:
         if request.include_requirements:
             blockers.append("当前可见项目没有可用于查询的最终需求文档版本。")
-        else:
-            blockers.append("项目知识库查询需要最终需求文档。")
+        if request.include_company_knowledge:
+            blockers.append("当前没有可读取的公司知识库文件。")
     else:
         blockers = []
     return (
@@ -473,6 +499,7 @@ def _collect_all_project_query_input(
             source_documents=source_documents,
         ),
         source_version_ids,
+        company_file_ids,
         blockers,
     )
 
@@ -501,6 +528,9 @@ def _collect_project_sources(
             source_version_ids.append(version["id"])
             source_documents.append(
                 KnowledgeSourceDocumentInput(
+                    source_type="requirement",
+                    source_id=version["id"],
+                    source_title=f"{doc['name']} v{version['version_no']}",
                     project_id=project_id,
                     project_name=project_name,
                     document_id=doc["id"],
@@ -512,6 +542,62 @@ def _collect_project_sources(
             )
 
     return source_documents, source_version_ids, blockers
+
+
+def _collect_company_knowledge_sources(
+    db,
+    request: KnowledgeQueryRequest,
+) -> tuple[list[KnowledgeSourceDocumentInput], list[str], list[str]]:
+    if not request.include_company_knowledge:
+        return [], [], []
+    source_documents: list[KnowledgeSourceDocumentInput] = []
+    file_ids: list[str] = []
+    blockers: list[str] = []
+    bases = global_knowledge_repo.list_bases(db)
+    for base in bases:
+        folders = {row["id"]: row for row in global_knowledge_repo.list_folders_by_base(db, base["id"])}
+        for file_row in global_knowledge_repo.list_files_by_base(db, base["id"]):
+            if file_row["conversion_status"] not in {"completed", "success", "available"}:
+                continue
+            markdown = _read_company_knowledge_markdown(file_row)
+            if not markdown.strip():
+                continue
+            file_ids.append(file_row["id"])
+            source_documents.append(
+                KnowledgeSourceDocumentInput(
+                    source_type="company_knowledge",
+                    source_id=file_row["id"],
+                    source_title=f"{base['name']} / {file_row['display_name']}",
+                    base_id=base["id"],
+                    base_name=base["name"],
+                    folder_path=_folder_path(folders, file_row["folder_id"]),
+                    file_id=file_row["id"],
+                    file_name=file_row["display_name"],
+                    markdown_content=markdown,
+                )
+            )
+    if not source_documents:
+        blockers.append("当前没有可读取的公司知识库文件。")
+    return source_documents, file_ids, blockers
+
+
+def _read_company_knowledge_markdown(file_row) -> str:
+    markdown_path = resolve_stored_path(file_row["markdown_path"]) or Path(file_row["markdown_path"])
+    if markdown_path.exists():
+        return markdown_path.read_text(encoding="utf-8")
+    return str(file_row["markdown_content"] or "")
+
+
+def _folder_path(folders: dict[str, Any], folder_id: str) -> str:
+    names: list[str] = []
+    current = folders.get(folder_id)
+    seen: set[str] = set()
+    while current and current["id"] not in seen:
+        seen.add(current["id"])
+        names.append(current["name"])
+        parent_id = current["parent_id"]
+        current = folders.get(parent_id) if parent_id else None
+    return "/".join(reversed(names))
 
 
 def _require_project(db, project_id: str):
@@ -577,9 +663,12 @@ def _conversation_history(conversation_id: str) -> list[KnowledgeConversationHis
         rows = knowledge_conversation_repo.list_messages(db, conversation_id)
     recent_rows = rows[-MAX_HISTORY_MESSAGES:]
     return [
-        KnowledgeConversationHistoryMessage(role=row["role"], content=row["content"])
+        KnowledgeConversationHistoryMessage(
+            role=row["role"],
+            content=sanitize_visible_answer(row["content"]) if row["role"] == "assistant" else row["content"],
+        )
         for row in recent_rows
-        if row["content"].strip()
+        if (sanitize_visible_answer(row["content"]) if row["role"] == "assistant" else row["content"]).strip()
     ]
 
 
@@ -602,7 +691,7 @@ def _append_query_messages(
             message_id=str(uuid.uuid4()),
             conversation_id=conversation_id,
             role="assistant",
-            content=output.answer,
+            content=sanitize_visible_answer(output.answer),
             source_refs=[ref.model_dump() for ref in output.source_refs],
             used_requirement_versions=used_requirement_versions,
         )
@@ -630,7 +719,7 @@ def _message_to_schema(row) -> KnowledgeConversationMessage:
         id=row["id"],
         conversation_id=row["conversation_id"],
         role=row["role"],
-        content=row["content"],
+        content=sanitize_visible_answer(row["content"]) if row["role"] == "assistant" else row["content"],
         source_refs=[KnowledgeSourceRef.model_validate(item) for item in _loads_json_array(row["source_refs_json"])],
         used_requirement_versions=[str(item) for item in _loads_json_array(row["used_requirement_versions_json"])],
         created_at=row["created_at"],
@@ -653,41 +742,53 @@ def _fallback_query_output(input_data: KnowledgeQueryInput) -> KnowledgeQueryOut
         excerpt = _matching_excerpt(doc.markdown_content, terms) or _first_non_empty_line(doc.markdown_content)
         if not excerpt:
             continue
-        refs.append(
-            KnowledgeSourceRef(
-                source_type="requirement",
-                source_id=doc.version_id,
-                source_title=f"{doc.document_name} v{doc.version_no}",
-                project_id=doc.project_id,
-                project_name=doc.project_name,
-                location="最终需求文档",
-                excerpt=excerpt,
+        if doc.source_type == "company_knowledge":
+            refs.append(
+                KnowledgeSourceRef(
+                    source_type="company_knowledge",
+                    source_id=doc.source_id or doc.file_id,
+                    source_title=doc.source_title or doc.file_name,
+                    base_id=doc.base_id,
+                    base_name=doc.base_name,
+                    file_id=doc.file_id,
+                    file_name=doc.file_name,
+                    location=doc.folder_path or "公司知识库",
+                    excerpt=excerpt,
+                )
             )
-        )
-        sections.append(f"- 需求「{doc.document_name} v{doc.version_no}」：{excerpt}")
-    for exploration in input_data.explorations:
-        excerpt = _matching_excerpt(json.dumps(exploration.model_dump(), ensure_ascii=False), terms) or exploration.result_summary
-        if not excerpt:
-            continue
-        refs.append(
-            KnowledgeSourceRef(
-                source_type="exploration",
-                source_id=exploration.exploration_run_id,
-                source_title=exploration.title,
-                location="探索记录",
-                excerpt=excerpt,
+            sections.append(f"- 公司知识库「{doc.source_title or doc.file_name}」：{excerpt}")
+        else:
+            refs.append(
+                KnowledgeSourceRef(
+                    source_type="requirement",
+                    source_id=doc.source_id or doc.version_id,
+                    source_title=doc.source_title or f"{doc.document_name} v{doc.version_no}",
+                    project_id=doc.project_id,
+                    project_name=doc.project_name,
+                    document_id=doc.document_id,
+                    document_name=doc.document_name,
+                    version_id=doc.version_id,
+                    version_no=doc.version_no,
+                    location="最终需求文档",
+                    excerpt=excerpt,
+                )
             )
-        )
-        sections.append(f"- 探索「{exploration.title}」：{excerpt}")
+            sections.append(f"- 需求「{doc.document_name} v{doc.version_no}」：{excerpt}")
     if not sections:
-        answer = "没有在当前最终需求文档或探索记录中找到足够依据回答该问题。请补充更具体的模块、页面或业务关键词。"
+        answer = "没有在当前最终需求文档或公司知识库中找到足够依据回答该问题。请补充更具体的模块、页面或业务关键词。"
     else:
-        answer = "Codex agentic search 暂不可用，已基于当前来源做确定性检索摘要：\n\n" + "\n".join(sections[:12])
+        answer = "知识库智能检索暂不可用，已基于当前可用来源做确定性摘要：\n\n" + "\n".join(sections[:12])
     return KnowledgeQueryOutput(
         answer=answer,
         source_refs=refs[:12],
-        used_requirement_versions=[doc.version_id for doc in input_data.source_documents],
-        used_exploration_runs=[item.exploration_run_id for item in input_data.explorations],
+        used_requirement_versions=[
+            doc.version_id for doc in input_data.source_documents if doc.source_type == "requirement" and doc.version_id
+        ],
+        used_company_knowledge_files=[
+            doc.file_id for doc in input_data.source_documents if doc.source_type == "company_knowledge" and doc.file_id
+        ],
+        used_exploration_runs=[],
+        knowledge_queried=True,
     )
 
 

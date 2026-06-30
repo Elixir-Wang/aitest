@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from app.services.exploration.browser_session import (
+    BrowserSessionError,
     PlaywrightBrowserSession,
     resolve_navigation_url,
 )
@@ -101,6 +102,27 @@ def test_browser_session_passes_storage_state_to_runner(tmp_path: Path):
 
     args = popen.call_args[0][0]
     assert args[-1] == str(storage_state)
+
+
+def test_browser_session_reports_structured_start_failure():
+    process = FakeProcess(
+        [
+            {
+                "kind": "session_failed",
+                "status": "error",
+                "url": "https://example.test/slow",
+                "error_summary": "页面导航超时。",
+            },
+        ]
+    )
+
+    with patch("subprocess.Popen", return_value=process):
+        try:
+            PlaywrightBrowserSession(start_url="https://example.test/slow", browser_channel="chrome")
+        except BrowserSessionError as exc:
+            assert "页面导航超时" in str(exc)
+        else:
+            raise AssertionError("expected BrowserSessionError")
 
 
 def test_resolve_navigation_url_handles_relative_paths():

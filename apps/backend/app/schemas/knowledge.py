@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.agents.knowledge_chat.schemas import (
+from app.agents.knowledge.schemas import (
     KnowledgeConversationHistoryMessage,
     KnowledgeQueryInput,
     KnowledgeQueryOutput,
@@ -14,6 +14,7 @@ from app.agents.knowledge_chat.schemas import (
 class KnowledgeQueryRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=12000)
     include_requirements: bool = True
+    include_company_knowledge: bool = True
     show_thinking: bool = False
     conversation_id: str | None = None
 

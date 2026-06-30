@@ -1,0 +1,115 @@
+page:
+  id: page-homepage
+  title: CybotStar - Homepage
+  normalized_path: /introduce
+  explored_at: '2026-06-29T16:47:30.592387Z'
+  elements:
+  - id: header_logo
+    name: Header Logo
+    role: img
+    locators:
+    - kind: role
+      code: 'getByRole(''img'', { name: ''Header Logo'' })'
+      priority: 1
+  - id: product_manual_link
+    name: Product Manual Link
+    role: link
+    locators:
+    - kind: text
+      code: getByText('产品手册')
+      priority: 1
+  - id: try_now_header_link
+    name: Try Now Header Link
+    role: link
+    locators:
+    - kind: text
+      code: getByText('立即体验').first()
+      priority: 1
+  - id: main_heading
+    name: Main Page Heading
+    role: heading
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户''
+        })'
+      priority: 1
+  - id: try_now_button
+    name: Try Now CTA Button
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''立即体验'' })'
+      priority: 1
+  - id: consult_button
+    name: Consult Button
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''我要咨询'' })'
+      priority: 1
+  - id: feature_knowledge_retrieval
+    name: Knowledge Retrieval Feature Section
+    role: region
+    locators:
+    - kind: text
+      code: getByText('知识精准检索 尽在掌握')
+      priority: 1
+  - id: feature_chat_flow
+    name: Chat Flow Feature Section
+    role: region
+    locators:
+    - kind: text
+      code: getByText('Chat Flow')
+      priority: 1
+    - kind: text
+      code: getByText('智能编排')
+      priority: 2
+  - id: feature_ai_agent
+    name: AI Agent Feature Section
+    role: region
+    locators:
+    - kind: text
+      code: getByText('拥有AI Agent 核心能力')
+      priority: 1
+  - id: feature_data_analytics
+    name: Data Analytics Feature Section
+    role: region
+    locators:
+    - kind: text
+      code: getByText('数据分析洞察能力')
+      priority: 1
+  - id: scenario_product_service
+    name: Product Service Scenario
+    role: heading
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''产品客服'' })'
+      priority: 1
+  - id: scenario_website_service
+    name: Website Service Scenario
+    role: heading
+    locators:
+    - kind: role
+      code: 'getByRole(''heading'', { name: ''网站客服'' })'
+      priority: 1
+  - id: user_agreement_link
+    name: User Agreement Link
+    role: link
+    locators:
+    - kind: text
+      code: getByText('用户协议')
+      priority: 1
+  - id: privacy_policy_link
+    name: Privacy Policy Link
+    role: link
+    locators:
+    - kind: text
+      code: getByText('隐私政策')
+      priority: 1
+  - id: contact_email
+    name: Contact Email
+    role: generic
+    locators:
+    - kind: text
+      code: getByText('联系我们：rc_agentos@brgroup.com')
+      priority: 1

@@ -1,0 +1,43 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e7]:
+            - generic [ref=e8] [cursor=pointer]: Account
+            - generic [ref=e9]: "|"
+            - generic [ref=e10] [cursor=pointer]: SMS Code
+          - generic [ref=e12]:
+            - generic [ref=e13]:
+              - generic [ref=e15]: "* Account"
+              - textbox "Email" [ref=e19]
+            - generic [ref=e20]:
+              - generic [ref=e22]: "* Password"
+              - generic [ref=e26]:
+                - textbox "Enter your password" [ref=e27]
+                - img [ref=e30] [cursor=pointer]
+            - generic [ref=e32]:
+              - generic [ref=e34]: "* Verification Code"
+              - textbox "Verification code" [ref=e39]
+            - generic [ref=e43] [cursor=pointer]: Forgot password?
+            - button "Log In" [ref=e46] [cursor=pointer]:
+              - generic: Log In
+        - generic [ref=e47]:
+          - paragraph [ref=e48] [cursor=pointer]
+          - generic [ref=e50]:
+            - generic [ref=e51]: Checking the checkbox indicates that you have read and agreed to the
+            - link "《User Agreement》" [ref=e52] [cursor=pointer]:
+              - /url: /agreement
+            - generic [ref=e53]: and
+            - link "《Privacy Policy》" [ref=e54] [cursor=pointer]:
+              - /url: /privacyPolicy
+        - generic [ref=e57]:
+          - generic [ref=e58]: No account?
+          - generic [ref=e59] [cursor=pointer]: Sign up
+      - generic [ref=e61] [cursor=pointer]:
+        - img [ref=e62]
+        - generic [ref=e64]: English
+    - generic:
+      - link:
+        - /url: https://beian.mps.gov.cn/#/query/webSearch?code=11010502055440
+  - img

@@ -1,6 +1,6 @@
 // Playwright 推荐的选择器优先级顺序
 // 参考: https://playwright.dev/docs/locators#locate-by-role
-const SELECTOR_PRIORITY = ["role", "label", "placeholder", "text", "testid", "css"];
+const SELECTOR_PRIORITY = ["role", "testid", "contextual", "label", "placeholder", "text", "css"];
 
 export function buildElementSelectors(element = {}) {
   const candidates = buildSelectorCandidates(element);
@@ -24,6 +24,13 @@ export function buildSelectorCandidates(element = {}) {
   const testId = clean(element.testId || element.testid || element.test_id || element.dataTestId);
   const text = clean(element.text || element.innerText || element.visibleText || element.name);
   const css = clean(element.css || element.cssSelector);
+  const contextText = clean(
+    element.context?.container_name
+      || element.context?.stable_text
+      || element.containerName
+      || element.cardName
+  );
+  const containerTestId = clean(element.context?.container_test_id || element.containerTestId);
 
   // 1. getByRole - 首选，匹配无障碍树
   if (role && name) {
@@ -71,6 +78,25 @@ export function buildSelectorCandidates(element = {}) {
     });
   }
 
+  if (contextText && role && name && contextText !== name) {
+    candidates.push({
+      kind: "contextual",
+      container: {
+        kind: containerTestId ? "testid" : "text",
+        ...(containerTestId ? { testId: containerTestId } : { text: contextText }),
+        hasText: contextText,
+      },
+      target: {
+        kind: "role",
+        role,
+        name,
+      },
+      code: containerTestId
+        ? `page.getByTestId('${escapeSingle(containerTestId)}').filter({ hasText: '${escapeSingle(contextText)}' }).getByRole('${escapeSingle(role)}', { name: '${escapeSingle(name)}' })`
+        : `page.getByText('${escapeSingle(contextText)}').locator('xpath=ancestor::*[self::article or @role="listitem" or contains(concat(" ", normalize-space(@class), " "), " card ")][1]').getByRole('${escapeSingle(role)}', { name: '${escapeSingle(name)}' })`,
+    });
+  }
+
   // 6. CSS selector - 最后的手段
   if (css) {
     candidates.push({
@@ -89,7 +115,7 @@ function dedupeSelectors(candidates) {
   const seen = new Set();
   const unique = [];
   for (const candidate of candidates) {
-    if (!candidate?.code || /xpath|\/\/|^page\.locator\('\//i.test(candidate.code)) {
+    if (!candidate?.code || (candidate.kind !== "contextual" && /xpath|\/\/|^page\.locator\('\//i.test(candidate.code))) {
       continue;
     }
     if (seen.has(candidate.code)) {

@@ -4,6 +4,7 @@ from pydantic import SecretStr
 from langchain_openai import ChatOpenAI
 
 from app.agents.capabilities import get_ai_capability, list_ai_capabilities
+from app.agents.model_selection import ModelSelection, should_use_responses_api
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.repositories import model_repo
@@ -245,6 +246,14 @@ def test_model_provider(provider_id: str, actor) -> dict:
             temperature=0,
             timeout=30,
             request_timeout=30,
+            use_responses_api=should_use_responses_api(
+                ModelSelection(
+                    provider=provider["provider"],
+                    model=provider["model"],
+                    base_url=provider["base_url"] or None,
+                    api_key=provider["api_key"],
+                )
+            ),
         )
         response = llm.invoke("hi")
         response_content = response.content if hasattr(response, 'content') else str(response)

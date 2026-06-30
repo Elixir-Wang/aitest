@@ -5,7 +5,7 @@ import { locatorForCandidate, verifySelectorCandidate } from "./selector-validat
 
 const [, , startUrl = "about:blank", channel = "", storageStatePath = ""] = process.argv;
 
-const navigationTimeout = Number(process.env.AI_TESTING_EXPLORATION_NAV_TIMEOUT_MS || "10000");
+const navigationTimeout = Number(process.env.AI_TESTING_EXPLORATION_NAV_TIMEOUT_MS || "20000");
 const browser = await chromium.launch({
   channel: channel || undefined,
   headless: true,
@@ -23,8 +23,23 @@ let lastElements = new Map();
 let lastObservation = null;
 let shuttingDown = false;
 
-await gotoUrl(startUrl);
-writeLine({ kind: "session_started", status: "started", url: page.url() });
+try {
+  await gotoUrl(startUrl);
+  writeLine({ kind: "session_started", status: "started", url: page.url() });
+} catch (error) {
+  const classified = classifyActionError(error);
+  writeLine({
+    kind: "session_failed",
+    status: "error",
+    url: startUrl,
+    current_url: page.url(),
+    error: classified.error,
+    error_type: classified.error_type,
+    error_summary: classified.error_summary,
+  });
+  await shutdown();
+  process.exit(1);
+}
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -114,6 +129,7 @@ async function observePage() {
       role: fact.role,
       name: fact.name,
       text: fact.text,
+      context: fact.context || {},
       action_type: fact.action_type,
       enabled: fact.enabled,
       visible: fact.visible,
@@ -550,6 +566,28 @@ async function collectDomFacts(browserPage) {
       if (name) return `${el.tagName.toLowerCase()}[name="${CSS.escape(name)}"]`;
       return uniqueCssPathOf(el);
     };
+    const contextOf = (el, ownName = "") => {
+      const container = el.closest('article,[role="listitem"],[data-testid*="card" i],[data-test-id*="card" i],[data-test*="card" i],[class*="card" i]');
+      if (!container || container === el) return {};
+      const heading = container.querySelector('h1,h2,h3,h4,h5,h6,[role="heading"]');
+      const titleCandidates = [
+        heading?.textContent,
+        ...Array.from(container.querySelectorAll("h1,h2,h3,h4,h5,h6,[role='heading'],strong,b"))
+          .map((node) => node.textContent),
+      ];
+      const texts = Array.from(container.querySelectorAll("*"))
+        .filter(visible)
+        .map((node) => clean(node.textContent, 80))
+        .filter((text) => text && text !== ownName && text.length <= 80 && !/^(已发布|未发布|分析|使用|对话历史|更多|编辑|删除|\.\.\.)$/.test(text));
+      const containerName = firstMeaningful([...titleCandidates, ...texts]);
+      if (!containerName || containerName === ownName) return {};
+      return {
+        container_role: container.getAttribute("role") || container.tagName.toLowerCase(),
+        container_name: containerName,
+        container_test_id: container.getAttribute("data-testid") || container.getAttribute("data-test-id") || container.getAttribute("data-test") || "",
+        stable_text: containerName,
+      };
+    };
     const elementFacts = Array.from(document.querySelectorAll(interactiveSelector))
       .filter(visible)
       .map((el, index) => {
@@ -565,6 +603,7 @@ async function collectDomFacts(browserPage) {
           testId: el.getAttribute("data-testid") || el.getAttribute("data-test-id") || el.getAttribute("data-test") || "",
           text: clean(el.innerText || el.textContent),
           css: cssSelectorOf(el),
+          context: contextOf(el, name),
           action_type: actionType,
           href: el.href || "",
           enabled: !el.disabled && el.getAttribute("aria-disabled") !== "true",
@@ -633,8 +672,18 @@ async function verifyBestElementSelectors(browserPage, element) {
     verified.push(await verifySelectorCandidate(browserPage, candidate));
   }
   const usable = verified.filter(usableSelector);
-  const primary = usable[0] || verified[0];
-  const fallback = usable.find((candidate) => candidate.code !== primary?.code)
+  const semanticUsable = usable.filter((candidate) => candidate.kind !== "css");
+  const cssUsable = usable.filter((candidate) => candidate.kind === "css");
+  const semanticVerified = verified.filter((candidate) => candidate.kind !== "css");
+  const primary = semanticUsable[0] || cssUsable[0] || semanticVerified[0] || verified[0];
+  if (primary?.kind === "css") {
+    primary.locator_confidence = "low";
+    primary.needs_confirmation = true;
+    primary.degraded_reason = "semantic_locators_unavailable";
+  }
+  const fallback = semanticUsable.find((candidate) => candidate.code !== primary?.code)
+    || cssUsable.find((candidate) => candidate.code !== primary?.code)
+    || semanticVerified.find((candidate) => candidate.code !== primary?.code)
     || verified.find((candidate) => candidate.code !== primary?.code)
     || null;
   return {

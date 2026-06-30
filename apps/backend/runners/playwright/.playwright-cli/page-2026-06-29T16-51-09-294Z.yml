@@ -1,0 +1,162 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e232]:
+    - generic [ref=e233]:
+      - generic [ref=e234]: 文档中心
+      - generic [ref=e235] [cursor=pointer]:
+        - img "api-doc" [ref=e236]
+        - generic [ref=e237]: 接口文档
+    - generic [ref=e238]:
+      - generic [ref=e242]:
+        - generic [ref=e243]:
+          - generic [ref=e244]:
+            - textbox "通过关键词搜索目录" [ref=e245]
+            - img [ref=e248] [cursor=pointer]
+          - img [ref=e253] [cursor=pointer]
+        - generic [ref=e255]: 目录
+        - list [ref=e258]:
+          - listitem [ref=e259]:
+            - generic [ref=e264] [cursor=pointer]: 欢迎来到百融百工
+          - listitem [ref=e265]:
+            - generic [ref=e270] [cursor=pointer]: 产品简介
+          - listitem [ref=e271]:
+            - generic [ref=e276] [cursor=pointer]: 快速开始
+          - listitem [ref=e277]:
+            - generic [ref=e278]:
+              - img [ref=e281] [cursor=pointer]
+              - generic [ref=e285] [cursor=pointer]: 功能详解
+            - list [ref=e286]:
+              - listitem [ref=e287]:
+                - generic [ref=e288]:
+                  - img [ref=e291] [cursor=pointer]
+                  - generic [ref=e295] [cursor=pointer]: 智能体项目开发
+                - list [ref=e296]:
+                  - listitem [ref=e297]:
+                    - generic [ref=e298]:
+                      - img [ref=e301] [cursor=pointer]
+                      - generic [ref=e305] [cursor=pointer]: 开发自主规划智能体
+                    - list [ref=e306]:
+                      - listitem [ref=e307]:
+                        - generic [ref=e308]:
+                          - img [ref=e311] [cursor=pointer]
+                          - generic [ref=e315] [cursor=pointer]: 资源配置
+                        - list [ref=e316]:
+                          - listitem [ref=e317]:
+                            - generic [ref=e322] [cursor=pointer]: 知识库配置
+                          - listitem [ref=e323]:
+                            - generic [ref=e328] [cursor=pointer]: 插件配置
+                          - listitem [ref=e329]:
+                            - generic [ref=e334] [cursor=pointer]: 数据库配置
+                      - listitem [ref=e335]:
+                        - generic [ref=e336]:
+                          - img [ref=e339] [cursor=pointer]
+                          - generic [ref=e343] [cursor=pointer]: 高级配置
+                        - list [ref=e344]:
+                          - listitem [ref=e345]:
+                            - generic [ref=e350] [cursor=pointer]: 对话流跳转逻辑&意图条件库
+                          - listitem [ref=e351]:
+                            - generic [ref=e356] [cursor=pointer]: 对话流配置
+                      - listitem [ref=e357]:
+                        - generic [ref=e362] [cursor=pointer]: 实时互动配置
+                  - listitem [ref=e363]:
+                    - generic [ref=e368] [cursor=pointer]: 开发写作智能体
+                  - listitem [ref=e369]:
+                    - generic [ref=e374] [cursor=pointer]: 开发任务流agent
+                  - listitem [ref=e375]:
+                    - generic [ref=e380] [cursor=pointer]: 开发Multi-Agent
+                  - listitem [ref=e381]:
+                    - generic [ref=e382]:
+                      - img [ref=e385] [cursor=pointer]
+                      - generic [ref=e389] [cursor=pointer]: 智能体能力扩展——资源库
+                    - list [ref=e390]:
+                      - listitem [ref=e391]:
+                        - generic [ref=e396] [cursor=pointer]: 知识库
+                      - listitem [ref=e397]:
+                        - generic [ref=e402] [cursor=pointer]: 插件库
+                      - listitem [ref=e403]:
+                        - generic [ref=e408] [cursor=pointer]: 数据库
+                      - listitem [ref=e409]:
+                        - generic [ref=e414] [cursor=pointer]: 卡片
+                  - listitem [ref=e415]:
+                    - generic [ref=e416]:
+                      - img [ref=e419] [cursor=pointer]
+                      - generic [ref=e423] [cursor=pointer]: 智能体发布
+                    - list [ref=e424]:
+                      - listitem [ref=e425]:
+                        - generic [ref=e430] [cursor=pointer]: 钉钉集成
+                      - listitem [ref=e431]:
+                        - generic [ref=e436] [cursor=pointer]: 企业微信集成
+                  - listitem [ref=e437]:
+                    - generic [ref=e442] [cursor=pointer]: 智能体管理
+              - listitem [ref=e443]:
+                - generic [ref=e444]:
+                  - img [ref=e447] [cursor=pointer]
+                  - generic [ref=e451] [cursor=pointer]: 订阅和使用智能体
+                - list [ref=e452]:
+                  - listitem [ref=e453]:
+                    - generic [ref=e458] [cursor=pointer]: 企业用户订阅使用智能体
+                  - listitem [ref=e459]:
+                    - generic [ref=e464] [cursor=pointer]: 个人用户订阅使用智能体
+              - listitem [ref=e465]:
+                - generic [ref=e470] [cursor=pointer]: 效果评测
+              - listitem [ref=e471]:
+                - generic [ref=e476] [cursor=pointer]: 线上观测
+              - listitem [ref=e477]:
+                - generic [ref=e482] [cursor=pointer]: 自动优化
+              - listitem [ref=e483]:
+                - generic [ref=e488] [cursor=pointer]: 企业智能体监控大盘
+              - listitem [ref=e489]:
+                - generic [ref=e494] [cursor=pointer]: 企业智能体管控中心
+              - listitem [ref=e495]:
+                - generic [ref=e500] [cursor=pointer]: 工作空间管理
+              - listitem [ref=e501]:
+                - generic [ref=e502]:
+                  - img [ref=e505] [cursor=pointer]
+                  - generic [ref=e509] [cursor=pointer]: 对话流最佳实践
+                - list [ref=e510]:
+                  - listitem [ref=e511]:
+                    - generic [ref=e516] [cursor=pointer]: 批量任务
+              - listitem [ref=e517]:
+                - generic [ref=e522] [cursor=pointer]: 自主规划智能体最佳实践
+          - listitem [ref=e523]:
+            - generic [ref=e528] [cursor=pointer]: 常见问题汇总
+      - generic [ref=e530]:
+        - generic [ref=e532]:
+          - generic [ref=e533] [cursor=pointer]: 产品手册
+          - generic [ref=e534]: /
+          - generic [ref=e535]: 欢迎来到百融百工
+        - generic [ref=e537]:
+          - heading "欢迎来到百融百工" [level=1] [ref=e538]
+          - paragraph [ref=e539]: 产品手册更新时间：2026-03-12 17:04:57
+          - generic [ref=e541]:
+            - heading "欢迎来到百融百工👏" [level=1] [ref=e542]
+            - paragraph [ref=e543]: 百融百工是一个AI智能体创作平台，它基于大型语言模型技术，让使用者以零代码或低代码的方式，快速构建出智能体。我们的目标是通过这个简洁而强大的工具，助力企业和个人轻松实现大模型技术的实用化。我们的愿景是创造一个既用户友好又操作简便的产品，让每一位用户都能迅速且轻松地开发出满足特定需求的智能体。
+            - list [ref=e544]:
+              - listitem [ref=e545]: 智能体：一种能够感知环境并做出自主决策以完成特定任务的软件系统。结合了人工智能（AI）技术，包括自然语言处理（NLP）、机器学习（ML）和自动化流程，能够与用户交互并执行各种复杂任务。简单来讲，智能体即一个能够理解用户意图、依据用户指令、帮助用户完成各种需求的智能机器人。
+            - heading "百融百工的优势是什么💎" [level=1] [ref=e546]
+            - heading "1. 应用场景广泛" [level=2] [ref=e547]
+            - paragraph [ref=e548]: 生成的智能体既可以是企业的数字员工、智能客服，为企业节约人力成本；又可以是提升个人效率的专属工具，提升个人工作效率，减少枯燥重复类工作。
+            - heading "2. 操作便捷" [level=2] [ref=e549]
+            - paragraph [ref=e550]: 不需要代码知识，非技术人员也可以轻松上手。
+            - paragraph [ref=e551]: 不需要复杂的prompt能力，即可完成角色个性、知识经验、能力范围等基础设定。
+            - paragraph [ref=e552]: 通过上传文件或复制粘贴等方式，即可实现智能体专属知识的训练，创建一个智能体最快只需要2分钟。
+            - heading "3. 技术算法专业" [level=2] [ref=e553]
+            - paragraph [ref=e554]: 平台拥有强大的算法技术支撑，链接自主开发的大语言模型、多个开闭源模型，并自研关键业务算法，提升智能体对海量文档的快速学习/查找能力，精准识别复杂场景的问题意图。
+            - heading "4. 数据隐私和风控安全" [level=2] [ref=e555]
+            - paragraph [ref=e556]: 平台构建了完善的数据安全体系，通过领先的技术和严格的风控措施，既能保护用户信息以及数据的安全性，又能针对敏感类问题进行判断和阻断。
+            - heading "快速上手百融百工" [level=1] [ref=e557]
+            - paragraph [ref=e558]: 您可以通过以下文档，快速上手百融百工。
+            - paragraph [ref=e559]:
+              - link "快速开始" [ref=e560] [cursor=pointer]:
+                - /url: /document/manual/82/
+            - paragraph [ref=e561]:
+              - link "Open API接口文档" [ref=e562] [cursor=pointer]:
+                - /url: /document/oapi/84/
+      - generic [ref=e566] [cursor=pointer]:
+        - button [ref=e567]
+        - button [ref=e568]
+        - button [ref=e569]
+        - button [ref=e570]
+        - button [ref=e571]
+        - button [ref=e572]
+        - button [ref=e573]
+  - img

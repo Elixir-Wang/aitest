@@ -1,0 +1,79 @@
+page:
+  id: page-login-sms
+  title: CybotStar - Login (SMS Code)
+  normalized_path: /login
+  explored_at: '2026-06-29T16:50:27.399241Z'
+  elements:
+  - id: login_account_tab
+    name: Account Login Tab
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''Account'' })'
+      priority: 1
+  - id: login_sms_tab
+    name: SMS Code Login Tab
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''SMS Code'' })'
+      priority: 1
+  - id: phone_number_input
+    name: Phone Number Input
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''Please enter a phone number'' })'
+      priority: 1
+    - kind: placeholder
+      code: getByPlaceholder('Please enter a phone number')
+      priority: 2
+  - id: sms_code_input
+    name: SMS Code Input
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''Verification Code'' }).last()'
+      priority: 1
+  - id: send_sms_code_button
+    name: Send SMS Code Button
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''Verification Code'' }).last()'
+      priority: 1
+  - id: login_button
+    name: Log In Button
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''Log In'' })'
+      priority: 1
+  - id: signup_link
+    name: Sign Up Link
+    role: link
+    locators:
+    - kind: text
+      code: getByText('Sign up')
+      priority: 1
+  - id: user_agreement_link
+    name: User Agreement Link
+    role: link
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《User Agreement》'' })'
+      priority: 1
+  - id: privacy_policy_link
+    name: Privacy Policy Link
+    role: link
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《Privacy Policy》'' })'
+      priority: 1
+  - id: language_switcher
+    name: Language Switcher
+    role: button
+    locators:
+    - kind: text
+      code: getByText('English')
+      priority: 1

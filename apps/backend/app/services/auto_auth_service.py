@@ -15,6 +15,7 @@ from app.services import login_form_analyzer_service
 from app.services import operation_log_service
 
 AUTO_AUTH_STATUSES = {"idle", "queued", "running", "succeeded", "failed"}
+AUTO_AUTH_STALE_AFTER_SECONDS = 10 * 60
 _running_environments: set[str] = set()
 _running_lock = threading.Lock()
 
@@ -91,10 +92,26 @@ def get_auto_auth_status(environment_id: str) -> dict:
     status = str(payload.get("status") or "idle")
     if status not in AUTO_AUTH_STATUSES:
         status = "failed"
+    updated_at = payload.get("updated_at")
+    if _is_stale_auto_auth_status(environment_id, status, updated_at):
+        message = "自动登录任务已中断，请重新登录。"
+        _write_auto_auth_status(
+            environment_id,
+            status="failed",
+            message=message,
+            last_error_code="AUTO_AUTH_STALE",
+        )
+        refreshed = json.loads(path.read_text(encoding="utf-8"))
+        return {
+            "status": "failed",
+            "message": message,
+            "updated_at": refreshed.get("updated_at"),
+            "last_error_code": "AUTO_AUTH_STALE",
+        }
     return {
         "status": status,
         "message": str(payload.get("message") or ""),
-        "updated_at": payload.get("updated_at"),
+        "updated_at": updated_at,
         "last_error_code": str(payload.get("last_error_code") or ""),
     }
 
@@ -402,6 +419,23 @@ def _load_environment(environment_id: str) -> dict:
 
 def _auto_auth_status_path(environment_id: str) -> Path:
     return auth_state_path(environment_id).parent / "auto-login-status.json"
+
+
+def _is_stale_auto_auth_status(environment_id: str, status: str, updated_at: object) -> bool:
+    if status not in {"queued", "running"}:
+        return False
+    with _running_lock:
+        if environment_id in _running_environments:
+            return False
+    if not updated_at:
+        return True
+    try:
+        parsed = datetime.fromisoformat(str(updated_at))
+    except ValueError:
+        return True
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - parsed).total_seconds() > AUTO_AUTH_STALE_AFTER_SECONDS
 
 
 def _append_auto_login_event(path: Path, event: dict) -> None:

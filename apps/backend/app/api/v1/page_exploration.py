@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -25,6 +25,7 @@ class CreateExplorationRunRequest(BaseModel):
     project_id: str = Field(..., description="项目ID")
     environment_id: str = Field(..., description="环境ID")
     title: str = Field(..., description="任务标题")
+    exploration_mode: Literal["goal", "autonomous"] = Field(..., description="探索方式")
     scope: str = Field(..., description="探索范围（起始URL）")
     goal: str = Field(default="", description="探索目标")
     forbidden_paths: str = Field(default="", description="禁止路径（每行一个）")
@@ -42,6 +43,7 @@ class UpdateExplorationRunRequest(BaseModel):
     title: str | None = Field(None, description="任务标题")
     environment_id: str | None = Field(None, description="环境ID")
     requirement_doc_id: str | None = Field(None, description="需求文档ID")
+    exploration_mode: Literal["goal", "autonomous"] | None = Field(None, description="探索方式")
     scope: str | None = Field(None, description="探索范围")
     forbidden_paths: str | None = Field(None, description="禁止路径")
     goal: str | None = Field(None, description="探索目标")
@@ -59,6 +61,7 @@ class ExplorationRunResponse(BaseModel):
     environment_id: str
     title: str
     status: str
+    exploration_mode: str
     scope: str
     goal: str
     forbidden_paths: str
@@ -107,6 +110,7 @@ def create_exploration_run(
             project_id=request.project_id,
             environment_id=request.environment_id,
             title=request.title,
+            exploration_mode=request.exploration_mode,
             scope=request.scope,
             goal=request.goal,
             forbidden_paths=request.forbidden_paths,

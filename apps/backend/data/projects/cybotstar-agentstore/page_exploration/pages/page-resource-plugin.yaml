@@ -1,0 +1,69 @@
+page:
+  id: page-resource-plugin
+  title: 资源库-插件库 - 百融百工
+  normalized_path: /resource
+  explored_at: '2026-06-30T13:20:55.085555Z'
+  elements:
+  - id: resource_search_input
+    name: 请输入关键词搜索
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入关键词搜索'' })'
+      priority: 1
+  - id: knowledge_tab
+    name: 知识库
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''知识库'' })'
+      priority: 1
+  - id: database_tab
+    name: 数据库
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''数据库'' })'
+      priority: 1
+  - id: plugin_tab
+    name: 插件库
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''插件库'' })'
+      priority: 1
+  - id: voiceprint_tab
+    name: 声纹组
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''声纹组'' })'
+      priority: 1
+  - id: card_tab
+    name: 卡片
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''卡片'' })'
+      priority: 1
+  - id: plugin_spec_btn
+    name: 插件接入规范
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''插件接入规范'' })'
+      priority: 1
+  - id: batch_action_btn
+    name: 批量操作
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''批量操作'' })'
+      priority: 1
+  - id: add_resource_btn
+    name: 添加资源
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''添加资源'' })'
+      priority: 1

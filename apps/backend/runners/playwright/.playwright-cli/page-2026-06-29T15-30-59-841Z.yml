@@ -1,0 +1,50 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e233]:
+      - generic [ref=e235]:
+        - generic [ref=e298]:
+          - generic [ref=e301]: 注册百融百工
+          - generic [ref=e302]:
+            - generic [ref=e304]: "* 邮箱"
+            - generic [ref=e305]:
+              - textbox "请输入邮箱" [ref=e308]
+              - generic [ref=e309]: 或使用手机号注册
+          - generic [ref=e310]:
+            - generic [ref=e312]: "* 图形验证码"
+            - textbox "请输入图形验证码" [ref=e317]
+          - generic [ref=e318]:
+            - generic [ref=e320]: "* 短信验证码"
+            - generic [ref=e323]:
+              - textbox "请输入邮箱验证码" [ref=e325]
+              - button "获取验证码" [ref=e327] [cursor=pointer]:
+                - generic: 获取验证码
+          - generic [ref=e328]:
+            - generic [ref=e330]: "* 密码"
+            - generic [ref=e334]:
+              - textbox "请输入密码" [ref=e335]
+              - img [ref=e338] [cursor=pointer]
+          - generic [ref=e340]:
+            - generic [ref=e342]: "* 确认密码"
+            - generic [ref=e346]:
+              - textbox "请输入确认密码" [ref=e347]
+              - img [ref=e350] [cursor=pointer]
+          - button "注册并登录" [ref=e354] [cursor=pointer]:
+            - generic: 注册并登录
+        - generic [ref=e277]:
+          - paragraph [ref=e278] [cursor=pointer]
+          - generic [ref=e280]:
+            - generic [ref=e281]: 我已阅读并同意
+            - link "《用户协议》" [ref=e282] [cursor=pointer]:
+              - /url: /agreement
+            - generic [ref=e283]: 和
+            - link "《隐私政策》" [ref=e284] [cursor=pointer]:
+              - /url: /privacyPolicy
+        - generic [ref=e355]:
+          - text: 已有账号，
+          - generic [ref=e356] [cursor=pointer]: 去登录
+      - generic [ref=e291] [cursor=pointer]:
+        - img [ref=e292]
+        - generic [ref=e294]: 简体中文
+    - link "京公网安备11010502055440号" [ref=e296] [cursor=pointer]:
+      - /url: https://beian.mps.gov.cn/#/query/webSearch?code=11010502055440
+  - img
