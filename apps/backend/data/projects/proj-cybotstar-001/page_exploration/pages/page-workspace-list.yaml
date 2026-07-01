@@ -1,0 +1,62 @@
+page:
+  id: page-workspace-list
+  title: 工作台 - 智能体列表
+  normalized_path: /workspace
+  explored_at: '2026-07-01T02:50:13.948688Z'
+  elements:
+  - id: workspace_nav_btn
+    name: 工作台
+    role: button
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''button'', { name: ''工作台'' })'
+        priority: '1'
+  - id: create_agent_top_btn
+    name: 创建智能体
+    role: button
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''button'', { name: ''创建智能体'' })'
+        priority: '1'
+  - id: create_btn
+    name: 创建
+    role: button
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''button'', { name: ''创建'' })'
+        priority: '1'
+  - id: search_agent_input
+    name: 搜索智能体
+    role: textbox
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''textbox'', { name: ''搜索智能体'' })'
+        priority: '1'
+  - id: explore_square_btn
+    name: 探索广场
+    role: button
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''button'', { name: ''探索广场'' })'
+        priority: '1'
+  - id: resource_lib_btn
+    name: 资源库
+    role: button
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''button'', { name: ''资源库'' })'
+        priority: '1'
+  - id: batch_task_btn
+    name: 批量任务
+    role: button
+    locators:
+      item:
+        kind: role
+        code: 'getByRole(''button'', { name: ''批量任务'' })'
+        priority: '1'

@@ -82,8 +82,44 @@ def test_execute_exploration_async_invokes_deep_agent_with_user_message(monkeypa
             }
         ]
     }
-    assert "input" not in captured["payload"]
-    assert updates
+
+
+def test_execute_exploration_disables_thinking_for_supported_models(monkeypatch) -> None:
+    captured = {}
+
+    def fake_build_agent_model(selection, *, extra_body=None):
+        captured["selection"] = selection
+        captured["extra_body"] = extra_body
+        return "fake-model"
+
+    async def fake_execute_exploration_async(model, **kwargs):
+        captured["model"] = model
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setattr("app.agents.model_selection.resolve_model_selection", lambda _capability_id: "selection")
+    monkeypatch.setattr(
+        "app.agents.model_selection.thinking_disabled_extra_body",
+        lambda selection: {"thinking": {"type": "disabled"}},
+    )
+    monkeypatch.setattr("app.agents.model_selection.build_agent_model", fake_build_agent_model)
+    monkeypatch.setattr(page_exploration_service, "_execute_exploration_async", fake_execute_exploration_async)
+
+    page_exploration_service._execute_exploration(
+        "run-1",
+        {
+            "project_id": "project-1",
+            "environment_site_url": "https://www.cybotstar.cn/agentStore",
+            "scope": "工作台",
+            "goal": "登录",
+            "exploration_mode": "goal",
+            "max_pages": 3,
+        },
+    )
+
+    assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert captured["model"] == "fake-model"
+    assert captured["kwargs"]["project_id"] == "project-1"
+    assert captured["kwargs"]["run_id"] == "run-1"
 
 
 def test_exploration_agent_prompt_distinguishes_goal_and_autonomous_modes() -> None:
@@ -167,6 +203,47 @@ def test_invoke_agent_writes_event_log_and_passes_recursion_config(monkeypatch, 
         "agent_step_completed",
     ]
     assert events[1]["payload"]["event"] == "on_tool_start"
+
+
+def test_exploration_detail_reads_persisted_realtime_events(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+    run_dir = tmp_path / "project-1" / "page_exploration" / "runs" / "run-log"
+    run_dir.mkdir(parents=True)
+    events_path = run_dir / "events.jsonl"
+    events_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "event_id": "evt-000001",
+                        "run_id": "run-log",
+                        "type": "agent_stream_event",
+                        "payload": {"event": "on_tool_start", "name": "playwright_click_tool"},
+                        "occurred_at": "2026-07-01T02:14:07+00:00",
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "event_id": "evt-000002",
+                        "run_id": "run-log",
+                        "type": "agent_stream_event",
+                        "payload": {"event": "on_tool_end", "name": "playwright_click_tool"},
+                        "occurred_at": "2026-07-01T02:14:08+00:00",
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    events = page_exploration_service._read_recent_exploration_events(
+        {"project_id": "project-1", "id": "run-log"}
+    )
+
+    assert [event["event_id"] for event in events] == ["evt-000001", "evt-000002"]
+    assert events[0]["payload"]["name"] == "playwright_click_tool"
 
 
 def test_invoke_agent_checkpoints_snapshot_as_page_artifact(monkeypatch, tmp_path: Path) -> None:
@@ -361,6 +438,45 @@ def test_execute_exploration_async_does_not_complete_after_stop(monkeypatch) -> 
     assert not any(args[2] == "completed" for args, _kwargs in updates)
 
 
+def test_stop_exploration_async_finalizes_cancelled_and_closes_stream(monkeypatch) -> None:
+    class FakeRun(dict):
+        pass
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    updated_statuses = []
+    published_events = []
+    closed_runs = []
+    run = FakeRun({"id": "run-stop", "status": "running"})
+
+    def fake_find_by_id(db, run_id):
+        return run
+
+    def fake_update_status(db, run_id, status, **kwargs):
+        updated_statuses.append((run_id, status, kwargs))
+        run["status"] = status
+        run.update(kwargs)
+
+    monkeypatch.setattr(page_exploration_service, "connect", lambda: FakeConnection())
+    monkeypatch.setattr(page_exploration_service.exploration_run_repo, "find_by_id", fake_find_by_id)
+    monkeypatch.setattr(page_exploration_service.exploration_run_repo, "update_status", fake_update_status)
+    monkeypatch.setattr(page_exploration_service.event_bus, "publish", lambda *args: published_events.append(args))
+    monkeypatch.setattr(page_exploration_service.event_bus, "close", lambda run_id: closed_runs.append(run_id))
+
+    result = page_exploration_service.stop_exploration_async(actor={}, run_id="run-stop")
+
+    assert result["status"] == "cancelled"
+    assert updated_statuses[0][1] == "cancelled"
+    assert updated_statuses[0][2]["result_summary"] == "探索任务已由用户停止。"
+    assert published_events[0][1] == "run_cancelled"
+    assert closed_runs == ["run-stop"]
+
+
 def test_exploration_start_url_uses_environment_site_url_not_scope() -> None:
     assert (
         page_exploration_service._exploration_start_url(
@@ -448,33 +564,128 @@ def test_event_bus_replays_history_and_delivers_live_events() -> None:
     assert second["type"] == "step_started"
 
 
-def test_agent_stream_tool_error_updates_started_step() -> None:
+def test_event_bus_close_all_wakes_active_subscribers() -> None:
+    event_bus.clear()
+
+    import asyncio
+
+    async def wait_for_shutdown() -> bool:
+        subscription = event_bus.subscribe("run-shutdown")
+        task = asyncio.create_task(subscription.__anext__())
+        await asyncio.sleep(0)
+        event_bus.close_all()
+        try:
+            await task
+        except StopAsyncIteration:
+            return True
+        finally:
+            await subscription.aclose()
+        return False
+
+    assert asyncio.run(wait_for_shutdown())
+
+
+def test_agent_stream_tool_events_publish_readable_whitelisted_sse_payloads() -> None:
     event_bus.clear("run-tool-lifecycle")
 
     page_exploration_service._publish_agent_stream_event(
         "run-tool-lifecycle",
         {
             "event": "on_tool_start",
-            "name": "playwright_click_tool",
+            "name": "read_file",
             "run_id": "tool-run-1",
-            "data": {"input": {"locator": "button-对话历史-028"}},
+            "data": {"input": {"file_path": "app/agents/page_exploration/skills/page_explorer/SKILL.md"}},
         },
+        raw_event_id="evt-000001",
     )
     page_exploration_service._publish_agent_stream_event(
         "run-tool-lifecycle",
         {
-            "event": "on_tool_error",
-            "name": "playwright_click_tool",
+            "event": "on_tool_end",
+            "name": "read_file",
             "run_id": "tool-run-1",
-            "data": {"error": "Unknown element id: button-对话历史-028"},
+            "data": {"output": "very long file content that must not be sent to the main SSE stream"},
         },
+        raw_event_id="evt-000002",
     )
 
     events = event_bus.get_history("run-tool-lifecycle")
 
-    assert [event["type"] for event in events] == ["step_started", "step_failed"]
+    assert [event["type"] for event in events] == ["agent_tool_started", "agent_tool_completed"]
     assert events[0]["payload"]["step_id"] == events[1]["payload"]["step_id"]
-    assert events[0]["payload"]["step_id"] == "agent-on_tool-tool-run-1"
+    assert events[0]["payload"]["step_id"] == "agent-tool-tool-run-1"
+    assert events[0]["payload"]["tool_name"] == "read_file"
+    assert events[0]["display"]["kind"] == "file_read"
+    assert events[0]["display"]["fields"][0]["value"].endswith("page_explorer/SKILL.md")
+    assert events[1]["display"]["kind"] == "file_read"
+    forbidden_payload_keys = {
+        "debug_ref",
+        "duration_ms",
+        "input",
+        "messages",
+        "output",
+        "raw_output",
+        "response_metadata",
+    }
+    assert forbidden_payload_keys.isdisjoint(events[0]["payload"])
+    assert forbidden_payload_keys.isdisjoint(events[1]["payload"])
+    assert "very long file content" not in json.dumps(events, ensure_ascii=False)
+
+
+def test_agent_stream_skips_noisy_model_stream_events() -> None:
+    event_bus.clear("run-noisy-stream")
+
+    page_exploration_service._publish_agent_stream_event(
+        "run-noisy-stream",
+        {
+            "event": "on_chat_model_stream",
+            "name": "ChatOpenAI",
+            "run_id": "model-run-1",
+            "data": {"chunk": {"content": "token"}},
+        },
+        raw_event_id="evt-000001",
+    )
+
+    assert event_bus.get_history("run-noisy-stream") == []
+
+
+def test_agent_stream_write_todos_publishes_plan_update_display() -> None:
+    event_bus.clear("run-todos")
+
+    page_exploration_service._publish_agent_stream_event(
+        "run-todos",
+        {
+            "event": "on_tool_start",
+            "name": "write_todos",
+            "run_id": "todo-run-1",
+            "data": {
+                "input": {
+                    "todos": [
+                        {"content": "Navigate to agentStore", "status": "in_progress"},
+                        {"content": "Capture page artifact", "status": "pending"},
+                    ]
+                }
+            },
+        },
+        raw_event_id="evt-000003",
+    )
+
+    events = event_bus.get_history("run-todos")
+
+    assert len(events) == 1
+    assert events[0]["type"] == "agent_plan_updated"
+    assert events[0]["payload"]["tool_name"] == "write_todos"
+    assert events[0]["display"]["kind"] == "todo_update"
+    assert events[0]["display"]["summary"] == "Navigate to agentStore"
+    assert {
+        "debug_ref",
+        "duration_ms",
+        "input",
+        "messages",
+        "output",
+        "raw_output",
+        "response_metadata",
+    }.isdisjoint(events[0]["payload"])
 
 
 def test_exploration_stream_does_not_cancel_event_bus_subscription() -> None:

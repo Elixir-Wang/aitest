@@ -21,18 +21,11 @@ class KnowledgeSourceDocumentInput(BaseModel):
     markdown_content: str
 
 
-class KnowledgeConversationHistoryMessage(BaseModel):
-    role: Literal["assistant", "user"]
-    content: str
-
-
 class KnowledgeQueryInput(BaseModel):
     project_id: str
     project_name: str
     question: str
-    conversation_history: list[KnowledgeConversationHistoryMessage] = Field(default_factory=list)
     source_documents: list[KnowledgeSourceDocumentInput] = Field(default_factory=list)
-    explorations: list[dict] = Field(default_factory=list)
 
 
 class KnowledgeSourceRef(BaseModel):
@@ -58,12 +51,10 @@ class KnowledgeQueryOutput(BaseModel):
     source_refs: list[KnowledgeSourceRef] = Field(default_factory=list)
     used_requirement_versions: list[str] = Field(default_factory=list)
     used_company_knowledge_files: list[str] = Field(default_factory=list)
-    used_exploration_runs: list[str] = Field(default_factory=list)
     knowledge_queried: bool = False
 
 
 __all__ = [
-    "KnowledgeConversationHistoryMessage",
     "KnowledgeQueryInput",
     "KnowledgeQueryOutput",
     "KnowledgeSourceDocumentInput",

@@ -131,7 +131,7 @@ QUALITY_ASSESSMENT_SYSTEM_PROMPT_V2 = """
 - **minor**: 不影响核心测试（术语不统一、可选字段说明缺失）
 
 ## 输出格式
-```json
+​```json
 {
   "issues": [
     {
@@ -169,7 +169,7 @@ QUALITY_ASSESSMENT_SYSTEM_PROMPT_V2 = """
 ```
 
 **Step 3: 更新 quality_assessment.py**
-```python
+​```python
 async def run_quality_assessment_agent_v2(
     model,
     primary_markdown_content: str,

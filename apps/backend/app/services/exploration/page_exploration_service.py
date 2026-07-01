@@ -97,7 +97,32 @@ def get_exploration_run(actor, run_id: str) -> dict:
             "unsupported_artifact": False,
             "unsupported_reason": "",
             "modules": modules,
+            "raw_events": _read_recent_exploration_events(run_dict),
         }
+
+
+def _read_recent_exploration_events(run: dict, *, limit: int = 200) -> list[dict]:
+    """Read persisted realtime events so terminal runs can restore the execution stream."""
+    project_id = _string(run.get("project_id"))
+    run_id = _string(run.get("id"))
+    if not project_id or not run_id:
+        return []
+    events_path = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration" / "runs" / run_id / "events.jsonl"
+    if not events_path.exists():
+        return []
+    events: list[dict] = []
+    try:
+        lines = events_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    for line in lines[-limit:]:
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            events.append(event)
+    return events
 
 
 def _modules_from_artifacts(run: dict) -> list[dict]:
@@ -522,22 +547,41 @@ def stop_exploration_async(actor, run_id: str) -> dict:
 
         run_dict = dict(run)
 
-        # 只有运行中的任务才能停止
+        # 已终止任务直接返回
+        if run_dict["status"] == "cancelled":
+            return run_dict
         if run_dict["status"] == "stopping":
             return run_dict
         if run_dict["status"] not in ["running", "queued"]:
             raise ValueError(f"探索任务当前状态为 {run_dict['status']}，无法停止")
 
-        # 更新状态为stopping
-        exploration_run_repo.update_status(db, run_id, "stopping")
+        finished_at = datetime.now(timezone.utc).isoformat()
+        exploration_run_repo.update_status(
+            db,
+            run_id,
+            "cancelled",
+            finished_at=finished_at,
+            result_summary="探索任务已由用户停止。",
+        )
 
         # 设置停止标志
         with _exploration_lock:
             if run_id in _running_explorations:
                 _running_explorations[run_id]["should_stop"] = True
 
-        updated_run = exploration_run_repo.find_by_id(db, run_id)
-        return dict(updated_run) if updated_run else {}
+    event_bus.publish(
+        run_id,
+        "run_cancelled",
+        {
+            "status": "cancelled",
+            "result_summary": "探索任务已由用户停止。",
+            "finished_at": finished_at,
+        },
+    )
+    event_bus.close(run_id)
+
+    updated_run = exploration_run_repo.find_by_id(db, run_id)
+    return dict(updated_run) if updated_run else run_dict
 
 
 def _exploration_run_is_stopping(run_id: str) -> bool:
@@ -563,6 +607,7 @@ def _finalize_cancelled_exploration_run(run_id: str) -> None:
         if not run:
             return
         if run["status"] == "cancelled":
+            event_bus.close(run_id)
             return
         exploration_run_repo.update_status(
             db,
@@ -656,7 +701,7 @@ def _run_exploration_background(run_id: str) -> None:
 def _execute_exploration(run_id: str, run_config: dict) -> None:
     """执行探索逻辑 - 集成deepagents Agent"""
     import asyncio
-    from app.agents.model_selection import resolve_model_selection, build_agent_model
+    from app.agents.model_selection import build_agent_model, resolve_model_selection, thinking_disabled_extra_body
     from app.agents.page_exploration.agent import page_exploration_agent
 
     project_id = run_config["project_id"]
@@ -671,7 +716,7 @@ def _execute_exploration(run_id: str, run_config: dict) -> None:
         # 1. 解析模型配置
         model_selection = resolve_model_selection("site_exploration")
 
-        model = build_agent_model(model_selection)
+        model = build_agent_model(model_selection, extra_body=thinking_disabled_extra_body(model_selection))
 
         # 2. 运行异步探索
         asyncio.run(_execute_exploration_async(
@@ -1390,8 +1435,8 @@ async def _invoke_agent_with_realtime_events(
             final_result = None
             async for event in agent.astream_events(payload, version="v2", config=config):
                 _ensure_exploration_not_stopping(run_id)
-                _publish_agent_stream_event(run_id, event)
-                event_log.append("agent_stream_event", _compact_agent_event(event))
+                raw_event = event_log.append("agent_stream_event", _compact_agent_event(event))
+                _publish_agent_stream_event(run_id, event, raw_event_id=raw_event.get("event_id"))
                 _checkpoint_snapshot_artifact_from_event(
                     event,
                     project_id=project_id,
@@ -1413,7 +1458,6 @@ async def _invoke_agent_with_realtime_events(
                 "attempt": 1,
                 "started_at": started_at,
                 "completed_at": datetime.now(timezone.utc).isoformat(),
-                "duration_ms": None,
                 "success": True,
                 "message": _agent_result_summary(result),
             },
@@ -1474,9 +1518,9 @@ class _ExplorationEventLog:
         self.sequence = 0
         self.path = self._resolve_path()
 
-    def append(self, event_type: str, payload: dict) -> None:
+    def append(self, event_type: str, payload: dict) -> dict:
         if self.path is None:
-            return
+            return {}
         self.sequence += 1
         self.path.parent.mkdir(parents=True, exist_ok=True)
         event = {
@@ -1488,6 +1532,7 @@ class _ExplorationEventLog:
         }
         with self.path.open("a", encoding="utf-8") as file:
             file.write(json.dumps(event, ensure_ascii=False) + "\n")
+        return event
 
     def _resolve_path(self) -> Path | None:
         if not self.project_id or not self.run_id:
@@ -1516,86 +1561,250 @@ def _agent_failure_message(exc: Exception) -> str:
     return "页面探索 Agent 执行失败。"
 
 
-def _publish_agent_stream_event(run_id: str, event: dict) -> None:
+def _publish_agent_stream_event(run_id: str, event: dict, *, raw_event_id: str | None = None) -> None:
+    readable_event = _agent_event_to_readable_stream_event(event, raw_event_id=raw_event_id)
+    if readable_event is None:
+        return
+    event_bus.publish(run_id, readable_event["type"], readable_event["payload"], display=readable_event["display"])
+
+
+def _agent_event_to_readable_stream_event(event: dict, *, raw_event_id: str | None = None) -> dict | None:
     event_name = str(event.get("event") or "")
     name = str(event.get("name") or "")
     data = event.get("data") if isinstance(event.get("data"), dict) else {}
-    lifecycle_step_id = _agent_stream_lifecycle_step_id(event_name, event, name)
-    if event_name in {"on_tool_start", "on_chain_start"}:
-        event_bus.publish(
-            run_id,
-            "step_started",
-            {
-                "step_id": lifecycle_step_id,
-                "step_number": 2,
-                "module_name": "主探索模块",
-                "action_type": name or event_name,
-                "description": f"执行 {name or event_name}",
-                "target_description": _compact_event_payload(data.get("input")),
-                "target_selector": "",
-                "value": "",
-                "expected_result": "",
-                "execution_strategy": "deepagents",
-                "is_critical": False,
-                "retry_on_failure": False,
-                "max_retries": 0,
-                "started_at": datetime.now(timezone.utc).isoformat(),
-                "message": f"开始执行 {name or event_name}",
-            },
+    if _is_hidden_agent_event(event_name, name):
+        return None
+    if event_name not in {"on_tool_start", "on_tool_end", "on_tool_error", "on_chat_model_end"}:
+        return None
+
+    occurred_at = datetime.now(timezone.utc).isoformat()
+
+    if event_name == "on_chat_model_end":
+        display = _readable_model_display(name, data)
+        if display is None:
+            return None
+        return {
+            "type": "agent_thought",
+            "payload": _clean_compact_payload(
+                {
+                    "step_id": _agent_stream_lifecycle_step_id(event_name, event, name),
+                    "status": "completed",
+                    "completed_at": occurred_at,
+                }
+            ),
+            "display": display,
+        }
+
+    status = "running"
+    stream_type = "agent_tool_started"
+    if event_name == "on_tool_end":
+        status = "completed"
+        stream_type = "agent_tool_completed"
+    elif event_name == "on_tool_error":
+        status = "failed"
+        stream_type = "agent_tool_failed"
+
+    error_summary = _compact_event_payload(data.get("error"))
+    display = _readable_tool_display(name, event_name, data, status)
+    if display is None:
+        return None
+    payload = _clean_compact_payload(
+        {
+            "step_id": _agent_stream_lifecycle_step_id(event_name, event, name),
+            "tool_name": name,
+            "status": status,
+            "started_at": occurred_at if status == "running" else "",
+            "completed_at": occurred_at if status != "running" else "",
+            "error_summary": error_summary,
+        }
+    )
+    if name == "write_todos":
+        stream_type = "agent_plan_updated"
+    return {"type": stream_type, "payload": payload, "display": display}
+
+
+def _is_hidden_agent_event(event_name: str, name: str) -> bool:
+    if event_name in {"on_chat_model_stream", "on_chain_stream", "on_chat_model_start"}:
+        return True
+    return name == "LangGraph" or "Middleware." in name
+
+
+def _clean_compact_payload(payload: dict) -> dict:
+    return {key: value for key, value in payload.items() if value not in ("", None, [], {})}
+
+
+def _readable_model_display(name: str, data: dict) -> dict | None:
+    output = _compact_event_payload(data.get("output"))
+    if not output:
+        return None
+    tool_names = _extract_tool_names(output)
+    summary = "模型请求工具调用，准备继续执行页面探索。" if tool_names else output[:120]
+    return {
+        "kind": "model_analysis",
+        "title": "模型分析",
+        "summary": summary,
+        "fields": [
+            {"label": "模型", "value": name},
+            {"label": "下一步", "value": " / ".join(tool_names[:4])},
+        ],
+        "chips": tool_names[:3],
+    }
+
+
+def _readable_tool_display(tool_name: str, event_name: str, data: dict, status: str) -> dict | None:
+    input_data = data.get("input") if isinstance(data.get("input"), dict) else {}
+    output_data = data.get("output") if isinstance(data.get("output"), dict) else {}
+    error = _compact_event_payload(data.get("error")) or _compact_event_payload(output_data.get("error"))
+    if tool_name == "read_file":
+        file_path = _tool_field(input_data, "file_path") or _tool_field(input_data, "path") or _compact_event_payload(data.get("input"))
+        title = "加载探索规则" if "SKILL.md" in file_path else "读取文件"
+        return _tool_display(
+            "file_read",
+            title,
+            "读取页面探索规则" if "SKILL.md" in file_path else "读取文件内容",
+            status,
+            [
+                {"label": "文件", "value": file_path, "mono": True},
+                {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
+            ],
+            error,
         )
-    elif event_name in {"on_tool_end", "on_chain_end"}:
-        event_bus.publish(
-            run_id,
-            "step_completed",
-            {
-                "step_id": lifecycle_step_id,
-                "step_number": 2,
-                "module_name": "主探索模块",
-                "action_type": name or event_name,
-                "description": f"完成 {name or event_name}",
-                "target_description": "",
-                "target_selector": "",
-                "value": "",
-                "expected_result": "",
-                "execution_strategy": "deepagents",
-                "is_critical": False,
-                "retry_on_failure": False,
-                "max_retries": 0,
-                "completed_at": datetime.now(timezone.utc).isoformat(),
-                "success": True,
-                "message": _compact_event_payload(data.get("output")) or f"完成 {name or event_name}",
-            },
+    if tool_name == "write_todos":
+        todos = input_data.get("todos") if isinstance(input_data, dict) else []
+        current = next((todo for todo in todos if isinstance(todo, dict) and todo.get("status") == "in_progress"), None) if isinstance(todos, list) else None
+        pending = [todo for todo in todos if isinstance(todo, dict) and todo.get("status") == "pending"][:3] if isinstance(todos, list) else []
+        return _tool_display(
+            "todo_update",
+            "探索计划更新",
+            _tool_field(current or {}, "content") or "更新探索待办计划。",
+            status,
+            [
+                {"label": "当前进行", "value": _tool_field(current or {}, "content")},
+                {"label": "待处理", "value": "\n".join(f"{index + 1}. {_tool_field(todo, 'content')}" for index, todo in enumerate(pending))},
+                {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
+            ],
+            error,
         )
-    elif event_name in {"on_tool_error", "on_chain_error"}:
-        event_bus.publish(
-            run_id,
-            "step_failed",
-            {
-                "step_id": lifecycle_step_id,
-                "step_number": 2,
-                "module_name": "主探索模块",
-                "action_type": name or event_name,
-                "description": f"{name or event_name} 失败",
-                "target_description": "",
-                "target_selector": "",
-                "value": "",
-                "expected_result": "",
-                "execution_strategy": "deepagents",
-                "is_critical": False,
-                "retry_on_failure": False,
-                "max_retries": 0,
-                "completed_at": datetime.now(timezone.utc).isoformat(),
-                "success": False,
-                "error": _compact_event_payload(data.get("error")),
-                "message": f"{name or event_name} 执行失败",
-            },
-        )
+    if tool_name == "playwright_navigate_tool":
+        url = _tool_field(input_data, "url") or _tool_field(output_data, "url")
+        return _tool_display("navigate", "打开页面", f"打开 {_compact_url_for_display(url) or '目标页面'}", status, [{"label": "目标 URL", "value": _compact_url_for_display(url), "mono": True}, {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)}], error)
+    if tool_name == "playwright_click_tool":
+        locator = _tool_field(input_data, "locator") or _compact_event_payload(data.get("input"))
+        return _tool_display("click", "点击元素", f"点击 {_locator_label(locator) or '页面元素'}", status, [{"label": "目标", "value": _locator_label(locator)}, {"label": "定位器", "value": locator, "mono": True}, {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)}], error)
+    if tool_name in {"playwright_snap_tool", "playwright_extract_elements_tool"}:
+        elements = output_data.get("elements") if isinstance(output_data.get("elements"), list) else []
+        return _tool_display("snapshot", "采集页面快照", f"采集 {_tool_field(output_data, 'title') or _compact_url_for_display(_tool_field(output_data, 'url')) or '当前页面'} 的页面结构", status, [{"label": "页面", "value": _tool_field(output_data, "title")}, {"label": "URL", "value": _compact_url_for_display(_tool_field(output_data, "url")), "mono": True}, {"label": "发现元素", "value": _summarize_element_roles(elements)}, {"label": "关键元素", "value": _summarize_key_elements(elements)}, {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)}], error)
+    if tool_name == "write_page_artifact_tool":
+        path = _tool_field(output_data, "path") or _tool_field(input_data, "path") or _tool_field(input_data, "artifact_path")
+        return _tool_display("artifact_write", "写入页面事实", f"写入 {Path(path).name}" if path else "写入页面事实", status, [{"label": "页面", "value": _tool_field(input_data, "title") or _tool_field(input_data, "page_title")}, {"label": "产物", "value": path, "mono": True}, {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)}], error)
+    if tool_name == "update_explored_url_tool":
+        url = _tool_field(input_data, "url") or _tool_field(output_data, "url")
+        return _tool_display("url_record", "记录已探索页面", f"记录 {_compact_url_for_display(url)} 已访问", status, [{"label": "URL", "value": _compact_url_for_display(url), "mono": True}, {"label": "状态", "value": "已访问" if status == "completed" else _status_label(status)}], error)
+    if error:
+        return _tool_display("error", "执行失败", _error_reason(error), status, [{"label": "原因", "value": error, "tone": "danger"}], error)
+    return None
+
+
+def _tool_display(kind: str, title: str, summary: str, status: str, fields: list[dict], error: str = "") -> dict:
+    if error:
+        title = f"{title}失败" if not title.endswith("失败") else title
+        summary = _error_reason(error)
+        fields = [*fields, {"label": "原因", "value": error, "tone": "danger"}]
+    return {
+        "kind": kind,
+        "title": title,
+        "summary": summary,
+        "fields": [field for field in fields if field.get("value")],
+    }
+
+
+def _tool_field(record: dict, key: str) -> str:
+    return _compact_event_payload(record.get(key)) if isinstance(record, dict) else ""
+
+
+def _status_label(status: str) -> str:
+    return {"running": "执行中", "completed": "完成", "failed": "失败"}.get(status, status)
+
+
+def _status_tone(status: str) -> str:
+    return "danger" if status == "failed" else "success"
+
+
+def _extract_tool_names(value: str) -> list[str]:
+    names = []
+    for match in re_finditer_tools(value):
+        if match not in names:
+            names.append(match)
+    return names
+
+
+def re_finditer_tools(value: str) -> list[str]:
+    import re
+
+    return re.findall(r"\b(playwright_[a-z_]+|write_page_artifact_tool|update_explored_url_tool|write_todos|read_file)\b", value)
+
+
+def _compact_url_for_display(value: str) -> str:
+    if not value:
+        return ""
+    try:
+        parsed = urlparse(value)
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.path or '/'}{('?' + parsed.query) if parsed.query else ''}"
+    except Exception:
+        pass
+    return value[:96]
+
+
+def _locator_label(locator: str) -> str:
+    if not locator:
+        return ""
+    import re
+
+    match = re.match(r"^[a-zA-Z]+-(.+?)-\d+$", locator)
+    if match:
+        return " / ".join(part for part in match.group(1).split("-") if part)
+    return locator[:64]
+
+
+def _summarize_element_roles(elements: list) -> str:
+    labels = {"button": "按钮", "link": "链接", "textbox": "输入框", "checkbox": "复选框", "tab": "标签"}
+    counts: dict[str, int] = {}
+    for element in elements:
+        if isinstance(element, dict):
+            role = _compact_event_payload(element.get("role"))
+            if role:
+                counts[role] = counts.get(role, 0) + 1
+    return " · ".join(f"{labels.get(role, role)} {count}" for role, count in counts.items())
+
+
+def _summarize_key_elements(elements: list) -> str:
+    names = []
+    for element in elements:
+        if not isinstance(element, dict):
+            continue
+        name = _compact_event_payload(element.get("name") or element.get("text"))
+        if name and name not in names:
+            names.append(name)
+        if len(names) >= 5:
+            break
+    return "、".join(names)
+
+
+def _error_reason(error: str) -> str:
+    if "429" in error or "rate_limit_exceeded" in error:
+        return "模型配额限制"
+    if "stale_ref" in error or "Unknown element id" in error:
+        return "元素引用已失效"
+    if "timeout" in error.lower():
+        return "操作超时"
+    return "执行失败"
 
 
 def _agent_stream_lifecycle_step_id(event_name: str, event: dict, name: str) -> str:
     run_key = event.get("run_id") or name
     if event_name.startswith("on_tool_"):
-        return f"agent-on_tool-{run_key}"
+        return f"agent-tool-{run_key}"
     if event_name.startswith("on_chain_"):
         return f"agent-on_chain-{run_key}"
     return f"agent-{event_name}-{run_key}"
@@ -1675,43 +1884,6 @@ def list_exploration_runs(actor, project_id: str, limit: int = 100) -> list[dict
             """,
             (project_id, limit),
         ).fetchall()
-        return [dict(r) for r in runs]
-
-
-def list_running_runs(actor, project_id: str | None = None) -> list[dict]:
-    """列出运行中的探索任务"""
-    with connect() as db:
-        if project_id:
-            runs = db.execute(
-                """
-                SELECT er.*,
-                       p.name AS project_name,
-                       pe.name AS environment_name,
-                       COALESCE(sd.name, '') AS requirement_doc_title
-                FROM exploration_runs er
-                JOIN projects p ON p.id = er.project_id
-                JOIN project_environments pe ON pe.id = er.environment_id
-                LEFT JOIN source_documents sd ON sd.id = er.requirement_doc_id
-                WHERE er.project_id = ? AND er.status IN ('running', 'queued', 'stopping')
-                ORDER BY er.created_at DESC
-                """,
-                (project_id,),
-            ).fetchall()
-        else:
-            runs = db.execute(
-                """
-                SELECT er.*,
-                       p.name AS project_name,
-                       pe.name AS environment_name,
-                       COALESCE(sd.name, '') AS requirement_doc_title
-                FROM exploration_runs er
-                JOIN projects p ON p.id = er.project_id
-                JOIN project_environments pe ON pe.id = er.environment_id
-                LEFT JOIN source_documents sd ON sd.id = er.requirement_doc_id
-                WHERE er.status IN ('running', 'queued', 'stopping')
-                ORDER BY er.created_at DESC
-                """
-            ).fetchall()
         return [dict(r) for r in runs]
 
 
@@ -1945,105 +2117,3 @@ def recover_interrupted_exploration_runs(*, project_id: str | None = None) -> No
             pass
 
 
-def build_artifact_tree(actor, project_id: str | None = None) -> dict:
-    """构建探索产物树结构
-
-    Args:
-        actor: 当前用户
-        project_id: 项目ID（可选）
-
-    Returns:
-        产物树结构：
-        {
-            "id": "root",
-            "name": "探索产物",
-            "type": "folder",
-            "children": [
-                {
-                    "id": "{project_id}",
-                    "name": "{project_name}",
-                    "type": "folder",
-                    "children": [
-                        {
-                            "id": "{run_id}",
-                            "name": "{run_title}",
-                            "type": "folder",
-                            "metadata": {...},
-                            "children": [
-                                {
-                                    "id": "{artifact_id}",
-                                    "name": "{file_name}",
-                                    "type": "file",
-                                    "fileType": "screenshot|accessibility|structure|log|report",
-                                    "path": "{file_path}",
-                                    "size": file_size,
-                                    "createdAt": "{created_at}"
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ]
-        }
-    """
-    with connect() as db:
-        # 获取所有探索任务
-        if project_id:
-            runs = exploration_run_repo.list_by_project(db, project_id, limit=500)
-        else:
-            runs = exploration_run_repo.list_all(db, project_id=None, limit=500)
-
-        # 按项目分组
-        projects_dict = {}
-        for run in runs:
-            run_dict = dict(run)
-            pid = run_dict.get("project_id", "unknown")
-            pname = run_dict.get("project_name", "未知项目")
-
-            if pid not in projects_dict:
-                projects_dict[pid] = {
-                    "id": pid,
-                    "name": pname,
-                    "type": "folder",
-                    "children": []
-                }
-
-            # 获取该任务的产物
-            artifacts = exploration_artifact_repo.list_by_run(db, run_dict["id"])
-            artifact_children = []
-
-            for artifact in artifacts:
-                art_dict = dict(artifact)
-                file_path = Path(art_dict.get("file_path", ""))
-                artifact_children.append({
-                    "id": art_dict.get("id", ""),
-                    "name": file_path.name if file_path else art_dict.get("artifact_type", "unknown"),
-                    "type": "file",
-                    "fileType": art_dict.get("artifact_type", "unknown"),
-                    "path": str(file_path),
-                    "size": file_path.stat().st_size if file_path.exists() else 0,
-                    "createdAt": art_dict.get("created_at", ""),
-                    "runId": run_dict["id"],
-                    "runTitle": run_dict.get("title", ""),
-                })
-
-            # 添加任务节点
-            projects_dict[pid]["children"].append({
-                "id": run_dict["id"],
-                "name": run_dict.get("title", "未命名探索"),
-                "type": "folder",
-                "metadata": {
-                    "status": run_dict.get("status", ""),
-                    "created_at": run_dict.get("created_at", ""),
-                    "finished_at": run_dict.get("finished_at", ""),
-                },
-                "children": artifact_children,
-            })
-
-        # 构建根节点
-        return {
-            "id": "root",
-            "name": "探索产物",
-            "type": "folder",
-            "children": list(projects_dict.values()),
-        }

@@ -84,8 +84,8 @@ def create_message(
     db.execute(
         """
         INSERT INTO knowledge_conversation_messages
-          (id, conversation_id, role, content, source_refs_json, used_requirement_versions_json, used_exploration_runs_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+          (id, conversation_id, role, content, source_refs_json, used_requirement_versions_json)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
         (
             message_id,
@@ -94,7 +94,6 @@ def create_message(
             content,
             json.dumps(source_refs or [], ensure_ascii=False),
             json.dumps(used_requirement_versions or [], ensure_ascii=False),
-            json.dumps([], ensure_ascii=False),
         ),
     )
     touch(db, conversation_id)

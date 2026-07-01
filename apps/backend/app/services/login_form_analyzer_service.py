@@ -4,9 +4,11 @@ import json
 import re
 from pathlib import Path
 
+from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
 from langchain_core.messages import HumanMessage
+from pydantic import BaseModel, Field
 
-from app.agents.login_form_analysis.agent import login_form_analysis_agent
 from app.agents.model_selection import build_agent_model, resolve_model_selection
 from app.core import settings
 from app.services.captcha_solver_service import CAPTCHA_MODEL_CAPABILITY_ID
@@ -14,6 +16,15 @@ from app.services.captcha_solver_service import CAPTCHA_MODEL_CAPABILITY_ID
 
 class LoginFormAnalyzerError(RuntimeError):
     pass
+
+
+class LoginFormAnalysisOutput(BaseModel):
+    username_element_id: str = Field(default="")
+    password_element_id: str = Field(default="")
+    captcha_image_element_id: str = Field(default="")
+    captcha_input_element_id: str = Field(default="")
+    agreement_element_id: str | None = None
+    login_button_element_id: str = Field(default="")
 
 
 def _build_login_form_analyzer_model():
@@ -108,8 +119,24 @@ def analyze_login_form(page_image_path: Path, elements: list[dict]) -> dict:
 
     try:
         model = _build_login_form_analyzer_model()
-        agent = login_form_analysis_agent(model)
-        response = asyncio.run(agent.ainvoke({"messages": [message]}))
+        if not hasattr(model, "bind_tools"):
+            response = asyncio.run(model.ainvoke({"messages": [message]}))
+        else:
+            agent = create_agent(
+                model=model,
+                tools=[],
+                system_prompt=(
+                    "你是 Web 登录页分析助手。\n"
+                    "根据页面截图和元素列表，识别登录表单关键控件。\n"
+                    "要求：\n"
+                    "1. 只输出结构化结果，不要输出解释、JSON 代码块或额外文本。\n"
+                    "2. 所有 element_id 必须来自输入 elements 列表。\n"
+                    "3. 找不到时对应字段返回空字符串；agreement_element_id 可以返回 null。\n"
+                    "4. 不要猜测不存在的元素。"
+                ),
+                response_format=ToolStrategy(LoginFormAnalysisOutput),
+            )
+            response = asyncio.run(agent.ainvoke({"messages": [message]}))
     except ValueError as exc:
         raise LoginFormAnalyzerError(str(exc)) from exc
     except Exception as exc:
@@ -151,6 +178,15 @@ def analyze_login_form(page_image_path: Path, elements: list[dict]) -> dict:
 def _extract_structured_payload(response):
     if hasattr(response, "structured_response") and response.structured_response is not None:
         return response.structured_response
+    content = getattr(response, "content", None)
+    if isinstance(content, LoginFormAnalysisOutput):
+        return content
+    if isinstance(content, str):
+        try:
+            payload = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise LoginFormAnalyzerError("登录页元素规划结果缺少结构化输出。") from exc
+        return LoginFormAnalysisOutput.model_validate(payload)
     if isinstance(response, dict) and "structured_response" in response:
         return response["structured_response"]
     raise LoginFormAnalyzerError("登录页元素规划结果缺少结构化输出。")

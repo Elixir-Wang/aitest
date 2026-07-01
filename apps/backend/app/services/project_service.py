@@ -3,7 +3,7 @@ import secrets
 from pydantic import SecretStr
 from langchain_openai import ChatOpenAI
 
-from app.agents.model_selection import resolve_model_selection, build_agent_model
+from app.agents.model_selection import build_agent_model, resolve_model_selection, thinking_disabled_extra_body
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.repositories import project_repo
@@ -178,32 +178,29 @@ def optimize_exploration_goal(project_id: str, goal: str, actor) -> dict:
     # 获取模型配置
     try:
         selection = resolve_model_selection(EXPLORATION_GOAL_OPTIMIZE_CAPABILITY_ID)
-        llm = build_agent_model(selection)
+        llm = build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
     except (ValueError, KeyError) as e:
         raise api_error(500, "MODEL_NOT_CONFIGURED", f"AI模型未配置：{str(e)}")
 
-    # 构建优化提示词
-    system_prompt = """你是一个专业的测试工程师助手，负责优化用户输入的页面探索目标。
+    # 构建步骤整理提示词
+    system_prompt = """你是一个页面探索目标整理助手。
 
-你的任务是：
-1. 理解用户的原始探索意图
-2. 将模糊的描述转换为清晰、具体、可执行的探索目标
-3. 补充必要的细节，如需要验证的内容、预期结果等
-4. 使用简洁、专业的语言
+你的任务是把用户输入的自然语言探索目标，整理成清晰、顺序明确、可执行的步骤清单。
 
 要求：
-- 保持原始意图不变
-- 目标应该具体、可衡量
-- 包含需要验证的关键点
-- 如果原始目标已经很清晰，可以适当优化措辞即可
-- 不要添加用户未提及的额外需求
-- 返回优化后的目标文本，不需要解释"""
+- 只基于用户原始内容进行整理，不添加用户未提及的新目标、新验证点或业务假设
+- 输出必须是步骤编号格式：1. 2. 3.
+- 每一步只描述一个具体操作或等待结果
+- 保留用户原文中的关键对象、页面、按钮、输入内容和动作
+- 可以补足必要的连接词，让步骤更清晰，但不能扩展为“关键点”“验收点”“测试断言”
+- 不要输出“验证以下关键点”
+- 不要输出解释、前缀、总结或 Markdown 标题"""
 
-    user_prompt = f"""请优化以下探索目标：
+    user_prompt = f"""请将以下探索目标整理为明确的执行步骤：
 
 {goal}
 
-请直接返回优化后的探索目标文本，不需要前缀或解释。"""
+请直接返回编号步骤清单。"""
 
     try:
         # 调用LLM进行优化

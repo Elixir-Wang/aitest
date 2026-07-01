@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
@@ -9,15 +10,21 @@ from app.agents.knowledge.agent import knowledge_agent
 from app.agents.knowledge.schemas import KnowledgeQueryInput, KnowledgeQueryOutput, KnowledgeSourceDocumentInput
 from app.agents.model_selection import build_agent_model, resolve_model_selection
 
+logger = logging.getLogger(__name__)
+
 
 CAPABILITY_ID = "knowledge_query"
 
 
-async def run_knowledge_agent(input_data: KnowledgeQueryInput) -> KnowledgeQueryOutput:
+def _selection_log_value(selection: Any, name: str) -> str:
+    return str(getattr(selection, name, ""))
+
+
+async def run_knowledge_agent(input_data: KnowledgeQueryInput, *, thread_id: str | None = None) -> KnowledgeQueryOutput:
     selection = resolve_model_selection(CAPABILITY_ID)
-    model = build_agent_model(selection, extra_body=_thinking_extra_body(show_thinking=False))
+    model = build_agent_model(selection, extra_body=_thinking_extra_body(selection, show_thinking=False))
     agent = knowledge_agent(model)
-    result = await agent.ainvoke(_agent_payload(input_data))
+    result = await agent.ainvoke(_agent_payload(input_data), config=_thread_config(thread_id))
     return _output_from_result(result)
 
 
@@ -25,13 +32,14 @@ async def stream_knowledge_agent(
     input_data: KnowledgeQueryInput,
     *,
     show_thinking: bool = False,
+    thread_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     selection = resolve_model_selection(CAPABILITY_ID)
-    model = build_agent_model(selection, extra_body=_thinking_extra_body(show_thinking=show_thinking))
+    model = build_agent_model(selection, extra_body=_thinking_extra_body(selection, show_thinking=show_thinking))
     agent = knowledge_agent(model)
     payload = _agent_payload(input_data)
     if not hasattr(agent, "astream"):
-        output = await run_knowledge_agent(input_data)
+        output = await run_knowledge_agent(input_data, thread_id=thread_id)
         if output.answer:
             yield {"type": "message_delta", "delta": output.answer}
         yield {"type": "metadata", "output": output}
@@ -40,22 +48,43 @@ async def stream_knowledge_agent(
 
     output: KnowledgeQueryOutput | None = None
     streamed_answer = ""
+    used_tools = False
+    saw_reasoning = False
     visible_filter = ThinkBlockFilter()
     try:
-        async for chunk in agent.astream(payload, stream_mode=["messages", "values"]):
+        async for chunk in agent.astream(payload, config=_thread_config(thread_id), stream_mode=["messages", "values"]):
             mode, data = _stream_chunk_parts(chunk)
             if mode == "messages":
+                message = _message_from_stream_data(data)
+                if _is_tool_message(message) or _message_tool_calls(message):
+                    used_tools = True
+                    continue
                 reasoning_delta = _message_reasoning_delta(data)
+                reasoning_from_content = False
+                if show_thinking and not reasoning_delta:
+                    reasoning_delta = _message_thinking_blocks(message)
+                    reasoning_from_content = bool(reasoning_delta)
                 if show_thinking and reasoning_delta:
+                    if not saw_reasoning:
+                        saw_reasoning = True
+                        logger.info(
+                            "[knowledge-query] reasoning-started provider=%s model=%s conversation_id=%s",
+                            _selection_log_value(selection, "provider"),
+                            _selection_log_value(selection, "model"),
+                            thread_id or "",
+                        )
                     delta = sanitize_visible_thinking(reasoning_delta)
                     if delta:
                         yield {"type": "thinking_delta", "delta": delta}
-                if not _is_ai_message(_message_from_stream_data(data)):
+                    if not reasoning_from_content:
+                        continue
+                if not _is_ai_message(message):
                     continue
-                delta = _message_content(_message_from_stream_data(data))
-                if not delta:
-                    continue
-                if _looks_like_structured_json_delta(delta):
+                delta = _message_content(message)
+                if show_thinking and reasoning_from_content:
+                    delta = _strip_think_blocks(delta)
+                    delta = re.sub(r"<\s*/?\s*(?:think|thinking)\s*>", "", delta, flags=re.IGNORECASE | re.DOTALL)
+                if not delta or _looks_like_structured_json_delta(delta):
                     continue
                 delta = visible_filter.feed(delta)
                 if not streamed_answer:
@@ -71,13 +100,20 @@ async def stream_knowledge_agent(
     except Exception:
         if not streamed_answer:
             raise
-        output = KnowledgeQueryOutput(answer=streamed_answer.strip(), knowledge_queried=True)
+        output = KnowledgeQueryOutput(answer=streamed_answer.strip(), knowledge_queried=used_tools)
 
     if output is None:
-        output = KnowledgeQueryOutput(answer=streamed_answer.strip(), knowledge_queried=bool(streamed_answer.strip()))
+        if used_tools:
+            raise ValueError("知识库 agent 已调用工具但未返回结构化结果。")
+        output = KnowledgeQueryOutput(answer=streamed_answer.strip(), knowledge_queried=False)
+    if show_thinking and not saw_reasoning:
+        logger.info(
+            "[knowledge-query] reasoning-missing provider=%s model=%s conversation_id=%s",
+            _selection_log_value(selection, "provider"),
+            _selection_log_value(selection, "model"),
+            thread_id or "",
+        )
     output.answer = sanitize_visible_answer(output.answer)
-    if streamed_answer and output.answer != streamed_answer.strip():
-        output.answer = sanitize_visible_answer(streamed_answer.strip())
     if not streamed_answer and output.answer:
         yield {"type": "message_delta", "delta": output.answer}
     yield {"type": "metadata", "output": output}
@@ -92,11 +128,6 @@ def _agent_payload(input_data: KnowledgeQueryInput) -> dict[str, Any]:
                 "role": "user",
                 "content": "\n".join(
                     [
-                        f"项目：{input_data.project_name} ({input_data.project_id or 'all-projects'})",
-                        "",
-                        "最近对话上下文：",
-                        _format_history(input_data),
-                        "",
                         "用户问题：",
                         input_data.question.strip(),
                         "",
@@ -112,10 +143,24 @@ def _agent_payload(input_data: KnowledgeQueryInput) -> dict[str, Any]:
     }
 
 
-def _thinking_extra_body(*, show_thinking: bool) -> dict[str, Any] | None:
+def _thread_config(thread_id: str | None) -> dict[str, Any] | None:
+    if not thread_id:
+        return None
+    return {"configurable": {"thread_id": thread_id}}
+
+
+def _thinking_extra_body(selection, *, show_thinking: bool) -> dict[str, Any] | None:
     if show_thinking:
         return None
+    if not _supports_thinking_toggle(selection):
+        return None
     return {"thinking": {"type": "disabled"}}
+
+
+def _supports_thinking_toggle(selection: Any) -> bool:
+    provider = str(getattr(selection, "provider", "")).strip().lower()
+    model = str(getattr(selection, "model", "")).strip().lower()
+    return "minimax" in provider or "minimax" in model or "deepseek" in provider or "deepseek" in model
 
 
 def _virtual_files(input_data: KnowledgeQueryInput) -> dict[str, dict[str, str]]:
@@ -168,10 +213,9 @@ def _document_path(index: int, document: KnowledgeSourceDocumentInput) -> str:
         ]
         name = _safe_path_part(document.file_name or document.source_title or document.file_id)
         return str(PurePosixPath("/") / "company-knowledge" / base / PurePosixPath(*folder_parts) / f"{index:03d}-{_markdown_name(name)}")
-    project = _safe_path_part(document.project_name or document.project_id)
     name = _safe_path_part(document.document_name or document.source_title)
     version = document.version_no if document.version_no is not None else "unknown"
-    return str(PurePosixPath("/") / "requirements" / project / f"{index:03d}-{name}-v{version}.md")
+    return str(PurePosixPath("/") / "requirements" / f"{index:03d}-{name}-v{version}.md")
 
 
 def _markdown_name(name: str) -> str:
@@ -209,41 +253,29 @@ def _safe_path_part(value: str) -> str:
     return cleaned[:80] or "untitled"
 
 
-def _format_history(input_data: KnowledgeQueryInput) -> str:
-    if not input_data.conversation_history:
-        return "无。"
-    lines: list[str] = []
-    for message in input_data.conversation_history[-8:]:
-        role = "用户" if message.role == "user" else "项目知识库 AI"
-        content = message.content.strip()
-        if len(content) > 1000:
-            content = f"{content[:1000]}..."
-        lines.append(f"{role}：{content}")
-    return "\n".join(lines)
-
-
 def _output_from_result(result: Any) -> KnowledgeQueryOutput:
+    output = _structured_output_from_result(result)
+    if output is not None:
+        output.answer = sanitize_visible_answer(output.answer)
+        return output
+    output = _direct_answer_output_from_result(result)
+    if output is not None:
+        output.answer = sanitize_visible_answer(output.answer)
+        return output
+    raise ValueError("知识库 agent 未返回结构化结果。")
+
+
+def _structured_output_from_result(result: Any) -> KnowledgeQueryOutput | None:
     if not isinstance(result, dict):
-        raise ValueError("知识库 agent 输出格式不正确。")
+        return None
     structured = result.get("structured_response")
     if isinstance(structured, KnowledgeQueryOutput):
-        structured.answer = sanitize_visible_answer(structured.answer)
         return structured
     if isinstance(structured, dict):
-        output = KnowledgeQueryOutput.model_validate(structured)
-        output.answer = sanitize_visible_answer(output.answer)
-        return output
+        return KnowledgeQueryOutput.model_validate(structured)
     if isinstance(structured, str):
-        output = KnowledgeQueryOutput.model_validate_json(structured)
-        output.answer = sanitize_visible_answer(output.answer)
-        return output
-    messages = result.get("messages")
-    if isinstance(messages, list):
-        for message in reversed(messages):
-            content = sanitize_visible_answer(_message_content(message))
-            if content:
-                return KnowledgeQueryOutput(answer=content, knowledge_queried=True)
-    raise ValueError("知识库 agent 未返回结构化结果。")
+        return KnowledgeQueryOutput.model_validate_json(structured)
+    return None
 
 
 def _output_from_result_if_available(result: Any) -> KnowledgeQueryOutput | None:
@@ -253,32 +285,77 @@ def _output_from_result_if_available(result: Any) -> KnowledgeQueryOutput | None
         return None
 
 
-def sanitize_visible_answer(answer: str) -> str:
-    cleaned = _strip_think_blocks(answer)
-    cleaned = _strip_structured_output_artifacts(cleaned)
-    cleaned = _strip_noise_headings(cleaned)
-    cleaned = re.sub(r"(?is)<\s*/?\s*(?:think|thinking)\s*>", "", cleaned)
-    cleaned = re.sub(r"(?im)^\s*(?:Let me|I need to|I should)\b.*(?:read|check|look|find).*$", "", cleaned)
-    cleaned = re.sub(r"(?m)^\s*(?:我需要|我应该|我先|先)(?:查看|阅读|检查|查找|检索).*$", "", cleaned)
-    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-    return cleaned.strip()
+def _direct_answer_output_from_result(result: Any) -> KnowledgeQueryOutput | None:
+    if not isinstance(result, dict):
+        return None
+    messages = result.get("messages")
+    if not isinstance(messages, list) or _messages_used_tools(messages):
+        return None
+    for message in reversed(messages):
+        if not _is_ai_message(message):
+            continue
+        content = _message_content(message).strip()
+        if content:
+            return KnowledgeQueryOutput(answer=content, knowledge_queried=False)
+    return None
+
+
+def _messages_used_tools(messages: list[Any]) -> bool:
+    for message in messages:
+        if _is_tool_message(message):
+            return True
+        tool_calls = _message_tool_calls(message)
+        if tool_calls:
+            return True
+    return False
+
+
+def _is_tool_message(message: Any) -> bool:
+    message_type = ""
+    if isinstance(message, dict):
+        message_type = str(message.get("type") or message.get("role") or "")
+    else:
+        message_type = str(getattr(message, "type", "") or getattr(message, "role", ""))
+    return message_type == "tool" or message.__class__.__name__ == "ToolMessage"
+
+
+def _message_tool_calls(message: Any) -> Any:
+    if isinstance(message, dict):
+        return message.get("tool_calls") or message.get("tool_call_chunks")
+    return getattr(message, "tool_calls", None) or getattr(message, "tool_call_chunks", None)
 
 
 def sanitize_visible_thinking(text: str) -> str:
     cleaned = _strip_source_metadata_blocks(text)
-    cleaned = re.sub(r"(?im)^\s*(?:<\!--\s*source_metadata:.*?-->|source_metadata\s*:.*)$", "", cleaned)
-    cleaned = re.sub(r"(?im)^\s*(?:read_file|grep|glob|ls)\b.*$", "", cleaned)
-    cleaned = re.sub(r"(?m)^\s*\d+\s+(?=\S)", "", cleaned)
+    cleaned = re.sub(
+        r"^\s*(?:<\!--\s*source_metadata:.*?-->|source_metadata\s*:.*)$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+    cleaned = re.sub(r"^\s*(?:read_file|grep|glob|ls)\b.*$", "", cleaned, flags=re.IGNORECASE | re.MULTILINE)
+    cleaned = re.sub(r"^\s*\d+\s+(?=\S)", "", cleaned, flags=re.MULTILINE)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
 
 
 def _strip_source_metadata_blocks(text: str) -> str:
-    return re.sub(r"(?is)<\!--\s*source_metadata:.*?-->", "", text)
+    return re.sub(r"<\!--\s*source_metadata:.*?-->", "", text, flags=re.IGNORECASE | re.DOTALL)
+
+
+def sanitize_visible_answer(answer: str) -> str:
+    cleaned = _strip_think_blocks(answer)
+    cleaned = _strip_structured_output_artifacts(cleaned)
+    cleaned = re.sub(r"<\s*/?\s*(?:think|thinking)\s*>", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
 
 
 def _strip_think_blocks(text: str) -> str:
-    pattern = re.compile(r"(?is)<\s*(?:think|thinking)\s*>.*?<\s*/\s*(?:think|thinking)\s*>")
+    pattern = re.compile(
+        r"<\s*(?:think|thinking)\s*>.*?<\s*/\s*(?:think|thinking)\s*>",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
     previous = text
     while True:
         current = pattern.sub("", previous)
@@ -288,23 +365,16 @@ def _strip_think_blocks(text: str) -> str:
 
 
 def _strip_structured_output_artifacts(text: str) -> str:
-    cleaned = re.sub(r"(?is)<\s*/?\s*KnowledgeQueryOutput\s*>", "", text)
-    cleaned = re.sub(r"(?is)<\s*answer\s*>", "", cleaned)
-    cleaned = re.split(
-        r"(?is)<\s*/\s*answer\s*>|<\s*source_refs\b|<\s*/\s*source_refs\s*>|<\s*used_requirement_versions\b|"
-        r"<\s*used_company_knowledge_files\b|<\s*knowledge_queried\b",
+    cleaned = re.sub(r"<\s*/?\s*KnowledgeQueryOutput\s*>", "", text, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = re.sub(r"<\s*answer\s*>", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+    return re.split(
+        r"<\s*/\s*answer\s*>|<\s*source_refs\b|<\s*/\s*source_refs\s*>|<\s*used_requirement_versions\b|"
+        r"<\s*used_company_knowledge_files\b|<\s*knowledge_queried\b|"
+        r"^\s*(?:source_refs|used_requirement_versions|used_company_knowledge_files|knowledge_queried)\s*:",
         cleaned,
         maxsplit=1,
+        flags=re.IGNORECASE | re.MULTILINE | re.DOTALL,
     )[0]
-    return cleaned
-
-
-def _strip_noise_headings(text: str) -> str:
-    return re.sub(
-        r"(?im)^\s{0,3}(?:#{1,6}\s*)?(?:关于)?(?:项目)?(?:最终)?需求(?:文档)?(?:章节|信息|说明|总结|分析|概览|结论)?\s*[：:]*\s*$\n?",
-        "",
-        text,
-    )
 
 
 class ThinkBlockFilter:
@@ -375,6 +445,10 @@ def _safe_visible_prefix_length(text: str) -> int:
         "<knowledge_queried",
         "<knowledgequeryoutput",
         "</knowledgequeryoutput",
+        "source_refs:",
+        "used_requirement_versions:",
+        "used_company_knowledge_files:",
+        "knowledge_queried:",
     )
     for suffix_length in range(max_suffix, 0, -1):
         suffix = lower[-suffix_length:]
@@ -392,9 +466,11 @@ def _safe_visible_prefix_length(text: str) -> int:
 
 def _structured_output_tail_match(text: str) -> re.Match[str] | None:
     return re.search(
-        r"(?is)<\s*/\s*answer\s*>|<\s*source_refs\b|<\s*/\s*source_refs\s*>|<\s*used_requirement_versions\b|"
-        r"<\s*used_company_knowledge_files\b|<\s*knowledge_queried\b",
+        r"<\s*/\s*answer\s*>|<\s*source_refs\b|<\s*/\s*source_refs\s*>|<\s*used_requirement_versions\b|"
+        r"<\s*used_company_knowledge_files\b|<\s*knowledge_queried\b|"
+        r"^\s*(?:source_refs|used_requirement_versions|used_company_knowledge_files|knowledge_queried)\s*:",
         text,
+        flags=re.IGNORECASE | re.MULTILINE | re.DOTALL,
     )
 
 
@@ -432,6 +508,16 @@ def _message_reasoning_delta(data: Any) -> str:
     return ""
 
 
+def _message_thinking_blocks(message: Any) -> str:
+    content = _message_content(message)
+    if not content:
+        return ""
+    matches = re.findall(r"<\s*(?:think|thinking)\s*>(.*?)<\s*/\s*(?:think|thinking)\s*>", content, flags=re.IGNORECASE | re.DOTALL)
+    if not matches:
+        return ""
+    return "\n\n".join(part.strip() for part in matches if part.strip())
+
+
 def _is_ai_message(message: Any) -> bool:
     message_type = ""
     if isinstance(message, dict):
@@ -446,13 +532,17 @@ def _is_ai_message(message: Any) -> bool:
 
 def _looks_like_structured_json_delta(delta: str) -> bool:
     stripped = delta.lstrip()
-    return stripped.startswith("{") or stripped.startswith(
+    return stripped.startswith("```json") or stripped.startswith("{") or stripped.startswith(
         (
             '"answer"',
             '"knowledge_queried"',
             '"source_refs"',
             '"used_requirement_versions"',
             '"used_company_knowledge_files"',
+            "knowledge_queried:",
+            "source_refs:",
+            "used_requirement_versions:",
+            "used_company_knowledge_files:",
         )
     )
 
@@ -475,3 +565,4 @@ def _message_content(message: Any) -> str:
                     parts.append(text)
         return "".join(parts)
     return ""
+

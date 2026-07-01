@@ -46,6 +46,18 @@ def build_agent_model(selection: ModelSelection, *, extra_body: dict | None = No
     )
 
 
+def thinking_disabled_extra_body(selection: ModelSelection) -> dict | None:
+    if not supports_thinking_toggle(selection):
+        return None
+    return {"thinking": {"type": "disabled"}}
+
+
+def supports_thinking_toggle(selection: ModelSelection) -> bool:
+    provider = selection.provider.strip().lower()
+    model = selection.model.strip().lower()
+    return "minimax" in provider or "minimax" in model or "deepseek" in provider or "deepseek" in model
+
+
 def should_use_responses_api(selection: ModelSelection) -> bool | None:
     if _is_official_openai_endpoint(selection):
         return None

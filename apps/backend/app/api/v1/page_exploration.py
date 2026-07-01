@@ -83,6 +83,7 @@ class ExplorationRunDetailResponse(BaseModel):
     unsupported_artifact: bool
     unsupported_reason: str
     modules: list[dict]
+    raw_events: list[dict] = Field(default_factory=list)
 
 
 # ==================== API Endpoints ====================
@@ -392,26 +393,6 @@ def list_exploration_runs(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/runs-running", response_model=list[dict])
-def list_running_runs(
-    project_id: str | None = Query(default=None, description="项目ID（可选）"),
-    actor=Depends(current_user),
-) -> list[dict]:
-    """列出运行中的探索任务
-
-    Args:
-        project_id: 项目ID（可选，不传则返回所有项目）
-        actor: 当前用户
-
-    Returns:
-        运行中的任务列表
-    """
-    try:
-        return page_exploration_service.list_running_runs(actor, project_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.get("/runs-all", response_model=list[dict])
 def list_all_runs(
     project_id: str | None = Query(default=None, description="项目ID（可选）"),
@@ -515,21 +496,3 @@ def list_all_artifacts(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/artifacts-tree", response_model=dict)
-def get_artifacts_tree(
-    project_id: str | None = Query(default=None, description="项目ID（可选）"),
-    actor=Depends(current_user),
-) -> dict:
-    """获取探索产物树结构
-
-    Args:
-        project_id: 项目ID（可选）
-        actor: 当前用户
-
-    Returns:
-        产物树结构
-    """
-    try:
-        return page_exploration_service.build_artifact_tree(actor, project_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))

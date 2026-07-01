@@ -254,24 +254,10 @@ export type ApiAvailableAction = {
   confirm_required: boolean;
 };
 
-export type ApiKnowledgeSourceRef = {
-  project_id: string | null;
-  project_name: string | null;
-  source_type: "requirement" | "company_knowledge" | "exploration" | "manual";
-  source_id: string;
-  source_title: string;
-  location: string;
-  excerpt: string;
-};
-
 export type ApiKnowledgeQueryResult = {
   conversation: ApiKnowledgeConversation | null;
   messages: ApiKnowledgeConversationMessage[];
   answer: string;
-  source_refs: ApiKnowledgeSourceRef[];
-  used_requirement_versions: string[];
-  used_exploration_runs: string[];
-  knowledge_queried: boolean;
 };
 
 export type ApiKnowledgeConversation = {
@@ -288,9 +274,6 @@ export type ApiKnowledgeConversationMessage = {
   conversation_id: string;
   role: "assistant" | "user";
   content: string;
-  source_refs: ApiKnowledgeSourceRef[];
-  used_requirement_versions: string[];
-  used_exploration_runs: string[];
   created_at: string;
 };
 

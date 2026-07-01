@@ -29,9 +29,9 @@ test("knowledge chat input exposes model switch instead of source mode switch", 
   assert.match(inputSource, /onModelProviderChange/);
 });
 
-test("project knowledge page keeps requirements and explorations as default query sources", () => {
+test("project knowledge page keeps requirements as the default query source", () => {
   assert.match(pageSource, /include_requirements: true/);
-  assert.match(pageSource, /include_explorations: true/);
+  assert.doesNotMatch(pageSource, /include_explorations/);
   assert.doesNotMatch(pageSource, /projectBuildForm\.includeRequirements/);
   assert.doesNotMatch(pageSource, /projectBuildForm\.includeExplorations/);
 });
@@ -85,9 +85,10 @@ test("project knowledge chat history controls open for selected knowledge scope 
 });
 
 test("knowledge API types support all-project query metadata", () => {
-  assert.match(apiClientSource, /project_id: string \| null/);
-  assert.match(apiClientSource, /project_name: string \| null/);
   assert.match(apiClientSource, /conversation: ApiKnowledgeConversation \| null/);
+  const queryResultSource = apiClientSource.slice(apiClientSource.indexOf("export type ApiKnowledgeQueryResult"));
+  assert.doesNotMatch(queryResultSource, /source_refs/);
+  assert.doesNotMatch(queryResultSource, /used_requirement_versions/);
 });
 
 test("knowledge page derives chat scope from global project context and local selection", () => {
@@ -193,6 +194,12 @@ test("knowledge page guards stale stream metadata writes after scope changes", (
   assert.match(pageSource, /mergeAssistantStreamResult\(message, event\.result\)/);
 });
 
+test("knowledge page lets final stream metadata replace provisional assistant body", () => {
+  const mergeSource = sourceAfter("function mergeAssistantStreamResult");
+  assert.match(mergeSource, /body: assistant\?\.content \|\| result\.answer \|\| message\.body/);
+  assert.doesNotMatch(mergeSource, /body: message\.body \|\| assistant\?\.content \|\| result\.answer/);
+});
+
 test("knowledge page guards stale stream deltas and lifecycle writes", () => {
   const streamSource = sourceAfter("async function queryProjectKnowledge");
   assert.match(streamSource, /if \(event\.type === "message_delta"\)/);
@@ -230,6 +237,28 @@ test("knowledge assistant messages render markdown while user messages stay plai
     /<MarkdownPreview className="knowledge-chat-markdown" content=\{body\} emptyText="" \/>/,
   );
   assert.match(chatMessageSource, /<p className="whitespace-pre-wrap leading-6">\{body\}<\/p>/);
+});
+
+test("knowledge chat auto scroll keeps answers above the fixed input and lets manual upward scroll interrupt", () => {
+  const workspaceSource = sourceAfter("function ProjectKnowledgeWorkspace");
+  assert.match(workspaceSource, /const \[autoScrollEnabled, setAutoScrollEnabled\] = useState\(true\)/);
+  assert.match(workspaceSource, /const messageListRef = useRef<HTMLDivElement \| null>\(null\)/);
+  assert.match(workspaceSource, /const lastScrollTopRef = useRef\(0\)/);
+  assert.match(workspaceSource, /const distanceToBottom = list\.scrollHeight - list\.scrollTop - list\.clientHeight/);
+  assert.match(workspaceSource, /const scrollingUp = list\.scrollTop < lastScrollTopRef\.current/);
+  assert.match(workspaceSource, /if \(scrollingUp && distanceToBottom > 24\) \{[\s\S]*?setAutoScrollEnabled\(false\)/);
+  assert.match(workspaceSource, /if \(distanceToBottom <= 24\) \{[\s\S]*?setAutoScrollEnabled\(true\)/);
+  assert.match(
+    workspaceSource,
+    /if \(!hasConversation \|\| !autoScrollEnabled \|\| latestMessageScrollKey\.length === 0\)/,
+  );
+  assert.match(workspaceSource, /list\.scrollTo\(\{ top: list\.scrollHeight, behavior: "auto" \}\)/);
+  assert.match(workspaceSource, /className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-muted\/20 px-4 pt-4 pb-44"/);
+  assert.match(workspaceSource, /onScroll=\{handleMessageListScroll\}/);
+  assert.match(workspaceSource, /ref=\{messageListRef\}/);
+  assert.match(workspaceSource, /const handleSubmit = useCallback/);
+  assert.match(workspaceSource, /setAutoScrollEnabled\(true\);[\s\S]*?onSubmit\(instruction\)/);
+  assert.doesNotMatch(workspaceSource, /scrollIntoView/);
 });
 
 test("knowledge page resets async lifecycle state when project scope changes", () => {
@@ -277,10 +306,11 @@ test("knowledge page guards stale project conversation opens", () => {
   assert.match(conversationOpenSource, /finally \{\s+if \(isCurrentConversationOpen\(\)\) \{\s+setLoading\(false\)/);
 });
 
-test("knowledge source refs display project attribution when present", () => {
-  const sourceRefRenderSource = sourceAfter("来源引用");
-  assert.match(sourceRefRenderSource, /ref\.project_name/);
-  assert.match(sourceRefRenderSource, /<Badge variant="secondary">\{ref\.project_name\}<\/Badge>/);
+test("knowledge page renders references as part of assistant answer only", () => {
+  assert.doesNotMatch(pageSource, /sourceRefs/);
+  assert.doesNotMatch(pageSource, /usedRequirementVersions/);
+  assert.doesNotMatch(pageSource, /参考文档/);
+  assert.doesNotMatch(pageSource, /knowledgeSourceRefLabel/);
 });
 
 test("knowledge chat input leaves project scope to top navigation", () => {
@@ -313,8 +343,13 @@ test("knowledge chat supports real visible thinking toggle", () => {
   assert.match(pageSource, /sanitizeThinkingText\(event\.delta\)/);
   assert.match(pageSource, /thinking: `\$\{message\.thinking \?\? ""\}\$\{thinkingDelta\}\\n`/);
   assert.match(pageSource, /formatThinkingItems\(thinking\)/);
+  assert.match(pageSource, /thinkingStartedAt: message\.thinkingStartedAt \?\? thinkingReceivedAt/);
+  assert.match(pageSource, /function formatThinkingElapsedSeconds/);
+  assert.match(pageSource, /已思考/);
+  assert.match(pageSource, /用时 \$\{seconds\} 秒/);
+  assert.match(pageSource, /border-muted-foreground\/20 border-l/);
   assert.match(pageSource, /thinking=\{message\.thinking\}/);
-  assert.match(pageSource, /深度思考/);
+  assert.doesNotMatch(pageSource, /深度思考<\/span>/);
 });
 
 test("knowledge chat collapsed model label hides provider while dropdown still shows it", () => {

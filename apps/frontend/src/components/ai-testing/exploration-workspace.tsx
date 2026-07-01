@@ -18,7 +18,6 @@ import {
   Play,
   Plus,
   Save,
-  Sparkles,
   Square,
   Trash2,
   X,
@@ -73,22 +72,6 @@ type ExplorationEnvironment = {
   available_actions: string[];
 };
 
-type RequirementDocument = {
-  id: string;
-  name: string;
-  status: string;
-  current_version_id: string | null;
-  created_at: string;
-  latest_requirement_analysis_run?: {
-    id: string;
-    status: string;
-  } | null;
-};
-
-function isExplorationLinkableRequirement(requirement: RequirementDocument) {
-  return Boolean(requirement.current_version_id);
-}
-
 type ExplorationRun = {
   id: string;
   project_id: string;
@@ -111,10 +94,6 @@ type ExplorationRun = {
   created_at: string;
   updated_at: string;
   available_actions: string[];
-};
-
-type ExplorationGoalOptimizeResult = {
-  optimized_goal: string;
 };
 
 type ExplorationArtifact = {
@@ -191,21 +170,6 @@ type ManualAuthSession = {
   message: string;
 };
 
-type ExplorationForm = {
-  title: string;
-  projectId: string;
-  environmentId: string;
-  requirementDocId: string;
-  explorationMode: ExplorationMode;
-  scope: string;
-  forbiddenPaths: string;
-  goal: string;
-  notes: string;
-  maxPages: string;
-  maxActions: string;
-  timeoutMinutes: string;
-};
-
 const emptyForm: EnvironmentForm = {
   name: "",
   siteUrl: "",
@@ -215,21 +179,6 @@ const emptyForm: EnvironmentForm = {
   captchaStrategy: "none",
   reuseAuthState: true,
   description: "",
-};
-
-const emptyExplorationForm: ExplorationForm = {
-  title: "",
-  projectId: "",
-  environmentId: "",
-  requirementDocId: "",
-  explorationMode: "goal",
-  scope: "",
-  forbiddenPaths: "",
-  goal: "",
-  notes: "",
-  maxPages: "50",
-  maxActions: "1000",
-  timeoutMinutes: "120",
 };
 
 const statusLabels: Record<string, string> = {
@@ -280,58 +229,9 @@ const captchaStrategyOptions = ["none", "ai_letter", "manual"];
 const reuseAuthStateOptions = ["enabled", "disabled"];
 
 const explorationTabs = ["探索列表", "探索环境", "探索产物"];
-const NO_REQUIREMENT_VALUE = "__none__";
-const EXPLORATION_GOAL_MAX_LENGTH = 4000;
 const STOPPABLE_EXPLORATION_STATUSES = new Set(["queued", "running"]);
 const LOADING_EXPLORATION_STATUSES = new Set(["queued", "running", "stopping"]);
 const ACTIVE_MANUAL_AUTH_SESSION_STATUSES = new Set(["waiting_human"]);
-const explorationPlaceholders = {
-  scope: "填写本次要探索的页面范围，例如全站、指定菜单、指定 URL 或核心模块。",
-  forbiddenPaths: "填写禁止进入或点击的路径/动作，例如删除、支付、外发、批量通知、退出登录。",
-  goal: "填写本次探索要验证的目标，例如遍历元素和链接，检查 401/403、登录跳转和异常页。",
-  autonomousGoal: "可选补充本次自主盘点的关注点，不用于判断探索方式。",
-};
-
-const explorationModeLabels: Record<ExplorationMode, string> = {
-  goal: "目标探索",
-  autonomous: "自主探索",
-};
-
-function ExplorationModeSwitch({
-  value,
-  onChange,
-}: {
-  value: ExplorationMode;
-  onChange: (value: ExplorationMode) => void;
-}) {
-  return (
-    <div className="grid gap-2">
-      <FieldLabel>探索方式</FieldLabel>
-      <div className="relative grid h-10 w-full max-w-sm grid-cols-2 rounded-full bg-muted p-1">
-        <span
-          className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full bg-background shadow-sm transition-transform ${
-            value === "autonomous" ? "translate-x-full" : "translate-x-0"
-          }`}
-        />
-        {(["goal", "autonomous"] as const).map((mode) => (
-          <button
-            className={`relative z-10 rounded-full px-3 font-medium text-sm transition-colors ${
-              value === mode ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-            }`}
-            key={mode}
-            onClick={() => onChange(mode)}
-            type="button"
-          >
-            {explorationModeLabels[mode]}
-          </button>
-        ))}
-      </div>
-      <p className="text-muted-foreground text-xs">
-        {value === "goal" ? "围绕明确目标验证页面流程。" : "自动盘点当前页面或范围内的主要功能。"}
-      </p>
-    </div>
-  );
-}
 
 function formFromEnvironment(environment: ExplorationEnvironment): EnvironmentForm {
   return {
@@ -426,11 +326,6 @@ function isManualAuthSessionEnded(session: ManualAuthSession) {
 
 function isMissingManualAuthSessionError(error: unknown) {
   return error instanceof ApiRequestError && error.code === "MANUAL_AUTH_SESSION_NOT_FOUND";
-}
-
-function parsePositiveInteger(value: string): number | null {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function pageDisplayPath(page: ExplorationPageRecord) {
@@ -694,7 +589,6 @@ export function ExplorationWorkspace({
   breadcrumbs,
   description,
   projectId,
-  projectName = "",
   projectScope,
   title,
 }: ExplorationWorkspaceProps) {
@@ -704,10 +598,8 @@ export function ExplorationWorkspace({
   const authStateToastRef = useRef<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState("探索列表");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [explorationDialogOpen, setExplorationDialogOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [editingEnvironment, setEditingEnvironment] = useState<ExplorationEnvironment | null>(null);
-  const [editingExploration, setEditingExploration] = useState<ExplorationRun | null>(null);
   const [manualAuthSession, setManualAuthSession] = useState<ManualAuthSession | null>(null);
   const [manualAuthAction, setManualAuthAction] = useState<"cancel" | "save" | "start" | "">("");
   const [stoppingExploration, setStoppingExploration] = useState<ExplorationRun | null>(null);
@@ -715,21 +607,10 @@ export function ExplorationWorkspace({
   const [startingExplorationId, setStartingExplorationId] = useState("");
   const [explorationLoading, setExplorationLoading] = useState(true);
   const [environmentLoading, setEnvironmentLoading] = useState(true);
-  const [requirementLoading, setRequirementLoading] = useState(false);
-  const [projectLoading, setProjectLoading] = useState(projectScope === "all");
   const [error, setError] = useState("");
   const [searchText, setSearchText] = useState("");
   const [projects, setProjects] = useState<ApiProject[]>([]);
-  const [requirements, setRequirements] = useState<RequirementDocument[]>([]);
   const [form, setForm] = useState<EnvironmentForm>({ ...emptyForm });
-  const [explorationForm, setExplorationForm] = useState<ExplorationForm>({
-    ...emptyExplorationForm,
-    projectId: projectId ?? "",
-  });
-  const [goalOptimizeOpen, setGoalOptimizeOpen] = useState(false);
-  const [goalOptimizeLoading, setGoalOptimizeLoading] = useState(false);
-  const [goalOptimizeSource, setGoalOptimizeSource] = useState("");
-  const [goalOptimizeResult, setGoalOptimizeResult] = useState("");
   const [artifacts, setArtifacts] = useState<ExplorationArtifact[]>([]);
   const [artifactsLoading, setArtifactsLoading] = useState(false);
   const [selectedArtifactProjectId, setSelectedArtifactProjectId] = useState("");
@@ -749,17 +630,10 @@ export function ExplorationWorkspace({
     toggleAll,
     toggleOne,
   } = useLocalTableSelection<ExplorationEnvironment>([]);
-  const selectedProjectId = projectScope === "project" ? (projectId ?? "") : explorationForm.projectId;
-
-  useEffect(() => {
-    setExplorationForm((current) => ({ ...current, projectId: projectId ?? current.projectId }));
-  }, [projectId]);
-
   useEffect(() => {
     let ignore = false;
 
     async function loadProjects() {
-      setProjectLoading(true);
       try {
         const data = await apiRequest<ApiProject[]>("/projects");
         if (!ignore) {
@@ -768,10 +642,6 @@ export function ExplorationWorkspace({
       } catch (requestError) {
         if (!ignore) {
           setError(requestError instanceof Error ? requestError.message : "项目列表加载失败");
-        }
-      } finally {
-        if (!ignore) {
-          setProjectLoading(false);
         }
       }
     }
@@ -886,54 +756,6 @@ export function ExplorationWorkspace({
       ignore = true;
     };
   }, [projectId, projectScope, explorationSelection.setRows]);
-
-  useEffect(() => {
-    let ignore = false;
-    const targetProjectId = selectedProjectId;
-    if (!targetProjectId) {
-      setRequirements([]);
-      setRequirementLoading(false);
-      return;
-    }
-
-    async function loadRequirements() {
-      setRequirementLoading(true);
-      try {
-        const data = await apiRequest<RequirementDocument[]>(`/projects/${targetProjectId}/requirements`);
-        if (!ignore) {
-          setRequirements(data);
-          setExplorationForm((current) => ({
-            ...current,
-            requirementDocId: data.some(
-              (item) => item.id === current.requirementDocId && isExplorationLinkableRequirement(item),
-            )
-              ? current.requirementDocId
-              : "",
-          }));
-        }
-      } catch (requestError) {
-        if (!ignore) {
-          setRequirements([]);
-          reportError(requestError, {
-            fallbackMessage: "需求列表加载失败",
-            actionLabel: "加载需求",
-            method: "GET",
-            path: `/projects/${targetProjectId}/requirements`,
-          });
-        }
-      } finally {
-        if (!ignore) {
-          setRequirementLoading(false);
-        }
-      }
-    }
-
-    void loadRequirements();
-
-    return () => {
-      ignore = true;
-    };
-  }, [selectedProjectId]);
 
   const refreshArtifacts = useCallback(async () => {
     setArtifactsLoading(true);
@@ -1110,13 +932,6 @@ export function ExplorationWorkspace({
     void loadProjectPages(selectedArtifactProject);
   }, [activeTab, loadProjectPages, selectedArtifactProject]);
 
-  const scopedProjectName =
-    (projectName.trim() ? projectName : undefined) ??
-    projects.find((project) => project.id === projectId)?.name ??
-    explorationSelection.rows.find((run) => run.project_id === projectId)?.project_name ??
-    projectId ??
-    "";
-  const explorationProjectValue = projectScope === "project" ? (projectId ?? "") : explorationForm.projectId;
   const hasReusableEnvironmentPassword =
     editingEnvironment?.login_strategy === "account_password" && editingEnvironment.has_saved_credentials;
   const canCreateEnvironment =
@@ -1145,28 +960,6 @@ export function ExplorationWorkspace({
     form.loginStrategy === "account_password" &&
     form.captchaStrategy === "ai_letter";
   const manualAuthSessionActive = isActiveManualAuthSession(manualAuthSession);
-  const availableEnvironments = rows;
-  const availableRequirements = useMemo(() => {
-    const linkable = requirements.filter(
-      (requirement) => requirement.status !== "archived" && isExplorationLinkableRequirement(requirement),
-    );
-    const linkedRequirementId = explorationForm.requirementDocId;
-    if (!linkedRequirementId) {
-      return linkable;
-    }
-    const linkedRequirement = requirements.find((requirement) => requirement.id === linkedRequirementId);
-    if (!linkedRequirement || linkable.some((requirement) => requirement.id === linkedRequirementId)) {
-      return linkable;
-    }
-    return [linkedRequirement, ...linkable];
-  }, [explorationForm.requirementDocId, requirements]);
-  const canCreateExploration = selectedProjectId.length > 0 && explorationForm.environmentId.length > 0;
-  const explorationProjectSelectDisabled = [
-    projectScope === "project",
-    projectLoading,
-    editingExploration !== null,
-  ].some(Boolean);
-  const goalOptimizeCharacterCount = goalOptimizeResult.length;
 
   const syncManualAuthState = useCallback(
     (session: ManualAuthSession, environmentId: string) => {
@@ -1314,60 +1107,6 @@ export function ExplorationWorkspace({
     router.push(`/projects/${run.project_id}/exploration/${run.id}/edit`);
   }
 
-  async function requestGoalOptimization(sourceGoal: string) {
-    const targetProjectId = projectScope === "project" ? projectId : explorationForm.projectId;
-    if (!targetProjectId) {
-      toast.error("请选择项目");
-      return;
-    }
-    const normalizedGoal = sourceGoal.trim();
-    if (!normalizedGoal) {
-      toast.error("请先输入探索目标");
-      return;
-    }
-    if (normalizedGoal.length > EXPLORATION_GOAL_MAX_LENGTH) {
-      toast.error(`探索目标不能超过 ${EXPLORATION_GOAL_MAX_LENGTH} 字`);
-      return;
-    }
-
-    setGoalOptimizeLoading(true);
-    try {
-      const result = await apiRequest<ExplorationGoalOptimizeResult>(
-        `/projects/${targetProjectId}/exploration-goal/optimize`,
-        {
-          method: "POST",
-          body: JSON.stringify({ goal: normalizedGoal }),
-        },
-      );
-      setGoalOptimizeResult(result.optimized_goal);
-      setGoalOptimizeSource(normalizedGoal);
-      setGoalOptimizeOpen(true);
-    } catch (requestError) {
-      reportError(requestError, {
-        fallbackMessage: "探索目标优化失败",
-        actionLabel: "优化探索目标",
-        method: "POST",
-        path: `/projects/${targetProjectId}/exploration-goal/optimize`,
-      });
-    } finally {
-      setGoalOptimizeLoading(false);
-    }
-  }
-
-  function openGoalOptimizeDialog() {
-    void requestGoalOptimization(explorationForm.goal);
-  }
-
-  function useOptimizedGoal() {
-    const optimizedGoal = goalOptimizeResult.trim();
-    if (!optimizedGoal) {
-      toast.error("暂无可使用的优化结果");
-      return;
-    }
-    setExplorationForm((current) => ({ ...current, goal: optimizedGoal }));
-    setGoalOptimizeOpen(false);
-  }
-
   async function saveEnvironment() {
     if (!form.name.trim() || !form.siteUrl.trim()) {
       toast.error("请填写环境名称和站点地址");
@@ -1461,70 +1200,6 @@ export function ExplorationWorkspace({
         actionLabel: editingEnvironment ? "更新环境" : "创建环境",
         method: editingEnvironment ? "PATCH" : "POST",
         path: editingEnvironment ? `/environments/${editingEnvironment.id}` : "/environments",
-      });
-    }
-  }
-
-  async function saveExplorationRun() {
-    const targetProjectId = projectScope === "project" ? projectId : explorationForm.projectId;
-    if (!targetProjectId) {
-      toast.error("请选择项目");
-      return;
-    }
-    if (!explorationForm.title.trim() || !explorationForm.environmentId) {
-      toast.error("请填写任务名称并选择环境");
-      return;
-    }
-    const maxPages = parsePositiveInteger(explorationForm.maxPages);
-    const maxActions = parsePositiveInteger(explorationForm.maxActions);
-    const timeoutMinutes = parsePositiveInteger(explorationForm.timeoutMinutes);
-    if (!maxPages || !maxActions || !timeoutMinutes) {
-      toast.error("请填写大于 0 的执行边界");
-      return;
-    }
-
-    try {
-      const payload = {
-        environment_id: explorationForm.environmentId,
-        requirement_doc_id: explorationForm.requirementDocId,
-        exploration_mode: explorationForm.explorationMode,
-        title: explorationForm.title,
-        scope: explorationForm.scope,
-        forbidden_paths: explorationForm.forbiddenPaths,
-        goal: explorationForm.goal,
-        notes: explorationForm.notes,
-        max_pages: maxPages,
-        max_actions: maxActions,
-        timeout_minutes: timeoutMinutes,
-      };
-      if (editingExploration) {
-        const updated = await apiRequest<ExplorationRun>(`/page-exploration/runs/${editingExploration.id}`, {
-          method: "PATCH",
-          body: JSON.stringify(payload),
-        });
-        explorationSelection.setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
-        toast.success("探索任务已更新");
-      } else {
-        const created = await apiRequest<ExplorationRun>(`/page-exploration/runs`, {
-          method: "POST",
-          body: JSON.stringify({
-            project_id: targetProjectId,
-            ...payload,
-          }),
-        });
-        explorationSelection.setRows((current) => [created, ...current]);
-        toast.success("探索任务已创建");
-      }
-      setExplorationDialogOpen(false);
-      setEditingExploration(null);
-    } catch (requestError) {
-      reportError(requestError, {
-        fallbackMessage: editingExploration ? "探索任务更新失败" : "探索任务创建失败",
-        actionLabel: editingExploration ? "更新探索任务" : "创建探索任务",
-        method: editingExploration ? "PATCH" : "POST",
-        path: editingExploration
-          ? `/projects/${editingExploration.project_id}/exploration-runs/${editingExploration.id}`
-          : `/projects/${targetProjectId}/exploration-runs`,
       });
     }
   }
@@ -2318,271 +1993,6 @@ export function ExplorationWorkspace({
             >
               <Square className="size-4" />
               停止探索
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        onOpenChange={(open) => {
-          setExplorationDialogOpen(open);
-          if (!open) {
-            setEditingExploration(null);
-          }
-        }}
-        open={explorationDialogOpen}
-      >
-        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
-          <DialogHeader className="shrink-0 gap-3 px-6 pt-6">
-            <DialogTitle>{editingExploration ? "编辑探索任务" : "新建探索任务"}</DialogTitle>
-            <DialogDescription>选择环境并配置探索范围、探索目标和禁止路径。</DialogDescription>
-          </DialogHeader>
-          <FieldGroup className="grid min-h-0 gap-x-6 gap-y-5 overflow-y-auto px-6 py-5 sm:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="exploration-title">任务名称</FieldLabel>
-              <Input
-                id="exploration-title"
-                onChange={(event) => setExplorationForm((current) => ({ ...current, title: event.target.value }))}
-                placeholder="后台管理系统全站探索"
-                value={explorationForm.title}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="exploration-project">项目</FieldLabel>
-              <Select
-                disabled={explorationProjectSelectDisabled}
-                id="exploration-project"
-                placeholder={projectScope === "project" ? scopedProjectName : "选择项目"}
-                setValue={(value) => {
-                  setExplorationForm((current) => ({
-                    ...current,
-                    projectId: value,
-                    requirementDocId: "",
-                  }));
-                }}
-                value={explorationProjectValue}
-              >
-                {projectScope === "project" && projectId ? (
-                  <SelectOption value={projectId}>{scopedProjectName}</SelectOption>
-                ) : (
-                  projects.map((project) => (
-                    <SelectOption key={project.id} value={project.id}>
-                      {project.name}
-                    </SelectOption>
-                  ))
-                )}
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="exploration-environment">环境</FieldLabel>
-              <Select
-                id="exploration-environment"
-                placeholder="选择环境"
-                setValue={(value) => setExplorationForm((current) => ({ ...current, environmentId: value }))}
-                value={explorationForm.environmentId}
-              >
-                {availableEnvironments.map((environment) => (
-                  <SelectOption key={environment.id} value={environment.id}>
-                    {environment.name}
-                  </SelectOption>
-                ))}
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="exploration-requirement">需求</FieldLabel>
-              <Select
-                disabled={requirementLoading}
-                id="exploration-requirement"
-                placeholder={requirementLoading ? "加载需求中..." : "选择需求或留空"}
-                setValue={(value) =>
-                  setExplorationForm((current) => ({
-                    ...current,
-                    requirementDocId: value === NO_REQUIREMENT_VALUE ? "" : value,
-                  }))
-                }
-                value={explorationForm.requirementDocId || NO_REQUIREMENT_VALUE}
-              >
-                <SelectOption value={NO_REQUIREMENT_VALUE}>不关联需求</SelectOption>
-                {availableRequirements.map((requirement) => (
-                  <SelectOption key={requirement.id} value={requirement.id}>
-                    {requirement.name}
-                  </SelectOption>
-                ))}
-              </Select>
-              {!requirementLoading && availableRequirements.length === 0 ? (
-                <p className="text-muted-foreground text-xs">当前项目没有可关联的需求，请先完成需求分析。</p>
-              ) : null}
-            </Field>
-            <Field className="sm:col-span-2">
-              <ExplorationModeSwitch
-                onChange={(explorationMode) => setExplorationForm((current) => ({ ...current, explorationMode }))}
-                value={explorationForm.explorationMode}
-              />
-            </Field>
-            <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="exploration-scope">探索范围</FieldLabel>
-              <Textarea
-                className="min-h-24"
-                id="exploration-scope"
-                onChange={(event) => setExplorationForm((current) => ({ ...current, scope: event.target.value }))}
-                placeholder={explorationPlaceholders.scope}
-                value={explorationForm.scope}
-              />
-            </Field>
-            <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="exploration-forbidden-paths">禁止路径</FieldLabel>
-              <Textarea
-                className="min-h-20"
-                id="exploration-forbidden-paths"
-                onChange={(event) =>
-                  setExplorationForm((current) => ({ ...current, forbiddenPaths: event.target.value }))
-                }
-                placeholder={explorationPlaceholders.forbiddenPaths}
-                value={explorationForm.forbiddenPaths}
-              />
-            </Field>
-            <Field className="sm:col-span-2">
-              <div className="flex items-center justify-between gap-3">
-                <FieldLabel htmlFor="exploration-goal">探索目标</FieldLabel>
-                <Button
-                  className="text-primary hover:text-primary"
-                  disabled={goalOptimizeLoading}
-                  onClick={openGoalOptimizeDialog}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  {goalOptimizeLoading ? <Loader size={14} /> : <Sparkles className="size-4" />}
-                  AI 生成
-                </Button>
-              </div>
-              <Textarea
-                className="min-h-20"
-                id="exploration-goal"
-                maxLength={EXPLORATION_GOAL_MAX_LENGTH}
-                onChange={(event) => setExplorationForm((current) => ({ ...current, goal: event.target.value }))}
-                placeholder={
-                  explorationForm.explorationMode === "autonomous"
-                    ? explorationPlaceholders.autonomousGoal
-                    : explorationPlaceholders.goal
-                }
-                value={explorationForm.goal}
-              />
-            </Field>
-            <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="exploration-notes">备注</FieldLabel>
-              <Textarea
-                className="min-h-16"
-                id="exploration-notes"
-                onChange={(event) => setExplorationForm((current) => ({ ...current, notes: event.target.value }))}
-                placeholder="补充说明，不参与探索目标判定"
-                value={explorationForm.notes}
-              />
-            </Field>
-            <Field className="sm:col-span-2">
-              <FieldLabel>执行边界</FieldLabel>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <label className="grid gap-1.5 text-sm" htmlFor="exploration-max-pages">
-                  <span className="text-muted-foreground text-xs">页面上限</span>
-                  <Input
-                    id="exploration-max-pages"
-                    inputMode="numeric"
-                    min={1}
-                    onChange={(event) =>
-                      setExplorationForm((current) => ({ ...current, maxPages: event.target.value }))
-                    }
-                    placeholder="50"
-                    type="number"
-                    value={explorationForm.maxPages}
-                  />
-                </label>
-                <label className="grid gap-1.5 text-sm" htmlFor="exploration-max-actions">
-                  <span className="text-muted-foreground text-xs">操作上限</span>
-                  <Input
-                    id="exploration-max-actions"
-                    inputMode="numeric"
-                    min={1}
-                    onChange={(event) =>
-                      setExplorationForm((current) => ({ ...current, maxActions: event.target.value }))
-                    }
-                    placeholder="1000"
-                    type="number"
-                    value={explorationForm.maxActions}
-                  />
-                </label>
-                <label className="grid gap-1.5 text-sm" htmlFor="exploration-timeout-minutes">
-                  <span className="text-muted-foreground text-xs">超时时间（分钟）</span>
-                  <Input
-                    id="exploration-timeout-minutes"
-                    inputMode="numeric"
-                    min={1}
-                    onChange={(event) =>
-                      setExplorationForm((current) => ({ ...current, timeoutMinutes: event.target.value }))
-                    }
-                    placeholder="120"
-                    type="number"
-                    value={explorationForm.timeoutMinutes}
-                  />
-                </label>
-              </div>
-            </Field>
-          </FieldGroup>
-          <DialogFooter className="m-0 shrink-0 px-6 py-4">
-            <Button onClick={() => setExplorationDialogOpen(false)} type="button" variant="outline">
-              取消
-            </Button>
-            <Button disabled={!canCreateExploration} onClick={saveExplorationRun} type="button">
-              {editingExploration ? (
-                "保存"
-              ) : (
-                <>
-                  <Play className="size-4" />
-                  创建任务
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog onOpenChange={setGoalOptimizeOpen} open={goalOptimizeOpen}>
-        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
-          <DialogHeader className="shrink-0 px-6 pt-6">
-            <DialogTitle>大模型优化</DialogTitle>
-          </DialogHeader>
-          <div className="min-h-0 overflow-y-auto px-6 py-5">
-            <div className="relative">
-              <Textarea
-                className="min-h-[360px] resize-none pr-14"
-                onChange={(event) => setGoalOptimizeResult(event.target.value)}
-                value={goalOptimizeResult}
-              />
-              <span className="absolute right-3 bottom-3 text-muted-foreground text-xs">
-                {goalOptimizeCharacterCount}
-              </span>
-            </div>
-          </div>
-          <DialogFooter className="m-0 flex-row justify-center gap-3 px-6 py-4 sm:justify-center">
-            <Button onClick={() => setGoalOptimizeOpen(false)} type="button" variant="outline">
-              <X className="size-4" />
-              取消
-            </Button>
-            <Button
-              disabled={goalOptimizeLoading}
-              onClick={() => requestGoalOptimization(goalOptimizeSource)}
-              type="button"
-              variant="secondary"
-            >
-              {goalOptimizeLoading ? <Loader size={14} /> : <Sparkles className="size-4" />}
-              重新生成
-            </Button>
-            <Button
-              disabled={goalOptimizeLoading || !goalOptimizeResult.trim()}
-              onClick={useOptimizedGoal}
-              type="button"
-            >
-              <Save className="size-4" />
-              使用
             </Button>
           </DialogFooter>
         </DialogContent>

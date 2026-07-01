@@ -34,7 +34,6 @@ import {
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
-import { Badge } from "@/components/ui/badge-2";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -108,9 +107,8 @@ type ProjectChatMessage = {
   role: "assistant" | "user";
   body: string;
   thinking?: string;
-  sourceRefs?: ApiKnowledgeQueryResult["source_refs"];
-  usedRequirementVersions?: string[];
-  usedExplorationRuns?: string[];
+  thinkingCompletedAt?: number;
+  thinkingStartedAt?: number;
 };
 
 type ProjectKnowledgeStreamEvent =
@@ -693,7 +691,6 @@ export default function Page() {
         body: JSON.stringify({
           question: trimmedQuestion,
           include_requirements: true,
-          include_explorations: true,
           show_thinking: submittedShowThinking,
           conversation_id: submittedConversationId,
         }),
@@ -733,11 +730,16 @@ export default function Page() {
             if (!thinkingDelta) {
               continue;
             }
+            const thinkingReceivedAt = Date.now();
             if (isCurrentProjectQueryScope()) {
               setProjectMessages((messages) =>
                 messages.map((message) =>
                   message.id === assistantMessageId
-                    ? { ...message, thinking: `${message.thinking ?? ""}${thinkingDelta}\n` }
+                    ? {
+                        ...message,
+                        thinking: `${message.thinking ?? ""}${thinkingDelta}\n`,
+                        thinkingStartedAt: message.thinkingStartedAt ?? thinkingReceivedAt,
+                      }
                     : message,
                 ),
               );
@@ -1394,20 +1396,17 @@ function projectMessageFromApi(message: ApiKnowledgeConversationMessage): Projec
     id: message.id,
     role: message.role,
     body: message.content,
-    sourceRefs: message.source_refs,
-    usedRequirementVersions: message.used_requirement_versions,
-    usedExplorationRuns: message.used_exploration_runs,
   };
 }
 
 function mergeAssistantStreamResult(message: ProjectChatMessage, result: ApiKnowledgeQueryResult): ProjectChatMessage {
   const assistant = result.messages.find((item) => item.role === "assistant");
+  const thinkingCompletedAt =
+    message.thinking && !message.thinkingCompletedAt ? Date.now() : message.thinkingCompletedAt;
   return {
     ...message,
-    body: message.body || assistant?.content || result.answer,
-    sourceRefs: result.source_refs,
-    usedRequirementVersions: result.used_requirement_versions,
-    usedExplorationRuns: result.used_exploration_runs,
+    body: assistant?.content || result.answer || message.body,
+    thinkingCompletedAt,
   };
 }
 
@@ -1459,17 +1458,13 @@ function formatThinkingItems(value: string): string[] {
     .slice(0, 8);
 }
 
-function knowledgeSourceRefLabel(sourceType: ApiKnowledgeQueryResult["source_refs"][number]["source_type"]): string {
-  if (sourceType === "requirement") {
-    return "需求";
+function formatThinkingElapsedSeconds(startedAt?: number, completedAt?: number): string {
+  if (!startedAt) {
+    return "";
   }
-  if (sourceType === "company_knowledge") {
-    return "文档";
-  }
-  if (sourceType === "exploration") {
-    return "探索";
-  }
-  return "手动";
+  const elapsedMs = Math.max(0, (completedAt ?? Date.now()) - startedAt);
+  const seconds = Math.max(1, Math.round(elapsedMs / 1000));
+  return `用时 ${seconds} 秒`;
 }
 
 function upsertConversation(
@@ -1528,15 +1523,15 @@ function ProjectKnowledgeWorkspace({
 }) {
   const hasConversation = messages.length > 0 || running;
   const [historyOpen, setHistoryOpen] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
+  const messageListRef = useRef<HTMLDivElement | null>(null);
+  const lastScrollTopRef = useRef(0);
   const latestMessage = messages[messages.length - 1];
-  const latestMessageSourceCount = latestMessage?.sourceRefs?.length ?? 0;
   const projectHistoryOpen = historyOpen;
   const latestMessageScrollKey = [
     messages.length,
     latestMessage?.id,
     latestMessage?.body,
-    latestMessageSourceCount,
     error,
     projectHistoryOpen,
     running,
@@ -1564,17 +1559,56 @@ function ProjectKnowledgeWorkspace({
     />
   );
 
+  const handleMessageListScroll = useCallback(() => {
+    const list = messageListRef.current;
+    if (!list) {
+      return;
+    }
+
+    const distanceToBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
+    const scrollingUp = list.scrollTop < lastScrollTopRef.current;
+    lastScrollTopRef.current = list.scrollTop;
+
+    if (scrollingUp && distanceToBottom > 24) {
+      setAutoScrollEnabled(false);
+      return;
+    }
+
+    if (distanceToBottom <= 24) {
+      setAutoScrollEnabled(true);
+    }
+  }, []);
+
+  const handleSubmit = useCallback(
+    (instruction: string) => {
+      setAutoScrollEnabled(true);
+      onSubmit(instruction);
+    },
+    [onSubmit],
+  );
+
   useLayoutEffect(() => {
-    if (!hasConversation || latestMessageScrollKey.length === 0) {
+    if (!hasConversation || !autoScrollEnabled || latestMessageScrollKey.length === 0) {
       return;
     }
 
     const frameId = window.requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ block: "end" });
+      const list = messageListRef.current;
+      if (!list) {
+        return;
+      }
+      list.scrollTo({ top: list.scrollHeight, behavior: "auto" });
+      lastScrollTopRef.current = list.scrollTop;
     });
 
     return () => window.cancelAnimationFrame(frameId);
-  }, [hasConversation, latestMessageScrollKey]);
+  }, [autoScrollEnabled, hasConversation, latestMessageScrollKey]);
+
+  useEffect(() => {
+    void activeConversationId;
+    setAutoScrollEnabled(true);
+    lastScrollTopRef.current = 0;
+  }, [activeConversationId]);
 
   useEffect(() => {
     if (!projectSelected) {
@@ -1680,7 +1714,7 @@ function ProjectKnowledgeWorkspace({
               modelSaving={modelSaving}
               onModelProviderChange={onModelProviderChange}
               onStop={onStop}
-              onSubmit={onSubmit}
+              onSubmit={handleSubmit}
               onValueChange={onValueChange}
               selectedModelProviderId={selectedModelProviderId}
               value={value}
@@ -1707,47 +1741,25 @@ function ProjectKnowledgeWorkspace({
           </div>
         ) : (
           <div className="relative flex h-full min-h-0 min-w-0 flex-col">
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-muted/20 px-4 pt-4 pb-32">
+            <div
+              className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-muted/20 px-4 pt-4 pb-44"
+              onScroll={handleMessageListScroll}
+              ref={messageListRef}
+            >
               {messages.map((message) => (
                 <ChatMessage
                   body={message.body}
                   icon={message.role === "user" ? User : Command}
                   key={message.id}
-                  loading={
-                    running &&
-                    message.role === "assistant" &&
-                    message.body.length === 0 &&
-                    (message.thinking?.length ?? 0) === 0
-                  }
+                  loading={running && message.role === "assistant" && message.body.length === 0}
                   thinking={message.thinking}
+                  thinkingCompletedAt={message.thinkingCompletedAt}
+                  thinkingStartedAt={message.thinkingStartedAt}
                   title={message.role === "user" ? "你" : "项目知识库 AI"}
                   tone={message.role === "user" ? "user" : "assistant"}
-                >
-                  {message.sourceRefs?.length ? (
-                    <div className="mt-3 space-y-2 border-t pt-3">
-                      <div className="font-medium text-muted-foreground text-xs">参考文档</div>
-                      {message.sourceRefs.slice(0, 6).map((ref) => (
-                        <div
-                          className="rounded-md border bg-muted/30 p-2 text-xs"
-                          key={`${ref.source_type}-${ref.source_id}-${ref.location}-${ref.excerpt}`}
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="outline">{knowledgeSourceRefLabel(ref.source_type)}</Badge>
-                            {ref.project_name ? <Badge variant="secondary">{ref.project_name}</Badge> : null}
-                            <span className="font-medium">{ref.source_title}</span>
-                          </div>
-                          {ref.location ? <div className="mt-1 text-muted-foreground">{ref.location}</div> : null}
-                          {ref.excerpt ? (
-                            <p className="mt-1 line-clamp-2 text-muted-foreground">{ref.excerpt}</p>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </ChatMessage>
+                />
               ))}
               {error ? <ChatMessage body={error} icon={TriangleAlert} title="查询失败" tone="warning" /> : null}
-              <div ref={messagesEndRef} />
             </div>
             <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-muted/80 via-muted/45 to-transparent px-4 pt-8 pb-4">
               <KnowledgeChatInput
@@ -1760,7 +1772,7 @@ function ProjectKnowledgeWorkspace({
                 modelSaving={modelSaving}
                 onModelProviderChange={onModelProviderChange}
                 onStop={onStop}
-                onSubmit={onSubmit}
+                onSubmit={handleSubmit}
                 onValueChange={onValueChange}
                 selectedModelProviderId={selectedModelProviderId}
                 value={value}
@@ -1849,6 +1861,8 @@ function ChatMessage({
   icon: Icon,
   loading = false,
   thinking = "",
+  thinkingCompletedAt,
+  thinkingStartedAt,
   title,
   tone,
 }: {
@@ -1857,12 +1871,16 @@ function ChatMessage({
   icon: React.ComponentType<{ className?: string }>;
   loading?: boolean;
   thinking?: string;
+  thinkingCompletedAt?: number;
+  thinkingStartedAt?: number;
   title: string;
   tone: "assistant" | "user" | "warning";
 }) {
   const isUser = tone === "user";
   const thinkingItems = formatThinkingItems(thinking);
   const showThinking = tone === "assistant" && thinkingItems.length > 0;
+  const thinkingElapsed = formatThinkingElapsedSeconds(thinkingStartedAt, thinkingCompletedAt);
+  const thinkingStatus = loading ? "思考中" : "已思考";
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div className={isUser ? "max-w-[82%]" : "max-w-[88%]"}>
@@ -1884,24 +1902,23 @@ function ChatMessage({
           }
         >
           {showThinking ? (
-            <details
-              className="mb-3 overflow-hidden rounded-md border border-border/80 bg-muted/25 text-xs"
-              open={loading}
-            >
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-2.5 py-2 font-medium text-foreground">
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <Brain className="size-3.5 shrink-0 text-primary" />
-                  <span>深度思考</span>
+            <details className="group mb-3 text-sm" open={loading}>
+              <summary className="flex cursor-pointer list-none items-center gap-2 text-muted-foreground transition-colors hover:text-foreground">
+                <Brain className="size-4 shrink-0 text-primary" />
+                <span className="font-medium">
+                  {thinkingStatus}
+                  {thinkingElapsed ? `（${thinkingElapsed}）` : ""}
                 </span>
-                <span className="shrink-0 text-muted-foreground">{thinkingItems.length} 步</span>
+                <ChevronDown className="size-4 shrink-0 transition-transform group-open:rotate-180" />
               </summary>
-              <ol className="max-h-44 space-y-1 overflow-auto border-t px-2.5 py-2 text-muted-foreground">
+              <ol className="mt-3 max-h-56 space-y-3 overflow-auto border-muted-foreground/20 border-l pl-5 text-muted-foreground">
                 {thinkingItems.map((item, index) => (
-                  <li className="flex gap-2 leading-5" key={item}>
-                    <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border bg-background font-medium text-[10px] text-muted-foreground">
-                      {index + 1}
+                  <li className="relative leading-6" key={item}>
+                    <span className="absolute -left-[1.45rem] mt-2 size-1.5 rounded-full bg-muted-foreground/60" />
+                    <span className="min-w-0 break-words">
+                      {thinkingItems.length > 1 ? `${index + 1}. ` : ""}
+                      {item}
                     </span>
-                    <span className="min-w-0 break-words">{item}</span>
                   </li>
                 ))}
               </ol>

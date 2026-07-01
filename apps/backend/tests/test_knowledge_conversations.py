@@ -52,22 +52,21 @@ def _upload(filename: str, content: bytes) -> UploadFile:
     return UploadFile(file=io.BytesIO(content), filename=filename, headers=Headers({}))
 
 
-def test_knowledge_query_persists_conversation_and_uses_history(monkeypatch, tmp_path) -> None:
+def test_knowledge_query_persists_conversation_and_uses_deepagents_thread(monkeypatch, tmp_path) -> None:
     from app.schemas.knowledge import KnowledgeQueryOutput
     from app.services.knowledge import service
 
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project(monkeypatch, tmp_path)
     captured_questions: list[str] = []
-    captured_history_lengths: list[int] = []
+    captured_thread_ids: list[str] = []
 
-    async def fake_run_knowledge_agent(input_data):
+    async def fake_run_knowledge_agent(input_data, *, thread_id=None):
         captured_questions.append(input_data.question)
-        captured_history_lengths.append(len(input_data.conversation_history))
+        captured_thread_ids.append(thread_id)
         return KnowledgeQueryOutput(
             answer=f"检索：{input_data.question}",
             used_requirement_versions=["version-1"],
-            used_exploration_runs=[],
             knowledge_queried=True,
         )
 
@@ -97,9 +96,7 @@ def test_knowledge_query_persists_conversation_and_uses_history(monkeypatch, tmp
     assert first["conversation"]["title"] == "登录规则是什么？"
     assert second["conversation"]["id"] == conversation_id
     assert captured_questions == ["登录规则是什么？", "这个模块还要补哪些测试？"]
-    assert captured_history_lengths == [0, 2]
-    assert first["knowledge_queried"] is True
-    assert second["knowledge_queried"] is True
+    assert captured_thread_ids == [conversation_id, conversation_id]
     assert [message["role"] for message in detail["messages"]] == ["user", "assistant", "user", "assistant"]
 
     delete_result = service.delete_project_knowledge_conversation("project-1", conversation_id, actor)
@@ -107,18 +104,16 @@ def test_knowledge_query_persists_conversation_and_uses_history(monkeypatch, tmp
     assert service.list_project_knowledge_conversations("project-1", actor) == []
 
 
-def test_knowledge_agent_can_answer_without_querying_project_sources(monkeypatch, tmp_path) -> None:
-    from app.schemas.knowledge import KnowledgeQueryOutput
+def test_knowledge_query_uses_agent_direct_reply_without_querying_sources(monkeypatch, tmp_path) -> None:
     from app.services.knowledge import service
 
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project(monkeypatch, tmp_path)
-    captured_source_counts: list[int] = []
+    captured_questions: list[str] = []
 
-    async def fake_run_knowledge_agent(input_data):
-        assert input_data.question == "你好"
-        captured_source_counts.append(len(input_data.source_documents))
-        return KnowledgeQueryOutput(answer="你好，我是项目知识库 AI。", knowledge_queried=False)
+    async def fake_run_knowledge_agent(input_data, *, thread_id=None):
+        captured_questions.append(input_data.question)
+        return service.KnowledgeQueryOutput(answer="你好，有什么可以帮你？", knowledge_queried=False)
 
     monkeypatch.setattr(service.knowledge_agent_service, "run_knowledge_agent", fake_run_knowledge_agent)
     actor = {"id": "u-admin", "username": "admin", "nickname": "平台管理员"}
@@ -131,12 +126,10 @@ def test_knowledge_agent_can_answer_without_querying_project_sources(monkeypatch
         )
     )
 
-    assert captured_source_counts == [1]
-    assert result["answer"] == "你好，我是项目知识库 AI。"
-    assert result["knowledge_queried"] is False
-    assert result["source_refs"] == []
-    assert result["used_requirement_versions"] == []
-    assert result["used_exploration_runs"] == []
+    assert captured_questions == ["你好"]
+    assert result["answer"] == "你好，有什么可以帮你？"
+    assert "source_refs" not in result
+    assert "used_requirement_versions" not in result
 
 
 def test_project_knowledge_query_collects_company_knowledge_by_default(monkeypatch, tmp_path) -> None:
@@ -157,7 +150,7 @@ def test_project_knowledge_query_collects_company_knowledge_by_default(monkeypat
     company_file_id = uploaded["files"][0]["id"]
     captured_sources: list[list[str]] = []
 
-    async def fake_run_knowledge_agent(input_data):
+    async def fake_run_knowledge_agent(input_data, *, thread_id=None):
         captured_sources.append([doc.source_type for doc in input_data.source_documents])
         return KnowledgeQueryOutput(
             answer="已结合项目需求和公司知识库。",
@@ -178,8 +171,9 @@ def test_project_knowledge_query_collects_company_knowledge_by_default(monkeypat
     )
 
     assert captured_sources == [["requirement", "company_knowledge"]]
-    assert result["used_requirement_versions"] == ["version-1"]
-    assert result["used_company_knowledge_files"] == [company_file_id]
+    assert result["answer"] == "已结合项目需求和公司知识库。"
+    assert "source_refs" not in result
+    assert "used_requirement_versions" not in result
 
 
 def test_project_knowledge_stream_timeout_persists_conversation(monkeypatch, tmp_path) -> None:
@@ -232,7 +226,8 @@ def test_project_knowledge_stream_timeout_persists_conversation(monkeypatch, tmp
 
 def test_all_project_knowledge_query_collects_active_project_sources(monkeypatch, tmp_path) -> None:
     from app.core import db as core_db
-    from app.schemas.knowledge import KnowledgeQueryOutput, KnowledgeSourceRef
+    from app.schemas.knowledge import KnowledgeQueryOutput
+    from app.agents.knowledge.schemas import KnowledgeSourceRef
     from app.services.knowledge import service
 
     _use_temp_db(monkeypatch, tmp_path)
@@ -328,10 +323,17 @@ def test_all_project_knowledge_query_collects_active_project_sources(monkeypatch
     result = events[1]["result"]
     assert result["conversation"] is not None
     assert len(result["messages"]) == 2
-    assert result["answer"] == "已查询全部项目。"
-    assert [ref["project_name"] for ref in result["source_refs"]] == ["测试项目", "订单项目"]
-    assert result["used_requirement_versions"] == ["version-1", "version-2"]
-    assert result["knowledge_queried"] is True
+    assert result["answer"] == (
+        "已查询全部项目。\n\n"
+        "参考来源：\n"
+        "- [需求] 测试项目 / 最终需求\n"
+        "- [需求] 订单项目 / 订单需求"
+    )
+    assert result["messages"][1]["content"] == result["answer"]
+    assert "source_refs" not in result
+    assert "used_requirement_versions" not in result
+    assert "source_refs" not in result["messages"][1]
+    assert "used_requirement_versions" not in result["messages"][1]
 
     conversations = service.list_all_project_knowledge_conversations(actor)
     assert len(conversations) == 1
@@ -425,20 +427,21 @@ def test_all_project_knowledge_query_tolerates_partial_missing_files(monkeypatch
     assert result["answer"] == "已使用可用项目来源回答。"
     assert "无法查询项目知识库" not in result["answer"]
     assert result["conversation"] is not None
-    assert result["used_requirement_versions"] == ["version-1", "version-valid"]
+    assert "source_refs" not in result
+    assert "used_requirement_versions" not in result
     assert events[-1] == {"type": "done"}
 
 
-def test_all_project_knowledge_query_persists_conversation_and_uses_history(monkeypatch, tmp_path) -> None:
+def test_all_project_knowledge_query_persists_conversation_and_uses_deepagents_thread(monkeypatch, tmp_path) -> None:
     from app.schemas.knowledge import KnowledgeQueryOutput
     from app.services.knowledge import service
 
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project(monkeypatch, tmp_path)
-    captured_history_lengths: list[int] = []
+    captured_thread_ids: list[str] = []
 
-    async def fake_stream_knowledge_agent(input_data, **_kwargs):
-        captured_history_lengths.append(len(input_data.conversation_history))
+    async def fake_stream_knowledge_agent(input_data, *, thread_id=None, **_kwargs):
+        captured_thread_ids.append(thread_id)
         output = KnowledgeQueryOutput(
             answer=f"检索：{input_data.question}",
             used_requirement_versions=["version-1"],
@@ -481,7 +484,7 @@ def test_all_project_knowledge_query_persists_conversation_and_uses_history(monk
     detail = service.get_all_project_knowledge_conversation(conversation_id, actor)
     assert first["conversation"]["title"] == "登录规则是什么？"
     assert second["conversation"]["id"] == conversation_id
-    assert captured_history_lengths == [0, 2]
+    assert captured_thread_ids == [conversation_id, conversation_id]
     assert [message["role"] for message in detail["messages"]] == ["user", "assistant", "user", "assistant"]
 
     delete_result = service.delete_all_project_knowledge_conversation(conversation_id, actor)
@@ -498,7 +501,7 @@ def test_all_project_knowledge_query_forwards_visible_thinking(monkeypatch, tmp_
 
     captured_show_thinking: list[bool] = []
 
-    async def fake_stream_knowledge_agent(input_data, *, show_thinking=False):
+    async def fake_stream_knowledge_agent(input_data, *, show_thinking=False, thread_id=None):
         assert input_data.project_name == "全部项目"
         captured_show_thinking.append(show_thinking)
         yield {"type": "thinking_delta", "delta": "先判断是否需要查询。"}
@@ -517,7 +520,7 @@ def test_all_project_knowledge_query_forwards_visible_thinking(monkeypatch, tmp_
         _collect_async_events(
             service.stream_all_project_knowledge_query(
                 actor,
-                service.KnowledgeQueryRequest(question="你好", show_thinking=True),
+                service.KnowledgeQueryRequest(question="登录规则是什么？", show_thinking=True),
             )
         )
     )
@@ -528,22 +531,20 @@ def test_all_project_knowledge_query_forwards_visible_thinking(monkeypatch, tmp_
     assert events[1]["result"]["answer"] == "不需要查询。"
 
 
-def test_project_knowledge_stream_strips_think_blocks_from_visible_answer(monkeypatch, tmp_path) -> None:
+def test_project_knowledge_stream_uses_agent_structured_answer_without_service_filter(monkeypatch, tmp_path) -> None:
     from app.schemas.knowledge import KnowledgeQueryOutput
     from app.services.knowledge import service
 
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project(monkeypatch, tmp_path)
 
-    async def fake_stream_knowledge_agent(input_data, *, show_thinking=False):
+    async def fake_stream_knowledge_agent(input_data, *, show_thinking=False, thread_id=None):
         assert show_thinking is False
-        yield {"type": "message_delta", "delta": "<think>我要先读文件"}
-        yield {"type": "message_delta", "delta": "，不能直接回答。</think>"}
         yield {"type": "message_delta", "delta": "百工集成到钉钉需要先完成钉钉应用配置。"}
         yield {
             "type": "metadata",
             "output": KnowledgeQueryOutput(
-                answer="<think>hidden</think>百工集成到钉钉需要先完成钉钉应用配置。",
+                answer="百工集成到钉钉需要先完成钉钉应用配置。",
                 knowledge_queried=True,
                 used_requirement_versions=["version-1"],
             ),
@@ -566,7 +567,76 @@ def test_project_knowledge_stream_strips_think_blocks_from_visible_answer(monkey
     assert visible_deltas == ["百工集成到钉钉需要先完成钉钉应用配置。"]
     metadata = next(event for event in events if event["type"] == "metadata")
     assert metadata["result"]["answer"] == "百工集成到钉钉需要先完成钉钉应用配置。"
-    assert "<think>" not in metadata["result"]["messages"][1]["content"]
+    assert metadata["result"]["messages"][1]["content"] == "百工集成到钉钉需要先完成钉钉应用配置。"
+
+
+def test_project_knowledge_stream_without_metadata_returns_empty_result_message(monkeypatch, tmp_path) -> None:
+    from app.services.knowledge import service
+
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project(monkeypatch, tmp_path)
+
+    async def fake_stream_knowledge_agent(input_data, *, show_thinking=False, thread_id=None):
+        yield {"type": "done"}
+
+    monkeypatch.setattr(service.knowledge_agent_service, "stream_knowledge_agent", fake_stream_knowledge_agent)
+    actor = {"id": "u-admin", "username": "admin", "nickname": "平台管理员"}
+
+    events = asyncio.run(
+        _collect_async_events(
+            service.stream_project_knowledge_query(
+                "project-1",
+                actor,
+                service.KnowledgeQueryRequest(question="知识库里有没有火星基地验收规则？"),
+            )
+        )
+    )
+
+    visible_deltas = [event["delta"] for event in events if event["type"] == "message_delta"]
+    assert visible_deltas == [service.KNOWLEDGE_QUERY_EMPTY_MESSAGE]
+    metadata = next(event for event in events if event["type"] == "metadata")
+    assert metadata["result"]["answer"] == service.KNOWLEDGE_QUERY_EMPTY_MESSAGE
+    assert "knowledge_queried" not in metadata["result"]
+    assert "used_company_knowledge_files" not in metadata["result"]
+
+
+def test_project_knowledge_stream_uses_agent_direct_reply(monkeypatch, tmp_path) -> None:
+    from app.services.knowledge import service
+
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project(monkeypatch, tmp_path)
+    captured_questions: list[str] = []
+
+    async def fake_stream_knowledge_agent(input_data, *, show_thinking=False, thread_id=None):
+        captured_questions.append(input_data.question)
+        yield {"type": "message_delta", "delta": "你好，有什么可以帮你？"}
+        yield {
+            "type": "metadata",
+            "output": service.KnowledgeQueryOutput(answer="你好，有什么可以帮你？", knowledge_queried=False),
+        }
+
+    monkeypatch.setattr(service.knowledge_agent_service, "stream_knowledge_agent", fake_stream_knowledge_agent)
+    actor = {"id": "u-admin", "username": "admin", "nickname": "平台管理员"}
+
+    events = asyncio.run(
+        _collect_async_events(
+            service.stream_project_knowledge_query(
+                "project-1",
+                actor,
+                service.KnowledgeQueryRequest(question="hi"),
+            )
+        )
+    )
+
+    visible_deltas = [event["delta"] for event in events if event["type"] == "message_delta"]
+    assert captured_questions == ["hi"]
+    assert visible_deltas == ["你好，有什么可以帮你？"]
+    metadata = next(event for event in events if event["type"] == "metadata")
+    assert metadata["result"]["answer"] == "你好，有什么可以帮你？"
+    assert "source_refs" not in metadata["result"]
+    assert "used_requirement_versions" not in metadata["result"]
+    assert "knowledge_queried" not in metadata["result"]
+    assert "used_company_knowledge_files" not in metadata["result"]
 
 
 def test_knowledge_agent_payload_uses_deepagents_file_data_format() -> None:
@@ -600,3 +670,350 @@ def test_knowledge_agent_payload_uses_deepagents_file_data_format() -> None:
     requirement_file = next(path for path in files if path.startswith("/requirements/"))
     assert files[requirement_file]["content"].startswith("<!-- source_metadata:")
     assert isinstance(files[requirement_file]["content"], str)
+
+
+def test_knowledge_agent_stream_uses_structured_response_not_message_tokens(monkeypatch) -> None:
+    from app.agents.knowledge import service as knowledge_agent_service
+    from app.schemas.knowledge import KnowledgeQueryInput, KnowledgeQueryOutput
+
+    class FakeAgent:
+        async def astream(self, payload, config=None, stream_mode=None):
+            yield (
+                "messages",
+                {
+                    "type": "assistant",
+                    "content": '```json\n{"answer":"错误的可见 JSON","source_refs":[]}\n```',
+                },
+            )
+            yield (
+                "values",
+                {
+                    "structured_response": KnowledgeQueryOutput(
+                        answer="正确的结构化答案",
+                        knowledge_queried=True,
+                    ),
+                },
+            )
+
+    monkeypatch.setattr(
+        knowledge_agent_service,
+        "resolve_model_selection",
+        lambda capability_id: object(),
+    )
+    monkeypatch.setattr(
+        knowledge_agent_service,
+        "build_agent_model",
+        lambda selection, *, extra_body=None: object(),
+    )
+    monkeypatch.setattr(knowledge_agent_service, "knowledge_agent", lambda model: FakeAgent())
+
+    events = asyncio.run(
+        _collect_async_events(
+            knowledge_agent_service.stream_knowledge_agent(
+                KnowledgeQueryInput(
+                    project_id="project-1",
+                    project_name="测试项目",
+                    question="知识库上传文件大小限制",
+                )
+            )
+        )
+    )
+
+    assert events[0] == {"type": "message_delta", "delta": "正确的结构化答案"}
+    assert events[1]["type"] == "metadata"
+    assert events[1]["output"].answer == "正确的结构化答案"
+    assert events[2] == {"type": "done"}
+
+
+def test_knowledge_agent_stream_filters_plain_structured_field_lines(monkeypatch) -> None:
+    from app.agents.knowledge import service as knowledge_agent_service
+    from app.schemas.knowledge import KnowledgeQueryInput, KnowledgeQueryOutput
+
+    class FakeAgent:
+        async def astream(self, payload, config=None, stream_mode=None):
+            yield ("messages", {"type": "assistant", "content": "我是 MiniMax-M3。"})
+            yield ("messages", {"type": "assistant", "content": "\n\nknowledge_queried: false"})
+            yield (
+                "values",
+                {
+                    "structured_response": KnowledgeQueryOutput(
+                        answer="我是 MiniMax-M3。",
+                        knowledge_queried=False,
+                    )
+                },
+            )
+
+    monkeypatch.setattr(
+        knowledge_agent_service,
+        "resolve_model_selection",
+        lambda capability_id: object(),
+    )
+    monkeypatch.setattr(
+        knowledge_agent_service,
+        "build_agent_model",
+        lambda selection, *, extra_body=None: object(),
+    )
+    monkeypatch.setattr(knowledge_agent_service, "knowledge_agent", lambda model: FakeAgent())
+
+    events = asyncio.run(
+        _collect_async_events(
+            knowledge_agent_service.stream_knowledge_agent(
+                KnowledgeQueryInput(
+                    project_id="project-1",
+                    project_name="测试项目",
+                    question="你是什么模型",
+                )
+            )
+        )
+    )
+
+    assert [event for event in events if event["type"] == "message_delta"] == [
+        {"type": "message_delta", "delta": "我是 MiniMax-M3。"}
+    ]
+    assert events[-1] == {"type": "done"}
+
+
+def test_knowledge_agent_stream_filters_xml_structured_wrappers(monkeypatch) -> None:
+    from app.agents.knowledge import service as knowledge_agent_service
+    from app.schemas.knowledge import KnowledgeQueryInput, KnowledgeQueryOutput
+
+    class FakeAgent:
+        async def astream(self, payload, config=None, stream_mode=None):
+            yield ("messages", {"type": "assistant", "content": "<KnowledgeQueryOutput><answer>"})
+            yield ("messages", {"type": "assistant", "content": "我是 MiniMax-M3。"})
+            yield ("messages", {"type": "assistant", "content": "</answer><knowledge_queried>false</knowledge_queried>"})
+            yield (
+                "values",
+                {
+                    "structured_response": KnowledgeQueryOutput(
+                        answer="我是 MiniMax-M3。",
+                        knowledge_queried=False,
+                    )
+                },
+            )
+
+    monkeypatch.setattr(
+        knowledge_agent_service,
+        "resolve_model_selection",
+        lambda capability_id: object(),
+    )
+    monkeypatch.setattr(
+        knowledge_agent_service,
+        "build_agent_model",
+        lambda selection, *, extra_body=None: object(),
+    )
+    monkeypatch.setattr(knowledge_agent_service, "knowledge_agent", lambda model: FakeAgent())
+
+    events = asyncio.run(
+        _collect_async_events(
+            knowledge_agent_service.stream_knowledge_agent(
+                KnowledgeQueryInput(
+                    project_id="project-1",
+                    project_name="测试项目",
+                    question="你是什么模型",
+                )
+            )
+        )
+    )
+
+    message_deltas = [event for event in events if event["type"] == "message_delta"]
+    assert message_deltas == [
+        {"type": "message_delta", "delta": "我是 MiniMax-M3。"}
+    ]
+    assert all("KnowledgeQueryOutput" not in str(event) for event in message_deltas)
+    assert all("<answer>" not in str(event) for event in message_deltas)
+    assert events[-1] == {"type": "done"}
+
+
+def test_knowledge_agent_stream_accepts_direct_ai_reply_without_tool_use(monkeypatch) -> None:
+    from app.agents.knowledge import service as knowledge_agent_service
+    from app.schemas.knowledge import KnowledgeQueryInput
+
+    class FakeAgent:
+        async def astream(self, payload, config=None, stream_mode=None):
+            yield ("messages", {"type": "assistant", "content": "你好，"})
+            yield ("messages", {"type": "assistant", "content": "有什么可以帮你？"})
+
+    monkeypatch.setattr(
+        knowledge_agent_service,
+        "resolve_model_selection",
+        lambda capability_id: object(),
+    )
+    monkeypatch.setattr(
+        knowledge_agent_service,
+        "build_agent_model",
+        lambda selection, *, extra_body=None: object(),
+    )
+    monkeypatch.setattr(knowledge_agent_service, "knowledge_agent", lambda model: FakeAgent())
+
+    events = asyncio.run(
+        _collect_async_events(
+            knowledge_agent_service.stream_knowledge_agent(
+                KnowledgeQueryInput(
+                    project_id="project-1",
+                    project_name="测试项目",
+                    question="hi",
+                )
+            )
+        )
+    )
+
+    assert events[0] == {"type": "message_delta", "delta": "你好，"}
+    assert events[1] == {"type": "message_delta", "delta": "有什么可以帮你？"}
+    assert events[2]["type"] == "metadata"
+    assert events[2]["output"].answer == "你好，有什么可以帮你？"
+    assert events[2]["output"].knowledge_queried is False
+    assert events[3] == {"type": "done"}
+
+
+def test_knowledge_agent_stream_rejects_tool_result_without_structured_response(monkeypatch) -> None:
+    from app.agents.knowledge import service as knowledge_agent_service
+    from app.schemas.knowledge import KnowledgeQueryInput
+
+    class FakeAgent:
+        async def astream(self, payload, config=None, stream_mode=None):
+            yield (
+                "messages",
+                {
+                    "type": "assistant",
+                    "content": "",
+                    "tool_calls": [{"name": "read_file", "args": {"path": "/README.md"}}],
+                },
+            )
+            yield ("messages", {"type": "tool", "content": "# 知识库文件清单"})
+            yield ("messages", {"type": "assistant", "content": "这个答案缺少结构化结果。"})
+
+    monkeypatch.setattr(
+        knowledge_agent_service,
+        "resolve_model_selection",
+        lambda capability_id: object(),
+    )
+    monkeypatch.setattr(
+        knowledge_agent_service,
+        "build_agent_model",
+        lambda selection, *, extra_body=None: object(),
+    )
+    monkeypatch.setattr(knowledge_agent_service, "knowledge_agent", lambda model: FakeAgent())
+
+    with pytest.raises(ValueError, match="结构化结果"):
+        asyncio.run(
+            _collect_async_events(
+                knowledge_agent_service.stream_knowledge_agent(
+                    KnowledgeQueryInput(
+                        project_id="project-1",
+                        project_name="测试项目",
+                        question="登录规则是什么？",
+                    )
+                )
+            )
+        )
+
+
+def test_knowledge_agent_stream_without_thinking_uses_astream(monkeypatch) -> None:
+    from app.agents.knowledge import service as knowledge_agent_service
+    from app.schemas.knowledge import KnowledgeQueryInput, KnowledgeQueryOutput
+
+    captured: dict[str, object] = {}
+
+    class FakeAgent:
+        async def astream(self, payload, config=None, stream_mode=None):
+            captured["payload"] = payload
+            captured["config"] = config
+            yield ("messages", {"type": "assistant", "content": "你好，"})
+            yield ("messages", {"type": "assistant", "content": "我是项目知识库 AI。"})
+            yield (
+                "values",
+                {
+                    "structured_response": KnowledgeQueryOutput(
+                        answer="你好，我是项目知识库 AI。",
+                        knowledge_queried=False,
+                    )
+                },
+            )
+
+    monkeypatch.setattr(
+        knowledge_agent_service,
+        "resolve_model_selection",
+        lambda capability_id: object(),
+    )
+    monkeypatch.setattr(
+        knowledge_agent_service,
+        "build_agent_model",
+        lambda selection, *, extra_body=None: object(),
+    )
+    monkeypatch.setattr(knowledge_agent_service, "knowledge_agent", lambda model: FakeAgent())
+
+    events = asyncio.run(
+        _collect_async_events(
+            knowledge_agent_service.stream_knowledge_agent(
+                KnowledgeQueryInput(
+                    project_id="project-1",
+                    project_name="测试项目",
+                    question="hi",
+                ),
+                thread_id="conversation-1",
+            )
+        )
+    )
+
+    assert captured["config"] == {"configurable": {"thread_id": "conversation-1"}}
+    assert events[0] == {"type": "message_delta", "delta": "你好，"}
+    assert events[1] == {"type": "message_delta", "delta": "我是项目知识库 AI。"}
+    assert events[2]["type"] == "metadata"
+    assert events[2]["output"].knowledge_queried is False
+    assert events[3] == {"type": "done"}
+
+
+def test_knowledge_agent_stream_can_forward_thinking_without_visible_message_tokens(monkeypatch) -> None:
+    from app.agents.knowledge import service as knowledge_agent_service
+    from app.schemas.knowledge import KnowledgeQueryInput, KnowledgeQueryOutput
+
+    class FakeAgent:
+        async def astream(self, payload, config=None, stream_mode=None):
+            assert stream_mode == ["messages", "values"]
+            yield (
+                "messages",
+                {
+                    "type": "assistant",
+                    "reasoning_content": "先读取知识库。",
+                    "content": "这段正文 token 不应直接展示。",
+                },
+            )
+            yield (
+                "values",
+                {
+                    "structured_response": KnowledgeQueryOutput(
+                        answer="最终答案",
+                        knowledge_queried=True,
+                    )
+                },
+            )
+
+    monkeypatch.setattr(
+        knowledge_agent_service,
+        "resolve_model_selection",
+        lambda capability_id: object(),
+    )
+    monkeypatch.setattr(
+        knowledge_agent_service,
+        "build_agent_model",
+        lambda selection, *, extra_body=None: object(),
+    )
+    monkeypatch.setattr(knowledge_agent_service, "knowledge_agent", lambda model: FakeAgent())
+
+    events = asyncio.run(
+        _collect_async_events(
+            knowledge_agent_service.stream_knowledge_agent(
+                KnowledgeQueryInput(
+                    project_id="project-1",
+                    project_name="测试项目",
+                    question="知识库上传文件大小限制",
+                ),
+                show_thinking=True,
+            )
+        )
+    )
+
+    assert events[0] == {"type": "thinking_delta", "delta": "先读取知识库。"}
+    assert events[1] == {"type": "message_delta", "delta": "最终答案"}
+    assert events[2]["type"] == "metadata"

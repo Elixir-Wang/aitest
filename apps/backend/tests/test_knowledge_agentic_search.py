@@ -10,30 +10,67 @@ def test_knowledge_agent_prompt_has_consolidated_source_rules():
     assert "8. 如果读取了 /requirements/，必须在 used_requirement_versions 中返回实际使用过的需求版本 ID。" in SYSTEM_PROMPT
     assert "9. 如果读取了 /company-knowledge/，必须在 used_company_knowledge_files 中返回实际使用过的公司知识库文件 ID。" in SYSTEM_PROMPT
     assert "10. source_refs 只能引用已读取文件顶部 source_metadata 中的字段，且必须填写 location 与 excerpt。" in SYSTEM_PROMPT
+    assert "这不是知识库查询" in SYSTEM_PROMPT
+    assert "不得回答“知识库内未查询到相关结果”" in SYSTEM_PROMPT
+    assert "只有当用户询问项目事实/公司知识且已尝试查询仍没有依据时" in SYSTEM_PROMPT
     assert "不得基于文件名、路径或常识补全业务事实或 source_refs" in SYSTEM_PROMPT
     assert "不得包含 <think>、思考过程、工具调用计划、检索过程描述" in SYSTEM_PROMPT
     assert "10. 如果没有读取知识库" not in SYSTEM_PROMPT
     assert "15. 不要把" not in SYSTEM_PROMPT
 
 
+def test_knowledge_agent_uses_tool_strategy_for_structured_output(monkeypatch) -> None:
+    from langchain.agents.structured_output import ToolStrategy
+
+    from app.agents.knowledge.agent import knowledge_agent
+
+    captured = {}
+
+    def fake_create_deep_agent(**kwargs):
+        captured.update(kwargs)
+        return "agent"
+
+    monkeypatch.setattr("app.agents.knowledge.agent.create_deep_agent", fake_create_deep_agent)
+
+    agent = knowledge_agent("model")
+
+    assert agent == "agent"
+    assert captured["model"] == "model"
+    assert isinstance(captured["response_format"], ToolStrategy)
+    assert captured["response_format"].schema is KnowledgeQueryOutput
+    assert captured["response_format"].handle_errors is True
+
+
 def test_knowledge_agent_service_runs_single_deepagent(monkeypatch):
     from app.agents.knowledge import service
+    from app.agents.model_selection import ModelSelection
 
     captured = {}
 
     class FakeAgent:
-        async def ainvoke(self, payload):
+        async def ainvoke(self, payload, config=None):
             captured["payload"] = payload
+            captured["config"] = config
             return {"structured_response": KnowledgeQueryOutput(answer="已查询。", knowledge_queried=True)}
 
-    monkeypatch.setattr(service, "resolve_model_selection", lambda _capability_id: "selection")
+    monkeypatch.setattr(
+        service,
+        "resolve_model_selection",
+        lambda _capability_id: ModelSelection(
+            provider="Minimax",
+            model="MiniMax-M3",
+            base_url="https://minimax.example/v1",
+            api_key="sk-test",
+        ),
+    )
     monkeypatch.setattr(service, "build_agent_model", lambda _selection, **_kwargs: "model")
     monkeypatch.setattr(service, "knowledge_agent", lambda _model: FakeAgent())
 
     input_data = KnowledgeQueryInput(project_id="project-1", project_name="测试项目", question="登录规则是什么？")
-    output = asyncio.run(service.run_knowledge_agent(input_data))
+    output = asyncio.run(service.run_knowledge_agent(input_data, thread_id="conversation-1"))
 
     assert captured["payload"]["messages"][0]["content"]
+    assert captured["config"] == {"configurable": {"thread_id": "conversation-1"}}
     assert output.answer == "已查询。"
 
 
@@ -58,8 +95,13 @@ def test_knowledge_agent_payload_uses_virtual_files():
     )
 
     payload = service._agent_payload(input_data)
+    user_content = payload["messages"][0]["content"]
 
     assert "files" in payload
+    assert "最近对话上下文" not in user_content
+    assert "项目：" not in user_content
+    assert "project-1" not in user_content
+    assert "测试项目" not in user_content
     assert "/README.md" in payload["files"]
     assert any(path.startswith("/requirements/") for path in payload["files"])
     file_data = next(value for key, value in payload["files"].items() if key.startswith("/requirements/"))
@@ -102,18 +144,28 @@ def test_knowledge_agent_payload_uses_company_knowledge_virtual_files():
 
 def test_knowledge_agent_disables_model_thinking_by_default(monkeypatch):
     from app.agents.knowledge import service
+    from app.agents.model_selection import ModelSelection
 
     captured = {}
 
     class FakeAgent:
-        async def ainvoke(self, payload):
+        async def ainvoke(self, payload, config=None):
             return {"structured_response": KnowledgeQueryOutput(answer="已查询。", knowledge_queried=True)}
 
     def fake_build_agent_model(selection, *, extra_body=None):
         captured["extra_body"] = extra_body
         return "model"
 
-    monkeypatch.setattr(service, "resolve_model_selection", lambda _capability_id: "selection")
+    monkeypatch.setattr(
+        service,
+        "resolve_model_selection",
+        lambda _capability_id: ModelSelection(
+            provider="Minimax",
+            model="MiniMax-M3",
+            base_url="https://minimax.example/v1",
+            api_key="sk-test",
+        ),
+    )
     monkeypatch.setattr(service, "build_agent_model", fake_build_agent_model)
     monkeypatch.setattr(service, "knowledge_agent", lambda _model: FakeAgent())
 
@@ -123,11 +175,79 @@ def test_knowledge_agent_disables_model_thinking_by_default(monkeypatch):
     assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
-def test_stream_knowledge_agent_filters_tool_messages_and_thinking_noise(monkeypatch):
+def test_knowledge_agent_disables_deepseek_thinking_by_default(monkeypatch):
     from app.agents.knowledge import service
+    from app.agents.model_selection import ModelSelection
+
+    captured = {}
 
     class FakeAgent:
-        async def astream(self, payload, stream_mode):
+        async def ainvoke(self, payload, config=None):
+            return {"structured_response": KnowledgeQueryOutput(answer="已查询。", knowledge_queried=True)}
+
+    def fake_build_agent_model(selection, *, extra_body=None):
+        captured["extra_body"] = extra_body
+        return "model"
+
+    monkeypatch.setattr(
+        service,
+        "resolve_model_selection",
+        lambda _capability_id: ModelSelection(
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            base_url="https://api.deepseek.com",
+            api_key="sk-test",
+        ),
+    )
+    monkeypatch.setattr(service, "build_agent_model", fake_build_agent_model)
+    monkeypatch.setattr(service, "knowledge_agent", lambda _model: FakeAgent())
+
+    input_data = KnowledgeQueryInput(project_id="project-1", project_name="测试项目", question="登录规则是什么？")
+    asyncio.run(service.run_knowledge_agent(input_data))
+
+    assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_knowledge_agent_does_not_send_thinking_body_to_unknown_provider(monkeypatch):
+    from app.agents.knowledge import service
+    from app.agents.model_selection import ModelSelection
+
+    captured = {}
+
+    class FakeAgent:
+        async def ainvoke(self, payload, config=None):
+            return {"structured_response": KnowledgeQueryOutput(answer="已查询。", knowledge_queried=True)}
+
+    def fake_build_agent_model(selection, *, extra_body=None):
+        captured["extra_body"] = extra_body
+        return "model"
+
+    monkeypatch.setattr(
+        service,
+        "resolve_model_selection",
+        lambda _capability_id: ModelSelection(
+            provider="openai-compatible",
+            model="other-model",
+            base_url="https://example.test/v1",
+            api_key="sk-test",
+        ),
+    )
+    monkeypatch.setattr(service, "build_agent_model", fake_build_agent_model)
+    monkeypatch.setattr(service, "knowledge_agent", lambda _model: FakeAgent())
+
+    input_data = KnowledgeQueryInput(project_id="project-1", project_name="测试项目", question="登录规则是什么？")
+    asyncio.run(service.run_knowledge_agent(input_data))
+
+    assert captured["extra_body"] is None
+
+
+def test_stream_knowledge_agent_filters_tool_messages_and_thinking_noise(monkeypatch):
+    from app.agents.knowledge import service
+    captured = {}
+
+    class FakeAgent:
+        async def astream(self, payload, *, config=None, stream_mode):
+            captured["config"] = config
             yield (
                 "messages",
                 (
@@ -150,51 +270,98 @@ def test_stream_knowledge_agent_filters_tool_messages_and_thinking_noise(monkeyp
                 ),
             )
             yield ("messages", ({"type": "ai", "content": "结论来自知识库。"},))
-            yield {
-                "structured_response": KnowledgeQueryOutput(answer="结论来自知识库。", knowledge_queried=True),
-            }
+            yield (
+                "values",
+                {
+                    "structured_response": KnowledgeQueryOutput(answer="结论来自知识库。", knowledge_queried=True),
+                },
+            )
 
     monkeypatch.setattr(service, "resolve_model_selection", lambda _capability_id: "selection")
     monkeypatch.setattr(service, "build_agent_model", lambda _selection, **_kwargs: "model")
     monkeypatch.setattr(service, "knowledge_agent", lambda _model: FakeAgent())
 
     input_data = KnowledgeQueryInput(project_id="project-1", project_name="测试项目", question="登录规则是什么？")
-    events = asyncio.run(_collect_events(service.stream_knowledge_agent(input_data, show_thinking=True)))
+    events = asyncio.run(_collect_events(service.stream_knowledge_agent(input_data, show_thinking=True, thread_id="conversation-1")))
 
+    assert captured["config"] == {"configurable": {"thread_id": "conversation-1"}}
     assert {"type": "thinking_delta", "delta": "先判断来源。"} in events
     assert {"type": "message_delta", "delta": "结论来自知识库。"} in events
     assert all("source_metadata" not in str(event) for event in events)
 
 
-def test_sanitize_visible_answer_removes_structured_xml_tail():
+def test_stream_knowledge_agent_can_fallback_to_think_blocks(monkeypatch) -> None:
     from app.agents.knowledge import service
 
-    answer = (
-        "<KnowledgeQueryOutput><answer>关于项目最终需求\n"
-        "当前项目为“全部项目 (all-projects)”，/requirements/ 下未发现明确需求文档。"
-        "</answer> <source_refs> <item> <source_type>company_knowledge</source_type>"
-        "<source_id>gkfile-8e685279cb75fe79</source_id><excerpt>支持将智能体发布至钉钉平台。</excerpt>"
-        "</item> </source_refs> <used_requirement_versions>]<]minimax[>[</used_requirement_versions>"
-        "<used_company_knowledge_files><item>gkfile-8e685279cb75fe79]<]minimax[>[</item></used_company_knowledge_files>"
-        "<knowledge_queried>true]<]minimax[>[</knowledge_queried></KnowledgeQueryOutput>"
-    )
+    class FakeAgent:
+        async def astream(self, payload, *, config=None, stream_mode):
+            yield (
+                "messages",
+                (
+                    {
+                        "type": "assistant",
+                        "content": "<think>先判断来源。</think>最终答案。",
+                    },
+                ),
+            )
+            yield (
+                "values",
+                {
+                    "structured_response": KnowledgeQueryOutput(answer="最终答案。", knowledge_queried=True),
+                },
+            )
 
-    assert service.sanitize_visible_answer(answer) == "当前项目为“全部项目 (all-projects)”，/requirements/ 下未发现明确需求文档。"
+    monkeypatch.setattr(service, "resolve_model_selection", lambda _capability_id: "selection")
+    monkeypatch.setattr(service, "build_agent_model", lambda _selection, **_kwargs: "model")
+    monkeypatch.setattr(service, "knowledge_agent", lambda _model: FakeAgent())
+
+    input_data = KnowledgeQueryInput(project_id="project-1", project_name="测试项目", question="登录规则是什么？")
+    events = asyncio.run(_collect_events(service.stream_knowledge_agent(input_data, show_thinking=True, thread_id="conversation-1")))
+
+    assert {"type": "thinking_delta", "delta": "先判断来源。"} in events
+    assert {"type": "message_delta", "delta": "最终答案。"} in events
 
 
-def test_think_block_filter_stops_streaming_structured_xml_tail():
+def test_stream_knowledge_agent_keeps_answer_streaming_when_thinking_enabled(monkeypatch) -> None:
     from app.agents.knowledge import service
 
-    visible_filter = service.ThinkBlockFilter()
+    class FakeAgent:
+        async def astream(self, payload, *, config=None, stream_mode):
+            yield (
+                "messages",
+                (
+                    {
+                        "type": "assistant",
+                        "content": "<think>先判断来源。</think>答案前缀",
+                    },
+                ),
+            )
+            yield (
+                "messages",
+                (
+                    {
+                        "type": "assistant",
+                        "content": "继续输出。",
+                    },
+                ),
+            )
+            yield (
+                "values",
+                {
+                    "structured_response": KnowledgeQueryOutput(answer="答案前缀继续输出。", knowledge_queried=True),
+                },
+            )
 
-    deltas = [
-        visible_filter.feed("<KnowledgeQueryOutput><answer>"),
-        visible_filter.feed("当前项目未发现明确需求文档。"),
-        visible_filter.feed("</answer> <source_refs>"),
-        visible_filter.feed("<item>不应显示</item></source_refs>"),
-    ]
+    monkeypatch.setattr(service, "resolve_model_selection", lambda _capability_id: "selection")
+    monkeypatch.setattr(service, "build_agent_model", lambda _selection, **_kwargs: "model")
+    monkeypatch.setattr(service, "knowledge_agent", lambda _model: FakeAgent())
 
-    assert deltas == ["", "当前项目未发现明确需求文档。", "", ""]
+    input_data = KnowledgeQueryInput(project_id="project-1", project_name="测试项目", question="登录规则是什么？")
+    events = asyncio.run(_collect_events(service.stream_knowledge_agent(input_data, show_thinking=True, thread_id="conversation-1")))
+
+    assert {"type": "thinking_delta", "delta": "先判断来源。"} in events
+    assert {"type": "message_delta", "delta": "答案前缀"} in events
+    assert {"type": "message_delta", "delta": "继续输出。"} in events
 
 
 async def _collect_events(stream):

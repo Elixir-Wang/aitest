@@ -7,7 +7,7 @@ from app.core.logging import setup_logging
 from app.core.response import wrap_api_response
 from app.seed.init_db import init_db
 from app.services import task_service, test_case_service
-from app.services.exploration import recover_interrupted_exploration_runs
+from app.services.exploration import event_bus, recover_interrupted_exploration_runs
 
 # 日志在模块导入阶段即初始化，确保 uvicorn worker 启动日志也被捕获
 setup_logging()
@@ -30,6 +30,12 @@ def startup() -> None:
     task_service.recover_interrupted_requirement_analysis_runs()
     test_case_service.recover_interrupted_test_case_generation_runs()
     logger.info("Application started — AI Testing System API v0.1.0")
+
+
+@app.on_event("shutdown")
+def shutdown() -> None:
+    event_bus.close_all()
+    logger.info("Application shutdown signal handled")
 
 
 app.middleware("http")(wrap_api_response)

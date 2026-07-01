@@ -3,11 +3,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.agents.knowledge.schemas import (
-    KnowledgeConversationHistoryMessage,
     KnowledgeQueryInput,
     KnowledgeQueryOutput,
     KnowledgeSourceDocumentInput,
-    KnowledgeSourceRef,
 )
 
 
@@ -33,8 +31,6 @@ class KnowledgeConversationMessage(BaseModel):
     conversation_id: str
     role: Literal["assistant", "user"]
     content: str
-    source_refs: list[KnowledgeSourceRef] = Field(default_factory=list)
-    used_requirement_versions: list[str] = Field(default_factory=list)
     created_at: str
 
 

@@ -1,9 +1,9 @@
 import pytest
 from fastapi import HTTPException
 
-from app.agents.model_selection import resolve_model_selection
+from app.agents.model_selection import ModelSelection, resolve_model_selection, thinking_disabled_extra_body
 from app.core import db as core_db
-from app.repositories import model_repo
+from app.repositories import model_repo, project_repo
 from app.schemas.model import ModelAssignmentIn
 from app.seed.init_db import init_db
 from app.services import model_service
@@ -125,3 +125,56 @@ def test_model_provider_health_check_disables_responses_api_for_compatible_provi
 
     assert result["success"] is True
     assert calls["use_responses_api"] is False
+
+
+@pytest.mark.parametrize(
+    ("provider", "model"),
+    [
+        ("Minimax", "MiniMax-M3"),
+        ("openai-compatible", "deepseek-chat"),
+    ],
+)
+def test_thinking_disabled_extra_body_supports_thinking_models(provider: str, model: str) -> None:
+    selection = ModelSelection(provider=provider, model=model, base_url=None, api_key="sk-test")
+
+    assert thinking_disabled_extra_body(selection) == {"thinking": {"type": "disabled"}}
+
+
+def test_thinking_disabled_extra_body_skips_models_without_thinking_toggle() -> None:
+    selection = ModelSelection(provider="openai", model="gpt-5.5", base_url=None, api_key="sk-test")
+
+    assert thinking_disabled_extra_body(selection) is None
+
+
+def test_exploration_goal_optimization_disables_model_thinking(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    from app.services import project_service
+
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        project_repo.create(db, project_id="project-1", name="测试项目", status="active", description="")
+
+    captured = {}
+
+    class FakeModel:
+        def invoke(self, _messages):
+            class Response:
+                content = "进入登录页并验证登录流程"
+
+            return Response()
+
+    def fake_build_agent_model(selection, *, extra_body=None):
+        captured["selection"] = selection
+        captured["extra_body"] = extra_body
+        return FakeModel()
+
+    monkeypatch.setattr(
+        project_service,
+        "resolve_model_selection",
+        lambda _capability_id: ModelSelection(provider="Minimax", model="MiniMax-M3", base_url=None, api_key="sk-test"),
+    )
+    monkeypatch.setattr(project_service, "build_agent_model", fake_build_agent_model)
+
+    result = project_service.optimize_exploration_goal("project-1", "登录", actor={"id": "u-admin"})
+
+    assert result == {"optimized_goal": "进入登录页并验证登录流程"}
+    assert captured["extra_body"] == {"thinking": {"type": "disabled"}}

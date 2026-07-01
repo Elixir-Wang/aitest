@@ -19,7 +19,13 @@ _subscribers: dict[str, set[asyncio.Queue]] = defaultdict(set)
 _history: dict[str, deque[dict[str, Any]]] = defaultdict(lambda: deque(maxlen=_MAX_HISTORY))
 
 
-def publish(run_id: str, event_type: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+def publish(
+    run_id: str,
+    event_type: str,
+    payload: dict[str, Any] | None = None,
+    *,
+    display: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Publish a realtime exploration event to current subscribers."""
     event = {
         "event_id": next(_event_counter),
@@ -28,6 +34,8 @@ def publish(run_id: str, event_type: str, payload: dict[str, Any] | None = None)
         "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "payload": payload or {},
     }
+    if display:
+        event["display"] = display
     with _lock:
         _history[run_id].append(event)
         subscribers = list(_subscribers.get(run_id, set()))
@@ -70,11 +78,27 @@ def close(run_id: str) -> None:
     """Wake active subscribers so completed streams can exit promptly."""
     with _lock:
         subscribers = list(_subscribers.get(run_id, set()))
+    _wake_subscribers(subscribers)
+
+
+def close_all() -> None:
+    """Wake all active subscribers during application shutdown."""
+    with _lock:
+        subscribers = [queue for queues in _subscribers.values() for queue in queues]
+    _wake_subscribers(subscribers)
+
+
+def _wake_subscribers(subscribers: list[asyncio.Queue]) -> None:
+    """Send a stop marker to subscribers, making room if a queue is full."""
     for queue in subscribers:
         try:
             queue.put_nowait(_STOP)
         except asyncio.QueueFull:
-            pass
+            try:
+                queue.get_nowait()
+                queue.put_nowait(_STOP)
+            except (asyncio.QueueEmpty, asyncio.QueueFull):
+                pass
 
 
 def get_history(run_id: str) -> list[dict[str, Any]]:
