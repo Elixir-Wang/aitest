@@ -22,6 +22,7 @@ from app.core.db import connect
 from app.core.environment_auth_state import auth_state_path, auth_state_summary
 from app.repositories import exploration_artifact_repo, exploration_page_repo, exploration_run_repo
 from app.services.exploration import event_bus
+from app.services.page_exploration import ProjectPagesService
 
 
 CAPABILITY_ID = "page_exploration"
@@ -97,17 +98,24 @@ def get_exploration_run(actor, run_id: str) -> dict:
             "unsupported_artifact": False,
             "unsupported_reason": "",
             "modules": modules,
-            "raw_events": _read_recent_exploration_events(run_dict),
+            "timeline_events": _read_recent_timeline_events(run_dict),
         }
 
 
-def _read_recent_exploration_events(run: dict, *, limit: int = 200) -> list[dict]:
-    """Read persisted realtime events so terminal runs can restore the execution stream."""
+def _read_recent_timeline_events(run: dict, *, limit: int = 200) -> list[dict]:
+    """Read persisted UI timeline events for exploration detail restoration."""
     project_id = _string(run.get("project_id"))
     run_id = _string(run.get("id"))
     if not project_id or not run_id:
         return []
-    events_path = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration" / "runs" / run_id / "events.jsonl"
+    events_path = (
+        settings.PROJECT_FILE_STORAGE_ROOT
+        / project_id
+        / "page_exploration"
+        / "runs"
+        / run_id
+        / "timeline_events.jsonl"
+    )
     if not events_path.exists():
         return []
     events: list[dict] = []
@@ -602,6 +610,7 @@ def _ensure_exploration_not_stopping(run_id: str) -> None:
 
 def _finalize_cancelled_exploration_run(run_id: str) -> None:
     finished_at = datetime.now(timezone.utc).isoformat()
+    artifact_summary = ""
     with connect() as db:
         run = exploration_run_repo.find_by_id(db, run_id)
         if not run:
@@ -609,19 +618,24 @@ def _finalize_cancelled_exploration_run(run_id: str) -> None:
         if run["status"] == "cancelled":
             event_bus.close(run_id)
             return
+    artifact_summary = _register_failed_exploration_outputs(run_id)
+    result_summary = "探索任务已由用户停止。"
+    if artifact_summary:
+        result_summary = f"探索任务已由用户停止；{artifact_summary}"
+    with connect() as db:
         exploration_run_repo.update_status(
             db,
             run_id,
             "cancelled",
             finished_at=finished_at,
-            result_summary="探索任务已由用户停止。",
+            result_summary=result_summary,
         )
     event_bus.publish(
         run_id,
         "run_cancelled",
         {
             "status": "cancelled",
-            "result_summary": "探索任务已由用户停止。",
+            "result_summary": result_summary,
             "finished_at": finished_at,
         },
     )
@@ -1032,33 +1046,14 @@ def _register_exploration_outputs(
     with connect() as db:
         exploration_run_repo.update_artifact_root(db, run_id, str(run_dir))
         for path, artifact in page_artifacts:
-            page = artifact.get("page") if isinstance(artifact.get("page"), dict) else {}
-            page_id = _string(page.get("id") or path.stem)
-            title = _string(page.get("semantic_title") or page.get("title") or path.stem)
-            url = _string(page.get("url") or page.get("env_url") or "")
-            entry_path = _string(page.get("normalized_url") or page.get("normalized_path") or page.get("entry_path") or "")
-            module_key = _string(page.get("module_key") or page.get("module") or scope or "主探索模块")
-            structure_summary = _string(page.get("structure_summary") or _page_structure_summary(artifact))
-            _upsert_exploration_page(
+            _register_page_artifact_file(
                 db,
-                page_id=page_id,
+                project_id=project_id,
+                run_dir=run_dir,
                 run_id=run_id,
-                title=title,
-                url=url,
-                entry_path=entry_path,
-                module_key=module_key,
-                structure_summary=structure_summary,
-                snapshot_path=str(path),
-            )
-
-            _upsert_exploration_artifact(
-                db,
-                artifact_id=f"{run_id}-{page_id}-yaml",
-                run_id=run_id,
-                artifact_type="page_yaml",
-                file_path=str(path),
-                title=title,
-                summary=structure_summary,
+                path=path,
+                artifact=artifact,
+                scope=scope,
             )
 
         _upsert_exploration_artifact(
@@ -1192,6 +1187,8 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
 
     normalized_path = _normalize_snapshot_url_path(url)
     page_id = _snapshot_page_id(normalized_path)
+    run_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration" / "runs" / run_id
+    pages_dir = run_dir / "pages"
     elements = snapshot.get("elements") if isinstance(snapshot.get("elements"), list) else []
     artifact_elements = _snapshot_elements_for_artifact(elements)
     captured_at = datetime.now(timezone.utc).isoformat()
@@ -1201,10 +1198,16 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
             "title": title,
             "url": url,
             "normalized_url": normalized_path,
+            "normalized_path": normalized_path,
             "module": "主探索模块",
             "status": "explored",
             "structure_summary": f"自动保存页面快照，发现 {len(artifact_elements)} 个元素。",
             "elements": artifact_elements,
+            "last_explored": {
+                "run_id": run_id,
+                "timestamp": captured_at,
+                "screenshot": "",
+            },
         },
         "states": [
             {
@@ -1232,10 +1235,125 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
         },
     }
 
-    pages_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration" / "runs" / run_id / "pages"
-    path = pages_dir / f"{page_id}.yaml"
+    path = _unique_snapshot_artifact_path(pages_dir / f"{page_id}.yaml")
     _write_yaml_file(path, artifact)
+    try:
+        with connect() as db:
+            _register_page_artifact_file(
+                db,
+                project_id=project_id,
+                run_dir=run_dir,
+                run_id=run_id,
+                path=path,
+                artifact=artifact,
+                scope="主探索模块",
+            )
+    except Exception:
+        # Snapshot checkpoints are best-effort. The final exploration output
+        # registration re-indexes all run-scoped page artifacts.
+        pass
     return path
+
+
+def _unique_snapshot_artifact_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    index = 2
+    while True:
+        candidate = path.with_name(f"{path.stem}-{index}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+        index += 1
+
+
+def _register_page_artifact_file(
+    db,
+    *,
+    project_id: str,
+    run_dir: Path,
+    run_id: str,
+    path: Path,
+    artifact: dict,
+    scope: str,
+) -> None:
+    page = artifact.get("page") if isinstance(artifact.get("page"), dict) else {}
+    page_id = _string(page.get("id") or path.stem)
+    title = _string(page.get("semantic_title") or page.get("title") or path.stem)
+    url = _string(page.get("url") or page.get("env_url") or "")
+    entry_path = _string(page.get("normalized_url") or page.get("normalized_path") or page.get("entry_path") or "")
+    module_key = _string(page.get("module_key") or page.get("module") or scope or "主探索模块")
+    structure_summary = _string(page.get("structure_summary") or _page_structure_summary(artifact))
+
+    exploration_run_repo.update_artifact_root(db, run_id, str(run_dir))
+    _upsert_exploration_page(
+        db,
+        page_id=page_id,
+        run_id=run_id,
+        title=title,
+        url=url,
+        entry_path=entry_path,
+        module_key=module_key,
+        structure_summary=structure_summary,
+        snapshot_path=str(path),
+    )
+    _upsert_exploration_artifact(
+        db,
+        artifact_id=f"{run_id}-{path.stem}-yaml",
+        run_id=run_id,
+        artifact_type="page_yaml",
+        file_path=_save_project_page_artifact(
+            project_id=project_id,
+            run_id=run_id,
+            artifact=artifact,
+            source_path=path,
+            scope=scope,
+        ),
+        title=title,
+        summary=structure_summary,
+    )
+
+
+def _save_project_page_artifact(
+    *,
+    project_id: str,
+    run_id: str,
+    artifact: dict,
+    source_path: Path,
+    scope: str,
+) -> str:
+    page = artifact.get("page") if isinstance(artifact.get("page"), dict) else {}
+    page_id = _string(page.get("id") or source_path.stem)
+    title = _string(page.get("semantic_title") or page.get("title") or source_path.stem)
+    url = _string(page.get("url") or page.get("env_url") or "")
+    normalized_path = _string(page.get("normalized_url") or page.get("normalized_path") or page.get("entry_path") or "")
+    structure_summary = _string(page.get("structure_summary") or _page_structure_summary(artifact))
+    if not normalized_path and url:
+        normalized_path = _normalize_snapshot_url_path(url)
+
+    service = ProjectPagesService(
+        project_id,
+        base_dir=settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration",
+    )
+    service.save_page(
+        page_id=page_id,
+        page_data={
+            "title": title,
+            "structure_summary": structure_summary,
+            "states": artifact.get("states", []),
+            "quality": artifact.get("quality", {}),
+            "metadata": {
+                **(artifact.get("metadata") if isinstance(artifact.get("metadata"), dict) else {}),
+                "source": "page_exploration_run",
+                "source_run_id": run_id,
+                "source_artifact_path": str(source_path),
+                "module": _string(page.get("module_key") or page.get("module") or scope),
+            },
+        },
+        run_id=run_id,
+        url=url,
+        normalized_path=normalized_path,
+    )
+    return str(service.pages_dir / f"{page_id}.yaml")
 
 
 def _coerce_tool_output_dict(output) -> dict:
@@ -1416,7 +1534,9 @@ async def _invoke_agent_with_realtime_events(
 ):
     agent_step = plan_steps[1]
     started_at = datetime.now(timezone.utc).isoformat()
-    event_log = _ExplorationEventLog(project_id=project_id, run_id=run_id)
+    timeline_log = _ExplorationEventLog(project_id=project_id, run_id=run_id, filename="timeline_events.jsonl")
+    raw_log = _ExplorationEventLog(project_id=project_id, run_id=run_id, filename="raw_events.jsonl")
+    started_display = _status_display("agent_run", "开始页面探索", "页面探索 Agent 已开始执行。")
     event_bus.publish(
         run_id,
         "step_started",
@@ -1427,28 +1547,26 @@ async def _invoke_agent_with_realtime_events(
             "started_at": started_at,
             "message": "页面探索 Agent 已开始执行。",
         },
+        display=started_display,
     )
-    event_log.append("agent_step_started", {"step": agent_step, "message": "页面探索 Agent 已开始执行。"})
+    timeline_log.append(
+        "agent_step_started",
+        {"step": agent_step, "message": "页面探索 Agent 已开始执行。"},
+        display=started_display,
+    )
     try:
         config = _agent_recursion_config(max_pages)
-        if hasattr(agent, "astream_events"):
-            final_result = None
-            async for event in agent.astream_events(payload, version="v2", config=config):
-                _ensure_exploration_not_stopping(run_id)
-                raw_event = event_log.append("agent_stream_event", _compact_agent_event(event))
-                _publish_agent_stream_event(run_id, event, raw_event_id=raw_event.get("event_id"))
-                _checkpoint_snapshot_artifact_from_event(
-                    event,
-                    project_id=project_id,
-                    run_id=run_id,
-                )
-                data = event.get("data") if isinstance(event, dict) else {}
-                if isinstance(data, dict) and "output" in data:
-                    final_result = data["output"]
-            result = final_result if final_result is not None else {}
-        else:
-            result = await _ainvoke_agent(agent, payload, config)
-            _ensure_exploration_not_stopping(run_id)
+        result = await _astream_agent_with_timeline_events(
+            agent,
+            payload,
+            run_id,
+            config,
+            timeline_log=timeline_log,
+            raw_log=raw_log,
+            project_id=project_id,
+        )
+        _ensure_exploration_not_stopping(run_id)
+        completed_display = _status_display("agent_run", "页面探索完成", _agent_result_summary(result))
         event_bus.publish(
             run_id,
             "step_completed",
@@ -1461,10 +1579,16 @@ async def _invoke_agent_with_realtime_events(
                 "success": True,
                 "message": _agent_result_summary(result),
             },
+            display=completed_display,
         )
-        event_log.append("agent_step_completed", {"message": _agent_result_summary(result)})
+        timeline_log.append(
+            "agent_step_completed",
+            {"message": _agent_result_summary(result)},
+            display=completed_display,
+        )
         return result
     except Exception as exc:
+        failed_display = _status_display("error", "页面探索失败", _agent_failure_message(exc))
         event_bus.publish(
             run_id,
             "step_failed",
@@ -1480,16 +1604,282 @@ async def _invoke_agent_with_realtime_events(
                 "retryable": False,
                 "message": "页面探索 Agent 执行失败。",
             },
+            display=failed_display,
         )
-        event_log.append(
+        timeline_log.append(
             "agent_step_failed",
             {
                 "error": str(exc),
                 "failure_type": exc.__class__.__name__,
                 "message": _agent_failure_message(exc),
             },
+            display=failed_display,
         )
         raise
+
+
+async def _astream_agent_with_timeline_events(
+    agent,
+    payload: dict,
+    run_id: str,
+    config: dict,
+    *,
+    timeline_log: "_ExplorationEventLog",
+    raw_log: "_ExplorationEventLog",
+    project_id: str,
+) -> dict:
+    if not hasattr(agent, "astream"):
+        raise TypeError("页面探索 Agent 必须支持 projection stream: astream(..., stream_mode=[...])")
+    final_result: dict | None = None
+    tool_inputs: dict[str, dict] = {}
+    async for chunk in agent.astream(payload, config=config, stream_mode=["updates", "messages", "values"]):
+        _ensure_exploration_not_stopping(run_id)
+        mode, data = _stream_chunk_parts(chunk)
+        raw_event = raw_log.append(
+            "agent_projection_event",
+            {
+                "mode": mode or "unknown",
+                "data": _compact_event_payload(data),
+            },
+        )
+        for readable_event in _projection_chunk_to_timeline_events(
+            mode,
+            data,
+            raw_event_id=raw_event.get("event_id"),
+            tool_inputs=tool_inputs,
+        ):
+            timeline_log.append(
+                readable_event["type"],
+                readable_event["payload"],
+                display=readable_event["display"],
+            )
+            event_bus.publish(
+                run_id,
+                readable_event["type"],
+                readable_event["payload"],
+                display=readable_event["display"],
+            )
+            snapshot_event = readable_event.get("snapshot_event")
+            if isinstance(snapshot_event, dict):
+                _checkpoint_snapshot_artifact_from_event(snapshot_event, project_id=project_id, run_id=run_id)
+        if mode == "values" and isinstance(data, dict):
+            final_result = data
+    return final_result or {}
+
+
+def _stream_chunk_parts(chunk) -> tuple[str | None, object]:
+    if isinstance(chunk, tuple):
+        if len(chunk) == 2 and isinstance(chunk[0], str):
+            return chunk[0], chunk[1]
+        if len(chunk) == 3 and isinstance(chunk[1], str):
+            return chunk[1], chunk[2]
+    return None, chunk
+
+
+def _projection_chunk_to_timeline_events(
+    mode: str | None,
+    data,
+    *,
+    raw_event_id: str | None,
+    tool_inputs: dict[str, dict],
+) -> list[dict]:
+    if mode != "updates":
+        return []
+    events: list[dict] = []
+    for message in _messages_from_projection_update(data):
+        thought = _projection_message_to_thought_event(message, raw_event_id=raw_event_id)
+        if thought:
+            events.append(thought)
+        for tool_call in _message_tool_calls(message):
+            tool_id = _tool_call_id(tool_call)
+            tool_name = _tool_call_name(tool_call)
+            tool_args = _tool_call_args(tool_call)
+            if tool_id:
+                tool_inputs[tool_id] = {"name": tool_name, "args": tool_args}
+            readable = _projection_tool_event_to_timeline_event(
+                tool_name=tool_name,
+                tool_id=tool_id,
+                status="running",
+                input_data=tool_args,
+                output_data={},
+                raw_event_id=raw_event_id,
+            )
+            if readable:
+                events.append(readable)
+        if _is_projection_tool_message(message):
+            tool_id = _message_field(message, "tool_call_id")
+            remembered = tool_inputs.get(tool_id, {})
+            tool_name = _message_field(message, "name") or _string(remembered.get("name"))
+            output_data = _coerce_tool_output_dict(_message_field(message, "content"))
+            readable = _projection_tool_event_to_timeline_event(
+                tool_name=tool_name,
+                tool_id=tool_id,
+                status="completed" if not output_data.get("error") else "failed",
+                input_data=remembered.get("args") if isinstance(remembered.get("args"), dict) else {},
+                output_data=output_data,
+                raw_event_id=raw_event_id,
+            )
+            if readable:
+                if tool_name == "playwright_snap_tool":
+                    readable["snapshot_event"] = {
+                        "event": "on_tool_end",
+                        "name": tool_name,
+                        "data": {"output": output_data},
+                    }
+                events.append(readable)
+    return events
+
+
+def _projection_message_to_thought_event(message, *, raw_event_id: str | None) -> dict | None:
+    if _is_projection_tool_message(message):
+        return None
+    thought = _public_agent_thought(_message_field(message, "content"))
+    if not thought:
+        return None
+    return {
+        "type": "agent_thought",
+        "payload": _clean_compact_payload(
+            {
+                "status": "completed",
+                "raw_event_id": raw_event_id,
+            }
+        ),
+        "display": {
+            "kind": "thought",
+            "title": "Agent",
+            "summary": thought,
+        },
+    }
+
+
+def _public_agent_thought(content) -> str:
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text") if item.get("type") in {"text", "output_text"} else ""
+                if text:
+                    parts.append(str(text))
+            elif isinstance(item, str):
+                parts.append(item)
+        content = "\n".join(parts)
+    text = _compact_event_payload(content).strip()
+    if not text:
+        return ""
+    import re
+
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.IGNORECASE | re.DOTALL).strip()
+    text = re.sub(r"```(?:json|text)?\s*.*?```", "", text, flags=re.IGNORECASE | re.DOTALL).strip()
+    if not text or text.startswith("{") or text.startswith("["):
+        return ""
+    return text[:500]
+
+
+def _projection_tool_event_to_timeline_event(
+    *,
+    tool_name: str,
+    tool_id: str,
+    status: str,
+    input_data: dict,
+    output_data: dict,
+    raw_event_id: str | None,
+) -> dict | None:
+    event_name = "on_tool_start" if status == "running" else "on_tool_error" if status == "failed" else "on_tool_end"
+    display = _readable_tool_display(
+        tool_name,
+        event_name,
+        {"input": input_data, "output": output_data},
+        status,
+    )
+    if display is None:
+        return None
+    stream_type = "agent_tool_started" if status == "running" else "agent_tool_failed" if status == "failed" else "agent_tool_completed"
+    if tool_name == "write_todos":
+        stream_type = "agent_plan_updated"
+    payload = {
+        "step_id": f"agent-tool-{tool_id or tool_name}",
+        "tool_name": tool_name,
+        "status": status,
+        "raw_event_id": raw_event_id,
+        "error_summary": _compact_event_payload(output_data.get("error")),
+    }
+    if tool_name == "write_todos":
+        payload["plan_steps"] = _todo_plan_steps(input_data.get("todos"))
+    return {
+        "type": stream_type,
+        "payload": _clean_compact_payload(payload),
+        "display": display,
+    }
+
+
+def _todo_plan_steps(todos) -> list[dict]:
+    if not isinstance(todos, list):
+        return []
+    steps = []
+    for index, todo in enumerate(todos, start=1):
+        if not isinstance(todo, dict):
+            continue
+        content = _compact_event_payload(todo.get("content"))
+        if not content:
+            continue
+        steps.append(
+            {
+                "step_id": _compact_event_payload(todo.get("id")) or f"agent-todo-{index}",
+                "step_number": index,
+                "description": content,
+                "status": _compact_event_payload(todo.get("status")) or "pending",
+                "action_type": "todo",
+                "execution_strategy": "agent_plan",
+            }
+        )
+    return steps
+
+
+def _messages_from_projection_update(data) -> list:
+    if not isinstance(data, dict):
+        return []
+    messages = []
+    for value in data.values():
+        if isinstance(value, dict):
+            node_messages = value.get("messages")
+            if isinstance(node_messages, list):
+                messages.extend(node_messages)
+        elif isinstance(value, list):
+            messages.extend(value)
+    return messages
+
+
+def _message_tool_calls(message) -> list:
+    calls = _message_field(message, "tool_calls") or _message_field(message, "tool_call_chunks")
+    return calls if isinstance(calls, list) else []
+
+
+def _is_projection_tool_message(message) -> bool:
+    message_type = _message_field(message, "type") or _message_field(message, "role")
+    return message_type == "tool" or message.__class__.__name__ == "ToolMessage"
+
+
+def _message_field(message, key: str):
+    if isinstance(message, dict):
+        return message.get(key)
+    return getattr(message, key, None)
+
+
+def _tool_call_id(tool_call) -> str:
+    return _string(_message_field(tool_call, "id") or _message_field(tool_call, "tool_call_id"))
+
+
+def _tool_call_name(tool_call) -> str:
+    return _string(_message_field(tool_call, "name"))
+
+
+def _tool_call_args(tool_call) -> dict:
+    args = _message_field(tool_call, "args")
+    return args if isinstance(args, dict) else {}
+
+
+def _status_display(kind: str, title: str, summary: str) -> dict:
+    return {"kind": kind, "title": title, "summary": summary}
 
 
 def _agent_recursion_config(max_pages: int) -> dict:
@@ -1512,13 +1902,14 @@ async def _ainvoke_agent(agent, payload: dict, config: dict):
 
 
 class _ExplorationEventLog:
-    def __init__(self, *, project_id: str, run_id: str) -> None:
+    def __init__(self, *, project_id: str, run_id: str, filename: str) -> None:
         self.project_id = project_id
         self.run_id = run_id
+        self.filename = filename
         self.sequence = 0
         self.path = self._resolve_path()
 
-    def append(self, event_type: str, payload: dict) -> dict:
+    def append(self, event_type: str, payload: dict, *, display: dict | None = None) -> dict:
         if self.path is None:
             return {}
         self.sequence += 1
@@ -1530,6 +1921,8 @@ class _ExplorationEventLog:
             "payload": payload,
             "occurred_at": datetime.now(timezone.utc).isoformat(),
         }
+        if display:
+            event["display"] = display
         with self.path.open("a", encoding="utf-8") as file:
             file.write(json.dumps(event, ensure_ascii=False) + "\n")
         return event
@@ -1537,138 +1930,42 @@ class _ExplorationEventLog:
     def _resolve_path(self) -> Path | None:
         if not self.project_id or not self.run_id:
             return None
-        return settings.PROJECT_FILE_STORAGE_ROOT / self.project_id / "page_exploration" / "runs" / self.run_id / "events.jsonl"
-
-
-def _compact_agent_event(event: dict) -> dict:
-    if not isinstance(event, dict):
-        return {"event": str(event)}
-    data = event.get("data") if isinstance(event.get("data"), dict) else {}
-    return {
-        "event": str(event.get("event") or ""),
-        "name": str(event.get("name") or ""),
-        "run_id": str(event.get("run_id") or ""),
-        "input": _compact_event_payload(data.get("input")),
-        "output": _compact_event_payload(data.get("output")),
-        "error": _compact_event_payload(data.get("error")),
-    }
+        return (
+            settings.PROJECT_FILE_STORAGE_ROOT
+            / self.project_id
+            / "page_exploration"
+            / "runs"
+            / self.run_id
+            / self.filename
+        )
 
 
 def _agent_failure_message(exc: Exception) -> str:
     message = str(exc)
     if "Recursion limit" in message or "GRAPH_RECURSION_LIMIT" in message:
-        return "页面探索触发技术保险丝，目标未确认完成；请查看 events.jsonl 定位循环原因。"
+        return "页面探索触发技术保险丝，目标未确认完成；请查看 raw_events.jsonl 定位循环原因。"
     return "页面探索 Agent 执行失败。"
-
-
-def _publish_agent_stream_event(run_id: str, event: dict, *, raw_event_id: str | None = None) -> None:
-    readable_event = _agent_event_to_readable_stream_event(event, raw_event_id=raw_event_id)
-    if readable_event is None:
-        return
-    event_bus.publish(run_id, readable_event["type"], readable_event["payload"], display=readable_event["display"])
-
-
-def _agent_event_to_readable_stream_event(event: dict, *, raw_event_id: str | None = None) -> dict | None:
-    event_name = str(event.get("event") or "")
-    name = str(event.get("name") or "")
-    data = event.get("data") if isinstance(event.get("data"), dict) else {}
-    if _is_hidden_agent_event(event_name, name):
-        return None
-    if event_name not in {"on_tool_start", "on_tool_end", "on_tool_error", "on_chat_model_end"}:
-        return None
-
-    occurred_at = datetime.now(timezone.utc).isoformat()
-
-    if event_name == "on_chat_model_end":
-        display = _readable_model_display(name, data)
-        if display is None:
-            return None
-        return {
-            "type": "agent_thought",
-            "payload": _clean_compact_payload(
-                {
-                    "step_id": _agent_stream_lifecycle_step_id(event_name, event, name),
-                    "status": "completed",
-                    "completed_at": occurred_at,
-                }
-            ),
-            "display": display,
-        }
-
-    status = "running"
-    stream_type = "agent_tool_started"
-    if event_name == "on_tool_end":
-        status = "completed"
-        stream_type = "agent_tool_completed"
-    elif event_name == "on_tool_error":
-        status = "failed"
-        stream_type = "agent_tool_failed"
-
-    error_summary = _compact_event_payload(data.get("error"))
-    display = _readable_tool_display(name, event_name, data, status)
-    if display is None:
-        return None
-    payload = _clean_compact_payload(
-        {
-            "step_id": _agent_stream_lifecycle_step_id(event_name, event, name),
-            "tool_name": name,
-            "status": status,
-            "started_at": occurred_at if status == "running" else "",
-            "completed_at": occurred_at if status != "running" else "",
-            "error_summary": error_summary,
-        }
-    )
-    if name == "write_todos":
-        stream_type = "agent_plan_updated"
-    return {"type": stream_type, "payload": payload, "display": display}
-
-
-def _is_hidden_agent_event(event_name: str, name: str) -> bool:
-    if event_name in {"on_chat_model_stream", "on_chain_stream", "on_chat_model_start"}:
-        return True
-    return name == "LangGraph" or "Middleware." in name
 
 
 def _clean_compact_payload(payload: dict) -> dict:
     return {key: value for key, value in payload.items() if value not in ("", None, [], {})}
 
 
-def _readable_model_display(name: str, data: dict) -> dict | None:
-    output = _compact_event_payload(data.get("output"))
-    if not output:
-        return None
-    tool_names = _extract_tool_names(output)
-    summary = "模型请求工具调用，准备继续执行页面探索。" if tool_names else output[:120]
-    return {
-        "kind": "model_analysis",
-        "title": "模型分析",
-        "summary": summary,
-        "fields": [
-            {"label": "模型", "value": name},
-            {"label": "下一步", "value": " / ".join(tool_names[:4])},
-        ],
-        "chips": tool_names[:3],
-    }
-
-
 def _readable_tool_display(tool_name: str, event_name: str, data: dict, status: str) -> dict | None:
+    """生成工具调用的前端显示信息。
+
+    只为关键工具生成显示信息，过滤辅助性工具：
+    - 保留：页面操作（导航、点击、快照）、页面事实写入、计划更新
+    - 过滤：内部文件读取、URL记录等辅助操作
+    """
     input_data = data.get("input") if isinstance(data.get("input"), dict) else {}
     output_data = data.get("output") if isinstance(data.get("output"), dict) else {}
     error = _compact_event_payload(data.get("error")) or _compact_event_payload(output_data.get("error"))
-    if tool_name == "read_file":
-        file_path = _tool_field(input_data, "file_path") or _tool_field(input_data, "path") or _compact_event_payload(data.get("input"))
-        title = "加载探索规则" if "SKILL.md" in file_path else "读取文件"
-        return _tool_display(
-            "file_read",
-            title,
-            "读取页面探索规则" if "SKILL.md" in file_path else "读取文件内容",
-            status,
-            [
-                {"label": "文件", "value": file_path, "mono": True},
-                {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
-            ],
-            error,
-        )
+
+    # 过滤掉辅助性工具：read_file（内部配置读取）、update_explored_url_tool（URL记录）
+    if tool_name in {"read_file", "update_explored_url_tool"}:
+        return None
+
     if tool_name == "write_todos":
         todos = input_data.get("todos") if isinstance(input_data, dict) else []
         current = next((todo for todo in todos if isinstance(todo, dict) and todo.get("status") == "in_progress"), None) if isinstance(todos, list) else None
@@ -1697,11 +1994,12 @@ def _readable_tool_display(tool_name: str, event_name: str, data: dict, status: 
     if tool_name == "write_page_artifact_tool":
         path = _tool_field(output_data, "path") or _tool_field(input_data, "path") or _tool_field(input_data, "artifact_path")
         return _tool_display("artifact_write", "写入页面事实", f"写入 {Path(path).name}" if path else "写入页面事实", status, [{"label": "页面", "value": _tool_field(input_data, "title") or _tool_field(input_data, "page_title")}, {"label": "产物", "value": path, "mono": True}, {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)}], error)
-    if tool_name == "update_explored_url_tool":
-        url = _tool_field(input_data, "url") or _tool_field(output_data, "url")
-        return _tool_display("url_record", "记录已探索页面", f"记录 {_compact_url_for_display(url)} 已访问", status, [{"label": "URL", "value": _compact_url_for_display(url), "mono": True}, {"label": "状态", "value": "已访问" if status == "completed" else _status_label(status)}], error)
+
+    # 如果有错误，显示错误信息（即使是未识别的工具）
     if error:
         return _tool_display("error", "执行失败", _error_reason(error), status, [{"label": "原因", "value": error, "tone": "danger"}], error)
+
+    # 未识别的工具不生成显示信息，会被上层过滤掉
     return None
 
 
@@ -1728,20 +2026,6 @@ def _status_label(status: str) -> str:
 
 def _status_tone(status: str) -> str:
     return "danger" if status == "failed" else "success"
-
-
-def _extract_tool_names(value: str) -> list[str]:
-    names = []
-    for match in re_finditer_tools(value):
-        if match not in names:
-            names.append(match)
-    return names
-
-
-def re_finditer_tools(value: str) -> list[str]:
-    import re
-
-    return re.findall(r"\b(playwright_[a-z_]+|write_page_artifact_tool|update_explored_url_tool|write_todos|read_file)\b", value)
 
 
 def _compact_url_for_display(value: str) -> str:
@@ -1799,15 +2083,6 @@ def _error_reason(error: str) -> str:
     if "timeout" in error.lower():
         return "操作超时"
     return "执行失败"
-
-
-def _agent_stream_lifecycle_step_id(event_name: str, event: dict, name: str) -> str:
-    run_key = event.get("run_id") or name
-    if event_name.startswith("on_tool_"):
-        return f"agent-tool-{run_key}"
-    if event_name.startswith("on_chain_"):
-        return f"agent-on_chain-{run_key}"
-    return f"agent-{event_name}-{run_key}"
 
 
 def _agent_result_summary(result) -> str:
@@ -1931,6 +2206,35 @@ def list_run_pages(actor, run_id: str) -> list[dict]:
     with connect() as db:
         pages = exploration_page_repo.list_by_run(db, run_id)
         return [dict(p) for p in pages]
+
+
+def list_project_pages(actor, project_id: str) -> list[dict]:
+    """列出项目级探索页面产物。"""
+    base_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration"
+    service = ProjectPagesService(project_id, base_dir=base_dir)
+    rows = []
+    for page in service.list_pages():
+        last_explored = page.get("last_explored") if isinstance(page.get("last_explored"), dict) else {}
+        page_id = _string(page.get("page_id") or Path(_string(page.get("file"))).stem)
+        file_name = _string(page.get("file") or f"{page_id}.yaml")
+        timestamp = _string(last_explored.get("timestamp"))
+        rows.append(
+            {
+                "id": page_id,
+                "exploration_run_id": _string(last_explored.get("run_id")),
+                "module_key": "",
+                "title": _string(page.get("title") or page_id),
+                "url": "",
+                "entry_path": _string(page.get("normalized_path") or ""),
+                "structure_summary": _string(page.get("structure_summary") or ""),
+                "screenshot_path": _string(last_explored.get("screenshot")),
+                "snapshot_path": str(base_dir / "pages" / file_name),
+                "trace_path": "",
+                "created_at": timestamp,
+                "updated_at": timestamp,
+            }
+        )
+    return rows
 
 
 def list_run_artifacts(actor, run_id: str) -> list[dict]:

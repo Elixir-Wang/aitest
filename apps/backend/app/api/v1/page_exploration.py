@@ -83,7 +83,7 @@ class ExplorationRunDetailResponse(BaseModel):
     unsupported_artifact: bool
     unsupported_reason: str
     modules: list[dict]
-    raw_events: list[dict] = Field(default_factory=list)
+    timeline_events: list[dict] = Field(default_factory=list)
 
 
 # ==================== API Endpoints ====================
@@ -428,6 +428,15 @@ def list_run_pages(run_id: str, actor=Depends(current_user)) -> list[dict]:
     """
     try:
         return page_exploration_service.list_run_pages(actor, run_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/projects/{project_id}/pages", response_model=list[dict])
+def list_project_pages(project_id: str, actor=Depends(current_user)) -> list[dict]:
+    """列出项目级探索页面产物"""
+    try:
+        return page_exploration_service.list_project_pages(actor, project_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -1,0 +1,408 @@
+page:
+  id: page-agentStore
+  title: 百融百工
+  normalized_path: /agentStore
+  structure_summary: 自动保存页面快照，发现 41 个元素。
+  path_hash: sha256-e71b914e41060b98
+  env_urls:
+    test: https://www.cybotstar.cn/agentStore
+  last_explored:
+    run_id: exp_Z--zfm2jCwKmBiIoCDqg2w
+    timestamp: '2026-07-02T12:00:23.380437Z'
+    screenshot: runs/exp_Z--zfm2jCwKmBiIoCDqg2w/screenshots/page-agentStore.png
+states:
+- id: snapshot-current
+  title: 百融百工
+  url: https://www.cybotstar.cn/agentStore
+  elements:
+  - id: button-创建智能体-001
+    name: 创建智能体
+    role: button
+    text: 创建智能体
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''创建智能体'' })'
+      priority: 1
+  - id: button-探索广场-002
+    name: 探索广场
+    role: button
+    text: 探索广场
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''探索广场'' })'
+      priority: 1
+  - id: button-批量任务-003
+    name: 批量任务
+    role: button
+    text: 批量任务
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''批量任务'' })'
+      priority: 1
+  - id: button-hongbao-wang-所有者-004
+    name: hongbao.wang 所有者
+    role: button
+    text: hongbao.wang 所有者
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''hongbao.wang 所有者'' })'
+      priority: 1
+  - id: button-工作台-005
+    name: 工作台
+    role: button
+    text: 工作台
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''工作台'' })'
+      priority: 1
+  - id: button-资源库-006
+    name: 资源库
+    role: button
+    text: 资源库
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''资源库'' })'
+      priority: 1
+  - id: button-效果评测-007
+    name: 效果评测
+    role: button
+    text: 效果评测
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''效果评测'' })'
+      priority: 1
+  - id: button-发布管理-008
+    name: 发布管理
+    role: button
+    text: 发布管理
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''发布管理'' })'
+      priority: 1
+  - id: button-线上观测-009
+    name: 线上观测
+    role: button
+    text: 线上观测
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''线上观测'' })'
+      priority: 1
+  - id: button-自动优化-010
+    name: 自动优化
+    role: button
+    text: 自动优化
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''自动优化'' })'
+      priority: 1
+  - id: button-空间管理-011
+    name: 空间管理
+    role: button
+    text: 空间管理
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''空间管理'' })'
+      priority: 1
+  - id: button-文档中心-012
+    name: 文档中心
+    role: button
+    text: 文档中心
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''文档中心'' })'
+      priority: 1
+  - id: button-hongbao-wang1-013
+    name: hongbao.wang1
+    role: button
+    text: hongbao.wang1
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''hongbao.wang1'' })'
+      priority: 1
+  - id: button-hongbao-wang1-014
+    name: hongbao.wang1
+    role: button
+    text: hongbao.wang1
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''hongbao.wang1'' })'
+      priority: 1
+  - id: textbox-搜索-015
+    name: 搜索
+    role: textbox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''搜索'' })'
+      priority: 1
+  - id: button-全部-016
+    name: 全部
+    role: button
+    text: 全部
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''全部'' })'
+      priority: 1
+  - id: button-已订阅-017
+    name: 已订阅
+    role: button
+    text: 已订阅
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''已订阅'' })'
+      priority: 1
+  - id: button-最近使用-018
+    name: 最近使用
+    role: button
+    text: 最近使用
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''最近使用'' })'
+      priority: 1
+  - id: button-选择语言-019
+    name: 选择语言
+    role: button
+    text: 选择语言
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''选择语言'' })'
+      priority: 1
+  - id: combobox-20-020
+    name: combobox-20-020
+    role: combobox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''combobox'', { name: ''combobox-20-020'' })'
+      priority: 1
+  - id: button-全部-021
+    name: 全部
+    role: button
+    text: 全部
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''全部'' })'
+      priority: 1
+  - id: combobox-22-022
+    name: combobox-22-022
+    role: combobox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''combobox'', { name: ''combobox-22-022'' })'
+      priority: 1
+  - id: button-按发布时间排序-023
+    name: 按发布时间排序
+    role: button
+    text: 按发布时间排序
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''按发布时间排序'' })'
+      priority: 1
+  - id: combobox-24-024
+    name: combobox-24-024
+    role: combobox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''combobox'', { name: ''combobox-24-024'' })'
+      priority: 1
+  - id: button-官方-025
+    name: 官方
+    role: button
+    text: 官方
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''官方'' })'
+      priority: 1
+  - id: button-客服场景-026
+    name: 客服场景
+    role: button
+    text: 客服场景
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''客服场景'' })'
+      priority: 1
+  - id: button-营销场景-027
+    name: 营销场景
+    role: button
+    text: 营销场景
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''营销场景'' })'
+      priority: 1
+  - id: button-合规与风控-028
+    name: 合规与风控
+    role: button
+    text: 合规与风控
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''合规与风控'' })'
+      priority: 1
+  - id: button-金融业务-029
+    name: 金融业务
+    role: button
+    text: 金融业务
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''金融业务'' })'
+      priority: 1
+  - id: button-保险场景-030
+    name: 保险场景
+    role: button
+    text: 保险场景
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''保险场景'' })'
+      priority: 1
+  - id: button-产品服务-031
+    name: 产品服务
+    role: button
+    text: 产品服务
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''产品服务'' })'
+      priority: 1
+  - id: button-零售场景-032
+    name: 零售场景
+    role: button
+    text: 零售场景
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''零售场景'' })'
+      priority: 1
+  - id: button-人力资源-033
+    name: 人力资源
+    role: button
+    text: 人力资源
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''人力资源'' })'
+      priority: 1
+  - id: button-报告生成-034
+    name: 报告生成
+    role: button
+    text: 报告生成
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''报告生成'' })'
+      priority: 1
+  - id: button-其他-035
+    name: 其他
+    role: button
+    text: 其他
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''其他'' })'
+      priority: 1
+  - id: button-天气查询助手-知识库-对话流-插件-百融云创天气查询助手-查询实时-036
+    name: 天气查询助手 知识库 对话流 插件 百融云创天气查询助手，查询实时天气信息 使用说明：输入需要查询的城市及天气查询意图，即可返回实时天气信息"
+      官方 265
+    role: button
+    text: 天气查询助手 知识库 对话流 插件 百融云创天气查询助手，查询实时天气信息 使用说明：输入需要查询的城市及天气查询意图，即可返回实时天气信息"
+      官方 265
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''天气查询助手 知识库 对话流 插件 百融云创天气查询助手，查询实时天气信息
+        使用说明：输入需要查询的城市及天气查询意图，即可返回实时天气信息" 官方 265'' })'
+      priority: 1
+  - id: button-投诉处理-零售-知识库-百融云创零售业投诉处理智能客服-通过友好礼-037
+    name: 投诉处理-零售 知识库 百融云创零售业投诉处理智能客服。通过友好礼貌引导消费者说明投诉核心问题、询问零售商品或购买店铺相关信息、精准解析问题关键，投诉问题全链路高效跟进解决，助力投诉处理自动化，提升消费者体验感。
+      官方 49
+    role: button
+    text: 投诉处理-零售 知识库 百融云创零售业投诉处理智能客服。通过友好礼貌引导消费者说明投诉核心问题、询问零售商品或购买店铺相关信息、精准解析问题关键，投诉问题全链路高效跟进解决，助力投诉处理自动化，提升消费者体验感。
+      官方 49
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''投诉处理-零售 知识库 百融云创零售业投诉处理智能客服。通过友好礼貌引导消费者说明投诉核心问题、询问零售商品或购买店铺相关信息、精准解析问题关键，投诉问题全链路高效跟进解决，助力投诉处理自动化，提升消费者体验感。
+        官方 49'' })'
+      priority: 1
+  - id: button-合同审核-知识库-对话流-百融云创合同审核助手-支持ai自动进行合-038
+    name: 合同审核 知识库 对话流 百融云创合同审核助手，支持AI自动进行合同审核，找出异常及需要修改的内容。 官方 53
+    role: button
+    text: 合同审核 知识库 对话流 百融云创合同审核助手，支持AI自动进行合同审核，找出异常及需要修改的内容。 官方 53
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''合同审核 知识库 对话流 百融云创合同审核助手，支持AI自动进行合同审核，找出异常及需要修改的内容。
+        官方 53'' })'
+      priority: 1
+  - id: button-产品通关陪练-知识库-对话流-百融云创的产品陪练助手-智能陪练自动-039
+    name: 产品通关陪练 知识库 对话流 百融云创的产品陪练助手。智能陪练自动生成核心考题，精准考察产品要点，通过用户反馈，给予得分和标准答案，进行评估反馈，明确提升方向，全方位提升高效进阶。
+      官方 252
+    role: button
+    text: 产品通关陪练 知识库 对话流 百融云创的产品陪练助手。智能陪练自动生成核心考题，精准考察产品要点，通过用户反馈，给予得分和标准答案，进行评估反馈，明确提升方向，全方位提升高效进阶。
+      官方 252
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''产品通关陪练 知识库 对话流 百融云创的产品陪练助手。智能陪练自动生成核心考题，精准考察产品要点，通过用户反馈，给予得分和标准答案，进行评估反馈，明确提升方向，全方位提升高效进阶。
+        官方 252'' })'
+      priority: 1
+  - id: button-空乘陪练-百融云创空乘陪练助手-模拟飞机乘客向乘务人员提问-协助培-040
+    name: 空乘陪练 百融云创空乘陪练助手。模拟飞机乘客向乘务人员提问，协助培养乘务人员职业技能。 官方 103
+    role: button
+    text: 空乘陪练 百融云创空乘陪练助手。模拟飞机乘客向乘务人员提问，协助培养乘务人员职业技能。 官方 103
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''空乘陪练 百融云创空乘陪练助手。模拟飞机乘客向乘务人员提问，协助培养乘务人员职业技能。
+        官方 103'' })'
+      priority: 1
+  - id: button-变量命名助手-知识库-百融云创变量命名助手-输入需要命名的内容-结-041
+    name: 变量命名助手 知识库 百融云创变量命名助手，输入需要命名的内容，结合上下文分析变量功能，自动生成语义明确的变量名称。统一命名习惯，减少命名争议。支持大驼峰、小驼峰、下划线三种格式。
+      官方 144
+    role: button
+    text: 变量命名助手 知识库 百融云创变量命名助手，输入需要命名的内容，结合上下文分析变量功能，自动生成语义明确的变量名称。统一命名习惯，减少命名争议。支持大驼峰、小驼峰、下划线三种格式。
+      官方 144
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''变量命名助手 知识库 百融云创变量命名助手，输入需要命名的内容，结合上下文分析变量功能，自动生成语义明确的变量名称。统一命名习惯，减少命名争议。支持大驼峰、小驼峰、下划线三种格式。
+        官方 144'' })'
+      priority: 1
+  raw_output: ''
+quality: {}
+metadata:
+  captured_at: '2026-07-02T11:31:45.839170+00:00'
+  source: page_exploration_run
+  source_run_id: exp_Z--zfm2jCwKmBiIoCDqg2w
+  source_artifact_path: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\page_exploration\runs\exp_Z--zfm2jCwKmBiIoCDqg2w\pages\page-agentStore.yaml
+  module: 主探索模块

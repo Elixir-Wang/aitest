@@ -2,8 +2,7 @@
 产物管理工具
 
 包含：
-- write_page_artifact_tool: 保存页面产物
-- save_page_snapshot_tool: 保存页面快照
+- write_page_artifact_tool: 保存项目级页面产物
 """
 
 from pathlib import Path
@@ -212,118 +211,6 @@ def _first_locator_code(element: Dict) -> str:
     return ""
 
 
-@tool
-def save_page_snapshot_tool(
-    url: str,
-    title: str,
-    page_data: Dict,
-    project_id: str,
-    run_id: str,
-) -> dict:
-    """
-    Save a page snapshot for this exploration run.
-
-    Use this tool to:
-    - Record pages discovered during exploration
-    - Track exploration history
-    - Generate exploration reports
-
-    The snapshot will be saved to:
-    data/projects/{project_id}/page_exploration/runs/{run_id}/pages/{page_id}.yaml
-
-    Args:
-        url: The full URL of the page
-        title: Page title
-        page_data: Dictionary containing page information (elements, links, etc.)
-        project_id: The project ID
-        run_id: The exploration run ID
-
-    Returns:
-        A dictionary containing:
-        - success: True if save succeeded
-        - run_id: The run identifier
-        - file_path: Path to the snapshot file
-
-    Example:
-        result = save_page_snapshot_tool(
-            url="https://test.example.com/workspace",
-            title="Workspace",
-            page_data={"elements_count": 15, "links": [...]},
-            project_id="proj-123",
-            run_id="run-001"
-        )
-    """
-    normalized_path = normalize_url(url)
-
-    run_dir = PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration" / "runs" / run_id
-    pages_dir = run_dir / "pages"
-    pages_dir.mkdir(parents=True, exist_ok=True)
-
-    page_id = str(page_data.get("page_id") or page_data.get("id") or "")
-    if not page_id:
-        page_id = "page-" + normalized_path.strip("/").replace("/", "-")
-    if page_id == "page-":
-        page_id = "page-home"
-
-    artifact = {
-        "page": {
-            "id": page_id,
-            "title": title,
-            "url": url,
-            "normalized_url": normalized_path,
-            "module": str(page_data.get("module") or page_data.get("module_key") or "主探索模块"),
-            "status": str(page_data.get("status") or "explored"),
-            "structure_summary": str(page_data.get("structure_summary") or ""),
-        },
-        "states": page_data.get("states", []),
-        "actions": page_data.get("actions", []),
-        "metadata": {
-            "captured_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-            "source": "page_exploration_agent",
-        },
-    }
-
-    file_path = pages_dir / f"{page_id}.yaml"
-    with open(file_path, "w", encoding="utf-8") as f:
-        yaml.dump(artifact, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
-
-    summary_path = run_dir / "summary.yaml"
-    summary = {}
-    if summary_path.exists():
-        with open(summary_path, "r", encoding="utf-8") as f:
-            summary = yaml.safe_load(f) or {}
-    modules = summary.get("modules")
-    if not isinstance(modules, list):
-        modules = []
-    module_key = artifact["page"]["module"]
-    if not any(isinstance(module, dict) and module.get("module_key") == module_key for module in modules):
-        modules.append({
-            "module_key": module_key,
-            "module_name": module_key,
-            "status": "running",
-            "entry_path": normalized_path,
-            "planned_page_count": 0,
-            "explored_page_count": 0,
-        })
-    summary.update({
-        "run_id": run_id,
-        "artifact_schema_version": 2,
-        "updated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-        "modules": modules,
-    })
-    with open(summary_path, "w", encoding="utf-8") as f:
-        yaml.dump(summary, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
-
-    return {
-        "success": True,
-        "run_id": run_id,
-        "page_id": page_id,
-        "file_path": str(file_path),
-        "summary_path": str(summary_path),
-    }
-
-
 __all__ = [
     "write_page_artifact_tool",
-    "save_page_snapshot_tool",
 ]

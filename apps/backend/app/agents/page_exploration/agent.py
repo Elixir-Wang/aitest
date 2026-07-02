@@ -63,9 +63,3 @@ def page_exploration_agent(
         backend=backend,
         skills=["app/agents/page_exploration/skills/"],  # 自动发现子技能
     )
-
-
-__all__ = ["page_exploration_agent"]
-
-
-__all__ = ["page_exploration_agent"]

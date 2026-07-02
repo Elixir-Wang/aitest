@@ -1,0 +1,1081 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>探索概览高级设计稿</title>
+    <style>
+      :root {
+        --ink: #142238;
+        --muted: #6b7b91;
+        --faint: #9badbf;
+        --paper: #f5f8fc;
+        --panel: #ffffff;
+        --line: #dce7f1;
+        --line-strong: #c7d7e6;
+        --blue: #2f7fc1;
+        --blue-deep: #1c537f;
+        --cyan: #4cc7d5;
+        --green: #15a974;
+        --amber: #c88a1b;
+        --red: #d04c4c;
+        --violet: #775dd0;
+        --shadow: 0 22px 55px rgba(29, 62, 100, 0.13);
+        --soft-shadow: 0 12px 28px rgba(29, 62, 100, 0.08);
+        font-family:
+          Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 67% 4%, rgba(76, 199, 213, 0.16), transparent 30%),
+          linear-gradient(135deg, #eef4fb 0%, #f8fbff 42%, #edf5f7 100%);
+        color: var(--ink);
+      }
+
+      .frame {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: 336px 1fr;
+        background: var(--paper);
+      }
+
+      .sidebar {
+        border-right: 1px solid var(--line);
+        background: linear-gradient(180deg, #fbfdff 0%, #f1f6fb 100%);
+        padding: 27px 26px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 34px;
+        font-weight: 750;
+        font-size: 20px;
+        letter-spacing: 0;
+      }
+
+      .brand-mark {
+        width: 18px;
+        height: 18px;
+        border: 2px solid var(--ink);
+        border-radius: 5px;
+        position: relative;
+      }
+
+      .brand-mark::before,
+      .brand-mark::after {
+        content: "";
+        position: absolute;
+        background: var(--ink);
+      }
+
+      .brand-mark::before {
+        width: 2px;
+        height: 24px;
+        left: 6px;
+        top: -5px;
+      }
+
+      .brand-mark::after {
+        width: 24px;
+        height: 2px;
+        left: -5px;
+        top: 6px;
+      }
+
+      .nav-section {
+        margin: 28px 0;
+      }
+
+      .nav-title {
+        color: var(--muted);
+        font-size: 14px;
+        margin-bottom: 12px;
+      }
+
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 40px;
+        padding: 0 0;
+        font-size: 16px;
+        color: #20324a;
+      }
+
+      .nav-item.dim {
+        color: #96a6b7;
+      }
+
+      .soon {
+        margin-left: auto;
+        color: #9baabd;
+        background: #edf3f8;
+        border-radius: 9px;
+        padding: 5px 11px;
+        font-size: 14px;
+      }
+
+      .ico {
+        width: 18px;
+        height: 18px;
+        border: 1.8px solid currentColor;
+        border-radius: 4px;
+        opacity: 0.92;
+      }
+
+      .main {
+        display: grid;
+        grid-template-rows: 68px 1fr;
+        min-width: 0;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 32px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(250, 253, 255, 0.78);
+        backdrop-filter: blur(14px);
+      }
+
+      .top-left {
+        display: flex;
+        align-items: center;
+        gap: 26px;
+        color: var(--muted);
+      }
+
+      .top-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .select,
+      .icon-btn,
+      .avatar {
+        height: 40px;
+        border: 1px solid var(--line);
+        background: #fbfdff;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #213852;
+        box-shadow: 0 2px 8px rgba(38, 80, 120, 0.04);
+      }
+
+      .select {
+        gap: 10px;
+        padding: 0 14px;
+        font-size: 15px;
+      }
+
+      .icon-btn,
+      .avatar {
+        width: 40px;
+      }
+
+      .icon-btn.primary,
+      .avatar {
+        border-color: transparent;
+        background: var(--blue);
+        color: white;
+      }
+
+      .content {
+        padding: 32px 32px 26px;
+        overflow: hidden;
+      }
+
+      .page-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        margin-bottom: 28px;
+      }
+
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--blue-deep);
+        font-size: 13px;
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+
+      .pulse-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--green);
+        box-shadow: 0 0 0 6px rgba(21, 169, 116, 0.1);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 34px;
+        line-height: 1.1;
+        letter-spacing: 0;
+      }
+
+      .summary {
+        color: var(--muted);
+        font-size: 14px;
+        margin-top: 9px;
+      }
+
+      .head-actions {
+        display: flex;
+        gap: 10px;
+      }
+
+      .btn {
+        height: 36px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #fbfdff;
+        color: #1d3650;
+        font-weight: 650;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 14px;
+      }
+
+      .btn.cta {
+        background: linear-gradient(135deg, #2f7fc1, #226a9f);
+        color: white;
+        border-color: transparent;
+        box-shadow: 0 12px 24px rgba(47, 127, 193, 0.22);
+      }
+
+      .tabs {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #eaf2fa;
+        border: 1px solid #dbe8f4;
+        padding: 4px;
+        border-radius: 14px;
+        margin-bottom: 24px;
+      }
+
+      .tab {
+        height: 32px;
+        padding: 0 14px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        font-weight: 650;
+        color: #63778e;
+        font-size: 15px;
+      }
+
+      .tab.active {
+        background: white;
+        color: #17304a;
+        box-shadow: 0 6px 14px rgba(31, 70, 110, 0.12);
+      }
+
+      .canvas {
+        height: 833px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background:
+          linear-gradient(90deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.45)),
+          repeating-linear-gradient(90deg, rgba(47, 127, 193, 0.045) 0 1px, transparent 1px 96px);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: 392px 1fr 350px;
+      }
+
+      .panel {
+        min-width: 0;
+        padding: 24px;
+      }
+
+      .panel + .panel {
+        border-left: 1px solid var(--line);
+      }
+
+      .section-head {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        margin-bottom: 18px;
+      }
+
+      .section-title {
+        font-size: 16px;
+        font-weight: 780;
+      }
+
+      .section-sub {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 4px;
+      }
+
+      .status-pill {
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        border-radius: 999px;
+        padding: 0 11px;
+        background: #e8f5ff;
+        color: #185d8f;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .status-pill.green {
+        background: #e7f8f1;
+        color: #0c7c55;
+      }
+
+      .stage-card {
+        position: relative;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.84);
+        border-radius: 12px;
+        padding: 14px 14px 14px 42px;
+        margin-bottom: 10px;
+        box-shadow: var(--soft-shadow);
+      }
+
+      .stage-card.active {
+        border-color: #afd6ee;
+        background:
+          linear-gradient(90deg, rgba(47, 127, 193, 0.09), transparent 44%),
+          rgba(255, 255, 255, 0.92);
+      }
+
+      .stage-line {
+        position: absolute;
+        left: 21px;
+        top: 0;
+        bottom: -11px;
+        width: 1px;
+        background: var(--line-strong);
+      }
+
+      .stage-card:last-child .stage-line {
+        bottom: 16px;
+      }
+
+      .stage-dot {
+        position: absolute;
+        left: 13px;
+        top: 18px;
+        width: 17px;
+        height: 17px;
+        border-radius: 999px;
+        background: white;
+        border: 2px solid #9fb3c7;
+        z-index: 1;
+      }
+
+      .stage-card.done .stage-dot {
+        background: var(--green);
+        border-color: var(--green);
+        box-shadow: 0 0 0 4px rgba(21, 169, 116, 0.12);
+      }
+
+      .stage-card.active .stage-dot {
+        border-color: var(--blue);
+        box-shadow: 0 0 0 5px rgba(47, 127, 193, 0.13);
+      }
+
+      .stage-main {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .stage-name {
+        font-size: 15px;
+        font-weight: 760;
+      }
+
+      .stage-desc {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 5px;
+        line-height: 1.5;
+      }
+
+      .mini-badge {
+        flex: 0 0 auto;
+        height: 24px;
+        border-radius: 8px;
+        background: #f0f6fb;
+        color: #406075;
+        padding: 0 9px;
+        display: flex;
+        align-items: center;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .mini-badge.green {
+        background: #e7f8f1;
+        color: #0c7c55;
+      }
+
+      .mini-badge.blue {
+        background: #e8f5ff;
+        color: #185d8f;
+      }
+
+      .stage-sublist {
+        margin-top: 12px;
+        padding-top: 11px;
+        border-top: 1px solid #e5edf5;
+        display: grid;
+        gap: 8px;
+      }
+
+      .subrow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #50657d;
+        font-size: 13px;
+      }
+
+      .submark {
+        width: 15px;
+        height: 15px;
+        border-radius: 999px;
+        border: 1.5px solid currentColor;
+      }
+
+      .center {
+        padding: 24px 0 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        min-width: 0;
+      }
+
+      .center-head {
+        padding: 0 24px 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .live-strip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 32px;
+        border: 1px solid #d2e8ef;
+        background: #f4fcfd;
+        border-radius: 10px;
+        color: #1f7280;
+        padding: 0 12px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .timeline {
+        min-height: 0;
+        overflow: hidden;
+        padding: 0 24px 24px;
+      }
+
+      .event {
+        display: grid;
+        grid-template-columns: 74px 22px 1fr 145px;
+        gap: 15px;
+        padding: 19px 0;
+        border-bottom: 1px solid var(--line);
+        position: relative;
+      }
+
+      .event::before {
+        content: "";
+        position: absolute;
+        left: 89px;
+        top: 0;
+        bottom: -1px;
+        width: 2px;
+        background: #d8e5f0;
+      }
+
+      .event:first-child::before {
+        top: 29px;
+      }
+
+      .event-time {
+        color: #60748a;
+        font-variant-numeric: tabular-nums;
+        font-size: 12px;
+        padding-top: 4px;
+        text-align: right;
+      }
+
+      .event-pin {
+        width: 22px;
+        height: 22px;
+        border-radius: 999px;
+        background: white;
+        border: 2px solid var(--blue);
+        z-index: 1;
+        box-shadow: 0 0 0 6px rgba(47, 127, 193, 0.09);
+      }
+
+      .event-pin.done {
+        border-color: var(--green);
+        background: var(--green);
+      }
+
+      .event-pin.think {
+        border-color: var(--violet);
+      }
+
+      .event-pin.wait {
+        border-color: var(--amber);
+      }
+
+      .event-body {
+        min-width: 0;
+      }
+
+      .event-kicker {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 5px;
+      }
+
+      .event-title {
+        font-size: 16px;
+        font-weight: 760;
+        margin-bottom: 7px;
+      }
+
+      .event-copy {
+        color: #203750;
+        line-height: 1.55;
+        font-size: 14px;
+      }
+
+      .fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 13px;
+      }
+
+      .field {
+        border: 1px solid #e2ebf4;
+        background: rgba(248, 251, 254, 0.84);
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+
+      .field-label {
+        color: var(--muted);
+        font-size: 11px;
+        margin-bottom: 6px;
+      }
+
+      .field-value {
+        color: #18314c;
+        font-size: 13px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .mono {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      }
+
+      .event-result {
+        align-self: start;
+        justify-self: end;
+        display: flex;
+        flex-direction: column;
+        align-items: end;
+        gap: 10px;
+      }
+
+      .result-text {
+        font-size: 13px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .right {
+        background: rgba(251, 253, 255, 0.64);
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: white;
+        padding: 14px;
+        box-shadow: 0 8px 22px rgba(35, 70, 105, 0.06);
+      }
+
+      .metric-value {
+        font-size: 24px;
+        font-weight: 780;
+        letter-spacing: 0;
+      }
+
+      .metric-label {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 4px;
+      }
+
+      .evidence-card {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: white;
+        padding: 16px;
+        margin-bottom: 12px;
+        box-shadow: 0 8px 22px rgba(35, 70, 105, 0.06);
+      }
+
+      .evidence-title {
+        font-weight: 760;
+        font-size: 14px;
+        margin-bottom: 10px;
+      }
+
+      .url-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 9px 0;
+        border-top: 1px solid #edf3f7;
+        font-size: 13px;
+      }
+
+      .url-row:first-of-type {
+        border-top: 0;
+      }
+
+      .url-path {
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      .confidence {
+        height: 7px;
+        background: #e8eff6;
+        border-radius: 999px;
+        overflow: hidden;
+        margin-top: 10px;
+      }
+
+      .confidence > span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--green), var(--cyan));
+      }
+
+      .risk {
+        display: flex;
+        gap: 10px;
+        align-items: start;
+        border: 1px solid #f0dfba;
+        background: #fffaf0;
+        color: #654411;
+        border-radius: 12px;
+        padding: 14px;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .spark {
+        height: 64px;
+        display: flex;
+        align-items: end;
+        gap: 5px;
+        margin-top: 12px;
+      }
+
+      .bar {
+        flex: 1;
+        border-radius: 4px 4px 0 0;
+        background: linear-gradient(180deg, #4cc7d5, #2f7fc1);
+        opacity: 0.85;
+      }
+
+      .glyph {
+        width: 16px;
+        height: 16px;
+        display: inline-block;
+      }
+
+      .glyph.arrow {
+        border-left: 2px solid currentColor;
+        border-bottom: 2px solid currentColor;
+        transform: rotate(45deg);
+        width: 10px;
+        height: 10px;
+      }
+
+      .glyph.refresh {
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 999px;
+      }
+
+      .glyph.play {
+        width: 0;
+        height: 0;
+        border-top: 7px solid transparent;
+        border-bottom: 7px solid transparent;
+        border-left: 10px solid currentColor;
+      }
+
+      .glyph.grid {
+        background:
+          linear-gradient(currentColor 0 0) 0 0 / 7px 7px,
+          linear-gradient(currentColor 0 0) 10px 0 / 7px 7px,
+          linear-gradient(currentColor 0 0) 0 10px / 7px 7px,
+          linear-gradient(currentColor 0 0) 10px 10px / 7px 7px;
+        background-repeat: no-repeat;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="frame">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <span>AI 测试系统</span>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-title">工作台</div>
+          <div class="nav-item"><span class="ico"></span>控制台</div>
+          <div class="nav-item"><span class="ico"></span>任务中心</div>
+        </div>
+        <div class="nav-section">
+          <div class="nav-title">项目工作区</div>
+          <div class="nav-item"><span class="ico"></span>项目</div>
+          <div class="nav-item"><span class="ico"></span>需求</div>
+          <div class="nav-item"><span class="ico"></span>探索</div>
+          <div class="nav-item"><span class="ico"></span>知识库</div>
+        </div>
+        <div class="nav-section">
+          <div class="nav-title">测试资产</div>
+          <div class="nav-item"><span class="ico"></span>测试用例</div>
+          <div class="nav-item dim"><span class="ico"></span>测试计划 <span class="soon">Soon</span></div>
+          <div class="nav-item"><span class="ico"></span>UI 自动化</div>
+          <div class="nav-item dim"><span class="ico"></span>接口自动化 <span class="soon">Soon</span></div>
+          <div class="nav-item"><span class="ico"></span>报告中心</div>
+        </div>
+        <div class="nav-section">
+          <div class="nav-title">系统管理</div>
+          <div class="nav-item"><span class="ico"></span>模型配置</div>
+          <div class="nav-item"><span class="ico"></span>用户与权限</div>
+          <div class="nav-item"><span class="ico"></span>系统日志</div>
+        </div>
+      </aside>
+
+      <section class="main">
+        <header class="topbar">
+          <div class="top-left">
+            <span class="glyph grid"></span>
+            <span style="width:1px;height:22px;background:#dce7f1"></span>
+          </div>
+          <div class="top-actions">
+            <div class="select"><span class="ico" style="width:15px;height:15px"></span>全部项目</div>
+            <div class="icon-btn primary">⚙</div>
+            <div class="icon-btn primary">◐</div>
+            <div class="avatar">A</div>
+          </div>
+        </header>
+
+        <div class="content">
+          <div class="page-head">
+            <div>
+              <div class="eyebrow"><span class="pulse-dot"></span>运行中 · 目标探索 · Cybertron Agent</div>
+              <h1>模型网关</h1>
+              <div class="summary">探索目标：创建自主规划 Agent，进入草稿编辑页并完成一次预览对话。</div>
+            </div>
+            <div class="head-actions">
+              <button class="btn"><span class="glyph arrow"></span>返回列表</button>
+              <button class="btn"><span class="glyph refresh"></span>刷新</button>
+              <button class="btn cta"><span class="glyph play"></span>重新探索</button>
+            </div>
+          </div>
+
+          <div class="tabs">
+            <div class="tab active">探索概览</div>
+            <div class="tab">探索报告</div>
+          </div>
+
+          <section class="canvas">
+            <aside class="panel">
+              <div class="section-head">
+                <div>
+                  <div class="section-title">探索阶段</div>
+                  <div class="section-sub">显示当前完成到哪一步。</div>
+                </div>
+                <div class="status-pill">进行中</div>
+              </div>
+
+              <div class="stage-card done">
+                <span class="stage-line"></span>
+                <span class="stage-dot"></span>
+                <div class="stage-main">
+                  <div>
+                    <div class="stage-name">任务初始化</div>
+                    <div class="stage-desc">读取目标、环境、认证态与安全边界。</div>
+                  </div>
+                  <div class="mini-badge green">已完成</div>
+                </div>
+              </div>
+
+              <div class="stage-card done">
+                <span class="stage-line"></span>
+                <span class="stage-dot"></span>
+                <div class="stage-main">
+                  <div>
+                    <div class="stage-name">规划探索路径</div>
+                    <div class="stage-desc">围绕目标拆分页面进入、Agent 创建、调试预览和对话验证。</div>
+                  </div>
+                  <div class="mini-badge green">已完成</div>
+                </div>
+              </div>
+
+              <div class="stage-card active">
+                <span class="stage-line"></span>
+                <span class="stage-dot"></span>
+                <div class="stage-main">
+                  <div>
+                    <div class="stage-name">对话与执行</div>
+                    <div class="stage-desc">执行 Agent 分析、工具调用和关键页面动作。</div>
+                  </div>
+                  <div class="mini-badge blue">进行中</div>
+                </div>
+                <div class="stage-sublist">
+                  <div class="subrow"><span class="submark"></span>打开 /agentStore</div>
+                  <div class="subrow"><span class="submark"></span>等待页面事实</div>
+                  <div class="subrow"><span class="submark"></span>识别创建入口</div>
+                </div>
+              </div>
+
+              <div class="stage-card">
+                <span class="stage-line"></span>
+                <span class="stage-dot"></span>
+                <div class="stage-main">
+                  <div>
+                    <div class="stage-name">事实沉淀</div>
+                    <div class="stage-desc">生成页面事实、路径关系与阻塞说明。</div>
+                  </div>
+                  <div class="mini-badge">待执行</div>
+                </div>
+              </div>
+            </aside>
+
+            <section class="center">
+              <div class="center-head">
+                <div>
+                  <div class="section-title">对话与执行</div>
+                  <div class="section-sub">展示 Agent 分析、工具调用和关键执行结果。</div>
+                </div>
+                <div class="live-strip"><span class="pulse-dot"></span>SSE 实时流已连接</div>
+              </div>
+
+              <div class="timeline">
+                <article class="event">
+                  <div class="event-time">20:07:44</div>
+                  <span class="event-pin done"></span>
+                  <div class="event-body">
+                    <div class="event-kicker">探索开始</div>
+                    <div class="event-title">收到探索事件</div>
+                    <div class="event-copy">系统接收目标探索任务，准备按目标流程进入页面并执行关键动作。</div>
+                  </div>
+                  <div class="event-result">
+                    <div class="mini-badge green">已完成</div>
+                    <div class="result-text">2026-07-01</div>
+                  </div>
+                </article>
+
+                <article class="event">
+                  <div class="event-time">20:07:46</div>
+                  <span class="event-pin think"></span>
+                  <div class="event-body">
+                    <div class="event-kicker">规划完成</div>
+                    <div class="event-title">围绕明确探索目标执行页面流程</div>
+                    <div class="event-copy">规划聚焦工作台进入、自主规划 Agent 创建、草稿编辑、调试预览和对话回包验证。</div>
+                  </div>
+                  <div class="event-result">
+                    <div class="mini-badge green">已完成</div>
+                    <div class="result-text">2s</div>
+                  </div>
+                </article>
+
+                <article class="event">
+                  <div class="event-time">20:08:04</div>
+                  <span class="event-pin"></span>
+                  <div class="event-body">
+                    <div class="event-kicker">模型分析 · ChatOpenAI</div>
+                    <div class="event-title">分析目标站点结构，准备打开入口页</div>
+                    <div class="event-copy">Let me start by exploring the target website to understand its structure and complete the exploration goal.</div>
+                    <div class="fields">
+                      <div class="field">
+                        <div class="field-label">目标 URL</div>
+                        <div class="field-value mono">/agentStore</div>
+                      </div>
+                      <div class="field">
+                        <div class="field-label">下一步</div>
+                        <div class="field-value">打开页面</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="event-result">
+                    <div class="mini-badge blue">执行中</div>
+                    <div class="result-text">模型输出</div>
+                  </div>
+                </article>
+
+                <article class="event">
+                  <div class="event-time">20:08:06</div>
+                  <span class="event-pin done"></span>
+                  <div class="event-body">
+                    <div class="event-kicker">工具调用 · playwright_navigate_tool</div>
+                    <div class="event-title">打开页面</div>
+                    <div class="event-copy">浏览器导航到 AgentStore，页面可访问，准备采集可见元素。</div>
+                    <div class="fields">
+                      <div class="field">
+                        <div class="field-label">URL</div>
+                        <div class="field-value mono">https://www.cybotstar.cn/agentStore</div>
+                      </div>
+                      <div class="field">
+                        <div class="field-label">结果</div>
+                        <div class="field-value" style="color:var(--green)">success=true</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="event-result">
+                    <div class="mini-badge green">已完成</div>
+                    <div class="result-text">1.36s</div>
+                  </div>
+                </article>
+
+                <article class="event">
+                  <div class="event-time">20:08:08</div>
+                  <span class="event-pin wait"></span>
+                  <div class="event-body">
+                    <div class="event-kicker">快照采集</div>
+                    <div class="event-title">识别创建智能体入口</div>
+                    <div class="event-copy">当前页面返回「创建智能体」「探索广场」等关键控件，下一步进入创建路径。</div>
+                  </div>
+                  <div class="event-result">
+                    <div class="mini-badge">下一步</div>
+                    <div class="result-text">等待点击</div>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <aside class="panel right">
+              <div class="section-head">
+                <div>
+                  <div class="section-title">运行洞察</div>
+                  <div class="section-sub">覆盖、证据与风险的快速判断。</div>
+                </div>
+              </div>
+
+              <div class="metric-grid">
+                <div class="metric">
+                  <div class="metric-value">4/6</div>
+                  <div class="metric-label">目标步骤完成</div>
+                </div>
+                <div class="metric">
+                  <div class="metric-value">18</div>
+                  <div class="metric-label">事件流入</div>
+                </div>
+                <div class="metric">
+                  <div class="metric-value">3</div>
+                  <div class="metric-label">关键页面事实</div>
+                </div>
+                <div class="metric">
+                  <div class="metric-value">0</div>
+                  <div class="metric-label">阻塞项</div>
+                </div>
+              </div>
+
+              <div class="evidence-card">
+                <div class="evidence-title">当前证据</div>
+                <div class="url-row">
+                  <span class="url-path mono">/agentStore</span>
+                  <span class="mini-badge green">可达</span>
+                </div>
+                <div class="url-row">
+                  <span class="url-path">创建智能体</span>
+                  <span class="mini-badge blue">已识别</span>
+                </div>
+                <div class="url-row">
+                  <span class="url-path">探索广场</span>
+                  <span class="mini-badge">候选</span>
+                </div>
+                <div class="confidence"><span style="width: 74%"></span></div>
+              </div>
+
+              <div class="evidence-card">
+                <div class="evidence-title">事件吞吐</div>
+                <div class="spark">
+                  <span class="bar" style="height:31%"></span>
+                  <span class="bar" style="height:44%"></span>
+                  <span class="bar" style="height:52%"></span>
+                  <span class="bar" style="height:67%"></span>
+                  <span class="bar" style="height:48%"></span>
+                  <span class="bar" style="height:76%"></span>
+                  <span class="bar" style="height:84%"></span>
+                  <span class="bar" style="height:58%"></span>
+                  <span class="bar" style="height:70%"></span>
+                </div>
+              </div>
+
+              <div class="risk">
+                <span class="submark" style="margin-top:2px;color:var(--amber)"></span>
+                <span>后续需验证调试预览对话框是否稳定出现；若页面权限不足，建议保留当前事实并标记待人工确认。</span>
+              </div>
+            </aside>
+          </section>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

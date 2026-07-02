@@ -1,0 +1,990 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>探索概览高级重设计 v2</title>
+    <style>
+      :root {
+        --canvas: #eef4f8;
+        --shell: #f8fbfd;
+        --paper: #ffffff;
+        --ink: #102033;
+        --ink-2: #1e344e;
+        --muted: #687b8f;
+        --soft: #9aacbd;
+        --line: #d9e5ee;
+        --line-2: #c6d7e4;
+        --blue: #2d78ad;
+        --blue-soft: #e3f1fb;
+        --jade: #16a279;
+        --jade-soft: #e3f7ef;
+        --amber: #bd7a16;
+        --amber-soft: #fff4dc;
+        --violet: #7357c8;
+        --violet-soft: #eee9ff;
+        --red: #c94a4a;
+        --shadow: 0 26px 70px rgba(16, 38, 63, 0.16);
+        --shadow-soft: 0 13px 32px rgba(16, 38, 63, 0.08);
+        font-family:
+          "Aptos", "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 82% 12%, rgba(22, 162, 121, 0.15), transparent 29%),
+          radial-gradient(circle at 48% 94%, rgba(115, 87, 200, 0.12), transparent 28%),
+          linear-gradient(135deg, #edf4f8, #fbfdff 48%, #edf5f3);
+      }
+
+      .artboard {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        grid-template-columns: 318px 1fr;
+        overflow: hidden;
+      }
+
+      .sidebar {
+        padding: 28px 24px;
+        border-right: 1px solid rgba(198, 215, 228, 0.92);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(240, 247, 251, 0.92)),
+          repeating-linear-gradient(0deg, rgba(16, 32, 51, 0.025) 0 1px, transparent 1px 34px);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 34px;
+        font-size: 20px;
+        font-weight: 780;
+      }
+
+      .brand-symbol {
+        width: 21px;
+        height: 21px;
+        position: relative;
+      }
+
+      .brand-symbol::before,
+      .brand-symbol::after {
+        content: "";
+        position: absolute;
+        inset: 3px;
+        border: 2px solid var(--ink);
+        border-radius: 7px;
+      }
+
+      .brand-symbol::after {
+        inset: 0;
+        border-color: transparent;
+        border-left-color: var(--ink);
+        border-right-color: var(--ink);
+        transform: rotate(90deg);
+      }
+
+      .nav-group {
+        margin: 27px 0;
+      }
+
+      .nav-title {
+        color: var(--muted);
+        font-size: 13px;
+        margin-bottom: 10px;
+      }
+
+      .nav-row {
+        display: flex;
+        align-items: center;
+        height: 40px;
+        gap: 12px;
+        color: #21354c;
+        font-size: 16px;
+      }
+
+      .nav-row.is-active {
+        color: var(--ink);
+        font-weight: 720;
+      }
+
+      .nav-row.is-muted {
+        color: #94a6b8;
+      }
+
+      .nav-icon {
+        width: 18px;
+        height: 18px;
+        border: 1.8px solid currentColor;
+        border-radius: 5px;
+      }
+
+      .soon {
+        margin-left: auto;
+        height: 26px;
+        padding: 0 10px;
+        border-radius: 8px;
+        background: #e9f1f7;
+        display: flex;
+        align-items: center;
+        color: #8fa0b3;
+        font-size: 13px;
+      }
+
+      .main {
+        min-width: 0;
+        display: grid;
+        grid-template-rows: 68px 1fr;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 32px;
+        border-bottom: 1px solid rgba(198, 215, 228, 0.92);
+        background: rgba(250, 253, 255, 0.76);
+        backdrop-filter: blur(18px);
+      }
+
+      .topmark {
+        width: 17px;
+        height: 17px;
+        background:
+          linear-gradient(var(--soft), var(--soft)) 0 0 / 7px 7px no-repeat,
+          linear-gradient(var(--soft), var(--soft)) 10px 0 / 7px 7px no-repeat,
+          linear-gradient(var(--soft), var(--soft)) 0 10px / 7px 7px no-repeat,
+          linear-gradient(var(--soft), var(--soft)) 10px 10px / 7px 7px no-repeat;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .toolbar-item {
+        height: 40px;
+        border: 1px solid var(--line);
+        background: #fbfdff;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(28, 65, 96, 0.05);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #1b344e;
+        font-size: 14px;
+      }
+
+      .toolbar-item.select {
+        padding: 0 14px;
+        gap: 8px;
+      }
+
+      .toolbar-item.icon,
+      .toolbar-item.avatar {
+        width: 40px;
+      }
+
+      .toolbar-item.fill {
+        background: var(--blue);
+        border-color: var(--blue);
+        color: white;
+      }
+
+      .content {
+        padding: 30px 32px 28px;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .mission-head {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 22px;
+        align-items: end;
+        margin-bottom: 22px;
+      }
+
+      .mission-meta {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        color: #175d82;
+        font-size: 13px;
+        font-weight: 760;
+        margin-bottom: 9px;
+      }
+
+      .live-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--jade);
+        box-shadow: 0 0 0 6px rgba(22, 162, 121, 0.11);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 36px;
+        line-height: 1.08;
+        font-weight: 820;
+        letter-spacing: 0;
+      }
+
+      .mission-desc {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .actions {
+        display: flex;
+        gap: 10px;
+      }
+
+      .btn {
+        height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.86);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 14px;
+        color: #17314d;
+        font-weight: 720;
+        font-size: 14px;
+      }
+
+      .btn.primary {
+        color: white;
+        border-color: transparent;
+        background: linear-gradient(135deg, #2d78ad, #18577f);
+        box-shadow: 0 15px 28px rgba(45, 120, 173, 0.24);
+      }
+
+      .tabs {
+        display: inline-flex;
+        border: 1px solid #d7e5f0;
+        background: rgba(227, 241, 251, 0.7);
+        border-radius: 14px;
+        padding: 4px;
+        gap: 3px;
+        margin-bottom: 22px;
+      }
+
+      .tab {
+        height: 32px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        padding: 0 15px;
+        color: #61778b;
+        font-weight: 720;
+        font-size: 15px;
+      }
+
+      .tab.active {
+        background: white;
+        color: var(--ink);
+        box-shadow: 0 8px 18px rgba(28, 65, 96, 0.14);
+      }
+
+      .workspace {
+        height: 848px;
+        display: grid;
+        grid-template-columns: 390px 1fr 354px;
+        overflow: hidden;
+        border: 1px solid rgba(198, 215, 228, 0.98);
+        border-radius: 18px;
+        background:
+          linear-gradient(90deg, rgba(255, 255, 255, 0.83), rgba(255, 255, 255, 0.48)),
+          repeating-linear-gradient(90deg, rgba(16, 32, 51, 0.035) 0 1px, transparent 1px 90px);
+        box-shadow: var(--shadow);
+      }
+
+      .col {
+        min-width: 0;
+        padding: 24px;
+      }
+
+      .col + .col {
+        border-left: 1px solid var(--line);
+      }
+
+      .col.center {
+        padding: 0;
+        display: grid;
+        grid-template-rows: 86px 1fr;
+      }
+
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .title {
+        font-size: 16px;
+        font-weight: 820;
+      }
+
+      .sub {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 4px;
+      }
+
+      .pill {
+        height: 28px;
+        border-radius: 999px;
+        padding: 0 11px;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12px;
+        font-weight: 780;
+        white-space: nowrap;
+      }
+
+      .pill.blue {
+        color: #155a86;
+        background: var(--blue-soft);
+      }
+
+      .pill.jade {
+        color: #087457;
+        background: var(--jade-soft);
+      }
+
+      .pill.amber {
+        color: #80510d;
+        background: var(--amber-soft);
+      }
+
+      .pill.violet {
+        color: #5138a0;
+        background: var(--violet-soft);
+      }
+
+      .phase {
+        position: relative;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.88);
+        padding: 15px 14px 15px 45px;
+        box-shadow: var(--shadow-soft);
+        margin-bottom: 10px;
+      }
+
+      .phase.active {
+        border-color: #a9d2e8;
+        background:
+          linear-gradient(90deg, rgba(45, 120, 173, 0.11), transparent 52%),
+          rgba(255, 255, 255, 0.94);
+      }
+
+      .phase::before {
+        content: "";
+        position: absolute;
+        left: 22px;
+        top: -10px;
+        bottom: -11px;
+        width: 1px;
+        background: var(--line-2);
+      }
+
+      .phase:first-of-type::before {
+        top: 23px;
+      }
+
+      .phase:last-of-type::before {
+        bottom: 24px;
+      }
+
+      .phase-dot {
+        position: absolute;
+        z-index: 1;
+        left: 13px;
+        top: 18px;
+        width: 19px;
+        height: 19px;
+        border-radius: 50%;
+        background: white;
+        border: 2px solid #9fb2c4;
+      }
+
+      .phase.done .phase-dot {
+        border-color: var(--jade);
+        background: var(--jade);
+        box-shadow: 0 0 0 5px rgba(22, 162, 121, 0.12);
+      }
+
+      .phase.active .phase-dot {
+        border-color: var(--blue);
+        box-shadow: 0 0 0 5px rgba(45, 120, 173, 0.13);
+      }
+
+      .phase-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .phase-name {
+        font-size: 15px;
+        font-weight: 820;
+      }
+
+      .phase-copy {
+        color: #5e7185;
+        font-size: 12px;
+        line-height: 1.55;
+        margin-top: 5px;
+      }
+
+      .checklist {
+        margin-top: 12px;
+        padding-top: 11px;
+        border-top: 1px solid #e5edf4;
+        display: grid;
+        gap: 9px;
+      }
+
+      .check {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        font-size: 13px;
+        color: #435a72;
+      }
+
+      .ring {
+        width: 15px;
+        height: 15px;
+        border: 1.6px solid currentColor;
+        border-radius: 999px;
+      }
+
+      .center-head {
+        padding: 24px 24px 18px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+      }
+
+      .stream-status {
+        height: 32px;
+        border: 1px solid #cce6df;
+        background: rgba(227, 247, 239, 0.82);
+        color: #087457;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 10px;
+        padding: 0 12px;
+        font-size: 13px;
+        font-weight: 780;
+      }
+
+      .execution {
+        min-height: 0;
+        overflow: hidden;
+        padding: 0 24px 24px;
+      }
+
+      .event {
+        position: relative;
+        display: grid;
+        grid-template-columns: 76px 24px 1fr 138px;
+        gap: 14px;
+        padding: 18px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .event::before {
+        content: "";
+        position: absolute;
+        left: 90px;
+        top: 0;
+        bottom: -1px;
+        width: 2px;
+        background: #d6e4ef;
+      }
+
+      .event:first-child::before {
+        top: 29px;
+      }
+
+      .time {
+        color: #60758a;
+        text-align: right;
+        padding-top: 5px;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .pin {
+        z-index: 1;
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        border: 2px solid var(--blue);
+        background: white;
+        box-shadow: 0 0 0 6px rgba(45, 120, 173, 0.1);
+      }
+
+      .pin.done {
+        border-color: var(--jade);
+        background: var(--jade);
+      }
+
+      .pin.model {
+        border-color: var(--violet);
+        box-shadow: 0 0 0 6px rgba(115, 87, 200, 0.1);
+      }
+
+      .pin.wait {
+        border-color: var(--amber);
+        box-shadow: 0 0 0 6px rgba(189, 122, 22, 0.11);
+      }
+
+      .event-kind {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 5px;
+      }
+
+      .event-title {
+        font-size: 16px;
+        font-weight: 820;
+        margin-bottom: 7px;
+      }
+
+      .event-copy {
+        color: #1e344e;
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .detail-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .detail {
+        min-width: 0;
+        border: 1px solid #e0eaf3;
+        background: rgba(250, 253, 255, 0.8);
+        border-radius: 11px;
+        padding: 10px 12px;
+      }
+
+      .detail-label {
+        color: var(--muted);
+        font-size: 11px;
+        margin-bottom: 6px;
+      }
+
+      .detail-value {
+        font-size: 13px;
+        color: #17314d;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .mono {
+        font-family: "Cascadia Mono", Consolas, monospace;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .event-side {
+        justify-self: end;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: end;
+      }
+
+      .side-note {
+        color: var(--muted);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .insights {
+        background: rgba(250, 253, 255, 0.62);
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+
+      .metric {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px;
+        box-shadow: 0 10px 24px rgba(16, 38, 63, 0.06);
+      }
+
+      .metric-value {
+        font-size: 25px;
+        line-height: 1;
+        font-weight: 820;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .metric-label {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 7px;
+      }
+
+      .card {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 15px;
+        box-shadow: 0 10px 24px rgba(16, 38, 63, 0.06);
+        margin-bottom: 12px;
+      }
+
+      .card-title {
+        font-size: 14px;
+        font-weight: 820;
+        margin-bottom: 11px;
+      }
+
+      .evidence {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 9px 0;
+        border-top: 1px solid #edf3f7;
+        font-size: 13px;
+      }
+
+      .evidence:first-of-type {
+        border-top: 0;
+      }
+
+      .progress {
+        height: 7px;
+        border-radius: 999px;
+        background: #e8eff5;
+        overflow: hidden;
+        margin-top: 11px;
+      }
+
+      .progress span {
+        display: block;
+        height: 100%;
+        width: 76%;
+        background: linear-gradient(90deg, var(--jade), #56c5c9);
+      }
+
+      .bars {
+        height: 68px;
+        display: flex;
+        align-items: end;
+        gap: 6px;
+        margin-top: 12px;
+      }
+
+      .bar {
+        flex: 1;
+        border-radius: 5px 5px 0 0;
+        background: linear-gradient(180deg, #62cbd1, #2d78ad);
+      }
+
+      .risk {
+        display: flex;
+        gap: 10px;
+        border: 1px solid #efd7a5;
+        background: var(--amber-soft);
+        border-radius: 14px;
+        padding: 14px;
+        color: #68440e;
+        font-size: 13px;
+        line-height: 1.52;
+      }
+
+      .glyph {
+        display: inline-block;
+        width: 15px;
+        height: 15px;
+        position: relative;
+      }
+
+      .glyph.back {
+        border-left: 2px solid currentColor;
+        border-bottom: 2px solid currentColor;
+        transform: rotate(45deg);
+        width: 10px;
+        height: 10px;
+      }
+
+      .glyph.refresh {
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+      }
+
+      .glyph.play {
+        width: 0;
+        height: 0;
+        border-top: 7px solid transparent;
+        border-bottom: 7px solid transparent;
+        border-left: 10px solid currentColor;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="artboard">
+      <aside class="sidebar">
+        <div class="brand"><span class="brand-symbol"></span><span>AI 测试系统</span></div>
+        <div class="nav-group">
+          <div class="nav-title">工作台</div>
+          <div class="nav-row"><span class="nav-icon"></span>控制台</div>
+          <div class="nav-row"><span class="nav-icon"></span>任务中心</div>
+        </div>
+        <div class="nav-group">
+          <div class="nav-title">项目工作区</div>
+          <div class="nav-row"><span class="nav-icon"></span>项目</div>
+          <div class="nav-row"><span class="nav-icon"></span>需求</div>
+          <div class="nav-row is-active"><span class="nav-icon"></span>探索</div>
+          <div class="nav-row"><span class="nav-icon"></span>知识库</div>
+        </div>
+        <div class="nav-group">
+          <div class="nav-title">测试资产</div>
+          <div class="nav-row"><span class="nav-icon"></span>测试用例</div>
+          <div class="nav-row is-muted"><span class="nav-icon"></span>测试计划 <span class="soon">Soon</span></div>
+          <div class="nav-row"><span class="nav-icon"></span>UI 自动化</div>
+          <div class="nav-row is-muted"><span class="nav-icon"></span>接口自动化 <span class="soon">Soon</span></div>
+          <div class="nav-row"><span class="nav-icon"></span>报告中心</div>
+        </div>
+        <div class="nav-group">
+          <div class="nav-title">系统管理</div>
+          <div class="nav-row"><span class="nav-icon"></span>模型配置</div>
+          <div class="nav-row"><span class="nav-icon"></span>用户与权限</div>
+          <div class="nav-row"><span class="nav-icon"></span>系统日志</div>
+        </div>
+      </aside>
+
+      <section class="main">
+        <header class="topbar">
+          <div class="topmark"></div>
+          <div class="toolbar">
+            <div class="toolbar-item select"><span class="nav-icon" style="width:14px;height:14px"></span>全部项目</div>
+            <div class="toolbar-item icon fill">⚙</div>
+            <div class="toolbar-item icon fill">◐</div>
+            <div class="toolbar-item avatar fill">A</div>
+          </div>
+        </header>
+
+        <div class="content">
+          <div class="mission-head">
+            <div>
+              <div class="mission-meta"><span class="live-dot"></span>运行中 · 目标探索 · Cybertron Agent</div>
+              <h1>模型网关</h1>
+              <div class="mission-desc">目标：进入工作台，新建自主规划 Agent，并在草稿编辑页完成一次预览对话。</div>
+            </div>
+            <div class="actions">
+              <div class="btn"><span class="glyph back"></span>返回列表</div>
+              <div class="btn"><span class="glyph refresh"></span>刷新</div>
+              <div class="btn primary"><span class="glyph play"></span>重新探索</div>
+            </div>
+          </div>
+
+          <div class="tabs">
+            <div class="tab active">探索概览</div>
+            <div class="tab">探索报告</div>
+          </div>
+
+          <section class="workspace">
+            <aside class="col">
+              <div class="section-head">
+                <div>
+                  <div class="title">探索阶段</div>
+                  <div class="sub">按目标链路显示当前推进位置。</div>
+                </div>
+                <div class="pill blue">进行中</div>
+              </div>
+              <div class="phase done">
+                <span class="phase-dot"></span>
+                <div class="phase-row">
+                  <div>
+                    <div class="phase-name">初始化任务</div>
+                    <div class="phase-copy">加载目标、环境、认证态与安全边界。</div>
+                  </div>
+                  <div class="pill jade">已完成</div>
+                </div>
+              </div>
+              <div class="phase done">
+                <span class="phase-dot"></span>
+                <div class="phase-row">
+                  <div>
+                    <div class="phase-name">规划探索路径</div>
+                    <div class="phase-copy">拆分为入口、创建、草稿、预览、对话验证。</div>
+                  </div>
+                  <div class="pill jade">已完成</div>
+                </div>
+              </div>
+              <div class="phase active">
+                <span class="phase-dot"></span>
+                <div class="phase-row">
+                  <div>
+                    <div class="phase-name">对话与执行</div>
+                    <div class="phase-copy">持续记录模型分析、工具调用和页面事实。</div>
+                  </div>
+                  <div class="pill blue">进行中</div>
+                </div>
+                <div class="checklist">
+                  <div class="check"><span class="ring"></span>打开 /agentStore</div>
+                  <div class="check"><span class="ring"></span>识别创建智能体入口</div>
+                  <div class="check"><span class="ring"></span>等待草稿编辑页</div>
+                </div>
+              </div>
+              <div class="phase">
+                <span class="phase-dot"></span>
+                <div class="phase-row">
+                  <div>
+                    <div class="phase-name">事实沉淀</div>
+                    <div class="phase-copy">生成页面事实、路径关系与阻塞说明。</div>
+                  </div>
+                  <div class="pill">待执行</div>
+                </div>
+              </div>
+            </aside>
+
+            <section class="col center">
+              <div class="center-head">
+                <div>
+                  <div class="title">对话与执行</div>
+                  <div class="sub">Agent execution spine：模型判断、工具调用、结果证据分层呈现。</div>
+                </div>
+                <div class="stream-status"><span class="live-dot"></span>SSE 实时流已连接</div>
+              </div>
+              <div class="execution">
+                <article class="event">
+                  <div class="time">20:07:44</div>
+                  <span class="pin done"></span>
+                  <div>
+                    <div class="event-kind">探索开始</div>
+                    <div class="event-title">收到探索事件</div>
+                    <div class="event-copy">系统接收目标探索任务，准备按目标流程进入页面并执行关键动作。</div>
+                  </div>
+                  <div class="event-side"><div class="pill jade">已完成</div><div class="side-note">2026-07-01</div></div>
+                </article>
+                <article class="event">
+                  <div class="time">20:07:46</div>
+                  <span class="pin model"></span>
+                  <div>
+                    <div class="event-kind">规划完成</div>
+                    <div class="event-title">围绕明确探索目标执行页面流程</div>
+                    <div class="event-copy">规划聚焦工作台进入、自主规划 Agent 创建、草稿编辑、调试预览和对话回包验证。</div>
+                  </div>
+                  <div class="event-side"><div class="pill jade">已完成</div><div class="side-note">2s</div></div>
+                </article>
+                <article class="event">
+                  <div class="time">20:08:04</div>
+                  <span class="pin model"></span>
+                  <div>
+                    <div class="event-kind">模型分析 · ChatOpenAI</div>
+                    <div class="event-title">分析目标站点结构，准备打开入口页</div>
+                    <div class="event-copy">Let me start by exploring the target website to understand its structure and complete the exploration goal.</div>
+                    <div class="detail-grid">
+                      <div class="detail"><div class="detail-label">目标 URL</div><div class="detail-value mono">/agentStore</div></div>
+                      <div class="detail"><div class="detail-label">下一步</div><div class="detail-value">打开页面</div></div>
+                    </div>
+                  </div>
+                  <div class="event-side"><div class="pill violet">模型输出</div><div class="side-note">running</div></div>
+                </article>
+                <article class="event">
+                  <div class="time">20:08:06</div>
+                  <span class="pin done"></span>
+                  <div>
+                    <div class="event-kind">工具调用 · playwright_navigate_tool</div>
+                    <div class="event-title">打开页面</div>
+                    <div class="event-copy">浏览器导航到 AgentStore，页面可访问，准备采集可见元素。</div>
+                    <div class="detail-grid">
+                      <div class="detail"><div class="detail-label">URL</div><div class="detail-value mono">https://www.cybotstar.cn/agentStore</div></div>
+                      <div class="detail"><div class="detail-label">结果</div><div class="detail-value" style="color: var(--jade)">success=true</div></div>
+                    </div>
+                  </div>
+                  <div class="event-side"><div class="pill jade">已完成</div><div class="side-note">1.36s</div></div>
+                </article>
+                <article class="event">
+                  <div class="time">20:08:08</div>
+                  <span class="pin wait"></span>
+                  <div>
+                    <div class="event-kind">快照采集</div>
+                    <div class="event-title">识别创建智能体入口</div>
+                    <div class="event-copy">当前页面返回「创建智能体」「探索广场」等关键控件，下一步进入创建路径。</div>
+                  </div>
+                  <div class="event-side"><div class="pill amber">下一步</div><div class="side-note">等待点击</div></div>
+                </article>
+              </div>
+            </section>
+
+            <aside class="col insights">
+              <div class="section-head">
+                <div>
+                  <div class="title">运行洞察</div>
+                  <div class="sub">用来快速判断是否可沉淀为探索事实。</div>
+                </div>
+              </div>
+              <div class="metrics">
+                <div class="metric"><div class="metric-value">4/6</div><div class="metric-label">目标步骤完成</div></div>
+                <div class="metric"><div class="metric-value">18</div><div class="metric-label">事件流入</div></div>
+                <div class="metric"><div class="metric-value">3</div><div class="metric-label">关键页面事实</div></div>
+                <div class="metric"><div class="metric-value">0</div><div class="metric-label">阻塞项</div></div>
+              </div>
+              <div class="card">
+                <div class="card-title">当前证据</div>
+                <div class="evidence"><span class="mono">/agentStore</span><span class="pill jade">可达</span></div>
+                <div class="evidence"><span>创建智能体</span><span class="pill blue">已识别</span></div>
+                <div class="evidence"><span>探索广场</span><span class="pill">候选</span></div>
+                <div class="progress"><span></span></div>
+              </div>
+              <div class="card">
+                <div class="card-title">事件吞吐</div>
+                <div class="bars">
+                  <span class="bar" style="height: 29%"></span>
+                  <span class="bar" style="height: 42%"></span>
+                  <span class="bar" style="height: 56%"></span>
+                  <span class="bar" style="height: 70%"></span>
+                  <span class="bar" style="height: 52%"></span>
+                  <span class="bar" style="height: 78%"></span>
+                  <span class="bar" style="height: 86%"></span>
+                  <span class="bar" style="height: 60%"></span>
+                  <span class="bar" style="height: 73%"></span>
+                </div>
+              </div>
+              <div class="risk"><span class="ring" style="color: var(--amber); margin-top: 2px"></span><span>后续需验证调试预览对话框是否稳定出现；若页面权限不足，保留当前事实并标记待人工确认。</span></div>
+            </aside>
+          </section>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

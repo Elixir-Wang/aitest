@@ -32,6 +32,7 @@ def test_save_and_get_page(pages_service):
     page_id = "page-workspace-agents"
     page_data = {
         'title': '智能体工作台',
+        'structure_summary': '发现创建智能体入口。',
         'states': [
             {
                 'id': 'default',
@@ -72,6 +73,7 @@ def test_save_and_get_page(pages_service):
     assert loaded_page['page']['id'] == page_id
     assert loaded_page['page']['title'] == '智能体工作台'
     assert loaded_page['page']['normalized_path'] == '/workspace/agents'
+    assert loaded_page['page']['structure_summary'] == '发现创建智能体入口。'
     assert 'test' in loaded_page['page']['env_urls']
     assert len(loaded_page['states']) == 1
 
@@ -243,7 +245,7 @@ def test_list_pages(pages_service):
     for i in range(3):
         pages_service.save_page(
             page_id=f"page-{i}",
-            page_data={'title': f'页面{i}', 'states': [], 'quality': {}, 'metadata': {}},
+            page_data={'title': f'页面{i}', 'structure_summary': f'页面{i}摘要', 'states': [], 'quality': {}, 'metadata': {}},
             run_id="run-001",
             url=f"https://test.example.com/page-{i}",
             normalized_path=f"/page-{i}",
@@ -256,3 +258,4 @@ def test_list_pages(pages_service):
     assert len(pages) == 3
     assert all('page_id' in p for p in pages)
     assert all('normalized_path' in p for p in pages)
+    assert all('structure_summary' in p for p in pages)

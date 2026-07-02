@@ -1,0 +1,464 @@
+page:
+  id: page-workspace
+  title: 百融百工
+  normalized_path: /workspace
+  structure_summary: 自动保存页面快照，发现 48 个元素。
+  path_hash: sha256-c52ddf65534b7b46
+  env_urls:
+    test: https://www.cybotstar.cn/workspace
+  last_explored:
+    run_id: exp_Z--zfm2jCwKmBiIoCDqg2w
+    timestamp: '2026-07-02T12:00:23.732333Z'
+    screenshot: runs/exp_Z--zfm2jCwKmBiIoCDqg2w/screenshots/page-workspace.png
+states:
+- id: snapshot-current
+  title: 百融百工
+  url: https://www.cybotstar.cn/workspace
+  elements:
+  - id: button-创建智能体-001
+    name: 创建智能体
+    role: button
+    text: 创建智能体
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''创建智能体'' })'
+      priority: 1
+  - id: button-探索广场-002
+    name: 探索广场
+    role: button
+    text: 探索广场
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''探索广场'' })'
+      priority: 1
+  - id: button-批量任务-003
+    name: 批量任务
+    role: button
+    text: 批量任务
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''批量任务'' })'
+      priority: 1
+  - id: button-hongbao-wang-所有者-004
+    name: hongbao.wang 所有者
+    role: button
+    text: hongbao.wang 所有者
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''hongbao.wang 所有者'' })'
+      priority: 1
+  - id: button-工作台-005
+    name: 工作台
+    role: button
+    text: 工作台
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''工作台'' })'
+      priority: 1
+  - id: button-资源库-006
+    name: 资源库
+    role: button
+    text: 资源库
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''资源库'' })'
+      priority: 1
+  - id: button-效果评测-007
+    name: 效果评测
+    role: button
+    text: 效果评测
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''效果评测'' })'
+      priority: 1
+  - id: button-发布管理-008
+    name: 发布管理
+    role: button
+    text: 发布管理
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''发布管理'' })'
+      priority: 1
+  - id: button-线上观测-009
+    name: 线上观测
+    role: button
+    text: 线上观测
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''线上观测'' })'
+      priority: 1
+  - id: button-自动优化-010
+    name: 自动优化
+    role: button
+    text: 自动优化
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''自动优化'' })'
+      priority: 1
+  - id: button-空间管理-011
+    name: 空间管理
+    role: button
+    text: 空间管理
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''空间管理'' })'
+      priority: 1
+  - id: button-文档中心-012
+    name: 文档中心
+    role: button
+    text: 文档中心
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''文档中心'' })'
+      priority: 1
+  - id: button-hongbao-wang1-013
+    name: hongbao.wang1
+    role: button
+    text: hongbao.wang1
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''hongbao.wang1'' })'
+      priority: 1
+  - id: button-hongbao-wang1-014
+    name: hongbao.wang1
+    role: button
+    text: hongbao.wang1
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''hongbao.wang1'' })'
+      priority: 1
+  - id: textbox-搜索智能体-015
+    name: 搜索智能体
+    role: textbox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''搜索智能体'' })'
+      priority: 1
+  - id: button-全部-016
+    name: 全部
+    role: button
+    text: 全部
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''全部'' })'
+      priority: 1
+  - id: combobox-17-017
+    name: combobox-17-017
+    role: combobox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''combobox'', { name: ''combobox-17-017'' })'
+      priority: 1
+  - id: button-全部-018
+    name: 全部
+    role: button
+    text: 全部
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''全部'' })'
+      priority: 1
+  - id: combobox-19-019
+    name: combobox-19-019
+    role: combobox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''combobox'', { name: ''combobox-19-019'' })'
+      priority: 1
+  - id: button-全部-020
+    name: 全部
+    role: button
+    text: 全部
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''全部'' })'
+      priority: 1
+  - id: combobox-21-021
+    name: combobox-21-021
+    role: combobox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''combobox'', { name: ''combobox-21-021'' })'
+      priority: 1
+  - id: button-按创建时间排序-022
+    name: 按创建时间排序
+    role: button
+    text: 按创建时间排序
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''按创建时间排序'' })'
+      priority: 1
+  - id: combobox-23-023
+    name: combobox-23-023
+    role: combobox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''combobox'', { name: ''combobox-23-023'' })'
+      priority: 1
+  - id: button-创建-024
+    name: 创建
+    role: button
+    text: 创建
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''创建'' })'
+      priority: 1
+  - id: button-无插件智能体2-已发布-1-分析-使用-对话历史-hongbao--025
+    name: 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12 自主规划 Agent
+    role: button
+    text: 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12 自主规划 Agent
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1
+        编辑于 2026-06-26 22:45:12 自主规划 Agent'' })'
+      priority: 1
+  - id: button-分析-026
+    name: 分析
+    role: button
+    text: 分析
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''分析'' })'
+      priority: 1
+  - id: button-使用-027
+    name: 使用
+    role: button
+    text: 使用
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''使用'' })'
+      priority: 1
+  - id: button-对话历史-028
+    name: 对话历史
+    role: button
+    text: 对话历史
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''对话历史'' })'
+      priority: 1
+  - id: button-测试-自主规划智能体-已发布-分析-使用-对话历史-hongbao-029
+    name: 测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:44:36 自主规划 Agent
+    role: button
+    text: 测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:44:36 自主规划 Agent
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1
+        编辑于 2026-06-26 22:44:36 自主规划 Agent'' })'
+      priority: 1
+  - id: button-分析-030
+    name: 分析
+    role: button
+    text: 分析
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''分析'' })'
+      priority: 1
+  - id: button-使用-031
+    name: 使用
+    role: button
+    text: 使用
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''使用'' })'
+      priority: 1
+  - id: button-对话历史-032
+    name: 对话历史
+    role: button
+    text: 对话历史
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''对话历史'' })'
+      priority: 1
+  - id: button-卡片测试-已发布-分析-使用-对话历史-hongbao-wang1-033
+    name: 卡片测试 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-12 14:08:15 自主规划 Agent
+    role: button
+    text: 卡片测试 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-12 14:08:15 自主规划 Agent
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''卡片测试 已发布 分析 使用 对话历史 hongbao.wang1 编辑于
+        2026-06-12 14:08:15 自主规划 Agent'' })'
+      priority: 1
+  - id: button-分析-034
+    name: 分析
+    role: button
+    text: 分析
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''分析'' })'
+      priority: 1
+  - id: button-使用-035
+    name: 使用
+    role: button
+    text: 使用
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''使用'' })'
+      priority: 1
+  - id: button-对话历史-036
+    name: 对话历史
+    role: button
+    text: 对话历史
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''对话历史'' })'
+      priority: 1
+  - id: button-textin测试-已发布-textin-分析-使用-对话历史-ho-037
+    name: textin测试 已发布 textin 分析 使用 对话历史 hongbao.wang1 编辑于 2026-05-20 10:38:27 自主规划
+      Agent
+    role: button
+    text: textin测试 已发布 textin 分析 使用 对话历史 hongbao.wang1 编辑于 2026-05-20 10:38:27 自主规划
+      Agent
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''textin测试 已发布 textin 分析 使用 对话历史 hongbao.wang1
+        编辑于 2026-05-20 10:38:27 自主规划 Agent'' })'
+      priority: 1
+  - id: button-分析-038
+    name: 分析
+    role: button
+    text: 分析
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''分析'' })'
+      priority: 1
+  - id: button-使用-039
+    name: 使用
+    role: button
+    text: 使用
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''使用'' })'
+      priority: 1
+  - id: button-对话历史-040
+    name: 对话历史
+    role: button
+    text: 对话历史
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''对话历史'' })'
+      priority: 1
+  - id: button-语音测试-已发布-分析-使用-对话历史-hongbao-wang1-041
+    name: 语音测试 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-11 22:38:42 自主规划 Agent
+    role: button
+    text: 语音测试 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-11 22:38:42 自主规划 Agent
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''语音测试 已发布 分析 使用 对话历史 hongbao.wang1 编辑于
+        2026-06-11 22:38:42 自主规划 Agent'' })'
+      priority: 1
+  - id: button-分析-042
+    name: 分析
+    role: button
+    text: 分析
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''分析'' })'
+      priority: 1
+  - id: button-使用-043
+    name: 使用
+    role: button
+    text: 使用
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''使用'' })'
+      priority: 1
+  - id: button-对话历史-044
+    name: 对话历史
+    role: button
+    text: 对话历史
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''对话历史'' })'
+      priority: 1
+  - id: button-1-045
+    name: '1'
+    role: button
+    text: '1'
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''1'' })'
+      priority: 1
+  - id: link-1-046
+    name: '1'
+    role: link
+    text: '1'
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''1'' })'
+      priority: 1
+  - id: button-12条-页-047
+    name: 12条/页
+    role: button
+    text: 12条/页
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''12条/页'' })'
+      priority: 1
+  - id: combobox-48-048
+    name: combobox-48-048
+    role: combobox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''combobox'', { name: ''combobox-48-048'' })'
+      priority: 1
+  raw_output: ''
+quality: {}
+metadata:
+  captured_at: '2026-07-02T11:31:53.086555+00:00'
+  source: page_exploration_run
+  source_run_id: exp_Z--zfm2jCwKmBiIoCDqg2w
+  source_artifact_path: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\page_exploration\runs\exp_Z--zfm2jCwKmBiIoCDqg2w\pages\page-workspace.yaml
+  module: 主探索模块

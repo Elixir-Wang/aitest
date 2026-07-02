@@ -96,25 +96,9 @@ type ExplorationRun = {
   available_actions: string[];
 };
 
-type ExplorationArtifact = {
-  id: string;
-  run_id: string;
-  run_title: string;
-  project_id: string;
-  project_name: string;
-  artifact_type: string;
-  file_path: string;
-  file_name: string;
-  file_size: number;
-  created_at: string;
-};
-
 type ProjectArtifactRow = {
   project_id: string;
   project_name: string;
-  artifact_count: number;
-  latest_created_at: string | null;
-  latest_run_id: string | null;
 };
 
 type ExplorationPageRecord = {
@@ -611,8 +595,6 @@ export function ExplorationWorkspace({
   const [searchText, setSearchText] = useState("");
   const [projects, setProjects] = useState<ApiProject[]>([]);
   const [form, setForm] = useState<EnvironmentForm>({ ...emptyForm });
-  const [artifacts, setArtifacts] = useState<ExplorationArtifact[]>([]);
-  const [artifactsLoading, setArtifactsLoading] = useState(false);
   const [selectedArtifactProjectId, setSelectedArtifactProjectId] = useState("");
   const [projectPages, setProjectPages] = useState<ExplorationPageRecord[]>([]);
   const [projectPagesLoading, setProjectPagesLoading] = useState(false);
@@ -757,63 +739,25 @@ export function ExplorationWorkspace({
     };
   }, [projectId, projectScope, explorationSelection.setRows]);
 
-  const refreshArtifacts = useCallback(async () => {
-    setArtifactsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (projectId) {
-        params.append("project_id", projectId);
-      }
-      const queryString = params.toString();
-      const path = `/page-exploration/artifacts${queryString ? `?${queryString}` : ""}`;
-      setArtifacts(await apiRequest<ExplorationArtifact[]>(path));
-    } catch (requestError) {
-      reportError(requestError, {
-        fallbackMessage: "产物列表加载失败",
-        actionLabel: "加载产物",
-        method: "GET",
-        path: "/page-exploration/artifacts",
-      });
-    } finally {
-      setArtifactsLoading(false);
-    }
-  }, [projectId]);
-
   const loadProjectPages = useCallback(async (project: ProjectArtifactRow) => {
     setProjectPagesLoading(true);
     setProjectPages([]);
     setSelectedPageId("");
     setExpandedPageNodeIds([]);
     try {
-      const pages = await apiRequest<ExplorationPageRecord[]>(`/page-exploration/runs/${project.latest_run_id}/pages`);
+      const pages = await apiRequest<ExplorationPageRecord[]>(`/page-exploration/projects/${project.project_id}/pages`);
       setProjectPages(pages);
     } catch (requestError) {
       reportError(requestError, {
         fallbackMessage: "探索页面加载失败",
         actionLabel: "加载探索页面",
         method: "GET",
-        path: `/page-exploration/runs/${project.latest_run_id}/pages`,
+        path: `/page-exploration/projects/${project.project_id}/pages`,
       });
     } finally {
       setProjectPagesLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    if (activeTab !== "探索产物") {
-      return;
-    }
-
-    let ignore = false;
-    void (async () => {
-      if (ignore) return;
-      await refreshArtifacts();
-    })();
-
-    return () => {
-      ignore = true;
-    };
-  }, [activeTab, refreshArtifacts]);
 
   const filteredRows = useMemo(
     () =>
@@ -849,50 +793,12 @@ export function ExplorationWorkspace({
     [explorationSelection.rows, searchText],
   );
 
-  const artifactRowsByProject = useMemo(() => {
-    const byProject = new Map<string, ProjectArtifactRow>();
-    for (const item of artifacts) {
-      const existing = byProject.get(item.project_id);
-      if (!existing) {
-        byProject.set(item.project_id, {
-          project_id: item.project_id,
-          project_name:
-            projects.find((project) => project.id === item.project_id)?.name ?? item.project_name ?? item.project_id,
-          artifact_count: 1,
-          latest_created_at: item.created_at,
-          latest_run_id: item.run_id,
-        });
-        continue;
-      }
-      existing.artifact_count += 1;
-      if (!existing.latest_created_at || item.created_at > existing.latest_created_at) {
-        existing.latest_created_at = item.created_at;
-        existing.latest_run_id = item.run_id;
-        existing.project_name =
-          projects.find((project) => project.id === item.project_id)?.name ??
-          item.project_name ??
-          existing.project_name;
-      }
-    }
-
-    return byProject;
-  }, [artifacts, projects]);
-
   const artifactProjectOptions = useMemo(() => {
     const visibleProjects = projectId ? projects.filter((project) => project.id === projectId) : projects;
     return visibleProjects
       .filter((project) => project.status !== "archived")
-      .map(
-        (project): ProjectArtifactRow =>
-          artifactRowsByProject.get(project.id) ?? {
-            project_id: project.id,
-            project_name: project.name,
-            artifact_count: 0,
-            latest_created_at: null,
-            latest_run_id: null,
-          },
-      );
-  }, [artifactRowsByProject, projectId, projects]);
+      .map((project): ProjectArtifactRow => ({ project_id: project.id, project_name: project.name }));
+  }, [projectId, projects]);
 
   useEffect(() => {
     if (activeTab !== "探索产物") {
@@ -919,13 +825,6 @@ export function ExplorationWorkspace({
 
   useEffect(() => {
     if (activeTab !== "探索产物" || !selectedArtifactProject) {
-      return;
-    }
-
-    if (!selectedArtifactProject.latest_run_id) {
-      setProjectPages([]);
-      setSelectedPageId("");
-      setExpandedPageNodeIds([]);
       return;
     }
 
@@ -1667,7 +1566,7 @@ export function ExplorationWorkspace({
               <span className="font-medium text-muted-foreground text-sm">项目选择</span>
               <Select
                 className="w-56"
-                disabled={artifactsLoading || artifactProjectOptions.length === 0}
+                disabled={artifactProjectOptions.length === 0}
                 placeholder="选择项目"
                 setValue={setSelectedArtifactProjectId}
                 value={selectedArtifactProject?.project_id ?? ""}
@@ -1680,24 +1579,10 @@ export function ExplorationWorkspace({
               </Select>
             </div>
           </div>
-          {artifactsLoading ? (
-            <div className="rounded-lg border p-6">
-              <Table>
-                <TableBody>
-                  <TableLoadingRow colSpan={1} label="产物信息加载中" />
-                </TableBody>
-              </Table>
-            </div>
-          ) : null}
-          {!artifactsLoading && selectedArtifactProject && selectedArtifactProject.artifact_count === 0 ? (
-            <div className="rounded-lg border p-8 text-center text-muted-foreground text-sm">
-              当前项目暂无探索产物。探索任务完成后，会在这里显示。
-            </div>
-          ) : null}
-          {!artifactsLoading && artifactProjectOptions.length === 0 ? (
+          {artifactProjectOptions.length === 0 ? (
             <div className="rounded-lg border p-8 text-center text-muted-foreground text-sm">暂无可切换项目。</div>
           ) : null}
-          {selectedArtifactProject && selectedArtifactProject.artifact_count > 0 ? (
+          {selectedArtifactProject ? (
             <div>
               <ExplorationProjectPagesTree
                 expandedNodeIds={expandedPageNodeIds}

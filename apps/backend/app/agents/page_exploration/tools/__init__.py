@@ -25,7 +25,6 @@ from app.agents.page_exploration.tools.state_tools import (
 
 from app.agents.page_exploration.tools.artifact_tools import (
     write_page_artifact_tool,
-    save_page_snapshot_tool,
 )
 
 
@@ -49,7 +48,6 @@ STATE_TOOLS = [
 
 ARTIFACT_TOOLS = [
     write_page_artifact_tool,
-    save_page_snapshot_tool,
 ]
 
 # 所有工具
@@ -94,7 +92,6 @@ __all__ = [
     "update_explored_url_tool",
     # 产物工具
     "write_page_artifact_tool",
-    "save_page_snapshot_tool",
     # 分类
     "NAVIGATION_TOOLS",
     "EXTRACTION_TOOLS",

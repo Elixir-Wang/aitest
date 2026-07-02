@@ -13,9 +13,10 @@ def test_execute_exploration_async_invokes_deep_agent_with_user_message(monkeypa
     captured = {}
 
     class FakeAgent:
-        async def ainvoke(self, payload):
+        async def astream(self, payload, **kwargs):
             captured["payload"] = payload
-            return {"messages": []}
+            captured["kwargs"] = kwargs
+            yield ("values", {"messages": []})
 
     def fake_page_exploration_agent(model, project_id, run_id):
         captured["agent_args"] = (model, project_id, run_id)
@@ -145,31 +146,16 @@ def test_exploration_agent_prompt_distinguishes_goal_and_autonomous_modes() -> N
     assert "它只是补充关注点，不作为单一路径完成条件" in autonomous_prompt
 
 
-def test_invoke_agent_writes_event_log_and_passes_recursion_config(monkeypatch, tmp_path: Path) -> None:
+def test_invoke_agent_writes_timeline_and_raw_logs_from_projection_stream(monkeypatch, tmp_path: Path) -> None:
     captured = {}
 
     class FakeAgent:
-        async def astream_events(self, payload, **kwargs):
+        async def astream(self, payload, **kwargs):
             captured["payload"] = payload
             captured["kwargs"] = kwargs
-            yield {
-                "event": "on_tool_start",
-                "name": "playwright_snap_tool",
-                "run_id": "tool-run-1",
-                "data": {"input": {"url": "https://example.test/workspace"}},
-            }
-            yield {
-                "event": "on_tool_end",
-                "name": "playwright_snap_tool",
-                "run_id": "tool-run-1",
-                "data": {"output": {"title": "工作台"}},
-            }
-            yield {
-                "event": "on_chain_end",
-                "name": "agent",
-                "run_id": "agent-run-1",
-                "data": {"output": {"messages": [{"content": "探索完成"}]}},
-            }
+            yield ("updates", {"agent": {"messages": [{"content": "", "tool_calls": [{"id": "tool-run-1", "name": "playwright_snap_tool", "args": {"url": "https://example.test/workspace"}}]}]}})
+            yield ("updates", {"tools": {"messages": [{"type": "tool", "tool_call_id": "tool-run-1", "name": "playwright_snap_tool", "content": json.dumps({"title": "工作台", "url": "https://example.test/workspace"}, ensure_ascii=False)}]}})
+            yield ("values", {"messages": [{"content": "探索完成"}]})
 
     monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
 
@@ -189,27 +175,33 @@ def test_invoke_agent_writes_event_log_and_passes_recursion_config(monkeypatch, 
     )
 
     assert result["messages"][0]["content"] == "探索完成"
-    assert captured["kwargs"]["version"] == "v2"
+    assert captured["kwargs"]["stream_mode"] == ["updates", "messages", "values"]
     assert captured["kwargs"]["config"]["recursion_limit"] >= 100
 
-    events_path = tmp_path / "project-1" / "page_exploration" / "runs" / "run-log" / "events.jsonl"
-    assert events_path.exists()
-    events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
-    assert [event["type"] for event in events] == [
+    run_dir = tmp_path / "project-1" / "page_exploration" / "runs" / "run-log"
+    timeline_path = run_dir / "timeline_events.jsonl"
+    raw_path = run_dir / "raw_events.jsonl"
+    assert timeline_path.exists()
+    assert raw_path.exists()
+    timeline_events = [json.loads(line) for line in timeline_path.read_text(encoding="utf-8").splitlines()]
+    raw_events = [json.loads(line) for line in raw_path.read_text(encoding="utf-8").splitlines()]
+    assert [event["type"] for event in timeline_events] == [
         "agent_step_started",
-        "agent_stream_event",
-        "agent_stream_event",
-        "agent_stream_event",
+        "agent_tool_started",
+        "agent_tool_completed",
         "agent_step_completed",
     ]
-    assert events[1]["payload"]["event"] == "on_tool_start"
+    assert timeline_events[1]["display"]["title"] == "采集页面快照"
+    assert all(event.get("display") for event in timeline_events)
+    assert raw_events[0]["type"] == "agent_projection_event"
+    assert raw_events[0]["payload"]["mode"] == "updates"
 
 
-def test_exploration_detail_reads_persisted_realtime_events(monkeypatch, tmp_path: Path) -> None:
+def test_exploration_detail_reads_persisted_timeline_events(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
     run_dir = tmp_path / "project-1" / "page_exploration" / "runs" / "run-log"
     run_dir.mkdir(parents=True)
-    events_path = run_dir / "events.jsonl"
+    events_path = run_dir / "timeline_events.jsonl"
     events_path.write_text(
         "\n".join(
             [
@@ -217,8 +209,9 @@ def test_exploration_detail_reads_persisted_realtime_events(monkeypatch, tmp_pat
                     {
                         "event_id": "evt-000001",
                         "run_id": "run-log",
-                        "type": "agent_stream_event",
-                        "payload": {"event": "on_tool_start", "name": "playwright_click_tool"},
+                        "type": "agent_tool_started",
+                        "payload": {"tool_name": "playwright_click_tool"},
+                        "display": {"kind": "click", "title": "点击元素", "summary": "点击 登录"},
                         "occurred_at": "2026-07-01T02:14:07+00:00",
                     },
                     ensure_ascii=False,
@@ -227,8 +220,9 @@ def test_exploration_detail_reads_persisted_realtime_events(monkeypatch, tmp_pat
                     {
                         "event_id": "evt-000002",
                         "run_id": "run-log",
-                        "type": "agent_stream_event",
-                        "payload": {"event": "on_tool_end", "name": "playwright_click_tool"},
+                        "type": "agent_tool_completed",
+                        "payload": {"tool_name": "playwright_click_tool"},
+                        "display": {"kind": "click", "title": "点击元素", "summary": "点击 登录完成"},
                         "occurred_at": "2026-07-01T02:14:08+00:00",
                     },
                     ensure_ascii=False,
@@ -238,47 +232,65 @@ def test_exploration_detail_reads_persisted_realtime_events(monkeypatch, tmp_pat
         encoding="utf-8",
     )
 
-    events = page_exploration_service._read_recent_exploration_events(
+    events = page_exploration_service._read_recent_timeline_events(
         {"project_id": "project-1", "id": "run-log"}
     )
 
     assert [event["event_id"] for event in events] == ["evt-000001", "evt-000002"]
-    assert events[0]["payload"]["name"] == "playwright_click_tool"
+    assert events[0]["payload"]["tool_name"] == "playwright_click_tool"
+    assert events[0]["display"]["summary"] == "点击 登录"
 
 
 def test_invoke_agent_checkpoints_snapshot_as_page_artifact(monkeypatch, tmp_path: Path) -> None:
     class FakeAgent:
-        async def astream_events(self, payload, **kwargs):
-            yield {
-                "event": "on_tool_end",
-                "name": "playwright_snap_tool",
-                "run_id": "tool-run-1",
-                "data": {
-                    "output": {
-                        "url": "https://example.test/workspace?tab=agents",
-                        "title": "工作台",
-                        "elements": [
+        async def astream(self, payload, **kwargs):
+            snapshot = {
+                "url": "https://example.test/workspace?tab=agents",
+                "title": "工作台",
+                "elements": [
+                    {
+                        "ref": "button-create-001",
+                        "role": "button",
+                        "name": "创建智能体",
+                        "text": "创建智能体",
+                        "visible": True,
+                    }
+                ],
+                "raw_output": "button 创建智能体",
+                "error": None,
+            }
+            yield (
+                "updates",
+                {
+                    "tools": {
+                        "messages": [
                             {
-                                "ref": "button-create-001",
-                                "role": "button",
-                                "name": "创建智能体",
-                                "text": "创建智能体",
-                                "visible": True,
+                                "type": "tool",
+                                "tool_call_id": "tool-run-1",
+                                "name": "playwright_snap_tool",
+                                "content": json.dumps(snapshot, ensure_ascii=False),
                             }
-                        ],
-                        "raw_output": "button 创建智能体",
-                        "error": None,
+                        ]
                     }
                 },
-            }
-            yield {
-                "event": "on_chain_end",
-                "name": "agent",
-                "run_id": "agent-run-1",
-                "data": {"output": {"messages": [{"content": "探索完成"}]}},
-            }
+            )
+            yield ("values", {"messages": [{"content": "探索完成"}]})
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=()):
+            return self
+
+        def fetchone(self):
+            return {"status": "running"}
 
     monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+    monkeypatch.setattr(page_exploration_service, "connect", lambda: FakeConnection())
 
     import asyncio
 
@@ -311,10 +323,118 @@ def test_invoke_agent_checkpoints_snapshot_as_page_artifact(monkeypatch, tmp_pat
     assert data["page"]["elements"][0]["locators"][0]["code"] == "getByRole('button', { name: '创建智能体' })"
 
 
+def test_snapshot_checkpoint_registers_visible_artifact(monkeypatch, tmp_path: Path) -> None:
+    calls = {
+        "roots": [],
+        "pages": [],
+        "artifacts": [],
+    }
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=()):
+            if "UPDATE exploration_runs SET artifact_root" in sql:
+                calls["roots"].append(params)
+            elif "INSERT INTO exploration_pages" in sql:
+                calls["pages"].append(params)
+            elif "INSERT INTO exploration_artifacts" in sql:
+                calls["artifacts"].append(params)
+            return self
+
+    event = {
+        "event": "on_tool_end",
+        "name": "playwright_snap_tool",
+        "data": {
+            "output": {
+                "url": "https://example.test/workspace",
+                "title": "工作台",
+                "elements": [
+                    {
+                        "ref": "button-create-001",
+                        "role": "button",
+                        "name": "创建智能体",
+                        "visible": True,
+                    }
+                ],
+            }
+        },
+    }
+
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+    monkeypatch.setattr(page_exploration_service, "connect", lambda: FakeConnection())
+
+    path = page_exploration_service._checkpoint_snapshot_artifact_from_event(
+        event,
+        project_id="project-1",
+        run_id="run-checkpoint",
+    )
+
+    assert path is not None
+    assert calls["roots"][0][0] == str(tmp_path / "project-1" / "page_exploration" / "runs" / "run-checkpoint")
+    assert calls["pages"][0][0] == "page-workspace"
+    assert calls["artifacts"][0][0] == "run-checkpoint-page-workspace-yaml"
+    assert calls["artifacts"][0][2] == "page_yaml"
+    assert calls["artifacts"][0][3] == str(tmp_path / "project-1" / "page_exploration" / "pages" / "page-workspace.yaml")
+    assert (tmp_path / "project-1" / "page_exploration" / "pages" / "page-workspace.yaml").exists()
+
+
+def test_repeated_snapshot_checkpoints_create_separate_visible_artifacts(monkeypatch, tmp_path: Path) -> None:
+    artifact_ids = []
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=()):
+            if "INSERT INTO exploration_artifacts" in sql:
+                artifact_ids.append(params[0])
+            return self
+
+    event = {
+        "event": "on_tool_end",
+        "name": "playwright_snap_tool",
+        "data": {
+            "output": {
+                "url": "https://example.test/workspace",
+                "title": "工作台",
+                "elements": [],
+            }
+        },
+    }
+
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+    monkeypatch.setattr(page_exploration_service, "connect", lambda: FakeConnection())
+
+    first = page_exploration_service._checkpoint_snapshot_artifact_from_event(
+        event,
+        project_id="project-1",
+        run_id="run-checkpoint",
+    )
+    second = page_exploration_service._checkpoint_snapshot_artifact_from_event(
+        event,
+        project_id="project-1",
+        run_id="run-checkpoint",
+    )
+
+    assert first is not None
+    assert second is not None
+    assert first != second
+    assert len(artifact_ids) == 2
+    assert len(set(artifact_ids)) == 2
+
+
 def test_execute_exploration_async_publishes_realtime_events(monkeypatch) -> None:
     class FakeAgent:
-        async def ainvoke(self, payload):
-            return {"messages": [{"content": "探索完成，发现工作台入口。"}]}
+        async def astream(self, payload, **kwargs):
+            yield ("values", {"messages": [{"content": "探索完成，发现工作台入口。"}]})
 
     def fake_page_exploration_agent(model, project_id, run_id):
         return FakeAgent()
@@ -376,8 +496,8 @@ def test_execute_exploration_async_publishes_realtime_events(monkeypatch) -> Non
 
 def test_execute_exploration_async_does_not_complete_after_stop(monkeypatch) -> None:
     class FakeAgent:
-        async def ainvoke(self, payload):
-            return {"messages": [{"content": "探索完成。"}]}
+        async def astream(self, payload, **kwargs):
+            yield ("values", {"messages": [{"content": "探索完成。"}]})
 
     def fake_page_exploration_agent(model, project_id, run_id):
         return FakeAgent()
@@ -585,39 +705,55 @@ def test_event_bus_close_all_wakes_active_subscribers() -> None:
     assert asyncio.run(wait_for_shutdown())
 
 
-def test_agent_stream_tool_events_publish_readable_whitelisted_sse_payloads() -> None:
-    event_bus.clear("run-tool-lifecycle")
+def test_projection_tool_events_publish_readable_whitelisted_sse_payloads() -> None:
+    tool_inputs: dict[str, dict] = {}
 
-    page_exploration_service._publish_agent_stream_event(
-        "run-tool-lifecycle",
+    started = page_exploration_service._projection_chunk_to_timeline_events(
+        "updates",
         {
-            "event": "on_tool_start",
-            "name": "read_file",
-            "run_id": "tool-run-1",
-            "data": {"input": {"file_path": "app/agents/page_exploration/skills/page_explorer/SKILL.md"}},
+            "agent": {
+                "messages": [
+                    {
+                        "tool_calls": [
+                            {
+                                "id": "tool-run-1",
+                                "name": "playwright_click_tool",
+                                "args": {"locator": "button-login-1"},
+                            }
+                        ]
+                    }
+                ]
+            }
         },
         raw_event_id="evt-000001",
+        tool_inputs=tool_inputs,
     )
-    page_exploration_service._publish_agent_stream_event(
-        "run-tool-lifecycle",
+    completed = page_exploration_service._projection_chunk_to_timeline_events(
+        "updates",
         {
-            "event": "on_tool_end",
-            "name": "read_file",
-            "run_id": "tool-run-1",
-            "data": {"output": "very long file content that must not be sent to the main SSE stream"},
+            "tools": {
+                "messages": [
+                    {
+                        "type": "tool",
+                        "tool_call_id": "tool-run-1",
+                        "name": "playwright_click_tool",
+                        "content": json.dumps({"success": True, "raw_output": "very long debug output"}, ensure_ascii=False),
+                    }
+                ]
+            }
         },
         raw_event_id="evt-000002",
+        tool_inputs=tool_inputs,
     )
 
-    events = event_bus.get_history("run-tool-lifecycle")
+    events = started + completed
 
     assert [event["type"] for event in events] == ["agent_tool_started", "agent_tool_completed"]
     assert events[0]["payload"]["step_id"] == events[1]["payload"]["step_id"]
     assert events[0]["payload"]["step_id"] == "agent-tool-tool-run-1"
-    assert events[0]["payload"]["tool_name"] == "read_file"
-    assert events[0]["display"]["kind"] == "file_read"
-    assert events[0]["display"]["fields"][0]["value"].endswith("page_explorer/SKILL.md")
-    assert events[1]["display"]["kind"] == "file_read"
+    assert events[0]["payload"]["tool_name"] == "playwright_click_tool"
+    assert events[0]["display"]["kind"] == "click"
+    assert events[1]["display"]["kind"] == "click"
     forbidden_payload_keys = {
         "debug_ref",
         "duration_ms",
@@ -629,63 +765,112 @@ def test_agent_stream_tool_events_publish_readable_whitelisted_sse_payloads() ->
     }
     assert forbidden_payload_keys.isdisjoint(events[0]["payload"])
     assert forbidden_payload_keys.isdisjoint(events[1]["payload"])
-    assert "very long file content" not in json.dumps(events, ensure_ascii=False)
+    assert "very long debug output" not in json.dumps(events, ensure_ascii=False)
 
 
-def test_agent_stream_skips_noisy_model_stream_events() -> None:
-    event_bus.clear("run-noisy-stream")
-
-    page_exploration_service._publish_agent_stream_event(
-        "run-noisy-stream",
+def test_projection_write_todos_publishes_structured_plan_steps() -> None:
+    events = page_exploration_service._projection_chunk_to_timeline_events(
+        "updates",
         {
-            "event": "on_chat_model_stream",
-            "name": "ChatOpenAI",
-            "run_id": "model-run-1",
-            "data": {"chunk": {"content": "token"}},
+            "agent": {
+                "messages": [
+                    {
+                        "tool_calls": [
+                            {
+                                "id": "todo-run-1",
+                                "name": "write_todos",
+                                "args": {
+                                    "todos": [
+                                        {"content": "打开工作台", "status": "completed"},
+                                        {"content": "点击创建智能体", "status": "in_progress"},
+                                        {"content": "发送对话并等待回复", "status": "pending"},
+                                    ]
+                                },
+                            }
+                        ]
+                    }
+                ]
+            }
         },
-        raw_event_id="evt-000001",
+        raw_event_id="evt-000004",
+        tool_inputs={},
     )
 
-    assert event_bus.get_history("run-noisy-stream") == []
-
-
-def test_agent_stream_write_todos_publishes_plan_update_display() -> None:
-    event_bus.clear("run-todos")
-
-    page_exploration_service._publish_agent_stream_event(
-        "run-todos",
+    assert [event["type"] for event in events] == ["agent_plan_updated"]
+    assert events[0]["payload"]["tool_name"] == "write_todos"
+    assert events[0]["payload"]["plan_steps"] == [
         {
-            "event": "on_tool_start",
-            "name": "write_todos",
-            "run_id": "todo-run-1",
-            "data": {
-                "input": {
-                    "todos": [
-                        {"content": "Navigate to agentStore", "status": "in_progress"},
-                        {"content": "Capture page artifact", "status": "pending"},
-                    ]
-                }
-            },
+            "step_id": "agent-todo-1",
+            "step_number": 1,
+            "description": "打开工作台",
+            "status": "completed",
+            "action_type": "todo",
+            "execution_strategy": "agent_plan",
+        },
+        {
+            "step_id": "agent-todo-2",
+            "step_number": 2,
+            "description": "点击创建智能体",
+            "status": "in_progress",
+            "action_type": "todo",
+            "execution_strategy": "agent_plan",
+        },
+        {
+            "step_id": "agent-todo-3",
+            "step_number": 3,
+            "description": "发送对话并等待回复",
+            "status": "pending",
+            "action_type": "todo",
+            "execution_strategy": "agent_plan",
+        },
+    ]
+    assert events[0]["display"]["kind"] == "todo_update"
+
+
+def test_projection_assistant_messages_publish_public_thought_events() -> None:
+    events = page_exploration_service._projection_chunk_to_timeline_events(
+        "updates",
+        {
+            "agent": {
+                "messages": [
+                    {
+                        "content": "已进入工作台，下一步查找创建智能体入口。",
+                    }
+                ]
+            }
         },
         raw_event_id="evt-000003",
+        tool_inputs={},
     )
 
-    events = event_bus.get_history("run-todos")
+    assert [event["type"] for event in events] == ["agent_thought"]
+    assert events[0]["payload"]["status"] == "completed"
+    assert events[0]["display"] == {
+        "kind": "thought",
+        "title": "Agent",
+        "summary": "已进入工作台，下一步查找创建智能体入口。",
+    }
+
+
+def test_projection_assistant_messages_strip_private_thinking() -> None:
+    events = page_exploration_service._projection_chunk_to_timeline_events(
+        "updates",
+        {
+            "agent": {
+                "messages": [
+                    {
+                        "content": "<think>secret selector guess</think>\n已完成页面观察，准备点击工作台。",
+                    }
+                ]
+            }
+        },
+        raw_event_id="evt-000004",
+        tool_inputs={},
+    )
 
     assert len(events) == 1
-    assert events[0]["type"] == "agent_plan_updated"
-    assert events[0]["payload"]["tool_name"] == "write_todos"
-    assert events[0]["display"]["kind"] == "todo_update"
-    assert events[0]["display"]["summary"] == "Navigate to agentStore"
-    assert {
-        "debug_ref",
-        "duration_ms",
-        "input",
-        "messages",
-        "output",
-        "raw_output",
-        "response_metadata",
-    }.isdisjoint(events[0]["payload"])
+    assert events[0]["display"]["summary"] == "已完成页面观察，准备点击工作台。"
+    assert "secret selector guess" not in json.dumps(events, ensure_ascii=False)
 
 
 def test_exploration_stream_does_not_cancel_event_bus_subscription() -> None:
@@ -807,6 +992,47 @@ def test_modules_from_db_pages_preserves_module_grouping() -> None:
     assert modules[1]["pages"][0]["title"] == "用户列表"
 
 
+def test_list_project_pages_reads_project_shared_pages(monkeypatch, tmp_path: Path) -> None:
+    page_root = tmp_path / "project-1" / "page_exploration"
+    project_pages = page_root / "pages"
+    project_pages.mkdir(parents=True)
+    (project_pages / "page-workspace.yaml").write_text(
+        """
+page:
+  id: page-workspace
+  title: 工作台首页
+  normalized_path: /workspace
+  structure_summary: 发现工作台入口。
+  last_explored:
+    run_id: run-1
+    timestamp: '2026-07-02T11:34:59Z'
+    screenshot: runs/run-1/screenshots/page-workspace.png
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+
+    rows = page_exploration_service.list_project_pages(actor={"id": "u-1"}, project_id="project-1")
+
+    assert rows == [
+        {
+            "id": "page-workspace",
+            "exploration_run_id": "run-1",
+            "module_key": "",
+            "title": "工作台首页",
+            "url": "",
+            "entry_path": "/workspace",
+            "structure_summary": "发现工作台入口。",
+            "screenshot_path": "runs/run-1/screenshots/page-workspace.png",
+            "snapshot_path": str(page_root / "pages" / "page-workspace.yaml"),
+            "trace_path": "",
+            "created_at": "2026-07-02T11:34:59Z",
+            "updated_at": "2026-07-02T11:34:59Z",
+        }
+    ]
+
+
 def test_register_exploration_outputs_indexes_page_and_report(monkeypatch, tmp_path: Path) -> None:
     page_root = tmp_path / "project-1" / "page_exploration"
     pages_dir = page_root / "runs" / "run-1" / "pages"
@@ -870,6 +1096,9 @@ states:
     assert calls["pages"][0][8].endswith("page-workspace.yaml")
     artifact_types = {params[2] for params in calls["artifacts"]}
     assert artifact_types == {"page_yaml", "report"}
+    page_artifact = next(params for params in calls["artifacts"] if params[2] == "page_yaml")
+    assert page_artifact[3] == str(page_root / "pages" / "page-workspace.yaml")
+    assert (page_root / "pages" / "page-workspace.yaml").exists()
     assert (page_root / "runs" / "run-1" / "summary.yaml").exists()
     assert (page_root / "runs" / "run-1" / "report.md").exists()
 
@@ -934,3 +1163,43 @@ page:
     assert fake.artifact_root == str(run_dir)
     assert fake.pages[0][0] == "page-current"
     assert {params[2] for params in fake.artifacts} == {"page_yaml", "report"}
+
+
+def test_cancelled_exploration_registers_current_partial_outputs(monkeypatch) -> None:
+    registered = []
+    statuses = []
+
+    def fake_register(run_id: str) -> str:
+        registered.append(run_id)
+        return "已保留本次取消前生成的 2 个页面产物。"
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=()):
+            return self
+
+        def fetchone(self):
+            return {"id": "run-cancelled", "status": "running"}
+
+    def fake_update_status(db, run_id, status, **kwargs):
+        statuses.append((run_id, status, kwargs.get("result_summary", "")))
+
+    monkeypatch.setattr(page_exploration_service, "_register_failed_exploration_outputs", fake_register)
+    monkeypatch.setattr(page_exploration_service, "connect", lambda: FakeConnection())
+    monkeypatch.setattr(page_exploration_service.exploration_run_repo, "update_status", fake_update_status)
+
+    page_exploration_service._finalize_cancelled_exploration_run("run-cancelled")
+
+    assert registered == ["run-cancelled"]
+    assert statuses == [
+        (
+            "run-cancelled",
+            "cancelled",
+            "探索任务已由用户停止；已保留本次取消前生成的 2 个页面产物。",
+        )
+    ]

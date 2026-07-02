@@ -109,6 +109,7 @@ class ProjectPagesService:
                     'id': page_id,
                     'title': page_data.get('title', ''),
                     'normalized_path': normalized_path,
+                    'structure_summary': page_data.get('structure_summary', ''),
                     'path_hash': self._generate_path_hash(normalized_path),
                     'env_urls': env_urls,
                     'last_explored': {
@@ -161,6 +162,7 @@ class ProjectPagesService:
                     'page_id': page_info.get('id'),
                     'title': page_info.get('title'),
                     'normalized_path': page_info.get('normalized_path'),
+                    'structure_summary': page_info.get('structure_summary'),
                     'last_explored': page_info.get('last_explored'),
                     'file': page_file.name
                 })

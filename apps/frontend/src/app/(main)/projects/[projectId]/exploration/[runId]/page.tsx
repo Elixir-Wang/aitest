@@ -1,33 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useParams, useRouter } from "next/navigation";
 
-import {
-  AlertTriangle,
-  ArrowDown,
-  ArrowLeft,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Circle,
-  CircleAlert,
-  CircleDotDashed,
-  CircleX,
-  ListChecks,
-  Loader2,
-  Play,
-  RefreshCw,
-  Square,
-  X,
-} from "lucide-react";
+import { AlertTriangle, ArrowLeft, Play, RefreshCw, Square, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { ExplorationTaskInfoPanel } from "@/components/ai-testing/exploration-task-info-panel";
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { useProjectName } from "@/components/ai-testing/use-project-name";
-import type { AgentPlanStatus, AgentPlanTask } from "@/components/ui/agent-plan";
+import type { AgentPlanStatus } from "@/components/ui/agent-plan";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -37,7 +21,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { StatusBadge, type StatusBadgeTone } from "@/components/ui/status-badge";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import { API_BASE_URL, apiAuthHeaders, apiRequest, formatDateTime } from "@/lib/api-client";
 import { reportError as reportApiError } from "@/lib/error-feedback";
@@ -78,7 +61,7 @@ type ExplorationRunDetail = {
   artifact_schema_version: number;
   unsupported_artifact: boolean;
   unsupported_reason: string;
-  raw_events?: PersistedExplorationEvent[];
+  timeline_events?: PersistedExplorationEvent[];
   modules: Array<{
     id: string;
     module_key: string;
@@ -180,6 +163,7 @@ type PersistedExplorationEvent = {
   type: string;
   run_id?: string;
   payload?: Record<string, unknown>;
+  display?: ReadableExecutionDisplay;
   occurred_at?: string;
   timestamp?: string;
 };
@@ -238,6 +222,7 @@ type ExplorationMonitorEvent = {
 
 type ReadableExecutionDisplayKind =
   | "model_analysis"
+  | "thought"
   | "navigate"
   | "click"
   | "snapshot"
@@ -275,6 +260,7 @@ type ExplorationMonitorState = {
     risk_assessment: string;
     success_criteria: string[];
     total_steps: number;
+    steps: ExplorationMonitorPlanStep[];
   } | null;
   steps: ExplorationMonitorStep[];
   events: ExplorationMonitorEvent[];
@@ -359,7 +345,7 @@ function applyStreamEvent(
     const snapshot = normalizeExplorationRunDetail(event.payload as ExplorationRunDetail);
     setters.setRun(snapshot.run);
     setters.setStreamDetail((current) => mergeDetailSnapshot(current, snapshot));
-    setters.setMonitor(finalizeRunningMonitorSteps(monitorFromRunDetail(snapshot), snapshot.run.status));
+    setters.setMonitor((current) => mergeMonitorSnapshot(current, snapshot));
     return;
   }
 
@@ -418,7 +404,7 @@ function applyStreamEvent(
 
 function mergeMonitorEvent(current: ExplorationMonitorState, event: ExplorationStreamEvent): ExplorationMonitorState {
   if (event.type === "run_snapshot") {
-    return monitorFromRunDetail(event.payload as ExplorationRunDetail);
+    return mergeMonitorSnapshot(current, event.payload as ExplorationRunDetail);
   }
   const payload = event.payload as Record<string, unknown>;
   let next: ExplorationMonitorState = {
@@ -426,20 +412,27 @@ function mergeMonitorEvent(current: ExplorationMonitorState, event: ExplorationS
     phase: monitorPhaseFromEvent(event.type, current.phase),
   };
 
-  if (event.type === "planning_completed") {
-    const steps = normalizeMonitorPlanSteps(payload.steps);
+  if (event.type === "planning_completed" || event.type === "agent_plan_updated") {
+    const steps =
+      event.type === "agent_plan_updated"
+        ? normalizeMonitorPlanSteps(payload.plan_steps)
+        : normalizeMonitorPlanSteps(payload.steps);
     next = {
       ...next,
       plan: {
-        plan_id: stringValue(payload.plan_id),
-        goal_summary: stringValue(payload.goal_summary),
-        scope_summary: stringValue(payload.scope_summary),
-        strategy: stringValue(payload.strategy),
-        modules: arrayOfStrings(payload.modules),
-        estimated_duration_minutes: numberOrNull(payload.estimated_duration_minutes),
-        risk_assessment: stringValue(payload.risk_assessment),
-        success_criteria: arrayOfStrings(payload.success_criteria),
+        plan_id: stringValue(payload.plan_id) || next.plan?.plan_id || "",
+        goal_summary: stringValue(payload.goal_summary) || next.plan?.goal_summary || "",
+        scope_summary: stringValue(payload.scope_summary) || next.plan?.scope_summary || "",
+        strategy: stringValue(payload.strategy) || next.plan?.strategy || "Agent 待办计划",
+        modules: arrayOfStrings(payload.modules).length ? arrayOfStrings(payload.modules) : next.plan?.modules || [],
+        estimated_duration_minutes:
+          numberOrNull(payload.estimated_duration_minutes) ?? next.plan?.estimated_duration_minutes ?? null,
+        risk_assessment: stringValue(payload.risk_assessment) || next.plan?.risk_assessment || "",
+        success_criteria: arrayOfStrings(payload.success_criteria).length
+          ? arrayOfStrings(payload.success_criteria)
+          : next.plan?.success_criteria || [],
         total_steps: Number(payload.total_steps || steps.length || 0),
+        steps,
       },
       steps: mergeMonitorPlanSteps(next.steps, steps),
     };
@@ -456,6 +449,62 @@ function mergeMonitorEvent(current: ExplorationMonitorState, event: ExplorationS
     ...next,
     events: [monitorTimelineEvent(event), ...next.events],
   };
+}
+
+function mergeMonitorSnapshot(current: ExplorationMonitorState, detail: ExplorationRunDetail): ExplorationMonitorState {
+  const snapshot = finalizeRunningMonitorSteps(monitorFromRunDetail(detail), detail.run.status);
+  if (!hasMonitorProgress(current)) {
+    return snapshot;
+  }
+  if (!hasMonitorProgress(snapshot)) {
+    return finalizeRunningMonitorSteps(
+      {
+        ...current,
+        phase: monitorPhaseFromRunStatus(detail.run.status),
+        events: mergeMonitorEvents(current.events, snapshot.events),
+      },
+      detail.run.status,
+    );
+  }
+  return finalizeRunningMonitorSteps(
+    {
+      ...snapshot,
+      plan: snapshot.plan ?? current.plan,
+      steps: snapshot.steps.length ? mergeMonitorSteps(current.steps, snapshot.steps) : current.steps,
+      events: mergeMonitorEvents(current.events, snapshot.events),
+    },
+    detail.run.status,
+  );
+}
+
+function hasMonitorProgress(monitor: ExplorationMonitorState): boolean {
+  return Boolean(monitor.plan) || monitor.steps.length > 0 || monitor.events.length > 0;
+}
+
+function mergeMonitorSteps(
+  current: ExplorationMonitorStep[],
+  incoming: ExplorationMonitorStep[],
+): ExplorationMonitorStep[] {
+  return incoming
+    .reduce((steps, step) => upsertMonitorStep(steps, step), current)
+    .sort((a, b) => a.step_number - b.step_number);
+}
+
+function mergeMonitorEvents(
+  current: ExplorationMonitorEvent[],
+  incoming: ExplorationMonitorEvent[],
+): ExplorationMonitorEvent[] {
+  const seen = new Set<string>();
+  const merged: ExplorationMonitorEvent[] = [];
+  for (const event of [...incoming, ...current]) {
+    const key = `${event.id}:${event.type}:${event.occurred_at}:${event.summary}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(event);
+  }
+  return merged;
 }
 
 function finalizeRunningMonitorSteps(monitor: ExplorationMonitorState, runStatus: string): ExplorationMonitorState {
@@ -591,6 +640,7 @@ function monitorPlanFromDetail(
     risk_assessment: detail.run.forbidden_paths ? `禁止路径：${detail.run.forbidden_paths}` : "",
     success_criteria: detail.run.goal ? [detail.run.goal] : [],
     total_steps: steps.length,
+    steps: [],
   };
 }
 
@@ -625,32 +675,38 @@ function monitorEventsFromDetail(
 }
 
 function persistedMonitorEventsFromDetail(detail: ExplorationRunDetail): ExplorationMonitorEvent[] {
-  const rawEvents = Array.isArray(detail.raw_events) ? detail.raw_events : [];
-  return rawEvents
-    .filter((event) => event && typeof event.type === "string")
-    .map((event, index) => {
-      const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
-      const streamEvent = stringValue(payload.event);
-      const streamName = stringValue(payload.name);
-      const summary =
-        stringValue(payload.message) ||
-        stringValue(payload.error) ||
-        stringValue(payload.output) ||
-        stringValue(payload.input) ||
-        streamName ||
-        streamEvent ||
-        event.type;
-      return {
-        id: `persisted-${event.event_id || index}`,
-        type: event.type,
-        label: logTypeLabels[event.type] ?? event.type,
-        summary,
-        occurred_at: stringValue(event.occurred_at || event.timestamp) || detail.run.updated_at,
-        status: persistedMonitorEventStatus(event.type, payload),
-        payload,
-        display: readableDisplayFromPayload(event as unknown as Record<string, unknown>),
-      };
+  const timelineEvents = Array.isArray(detail.timeline_events) ? detail.timeline_events : [];
+  const events: ExplorationMonitorEvent[] = [];
+  for (const [index, event] of timelineEvents.entries()) {
+    if (!event || typeof event.type !== "string") {
+      continue;
+    }
+    const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+    const streamEvent = stringValue(payload.event);
+    const streamName = stringValue(payload.name);
+    const display = readableDisplayFromPayload(event as unknown as Record<string, unknown>);
+    if (!display) {
+      continue;
+    }
+    const summary =
+      stringValue(payload.message) ||
+      stringValue(payload.error) ||
+      display.summary ||
+      streamName ||
+      streamEvent ||
+      event.type;
+    events.push({
+      id: `persisted-${event.event_id || index}`,
+      type: event.type,
+      label: logTypeLabels[event.type] ?? event.type,
+      summary,
+      occurred_at: stringValue(event.occurred_at || event.timestamp) || detail.run.updated_at,
+      status: persistedMonitorEventStatus(event.type, payload),
+      payload,
+      display,
     });
+  }
+  return events;
 }
 
 function persistedMonitorEventStatus(eventType: string, payload: Record<string, unknown>): AgentPlanStatus {
@@ -738,7 +794,7 @@ function monitorStepFromPayload(
   if (!planStep.step_id) return null;
   return {
     ...emptyMonitorStep(planStep),
-    status: monitorStepStatusFromEvent(eventType),
+    status: normalizeAgentPlanStatus(stringValue(payload.status)) || monitorStepStatusFromEvent(eventType),
     total_steps: Number(payload.total_steps || fallbackTotalSteps || 0),
     attempt: Number(payload.attempt || 1),
     started_at: stringValue(payload.started_at),
@@ -835,7 +891,7 @@ function monitorTimelineEvent(event: ExplorationStreamEvent): ExplorationMonitor
 
 function monitorTimelineStatus(eventType: string): AgentPlanStatus {
   if (eventType.includes("failed") || eventType === "error") return "failed";
-  if (eventType.includes("completed")) return "completed";
+  if (eventType.includes("completed") || eventType === "agent_plan_updated") return "completed";
   if (eventType.includes("cancelled")) return "cancelled";
   if (eventType.includes("started") || eventType === "step_retrying") return "running";
   return "pending";
@@ -1091,73 +1147,6 @@ function mergeBlockerEvent(
   return { ...detail, modules };
 }
 
-function buildMonitorModuleTasks(monitor?: ExplorationMonitorState): AgentPlanTask[] {
-  if (!monitor) {
-    return [];
-  }
-  const moduleNames = [
-    ...(monitor.plan?.modules ?? []),
-    ...monitor.steps.map((step) => step.module_name).filter(Boolean),
-  ];
-  const uniqueModuleNames = Array.from(new Set(moduleNames.map((name) => name.trim()).filter(Boolean)));
-  const fallbackModuleNames = uniqueModuleNames.length
-    ? uniqueModuleNames
-    : monitor.events.length
-      ? ["主探索模块"]
-      : [];
-
-  return fallbackModuleNames.map((moduleName, index) => {
-    const moduleSteps = monitor.steps.filter(
-      (step) => step.module_name === moduleName || uniqueModuleNames.length === 0,
-    );
-    const completedSteps = moduleSteps.filter((step) => step.status === "completed").length;
-    const failedSteps = moduleSteps.filter((step) => step.status === "failed" || step.status === "blocked").length;
-    const runningSteps = moduleSteps.filter(
-      (step) => step.status === "running" || step.status === "in-progress",
-    ).length;
-    const status: AgentPlanStatus = failedSteps
-      ? "failed"
-      : runningSteps
-        ? "running"
-        : moduleSteps.length > 0 && completedSteps === moduleSteps.length
-          ? "completed"
-          : "queued";
-
-    return {
-      id: `monitor-module-${index}-${moduleName}`,
-      title: moduleName,
-      description: monitor.plan?.scope_summary || monitor.plan?.goal_summary || "正在根据实时事件建立探索地图。",
-      status,
-      meta: moduleSteps.length
-        ? [`${completedSteps}/${moduleSteps.length} 步骤`, `${failedSteps} 异常`]
-        : ["等待页面事实"],
-      subtasks: moduleSteps.slice(0, 8).map((step) => ({
-        id: step.step_id,
-        title: buildMonitorStepTaskTitle(step),
-        description: step.message || step.target_description || step.expected_result || "等待工具返回结果。",
-        status: step.status,
-        meta: [step.action_type, step.page_state.title || step.page_state.url].filter(Boolean),
-      })),
-    };
-  });
-}
-
-function buildMonitorStepTaskTitle(step: ExplorationMonitorStep): string {
-  if (step.action_type === "write_page_artifact_tool") {
-    return "写入页面事实";
-  }
-  if (step.action_type?.startsWith("playwright_")) {
-    return step.description || step.action_type.replace(/^playwright_/, "页面操作：");
-  }
-  if (step.action_type === "model") {
-    return "分析页面与下一步动作";
-  }
-  if (step.action_type === "tools") {
-    return "执行工具调用";
-  }
-  return step.description || step.action_type || "探索步骤";
-}
-
 function _resolvePagePlanStatus(page: ExplorationPage): AgentPlanStatus {
   const normalizedPageStatus = normalizeAgentPlanStatus(page.status || "pending");
   if (normalizedPageStatus !== "running") {
@@ -1310,10 +1299,7 @@ export default function Page() {
         const normalizedData = normalizeExplorationRunDetail(data);
         setDetail(normalizedData);
         setStreamDetail((current) => mergeDetailSnapshot(current, normalizedData));
-        setMonitor((current) => {
-          const snapshot = finalizeRunningMonitorSteps(monitorFromRunDetail(normalizedData), normalizedData.run.status);
-          return current.events.length ? { ...snapshot, events: current.events } : snapshot;
-        });
+        setMonitor((current) => mergeMonitorSnapshot(current, normalizedData));
         setRun(normalizedData.run);
       } catch (requestError) {
         setError(requestError instanceof Error ? requestError.message : "探索任务加载失败");
@@ -1541,7 +1527,6 @@ export default function Page() {
           monitor={monitor}
           onRestart={startExploration}
           restarting={starting}
-          run={run}
           unsupportedArtifactReason={unsupportedArtifactReason}
         />
       ) : null}
@@ -1595,7 +1580,6 @@ function ExplorationModuleProgressPanel({
   monitor,
   onRestart,
   restarting,
-  run,
   unsupportedArtifactReason,
 }: {
   isUnsupportedArtifact: boolean;
@@ -1603,554 +1587,22 @@ function ExplorationModuleProgressPanel({
   monitor: ExplorationMonitorState;
   onRestart: () => Promise<void> | void;
   restarting: boolean;
-  run: ExplorationRun | null;
   unsupportedArtifactReason: string;
 }) {
-  return (
-    <div className="grid min-h-[480px] min-w-0 flex-1 gap-4 lg:min-h-0 lg:grid-cols-[360px_minmax(0,1fr)]">
-      <ExplorationStageSidebar
-        isUnsupportedArtifact={isUnsupportedArtifact}
-        loading={loading}
-        monitor={monitor}
-        onRestart={onRestart}
-        restarting={restarting}
-        run={run}
-        unsupportedArtifactReason={unsupportedArtifactReason}
-      />
-      <ExplorationConversationPanel loading={loading} monitor={monitor} run={run} />
-    </div>
-  );
-}
-
-function buildExplorationStageRows(monitor: ExplorationMonitorState): AgentPlanTask[] {
-  return buildTemplatePlanTasks(monitor);
-}
-
-type ExplorationConversationEntry = {
-  id: string;
-  kind: "message" | "tool";
-  role: "user" | "assistant" | "system";
-  title: string;
-  content: string;
-  status: AgentPlanStatus;
-  occurredAt: string;
-  completedAt?: string;
-  fields: ReadableExecutionField[];
-  chips?: string[];
-};
-
-function buildExplorationConversationEntries(monitor: ExplorationMonitorState): ExplorationConversationEntry[] {
-  return [...monitor.events].reverse().flatMap((event) => {
-    if (event.type === "agent_plan_updated" || event.display?.kind === "todo_update") {
-      return [];
-    }
-
-    const display = event.display;
-    if (display?.kind === "model_analysis") {
-      return [
-        {
-          id: event.id,
-          kind: "message",
-          role: "assistant",
-          title: display.title,
-          content: display.summary || event.summary,
-          status: event.status,
-          occurredAt: event.occurred_at,
-          fields: display.fields ?? [],
-          chips: display.chips,
-        },
-      ];
-    }
-
-    if (display) {
-      return [
-        {
-          id: event.id,
-          kind: "tool",
-          role: "system",
-          title: display.title,
-          content: display.summary || event.summary,
-          status: event.status,
-          occurredAt: event.occurred_at,
-          completedAt: event.occurred_at,
-          fields: display.fields ?? [],
-          chips: display.chips,
-        },
-      ];
-    }
-
-    if (!isConversationEvent(event.type)) {
-      return [];
-    }
-
-    return [
-      {
-        id: event.id,
-        kind: "message",
-        role: conversationRoleFromEvent(event.type),
-        title: event.label,
-        content: event.summary,
-        status: event.status,
-        occurredAt: event.occurred_at,
-        fields: [],
-      },
-    ];
-  });
-}
-
-function isConversationEvent(eventType: string): boolean {
-  return [
-    "run_started",
-    "planning_started",
-    "planning_completed",
-    "run_completed",
-    "run_failed",
-    "run_cancelled",
-    "error",
-  ].includes(eventType);
-}
-
-function conversationRoleFromEvent(eventType: string): "user" | "assistant" | "system" {
-  if (eventType === "run_started" || eventType === "planning_started") {
-    return "system";
-  }
-  if (eventType === "run_failed" || eventType === "error") {
-    return "assistant";
-  }
-  return "assistant";
-}
-
-function ExplorationStageSidebar({
-  isUnsupportedArtifact,
-  loading,
-  monitor,
-  onRestart,
-  restarting,
-  run,
-  unsupportedArtifactReason,
-}: {
-  isUnsupportedArtifact: boolean;
-  loading: boolean;
-  monitor: ExplorationMonitorState;
-  onRestart: () => Promise<void> | void;
-  restarting: boolean;
-  run: ExplorationRun | null;
-  unsupportedArtifactReason: string;
-}) {
-  const stageRows = useMemo(() => buildExplorationStageRows(monitor), [monitor]);
-  const phaseLabel = monitorPhaseLabel(monitor.phase, run?.status);
-  const currentStageId =
-    stageRows.find((stage) => stage.status === "running" || stage.status === "in-progress")?.id || "";
-
-  return (
-    <section className="min-h-0 min-w-0 overflow-y-auto border-r pr-4">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="font-medium text-sm">探索阶段</h2>
-          <p className="text-muted-foreground text-xs">显示当前完成到哪一步。</p>
-        </div>
-        <StatusBadge tone={monitorPhaseTone(monitor.phase, run?.status)}>{phaseLabel}</StatusBadge>
-      </div>
-
-      {loading ? (
-        <div className="grid min-h-[280px] place-items-center rounded-md border bg-background/70 p-6 text-center text-muted-foreground text-sm">
-          阶段清单加载中...
-        </div>
-      ) : isUnsupportedArtifact ? (
+  // 如果是不支持的产物格式，显示提示
+  if (isUnsupportedArtifact) {
+    return (
+      <ShellSection>
         <UnsupportedArtifactNotice onRestart={onRestart} reason={unsupportedArtifactReason} restarting={restarting} />
-      ) : stageRows.length > 0 ? (
-        <ol className="space-y-2">
-          {stageRows.map((stage) => (
-            <li
-              className={`rounded-md border px-3 py-2 ${stage.id === currentStageId ? "border-blue-200 bg-blue-50/40 dark:border-blue-500/20 dark:bg-blue-500/8" : "bg-background"}`}
-              key={stage.id}
-            >
-              <div className="flex items-start gap-2">
-                <MonitorStatusIcon status={stage.status} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 truncate text-sm">{stage.title}</div>
-                    <StatusBadge tone={monitorStepTone(stage.status)}>{monitorStepLabel(stage.status)}</StatusBadge>
-                  </div>
-                  {stage.meta?.length ? (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {stage.meta.map((meta) => (
-                        <span className="max-w-40 truncate text-[11px] text-muted-foreground" key={meta} title={meta}>
-                          {meta}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-              {stage.subtasks?.length ? (
-                <div className="mt-2 space-y-1.5 border-l pl-3">
-                  {stage.subtasks.map((subtask) => (
-                    <div className="flex items-start gap-2" key={subtask.id}>
-                      <MonitorStatusIcon status={subtask.status} />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm">{subtask.title}</div>
-                        {subtask.description ? (
-                          <div className="mt-0.5 break-words text-muted-foreground text-xs">{subtask.description}</div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <ExplorationStageEmptyState run={run} />
-      )}
-    </section>
-  );
-}
-
-function ExplorationStageEmptyState({ run }: { run: ExplorationRun | null }) {
-  const pending = run?.status === "pending";
-  const title = pending ? "等待开始探索" : "暂无阶段信息";
-  const description = pending ? "点击开始探索后，这里会显示阶段清单。" : "当前还没有可展示的阶段进度。";
-  return (
-    <div className="grid min-h-[280px] place-items-center rounded-md border bg-background/70 p-6 text-center">
-      <div className="max-w-sm space-y-2">
-        <div className="mx-auto flex size-9 items-center justify-center rounded-md bg-muted text-muted-foreground">
-          <ListChecks className="size-4" />
-        </div>
-        <div className="font-medium text-sm">{title}</div>
-        <p className="text-muted-foreground text-xs">{description}</p>
-      </div>
-    </div>
-  );
-}
-
-function ExplorationConversationPanel({
-  loading,
-  monitor,
-  run,
-}: {
-  loading: boolean;
-  monitor: ExplorationMonitorState;
-  run: ExplorationRun | null;
-}) {
-  const timeline = useMemo(() => buildExplorationConversationEntries(monitor), [monitor]);
-  const phaseLabel = monitorPhaseLabel(monitor.phase, run?.status);
-  const eventListRef = useRef<HTMLDivElement | null>(null);
-  const shouldFollowBottomRef = useRef(true);
-  const previousLatestEventKeyRef = useRef("");
-  const [unreadEventCount, setUnreadEventCount] = useState(0);
-
-  const latestEventKey = useMemo(() => {
-    const latestItem = timeline.at(-1);
-    if (!latestItem) {
-      return "";
-    }
-    return JSON.stringify([
-      timeline.length,
-      latestItem.id,
-      latestItem.status,
-      latestItem.content,
-      latestItem.occurredAt,
-    ]);
-  }, [timeline]);
-
-  const isEventListAtBottom = useCallback((list: HTMLDivElement) => {
-    const distanceToBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
-    return distanceToBottom < 96;
-  }, []);
-
-  const scrollToLatestEvent = useCallback(() => {
-    const list = eventListRef.current;
-    if (!list) {
-      return;
-    }
-    list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
-    shouldFollowBottomRef.current = true;
-    setUnreadEventCount(0);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!latestEventKey) {
-      return;
-    }
-    if (previousLatestEventKeyRef.current === latestEventKey) {
-      return;
-    }
-    previousLatestEventKeyRef.current = latestEventKey;
-    const list = eventListRef.current;
-    if (!list) {
-      return;
-    }
-    const shouldFollowLatest = shouldFollowBottomRef.current || isEventListAtBottom(list);
-    if (!shouldFollowLatest) {
-      setUnreadEventCount((current) => current + 1);
-      return;
-    }
-    window.requestAnimationFrame(() => {
-      list.scrollTo({ top: list.scrollHeight });
-      shouldFollowBottomRef.current = true;
-      setUnreadEventCount(0);
-    });
-  }, [isEventListAtBottom, latestEventKey]);
-
-  const handleEventListScroll = useCallback(() => {
-    const list = eventListRef.current;
-    if (!list) {
-      return;
-    }
-    const isAtBottom = isEventListAtBottom(list);
-    shouldFollowBottomRef.current = isAtBottom;
-    if (isAtBottom) {
-      setUnreadEventCount(0);
-    }
-  }, [isEventListAtBottom]);
-
-  return (
-    <section className="min-h-0 min-w-0 overflow-hidden">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="font-medium text-sm">对话与执行</h2>
-          <p className="text-muted-foreground text-xs">展示 Agent 分析、工具调用和关键执行结果。</p>
-        </div>
-        <StatusBadge tone={monitorPhaseTone(monitor.phase, run?.status)}>{phaseLabel}</StatusBadge>
-      </div>
-
-      {loading ? (
-        <div className="grid min-h-[280px] place-items-center rounded-md border bg-background/70 p-6 text-center text-muted-foreground text-sm">
-          对话流加载中...
-        </div>
-      ) : timeline.length ? (
-        <div className="min-h-0 flex-1 space-y-0 overflow-y-auto" onScroll={handleEventListScroll} ref={eventListRef}>
-          {timeline.map((item) =>
-            item.kind === "message" ? (
-              <ConversationMessageBubble item={item} key={item.id} />
-            ) : (
-              <ToolCallInlineBlock item={item} key={item.id} />
-            ),
-          )}
-          {unreadEventCount > 0 ? (
-            <div className="sticky bottom-2 z-10 flex justify-center">
-              <Button className="h-8 rounded-md shadow-md" onClick={scrollToLatestEvent} size="sm" type="button">
-                <ArrowDown className="size-3.5" />
-                {unreadEventCount} 条新内容
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      ) : (
-        <div className="grid min-h-[280px] place-items-center rounded-md border bg-background/70 p-6 text-center text-muted-foreground text-sm">
-          等待探索开始后显示对话与执行过程。
-        </div>
-      )}
-    </section>
-  );
-}
-
-function ConversationMessageBubble({ item }: { item: ExplorationConversationEntry }) {
-  return (
-    <div className="border-b py-3 text-sm last:border-b-0">
-      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <span className="truncate">{item.title}</span>
-        <span className="shrink-0">{formatDateTime(item.occurredAt)}</span>
-      </div>
-      <div className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{item.content}</div>
-      {item.fields.length ? <ToolCallInlineDetails fields={item.fields} chips={item.chips} /> : null}
-    </div>
-  );
-}
-
-function ToolCallInlineBlock({ item }: { item: ExplorationConversationEntry }) {
-  const [expanded, setExpanded] = useState(item.status === "running" || item.status === "failed");
-  return (
-    <div className="border-b py-3 text-sm last:border-b-0">
-      <button
-        className="flex w-full items-start gap-2 text-left transition-colors hover:bg-muted/20"
-        onClick={() => setExpanded((current) => !current)}
-        type="button"
-      >
-        <span className="shrink-0 pt-0.5 text-muted-foreground">
-          {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-        </span>
-        <MonitorStatusIcon status={item.status} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="truncate font-medium">{item.title}</div>
-              <div className="mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-muted-foreground text-xs">
-                {item.content}
-              </div>
-            </div>
-            <span className="shrink-0 text-[11px] text-muted-foreground">{formatDateTime(item.occurredAt)}</span>
-          </div>
-          {item.chips?.length ? (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {item.chips.map((chip) => (
-                <span className="max-w-28 truncate text-[11px] text-muted-foreground" key={chip} title={chip}>
-                  {chip}
-                </span>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </button>
-      {expanded ? (
-        <div className="space-y-3 pt-2 pl-6">
-          <ToolCallInlineDetails fields={item.fields} />
-          <div className="flex items-center gap-2 text-muted-foreground text-xs">
-            {item.status === "running" ? <Loader2 className="size-3 animate-spin" /> : null}
-            <span>{monitorStepLabel(item.status)}</span>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function ToolCallInlineDetails({ chips = [], fields }: { chips?: string[]; fields: ReadableExecutionField[] }) {
-  return (
-    <div className="space-y-2">
-      {fields.length ? (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {fields.map((field) => (
-            <ReadableExecutionFieldRow field={field} key={`${field.label}-${field.value}`} />
-          ))}
-        </div>
-      ) : null}
-      {chips.length ? (
-        <div className="flex flex-wrap gap-1">
-          {chips.map((chip) => (
-            <span className="text-[11px] text-muted-foreground" key={chip}>
-              {chip}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function buildTemplatePlanTasks(monitor: ExplorationMonitorState): AgentPlanTask[] {
-  const planSteps = monitor.plan?.steps ?? [];
-  if (!planSteps.length) {
-    return buildMonitorModuleTasks(monitor);
+      </ShellSection>
+    );
   }
 
-  const statusByStep = new Map(monitor.steps.map((step) => [step.step_id, step.status]));
-  const groupedByModule = new Map<string, ExplorationMonitorPlanStep[]>();
-  for (const step of planSteps) {
-    const key = step.module_name || "模板步骤";
-    const group = groupedByModule.get(key) ?? [];
-    group.push(step);
-    groupedByModule.set(key, group);
-  }
-
-  return Array.from(groupedByModule.entries()).map(([moduleName, steps], index) => {
-    const subtasks = steps.map((step) => {
-      const status = statusByStep.get(step.step_id) ?? "queued";
-      return {
-        id: step.step_id,
-        title: `${step.step_number}. ${step.description || step.action_type || "探索步骤"}`,
-        description: [step.target_description, step.expected_result].filter(Boolean).join(" · "),
-        status,
-        meta: [step.action_type, step.target_selector].filter(Boolean),
-      };
-    });
-    const completedCount = subtasks.filter((item) => item.status === "completed").length;
-    const failedCount = subtasks.filter((item) => item.status === "failed" || item.status === "blocked").length;
-    const runningCount = subtasks.filter((item) => item.status === "running" || item.status === "in-progress").length;
-    const status: AgentPlanStatus = failedCount
-      ? "failed"
-      : runningCount
-        ? "running"
-        : completedCount === subtasks.length
-          ? "completed"
-          : "queued";
-    return {
-      id: `template-step-group-${index}-${moduleName}`,
-      title: moduleName,
-      status,
-      meta: [`${steps.length} 步骤`],
-      subtasks,
-    };
-  });
-}
-
-function MonitorStatusIcon({ status }: { status: AgentPlanStatus }) {
-  if (status === "completed") {
-    return <Check className="size-3.5 shrink-0 text-green-500" />;
-  }
-  if (status === "running" || status === "in-progress" || status === "queued" || status === "stopping") {
-    return <CircleDotDashed className="size-3.5 shrink-0 text-blue-500" />;
-  }
-  if (status === "failed" || status === "blocked") {
-    return <CircleX className="size-3.5 shrink-0 text-red-500" />;
-  }
-  if (status === "partial" || status === "cancelled" || status === "waiting_human") {
-    return <CircleAlert className="size-3.5 shrink-0 text-amber-500" />;
-  }
-  return <Circle className="size-3.5 shrink-0 text-muted-foreground" />;
-}
-
-function monitorStepTone(status: AgentPlanStatus): StatusBadgeTone {
-  if (status === "completed") return "success";
-  if (status === "failed" || status === "blocked") return "destructive";
-  if (status === "running" || status === "in-progress") return "processing";
-  if (status === "partial" || status === "cancelled") return "warning";
-  return "neutral";
-}
-
-function monitorStepLabel(status: AgentPlanStatus): string {
-  if (status === "completed") return "已完成";
-  if (status === "failed") return "失败";
-  if (status === "blocked") return "阻塞";
-  if (status === "running" || status === "in-progress") return "进行中";
-  if (status === "partial") return "部分完成";
-  if (status === "cancelled") return "已取消";
-  if (status === "waiting_human") return "待确认";
-  if (status === "queued" || status === "pending") return "待执行";
-  return status;
-}
-
-function monitorPhaseLabel(phase: string, runStatus?: string): string {
-  if (runStatus === "completed") return "已完成";
-  if (runStatus === "failed") return "已失败";
-  if (runStatus === "cancelled") return "已取消";
-  if (phase === "planning") return "规划中";
-  if (phase === "executing") return "执行中";
-  return "进行中";
-}
-
-function monitorPhaseTone(phase: string, runStatus?: string): StatusBadgeTone {
-  if (runStatus === "completed") return "success";
-  if (runStatus === "failed") return "destructive";
-  if (runStatus === "cancelled") return "warning";
-  if (phase === "planning") return "processing";
-  return "processing";
-}
-
-function ReadableExecutionFieldRow({ field }: { field: ReadableExecutionField }) {
-  const toneClass =
-    field.tone === "danger"
-      ? "text-red-600 dark:text-red-400"
-      : field.tone === "warning"
-        ? "text-amber-600 dark:text-amber-400"
-        : field.tone === "success"
-          ? "text-green-600 dark:text-green-400"
-          : "";
+  // 使用新的双栏布局组件
   return (
-    <div className="grid gap-1">
-      <div className="text-[11px] text-muted-foreground">{field.label}</div>
-      <div
-        className={
-          field.mono
-            ? `whitespace-pre-wrap break-words rounded bg-background p-2 font-mono text-xs ${toneClass}`
-            : `whitespace-pre-wrap break-words text-xs ${toneClass}`
-        }
-      >
-        {field.value}
-      </div>
-    </div>
+    <ShellSection>
+      <ExplorationTaskInfoPanel monitor={monitor} loading={loading} />
+    </ShellSection>
   );
 }
 
