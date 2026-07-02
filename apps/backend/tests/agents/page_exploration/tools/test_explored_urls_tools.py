@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 import yaml
 
-from app.agents.page_exploration.tools.explored_urls_tools import (
+from app.agents.page_exploration.tools.state_tools import (
     check_explored_url_tool,
     update_explored_url_tool,
 )

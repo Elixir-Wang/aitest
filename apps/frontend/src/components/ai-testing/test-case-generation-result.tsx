@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
-export type GeneratedTestCase = {
+type GeneratedTestCase = {
   id: string;
   module: string;
   title: string;
@@ -21,7 +21,7 @@ export type GeneratedTestCase = {
   notes: string;
 };
 
-export type GeneratedTestCaseModule = {
+type GeneratedTestCaseModule = {
   module_name: string;
   test_cases: GeneratedTestCase[];
 };

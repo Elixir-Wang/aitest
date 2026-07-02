@@ -57,7 +57,7 @@ test("finalized requirement display status is not overridden by terminal analysi
 
 test("requirement batch delete reports partial failures with concrete document names", () => {
   assert.match(pageSource, /export type RequirementDeleteResult =/);
-  assert.match(pageSource, /export function summarizeRequirementDeleteResults/);
+  assert.match(pageSource, /function summarizeRequirementDeleteResults/);
   assert.match(pageSource, /Promise\.all\(\s*targets\.map\(async \(row\): Promise<RequirementDeleteResult> =>/);
   assert.match(
     pageSource,

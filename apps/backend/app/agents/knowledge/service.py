@@ -134,7 +134,7 @@ def _agent_payload(input_data: KnowledgeQueryInput) -> dict[str, Any]:
                         "可搜索文件：",
                         "\n".join(f"- {path}" for path in sorted(files)) or "无。",
                         "",
-                        "说明：以上路径是 Deep Agents StateBackend 虚拟绝对路径，必须按清单原样使用；每个 Markdown 文件顶部都有 JSON 元数据注释，生成 source_refs 时必须使用其中的字段。",
+                        "说明：以上路径是 Deep Agents StateBackend 虚拟绝对路径，必须按清单原样使用；每个 Markdown 文件顶部都有 JSON 元数据注释，可用于判断 used_requirement_versions 和 used_company_knowledge_files。",
                     ]
                 ),
             }
@@ -368,9 +368,9 @@ def _strip_structured_output_artifacts(text: str) -> str:
     cleaned = re.sub(r"<\s*/?\s*KnowledgeQueryOutput\s*>", "", text, flags=re.IGNORECASE | re.DOTALL)
     cleaned = re.sub(r"<\s*answer\s*>", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
     return re.split(
-        r"<\s*/\s*answer\s*>|<\s*source_refs\b|<\s*/\s*source_refs\s*>|<\s*used_requirement_versions\b|"
+        r"<\s*/\s*answer\s*>|<\s*used_requirement_versions\b|"
         r"<\s*used_company_knowledge_files\b|<\s*knowledge_queried\b|"
-        r"^\s*(?:source_refs|used_requirement_versions|used_company_knowledge_files|knowledge_queried)\s*:",
+        r"^\s*(?:used_requirement_versions|used_company_knowledge_files|knowledge_queried)\s*:",
         cleaned,
         maxsplit=1,
         flags=re.IGNORECASE | re.MULTILINE | re.DOTALL,
@@ -438,14 +438,11 @@ def _safe_visible_prefix_length(text: str) -> int:
     lower = text.lower()
     structured_prefixes = (
         "</answer",
-        "<source_refs",
-        "</source_refs",
         "<used_requirement_versions",
         "<used_company_knowledge_files",
         "<knowledge_queried",
         "<knowledgequeryoutput",
         "</knowledgequeryoutput",
-        "source_refs:",
         "used_requirement_versions:",
         "used_company_knowledge_files:",
         "knowledge_queried:",
@@ -466,9 +463,9 @@ def _safe_visible_prefix_length(text: str) -> int:
 
 def _structured_output_tail_match(text: str) -> re.Match[str] | None:
     return re.search(
-        r"<\s*/\s*answer\s*>|<\s*source_refs\b|<\s*/\s*source_refs\s*>|<\s*used_requirement_versions\b|"
+        r"<\s*/\s*answer\s*>|<\s*used_requirement_versions\b|"
         r"<\s*used_company_knowledge_files\b|<\s*knowledge_queried\b|"
-        r"^\s*(?:source_refs|used_requirement_versions|used_company_knowledge_files|knowledge_queried)\s*:",
+        r"^\s*(?:used_requirement_versions|used_company_knowledge_files|knowledge_queried)\s*:",
         text,
         flags=re.IGNORECASE | re.MULTILINE | re.DOTALL,
     )
@@ -536,11 +533,9 @@ def _looks_like_structured_json_delta(delta: str) -> bool:
         (
             '"answer"',
             '"knowledge_queried"',
-            '"source_refs"',
             '"used_requirement_versions"',
             '"used_company_knowledge_files"',
             "knowledge_queried:",
-            "source_refs:",
             "used_requirement_versions:",
             "used_company_knowledge_files:",
         )
@@ -565,4 +560,3 @@ def _message_content(message: Any) -> str:
                     parts.append(text)
         return "".join(parts)
     return ""
-

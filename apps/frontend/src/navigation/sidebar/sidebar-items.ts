@@ -15,7 +15,7 @@ import {
   Users,
 } from "lucide-react";
 
-export interface NavSubItem {
+interface NavSubItem {
   title: string;
   url: string;
   icon?: LucideIcon;

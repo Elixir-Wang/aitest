@@ -206,7 +206,6 @@ type ExplorationMonitorStep = ExplorationMonitorPlanStep & {
     title: string;
     element_count: number;
   };
-  screenshot_path: string;
 };
 
 type ExplorationMonitorEvent = {
@@ -574,7 +573,9 @@ function mergeDetailSnapshot(
 }
 
 function monitorFromRunDetail(detail: ExplorationRunDetail): ExplorationMonitorState {
-  const steps = monitorStepsFromDetail(detail);
+  const detailSteps = monitorStepsFromDetail(detail);
+  const persistedPlanSteps = monitorStepsFromPersistedPlanEvents(detail);
+  const steps = detailSteps.length ? mergeMonitorSteps(persistedPlanSteps, detailSteps) : persistedPlanSteps;
   return {
     phase: monitorPhaseFromRunStatus(detail.run.status),
     plan: monitorPlanFromDetail(detail, steps),
@@ -599,6 +600,34 @@ function monitorStepsFromDetail(detail: ExplorationRunDetail): ExplorationMonito
     }
   }
   return steps;
+}
+
+function monitorStepsFromPersistedPlanEvents(detail: ExplorationRunDetail): ExplorationMonitorStep[] {
+  const timelineEvents = Array.isArray(detail.timeline_events) ? detail.timeline_events : [];
+  let latestSteps: ExplorationMonitorStep[] = [];
+  for (const event of timelineEvents) {
+    if (event.type !== "agent_plan_updated") {
+      continue;
+    }
+    const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+    const rawPlanSteps = Array.isArray(payload.plan_steps) ? payload.plan_steps : [];
+    const planSteps = normalizeMonitorPlanSteps(rawPlanSteps);
+    if (!planSteps.length) {
+      continue;
+    }
+    const occurredAt = stringValue(event.occurred_at || event.timestamp);
+    latestSteps = planSteps.map((planStep, index) => {
+      const rawPlanStep = rawPlanSteps[index] && typeof rawPlanSteps[index] === "object" ? rawPlanSteps[index] : {};
+      const status = normalizeAgentPlanStatus(stringValue((rawPlanStep as Record<string, unknown>).status));
+      return {
+        ...emptyMonitorStep(planStep),
+        status,
+        total_steps: planSteps.length,
+        completed_at: status === "completed" ? occurredAt : "",
+      };
+    });
+  }
+  return latestSteps;
 }
 
 function monitorPlanStepFromDetailStep(
@@ -806,7 +835,6 @@ function monitorStepFromPayload(
     retryable: Boolean(payload.retryable),
     matched_element: monitorMatchedElement(payload.matched_element),
     page_state: monitorPageState(payload.page_state),
-    screenshot_path: stringValue(payload.screenshot_path),
   };
 }
 
@@ -825,7 +853,6 @@ function emptyMonitorStep(planStep: ExplorationMonitorPlanStep): ExplorationMoni
     retryable: false,
     matched_element: { id: "", role: "", name: "", selector: "" },
     page_state: { url: "", title: "", element_count: 0 },
-    screenshot_path: "",
   };
 }
 
@@ -1222,7 +1249,7 @@ function _resolveModulePlanStatus(runStatus: string, moduleStatus: string): Agen
 }
 
 function normalizeAgentPlanStatus(status: string): AgentPlanStatus {
-  if (status === "running" || status === "queued" || status === "in-progress") {
+  if (status === "running" || status === "queued" || status === "in-progress" || status === "in_progress") {
     return "running";
   }
   if (status === "stopping") {
@@ -1545,7 +1572,7 @@ export default function Page() {
         <DialogContent className="gap-5 p-6 sm:max-w-md">
           <DialogHeader className="gap-3">
             <DialogTitle>停止探索任务</DialogTitle>
-            <DialogDescription>停止后将终止当前浏览器探索进程，已生成的截图、日志和页面事实会保留。</DialogDescription>
+            <DialogDescription>停止后将终止当前浏览器探索进程，已生成的日志和页面事实会保留。</DialogDescription>
           </DialogHeader>
           <DialogFooter className="-mx-6 -mb-6 px-6 py-4">
             <Button onClick={() => setStopDialogOpen(false)} type="button" variant="outline">

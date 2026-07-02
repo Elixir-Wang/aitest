@@ -52,15 +52,6 @@ async def analyze_requirement_with_agent(input_data: RequirementAnalysisRunInput
     return await run_requirement_analysis(input_data)
 
 
-def _map_langgraph_quality_result(result: str) -> str:
-    mapping = {
-        "approved": "passed",
-        "conditional": "warning",
-        "rejected": "blocked",
-    }
-    return mapping.get(result, "blocked")
-
-
 def _normalize_markdown_text(value: object) -> str:
     text = str(value or "")
     if "\\" in text:
@@ -365,10 +356,6 @@ def get_document_overview(project_id: str, document_id: str, actor) -> dict:
     }
 
 
-async def analyze_document_requirement(project_id: str, document_id: str, actor) -> dict:
-    return await review_primary_requirement_file(project_id, document_id, actor)
-
-
 def start_requirement_review_run(project_id: str, document_id: str, actor) -> dict:
     actor_data = dict(actor)
     with connect() as db:
@@ -598,9 +585,7 @@ async def execute_requirement_review_run(run_id: str, actor) -> None:
     )
 
 
-async def review_primary_requirement_file(project_id: str, document_id: str, actor, *, task_id: str | None = None) -> dict:
-    if not task_id:
-        raise api_error(400, "REQUIREMENT_ANALYSIS_RUN_REQUIRED", "需求分析必须通过运行任务执行。")
+async def review_primary_requirement_file(project_id: str, document_id: str, actor, *, task_id: str) -> dict:
     with connect() as db:
         document = document_repo.find_by_project_and_id(db, project_id, document_id)
         if not document:
@@ -616,8 +601,7 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
         if not markdown_path.exists():
             raise api_error(404, "DOCUMENT_MARKDOWN_MISSING", "主需求标准文件不存在。")
 
-    if task_id:
-        _ensure_requirement_analysis_run_not_stopping(task_id)
+    _ensure_requirement_analysis_run_not_stopping(task_id)
 
     analysis_input = RequirementAnalysisRunInput(run_id=task_id)
     try:
@@ -627,8 +611,7 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
     except Exception as exc:
         raise api_error(502, "REQUIREMENT_ANALYSIS_AGENT_FAILED", f"需求分析智能体运行失败：{exc}") from exc
 
-    if task_id:
-        _ensure_requirement_analysis_run_not_stopping(task_id)
+    _ensure_requirement_analysis_run_not_stopping(task_id)
 
     output_data = _output_from_analysis_result(analysis_output)
 
@@ -1633,16 +1616,6 @@ def _append_to_matching_section(markdown_content: str, block: str, candidates: l
             break
     next_lines = [*lines[:insert_at], "", block, "", *lines[insert_at:]]
     return "\n".join(next_lines).strip() + "\n"
-
-
-def _active_unresolved_count(output: dict) -> int:
-    count = 0
-    for item in output.get("clarification_items") or []:
-        answer = item.get("answer") or {}
-        if answer.get("apply_status") in {"applied", "not_applicable"}:
-            continue
-        count += 1
-    return count
 
 
 def _version_markdown_path(project_id: str, document_id: str, version_no: int) -> Path:

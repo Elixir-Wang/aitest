@@ -1,0 +1,24 @@
+page:
+  id: page-agent-create
+  title: 百融百工
+  normalized_path: /agent/create
+  structure_summary: 自动保存页面快照，发现 0 个元素。
+  path_hash: sha256-5eb6e28b1329af2e
+  env_urls:
+    test: https://www.cybotstar.cn/agent/create
+  last_explored:
+    run_id: exp_Z--zfm2jCwKmBiIoCDqg2w
+    timestamp: '2026-07-02T16:18:21.311215Z'
+states:
+- id: snapshot-current
+  title: 百融百工
+  url: https://www.cybotstar.cn/agent/create
+  elements: []
+  raw_output: ''
+quality: {}
+metadata:
+  captured_at: '2026-07-02T16:17:16.343345+00:00'
+  source: page_exploration_run
+  source_run_id: exp_Z--zfm2jCwKmBiIoCDqg2w
+  source_artifact_path: /Users/wanghongbao/project/test_project/apps/backend/data/projects/project-75fec50973f2adf6/page_exploration/runs/exp_Z--zfm2jCwKmBiIoCDqg2w/pages/page-agent-create.yaml
+  module: 主探索模块

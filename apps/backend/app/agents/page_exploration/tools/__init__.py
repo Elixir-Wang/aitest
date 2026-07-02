@@ -75,11 +75,6 @@ def get_local_tools() -> list:
     return list(ALL_PAGE_EXPLORATION_TOOLS)
 
 
-def get_exploration_tools() -> list:
-    """获取探索工具（向后兼容别名）"""
-    return get_local_tools()
-
-
 __all__ = [
     # 导航工具
     "playwright_navigate_tool",
@@ -100,5 +95,4 @@ __all__ = [
     "ALL_PAGE_EXPLORATION_TOOLS",
     # 便捷函数
     "get_local_tools",
-    "get_exploration_tools",
 ]

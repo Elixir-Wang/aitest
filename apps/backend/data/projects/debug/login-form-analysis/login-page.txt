@@ -1,1 +1,0 @@
-{"username_element_id": "login-el-user", "password_element_id": "login-el-password", "captcha_image_element_id": "login-el-captcha-image", "captcha_input_element_id": "login-el-captcha-input", "agreement_element_id": "login-el-agreement", "login_button_element_id": "login-el-button"}

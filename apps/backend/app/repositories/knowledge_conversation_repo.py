@@ -34,17 +34,6 @@ def create(db: Connection, *, conversation_id: str, project_id: str, title: str,
     return db.execute("SELECT * FROM knowledge_conversations WHERE id = ?", (conversation_id,)).fetchone()
 
 
-def rename(db: Connection, conversation_id: str, title: str) -> None:
-    db.execute(
-        """
-        UPDATE knowledge_conversations
-        SET title = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-        """,
-        (title, conversation_id),
-    )
-
-
 def touch(db: Connection, conversation_id: str) -> None:
     db.execute(
         """
@@ -78,21 +67,19 @@ def create_message(
     conversation_id: str,
     role: str,
     content: str,
-    source_refs: list[dict] | None = None,
     used_requirement_versions: list[str] | None = None,
 ) -> Row:
     db.execute(
         """
         INSERT INTO knowledge_conversation_messages
-          (id, conversation_id, role, content, source_refs_json, used_requirement_versions_json)
-        VALUES (?, ?, ?, ?, ?, ?)
+          (id, conversation_id, role, content, used_requirement_versions_json)
+        VALUES (?, ?, ?, ?, ?)
         """,
         (
             message_id,
             conversation_id,
             role,
             content,
-            json.dumps(source_refs or [], ensure_ascii=False),
             json.dumps(used_requirement_versions or [], ensure_ascii=False),
         ),
     )

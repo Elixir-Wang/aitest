@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -10,6 +10,7 @@ import {
   CircleHelp,
   Eye,
   EyeOff,
+  FileCode2,
   FileText,
   Folder,
   FolderOpen,
@@ -109,11 +110,17 @@ type ExplorationPageRecord = {
   url: string;
   entry_path: string;
   structure_summary: string;
-  screenshot_path: string;
   snapshot_path: string;
   trace_path: string;
   created_at: string;
   updated_at: string;
+};
+
+type ExplorationPageYamlContent = {
+  page_id: string;
+  file_name: string;
+  file_path: string;
+  content: string;
 };
 
 type ExplorationPageTreeNode = {
@@ -394,7 +401,7 @@ function ExplorationProjectPagesTree({
   onPageSelect,
   onToggleNode,
   pages,
-  projectName,
+  projectId,
   selectedPageId,
 }: {
   expandedNodeIds: string[];
@@ -402,13 +409,16 @@ function ExplorationProjectPagesTree({
   onPageSelect: (pageId: string) => void;
   onToggleNode: (nodeId: string) => void;
   pages: ExplorationPageRecord[];
-  projectName: string;
+  projectId: string;
   selectedPageId: string;
 }) {
   const tree = useMemo(() => buildPageTree(pages), [pages]);
   const selectedNode = selectedPageId ? findPageNode(tree, selectedPageId) : null;
   const selectedPage = selectedNode?.page ?? pages[0] ?? null;
   const effectiveExpandedIds = expandedNodeIds.length > 0 ? expandedNodeIds : collectPageFolderIds(tree);
+  const [yamlContent, setYamlContent] = useState<ExplorationPageYamlContent | null>(null);
+  const [yamlLoading, setYamlLoading] = useState(false);
+  const [yamlError, setYamlError] = useState("");
 
   useEffect(() => {
     if (!selectedPageId && pages[0]) {
@@ -416,13 +426,46 @@ function ExplorationProjectPagesTree({
     }
   }, [onPageSelect, pages, selectedPageId]);
 
+  useEffect(() => {
+    if (!selectedPage?.id || !projectId) {
+      setYamlContent(null);
+      setYamlError("");
+      return;
+    }
+
+    let ignore = false;
+    setYamlLoading(true);
+    setYamlError("");
+
+    async function loadYamlContent() {
+      try {
+        const data = await apiRequest<ExplorationPageYamlContent>(
+          `/page-exploration/projects/${projectId}/pages/${selectedPage.id}/yaml`,
+        );
+        if (!ignore) {
+          setYamlContent(data);
+        }
+      } catch (requestError) {
+        if (!ignore) {
+          setYamlContent(null);
+          setYamlError(requestError instanceof Error ? requestError.message : "YAML 文件加载失败");
+        }
+      } finally {
+        if (!ignore) {
+          setYamlLoading(false);
+        }
+      }
+    }
+
+    void loadYamlContent();
+
+    return () => {
+      ignore = true;
+    };
+  }, [projectId, selectedPage?.id]);
+
   return (
     <div className="overflow-hidden rounded-lg border bg-background">
-      <div className="flex h-12 items-center gap-2 border-b px-3">
-        <div className="min-w-0">
-          <h2 className="truncate font-medium text-sm">{projectName}</h2>
-        </div>
-      </div>
       {loading ? (
         <div className="p-6">
           <Table>
@@ -453,24 +496,7 @@ function ExplorationProjectPagesTree({
           </aside>
           <main className="min-w-0 p-4">
             {selectedPage ? (
-              <div className="space-y-4">
-                <div>
-                  <h3 className="font-medium text-base">{selectedPage.title || "未命名页面"}</h3>
-                  <p className="mt-1 break-all text-muted-foreground text-xs">{pageDisplayPath(selectedPage)}</p>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <PageInfoTile label="页面地址" value={selectedPage.url || "-"} />
-                  <PageInfoTile label="模块" value={selectedPage.module_key || "-"} />
-                  <PageInfoTile label="截图" value={selectedPage.screenshot_path || "-"} />
-                  <PageInfoTile label="快照" value={selectedPage.snapshot_path || "-"} />
-                </div>
-                <div className="rounded-lg border p-4">
-                  <div className="mb-2 font-medium text-sm">页面信息</div>
-                  <p className="whitespace-pre-wrap text-muted-foreground text-sm">
-                    {selectedPage.structure_summary || "暂无页面结构摘要。"}
-                  </p>
-                </div>
-              </div>
+              <YamlCodePreview content={yamlContent?.content ?? ""} error={yamlError} loading={yamlLoading} />
             ) : null}
           </main>
         </div>
@@ -560,11 +586,111 @@ function ExplorationPageTreeItem({
   );
 }
 
-function PageInfoTile({ label, value }: { label: string; value: string }) {
+function renderYamlValue(value: string): ReactNode {
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  if (trimmed.startsWith("#")) return <span className="text-slate-400">{value}</span>;
+  if (/^["'].*["']$/.test(trimmed)) {
+    return <span className="text-emerald-700 dark:text-emerald-300">{value}</span>;
+  }
+  if (/^(true|false|null)$/i.test(trimmed)) {
+    return <span className="font-medium text-violet-700 dark:text-violet-300">{value}</span>;
+  }
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+    return <span className="font-medium text-blue-700 dark:text-blue-300">{value}</span>;
+  }
+  return <span className="text-slate-700 dark:text-slate-200">{value}</span>;
+}
+
+function renderYamlLine(line: string): ReactNode {
+  if (!line.trim()) return <span>&nbsp;</span>;
+
+  const commentIndex = line.indexOf("#");
+  const content = commentIndex >= 0 ? line.slice(0, commentIndex) : line;
+  const comment = commentIndex >= 0 ? line.slice(commentIndex) : "";
+  const match = content.match(/^(\s*)(-\s*)?([^:#]+?)(\s*:\s*)(.*)$/);
+
+  if (!match) {
+    return (
+      <>
+        <span className="text-slate-700 dark:text-slate-200">{content}</span>
+        {comment ? <span className="text-slate-400">{comment}</span> : null}
+      </>
+    );
+  }
+
+  const [, indent, dash = "", key, colon, value] = match;
   return (
-    <div className="rounded-lg border bg-muted/10 p-3">
-      <div className="text-muted-foreground text-xs">{label}</div>
-      <div className="mt-1 break-all text-sm">{value}</div>
+    <>
+      <span>{indent}</span>
+      {dash ? <span className="text-amber-600 dark:text-amber-300">{dash}</span> : null}
+      <span className="font-semibold text-cyan-800 dark:text-cyan-200">{key}</span>
+      <span className="text-slate-400">{colon}</span>
+      {renderYamlValue(value)}
+      {comment ? <span className="text-slate-400">{comment}</span> : null}
+    </>
+  );
+}
+
+function YamlCodePreview({ content, error, loading }: { content: string; error: string; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="grid min-h-72 place-items-center rounded-lg border border-dashed bg-slate-50 text-muted-foreground text-sm dark:bg-slate-950/40">
+        <div className="flex items-center gap-2">
+          <Loader className="size-4" />
+          YAML 文件加载中
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg border border-destructive/30 bg-destructive/8 p-4 text-destructive text-sm">
+        {error}
+      </div>
+    );
+  }
+
+  const lines = content
+    ? content.split("\n").map((line, index) => ({
+        id: `${index + 1}:${line}`,
+        line,
+        number: index + 1,
+      }))
+    : [];
+  if (lines.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground text-sm">
+        暂无 YAML 内容。
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border bg-slate-50 shadow-sm dark:bg-slate-950/60">
+      <div className="flex h-9 items-center justify-between border-b bg-white/80 px-3 dark:bg-slate-900/70">
+        <div className="flex items-center gap-2 font-medium text-slate-700 text-xs dark:text-slate-200">
+          <FileCode2 className="size-3.5 text-cyan-700 dark:text-cyan-300" />
+          YAML
+        </div>
+        <div className="text-slate-400 text-xs">{lines.length} 行</div>
+      </div>
+      <pre className="max-h-[34rem] overflow-auto p-0 font-mono text-[12px] leading-6">
+        {lines.map((line) => (
+          <div
+            className="grid grid-cols-[3.5rem_minmax(0,1fr)] border-slate-200/55 border-b last:border-b-0 dark:border-slate-800/70"
+            key={line.id}
+          >
+            <span className="select-none border-r bg-slate-100/70 px-3 text-right text-slate-400 dark:border-slate-800 dark:bg-slate-900/70">
+              {line.number}
+            </span>
+            <code className="min-w-0 whitespace-pre-wrap break-words px-3 text-slate-700 dark:text-slate-200">
+              {renderYamlLine(line.line)}
+            </code>
+          </div>
+        ))}
+      </pre>
     </div>
   );
 }
@@ -1594,7 +1720,7 @@ export function ExplorationWorkspace({
                   )
                 }
                 pages={projectPages}
-                projectName={selectedArtifactProject.project_name}
+                projectId={selectedArtifactProject.project_id}
                 selectedPageId={selectedPageId}
               />
             </div>
@@ -1864,7 +1990,7 @@ export function ExplorationWorkspace({
         <DialogContent className="gap-5 p-6 sm:max-w-md">
           <DialogHeader className="gap-3">
             <DialogTitle>停止探索任务</DialogTitle>
-            <DialogDescription>停止后将终止当前浏览器探索进程，已生成的截图、日志和页面事实会保留。</DialogDescription>
+            <DialogDescription>停止后将终止当前浏览器探索进程，已生成的日志和页面事实会保留。</DialogDescription>
           </DialogHeader>
           <DialogFooter className="-mx-6 -mb-6 px-6 py-4">
             <Button onClick={() => setStoppingExploration(null)} type="button" variant="outline">

@@ -448,59 +448,6 @@ def init_db() -> None:
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
-            CREATE TABLE IF NOT EXISTS global_knowledge_documents (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              knowledge_type TEXT NOT NULL,
-              scope TEXT NOT NULL DEFAULT '全部项目',
-              source_note TEXT NOT NULL DEFAULT '',
-              description TEXT NOT NULL DEFAULT '',
-              status TEXT NOT NULL CHECK(status IN ('processing', 'available', 'conversion_failed', 'archived')),
-              current_version_id TEXT,
-              created_by TEXT NOT NULL,
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              archived_at TEXT,
-              UNIQUE(name, knowledge_type)
-            );
-
-            CREATE TABLE IF NOT EXISTS global_knowledge_versions (
-              id TEXT PRIMARY KEY,
-              document_id TEXT NOT NULL,
-              version_no TEXT NOT NULL,
-              markdown_content TEXT NOT NULL DEFAULT '',
-              markdown_path TEXT NOT NULL DEFAULT '',
-              change_summary TEXT NOT NULL DEFAULT '',
-              conversion_status TEXT NOT NULL CHECK(conversion_status IN ('queued', 'running', 'success', 'failed')),
-              conversion_summary TEXT NOT NULL DEFAULT '',
-              created_by TEXT NOT NULL,
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              FOREIGN KEY(document_id) REFERENCES global_knowledge_documents(id) ON DELETE CASCADE,
-              UNIQUE(document_id, version_no)
-            );
-
-            CREATE TABLE IF NOT EXISTS global_knowledge_files (
-              id TEXT PRIMARY KEY,
-              version_id TEXT NOT NULL,
-              original_filename TEXT NOT NULL,
-              file_path TEXT NOT NULL,
-              file_type TEXT NOT NULL DEFAULT '',
-              file_size INTEGER NOT NULL DEFAULT 0,
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              FOREIGN KEY(version_id) REFERENCES global_knowledge_versions(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS global_knowledge_usage_logs (
-              id TEXT PRIMARY KEY,
-              global_knowledge_version_id TEXT NOT NULL,
-              usage_type TEXT NOT NULL,
-              target_project_id TEXT,
-              target_object_id TEXT NOT NULL DEFAULT '',
-              summary TEXT NOT NULL DEFAULT '',
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              FOREIGN KEY(global_knowledge_version_id) REFERENCES global_knowledge_versions(id) ON DELETE CASCADE
-            );
-
             CREATE TABLE IF NOT EXISTS global_knowledge_bases (
               id TEXT PRIMARY KEY,
               name TEXT NOT NULL UNIQUE,
@@ -566,9 +513,7 @@ def init_db() -> None:
               conversation_id TEXT NOT NULL,
               role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
               content TEXT NOT NULL,
-              source_refs_json TEXT NOT NULL DEFAULT '[]',
               used_requirement_versions_json TEXT NOT NULL DEFAULT '[]',
-              used_exploration_runs_json TEXT NOT NULL DEFAULT '[]',
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               FOREIGN KEY(conversation_id) REFERENCES knowledge_conversations(id) ON DELETE CASCADE
             );
@@ -578,9 +523,6 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_requirement_analysis_runs_status ON requirement_analysis_runs(status);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_requirement_clarification_answers_current ON requirement_clarification_answers(analysis_id, question_id);
             CREATE INDEX IF NOT EXISTS idx_requirement_clarification_answers_document ON requirement_clarification_answers(document_id, created_at);
-            CREATE INDEX IF NOT EXISTS idx_global_knowledge_documents_status ON global_knowledge_documents(status, updated_at);
-            CREATE INDEX IF NOT EXISTS idx_global_knowledge_documents_type ON global_knowledge_documents(knowledge_type, updated_at);
-            CREATE INDEX IF NOT EXISTS idx_global_knowledge_versions_document ON global_knowledge_versions(document_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_bases_updated ON global_knowledge_bases(updated_at);
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_folders_base_parent ON global_knowledge_folders(knowledge_base_id, parent_id, sort_order);
             CREATE INDEX IF NOT EXISTS idx_global_knowledge_vault_files_folder ON global_knowledge_vault_files(folder_id, sort_order, display_name);

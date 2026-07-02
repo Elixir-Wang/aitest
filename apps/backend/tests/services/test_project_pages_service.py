@@ -75,6 +75,8 @@ def test_save_and_get_page(pages_service):
     assert loaded_page['page']['normalized_path'] == '/workspace/agents'
     assert loaded_page['page']['structure_summary'] == '发现创建智能体入口。'
     assert 'test' in loaded_page['page']['env_urls']
+    assert set(loaded_page['page']['last_explored'].keys()) == {'timestamp', 'run_id'}
+    assert loaded_page['page']['last_explored']['run_id'] == 'run-001'
     assert len(loaded_page['states']) == 1
 
 
@@ -118,6 +120,41 @@ def test_update_page_with_new_env(pages_service):
     assert env_urls['prod'] == "https://prod.example.com/workspace/agents"
 
 
+def test_save_page_merges_same_normalized_path_with_different_page_id(pages_service):
+    """测试同一归一化路径使用已有页面产物自动合并"""
+    first_page_id = "page-workspace"
+    second_page_id = "page-workspace-2"
+    normalized_path = "/workspace"
+
+    pages_service.save_page(
+        page_id=first_page_id,
+        page_data={'title': '工作台', 'states': [], 'quality': {}, 'metadata': {}},
+        run_id="run-001",
+        url="https://test.example.com/workspace",
+        normalized_path=normalized_path,
+        env="test"
+    )
+
+    pages_service.save_page(
+        page_id=second_page_id,
+        page_data={'title': '工作台新版', 'states': [], 'quality': {}, 'metadata': {}},
+        run_id="run-002",
+        url="https://prod.example.com/workspace",
+        normalized_path=normalized_path,
+        env="prod"
+    )
+
+    loaded_page = pages_service.get_page(first_page_id)
+
+    assert loaded_page['page']['id'] == first_page_id
+    assert loaded_page['page']['title'] == '工作台新版'
+    assert loaded_page['page']['env_urls'] == {
+        'test': 'https://test.example.com/workspace',
+        'prod': 'https://prod.example.com/workspace',
+    }
+    assert not (pages_service.pages_dir / f"{second_page_id}.yaml").exists()
+
+
 def test_cache_check_miss(pages_service):
     """测试缓存未命中"""
     result = pages_service.check_cache("/workspace/agents")
@@ -155,6 +192,36 @@ def test_cache_check_hit(pages_service):
     assert result['cache_hit'] is True
     assert result['page_id'] == page_id
     assert 'last_explored_at' in result
+
+
+def test_cache_index_keeps_existing_page_id_for_same_normalized_path(pages_service):
+    """测试同一归一化路径更新缓存时复用已有页面ID"""
+    normalized_path = "/workspace"
+
+    pages_service.update_cache_index(
+        normalized_path=normalized_path,
+        page_id="page-workspace",
+        run_id="run-001",
+        page_signature={'title': '工作台'},
+        env_urls={'test': 'https://test.example.com/workspace'}
+    )
+
+    pages_service.update_cache_index(
+        normalized_path=normalized_path,
+        page_id="page-workspace-2",
+        run_id="run-002",
+        page_signature={'title': '工作台新版'},
+        env_urls={'prod': 'https://prod.example.com/workspace'}
+    )
+
+    entry = pages_service.get_cache_entry(normalized_path)
+
+    assert entry['page_id'] == "page-workspace"
+    assert entry['page_file'] == "pages/page-workspace.yaml"
+    assert entry['env_urls'] == {
+        'test': 'https://test.example.com/workspace',
+        'prod': 'https://prod.example.com/workspace',
+    }
 
 
 def test_find_page_by_path(pages_service):

@@ -3,7 +3,6 @@
 
 包含：
 - playwright_snap_tool: 捕获页面快照和元素信息
-- playwright_extract_elements_tool: 提取特定类型的元素（待实现）
 """
 
 from typing import Optional
@@ -70,41 +69,6 @@ def playwright_snap_tool(url: Optional[str] = None, session_id: Optional[str] = 
     }
 
 
-@tool
-def playwright_extract_elements_tool(
-    element_types: list[str], session_id: Optional[str] = None
-) -> dict:
-    """
-    Extract specific types of elements from the current page.
-
-    Use this tool to:
-    - Filter elements by type (button, link, input, etc.)
-    - Get a focused view of specific element types
-    - Reduce noise when looking for specific elements
-
-    Args:
-        element_types: List of element types to extract (e.g., ["button", "link"])
-        session_id: Optional session ID to maintain browser state
-
-    Returns:
-        A dictionary containing:
-        - elements: Filtered list of elements
-        - count: Number of elements found
-
-    Example:
-        result = playwright_extract_elements_tool(element_types=["button", "link"])
-        # Returns: {"elements": [...], "count": 15}
-    """
-    # TODO: 实现真实的提取逻辑
-    # 当前先返回占位符
-    return {
-        "elements": [],
-        "count": 0,
-        "error": "Not yet implemented - use playwright_snap_tool instead",
-    }
-
-
 __all__ = [
     "playwright_snap_tool",
-    "playwright_extract_elements_tool",
 ]

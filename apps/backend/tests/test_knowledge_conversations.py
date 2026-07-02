@@ -128,7 +128,6 @@ def test_knowledge_query_uses_agent_direct_reply_without_querying_sources(monkey
 
     assert captured_questions == ["你好"]
     assert result["answer"] == "你好，有什么可以帮你？"
-    assert "source_refs" not in result
     assert "used_requirement_versions" not in result
 
 
@@ -172,7 +171,6 @@ def test_project_knowledge_query_collects_company_knowledge_by_default(monkeypat
 
     assert captured_sources == [["requirement", "company_knowledge"]]
     assert result["answer"] == "已结合项目需求和公司知识库。"
-    assert "source_refs" not in result
     assert "used_requirement_versions" not in result
 
 
@@ -227,7 +225,6 @@ def test_project_knowledge_stream_timeout_persists_conversation(monkeypatch, tmp
 def test_all_project_knowledge_query_collects_active_project_sources(monkeypatch, tmp_path) -> None:
     from app.core import db as core_db
     from app.schemas.knowledge import KnowledgeQueryOutput
-    from app.agents.knowledge.schemas import KnowledgeSourceRef
     from app.services.knowledge import service
 
     _use_temp_db(monkeypatch, tmp_path)
@@ -284,16 +281,6 @@ def test_all_project_knowledge_query_collects_active_project_sources(monkeypatch
         captured_project_names.append([doc.project_name for doc in input_data.source_documents])
         output = KnowledgeQueryOutput(
             answer="已查询全部项目。",
-            source_refs=[
-                KnowledgeSourceRef(
-                    source_type="requirement",
-                    source_id=doc.version_id,
-                    source_title=doc.document_name,
-                    project_id=doc.project_id,
-                    project_name=doc.project_name,
-                )
-                for doc in input_data.source_documents
-            ],
             used_requirement_versions=[doc.version_id for doc in input_data.source_documents],
             knowledge_queried=True,
         )
@@ -330,9 +317,7 @@ def test_all_project_knowledge_query_collects_active_project_sources(monkeypatch
         "- [需求] 订单项目 / 订单需求"
     )
     assert result["messages"][1]["content"] == result["answer"]
-    assert "source_refs" not in result
     assert "used_requirement_versions" not in result
-    assert "source_refs" not in result["messages"][1]
     assert "used_requirement_versions" not in result["messages"][1]
 
     conversations = service.list_all_project_knowledge_conversations(actor)
@@ -427,7 +412,6 @@ def test_all_project_knowledge_query_tolerates_partial_missing_files(monkeypatch
     assert result["answer"] == "已使用可用项目来源回答。"
     assert "无法查询项目知识库" not in result["answer"]
     assert result["conversation"] is not None
-    assert "source_refs" not in result
     assert "used_requirement_versions" not in result
     assert events[-1] == {"type": "done"}
 
@@ -633,7 +617,6 @@ def test_project_knowledge_stream_uses_agent_direct_reply(monkeypatch, tmp_path)
     assert visible_deltas == ["你好，有什么可以帮你？"]
     metadata = next(event for event in events if event["type"] == "metadata")
     assert metadata["result"]["answer"] == "你好，有什么可以帮你？"
-    assert "source_refs" not in metadata["result"]
     assert "used_requirement_versions" not in metadata["result"]
     assert "knowledge_queried" not in metadata["result"]
     assert "used_company_knowledge_files" not in metadata["result"]
@@ -682,7 +665,7 @@ def test_knowledge_agent_stream_uses_structured_response_not_message_tokens(monk
                 "messages",
                 {
                     "type": "assistant",
-                    "content": '```json\n{"answer":"错误的可见 JSON","source_refs":[]}\n```',
+                    "content": '```json\n{"answer":"错误的可见 JSON","used_requirement_versions":[]}\n```',
                 },
             )
             yield (

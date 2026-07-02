@@ -52,7 +52,6 @@ type ExplorationMonitorStep = ExplorationMonitorPlanStep & {
     title: string;
     element_count: number;
   };
-  screenshot_path: string;
 };
 
 type ExplorationMonitorState = {
@@ -163,65 +162,75 @@ function formatTime(timestamp: string): string {
 export function ExplorationTaskInfoPanel({ monitor, loading }: { monitor: ExplorationMonitorState; loading: boolean }) {
   const { plan, steps, events } = monitor;
   const hasSteps = steps.length > 0;
+  const [isPlanOpen, setIsPlanOpen] = useState(false);
   const isRunning =
     loading || monitor.phase === "executing" || monitor.phase === "planning" || monitor.phase === "planned";
 
   return (
     <div className="grid min-h-[620px] gap-5 lg:grid-cols-[380px_minmax(0,1fr)]">
-      <aside className="flex flex-col gap-5 rounded-xl border border-border/70 bg-background p-5 shadow-sm">
-        {plan ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <ListChecks className="size-5 text-primary" />
-              <h3 className="font-semibold text-lg">探索计划</h3>
+      <aside className="flex h-[calc(100vh-210px)] min-h-[620px] flex-col overflow-hidden rounded-xl border border-border/70 bg-card text-card-foreground shadow-black/5 shadow-sm dark:shadow-black/20">
+        <div className="flex min-h-12 items-center gap-3 border-b bg-muted/30 px-6 py-3">
+          <div className="font-medium text-muted-foreground text-sm">执行步骤</div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          {plan ? (
+            <div className="mb-5 space-y-3">
+              <button
+                aria-expanded={isPlanOpen}
+                className="flex w-full items-center gap-2 text-left"
+                onClick={() => setIsPlanOpen((value) => !value)}
+                type="button"
+              >
+                {isPlanOpen ? (
+                  <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                )}
+                <ListChecks className="size-4 text-primary" />
+                <h3 className="font-semibold text-sm">探索计划</h3>
+                {plan.total_steps > 0 ? (
+                  <span className="ml-auto text-muted-foreground text-xs">{plan.total_steps} 个步骤</span>
+                ) : null}
+              </button>
+              {isPlanOpen ? (
+                <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/5 p-4 text-sm leading-6">
+                  {plan.goal_summary ? (
+                    <div>
+                      <div className="font-medium text-muted-foreground text-xs">目标</div>
+                      <div className="mt-1">{plan.goal_summary}</div>
+                    </div>
+                  ) : null}
+                  {plan.scope_summary ? (
+                    <div className="border-t pt-2">
+                      <div className="font-medium text-muted-foreground text-xs">范围</div>
+                      <div className="mt-1">{plan.scope_summary}</div>
+                    </div>
+                  ) : null}
+                  {plan.strategy ? (
+                    <div className="border-t pt-2">
+                      <div className="font-medium text-muted-foreground text-xs">策略</div>
+                      <div className="mt-1">{plan.strategy}</div>
+                    </div>
+                  ) : null}
+                  {plan.estimated_duration_minutes ? (
+                    <div className="border-t pt-2">
+                      <div className="font-medium text-muted-foreground text-xs">预计时长</div>
+                      <div className="mt-1">{plan.estimated_duration_minutes} 分钟</div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-            <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/5 p-4 text-base leading-7">
-              {plan.goal_summary ? (
-                <div>
-                  <div className="font-medium text-muted-foreground text-sm">目标</div>
-                  <div className="mt-1">{plan.goal_summary}</div>
-                </div>
-              ) : null}
-              {plan.scope_summary ? (
-                <div className="border-t pt-2">
-                  <div className="font-medium text-muted-foreground text-sm">范围</div>
-                  <div className="mt-1">{plan.scope_summary}</div>
-                </div>
-              ) : null}
-              {plan.strategy ? (
-                <div className="border-t pt-2">
-                  <div className="font-medium text-muted-foreground text-sm">策略</div>
-                  <div className="mt-1">{plan.strategy}</div>
-                </div>
-              ) : null}
-              {plan.estimated_duration_minutes ? (
-                <div className="border-t pt-2">
-                  <div className="font-medium text-muted-foreground text-sm">预计时长</div>
-                  <div className="mt-1">{plan.estimated_duration_minutes} 分钟</div>
-                </div>
-              ) : null}
-              {plan.total_steps > 0 ? (
-                <div className="border-t pt-2">
-                  <div className="font-medium text-muted-foreground text-sm">步骤数</div>
-                  <div className="mt-1">{plan.total_steps} 个步骤</div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-        <div className="flex-1 space-y-3">
-          <h3 className="font-semibold text-base">执行步骤</h3>
+          ) : null}
           {loading && !hasSteps ? (
-            <div className="flex items-center justify-center rounded-xl border bg-muted/20 py-8 text-muted-foreground text-sm">
-              <Loader2 className="mr-2 size-4 animate-spin" />
-              加载中...
+            <div className="flex items-start gap-3 text-muted-foreground text-sm">
+              <Loader2 className="mt-0.5 size-4 animate-spin" />
+              <span>加载中...</span>
             </div>
           ) : !hasSteps ? (
-            <div className="rounded-xl border bg-muted/20 p-6 text-center text-muted-foreground text-sm">
-              暂无步骤信息
-            </div>
+            <div className="text-muted-foreground text-sm">暂无步骤信息</div>
           ) : (
-            <div className="max-h-[520px] space-y-2 overflow-auto pr-1">
+            <div className="space-y-2 pr-1">
               {steps.map((step) => (
                 <ExplorationStepCard key={step.step_id} step={step} />
               ))}
@@ -230,8 +239,8 @@ export function ExplorationTaskInfoPanel({ monitor, loading }: { monitor: Explor
         </div>
       </aside>
       <main className="min-w-0">
-        <div className="flex h-[calc(100vh-210px)] min-h-[620px] flex-col rounded-xl border border-border/70 bg-slate-50/80 shadow-sm">
-          <div className="flex min-h-12 items-center gap-3 border-b px-6 py-3">
+        <div className="flex h-[calc(100vh-210px)] min-h-[620px] flex-col overflow-hidden rounded-xl border border-border/70 bg-card text-card-foreground shadow-black/5 shadow-sm dark:shadow-black/20">
+          <div className="flex min-h-12 items-center gap-3 border-b bg-muted/30 px-6 py-3">
             <div className="font-medium text-muted-foreground text-sm">探索输出</div>
             {isRunning ? (
               <div className="ml-auto flex items-center gap-2 text-muted-foreground text-sm">
@@ -335,11 +344,7 @@ function ExplorationExecutionTranscript({ events, loading }: { events: Explorati
   }
 
   return (
-    <div
-      className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5 text-base"
-      onScroll={handleScroll}
-      ref={scrollRef}
-    >
+    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5 text-sm" onScroll={handleScroll} ref={scrollRef}>
       {blocks.map((block) =>
         block.type === "tool" ? (
           <ToolTranscriptItem
@@ -375,6 +380,9 @@ function buildExecutionTranscriptBlocks(events: ExplorationMonitorEvent[]): Exec
     if (!display) {
       continue;
     }
+    if (display.kind === "agent_run" && display.title === "开始页面探索") {
+      continue;
+    }
     const fields = display.fields?.filter((field) => field.label !== "结果") ?? [];
     const isToolEvent =
       event.type === "agent_tool_started" ||
@@ -390,7 +398,7 @@ function buildExecutionTranscriptBlocks(events: ExplorationMonitorEvent[]): Exec
         existing.chips = display.chips ?? [];
         existing.status = event.status;
         existing.completedAt = event.occurred_at;
-        existing.defaultOpen = existing.defaultOpen || event.status === "running" || event.status === "failed";
+        existing.defaultOpen = false;
         continue;
       }
       const block: ExecutionTranscriptBlock = {
@@ -404,7 +412,7 @@ function buildExecutionTranscriptBlocks(events: ExplorationMonitorEvent[]): Exec
         occurredAt: event.occurred_at,
         completedAt: "",
         toolName: stringValue(event.payload?.tool_name),
-        defaultOpen: event.status === "running" || event.status === "failed",
+        defaultOpen: false,
       };
       toolBlocks.set(blockKey, block);
       blocks.push(block);
@@ -431,12 +439,12 @@ function buildExecutionTranscriptBlocks(events: ExplorationMonitorEvent[]): Exec
 function DialogueTranscriptItem({ block }: { block: ExecutionTranscriptBlock }) {
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 text-base text-muted-foreground">
+      <div className="flex items-center gap-2 text-muted-foreground text-sm">
         <span>{block.title}</span>
         {block.occurredAt ? <span className="ml-auto text-xs">{formatTime(block.occurredAt)}</span> : null}
       </div>
       {block.output ? (
-        <div className="max-w-4xl whitespace-pre-wrap break-words text-base leading-7">{block.output}</div>
+        <div className="max-w-4xl whitespace-pre-wrap break-words text-sm leading-6">{block.output}</div>
       ) : null}
       <ExecutionTranscriptStatus status={block.status} />
     </div>
@@ -456,7 +464,7 @@ function ToolTranscriptItem({
     <div className="space-y-2">
       <button
         aria-expanded={isOpen}
-        className="flex w-full items-center gap-2 text-left text-base text-muted-foreground"
+        className="flex w-full items-center gap-2 text-left text-muted-foreground text-sm"
         onClick={onToggle}
         type="button"
       >
@@ -466,9 +474,9 @@ function ToolTranscriptItem({
       </button>
       {isOpen ? (
         <div className="ml-6 max-w-4xl rounded-xl border bg-background px-5 py-4 shadow-sm">
-          <div className="mb-3 font-medium text-base text-foreground/80">Output</div>
+          <div className="mb-3 font-medium text-foreground/80 text-sm">Output</div>
           {block.output ? (
-            <div className="whitespace-pre-wrap break-words text-base leading-7">{block.output}</div>
+            <div className="whitespace-pre-wrap break-words text-sm leading-6">{block.output}</div>
           ) : null}
           <ExecutionOutputDetails block={block} />
         </div>
@@ -513,7 +521,7 @@ function ExecutionOutputDetails({ block }: { block: ExecutionTranscriptBlock }) 
 function ExecutionTranscriptStatus({ status }: { status: AgentPlanStatus }) {
   if (status === "completed") {
     return (
-      <div className="flex items-center gap-3 text-base text-foreground">
+      <div className="flex items-center gap-2 text-foreground text-sm">
         <CheckCircle2 className="size-4 text-muted-foreground" />
         <span>Done</span>
       </div>
@@ -521,7 +529,7 @@ function ExecutionTranscriptStatus({ status }: { status: AgentPlanStatus }) {
   }
   if (status === "running" || status === "in-progress") {
     return (
-      <div className="flex items-center gap-3 text-base text-muted-foreground">
+      <div className="flex items-center gap-2 text-muted-foreground text-sm">
         <Loader2 className="size-4 animate-spin" />
         <span>执行中</span>
       </div>
@@ -529,7 +537,7 @@ function ExecutionTranscriptStatus({ status }: { status: AgentPlanStatus }) {
   }
   if (status === "failed") {
     return (
-      <div className="flex items-center gap-3 text-base text-red-600">
+      <div className="flex items-center gap-2 text-red-600 text-sm">
         <XCircle className="size-4" />
         <span>失败</span>
       </div>
@@ -537,7 +545,7 @@ function ExecutionTranscriptStatus({ status }: { status: AgentPlanStatus }) {
   }
   if (status === "cancelled") {
     return (
-      <div className="flex items-center gap-3 text-base text-muted-foreground">
+      <div className="flex items-center gap-2 text-muted-foreground text-sm">
         <MinusCircle className="size-4" />
         <span>已取消</span>
       </div>

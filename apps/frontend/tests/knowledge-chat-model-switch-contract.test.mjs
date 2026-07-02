@@ -87,7 +87,6 @@ test("project knowledge chat history controls open for selected knowledge scope 
 test("knowledge API types support all-project query metadata", () => {
   assert.match(apiClientSource, /conversation: ApiKnowledgeConversation \| null/);
   const queryResultSource = apiClientSource.slice(apiClientSource.indexOf("export type ApiKnowledgeQueryResult"));
-  assert.doesNotMatch(queryResultSource, /source_refs/);
   assert.doesNotMatch(queryResultSource, /used_requirement_versions/);
 });
 

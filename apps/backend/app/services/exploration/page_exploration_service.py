@@ -1206,7 +1206,6 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
             "last_explored": {
                 "run_id": run_id,
                 "timestamp": captured_at,
-                "screenshot": "",
             },
         },
         "states": [
@@ -1819,7 +1818,7 @@ def _todo_plan_steps(todos) -> list[dict]:
     for index, todo in enumerate(todos, start=1):
         if not isinstance(todo, dict):
             continue
-        content = _compact_event_payload(todo.get("content"))
+        content = _readable_todo_description(_compact_event_payload(todo.get("content")))
         if not content:
             continue
         steps.append(
@@ -1833,6 +1832,27 @@ def _todo_plan_steps(todos) -> list[dict]:
             }
         )
     return steps
+
+
+def _readable_todo_description(content: str) -> str:
+    """Polish agent todos for UI display without changing the requested action."""
+    if not content:
+        return ""
+    description = content.strip()
+    description = _replace_once(description, "进入工作台页面", "打开工作台界面")
+    description = _replace_once(description, "进入工作台", "打开工作台界面")
+    description = _replace_once(description, "进入该 Agent 的草稿编辑页面", "打开该 Agent 的草稿编辑界面")
+    description = _replace_once(description, "进入该Agent的草稿编辑页面", "打开该 Agent 的草稿编辑界面")
+    description = _replace_once(description, "在草稿编辑页面调试预览找到对话框", "在草稿编辑界面打开调试预览，找到对话框")
+    description = _replace_once(description, "在预览对话框的输入框中输入", "在预览对话框中点击输入框，输入")
+    description = _replace_once(description, "发送对话", "点击发送按钮发送对话")
+    if "新建" in description and "Agent" in description and "点击" not in description:
+        description = description.replace("新建", "点击创建按钮，新建", 1)
+    return description
+
+
+def _replace_once(value: str, old: str, new: str) -> str:
+    return value.replace(old, new, 1) if old in value else value
 
 
 def _messages_from_projection_update(data) -> list:
@@ -1970,14 +1990,21 @@ def _readable_tool_display(tool_name: str, event_name: str, data: dict, status: 
         todos = input_data.get("todos") if isinstance(input_data, dict) else []
         current = next((todo for todo in todos if isinstance(todo, dict) and todo.get("status") == "in_progress"), None) if isinstance(todos, list) else None
         pending = [todo for todo in todos if isinstance(todo, dict) and todo.get("status") == "pending"][:3] if isinstance(todos, list) else []
+        current_content = _readable_todo_description(_tool_field(current or {}, "content"))
         return _tool_display(
             "todo_update",
             "探索计划更新",
-            _tool_field(current or {}, "content") or "更新探索待办计划。",
+            current_content or "更新探索待办计划。",
             status,
             [
-                {"label": "当前进行", "value": _tool_field(current or {}, "content")},
-                {"label": "待处理", "value": "\n".join(f"{index + 1}. {_tool_field(todo, 'content')}" for index, todo in enumerate(pending))},
+                {"label": "当前进行", "value": current_content},
+                {
+                    "label": "待处理",
+                    "value": "\n".join(
+                        f"{index + 1}. {_readable_todo_description(_tool_field(todo, 'content'))}"
+                        for index, todo in enumerate(pending)
+                    ),
+                },
                 {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
             ],
             error,
@@ -1988,7 +2015,7 @@ def _readable_tool_display(tool_name: str, event_name: str, data: dict, status: 
     if tool_name == "playwright_click_tool":
         locator = _tool_field(input_data, "locator") or _compact_event_payload(data.get("input"))
         return _tool_display("click", "点击元素", f"点击 {_locator_label(locator) or '页面元素'}", status, [{"label": "目标", "value": _locator_label(locator)}, {"label": "定位器", "value": locator, "mono": True}, {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)}], error)
-    if tool_name in {"playwright_snap_tool", "playwright_extract_elements_tool"}:
+    if tool_name == "playwright_snap_tool":
         elements = output_data.get("elements") if isinstance(output_data.get("elements"), list) else []
         return _tool_display("snapshot", "采集页面快照", f"采集 {_tool_field(output_data, 'title') or _compact_url_for_display(_tool_field(output_data, 'url')) or '当前页面'} 的页面结构", status, [{"label": "页面", "value": _tool_field(output_data, "title")}, {"label": "URL", "value": _compact_url_for_display(_tool_field(output_data, "url")), "mono": True}, {"label": "发现元素", "value": _summarize_element_roles(elements)}, {"label": "关键元素", "value": _summarize_key_elements(elements)}, {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)}], error)
     if tool_name == "write_page_artifact_tool":
@@ -2227,7 +2254,7 @@ def list_project_pages(actor, project_id: str) -> list[dict]:
                 "url": "",
                 "entry_path": _string(page.get("normalized_path") or ""),
                 "structure_summary": _string(page.get("structure_summary") or ""),
-                "screenshot_path": _string(last_explored.get("screenshot")),
+                "screenshot_path": "",
                 "snapshot_path": str(base_dir / "pages" / file_name),
                 "trace_path": "",
                 "created_at": timestamp,
@@ -2292,6 +2319,27 @@ def get_artifact_content(actor, artifact_id: str) -> str:
         return file_path.read_text(encoding="utf-8")
 
 
+def get_project_page_yaml_content(actor, project_id: str, page_id: str) -> dict:
+    """获取项目级页面 YAML 产物内容。"""
+    base_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration"
+    pages_dir = (base_dir / "pages").resolve()
+    page_path = (pages_dir / f"{page_id}.yaml").resolve()
+
+    try:
+        page_path.relative_to(pages_dir)
+    except ValueError:
+        raise ValueError("页面产物路径非法")
+    if not page_path.exists() or not page_path.is_file():
+        raise ValueError(f"页面产物不存在: {page_id}")
+
+    return {
+        "page_id": page_id,
+        "file_name": page_path.name,
+        "file_path": str(page_path),
+        "content": page_path.read_text(encoding="utf-8"),
+    }
+
+
 def delete_exploration_run(actor, run_id: str) -> None:
     """删除探索任务"""
     with connect() as db:
@@ -2318,7 +2366,7 @@ def list_all_artifacts(actor, project_id: str | None = None, run_id: str | None 
         - run_title: 所属探索任务标题
         - project_id: 所属项目ID
         - project_name: 所属项目名称
-        - artifact_type: 产物类型（screenshot/accessibility/structure/log/report）
+        - artifact_type: 产物类型（page_yaml/accessibility/structure/log/report）
         - file_path: 文件路径
         - file_name: 文件名
         - file_size: 文件大小（字节）
@@ -2419,5 +2467,3 @@ def recover_interrupted_exploration_runs(*, project_id: str | None = None) -> No
         except Exception:
             # 如果记录日志失败，不影响恢复流程
             pass
-
-

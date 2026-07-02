@@ -10,8 +10,6 @@ from datetime import datetime
 import yaml
 import logging
 
-from app.agents.page_exploration.utils.url_normalizer import URLNormalizer
-
 logger = logging.getLogger(__name__)
 
 
@@ -88,12 +86,14 @@ class ProjectPagesService:
         Returns:
             是否保存成功
         """
-        page_file = self.pages_dir / f"{page_id}.yaml"
+        resolved_page_id = self.find_page_by_path(normalized_path) if normalized_path else None
+        resolved_page_id = resolved_page_id or page_id
+        page_file = self.pages_dir / f"{resolved_page_id}.yaml"
 
         try:
             # 如果页面已存在，加载并合并env_urls
             if page_file.exists():
-                existing_page = self.get_page(page_id)
+                existing_page = self.get_page(resolved_page_id)
                 if existing_page:
                     # 保留已有的env_urls
                     env_urls = existing_page.get('page', {}).get('env_urls', {})
@@ -106,16 +106,15 @@ class ProjectPagesService:
             # 构建完整的页面产物
             full_page_data = {
                 'page': {
-                    'id': page_id,
+                    'id': resolved_page_id,
                     'title': page_data.get('title', ''),
                     'normalized_path': normalized_path,
                     'structure_summary': page_data.get('structure_summary', ''),
                     'path_hash': self._generate_path_hash(normalized_path),
                     'env_urls': env_urls,
                     'last_explored': {
-                        'run_id': run_id,
                         'timestamp': datetime.utcnow().isoformat() + 'Z',
-                        'screenshot': f"runs/{run_id}/screenshots/{page_id}.png"
+                        'run_id': run_id
                     }
                 },
                 'states': page_data.get('states', []),
@@ -133,7 +132,7 @@ class ProjectPagesService:
                     sort_keys=False
                 )
 
-            logger.info(f"Saved page: {page_id} to {page_file}")
+            logger.info(f"Saved page: {resolved_page_id} to {page_file}")
             return True
 
         except Exception as e:
@@ -284,12 +283,16 @@ class ProjectPagesService:
                     existing_entry = i
                     break
 
+            resolved_page_id = page_id
+            if existing_entry is not None:
+                resolved_page_id = cache_index['pages'][existing_entry].get('page_id') or page_id
+
             # 构建缓存条目
             cache_entry = {
                 'normalized_path': normalized_path,
-                'page_id': page_id,
+                'page_id': resolved_page_id,
                 'path_hash': self._generate_path_hash(normalized_path),
-                'page_file': f"pages/{page_id}.yaml",
+                'page_file': f"pages/{resolved_page_id}.yaml",
                 'last_explored_at': datetime.utcnow().isoformat() + 'Z',
                 'last_run_id': run_id,
                 'signature': page_signature,

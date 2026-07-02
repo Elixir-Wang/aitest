@@ -8,8 +8,7 @@ page:
     test: https://www.cybotstar.cn/agentStore
   last_explored:
     run_id: exp_Z--zfm2jCwKmBiIoCDqg2w
-    timestamp: '2026-07-02T12:00:23.380437Z'
-    screenshot: runs/exp_Z--zfm2jCwKmBiIoCDqg2w/screenshots/page-agentStore.png
+    timestamp: '2026-07-02T16:18:21.318562Z'
 states:
 - id: snapshot-current
   title: 百融百工
@@ -401,8 +400,8 @@ states:
   raw_output: ''
 quality: {}
 metadata:
-  captured_at: '2026-07-02T11:31:45.839170+00:00'
+  captured_at: '2026-07-02T16:16:11.222378+00:00'
   source: page_exploration_run
   source_run_id: exp_Z--zfm2jCwKmBiIoCDqg2w
-  source_artifact_path: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\page_exploration\runs\exp_Z--zfm2jCwKmBiIoCDqg2w\pages\page-agentStore.yaml
+  source_artifact_path: /Users/wanghongbao/project/test_project/apps/backend/data/projects/project-75fec50973f2adf6/page_exploration/runs/exp_Z--zfm2jCwKmBiIoCDqg2w/pages/page-agentStore.yaml
   module: 主探索模块

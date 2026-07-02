@@ -6,7 +6,7 @@ import { Badge, badgeVariants } from "@/components/ui/badge-2";
 
 export type StatusBadgeTone = "success" | "destructive" | "warning" | "info" | "processing" | "neutral";
 
-export function getStatusBadgeProps(tone: StatusBadgeTone): Pick<
+function getStatusBadgeProps(tone: StatusBadgeTone): Pick<
   VariantProps<typeof badgeVariants>,
   "variant" | "appearance"
 > {
@@ -42,7 +42,7 @@ export function healthStatusTone(healthStatus: string): StatusBadgeTone {
   return "neutral";
 }
 
-export function taskStatusGroupTone(statusGroup: string): StatusBadgeTone {
+function taskStatusGroupTone(statusGroup: string): StatusBadgeTone {
   if (statusGroup === "failed") return "destructive";
   if (statusGroup === "completed") return "success";
   if (statusGroup === "running") return "processing";
@@ -69,7 +69,7 @@ export function projectStatusTone(status: string): StatusBadgeTone {
   return status === "archived" ? "neutral" : "success";
 }
 
-export function fileConversionTone(status: string): StatusBadgeTone {
+function fileConversionTone(status: string): StatusBadgeTone {
   if (status === "success") return "success";
   if (status === "failed") return "destructive";
   if (status === "warning") return "warning";
@@ -95,7 +95,7 @@ export function explorationStatusTone(status: string): StatusBadgeTone {
   return "neutral";
 }
 
-export function explorationPlanStatusTone(status: string): StatusBadgeTone {
+function explorationPlanStatusTone(status: string): StatusBadgeTone {
   if (status === "confirmed" || status === "completed") return "success";
   if (status === "blocked") return "destructive";
   if (status === "running") return "processing";
@@ -111,19 +111,19 @@ export function authStateStatusTone(status: string): StatusBadgeTone {
   return "neutral";
 }
 
-export function logLevelTone(level: string): StatusBadgeTone {
+function logLevelTone(level: string): StatusBadgeTone {
   if (level === "error") return "destructive";
   if (level === "warning" || level === "warn") return "warning";
   return "neutral";
 }
 
-export function severityTone(severity: string): StatusBadgeTone {
+function severityTone(severity: string): StatusBadgeTone {
   if (severity === "blocker") return "destructive";
   if (severity === "major") return "warning";
   return "neutral";
 }
 
-export function goalValidationStatusTone(status: string): StatusBadgeTone {
+function goalValidationStatusTone(status: string): StatusBadgeTone {
   if (status === "passed") return "success";
   if (status === "failed") return "destructive";
   if (status === "partial") return "warning";

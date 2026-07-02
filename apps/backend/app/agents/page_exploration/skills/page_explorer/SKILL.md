@@ -94,7 +94,7 @@ description: Provides comprehensive strategies and best practices for intelligen
 识别到 Dashboard:
 1. 记录所有统计卡片和数据
 2. 识别导航链接（不要点击操作按钮）
-3. 截图保存
+3. 保存 YAML 页面事实
 4. 进入下一个页面
 ```
 

@@ -441,6 +441,17 @@ def list_project_pages(project_id: str, actor=Depends(current_user)) -> list[dic
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/projects/{project_id}/pages/{page_id}/yaml", response_model=dict)
+def get_project_page_yaml(project_id: str, page_id: str, actor=Depends(current_user)) -> dict:
+    """获取项目级页面 YAML 产物内容"""
+    try:
+        return page_exploration_service.get_project_page_yaml_content(actor, project_id, page_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/artifacts/{artifact_id}/content", response_model=dict)
 def get_artifact_content(artifact_id: str, actor=Depends(current_user)) -> dict:
     """获取产物内容
@@ -503,5 +514,4 @@ def list_all_artifacts(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 

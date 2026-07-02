@@ -1742,7 +1742,7 @@ function ProjectKnowledgeWorkspace({
         ) : (
           <div className="relative flex h-full min-h-0 min-w-0 flex-col">
             <div
-              className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-muted/20 px-4 pt-4 pb-44"
+              className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-muted/20 px-4 pt-4 pb-44 min-[900px]:px-10"
               onScroll={handleMessageListScroll}
               ref={messageListRef}
             >
@@ -1761,7 +1761,7 @@ function ProjectKnowledgeWorkspace({
               ))}
               {error ? <ChatMessage body={error} icon={TriangleAlert} title="查询失败" tone="warning" /> : null}
             </div>
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-muted/80 via-muted/45 to-transparent px-4 pt-8 pb-4">
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-muted/80 via-muted/45 to-transparent px-4 pt-8 pb-4 min-[900px]:px-10">
               <KnowledgeChatInput
                 compact
                 disabled={!projectSelected}

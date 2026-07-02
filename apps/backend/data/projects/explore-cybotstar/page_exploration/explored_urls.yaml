@@ -1,8 +1,0 @@
-version: '1.0'
-project_id: explore-cybotstar
-urls:
-- normalized_path: /agentstore
-  page_id: page-login
-  page_file: pages/page-login.yaml
-  last_explored_at: '2026-06-29T16:36:22.644863Z'
-  last_run_id: run-001

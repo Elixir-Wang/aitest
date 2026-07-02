@@ -47,10 +47,25 @@ test("exploration progress keeps agent plan updates and survives empty snapshots
   assert.match(pageSource, /current\.steps/);
 });
 
+test("exploration progress restores left-side steps from persisted plan events", () => {
+  assert.match(pageSource, /function monitorStepsFromPersistedPlanEvents/);
+  assert.match(pageSource, /event\.type !== "agent_plan_updated"/);
+  assert.match(pageSource, /normalizeMonitorPlanSteps\(rawPlanSteps\)/);
+  assert.match(
+    pageSource,
+    /const steps = detailSteps\.length \? mergeMonitorSteps\(persistedPlanSteps, detailSteps\) : persistedPlanSteps/,
+  );
+  assert.match(
+    pageSource,
+    /status === "running" \|\| status === "queued" \|\| status === "in-progress" \|\| status === "in_progress"/,
+  );
+});
+
 test("exploration output is a right-side card with running status in the header", () => {
   assert.match(taskInfoPanelSource, /探索输出/);
   assert.match(taskInfoPanelSource, /h-\[calc\(100vh-210px\)\]/);
-  assert.match(taskInfoPanelSource, /rounded-xl border border-border\/70 bg-slate-50\/80 shadow-sm/);
+  assert.match(taskInfoPanelSource, /rounded-xl border border-border\/70 bg-card text-card-foreground/);
+  assert.doesNotMatch(taskInfoPanelSource, /bg-slate-50\/80/);
   assert.match(taskInfoPanelSource, /ml-auto flex items-center gap-2/);
   assert.match(taskInfoPanelSource, /执行中/);
 });

@@ -27,12 +27,6 @@ class SourceDocumentOut(BaseModel):
     available_actions: list[str]
 
 
-class SourceDocumentUploadIn(BaseModel):
-    mode: str = "new"
-    document_name: str = ""
-    existing_document_id: str = ""
-
-
 class SourceDocumentUpdateIn(BaseModel):
     name: str = Field(min_length=1)
     markdown_content: str = ""

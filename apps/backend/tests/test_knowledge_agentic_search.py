@@ -9,11 +9,21 @@ def test_knowledge_agent_prompt_has_consolidated_source_rules():
     assert "7. 如果未读取 /requirements/ 或 /company-knowledge/" in SYSTEM_PROMPT
     assert "8. 如果读取了 /requirements/，必须在 used_requirement_versions 中返回实际使用过的需求版本 ID。" in SYSTEM_PROMPT
     assert "9. 如果读取了 /company-knowledge/，必须在 used_company_knowledge_files 中返回实际使用过的公司知识库文件 ID。" in SYSTEM_PROMPT
-    assert "10. source_refs 只能引用已读取文件顶部 source_metadata 中的字段，且必须填写 location 与 excerpt。" in SYSTEM_PROMPT
+    assert "10. 参考来源写入 answer 正文末尾，不再单独返回结构化来源字段。" in SYSTEM_PROMPT
+    assert "回答必须使用 Markdown 格式，并在回答末尾追加" in SYSTEM_PROMPT
+    assert "- [需求] 项目名 / 需求标题" in SYSTEM_PROMPT
+    assert "- [知识库] 知识库名 / 文件标题" in SYSTEM_PROMPT
+    assert "问题宽泛时，优先回答最小可用流程和关键必填项" in SYSTEM_PROMPT
+    assert "简洁步骤" in SYSTEM_PROMPT
+    assert "完整说明" in SYSTEM_PROMPT
+    assert "排障" in SYSTEM_PROMPT
+    assert "最佳实践" in SYSTEM_PROMPT
+    assert "不要为了覆盖所有命中文档而输出百科式答案" in SYSTEM_PROMPT
+    assert "参考来源只列实际支撑核心答案的文档，优先列 3 个以内，最多 5 个" in SYSTEM_PROMPT
     assert "这不是知识库查询" in SYSTEM_PROMPT
     assert "不得回答“知识库内未查询到相关结果”" in SYSTEM_PROMPT
     assert "只有当用户询问项目事实/公司知识且已尝试查询仍没有依据时" in SYSTEM_PROMPT
-    assert "不得基于文件名、路径或常识补全业务事实或 source_refs" in SYSTEM_PROMPT
+    assert "不得基于文件名、路径或常识补全业务事实或参考来源" in SYSTEM_PROMPT
     assert "不得包含 <think>、思考过程、工具调用计划、检索过程描述" in SYSTEM_PROMPT
     assert "10. 如果没有读取知识库" not in SYSTEM_PROMPT
     assert "15. 不要把" not in SYSTEM_PROMPT

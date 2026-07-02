@@ -55,7 +55,7 @@ export type RequirementDeleteResult = {
   error?: unknown;
 };
 
-export function requirementDeleteErrorMessage(error: unknown) {
+function requirementDeleteErrorMessage(error: unknown) {
   if (error instanceof Error && error.message === "Failed to fetch") {
     return "网络异常，未收到后端响应";
   }
@@ -73,7 +73,7 @@ function summarizeRequirementDeleteReason(error: unknown) {
   return message;
 }
 
-export function summarizeRequirementDeleteResults(results: RequirementDeleteResult[]) {
+function summarizeRequirementDeleteResults(results: RequirementDeleteResult[]) {
   const successful = results.filter((item) => item.ok);
   const failed = results.filter((item) => !item.ok);
   const failedNames = failed.map((item) => item.name).join("、");

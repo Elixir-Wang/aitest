@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import re
 import uuid
@@ -15,7 +14,6 @@ from app.agents.knowledge.schemas import (
     KnowledgeQueryInput,
     KnowledgeQueryOutput,
     KnowledgeSourceDocumentInput,
-    KnowledgeSourceRef,
 )
 from app.schemas.knowledge import (
     KnowledgeConversation,
@@ -646,8 +644,7 @@ def _append_query_messages(
             message_id=str(uuid.uuid4()),
             conversation_id=conversation_id,
             role="assistant",
-            content=_answer_with_inline_sources(output),
-            source_refs=[ref.model_dump() for ref in output.source_refs],
+            content=output.answer.strip(),
             used_requirement_versions=used_requirement_versions,
         )
     return user_message, assistant_message
@@ -663,32 +660,6 @@ def _query_result_payload(
         "messages": [_message_to_schema(user_message).model_dump(), _message_to_schema(assistant_message).model_dump()],
         "answer": assistant_message["content"],
     }
-
-
-def _answer_with_inline_sources(output: KnowledgeQueryOutput) -> str:
-    answer = output.answer.strip()
-    source_lines = [_source_ref_line(ref) for ref in output.source_refs]
-    source_lines = [line for line in source_lines if line]
-    if not source_lines:
-        return answer
-    return f"{answer}\n\n参考来源：\n" + "\n".join(source_lines)
-
-
-def _source_ref_line(ref: KnowledgeSourceRef) -> str:
-    label = {
-        "requirement": "需求",
-        "company_knowledge": "文档",
-        "exploration": "探索",
-        "manual": "手工",
-    }.get(ref.source_type, "来源")
-    title_parts = [part for part in (ref.project_name, ref.source_title) if part]
-    title = " / ".join(title_parts) or ref.source_id
-    line = f"- [{label}] {title}"
-    if ref.location:
-        line += f" - {ref.location}"
-    if ref.excerpt:
-        line += f"：{ref.excerpt}"
-    return line
 
 
 def _conversation_title(question: str) -> str:
@@ -715,13 +686,3 @@ def _message_to_schema(row) -> KnowledgeConversationMessage:
         content=row["content"],
         created_at=row["created_at"],
     )
-
-
-def _loads_json_array(value: str) -> list:
-    try:
-        parsed = json.loads(value or "[]")
-    except json.JSONDecodeError:
-        return []
-    return parsed if isinstance(parsed, list) else []
-
-

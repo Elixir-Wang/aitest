@@ -139,7 +139,7 @@ export type ApiExplorationRun = {
 
 export type ApiTestCaseGenerationScopeType = "all" | "specified";
 
-export type ApiTestCaseGenerationRun = {
+type ApiTestCaseGenerationRun = {
   id: string;
   test_case_set_id: string;
   task_id: string;
@@ -182,7 +182,7 @@ export type ApiTestCaseSetCreate = {
   notes: string;
 };
 
-export type ApiDashboardMetric = {
+type ApiDashboardMetric = {
   label: string;
   value: string;
   helper: string;
@@ -245,7 +245,7 @@ export type ApiOperationLogFilterOptions = {
   log_types: string[];
 };
 
-export type ApiAvailableAction = {
+type ApiAvailableAction = {
   key: string;
   label: string;
   enabled: boolean;
@@ -282,7 +282,7 @@ export type ApiKnowledgeConversationDetail = {
   messages: ApiKnowledgeConversationMessage[];
 };
 
-export type ApiTaskStatusGroup = "running" | "waiting" | "failed" | "completed";
+type ApiTaskStatusGroup = "running" | "waiting" | "failed" | "completed";
 
 export type ApiTaskItem = {
   id: string;
@@ -307,79 +307,6 @@ export type ApiTaskList = {
   total: number;
   page: number;
   page_size: number;
-};
-
-export type ApiGlobalKnowledgeDocument = {
-  id: string;
-  name: string;
-  knowledge_type: string;
-  knowledge_type_label: string;
-  version: string;
-  scope: string;
-  source_note?: string;
-  description: string;
-  status: "processing" | "available" | "conversion_failed" | "archived";
-  status_label: string;
-  current_version_id?: string | null;
-  markdown_content?: string;
-  file_count: number;
-  created_by: string;
-  created_at?: string;
-  updated_at: string;
-  archived_at?: string | null;
-  available_actions: ApiAvailableAction[];
-};
-
-export type ApiGlobalKnowledgeVersion = {
-  id: string;
-  document_id: string;
-  version_no: string;
-  markdown_content: string;
-  markdown_path: string;
-  change_summary: string;
-  conversion_status: string;
-  conversion_summary: string;
-  created_by: string;
-  created_at: string;
-};
-
-export type ApiGlobalKnowledgeFile = {
-  id: string;
-  version_id: string;
-  original_filename: string;
-  file_path: string;
-  file_type: string;
-  file_size: number;
-  created_at: string;
-};
-
-export type ApiGlobalKnowledgeList = {
-  items: ApiGlobalKnowledgeDocument[];
-  pagination: {
-    page: number;
-    page_size: number;
-    total: number;
-  };
-  filters: {
-    knowledge_types: Array<{ value: string; label: string }>;
-    statuses: Array<{ value: string; label: string }>;
-  };
-};
-
-export type ApiGlobalKnowledgeDetail = {
-  document: ApiGlobalKnowledgeDocument;
-  current_version: ApiGlobalKnowledgeVersion | null;
-  files: ApiGlobalKnowledgeFile[];
-  versions: ApiGlobalKnowledgeVersion[];
-  usage_logs: Array<{
-    id: string;
-    usage_type: string;
-    target_project_id: string | null;
-    target_object_id: string;
-    summary: string;
-    created_at: string;
-  }>;
-  available_actions: ApiAvailableAction[];
 };
 
 export type ApiCompanyKnowledgeBase = {
@@ -456,7 +383,7 @@ function apiErrorCodeFromPayload(payload: unknown) {
   return isRecord(detail) && typeof detail.code === "string" ? detail.code : "";
 }
 
-export function apiErrorFromResponse(
+function apiErrorFromResponse(
   response: Response,
   payload: unknown,
   fallbackMessage = "请求失败，请稍后重试。",
@@ -595,33 +522,6 @@ export async function apiBlobRequest(path: string, options: RequestInit = {}): P
   return response.blob();
 }
 
-export async function apiFormRequest<T>(path: string, formData: FormData, options: RequestInit = {}): Promise<T> {
-  let { hasHydrated, token } = useAuthStore.getState();
-
-  if (!hasHydrated) {
-    useAuthStore.getState().hydrate();
-    ({ hasHydrated, token } = useAuthStore.getState());
-  }
-
-  const headers = new Headers(options.headers);
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    body: formData,
-    headers,
-  });
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throwApiError(response, payload);
-  }
-
-  return (payload as ApiEnvelope<T>).data;
-}
-
 export function roleToLabel(role: ApiRole) {
   return { admin: "管理员", tester: "测试工程师", guest: "访客" }[role];
 }
@@ -663,7 +563,7 @@ export function formatDateTime(value: string | null) {
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
-export function parseApiTimestamp(value: string | null) {
+function parseApiTimestamp(value: string | null) {
   if (!value) {
     return Number.NaN;
   }

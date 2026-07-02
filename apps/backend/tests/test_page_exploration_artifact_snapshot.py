@@ -1006,7 +1006,6 @@ page:
   last_explored:
     run_id: run-1
     timestamp: '2026-07-02T11:34:59Z'
-    screenshot: runs/run-1/screenshots/page-workspace.png
 """,
         encoding="utf-8",
     )
@@ -1024,13 +1023,36 @@ page:
             "url": "",
             "entry_path": "/workspace",
             "structure_summary": "发现工作台入口。",
-            "screenshot_path": "runs/run-1/screenshots/page-workspace.png",
+            "screenshot_path": "",
             "snapshot_path": str(page_root / "pages" / "page-workspace.yaml"),
             "trace_path": "",
             "created_at": "2026-07-02T11:34:59Z",
             "updated_at": "2026-07-02T11:34:59Z",
         }
     ]
+
+
+def test_get_project_page_yaml_content_reads_shared_page_yaml(monkeypatch, tmp_path: Path) -> None:
+    page_root = tmp_path / "project-1" / "page_exploration"
+    project_pages = page_root / "pages"
+    project_pages.mkdir(parents=True)
+    yaml_content = "page:\n  id: page-workspace\n  title: 工作台首页\n"
+    (project_pages / "page-workspace.yaml").write_text(yaml_content, encoding="utf-8")
+
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+
+    result = page_exploration_service.get_project_page_yaml_content(
+        actor={"id": "u-1"},
+        project_id="project-1",
+        page_id="page-workspace",
+    )
+
+    assert result == {
+        "page_id": "page-workspace",
+        "file_name": "page-workspace.yaml",
+        "file_path": str(project_pages / "page-workspace.yaml"),
+        "content": yaml_content,
+    }
 
 
 def test_register_exploration_outputs_indexes_page_and_report(monkeypatch, tmp_path: Path) -> None:

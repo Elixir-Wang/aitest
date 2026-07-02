@@ -99,11 +99,6 @@ def get_requirement_overview(project_id: str, document_id: str, actor=Depends(cu
     return document_service.get_document_overview(project_id, document_id, actor)
 
 
-@router.post("/{document_id}/analysis")
-async def analyze_requirement(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
-    return await document_service.analyze_document_requirement(project_id, document_id, actor)
-
-
 @router.post("/{document_id}/review")
 def review_requirement(
     project_id: str,

@@ -1,6 +1,6 @@
 import type { ResolvedThemeMode, ThemeMode } from "./theme";
 
-export function resolveThemeMode(mode: ThemeMode): ResolvedThemeMode {
+function resolveThemeMode(mode: ThemeMode): ResolvedThemeMode {
   return mode === "dark" ? "dark" : "light";
 }
 
