@@ -6,12 +6,25 @@ from app.agents.requirement_standardization.schemas import RequirementConversion
 CAPABILITY_ID = "requirement_standardization"
 
 
+def _thinking_extra_body(selection) -> dict | None:
+    provider = str(getattr(selection, "provider", "")).strip().lower()
+    model = str(getattr(selection, "model", "")).strip().lower()
+    if not (
+        "minimax" in provider
+        or "minimax" in model
+        or "deepseek" in provider
+        or "deepseek" in model
+    ):
+        return None
+    return {"thinking": {"type": "disabled"}}
+
+
 async def convert_requirement_file(input_data: RequirementConversionInput) -> RequirementConversionOutput:
     if not input_data.markdown_content.strip():
         raise ValueError("候选 Markdown 为空，无法标准化。")
 
     selection = resolve_model_selection(CAPABILITY_ID)
-    model = build_agent_model(selection)
+    model = build_agent_model(selection, extra_body=_thinking_extra_body(selection))
     agent = requirement_standardization_agent(model)
     result = await agent.ainvoke(
         {

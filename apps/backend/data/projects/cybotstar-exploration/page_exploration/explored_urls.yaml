@@ -1,0 +1,8 @@
+version: '1.0'
+project_id: cybotstar-exploration
+urls:
+- normalized_path: /workspace
+  page_id: page-workspace
+  page_file: pages/page-workspace.yaml
+  last_explored_at: '2026-07-03T11:55:51.289351Z'
+  last_run_id: run-explore-001

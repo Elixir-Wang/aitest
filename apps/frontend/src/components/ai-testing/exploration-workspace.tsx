@@ -107,6 +107,8 @@ type ExplorationPageRecord = {
   exploration_run_id: string;
   module_key: string;
   title: string;
+  display_name?: string;
+  breadcrumb?: string[];
   url: string;
   entry_path: string;
   structure_summary: string;
@@ -332,6 +334,13 @@ function pageDisplayPath(page: ExplorationPageRecord) {
   );
 }
 
+function pageDirectoryName(page: ExplorationPageRecord, fallbackSegment: string) {
+  const displayName = page.display_name?.trim();
+  if (displayName) return displayName;
+  const pathSegment = fallbackSegment.trim();
+  return pathSegment ? pathSegment : page.id;
+}
+
 function buildPageTree(pages: ExplorationPageRecord[]): ExplorationPageTreeNode {
   const root: ExplorationPageTreeNode = {
     id: "root",
@@ -356,7 +365,7 @@ function buildPageTree(pages: ExplorationPageRecord[]): ExplorationPageTreeNode 
       if (!child) {
         child = {
           id: nodeId,
-          name: isPage ? page.title || segment : segment,
+          name: isPage ? pageDirectoryName(page, segment) : segment,
           path: isPage ? path : currentPath,
           type: isPage ? "page" : "folder",
           children: [],
@@ -366,7 +375,7 @@ function buildPageTree(pages: ExplorationPageRecord[]): ExplorationPageTreeNode 
       }
       if (isPage) {
         child.page = page;
-        child.name = page.title || child.name;
+        child.name = pageDirectoryName(page, segment);
       }
       current = child;
     });

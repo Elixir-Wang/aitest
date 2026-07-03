@@ -393,7 +393,7 @@ def test_startup_marks_active_exploration_runs_interrupted(monkeypatch: pytest.M
     assert all("服务已重启" in row["result_summary"] for row in rows)
     assert all(row["finished_at"] for row in rows)
     assert [log["task_id"] for log in logs] == ["run-queued", "run-running", "run-stopping"]
-    assert {log["action"] for log in logs} == {"interrupt"}
+    assert {log["action"] for log in logs} == {"interrupt_exploration"}
     assert {log["result"] for log in logs} == {"failed"}
     assert all("服务已重启" in log["failure_reason"] for log in logs)
 

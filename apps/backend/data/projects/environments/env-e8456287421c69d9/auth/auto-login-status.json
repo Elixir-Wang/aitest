@@ -1,6 +1,6 @@
 {
-  "status": "failed",
-  "message": "自动登录任务已中断，请重新登录。",
-  "updated_at": "2026-06-29T16:12:01.558979+00:00",
-  "last_error_code": "AUTO_AUTH_STALE"
+  "status": "succeeded",
+  "message": "登录态已自动保存。",
+  "updated_at": "2026-07-03T02:43:52.929777+00:00",
+  "last_error_code": ""
 }

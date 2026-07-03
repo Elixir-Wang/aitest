@@ -151,7 +151,7 @@ async def test_requirement_standardization_service_returns_structured_response(m
         return "selection"
 
     monkeypatch.setattr("app.agents.requirement_standardization.service.resolve_model_selection", fake_resolve_model_selection)
-    monkeypatch.setattr("app.agents.requirement_standardization.service.build_agent_model", lambda selection: "model")
+    monkeypatch.setattr("app.agents.requirement_standardization.service.build_agent_model", lambda selection, *, extra_body=None: "model")
     monkeypatch.setattr("app.agents.requirement_standardization.service.requirement_standardization_agent", lambda model: FakeAgent())
 
     result = await convert_requirement_file(
@@ -174,7 +174,7 @@ async def test_requirement_standardization_service_rejects_missing_structured_re
             return {}
 
     monkeypatch.setattr("app.agents.requirement_standardization.service.resolve_model_selection", lambda capability_id: "selection")
-    monkeypatch.setattr("app.agents.requirement_standardization.service.build_agent_model", lambda selection: "model")
+    monkeypatch.setattr("app.agents.requirement_standardization.service.build_agent_model", lambda selection, *, extra_body=None: "model")
     monkeypatch.setattr("app.agents.requirement_standardization.service.requirement_standardization_agent", lambda model: FakeAgent())
 
     with pytest.raises(ValueError, match="未返回结构化结果"):

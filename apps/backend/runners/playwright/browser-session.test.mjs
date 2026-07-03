@@ -156,6 +156,44 @@ describe("browser session observation", () => {
       await session.close();
     }
   });
+
+  it("captures popover content in the semantic snapshot fallbacks", async () => {
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <title>工作台</title>
+          <style>
+            .popover { position: fixed; right: 40px; top: 40px; width: 360px; padding: 16px; background: white; }
+            .agent-option { display: flex; gap: 8px; padding: 8px; }
+          </style>
+        </head>
+        <body>
+          <button>创建</button>
+          <div class="popover">
+            <div>创建智能体</div>
+            <div class="agent-option"><strong>自主规划 Agent</strong><span>能够自主规划任务，适用于大部分场景</span></div>
+            <div class="agent-option"><strong>Multi-Agent</strong><span>在一个智能体中设置多个Agent</span></div>
+            <div class="agent-option"><strong>写作 Agent</strong><span>完成复杂写作内容生成</span></div>
+            <div class="agent-option"><strong>任务流 Agent</strong><span>面向自动化任务</span></div>
+          </div>
+        </body>
+      </html>
+    `;
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      const observed = await session.command({ type: "observe" });
+      const axNames = observed.accessibility_tree.map((node) => node.name).filter(Boolean);
+
+      assert.ok(observed.accessibility_tree.length > 0);
+      assert.ok(axNames.includes("创建"));
+      assert.ok(observed.visible_text_blocks.includes("创建智能体"));
+      assert.ok(observed.visible_text_blocks.includes("自主规划 Agent"));
+      assert.ok(observed.visible_text_blocks.includes("Multi-Agent"));
+    } finally {
+      await session.close();
+    }
+  });
 });
 
 async function startSession(url) {

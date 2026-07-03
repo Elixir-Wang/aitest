@@ -191,7 +191,7 @@
     "aria_label": "",
     "aria_checked": "",
     "text": "",
-    "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAAkCAIAAADNSmkJAAATr0lEQVR4nM1aeVhN3du+q1NpIukNOaiMKWPI0PCaGsylZEhoIk",
+    "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAAkCAIAAADNSmkJAAALU0lEQVR4nM1aaViU5Rq+Z2BkFwQMMBYRUDLxCGhgkIGgqGRRUL",
     "selector": "[data-ai-testing-login-el=\"login-el-10\"]",
     "stable_selector": "img.verify-code",
     "locator": {

@@ -1,4 +1,19 @@
 {
   "cookies": [],
-  "origins": []
+  "origins": [
+    {
+      "origin": "https://saibotan-pre4.100credit.cn",
+      "localStorage": [
+        {
+          "name": "sbtToken",
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzgzNDc4NjMxLCJpYXQiOjE3ODMwNDY2MzEsImp0aSI6IjIxZmY5MjgxNDJkNjQxNDI5YTM5YTNmMGFjNzI2YzM4IiwidXNlcl9pZCI6ODgyM30.0yRBJqVboJmgENlq4jYV9DaxGAPhET1ky-4nbbrMmr8"
+        },
+        {
+          "name": "vuex",
+          "value": "{\"app\":{\"menuTheme\":\"dark\",\"avatar\":\"-user\",\"isBlur\":false,\"currentRole\":\"\",\"currentBot\":{\"id\":\"\",\"agent_type\":\"\"},\"operates\":[\"homeland_plugin\",\"homeland_chatflow\",\"homeland_long_memory\",\"homeland_knowledge\",\"homeland_database\"],\"botUserInfo\":{\"userId\":8823,\"token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzgzNDc4NjMxLCJpYXQiOjE3ODMwNDY2MzEsImp0aSI6IjIxZmY5MjgxNDJkNjQxNDI5YTM5YTNmMGFjNzI2YzM4IiwidXNlcl9pZCI6ODgyM30.0yRBJqVboJmgENlq4jYV9DaxGAPhET1ky-4nbbrMmr8\",\"userName\":\"hongbao.wang@brgroup.com\",\"nickname\":\"hongbao.wang\",\"homeLandId\":9168,\"email\":\"hongbao.wang@brgroup.com\",\"mobile\":\"\",\"avatar\":\"/api/media/file/image/avatar/user_15.png\",\"expire_time\":\"2999-12-31 23:59:59\",\"need_bind_mobile\":true,\"refresh_token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc4MzkxMDYzMSwiaWF0IjoxNzgzMDQ2NjMxLCJqdGkiOiIzNWNhNjc0NWIxNjI0MTc4OTI3NGE4MjRlYjUxZWQzZCIsInVzZXJfaWQiOjg4MjN9.pehBGjqqG-CcEArkEzfEmIeuojOWfKqxO0ekkOo-X7g\"},\"homelandInfo\":{\"homeland\":9168,\"user\":8823,\"homeland_name\":\"hongbao.wang\",\"homeland_type\":1,\"homeland_owner\":\"hongbao.wang\",\"homeland_owner_id\":9168,\"role\":\"home_owner\",\"response_role\":\"所有者\"},\"showConversationList\":false,\"isCompanyUser\":false,\"companyPermissions\":[],\"companyAgentPermissions\":[],\"companyAiWritePermissions\":[],\"companyKnowledgePermissions\":[],\"companyPluginPermissions\":[],\"companyDatabasePermissions\":[],\"workspaceListState\":null},\"aiWrite\":{\"articleReadonly\":false}}"
+        }
+      ],
+      "indexedDB": []
+    }
+  ]
 }

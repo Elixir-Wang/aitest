@@ -25,8 +25,14 @@ def publish(
     payload: dict[str, Any] | None = None,
     *,
     display: dict[str, Any] | None = None,
+    timeline_event_id: str | None = None,
 ) -> dict[str, Any]:
-    """Publish a realtime exploration event to current subscribers."""
+    """Publish a realtime exploration event to current subscribers.
+
+    ``timeline_event_id`` allows callers to attach the stable id assigned by
+    the persisted timeline log. Frontends use it to dedupe live SSE events
+    against subsequent run-snapshot replays.
+    """
     event = {
         "event_id": next(_event_counter),
         "type": event_type,
@@ -36,6 +42,8 @@ def publish(
     }
     if display:
         event["display"] = display
+    if timeline_event_id:
+        event["timeline_event_id"] = timeline_event_id
     with _lock:
         _history[run_id].append(event)
         subscribers = list(_subscribers.get(run_id, set()))
@@ -48,15 +56,20 @@ def publish(
     return event
 
 
-async def subscribe(run_id: str, after_event_id: int | None = None) -> AsyncGenerator[dict[str, Any], None]:
+async def subscribe(
+    run_id: str,
+    after_event_id: int | None = None,
+    *,
+    replay: bool = True,
+) -> AsyncGenerator[dict[str, Any], None]:
     """Subscribe to run events, replaying recent history before live updates."""
     queue: asyncio.Queue = asyncio.Queue(maxsize=200)
     with _lock:
         _subscribers[run_id].add(queue)
-        replay = list(_history.get(run_id, ()))
+        history = list(_history.get(run_id, ())) if replay else []
 
     try:
-        for event in replay:
+        for event in history:
             event_id = int(event.get("event_id") or 0)
             if after_event_id is None or event_id > after_event_id:
                 yield event

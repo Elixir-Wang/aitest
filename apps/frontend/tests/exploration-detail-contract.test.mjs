@@ -38,7 +38,7 @@ test("exploration transcript merges tool lifecycle events by step id", () => {
 });
 
 test("exploration progress keeps agent plan updates and survives empty snapshots", () => {
-  assert.match(explorationServiceSource, /payload\["plan_steps"\] = _todo_plan_steps/);
+  assert.match(explorationServiceSource, /"plan_steps": _todo_plan_steps/);
   assert.match(explorationServiceSource, /def _todo_plan_steps/);
   assert.match(pageSource, /event\.type === "planning_completed" \|\| event\.type === "agent_plan_updated"/);
   assert.match(pageSource, /normalizeMonitorPlanSteps\(payload\.plan_steps\)/);
@@ -66,8 +66,11 @@ test("exploration output is a right-side card with running status in the header"
   assert.match(taskInfoPanelSource, /h-\[calc\(100vh-210px\)\]/);
   assert.match(taskInfoPanelSource, /rounded-xl border border-border\/70 bg-card text-card-foreground/);
   assert.doesNotMatch(taskInfoPanelSource, /bg-slate-50\/80/);
-  assert.match(taskInfoPanelSource, /ml-auto flex items-center gap-2/);
+  assert.match(taskInfoPanelSource, /function RunStatusBadge/);
+  assert.match(taskInfoPanelSource, /className="ml-auto"/);
+  assert.match(taskInfoPanelSource, /status: AgentPlanStatus/);
   assert.match(taskInfoPanelSource, /执行中/);
+  assert.match(taskInfoPanelSource, /已停止/);
 });
 
 test("exploration transcript auto-scrolls only while the user is near the bottom", () => {

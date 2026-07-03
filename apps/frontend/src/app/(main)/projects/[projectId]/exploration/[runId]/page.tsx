@@ -156,6 +156,7 @@ type ExplorationStreamEvent = {
   run_id: string;
   payload: Record<string, unknown> | ExplorationRunDetail;
   display?: ReadableExecutionDisplay;
+  timeline_event_id?: string;
 };
 
 type PersistedExplorationEvent = {
@@ -572,6 +573,17 @@ function mergeDetailSnapshot(
   };
 }
 
+function emptyRunDetail(run: ExplorationRun): ExplorationRunDetail {
+  return {
+    run,
+    artifact_schema_version: 0,
+    unsupported_artifact: false,
+    unsupported_reason: "",
+    timeline_events: [],
+    modules: [],
+  };
+}
+
 function monitorFromRunDetail(detail: ExplorationRunDetail): ExplorationMonitorState {
   const detailSteps = monitorStepsFromDetail(detail);
   const persistedPlanSteps = monitorStepsFromPersistedPlanEvents(detail);
@@ -690,16 +702,6 @@ function monitorEventsFromDetail(
       status: step.status,
     }));
   events.unshift(...rawEvents);
-  if (detail.run.result_summary) {
-    events.unshift({
-      id: "snapshot-run-summary",
-      type: "run_snapshot",
-      label: "当前状态",
-      summary: detail.run.result_summary,
-      occurred_at: detail.run.updated_at,
-      status: normalizeAgentPlanStatus(detail.run.status),
-    });
-  }
   return events;
 }
 
@@ -903,8 +905,14 @@ function monitorTimelineEvent(event: ExplorationStreamEvent): ExplorationMonitor
     stringValue(payload.description) ||
     stringValue(payload.reason) ||
     stringValue(payload.strategy);
+  // Use the backend's persisted timeline_event_id so the live event dedupes
+  // against the same event later arriving via run_snapshot (which uses
+  // `persisted-${event_id}` as the id). Fallback to a random id only if the
+  // backend did not provide one (e.g. lifecycle events outside the streaming
+  // loop).
+  const stableId = stringValue(event.timeline_event_id);
   return {
-    id: `${event.type}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    id: stableId ? `persisted-${stableId}` : `${event.type}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     type: event.type,
     label: logTypeLabels[event.type] ?? event.type,
     summary: `${stepNumber}${summary || "收到探索事件"}`,
@@ -1453,7 +1461,16 @@ export default function Page() {
       const updated = await apiRequest<ExplorationRun>(`/page-exploration/runs/${run.id}/start`, {
         method: "POST",
       });
+      const emptyDetail = emptyRunDetail(updated);
       setRun(updated);
+      setDetail(emptyDetail);
+      setStreamDetail(emptyDetail);
+      setMonitor(emptyMonitorState);
+      setReport(null);
+      setReportError("");
+      setReportPrefetchedForRunId("");
+      setError("");
+      setFailureVisible(true);
       notifyAiTaskStarted();
       toast.success(restarting ? "重新探索已开始" : "探索任务已开始");
       window.setTimeout(() => void loadRun({ silent: true }), 800);
@@ -1553,6 +1570,7 @@ export default function Page() {
           loading={loading}
           monitor={monitor}
           onRestart={startExploration}
+          runStatus={run?.status ?? "pending"}
           restarting={starting}
           unsupportedArtifactReason={unsupportedArtifactReason}
         />
@@ -1606,6 +1624,7 @@ function ExplorationModuleProgressPanel({
   loading,
   monitor,
   onRestart,
+  runStatus,
   restarting,
   unsupportedArtifactReason,
 }: {
@@ -1613,6 +1632,7 @@ function ExplorationModuleProgressPanel({
   loading: boolean;
   monitor: ExplorationMonitorState;
   onRestart: () => Promise<void> | void;
+  runStatus: string;
   restarting: boolean;
   unsupportedArtifactReason: string;
 }) {
@@ -1628,7 +1648,7 @@ function ExplorationModuleProgressPanel({
   // 使用新的双栏布局组件
   return (
     <ShellSection>
-      <ExplorationTaskInfoPanel monitor={monitor} loading={loading} />
+      <ExplorationTaskInfoPanel monitor={monitor} loading={loading} status={normalizeAgentPlanStatus(runStatus)} />
     </ShellSection>
   );
 }

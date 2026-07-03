@@ -39,6 +39,11 @@ AI_CAPABILITIES: tuple[AiCapability, ...] = (
         name="站点探索智能体",
         description="负责自动化探索 Web 应用，包括页面分析、元素识别、登录表单分析和验证码识别等多模态任务。",
     ),
+    AiCapability(
+        id="page_exploration",
+        name="页面探索智能体",
+        description="负责按探索任务重新探索页面流程，生成页面产物、实时事件和探索报告。",
+    ),
 )
 
 

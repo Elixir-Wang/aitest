@@ -1,0 +1,96 @@
+page:
+  id: page-botSetting-id-19174-sessionId-kIVsMtqOPqdwzP9KkxHyo-tab-1
+  title: 百融百工
+  normalized_path: /botSetting?id=19174&sessionId=kIVsMtqOPqdwzP9KkxHyo&tab=1
+  structure_summary: 自动保存页面快照，发现 8 个元素。
+  path_hash: sha256-06f9cb63a584a5e5
+  env_urls:
+    test: https://www.cybotstar.cn/botSetting?id=19174&sessionId=kIVsMtqOPqdwzP9KkxHyo&tab=1
+  last_explored:
+    timestamp: '2026-07-03T05:45:27.016629Z'
+    run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+states:
+- id: snapshot-current
+  title: 百融百工
+  url: https://www.cybotstar.cn/botSetting?id=19174&sessionId=kIVsMtqOPqdwzP9KkxHyo&tab=1
+  elements:
+  - id: button-历史版本-001
+    name: 历史版本
+    role: button
+    text: 历史版本
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''历史版本'' })'
+      priority: 1
+  - id: button-发布-002
+    name: 发布
+    role: button
+    text: 发布
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''发布'' })'
+      priority: 1
+  - id: button-基础配置-资源配置-高级配置-实时互动配置-003
+    name: 基础配置 资源配置 高级配置 实时互动配置
+    role: button
+    text: 基础配置 资源配置 高级配置 实时互动配置
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''基础配置 资源配置 高级配置 实时互动配置'' })'
+      priority: 1
+  - id: textbox-请输入欢迎语-004
+    name: 请输入欢迎语
+    role: textbox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入欢迎语'' })'
+      priority: 1
+  - id: button-llm-fix-medium-chen-chat-005
+    name: LLM_Fix_Medium_ChEn_Chat
+    role: button
+    text: LLM_Fix_Medium_ChEn_Chat
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''LLM_Fix_Medium_ChEn_Chat'' })'
+      priority: 1
+  - id: button-ai-生成-006
+    name: AI 生成
+    role: button
+    text: AI 生成
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''AI 生成'' })'
+      priority: 1
+  - id: textbox-5-007
+    name: '5'
+    role: textbox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''5'' })'
+      priority: 1
+  - id: textbox-请输入问题-按shift-enter换行-008
+    name: 请输入问题，按Shift+Enter换行
+    role: textbox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入问题，按Shift+Enter换行'' })'
+      priority: 1
+  raw_output: ''
+quality: {}
+metadata:
+  captured_at: '2026-07-03T05:45:26.977337+00:00'
+  source: page_exploration_run
+  source_run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  source_artifact_path: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\page_exploration\runs\exp_AEF5tx0X9WHsIXTDDzdQuA\pages\page-botSetting-id-19174-sessionId-kIVsMtqOPqdwzP9KkxHyo-tab-1-2.yaml
+  module: 主探索模块

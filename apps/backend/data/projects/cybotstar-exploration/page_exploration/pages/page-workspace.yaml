@@ -1,0 +1,47 @@
+page:
+  id: page-workspace
+  title: 百融百工 - 工作台
+  display_name: workspace
+  breadcrumb:
+  - workspace
+  normalized_path: /workspace
+  structure_summary: 自动保存页面快照，发现 4 个元素。
+  path_hash: sha256-c52ddf65534b7b46
+  env_urls:
+    test: https://www.cybotstar.cn/workspace
+  last_explored:
+    timestamp: '2026-07-03T11:55:51.291692Z'
+    run_id: manual-tool
+  elements:
+  - id: create_agent_btn
+    name: 创建
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''创建'' })'
+      priority: 1
+  - id: import_btn
+    name: 导入
+    role: button
+    locators:
+    - kind: text
+      code: getByText('导入')
+      priority: 1
+  - id: search_input
+    name: 搜索智能体
+    role: textbox
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''搜索智能体'' })'
+      priority: 1
+  - id: workspace_sidebar
+    name: 工作台
+    role: button
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''工作台'' })'
+      priority: 1
+states: []
+quality: {}
+metadata:
+  explored_at: '2026-07-03T11:55:51.290342Z'

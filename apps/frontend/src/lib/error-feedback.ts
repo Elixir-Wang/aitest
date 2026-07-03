@@ -87,8 +87,19 @@ async function submitClientErrorLog(error: ReportedError): Promise<ClientErrorRe
 
 async function openLogDetail(logPromise: Promise<ClientErrorReportOut | null>, traceId?: string) {
   const result = await logPromise;
-  window.location.assign(operationLogListUrl(result?.log_id || result?.trace_id || traceId));
+  window.location.assign(operationLogUrl(result?.log_id, result?.trace_id || traceId));
 }
+
+function operationLogUrl(logId?: string | null, keyword?: string) {
+  if (logId) {
+    return `/settings/logs/${encodeURIComponent(logId)}`;
+  }
+  return operationLogListUrl(keyword);
+}
+
+export const __errorFeedbackTestHooks = {
+  operationLogUrl,
+};
 
 function operationLogListUrl(keyword?: string) {
   const query = keyword ? `?keyword=${encodeURIComponent(keyword)}` : "";

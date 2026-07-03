@@ -1,0 +1,44 @@
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class FinalizationSourceDocument(BaseModel):
+    filename: str
+    markdown_content: str
+
+
+class HandledClarification(BaseModel):
+    question_id: str
+    priority: Literal["P0", "P1", "P2", "P3"]
+    question: str = ""
+    answer_markdown: str
+    insertion_anchor: str = ""
+    module_name: str = ""
+    module_key: str = ""
+    source_excerpt: str = ""
+    impact: str = ""
+
+
+class RequirementFinalizationInput(BaseModel):
+    document_name: str
+    standard_markdown: str
+    preliminary_markdown: str
+    primary_document: FinalizationSourceDocument
+    supporting_documents: list[FinalizationSourceDocument] = Field(default_factory=list)
+    handled_clarifications: list[HandledClarification] = Field(default_factory=list)
+
+
+class RequirementFinalizationOutput(BaseModel):
+    final_requirement_markdown: str = Field(min_length=1)
+    change_summary: str = Field(min_length=1)
+    unresolved_notes: list[str] = Field(default_factory=list)
+    merge_notes: list[str] = Field(default_factory=list)
+
+
+__all__ = [
+    "FinalizationSourceDocument",
+    "HandledClarification",
+    "RequirementFinalizationInput",
+    "RequirementFinalizationOutput",
+]

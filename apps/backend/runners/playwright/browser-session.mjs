@@ -2,6 +2,7 @@ import readline from "node:readline";
 import { chromium } from "playwright";
 import { buildSelectorCandidates } from "./selector-generator.mjs";
 import { locatorForCandidate, verifySelectorCandidate } from "./selector-validator.mjs";
+import { parsePlaywrightLocatorString, isParseableLocatorString } from "./locator-parser.mjs";
 
 const [, , startUrl = "about:blank", channel = "", storageStatePath = ""] = process.argv;
 
@@ -120,6 +121,8 @@ async function gotoUrl(url) {
 
 async function observePage() {
   const facts = await collectDomFacts(page);
+  const accessibilityTree = await collectAccessibilityTree(page);
+  const visibleTextBlocks = await collectVisibleTextBlocks(page);
   const elements = [];
   for (const [index, fact] of facts.elements.entries()) {
     const selectors = await verifyBestElementSelectors(page, fact);
@@ -153,6 +156,8 @@ async function observePage() {
       elements: elements.map((element) => `${element.role}:${element.name}:${element.action_type}`).join("|"),
     }),
     page_text_summary: textSummary,
+    accessibility_tree: accessibilityTree,
+    visible_text_blocks: visibleTextBlocks,
     elements,
     forms: facts.forms,
     dialogs: facts.dialogs,
@@ -165,11 +170,152 @@ async function observePage() {
   return observation;
 }
 
-async function clickElement(elementId) {
-  const element = lastElements.get(String(elementId || ""));
-  if (!element) {
-    throw new Error(`Unknown element id: ${elementId || ""}`);
+async function collectAccessibilityTree(browserPage) {
+  const snapshot = await browserPage.accessibility?.snapshot?.({ interestingOnly: false }).catch(() => null) || null;
+  const nativeTree = flattenAccessibility(snapshot).slice(0, 300);
+  if (nativeTree.length) {
+    return nativeTree;
   }
+  return collectAccessibilityFallback(browserPage);
+}
+
+function flattenAccessibility(node, path = "ax", output = []) {
+  if (!node || typeof node !== "object") {
+    return output;
+  }
+  const name = cleanText(node.name, 100);
+  const role = cleanText(node.role, 40);
+  const children = Array.isArray(node.children) ? node.children : [];
+  if (name || role) {
+    output.push({
+      id: path,
+      role,
+      name,
+      level: Number.isFinite(node.level) ? node.level : null,
+      checked: typeof node.checked === "boolean" ? node.checked : null,
+      disabled: typeof node.disabled === "boolean" ? node.disabled : null,
+      expanded: typeof node.expanded === "boolean" ? node.expanded : null,
+    });
+  }
+  for (const [index, child] of children.entries()) {
+    if (output.length >= 500) {
+      break;
+    }
+    flattenAccessibility(child, `${path}-${index + 1}`, output);
+  }
+  return output;
+}
+
+async function collectVisibleTextBlocks(browserPage) {
+  return browserPage.evaluate(() => {
+    const clean = (value, limit = 120) => String(value || "").trim().replace(/\s+/g, " ").slice(0, limit);
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+    };
+    const seen = new Set();
+    const blocks = [];
+    const addBlock = (value) => {
+      const text = clean(value);
+      if (!text || seen.has(text)) {
+        return;
+      }
+      seen.add(text);
+      blocks.push(text);
+    };
+    for (const line of String(document.body?.innerText || "").split(/\n+/)) {
+      addBlock(line);
+      if (blocks.length >= 200) {
+        return blocks;
+      }
+    }
+    const selector = "h1,h2,h3,h4,h5,h6,button,label,input,textarea,select,[role],p,span,strong,b,li,[class*='popover'],[class*='popover'] div,[class*='dropdown'],[class*='dropdown'] div";
+    for (const el of Array.from(document.body?.querySelectorAll(selector) || [])) {
+      if (!visible(el)) {
+        continue;
+      }
+      addBlock(el.innerText || el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.textContent);
+      if (blocks.length >= 200) {
+        break;
+      }
+    }
+    return blocks;
+  }).catch(() => []);
+}
+
+async function collectAccessibilityFallback(browserPage) {
+  return browserPage.evaluate(() => {
+    const clean = (value, limit = 100) => String(value || "").trim().replace(/\s+/g, " ").slice(0, limit);
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+    };
+    const roleOf = (el) => {
+      const explicitRole = clean(el.getAttribute("role"), 40);
+      if (explicitRole) return explicitRole;
+      const tag = el.tagName.toLowerCase();
+      if (/^h[1-6]$/.test(tag)) return "heading";
+      if (tag === "button") return "button";
+      if (tag === "a") return "link";
+      if (["input", "textarea"].includes(tag)) return "textbox";
+      if (tag === "select") return "combobox";
+      return "text";
+    };
+    const nameOf = (el) => clean(
+      el.getAttribute("aria-label")
+        || el.getAttribute("placeholder")
+        || el.innerText
+        || el.textContent
+    );
+    const selector = "h1,h2,h3,h4,h5,h6,button,a,input,textarea,select,[role],p,span,strong,b,li";
+    const seen = new Set();
+    const nodes = [];
+    for (const el of Array.from(document.body?.querySelectorAll(selector) || [])) {
+      if (!visible(el)) continue;
+      const role = roleOf(el);
+      const name = nameOf(el);
+      if (!name) continue;
+      const key = `${role}:${name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      nodes.push({
+        id: `ax-fallback-${String(nodes.length + 1).padStart(3, "0")}`,
+        role,
+        name,
+        level: role === "heading" ? Number(el.tagName.slice(1)) : null,
+        checked: null,
+        disabled: el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true" || null,
+        expanded: null,
+      });
+      if (nodes.length >= 500) break;
+    }
+    return nodes;
+  }).catch(() => []);
+}
+
+async function clickElement(elementIdOrLocator) {
+  const raw = String(elementIdOrLocator || "").trim();
+
+  // 1) 快路径：snap ref（lastElements Map 中已有的 element）
+  const cached = lastElements.get(raw);
+  if (cached) {
+    return clickViaCachedElement(cached);
+  }
+
+  // 2) 慢路径：Playwright Locator 字符串（getByRole / getByLabel / getByTestId / getByText / getByPlaceholder）
+  if (isParseableLocatorString(raw)) {
+    const liveLocator = parsePlaywrightLocatorString(page, raw);
+    if (liveLocator) {
+      return clickViaLiveLocator(liveLocator, raw);
+    }
+  }
+
+  throw new Error(`Unknown element id or unsupported locator: ${raw || ""}`);
+}
+
+async function clickViaCachedElement(element) {
   const before = await currentPageState();
   await cleanupTransientOverlays();
   const attempts = [];
@@ -218,11 +364,74 @@ async function clickElement(elementId) {
   return failedActionResult(before, element, "click", attempts);
 }
 
-async function fillField(elementId, value) {
-  const element = lastElements.get(String(elementId || ""));
-  if (!element) {
-    throw new Error(`Unknown element id: ${elementId || ""}`);
+async function clickViaLiveLocator(liveLocator, rawExpr) {
+  const before = await currentPageState();
+  await cleanupTransientOverlays();
+  const target = await firstVisibleLocator(liveLocator);
+  if (!target) {
+    throw new Error(`Locator did not resolve to a visible element: ${rawExpr}`);
   }
+  await Promise.all([
+    page.waitForLoadState("domcontentloaded", { timeout: 3000 }).catch(() => {}),
+    target.click({ timeout: 3000 }),
+  ]);
+  await page.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(250).catch(() => {});
+  const after = await currentPageState();
+  const placeholderElement = {
+    id: rawExpr,
+    name: rawExpr,
+    primary_selector: { kind: "playwright_api", code: rawExpr },
+  };
+  return {
+    status: "passed",
+    element_id: "",
+    element_name: rawExpr,
+    action_type: "click",
+    selector: rawExpr,
+    selector_kind: "playwright_api",
+    before_url: before.url,
+    after_url: after.url,
+    before_title: before.title,
+    after_title: after.title,
+    url_changed: normalizeUrl(before.url) !== normalizeUrl(after.url),
+    title_changed: before.title !== after.title,
+    state_signature_changed: before.signature !== after.signature,
+    new_dialog_detected: await hasVisibleDialog(page),
+    attempts: [{
+      selector: rawExpr,
+      selector_kind: "playwright_api",
+      error: "",
+      error_type: "",
+      error_summary: "",
+    }],
+    error: "",
+    error_type: "",
+    error_summary: "",
+  };
+}
+
+async function fillField(elementIdOrLocator, value) {
+  const raw = String(elementIdOrLocator || "").trim();
+
+  // 1) 快路径：snap ref
+  const cached = lastElements.get(raw);
+  if (cached) {
+    return fillViaCachedElement(cached, value);
+  }
+
+  // 2) 慢路径：Playwright Locator 字符串
+  if (isParseableLocatorString(raw)) {
+    const liveLocator = parsePlaywrightLocatorString(page, raw);
+    if (liveLocator) {
+      return fillViaLiveLocator(liveLocator, value, raw);
+    }
+  }
+
+  throw new Error(`Unknown element id or unsupported locator: ${raw || ""}`);
+}
+
+async function fillViaCachedElement(element, value) {
   const before = await currentPageState();
   await cleanupTransientOverlays();
   const attempts = [];
@@ -261,6 +470,35 @@ async function fillField(elementId, value) {
     }
   }
   return failedActionResult(before, element, "fill", attempts);
+}
+
+async function fillViaLiveLocator(liveLocator, value, rawExpr) {
+  const before = await currentPageState();
+  await cleanupTransientOverlays();
+  const target = await firstVisibleLocator(liveLocator);
+  if (!target) {
+    throw new Error(`Locator did not resolve to a visible element: ${rawExpr}`);
+  }
+  await target.fill(value, { timeout: 3000 });
+  await page.waitForTimeout(500).catch(() => {});
+  const after = await currentPageState();
+  return {
+    status: "passed",
+    element_id: "",
+    element_name: rawExpr,
+    action_type: "fill",
+    selector: rawExpr,
+    selector_kind: "playwright_api",
+    before_url: before.url,
+    after_url: after.url,
+    value_applied: true,
+    state_signature_changed: before.signature !== after.signature,
+    result_count_changed: before.signature !== after.signature,
+    attempts: [],
+    error: "",
+    error_type: "",
+    error_summary: "",
+  };
 }
 
 async function goBack() {
@@ -453,7 +691,7 @@ async function currentPageState() {
   return {
     url: page.url(),
     title,
-    signature: signatureFor({ url: normalizeUrl(page.url()), title, text: bodyText.slice(0, 2000) }),
+    signature: signatureFor({ url: normalizeUrl(page.url()), title, text: bodyText.slice(0, 800) }),
   };
 }
 
@@ -588,35 +826,35 @@ async function collectDomFacts(browserPage) {
         stable_text: containerName,
       };
     };
-    const elementFacts = Array.from(document.querySelectorAll(interactiveSelector))
-      .filter(visible)
-      .map((el, index) => {
-        const role = roleOf(el);
-        const tagName = el.tagName.toLowerCase();
-        const name = labelOf(el);
-        const actionType = ["input", "textarea", "select"].includes(tagName) && !["button", "checkbox", "radio"].includes(role) ? "fill" : "click";
-        return {
-          index,
-          role,
-          name,
-          label: explicitLabelOf(el),
-          testId: el.getAttribute("data-testid") || el.getAttribute("data-test-id") || el.getAttribute("data-test") || "",
-          text: clean(el.innerText || el.textContent),
-          css: cssSelectorOf(el),
-          context: contextOf(el, name),
-          action_type: actionType,
-          href: el.href || "",
-          enabled: !el.disabled && el.getAttribute("aria-disabled") !== "true",
-          visible: true,
-        };
-      })
-      .filter((item) => {
-        if (item.action_type === "fill") return true;
-        const hasStableName = Boolean(item.name || item.text || item.testId || item.href);
-        if (!hasStableName) return false;
-        return item.name.length <= 120 || item.role !== "button";
-      })
-      .slice(0, 120);
+  const elementFacts = Array.from(document.querySelectorAll(interactiveSelector))
+    .filter(visible)
+    .map((el, index) => {
+      const role = roleOf(el);
+      const tagName = el.tagName.toLowerCase();
+      const name = labelOf(el);
+      const actionType = ["input", "textarea", "select"].includes(tagName) && !["button", "checkbox", "radio"].includes(role) ? "fill" : "click";
+      return {
+        index,
+        role,
+        name,
+        label: explicitLabelOf(el),
+        testId: el.getAttribute("data-testid") || el.getAttribute("data-test-id") || el.getAttribute("data-test") || "",
+        text: clean(el.innerText || el.textContent),
+        css: cssSelectorOf(el),
+        context: contextOf(el, name),
+        action_type: actionType,
+        href: el.href || "",
+        enabled: !el.disabled && el.getAttribute("aria-disabled") !== "true",
+        visible: true,
+      };
+    })
+    .filter((item) => {
+      if (item.action_type === "fill") return true;
+      const hasStableName = Boolean(item.name || item.text || item.testId || item.href);
+      if (!hasStableName) return false;
+      return item.name.length <= 120 || item.role !== "button";
+    })
+    .slice(0, 80);
     const links = elementFacts.filter((item) => item.href).map((item) => ({
       name: item.name,
       href: item.href,
@@ -651,7 +889,7 @@ async function collectDomFacts(browserPage) {
       .map((item) => clean(item.textContent));
     return {
       title: document.title || location.pathname || location.href,
-      body_text: clean(document.body?.innerText || "", 3000),
+      body_text: clean(document.body?.innerText || "", 800),
       elements: elementFacts,
       links,
       forms,

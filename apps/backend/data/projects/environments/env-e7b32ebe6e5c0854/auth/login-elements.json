@@ -41,26 +41,6 @@
   },
   {
     "element_id": "login-el-3",
-    "tag": "img",
-    "kind": "img",
-    "role": "img",
-    "type": "",
-    "class_name": "logo",
-    "name": "",
-    "placeholder": "",
-    "aria_label": "",
-    "aria_checked": "",
-    "text": "",
-    "src": "/assets/login-logo-DfQ68y90.png",
-    "selector": "[data-ai-testing-login-el=\"login-el-3\"]",
-    "stable_selector": "img.logo",
-    "locator": {
-      "type": "css",
-      "value": "img.logo"
-    }
-  },
-  {
-    "element_id": "login-el-4",
     "tag": "label",
     "kind": "label",
     "role": "label",
@@ -72,7 +52,7 @@
     "aria_checked": "",
     "text": "账号",
     "src": "",
-    "selector": "[data-ai-testing-login-el=\"login-el-4\"]",
+    "selector": "[data-ai-testing-login-el=\"login-el-3\"]",
     "stable_selector": "div > label:nth-of-type(1)",
     "locator": {
       "type": "css",
@@ -80,7 +60,7 @@
     }
   },
   {
-    "element_id": "login-el-5",
+    "element_id": "login-el-4",
     "tag": "input",
     "kind": "input",
     "role": "input",
@@ -92,7 +72,7 @@
     "aria_checked": "",
     "text": "",
     "src": "",
-    "selector": "[data-ai-testing-login-el=\"login-el-5\"]",
+    "selector": "[data-ai-testing-login-el=\"login-el-4\"]",
     "stable_selector": "input[placeholder=\"请输入邮箱\\/手机号\"]",
     "locator": {
       "type": "placeholder",
@@ -100,7 +80,7 @@
     }
   },
   {
-    "element_id": "login-el-6",
+    "element_id": "login-el-5",
     "tag": "label",
     "kind": "label",
     "role": "label",
@@ -112,7 +92,7 @@
     "aria_checked": "",
     "text": "密码",
     "src": "",
-    "selector": "[data-ai-testing-login-el=\"login-el-6\"]",
+    "selector": "[data-ai-testing-login-el=\"login-el-5\"]",
     "stable_selector": "div > label:nth-of-type(1)",
     "locator": {
       "type": "css",
@@ -120,7 +100,7 @@
     }
   },
   {
-    "element_id": "login-el-7",
+    "element_id": "login-el-6",
     "tag": "input",
     "kind": "input",
     "role": "input",
@@ -132,7 +112,7 @@
     "aria_checked": "",
     "text": "",
     "src": "",
-    "selector": "[data-ai-testing-login-el=\"login-el-7\"]",
+    "selector": "[data-ai-testing-login-el=\"login-el-6\"]",
     "stable_selector": "input[placeholder=\"请输入密码\"]",
     "locator": {
       "type": "placeholder",
@@ -140,7 +120,7 @@
     }
   },
   {
-    "element_id": "login-el-8",
+    "element_id": "login-el-7",
     "tag": "label",
     "kind": "label",
     "role": "label",
@@ -152,7 +132,7 @@
     "aria_checked": "",
     "text": "验证码",
     "src": "",
-    "selector": "[data-ai-testing-login-el=\"login-el-8\"]",
+    "selector": "[data-ai-testing-login-el=\"login-el-7\"]",
     "stable_selector": "div > label:nth-of-type(1)",
     "locator": {
       "type": "css",
@@ -160,7 +140,7 @@
     }
   },
   {
-    "element_id": "login-el-9",
+    "element_id": "login-el-8",
     "tag": "input",
     "kind": "input",
     "role": "input",
@@ -172,7 +152,7 @@
     "aria_checked": "",
     "text": "",
     "src": "",
-    "selector": "[data-ai-testing-login-el=\"login-el-9\"]",
+    "selector": "[data-ai-testing-login-el=\"login-el-8\"]",
     "stable_selector": "input[placeholder=\"请输入图形验证码\"]",
     "locator": {
       "type": "placeholder",
@@ -180,7 +160,7 @@
     }
   },
   {
-    "element_id": "login-el-10",
+    "element_id": "login-el-9",
     "tag": "img",
     "kind": "img",
     "role": "img",
@@ -191,8 +171,8 @@
     "aria_label": "",
     "aria_checked": "",
     "text": "",
-    "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAAkCAIAAADNSmkJAAAUlklEQVR4nM2bd1wUV9fHf9tgYWEpSpGmFBHpSAcVKxgh0diJLb",
-    "selector": "[data-ai-testing-login-el=\"login-el-10\"]",
+    "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAAkCAIAAADNSmkJAAAOfUlEQVR4nNVae1hU1fp+GUBQRIThJqEgeEEQvKKDISKQICSUeU",
+    "selector": "[data-ai-testing-login-el=\"login-el-9\"]",
     "stable_selector": "img.verify-code",
     "locator": {
       "type": "css",
@@ -200,7 +180,7 @@
     }
   },
   {
-    "element_id": "login-el-11",
+    "element_id": "login-el-10",
     "tag": "button",
     "kind": "button",
     "role": "button",
@@ -212,12 +192,32 @@
     "aria_checked": "",
     "text": "登录",
     "src": "",
-    "selector": "[data-ai-testing-login-el=\"login-el-11\"]",
+    "selector": "[data-ai-testing-login-el=\"login-el-10\"]",
     "stable_selector": "div > button:nth-of-type(1)",
     "locator": {
       "type": "role",
       "role": "button",
       "name": "登录"
+    }
+  },
+  {
+    "element_id": "login-el-11",
+    "tag": "a",
+    "kind": "a",
+    "role": "a",
+    "type": "",
+    "class_name": "",
+    "name": "",
+    "placeholder": "",
+    "aria_label": "",
+    "aria_checked": "",
+    "text": "《用户协议》",
+    "src": "",
+    "selector": "[data-ai-testing-login-el=\"login-el-11\"]",
+    "stable_selector": "div > a:nth-of-type(1)",
+    "locator": {
+      "type": "css",
+      "value": "div > a:nth-of-type(1)"
     }
   },
   {
@@ -231,13 +231,13 @@
     "placeholder": "",
     "aria_label": "",
     "aria_checked": "",
-    "text": "《用户协议》",
+    "text": "《隐私政策》",
     "src": "",
     "selector": "[data-ai-testing-login-el=\"login-el-12\"]",
-    "stable_selector": "div > a:nth-of-type(1)",
+    "stable_selector": "div > a:nth-of-type(2)",
     "locator": {
       "type": "css",
-      "value": "div > a:nth-of-type(1)"
+      "value": "div > a:nth-of-type(2)"
     }
   },
   {
@@ -251,29 +251,9 @@
     "placeholder": "",
     "aria_label": "",
     "aria_checked": "",
-    "text": "《隐私政策》",
-    "src": "",
-    "selector": "[data-ai-testing-login-el=\"login-el-13\"]",
-    "stable_selector": "div > a:nth-of-type(2)",
-    "locator": {
-      "type": "css",
-      "value": "div > a:nth-of-type(2)"
-    }
-  },
-  {
-    "element_id": "login-el-14",
-    "tag": "a",
-    "kind": "a",
-    "role": "a",
-    "type": "",
-    "class_name": "",
-    "name": "",
-    "placeholder": "",
-    "aria_label": "",
-    "aria_checked": "",
     "text": "京公网安备11010502055440号",
     "src": "",
-    "selector": "[data-ai-testing-login-el=\"login-el-14\"]",
+    "selector": "[data-ai-testing-login-el=\"login-el-13\"]",
     "stable_selector": "div > a:nth-of-type(1)",
     "locator": {
       "type": "css",
@@ -281,7 +261,7 @@
     }
   },
   {
-    "element_id": "login-el-15",
+    "element_id": "login-el-14",
     "tag": "img",
     "kind": "img",
     "role": "img",
@@ -293,7 +273,7 @@
     "aria_checked": "",
     "text": "",
     "src": "data:image/svg+xml,%3csvg%20width='40'%20height='40'%20viewBox='0%200%2040%2040'%20fill='none'%20xmlns='http://www.w3.or",
-    "selector": "[data-ai-testing-login-el=\"login-el-15\"]",
+    "selector": "[data-ai-testing-login-el=\"login-el-14\"]",
     "stable_selector": "div > img:nth-of-type(1)",
     "locator": {
       "type": "css",
@@ -301,7 +281,7 @@
     }
   },
   {
-    "element_id": "login-el-16",
+    "element_id": "login-el-15",
     "tag": "div",
     "kind": "agreement",
     "role": "div",
@@ -313,7 +293,7 @@
     "aria_checked": "",
     "text": "我已阅读并同意 《用户协议》 和 《隐私政策》",
     "src": "",
-    "selector": "[data-ai-testing-login-el=\"login-el-16\"]",
+    "selector": "[data-ai-testing-login-el=\"login-el-15\"]",
     "stable_selector": "div > div:nth-of-type(2)",
     "locator": {
       "type": "text",
@@ -321,7 +301,7 @@
     }
   },
   {
-    "element_id": "login-el-17",
+    "element_id": "login-el-16",
     "tag": "div",
     "kind": "agreement",
     "role": "div",
@@ -333,7 +313,7 @@
     "aria_checked": "",
     "text": "我已阅读并同意 《用户协议》 和 《隐私政策》",
     "src": "",
-    "selector": "[data-ai-testing-login-el=\"login-el-17\"]",
+    "selector": "[data-ai-testing-login-el=\"login-el-16\"]",
     "stable_selector": "div > div:nth-of-type(1)",
     "locator": {
       "type": "text",
@@ -341,7 +321,7 @@
     }
   },
   {
-    "element_id": "login-el-18",
+    "element_id": "login-el-17",
     "tag": "span",
     "kind": "agreement",
     "role": "span",
@@ -353,7 +333,7 @@
     "aria_checked": "",
     "text": "我已阅读并同意",
     "src": "",
-    "selector": "[data-ai-testing-login-el=\"login-el-18\"]",
+    "selector": "[data-ai-testing-login-el=\"login-el-17\"]",
     "stable_selector": "div > span:nth-of-type(1)",
     "locator": {
       "type": "text",
