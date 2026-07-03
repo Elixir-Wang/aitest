@@ -2004,16 +2004,60 @@ def _readable_tool_display(tool_name: str, event_name: str, data: dict, status: 
         )
     if tool_name == "playwright_navigate_tool":
         url = _tool_field(input_data, "url") or _tool_field(output_data, "url")
-        return _tool_display("navigate", "打开页面", f"打开 {_compact_url_for_display(url) or '目标页面'}", status, [{"label": "目标 URL", "value": _compact_url_for_display(url), "mono": True}, {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)}], error)
+        return _tool_display(
+            "navigate",
+            "打开页面",
+            f"打开 {_compact_url_for_display(url) or '目标页面'}",
+            status,
+            [{"label": "目标 URL", "value": _compact_url_for_display(url), "mono": True}, {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)}],
+            error,
+        )
     if tool_name == "playwright_click_tool":
         locator = _tool_field(input_data, "locator") or _compact_event_payload(data.get("input"))
-        return _tool_display("click", "点击元素", f"点击 {_locator_label(locator) or '页面元素'}", status, [{"label": "目标", "value": _locator_label(locator)}, {"label": "定位器", "value": locator, "mono": True}, {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)}], error)
+        target = _locator_label(locator) or "页面元素"
+        return _tool_display(
+            "click",
+            "点击元素",
+            f"点击 {target}",
+            status,
+            [
+                {"label": "目标", "value": target},
+                {"label": "定位器", "value": locator, "mono": True},
+                {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
+            ],
+            error,
+        )
     if tool_name == "playwright_snap_tool":
-        elements = output_data.get("elements") if isinstance(output_data.get("elements"), list) else []
-        return _tool_display("snapshot", "采集页面快照", f"采集 {_tool_field(output_data, 'title') or _compact_url_for_display(_tool_field(output_data, 'url')) or '当前页面'} 的页面结构", status, [{"label": "页面", "value": _tool_field(output_data, "title")}, {"label": "URL", "value": _compact_url_for_display(_tool_field(output_data, "url")), "mono": True}, {"label": "发现元素", "value": _summarize_element_roles(elements)}, {"label": "关键元素", "value": _summarize_key_elements(elements)}, {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)}], error)
+        page_title = _tool_field(output_data, "title")
+        page_url = _compact_url_for_display(_tool_field(output_data, "url"))
+        page_identity = page_title or page_url or "当前页面"
+        return _tool_display(
+            "snapshot",
+            "采集页面快照",
+            f"采集 {page_identity} 的页面结构",
+            status,
+            [
+                {"label": "页面", "value": page_title or page_identity},
+                {"label": "URL", "value": page_url, "mono": True},
+                {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
+            ],
+            error,
+        )
     if tool_name == "write_page_artifact_tool":
         path = _tool_field(output_data, "path") or _tool_field(input_data, "path") or _tool_field(input_data, "artifact_path")
-        return _tool_display("artifact_write", "写入页面事实", f"写入 {Path(path).name}" if path else "写入页面事实", status, [{"label": "页面", "value": _tool_field(input_data, "title") or _tool_field(input_data, "page_title")}, {"label": "产物", "value": path, "mono": True}, {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)}], error)
+        page_label = _tool_field(input_data, "title") or _tool_field(input_data, "page_title")
+        return _tool_display(
+            "artifact_write",
+            "写入页面事实",
+            f"写入 {page_label} 的页面事实（{Path(path).name}）" if page_label and path else f"写入 {Path(path).name}" if path else "写入页面事实",
+            status,
+            [
+                {"label": "页面", "value": page_label},
+                {"label": "产物", "value": path, "mono": True},
+                {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
+            ],
+            error,
+        )
 
     # 如果有错误，显示错误信息（即使是未识别的工具）
     if error:
@@ -2026,8 +2070,10 @@ def _readable_tool_display(tool_name: str, event_name: str, data: dict, status: 
 def _tool_display(kind: str, title: str, summary: str, status: str, fields: list[dict], error: str = "") -> dict:
     if error:
         title = f"{title}失败" if not title.endswith("失败") else title
-        summary = _error_reason(error)
-        fields = [*fields, {"label": "原因", "value": error, "tone": "danger"}]
+        if not summary or summary == title or "失败" not in summary:
+            summary = _error_reason(error) or summary
+        if not any(field.get("label") == "原因" for field in fields):
+            fields = [*fields, {"label": "原因", "value": error, "tone": "danger"}]
     return {
         "kind": kind,
         "title": title,
@@ -2096,12 +2142,23 @@ def _summarize_key_elements(elements: list) -> str:
 
 
 def _error_reason(error: str) -> str:
+    if not error:
+        return ""
+    lowered = error.lower()
     if "429" in error or "rate_limit_exceeded" in error:
         return "模型配额限制"
-    if "stale_ref" in error or "Unknown element id" in error:
-        return "元素引用已失效"
-    if "timeout" in error.lower():
+    if "stale_ref" in lowered or "unknown element id" in lowered or "element is not attached" in lowered:
+        return "元素引用已失效（页面已刷新）"
+    if "timeout" in lowered or "timed out" in lowered:
         return "操作超时"
+    if "not visible" in lowered or "not attached" in lowered or "intercept" in lowered:
+        return "元素当前不可点击"
+    if "no element" in lowered or "no node" in lowered or "not found" in lowered or "selector" in lowered and "resolved" in lowered:
+        return "未找到匹配元素"
+    if "navigation" in lowered and "fail" in lowered:
+        return "页面导航失败"
+    if "permission" in lowered or "denied" in lowered:
+        return "权限不足或被拒绝"
     return "执行失败"
 
 

@@ -1,0 +1,42 @@
+---
+description: 测试必须使用项目现有的 Python 虚拟环境 apps/backend/.venv
+alwaysApply: true
+---
+
+# 测试环境规范
+
+本项目所有测试**必须**在项目自带的虚拟环境中运行：**`apps/backend/.venv/`**（由 uv 管理，根目录有 `uv.lock`）。
+
+## 为什么
+
+- 系统 Python（macOS 自带 `/usr/bin/python3`、apt 安装的 Python）通常缺项目依赖、版本不可控
+- 直接 `python` / `pip install` 会污染全局 site-packages，让下次复现困难
+- 项目已经用 uv 锁定了完整依赖，**不要重新建 venv、不要重新装依赖**
+
+## 强制规则
+
+1. **禁止**使用系统解释器跑测试：`python`、`python3`、`/usr/bin/python3` 等一律不允许
+2. **必须**直接使用项目 venv（不需要 `source activate`，直接调用解释器绝对路径）：
+   ```bash
+   apps/backend/.venv/bin/python -m pytest apps/backend/tests/...
+   apps/backend/.venv/bin/python -m uvicorn app.main:app --reload
+   ```
+3. **禁止**新建 venv、禁止 `uv venv`、禁止 `python -m venv`、`virtualenv` —— `.venv` 已经存在
+4. **禁止**用 `sudo pip install`、禁止向全局 site-packages 装任何东西
+5. 跑测试前**先打印**以下自检，确认用的是项目 venv：
+   ```bash
+   which python                      # 期望：…/apps/backend/.venv/bin/python
+   apps/backend/.venv/bin/python -c "import sys; print(sys.prefix)"
+                                      # 期望：…/apps/backend/.venv
+   ```
+
+## 依赖管理
+
+- 新增依赖：改 `apps/backend/pyproject.toml` 的 `dependencies`，然后 `cd apps/backend && uv sync`
+- 绝不要手动 `pip install` 到 `.venv`
+- uv 会自动把 `uv.lock` 更新一致
+
+## 例外
+
+- 纯静态分析（grep、读文件、AST 解析等不调用解释器的操作）不受此约束
+- CI 环境由 CI 自己 provision，不在本规则范围内

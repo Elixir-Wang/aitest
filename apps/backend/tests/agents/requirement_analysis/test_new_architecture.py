@@ -1,6 +1,7 @@
 """需求分析新架构测试"""
 
 import pytest
+from app.agents.model_selection import ModelSelection
 from app.agents.requirement_analysis import (
     RequirementInput,
     RequirementAnalysisResult,
@@ -11,6 +12,10 @@ from app.agents.requirement_analysis import (
     run_requirement_analysis,
     analyze_requirement_legacy,
 )
+
+
+def _model_selection(provider: str = "openai", model: str = "gpt-4o-mini") -> ModelSelection:
+    return ModelSelection(provider=provider, model=model, base_url=None, api_key="test-key")
 
 
 def test_new_schemas_structure():
@@ -70,6 +75,8 @@ async def test_new_api_mock(monkeypatch):
                 priority="P0",
                 module="登录",
                 question="未登录用户能否访问？",
+                option_a="统一拦截到登录页",
+                option_b="返回 401 由前端决定",
                 impact="影响权限控制设计"
             )
         ]
@@ -86,11 +93,11 @@ async def test_new_api_mock(monkeypatch):
     )
     monkeypatch.setattr(
         "app.agents.requirement_analysis.service.resolve_model_selection",
-        lambda cap: "mock_model"
+        lambda cap: _model_selection()
     )
     monkeypatch.setattr(
         "app.agents.requirement_analysis.service.build_agent_model",
-        lambda sel: "mock_model"
+        lambda sel, *, extra_body=None: "mock_model"
     )
 
     # 测试
@@ -139,7 +146,17 @@ async def test_legacy_api_compatibility(monkeypatch):
             ui="界面",
             data="数据",
         ),
-        clarifications=[]
+        clarifications=[
+            ClarificationItem(
+                id="clar-001",
+                priority="P0",
+                module="登录",
+                question="测试问题？",
+                option_a="选项 A",
+                option_b="选项 B",
+                impact="影响说明。",
+            )
+        ],
     )
 
     class MockAgent:
@@ -152,11 +169,11 @@ async def test_legacy_api_compatibility(monkeypatch):
     )
     monkeypatch.setattr(
         "app.agents.requirement_analysis.service.resolve_model_selection",
-        lambda cap: "mock_model"
+        lambda cap: _model_selection()
     )
     monkeypatch.setattr(
         "app.agents.requirement_analysis.service.build_agent_model",
-        lambda sel: "mock_model"
+        lambda sel, *, extra_body=None: "mock_model"
     )
 
     # 使用旧接口
@@ -170,10 +187,10 @@ async def test_legacy_api_compatibility(monkeypatch):
     old_output = await analyze_requirement_legacy(old_input)
 
     # 验证旧格式输出
-    assert old_output.status == "completed"
+    assert old_output.status == "needs_clarification"
     assert "# 需求理解" in old_output.understanding_markdown
     assert "背景" in old_output.understanding_markdown
-    assert len(old_output.clarification_items) == 0
+    assert len(old_output.clarification_items) == 1
 
 
 def test_markdown_conversion():
@@ -202,6 +219,8 @@ def test_markdown_conversion():
                 priority="P0",
                 module="登录",
                 question="测试问题",
+                option_a="选项 A",
+                option_b="选项 B",
                 impact="测试影响"
             )
         ]
@@ -217,38 +236,37 @@ def test_markdown_conversion():
     # 测试澄清问题 Markdown
     clarification_md = result.to_clarification_markdown()
     assert "# 待澄清问题" in clarification_md
-    assert "| 优先级 | 模块/对象 | 澄清问题 | 影响 |" in clarification_md
-    assert "| P0 | 登录 | 测试问题 | 测试影响 |" in clarification_md
+    assert "| 优先级 | 模块/对象 | 澄清问题 | 选项 A | 选项 B | 影响 |" in clarification_md
+    assert "| P0 | 登录 | 测试问题 | 选项 A | 选项 B | 测试影响 |" in clarification_md
 
 
-def test_empty_clarifications():
-    """测试无澄清问题的情况"""
+def test_empty_clarifications_is_now_rejected():
+    """澄清问题数量硬约束：空列表必须被 schema 拒绝（回归防御）
+
+    历史问题：result.json 里出现 status=completed + clarifications=[] + "暂无待澄清问题"
+    的产物。修复方案是把硬约束下沉到 pydantic schema：clarifications 至少有 1 条。
+    真正的失败用例见 test_clarification_minimum.py::test_clarifications_empty_list_fails_validation。
+    """
     from app.agents.requirement_analysis.schemas import (
         RequirementUnderstanding,
         RequirementAnalysisResult,
     )
+    from pydantic import ValidationError
 
-    result = RequirementAnalysisResult(
-        understanding=RequirementUnderstanding(
-            background="背景",
-            goals="目标",
-            users="用户",
-            scope="范围",
-            flow="流程",
-            states="状态",
-            rules="规则",
-            ui="界面",
-            data="数据",
-        ),
-        clarifications=[]
+    understanding = RequirementUnderstanding(
+        background="背景",
+        goals="目标",
+        users="用户",
+        scope="范围",
+        flow="流程",
+        states="状态",
+        rules="规则",
+        ui="界面",
+        data="数据",
     )
 
-    # 状态应该是 completed
-    assert result.status == "completed"
-
-    # Markdown 应该显示"暂无待澄清问题"
-    clarification_md = result.to_clarification_markdown()
-    assert "暂无待澄清问题" in clarification_md
+    with pytest.raises(ValidationError):
+        RequirementAnalysisResult(understanding=understanding, clarifications=[])
 
 
 if __name__ == "__main__":

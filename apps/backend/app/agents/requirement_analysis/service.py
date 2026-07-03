@@ -4,7 +4,7 @@ import json
 import secrets
 from pathlib import Path
 
-from app.agents.model_selection import build_agent_model, resolve_model_selection
+from app.agents.model_selection import build_agent_model, resolve_model_selection, thinking_disabled_extra_body
 from app.agents.requirement_analysis.agent import requirement_analysis_agent
 from app.agents.requirement_analysis.schemas import (
     AuxiliaryRequirementDocument,
@@ -63,7 +63,8 @@ async def analyze_requirement(input_data: RequirementInput) -> RequirementAnalys
     content = "\n".join(content_parts)
 
     # 调用 Agent
-    model = build_agent_model(resolve_model_selection(CAPABILITY_ID))
+    selection = resolve_model_selection(CAPABILITY_ID)
+    model = build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
     agent = requirement_analysis_agent(model)
 
     result = await agent.ainvoke({

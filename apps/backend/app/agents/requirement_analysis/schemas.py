@@ -42,7 +42,14 @@ class ClarificationItem(BaseModel):
 class RequirementAnalysisResult(BaseModel):
     """需求分析完整结果"""
     understanding: RequirementUnderstanding = Field(..., description="需求理解")
-    clarifications: list[ClarificationItem] = Field(default_factory=list, description="澄清问题列表")
+    clarifications: list[ClarificationItem] = Field(
+        min_length=1,
+        description=(
+            "澄清问题列表。任何需求文档都必须至少生成 1 条澄清问题。"
+            "如果 LLM 主观判断'没有不明确点'，应优先列入低优先级（P3）"
+            "而不是省略。"
+        ),
+    )
 
     @property
     def status(self) -> Literal["completed", "needs_clarification"]:

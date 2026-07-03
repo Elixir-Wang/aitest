@@ -1,6 +1,6 @@
 import json
 
-from app.agents.model_selection import build_agent_model, resolve_model_selection
+from app.agents.model_selection import build_agent_model, resolve_model_selection, thinking_disabled_extra_body
 from app.agents.requirement_finalization.agent import requirement_finalization_agent
 from app.agents.requirement_finalization.schemas import (
     RequirementFinalizationInput,
@@ -25,7 +25,8 @@ async def run_requirement_finalization(input_data: RequirementFinalizationInput)
             "请基于标准需求 Markdown 的章节骨架生成最终需求 Markdown。",
         ]
     )
-    model = build_agent_model(resolve_model_selection(CAPABILITY_ID))
+    selection = resolve_model_selection(CAPABILITY_ID)
+    model = build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
     agent = requirement_finalization_agent(model)
     result = await agent.ainvoke({"messages": [{"role": "user", "content": content}]})
     if not isinstance(result, dict):

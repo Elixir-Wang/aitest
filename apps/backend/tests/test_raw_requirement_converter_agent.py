@@ -3,9 +3,14 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from app.agents.model_selection import ModelSelection
 from app.agents.requirement_standardization import schemas
 from app.agents.requirement_standardization.agent import requirement_standardization_agent
 from app.schemas.requirement_conversion import RequirementConversionInput, RequirementConversionOutput
+
+
+def _model_selection(provider: str = "openai", model: str = "gpt-4o-mini") -> ModelSelection:
+    return ModelSelection(provider=provider, model=model, base_url=None, api_key="test-key")
 
 
 def test_requirement_conversion_output_contract_is_minimal() -> None:
@@ -148,7 +153,7 @@ async def test_requirement_standardization_service_returns_structured_response(m
 
     def fake_resolve_model_selection(capability_id):
         captured["capability_id"] = capability_id
-        return "selection"
+        return _model_selection()
 
     monkeypatch.setattr("app.agents.requirement_standardization.service.resolve_model_selection", fake_resolve_model_selection)
     monkeypatch.setattr("app.agents.requirement_standardization.service.build_agent_model", lambda selection, *, extra_body=None: "model")
@@ -173,7 +178,7 @@ async def test_requirement_standardization_service_rejects_missing_structured_re
         async def ainvoke(self, payload):
             return {}
 
-    monkeypatch.setattr("app.agents.requirement_standardization.service.resolve_model_selection", lambda capability_id: "selection")
+    monkeypatch.setattr("app.agents.requirement_standardization.service.resolve_model_selection", lambda capability_id: _model_selection())
     monkeypatch.setattr("app.agents.requirement_standardization.service.build_agent_model", lambda selection, *, extra_body=None: "model")
     monkeypatch.setattr("app.agents.requirement_standardization.service.requirement_standardization_agent", lambda model: FakeAgent())
 
@@ -184,6 +189,42 @@ async def test_requirement_standardization_service_rejects_missing_structured_re
                 markdown_content="# 登录\n支持账号密码登录。",
             )
         )
+
+
+@pytest.mark.anyio
+async def test_requirement_standardization_disables_thinking_for_tool_strategy_models(monkeypatch) -> None:
+    from app.agents.requirement_standardization.service import convert_requirement_file
+
+    expected = RequirementConversionOutput(
+        markdown_content="# 登录\n\n- 支持账号密码登录。\n",
+        conversion_summary="已标准化 Markdown。",
+    )
+    seen = {}
+
+    class FakeAgent:
+        async def ainvoke(self, payload):
+            return {"structured_response": expected}
+
+    def fake_build_agent_model(selection, *, extra_body=None):
+        seen["extra_body"] = extra_body
+        return "model"
+
+    monkeypatch.setattr(
+        "app.agents.requirement_standardization.service.resolve_model_selection",
+        lambda capability_id: _model_selection(provider="deepseek", model="deepseek-reasoner"),
+    )
+    monkeypatch.setattr("app.agents.requirement_standardization.service.build_agent_model", fake_build_agent_model)
+    monkeypatch.setattr("app.agents.requirement_standardization.service.requirement_standardization_agent", lambda model: FakeAgent())
+
+    result = await convert_requirement_file(
+        RequirementConversionInput(
+            filename="demo.md",
+            markdown_content="# 登录\n支持账号密码登录。",
+        )
+    )
+
+    assert result is expected
+    assert seen["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
 def test_document_file_service_uses_requirement_standardization_service() -> None:

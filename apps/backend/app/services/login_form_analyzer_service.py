@@ -9,7 +9,7 @@ from langchain.agents.structured_output import ToolStrategy
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
-from app.agents.model_selection import build_agent_model, resolve_model_selection
+from app.agents.model_selection import build_agent_model, resolve_model_selection, thinking_disabled_extra_body
 from app.core import settings
 from app.services.captcha_solver_service import CAPTCHA_MODEL_CAPABILITY_ID
 
@@ -29,7 +29,7 @@ class LoginFormAnalysisOutput(BaseModel):
 
 def _build_login_form_analyzer_model():
     selection = resolve_model_selection(CAPTCHA_MODEL_CAPABILITY_ID)
-    return build_agent_model(selection)
+    return build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
 
 
 def _element_for_id(elements: list[dict], element_id: str) -> dict | None:

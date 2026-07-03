@@ -17,6 +17,7 @@ from app.services import operation_log_service, task_service
 
 DOCUMENT_PENDING_MERGE_STATUS = "pending_merge"
 DOCUMENT_PENDING_REVIEW_STATUS = "pending_review"
+DOCUMENT_PARSING_STATUS = "parsing"
 CONVERSION_SUCCESS_STATUS = "success"
 CONVERSION_FAILED_STATUS = "failed"
 CONVERSION_PENDING_STATUS = "pending"
@@ -29,8 +30,14 @@ def sync_document_status(db, document_id: str) -> None:
     files = document_repo.list_file_mappings(db, document_id)
     if not files:
         return
+    if any(row["conversion_status"] in {CONVERSION_PENDING_STATUS, CONVERSION_PROCESSING_STATUS} for row in files):
+        document_repo.update_document_status(db, document_id, DOCUMENT_PARSING_STATUS)
+        return
     primary = document_repo.find_primary_file_mapping(db, document_id)
-    if len(files) == 1 or primary:
+    primary_ready = primary and primary["conversion_status"] in {CONVERSION_SUCCESS_STATUS, "warning"} and primary["markdown_file_path"]
+    if len(files) == 1 and files[0]["conversion_status"] in {CONVERSION_SUCCESS_STATUS, "warning"} and files[0]["markdown_file_path"]:
+        document_repo.update_document_status(db, document_id, DOCUMENT_PENDING_REVIEW_STATUS)
+    elif primary_ready:
         document_repo.update_document_status(db, document_id, DOCUMENT_PENDING_REVIEW_STATUS)
     else:
         document_repo.update_document_status(db, document_id, DOCUMENT_PENDING_MERGE_STATUS)

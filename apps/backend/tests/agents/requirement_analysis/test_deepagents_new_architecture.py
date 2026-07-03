@@ -5,13 +5,22 @@ from pydantic import ValidationError
 
 from app.agents.requirement_analysis.agent import requirement_analysis_agent
 from app.agents.requirement_analysis.schemas import (
+    ClarificationItem,
+    RequirementAnalysisResult,
     RequirementAnalysisAgentInput,
     RequirementAnalysisAgentOutput,
     RequirementAnalysisRunInput,
+    RequirementInput,
+    RequirementUnderstanding,
 )
+from app.agents.model_selection import ModelSelection
 
 
 AGENT_ROOT = Path("app/agents/requirement_analysis")
+
+
+def _model_selection(provider: str = "openai", model: str = "gpt-4o-mini") -> ModelSelection:
+    return ModelSelection(provider=provider, model=model, base_url=None, api_key="test-key")
 
 
 def test_requirement_analysis_uses_new_deepagents_layout() -> None:
@@ -145,8 +154,8 @@ async def test_requirement_analysis_service_returns_structured_response(monkeypa
             assert "辅助需求 Markdown 列表:" in content
             return {"structured_response": expected}
 
-    monkeypatch.setattr("app.agents.requirement_analysis.service.resolve_model_selection", lambda capability_id: "selection")
-    monkeypatch.setattr("app.agents.requirement_analysis.service.build_agent_model", lambda selection: "model")
+    monkeypatch.setattr("app.agents.requirement_analysis.service.resolve_model_selection", lambda capability_id: _model_selection())
+    monkeypatch.setattr("app.agents.requirement_analysis.service.build_agent_model", lambda selection, *, extra_body=None: "model")
     monkeypatch.setattr("app.agents.requirement_analysis.service.requirement_analysis_agent", lambda model: FakeAgent())
 
     result = await analyze_requirement(
@@ -158,6 +167,63 @@ async def test_requirement_analysis_service_returns_structured_response(monkeypa
     )
 
     assert result is expected
+
+
+@pytest.mark.anyio
+async def test_requirement_analysis_disables_thinking_for_tool_strategy_models(monkeypatch) -> None:
+    from app.agents.requirement_analysis.service import analyze_requirement
+
+    expected = RequirementAnalysisResult(
+        understanding=RequirementUnderstanding(
+            background="已分析。",
+            goals="已分析。",
+            users="已分析。",
+            scope="已分析。",
+            flow="已分析。",
+            states="已分析。",
+            rules="已分析。",
+            ui="已分析。",
+            data="已分析。",
+        ),
+        clarifications=[
+            ClarificationItem(  # type: ignore[call-arg]
+                id="clar-001",
+                priority="P0",
+                module="登录",
+                question="测试问题？",
+                option_a="选项 A",
+                option_b="选项 B",
+                impact="影响说明。",
+            )
+        ],
+    )
+    seen = {}
+
+    class FakeAgent:
+        async def ainvoke(self, payload):
+            return {"structured_response": expected}
+
+    def fake_build_agent_model(selection, *, extra_body=None):
+        seen["selection"] = selection
+        seen["extra_body"] = extra_body
+        return "model"
+
+    monkeypatch.setattr(
+        "app.agents.requirement_analysis.service.resolve_model_selection",
+        lambda capability_id: _model_selection(provider="deepseek", model="deepseek-reasoner"),
+    )
+    monkeypatch.setattr("app.agents.requirement_analysis.service.build_agent_model", fake_build_agent_model)
+    monkeypatch.setattr("app.agents.requirement_analysis.service.requirement_analysis_agent", lambda model: FakeAgent())
+
+    result = await analyze_requirement(
+        RequirementInput(
+            requirement_name="登录需求",
+            requirement_content="# 登录\n\n用户可以登录。",
+        )
+    )
+
+    assert result is expected
+    assert seen["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
 @pytest.mark.anyio
@@ -183,8 +249,8 @@ async def test_requirement_analysis_service_rejects_title_only_markdown(monkeypa
         async def ainvoke(self, payload):
             return {"structured_response": output}
 
-    monkeypatch.setattr("app.agents.requirement_analysis.service.resolve_model_selection", lambda capability_id: "selection")
-    monkeypatch.setattr("app.agents.requirement_analysis.service.build_agent_model", lambda selection: "model")
+    monkeypatch.setattr("app.agents.requirement_analysis.service.resolve_model_selection", lambda capability_id: _model_selection())
+    monkeypatch.setattr("app.agents.requirement_analysis.service.build_agent_model", lambda selection, *, extra_body=None: "model")
     monkeypatch.setattr("app.agents.requirement_analysis.service.requirement_analysis_agent", lambda model: FakeAgent())
 
     with pytest.raises(ValueError, match="只有标题"):
@@ -205,8 +271,8 @@ async def test_requirement_analysis_service_rejects_missing_structured_response(
         async def ainvoke(self, payload):
             return {}
 
-    monkeypatch.setattr("app.agents.requirement_analysis.service.resolve_model_selection", lambda capability_id: "selection")
-    monkeypatch.setattr("app.agents.requirement_analysis.service.build_agent_model", lambda selection: "model")
+    monkeypatch.setattr("app.agents.requirement_analysis.service.resolve_model_selection", lambda capability_id: _model_selection())
+    monkeypatch.setattr("app.agents.requirement_analysis.service.build_agent_model", lambda selection, *, extra_body=None: "model")
     monkeypatch.setattr("app.agents.requirement_analysis.service.requirement_analysis_agent", lambda model: FakeAgent())
 
     with pytest.raises(ValueError, match="未返回结构化结果"):

@@ -62,6 +62,34 @@ def test_append_to_empty_requirement_marks_uploaded_file_as_primary(
     assert row["file_role"] == "primary"
 
 
+def test_single_file_requirement_stays_parsing_until_standard_file_ready(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_and_document()
+    result = asyncio.run(file_service.append_document_files("project-role", "doc-role", [_upload_file("main.md")], ACTOR))
+    mapping_id = result["files"][0]["id"]
+
+    with core_db.connect() as db:
+        row = db.execute("SELECT status FROM source_documents WHERE id = ?", ("doc-role",)).fetchone()
+        assert row["status"] == "parsing"
+
+        db.execute(
+            """
+            UPDATE source_document_file_mappings
+            SET conversion_status = 'success',
+                markdown_file_path = 'project-role/requirements/doc-role/standard/main.md'
+            WHERE id = ?
+            """,
+            (mapping_id,),
+        )
+        file_service.sync_document_status(db, "doc-role")
+        row = db.execute("SELECT status FROM source_documents WHERE id = ?", ("doc-role",)).fetchone()
+
+    assert row["status"] == "pending_review"
+
+
 def test_deleting_primary_promotes_remaining_single_file_to_primary(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,

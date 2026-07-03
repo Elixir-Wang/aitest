@@ -2,7 +2,7 @@
 
 import secrets
 
-from app.agents.model_selection import build_agent_model, resolve_model_selection
+from app.agents.model_selection import build_agent_model, resolve_model_selection, thinking_disabled_extra_body
 from app.agents.test_case_generation.agent import test_case_generation_agent
 from app.agents.test_case_generation.schemas import (
     TestCaseGenerationInput,
@@ -52,7 +52,8 @@ async def generate_test_cases(input_data: TestCaseGenerationInput) -> TestCaseGe
     content = "\n".join(content_parts)
 
     # 调用 Agent
-    model = build_agent_model(resolve_model_selection(CAPABILITY_ID))
+    selection = resolve_model_selection(CAPABILITY_ID)
+    model = build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
     agent = test_case_generation_agent(model)
 
     result = await agent.ainvoke({

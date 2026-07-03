@@ -3,7 +3,31 @@ from pathlib import Path
 
 import pytest
 
+from app.agents.model_selection import ModelSelection
 from app.services import login_form_analyzer_service
+
+
+def _model_selection(provider: str = "openai", model: str = "gpt-4o-mini") -> ModelSelection:
+    return ModelSelection(provider=provider, model=model, base_url=None, api_key="test-key")
+
+
+def test_build_login_form_analyzer_model_disables_thinking_for_tool_strategy_models(monkeypatch) -> None:
+    seen = {}
+
+    def fake_build_agent_model(selection, *, extra_body=None):
+        seen["selection"] = selection
+        seen["extra_body"] = extra_body
+        return "model"
+
+    monkeypatch.setattr(
+        login_form_analyzer_service,
+        "resolve_model_selection",
+        lambda capability_id: _model_selection(provider="minimax", model="MiniMax-M1"),
+    )
+    monkeypatch.setattr(login_form_analyzer_service, "build_agent_model", fake_build_agent_model)
+
+    assert login_form_analyzer_service._build_login_form_analyzer_model() == "model"
+    assert seen["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
 def test_analyze_login_form_maps_element_ids_to_selectors(
