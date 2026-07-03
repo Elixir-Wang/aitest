@@ -1,1 +1,0 @@
-# Playwright CLI wrapper module

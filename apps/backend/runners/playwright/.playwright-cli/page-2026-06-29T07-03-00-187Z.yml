@@ -1,5 +1,0 @@
-- generic [active] [ref=e1]:
-  - img
-  - generic [ref=e5]:
-    - img [ref=e7]
-    - text: Access is invalid and needs to be retrieved LOG_ID:1b4a617799590972b078fc19c0f51e3e

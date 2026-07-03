@@ -1,1 +1,0 @@
-"""Knowledge base agentic search."""
