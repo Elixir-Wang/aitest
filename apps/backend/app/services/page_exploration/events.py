@@ -2,9 +2,19 @@
 """4 种 page artifact 事件 payload model。"""
 from __future__ import annotations
 
+from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel
+
+
+class PageArtifactEvents(str, Enum):
+    """Artifact 层事件枚举，供 EventBus 发布 / 订阅用。"""
+
+    STATE_MERGE = "page_artifact_state_merge"
+    LOCK_TIMEOUT = "page_artifact_lock_timeout"
+    STATE_REJECTED = "page_artifact_state_rejected"
+    YAML_CORRUPT = "page_artifact_yaml_corrupt"
 
 
 EventType = Literal[

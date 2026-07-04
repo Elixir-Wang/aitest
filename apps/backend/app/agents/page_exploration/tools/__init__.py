@@ -28,11 +28,14 @@ from app.agents.page_exploration.tools.artifact_tools import (
     read_page_artifact,
     merge_page_artifact,
 )
-
 from app.agents.page_exploration.tools.url_tools import (
     make_check_explored_url_tool,
     check_explored_url,
 )
+
+# Lazy reference – artifacts need base_dir resolved at import time.
+# agent.py already imports PROJECT_FILE_STORAGE_ROOT, so we import it here too.
+from app.core.settings import PROJECT_FILE_STORAGE_ROOT
 
 
 # ==================== 工具分类 ====================
@@ -53,16 +56,21 @@ STATE_TOOLS = [
     update_explored_url_tool,
 ]
 
-ARTIFACT_TOOLS = [
-    # 新 v2.0 工具由 make_artifact_tools() 动态创建，不在此列表静态导出
-]
+# Empty list; replaced by get_artifact_tools() below so base_dir is resolved lazily.
+ARTIFACT_TOOLS: list = []
 
-# 所有工具
+
+def get_artifact_tools() -> list:
+    """Return artifact tools instantiated with the default project storage root."""
+    return make_artifact_tools(base_dir=PROJECT_FILE_STORAGE_ROOT)
+
+
+# 所有工具（artifact tools 延迟加载）
 ALL_PAGE_EXPLORATION_TOOLS = [
     *NAVIGATION_TOOLS,
     *EXTRACTION_TOOLS,
     *STATE_TOOLS,
-    *ARTIFACT_TOOLS,
+    *get_artifact_tools(),
 ]
 
 
@@ -107,4 +115,5 @@ __all__ = [
     "ALL_PAGE_EXPLORATION_TOOLS",
     # 便捷函数
     "get_local_tools",
+    "get_artifact_tools",
 ]
