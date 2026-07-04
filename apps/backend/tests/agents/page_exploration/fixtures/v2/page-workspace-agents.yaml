@@ -1,0 +1,55 @@
+schema_version: "2.0"
+page:
+  id: page-workspace-agents
+  title: "智能体工作台"
+  normalized_path: /workspace/agents
+  url: https://test.example.com/workspace/agents
+  observed_url: /workspace/agents
+  first_observed_at: "2026-07-04T10:00:00Z"
+  last_observed_at: "2026-07-04T10:15:00Z"
+  observed_by_runs:
+    - run-001
+states:
+  - id: page-workspace-agents__root__001
+    type: root
+    title: "智能体工作台 - 列表状态"
+    triggered_by: null
+    depth: 1
+    last_observed_at: "2026-07-04T10:15:00Z"
+    observed_by_runs:
+      - run-001
+    dom_signature: "sha256:5e7c"
+    elements:
+      - key: button-create-agent
+        source:
+          role: button
+          name: "创建智能体"
+        inferred: false
+        last_seen_at: "2026-07-04T10:15:00Z"
+        seen_count: 12
+        children: []
+    children:
+      - id: page-workspace-agents__dialog__001
+        type: dialog
+        title: "选择创建类型"
+        triggered_by:
+          from_state: page-workspace-agents__root__001
+          element_key: button-create-agent
+          action: click
+          url_changed: false
+          observed_url: /workspace/agents
+        depth: 2
+        last_observed_at: "2026-07-04T10:15:00Z"
+        observed_by_runs:
+          - run-001
+        dom_signature: "sha256:8a3f"
+        elements:
+          - key: button-create-autonomous
+            source:
+              role: button
+              name: "自主规划"
+            inferred: false
+            last_seen_at: "2026-07-04T10:15:00Z"
+            seen_count: 3
+            children: []
+        children: []
