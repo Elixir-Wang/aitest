@@ -3,3 +3,5 @@
 artifact_write_tool
 cache_write_tool
 cache_update_tool
+cache_index\.yaml
+update_cache_index

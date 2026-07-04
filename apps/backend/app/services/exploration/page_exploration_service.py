@@ -23,7 +23,6 @@ from app.core.db import connect
 from app.core.environment_auth_state import auth_state_path, auth_state_summary
 from app.repositories import exploration_artifact_repo, exploration_page_repo, exploration_run_repo
 from app.services.exploration import event_bus
-from app.services.page_exploration import ProjectPagesService
 
 
 CAPABILITY_ID = "page_exploration"
@@ -581,7 +580,8 @@ def stop_exploration_async(actor, run_id: str) -> dict:
         updated_run = exploration_run_repo.find_by_id(db, run_id)
         updated_run_dict = dict(updated_run) if updated_run else run_dict
 
-    event_bus.publish(
+    _publish_run_terminal_event(
+        _project_id_from_run(updated_run_dict) or _project_id_from_run(run_dict),
         run_id,
         "run_cancelled",
         {
@@ -633,7 +633,8 @@ def _finalize_cancelled_exploration_run(run_id: str) -> None:
             finished_at=finished_at,
             result_summary=result_summary,
         )
-    event_bus.publish(
+    _publish_run_terminal_event(
+        _project_id_from_run(run),
         run_id,
         "run_cancelled",
         {
@@ -698,7 +699,8 @@ def _run_exploration_background(run_id: str) -> None:
                 finished_at=datetime.now(timezone.utc).isoformat(),
                 result_summary=result_summary,
             )
-        event_bus.publish(
+        _publish_run_terminal_event(
+            str(run_dict.get("project_id") or ""),
             run_id,
             "run_failed",
             {
@@ -999,7 +1001,8 @@ async def _execute_exploration_async(
             finished_at=datetime.now(timezone.utc).isoformat(),
             result_summary=artifact_summary,
         )
-    event_bus.publish(
+    _publish_run_terminal_event(
+        project_id,
         run_id,
         "run_completed",
         {
@@ -1320,6 +1323,117 @@ def _register_page_artifact_file(
     )
 
 
+# --- Inlined from ProjectPagesService ---
+_HOME_DISPLAY_NAME = "首页"
+
+
+def _inline_save_page(
+    *,
+    project_id: str,
+    page_id: str,
+    page_data: dict,
+    run_id: str,
+    url: str,
+    normalized_path: str,
+    env: str = "test",
+) -> bool:
+    """Inlined from ProjectPagesService.save_page."""
+    import yaml
+
+    base_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration"
+    pages_dir = base_dir / "pages"
+    pages_dir.mkdir(parents=True, exist_ok=True)
+    page_file = pages_dir / f"{page_id}.yaml"
+
+    env_urls = {env: url}
+    if page_file.exists():
+        try:
+            existing = yaml.safe_load(open(page_file, encoding="utf-8"))
+            if existing:
+                env_urls = existing.get("page", {}).get("env_urls", {})
+                env_urls[env] = url
+        except Exception:
+            pass
+
+    full_page_data = {
+        "page": {
+            "id": page_id,
+            "title": page_data.get("title", ""),
+            "display_name": page_data.get("display_name") or _inline_display_name_from_path(normalized_path),
+            "breadcrumb": page_data.get("breadcrumb") or _inline_breadcrumb_from_path(normalized_path),
+            "normalized_path": normalized_path,
+            "structure_summary": page_data.get("structure_summary", ""),
+            "path_hash": _inline_path_hash(normalized_path),
+            "env_urls": env_urls,
+            "last_explored": {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "run_id": run_id,
+            },
+            "elements": page_data.get("elements", []),
+        },
+        "states": page_data.get("states", []),
+        "quality": page_data.get("quality", {}),
+        "metadata": page_data.get("metadata", {}),
+    }
+
+    with open(page_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump(full_page_data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+    return True
+
+
+def _inline_list_pages(project_id: str):
+    """Inlined from ProjectPagesService.list_pages."""
+    import yaml
+
+    base_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration"
+    pages_dir = base_dir / "pages"
+    pages = []
+    if not pages_dir.exists():
+        return pages
+    for page_file in pages_dir.glob("*.yaml"):
+        if page_file.name == "pages-index.yaml":
+            continue
+        try:
+            page_data = yaml.safe_load(open(page_file, encoding="utf-8"))
+            page_info = page_data.get("page", {})
+            pages.append(
+                {
+                    "page_id": page_info.get("id"),
+                    "title": page_info.get("title"),
+                    "display_name": page_info.get("display_name")
+                    or _inline_display_name_from_path(page_info.get("normalized_path") or ""),
+                    "breadcrumb": page_info.get("breadcrumb")
+                    or _inline_breadcrumb_from_path(page_info.get("normalized_path") or ""),
+                    "normalized_path": page_info.get("normalized_path"),
+                    "structure_summary": page_info.get("structure_summary"),
+                    "last_explored": page_info.get("last_explored"),
+                    "file": page_file.name,
+                }
+            )
+        except Exception:
+            pass
+    return pages
+
+
+def _inline_breadcrumb_from_path(normalized_path: str) -> list:
+    segments = [s for s in normalized_path.strip("/").split("/") if s]
+    return segments or [_HOME_DISPLAY_NAME]
+
+
+def _inline_display_name_from_path(normalized_path: str) -> str:
+    breadcrumb = _inline_breadcrumb_from_path(normalized_path)
+    return breadcrumb[-1] if breadcrumb else _HOME_DISPLAY_NAME
+
+
+def _inline_path_hash(normalized_path: str) -> str:
+    import hashlib
+    h = hashlib.sha256(normalized_path.encode("utf-8"))
+    return f"sha256-{h.hexdigest()[:16]}"
+
+
+# --- End inlined helpers ---
+
+
 def _save_project_page_artifact(
     *,
     project_id: str,
@@ -1337,11 +1451,8 @@ def _save_project_page_artifact(
     if not normalized_path and url:
         normalized_path = _normalize_snapshot_url_path(url)
 
-    service = ProjectPagesService(
-        project_id,
-        base_dir=settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration",
-    )
-    service.save_page(
+    _inline_save_page(
+        project_id=project_id,
         page_id=page_id,
         page_data={
             "title": title,
@@ -1360,7 +1471,8 @@ def _save_project_page_artifact(
         url=url,
         normalized_path=normalized_path,
     )
-    return str(service.pages_dir / f"{page_id}.yaml")
+    base_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration"
+    return str(base_dir / "pages" / f"{page_id}.yaml")
 
 
 def _coerce_tool_output_dict(output) -> dict:
@@ -1902,6 +2014,57 @@ def _status_display(kind: str, title: str, summary: str) -> dict:
     return {"kind": kind, "title": title, "summary": summary}
 
 
+def _publish_run_terminal_event(project_id: str, run_id: str, event_type: str, payload: dict) -> dict:
+    result_summary = _compact_event_payload(payload.get("result_summary"))
+    fallback_summary = {
+        "run_completed": "探索任务已完成。",
+        "run_failed": "探索任务失败。",
+        "run_cancelled": "探索任务已停止。",
+    }.get(event_type, "探索任务已结束。")
+    display = _status_display("agent_run", _terminal_event_title(event_type), result_summary or fallback_summary)
+    timeline_event = (
+        _ExplorationEventLog(
+            project_id=project_id,
+            run_id=run_id,
+            filename="timeline_events.jsonl",
+        ).append(event_type, payload, display=display)
+        if project_id
+        else {}
+    )
+    try:
+        event_bus.publish(
+            run_id,
+            event_type,
+            payload,
+            display=display,
+            timeline_event_id=timeline_event.get("event_id"),
+        )
+    except TypeError:
+        event_bus.publish(run_id, event_type, payload)
+    return timeline_event
+
+
+def _project_id_from_run(run) -> str:
+    if not run:
+        return ""
+    if isinstance(run, dict):
+        return _string(run.get("project_id"))
+    try:
+        return _string(run["project_id"])
+    except (KeyError, TypeError):
+        return ""
+
+
+def _terminal_event_title(event_type: str) -> str:
+    if event_type == "run_completed":
+        return "探索完成"
+    if event_type == "run_failed":
+        return "探索失败"
+    if event_type == "run_cancelled":
+        return "探索停止"
+    return "探索结束"
+
+
 def _agent_recursion_config(max_pages: int) -> dict:
     try:
         page_budget = int(max_pages or 0)
@@ -1926,8 +2089,8 @@ class _ExplorationEventLog:
         self.project_id = project_id
         self.run_id = run_id
         self.filename = filename
-        self.sequence = 0
         self.path = self._resolve_path()
+        self.sequence = self._last_sequence()
 
     def append(self, event_type: str, payload: dict, *, display: dict | None = None) -> dict:
         if self.path is None:
@@ -1958,6 +2121,20 @@ class _ExplorationEventLog:
             / self.run_id
             / self.filename
         )
+
+    def _last_sequence(self) -> int:
+        if self.path is None or not self.path.exists():
+            return 0
+        last_sequence = 0
+        try:
+            for line in self.path.read_text(encoding="utf-8").splitlines():
+                event = json.loads(line)
+                event_id = _string(event.get("event_id"))
+                if event_id.startswith("evt-"):
+                    last_sequence = max(last_sequence, int(event_id.removeprefix("evt-")))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return last_sequence
+        return last_sequence
 
 
 def _clean_compact_payload(payload: dict) -> dict:
@@ -2274,9 +2451,8 @@ def list_run_pages(actor, run_id: str) -> list[dict]:
 def list_project_pages(actor, project_id: str) -> list[dict]:
     """列出项目级探索页面产物。"""
     base_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration"
-    service = ProjectPagesService(project_id, base_dir=base_dir)
     rows = []
-    for page in service.list_pages():
+    for page in _inline_list_pages(project_id):
         last_explored = page.get("last_explored") if isinstance(page.get("last_explored"), dict) else {}
         page_id = _string(page.get("page_id") or Path(_string(page.get("file"))).stem)
         file_name = _string(page.get("file") or f"{page_id}.yaml")
