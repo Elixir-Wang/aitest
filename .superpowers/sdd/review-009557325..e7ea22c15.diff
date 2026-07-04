@@ -1,0 +1,90 @@
+diff --git a/apps/backend/app/agents/page_exploration/utils/toast_filter.py b/apps/backend/app/agents/page_exploration/utils/toast_filter.py
+new file mode 100644
+index 000000000..4564c1ed1
+--- /dev/null
++++ b/apps/backend/app/agents/page_exploration/utils/toast_filter.py
+@@ -0,0 +1,37 @@
++"""toast / snackbar 启发式过滤：role=status/alert 且短 timeout 或已知容器, 都不进 state 树。"""
++from __future__ import annotations
++
++from typing import Iterable
++
++_KNOWN_TOAST_CONTAINERS = (
++    ".ant-message",
++    ".ant-notification",
++    "#root > .toast-container",
++    ".toast",
++    ".snackbar",
++)
++
++_DIALOG_LIKE = {"dialog", "alertdialog"}
++
++
++def is_toast(info: dict) -> bool:
++    role = info.get("role")
++    aria_modal = info.get("aria_modal")
++    if role in _DIALOG_LIKE or aria_modal is True:
++        return False
++
++    timeout = info.get("timeout_ms")
++    dom_path = info.get("dom_path") or ""
++
++    known_container = any(seg in dom_path for seg in _KNOWN_TOAST_CONTAINERS)
++    short_timeout = isinstance(timeout, (int, float)) and timeout <= 5000
++
++    if role in {"status", "alert"}:
++        return short_timeout or known_container
++
++    # 没有任何 role 标签但命中已知容器 -> 认为是 toast
++    return known_container and role is None
++
++
++def filter_snapshot(snapshot: Iterable[dict]) -> list[dict]:
++    return [el for el in snapshot if not is_toast(el)]
+diff --git a/apps/backend/tests/agents/page_exploration/utils/test_toast_filter.py b/apps/backend/tests/agents/page_exploration/utils/test_toast_filter.py
+new file mode 100644
+index 000000000..151ccca1e
+--- /dev/null
++++ b/apps/backend/tests/agents/page_exploration/utils/test_toast_filter.py
+@@ -0,0 +1,41 @@
++from app.agents.page_exploration.utils.toast_filter import is_toast, filter_snapshot
++
++
++def test_is_toast_role_status():
++    info = {"role": "status", "aria_modal": None, "timeout_ms": 3000}
++    assert is_toast(info) is True
++
++
++def test_is_toast_role_alert_short_timeout():
++    info = {"role": "alert", "aria_modal": None, "timeout_ms": 3000}
++    assert is_toast(info) is True
++
++
++def test_dialog_not_toast():
++    info = {"role": "dialog", "aria_modal": True, "timeout_ms": 3000}
++    assert is_toast(info) is False
++
++
++def test_alert_without_timeout_not_toast():
++    # 长 timeout 或未知 -> 不当 toast
++    info = {"role": "alert", "aria_modal": None, "timeout_ms": None}
++    assert is_toast(info) is False
++
++
++def test_known_ant_message_container():
++    info = {"role": "status", "aria_modal": None, "timeout_ms": 3000,
++            "dom_path": "div#root > .ant-message"}
++    assert is_toast(info) is True
++
++
++def test_filter_snapshot_drops_toasts():
++    snap = [
++        {"role": "button", "aria_modal": None, "timeout_ms": None},   # keep
++        {"role": "status", "aria_modal": None, "timeout_ms": 3000},  # drop
++        {"role": "dialog", "aria_modal": True, "timeout_ms": None},  # keep
++        {"role": "alert", "aria_modal": None, "timeout_ms": 4000},   # drop
++    ]
++    out = filter_snapshot(snap)
++    assert len(out) == 2
++    assert out[0]["role"] == "button"
++    assert out[1]["role"] == "dialog"

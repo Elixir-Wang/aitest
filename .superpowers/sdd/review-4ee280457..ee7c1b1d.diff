@@ -1,0 +1,976 @@
+diff --git a/apps/backend/app/agents/page_exploration/agent.py b/apps/backend/app/agents/page_exploration/agent.py
+index 5e4d6b1c2..ac720adce 100644
+--- a/apps/backend/app/agents/page_exploration/agent.py
++++ b/apps/backend/app/agents/page_exploration/agent.py
+@@ -14,21 +14,24 @@
+ - Middleware: deepagents自动管理（通过backend和skills自动添加汇总等中间件）
+ """
+ 
+ from pathlib import Path
+ 
+ from deepagents import create_deep_agent
+ from deepagents.backends import FilesystemBackend
+ from langchain.agents.middleware import ToolCallLimitMiddleware
+ 
+ from app.agents.page_exploration.tools import get_local_tools
++from app.agents.page_exploration.tools.artifact_tools import make_artifact_tools
++from app.agents.page_exploration.tools.url_tools import make_check_explored_url_tool
+ from app.agents.page_exploration.prompts.system_prompt import SYSTEM_PROMPT
++from app.core.settings import PROJECT_FILE_STORAGE_ROOT
+ 
+ 
+ def page_exploration_agent(
+     model,
+     tools=None,
+     skill_names=None,
+     max_actions: int = 80,
+ ):
+     """
+     创建页面探索智能体
+diff --git a/apps/backend/app/agents/page_exploration/prompts/system_prompt.py b/apps/backend/app/agents/page_exploration/prompts/system_prompt.py
+index f6f631aa1..05eb10bb6 100644
+--- a/apps/backend/app/agents/page_exploration/prompts/system_prompt.py
++++ b/apps/backend/app/agents/page_exploration/prompts/system_prompt.py
+@@ -61,14 +61,33 @@ SYSTEM_PROMPT = """
+ - 定位器失败时根据错误信息优化
+ 
+ ## 工作原则
+ - 高效：使用批量操作减少步骤
+ - 稳定：使用语义定位器保证可维护性
+ - 智能：识别场景类型，选择合适策略
+ - 准确：生成的定位器必须唯一且可用
+ - 克制：优先用最小必要快照完成目标，避免无限制扩大探索范围
+ 
+ ## 待办计划表达
+-- 调用 write_todos 时，每条待办要写成可执行的界面操作说明，优先使用“打开/点击/输入/等待/记录”等动词。
+-- 描述需要包含页面位置、操作对象和预期结果，例如“打开工作台界面，点击创建按钮，新建自主规划 Agent”。
+-- 不要只写“进入页面”“处理表单”这类过短描述；也不要添加探索目标之外的业务验证点。
++- 调用 write_todos 时，每条待办要写成可执行的界面操作说明，优先使用"打开/点击/输入/等待/记录"等动词。
++- 描述需要包含页面位置、操作对象和预期结果，例如"打开工作台界面，点击创建按钮，新建自主规划 Agent"。
++- 不要只写"进入页面""处理表单"这类过短描述；也不要添加探索目标之外的业务验证点。
+ """
++
++V2_ADDENDUM = """
++
++[v2.0 State 树新规]
++- 每观察到一个新 state，必须填齐 type / title / triggered_by / depth / elements
++- root state 是页面初始状态（depth=1）；其它 state 必须有 triggered_by
++- triggered_by.from_state 只能填直接父 state.id，不准跨祖父级 / 叔级；若不确定，不要瞎编，整 observation 丢弃
++- triggered_by.element_key 必须是 from_state.elements 里已存在的 key
++- 找不到 triggered_by 来源（截断等），不要瞎编，整 state observation 丢弃
++- 元素必须按 role / name / label 顺序填 element.source；纯文本猜测的字段标 inferred=true
++- 不要使用 css / ref / xpath，只用语义定位字段
++- 不要因为"看着像菜单项"就强行把 menu item 当成 state
++- 历史元素不要从产物里删（用 seen_count / last_seen_at 判定）
++- state 嵌套深度超过 16 时停止探索，立即汇报
++"""
++
++
++def build_system_prompt() -> str:
++    return SYSTEM_PROMPT + V2_ADDENDUM
+diff --git a/apps/backend/app/agents/page_exploration/tools/__init__.py b/apps/backend/app/agents/page_exploration/tools/__init__.py
+index bf7fa41ce..2890dbdf2 100644
+--- a/apps/backend/app/agents/page_exploration/tools/__init__.py
++++ b/apps/backend/app/agents/page_exploration/tools/__init__.py
+@@ -17,21 +17,28 @@ from app.agents.page_exploration.tools.navigation_tools import (
+ from app.agents.page_exploration.tools.extraction_tools import (
+     playwright_snap_tool,
+ )
+ 
+ from app.agents.page_exploration.tools.state_tools import (
+     check_explored_url_tool,
+     update_explored_url_tool,
+ )
+ 
+ from app.agents.page_exploration.tools.artifact_tools import (
+-    write_page_artifact_tool,
++    make_artifact_tools,
++    read_page_artifact,
++    merge_page_artifact,
++)
++
++from app.agents.page_exploration.tools.url_tools import (
++    make_check_explored_url_tool,
++    check_explored_url,
+ )
+ 
+ 
+ # ==================== 工具分类 ====================
+ 
+ 
+ NAVIGATION_TOOLS = [
+     playwright_navigate_tool,
+     playwright_click_tool,
+     playwright_fill_tool,
+@@ -40,21 +47,21 @@ NAVIGATION_TOOLS = [
+ EXTRACTION_TOOLS = [
+     playwright_snap_tool,
+ ]
+ 
+ STATE_TOOLS = [
+     check_explored_url_tool,
+     update_explored_url_tool,
+ ]
+ 
+ ARTIFACT_TOOLS = [
+-    write_page_artifact_tool,
++    # 新 v2.0 工具由 make_artifact_tools() 动态创建，不在此列表静态导出
+ ]
+ 
+ # 所有工具
+ ALL_PAGE_EXPLORATION_TOOLS = [
+     *NAVIGATION_TOOLS,
+     *EXTRACTION_TOOLS,
+     *STATE_TOOLS,
+     *ARTIFACT_TOOLS,
+ ]
+ 
+@@ -78,21 +85,26 @@ def get_local_tools() -> list:
+ __all__ = [
+     # 导航工具
+     "playwright_navigate_tool",
+     "playwright_click_tool",
+     "playwright_fill_tool",
+     # 提取工具
+     "playwright_snap_tool",
+     # 状态工具
+     "check_explored_url_tool",
+     "update_explored_url_tool",
+-    # 产物工具
+-    "write_page_artifact_tool",
++    # 产物工具（工厂函数 + 核心函数）
++    "make_artifact_tools",
++    "read_page_artifact",
++    "merge_page_artifact",
++    # URL 工具（工厂函数 + 核心函数）
++    "make_check_explored_url_tool",
++    "check_explored_url",
+     # 分类
+     "NAVIGATION_TOOLS",
+     "EXTRACTION_TOOLS",
+     "STATE_TOOLS",
+     "ARTIFACT_TOOLS",
+     "ALL_PAGE_EXPLORATION_TOOLS",
+     # 便捷函数
+     "get_local_tools",
+ ]
+diff --git a/apps/backend/app/agents/page_exploration/tools/artifact_tools.py b/apps/backend/app/agents/page_exploration/tools/artifact_tools.py
+index 6f7081485..e5dcf7bf6 100644
+--- a/apps/backend/app/agents/page_exploration/tools/artifact_tools.py
++++ b/apps/backend/app/agents/page_exploration/tools/artifact_tools.py
+@@ -1,259 +1,103 @@
+-"""
+-产物管理工具
+-
+-包含：
+-- write_page_artifact_tool: 保存项目级页面产物
+-"""
+-
+-from datetime import datetime, UTC
+-from typing import List, Dict, Optional
++"""read_page_artifact_tool, merge_page_artifact_tool。覆盖旧 artifact_write_tool / cache_write_tool。"""
++from __future__ import annotations
++
++from pathlib import Path
++
++import yaml
++
++from app.services.page_exploration.page_artifact_writer import (
++    PageArtifactWriter, NewStateObservation, NewElementObservation,
++)
++from app.agents.page_exploration.schemas import PageArtifact
++
++
++def _obs_from_dict(d: dict) -> NewStateObservation:
++    elements = []
++    for el in d.get("elements", []):
++        elements.append(NewElementObservation(
++            key=el.get("key"),
++            source=el.get("source", {}),
++            inferred=bool(el.get("inferred", False)),
++            children=[],
++        ))
++    return NewStateObservation(
++        page_id=d["page_id"],
++        page_title=d["page_title"],
++        normalized_path=d["normalized_path"],
++        observed_url=d["observed_url"],
++        run_id=d["run_id"],
++        observed_at=d["observed_at"],
++        state_type=d["state_type"],
++        title=d["title"],
++        dom_signature=d.get("dom_signature") or "sha256:unknown",
++        triggered_by=d.get("triggered_by"),
++        parent_state_id=d.get("parent_state_id"),
++        elements=elements,
++    )
+ 
+-from langchain_core.tools import tool
+ 
+-from app.agents.page_exploration.services.explored_urls_service import ExploredUrlsService
+-from app.agents.page_exploration.utils.url_normalizer import normalize_url
+-from app.core.settings import PROJECT_FILE_STORAGE_ROOT
+-from app.services.page_exploration import ProjectPagesService
++def read_page_artifact(page_id: str, project_id: str, base_dir: Path) -> dict:
++    writer = PageArtifactWriter(base_dir=Path(base_dir) / project_id)
++    artifact = writer.read_existing(page_id)
++    if artifact is None:
++        return {"exists": False, "schema_version": None, "page": None}
++    return {
++        "exists": True,
++        "schema_version": artifact.schema_version,
++        "page": artifact.page.model_dump(mode="json"),
++    }
+ 
+ 
+-@tool
+-def write_page_artifact_tool(
+-    url: str,
+-    title: str,
+-    elements: List[Dict],
++def merge_page_artifact(
++    page_id: str,
+     project_id: str,
+-    page_id: Optional[str] = None,
++    run_id: str,
++    base_dir: Path,
++    observed_states: list[dict],
+ ) -> dict:
+-    """DEPRECATED: 由 T6 删除。新入口请用 `PageArtifactWriter.merge_states`。
+-    本函数暂留以避免破坏外部 import。
+-
+-    Write or update a page artifact YAML file.
+-
+-    Use this tool to:
+-    - Save page exploration results
+-    - Create a reusable page object model
+-    - Store element locators for test case generation
+-
+-    The artifact will be saved to:
+-    data/projects/{project_id}/page_exploration/pages/{page_id}.yaml
+-
+-    Each element should have:
+-    - id: Element identifier (e.g., "create_agent_btn")
+-    - name: Human-readable name (e.g., "创建智能体")
+-    - role: Element role (e.g., "button", "link", "textbox")
+-    - locators: List of locator strategies, each with:
+-      - kind: Locator type (e.g., "role", "label", "testid", "text")
+-      - code: Playwright locator code (e.g., "getByRole('button', { name: '创建' })")
+-      - priority: Priority order (1 = highest)
+-
+-    Args:
+-        url: The full URL of the page (will be normalized)
+-        title: Page title
+-        elements: List of element dictionaries with id, name, role, locators
+-        project_id: The project ID
+-        page_id: Optional page identifier (auto-generated if not provided)
+-
+-    Returns:
+-        A dictionary containing:
+-        - success: True if write succeeded
+-        - page_id: The page identifier
+-        - file_path: Path to the written YAML file
+-        - normalized_path: The normalized URL path
+-        - element_count: Number of elements written
+-
+-    Example:
+-        result = write_page_artifact_tool(
+-            url="https://test.example.com/workspace/agents",
+-            title="Agent Workspace",
+-            elements=[
+-                {
+-                    "id": "create_agent_btn",
+-                    "name": "创建智能体",
+-                    "role": "button",
+-                    "locators": [
+-                        {
+-                            "kind": "role",
+-                            "code": "getByRole('button', { name: '创建智能体' })",
+-                            "priority": 1
+-                        }
+-                    ]
+-                }
+-            ],
+-            project_id="proj-123"
+-        )
+-    """
+-    normalized_path = normalize_url(url)
+-
+-    # Auto-generate page_id if not provided
+-    if not page_id:
+-        # Convert path to page_id: /workspace/agents → page-workspace-agents
+-        page_id = "page-" + normalized_path.strip("/").replace("/", "-")
+-
+-    # 幂等性保护：同 normalized_path 已探索过则直接返回已有 page_id，
+-    # 避免 LLM 在循环中反复 write 同一页面产生重复 yaml 产物。
+-    base_dir = PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration"
+-    explored = ExploredUrlsService(project_id, base_dir=base_dir).check(normalized_path)
+-    if explored.get("explored"):
+-        return {
+-            "success": True,
+-            "page_id": explored.get("page_id", page_id),
+-            "file_path": explored.get("page_file", ""),
+-            "normalized_path": normalized_path,
+-            "element_count": len(elements),
+-            "skipped": True,
+-            "reason": "url_already_explored",
+-        }
+-
+-    pages_service = ProjectPagesService(project_id, base_dir=base_dir)
+-    breadcrumb = _breadcrumb_from_path(normalized_path)
+-    display_name = breadcrumb[-1]
+-    page_data = {
+-        "title": title,
+-        "display_name": display_name,
+-        "breadcrumb": breadcrumb,
+-        "structure_summary": f"自动保存页面快照，发现 {len(elements)} 个元素。",
+-        "elements": elements,
+-        "metadata": {
+-            "explored_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+-        },
+-    }
+-    saved = pages_service.save_page(
+-        page_id=page_id,
+-        page_data=page_data,
+-        run_id="manual-tool",
+-        url=url,
+-        normalized_path=normalized_path,
+-    )
+-    if not saved:
+-        return {
+-            "success": False,
+-            "page_id": page_id,
+-            "normalized_path": normalized_path,
+-            "element_count": len(elements),
+-        }
+-    resolved_page_id = pages_service.find_page_by_path(normalized_path) or page_id
+-    page_id = resolved_page_id
+-    file_path = pages_service.pages_dir / f"{page_id}.yaml"
+-    pages_service.update_cache_index(
+-        normalized_path=normalized_path,
+-        page_id=page_id,
+-        run_id="manual-tool",
+-        page_signature={
+-            "title": title,
+-            "display_name": display_name,
+-            "element_count": len(elements),
+-        },
+-        env_urls={"test": url},
+-    )
+-
+-    doc_path = file_path.with_suffix(".md")
+-    doc_path.write_text(
+-        _render_human_page_doc(
+-            title=title,
+-            url=url,
+-            normalized_path=normalized_path,
+-            elements=elements,
+-        ),
+-        encoding="utf-8",
+-    )
+-
++    writer = PageArtifactWriter(base_dir=Path(base_dir) / project_id)
++    obs = [_obs_from_dict({**d, "run_id": run_id}) for d in observed_states]
++    result = writer.merge_states(obs)
+     return {
+-        "success": True,
+-        "page_id": page_id,
+-        "file_path": str(file_path),
+-        "doc_path": str(doc_path),
+-        "normalized_path": normalized_path,
+-        "element_count": len(elements),
++        "added_state_ids": result.added_state_ids,
++        "updated_state_ids": result.updated_state_ids,
++        "added_element_keys": result.added_element_keys,
++        "updated_element_keys": result.updated_element_keys,
++        "skipped_due_to_lock": result.skipped_due_to_lock,
+     }
+ 
+ 
+-def _breadcrumb_from_path(normalized_path: str) -> List[str]:
+-    segments = [segment for segment in normalized_path.strip("/").split("/") if segment]
+-    return segments or ["首页"]
+-
+-
+-def _render_human_page_doc(
+-    *,
+-    title: str,
+-    url: str,
+-    normalized_path: str,
+-    elements: List[Dict],
+-) -> str:
+-    page_title = title.strip() or normalized_path or url
+-    lines = [
+-        f"# {page_title}",
+-        "",
+-        "## 页面用途",
+-        "",
+-        f"该页面位于 `{normalized_path}`，本产物基于页面探索事实生成，用于帮助人工理解页面内容和后续测试范围。",
+-        "",
+-        "## 页面内容",
+-        "",
+-        f"- 页面地址：`{url}`",
+-        f"- 归一化路径：`{normalized_path}`",
+-        f"- 已记录元素数：{len(elements)}",
+-        "",
+-        "## 页面功能",
+-        "",
+-    ]
+-    if elements:
+-        for element in elements:
+-            name = str(element.get("name") or element.get("id") or "未命名元素")
+-            role = str(element.get("role") or "element")
+-            lines.append(f"- {name}（{role}）")
+-    else:
+-        lines.append("- 本次探索未记录可交互元素。")
+-
+-    lines.extend([
+-        "",
+-        "## 关键元素",
+-        "",
+-        "| 名称 | 类型 | 作用 | 推荐定位器 |",
+-        "|---|---|---|---|",
+-    ])
+-    if elements:
+-        for element in elements:
+-            name = str(element.get("name") or element.get("id") or "")
+-            role = str(element.get("role") or "")
+-            locator = _first_locator_code(element)
+-            purpose = str(element.get("description") or element.get("purpose") or "页面交互元素")
+-            lines.append(f"| {name} | {role} | {purpose} | `{locator}` |")
+-    else:
+-        lines.append("| 无 |  |  |  |")
+-
+-    lines.extend([
+-        "",
+-        "## 已探索交互",
+-        "",
+-        "| 操作 | 结果 | 状态 |",
+-        "|---|---|---|",
+-        "| 页面结构采集 | 已生成页面机器可读产物和人工说明文档 | completed |",
+-        "",
+-        "## 跳过和阻塞",
+-        "",
+-        "- 当前产物未记录跳过操作或阻塞项。",
+-        "",
+-        "## 测试建议",
+-        "",
+-    ])
+-    if elements:
+-        lines.append("- 基于关键元素补充可见性、可点击性和主要交互流程测试。")
+-    else:
+-        lines.append("- 页面暂无可交互元素记录，建议先补充页面快照或人工确认页面加载状态。")
+-    lines.append("")
+-    return "\n".join(lines)
+-
+-
+-def _first_locator_code(element: Dict) -> str:
+-    locators = element.get("locators")
+-    if not isinstance(locators, list):
+-        return ""
+-    for locator in locators:
+-        if isinstance(locator, dict) and locator.get("code"):
+-            return str(locator["code"])
+-    return ""
+-
++def make_artifact_tools(base_dir: Path):
++    from langchain_core.tools import tool
++
++    @tool
++    def read_page_artifact_tool(
++        page_id: str,
++        project_id: str,
++    ) -> dict:
++        """Read the full v2.0 page artifact yaml.
++        Args: page_id (stable id), project_id
++        Returns: {exists: bool, schema_version: str|None, page: dict|None}"""
++        return read_page_artifact(page_id=page_id, project_id=project_id, base_dir=base_dir)
++
++    @tool
++    def merge_page_artifact_tool(
++        page_id: str,
++        observed_states: list[dict],
++        project_id: str,
++        run_id: str,
++    ) -> dict:
++        """Merge observed states into a page artifact (idempotent, append-only).
++
++        observed_states: list of dicts with keys:
++          page_id, page_title, normalized_path, observed_url,
++          run_id, observed_at, state_type, title,
++          dom_signature, triggered_by (dict|None),
++          parent_state_id (str|None), elements (list)
++        Returns: same as MergeResult."""
++        return merge_page_artifact(
++            page_id=page_id, project_id=project_id, run_id=run_id,
++            base_dir=base_dir, observed_states=observed_states,
++        )
+ 
+-__all__ = [
+-    "write_page_artifact_tool",
+-]
++    return [read_page_artifact_tool, merge_page_artifact_tool]
+diff --git a/apps/backend/app/agents/page_exploration/tools/url_tools.py b/apps/backend/app/agents/page_exploration/tools/url_tools.py
+new file mode 100644
+index 000000000..a776b6722
+--- /dev/null
++++ b/apps/backend/app/agents/page_exploration/tools/url_tools.py
+@@ -0,0 +1,36 @@
++"""check_explored_url_tool: 返回 (explored, has_state_tree) 二维。"""
++from __future__ import annotations
++
++from pathlib import Path
++
++
++def check_explored_url(
++    normalized_path: str,
++    project_id: str,
++    base_dir: Path,
++) -> dict:
++    project_root = Path(base_dir) / project_id / "page_exploration"
++    pages_dir = project_root / "pages"
++    if not pages_dir.exists():
++        return {"explored": False, "has_state_tree": False}
++    # 简化: 找任意 page yaml 含 schema_version=2.0 视为 has_state_tree
++    for yaml_path in pages_dir.glob("*.yaml"):
++        try:
++            text = yaml_path.read_text(encoding="utf-8")
++        except Exception:
++            continue
++        if 'schema_version: "2.0"' in text or "schema_version: '2.0'" in text:
++            return {"explored": True, "has_state_tree": True}
++    return {"explored": False, "has_state_tree": False}
++
++
++def make_check_explored_url_tool(base_dir: Path):
++    """包装成 LangChain StructuredTool, 注入 base_dir."""
++    from langchain_core.tools import tool
++
++    @tool
++    def _impl(normalized_path: str, project_id: str) -> dict:
++        """Check whether a normalized URL path has been explored.
++        Returns: {explored: bool, has_state_tree: bool}"""
++        return check_explored_url(normalized_path=normalized_path, project_id=project_id, base_dir=base_dir)
++    return _impl
+diff --git a/apps/backend/app/services/page_exploration/events.py b/apps/backend/app/services/page_exploration/events.py
+new file mode 100644
+index 000000000..42fc29fd6
+--- /dev/null
++++ b/apps/backend/app/services/page_exploration/events.py
+@@ -0,0 +1,43 @@
++# apps/backend/app/services/page_exploration/events.py
++"""4 种 page artifact 事件 payload model。"""
++from __future__ import annotations
++
++from typing import Literal
++
++from pydantic import BaseModel
++
++
++EventType = Literal[
++    "page_artifact_state_merge",
++    "page_artifact_lock_timeout",
++    "page_artifact_state_rejected",
++    "page_artifact_yaml_corrupt",
++]
++
++
++class PageArtifactStateMergePayload(BaseModel):
++    page_id: str
++    normalized_path: str
++    added_state_ids: list[str]
++    updated_state_ids: list[str]
++    added_element_keys: list[str]
++    updated_element_keys: list[str]
++    trigger: str  # "click:button-x"
++
++
++class PageArtifactLockTimeoutPayload(BaseModel):
++    page_id: str
++    waited_seconds: float
++
++
++class PageArtifactStateRejectedPayload(BaseModel):
++    page_id: str
++    reason: str  # enum
++    rejected_state_title: str
++
++
++class PageArtifactYamlCorruptPayload(BaseModel):
++    page_id: str
++    file_path: str
++    reason: str  # yaml_parse_error / io_error / empty_file / schema_mismatch
++    action: Literal["rebuild_from_scratch"]
+diff --git a/apps/backend/tests/agents/page_exploration/tools/test_artifact_tools.py b/apps/backend/tests/agents/page_exploration/tools/test_artifact_tools.py
+index 4d2623047..92eaa244a 100644
+--- a/apps/backend/tests/agents/page_exploration/tools/test_artifact_tools.py
++++ b/apps/backend/tests/agents/page_exploration/tools/test_artifact_tools.py
+@@ -1,260 +1,59 @@
+ """Tests for artifact tools"""
+-
+ import pytest
+ from pathlib import Path
+ import yaml
+ 
+ from app.agents.page_exploration.tools.artifact_tools import (
+-    write_page_artifact_tool,
++    read_page_artifact,
++    merge_page_artifact,
+ )
+ 
+ 
+-@pytest.fixture
+-def temp_base_dir(tmp_path, monkeypatch):
+-    """Setup temp directory and patch base path"""
+-    monkeypatch.setattr(
+-        'app.agents.page_exploration.tools.artifact_tools.PROJECT_FILE_STORAGE_ROOT',
+-        tmp_path
+-    )
+-    return tmp_path
+-
+-
+-def test_write_page_artifact_tool_basic(temp_base_dir):
+-    """Test writing a basic page artifact"""
+-    elements = [
+-        {
+-            "id": "create_agent_btn",
+-            "name": "创建智能体",
+-            "role": "button",
+-            "locators": [
+-                {
+-                    "kind": "role",
+-                    "code": "getByRole('button', { name: '创建智能体' })",
+-                    "priority": 1,
+-                    "validation": {
+-                        "is_unique": True,
+-                        "is_visible": True
+-                    }
+-                }
+-            ]
+-        },
+-        {
+-            "id": "search_input",
+-            "name": "搜索",
+-            "role": "textbox",
+-            "locators": [
+-                {
+-                    "kind": "label",
+-                    "code": "getByLabel('搜索')",
+-                    "priority": 1
+-                }
+-            ]
+-        }
+-    ]
+-
+-    result = write_page_artifact_tool.invoke({
+-        "url": "https://test.example.com/workspace/agents",
+-        "title": "智能体工作台",
+-        "elements": elements,
+-        "project_id": "proj-test",
+-        "page_id": "page-workspace-agents"
+-    })
+-
+-    assert result["success"] is True
+-    assert result["page_id"] == "page-workspace-agents"
+-    assert result["normalized_path"] == "/workspace/agents"
+-    assert result["element_count"] == 2
+-    assert "page-workspace-agents.yaml" in result["file_path"]
+-
+-    # Verify file was created
+-    file_path = Path(result["file_path"])
+-    assert file_path.exists()
+-
+-    # Verify content
+-    with open(file_path, "r", encoding="utf-8") as f:
+-        data = yaml.safe_load(f)
+-
+-    assert data["page"]["id"] == "page-workspace-agents"
+-    assert data["page"]["title"] == "智能体工作台"
+-    assert data["page"]["display_name"] == "agents"
+-    assert data["page"]["breadcrumb"] == ["workspace", "agents"]
+-    assert data["page"]["normalized_path"] == "/workspace/agents"
+-    assert len(data["page"]["elements"]) == 2
+-    assert data["page"]["elements"][0]["id"] == "create_agent_btn"
+-    assert data["page"]["elements"][0]["name"] == "创建智能体"
+-
+-    doc_path = file_path.with_suffix(".md")
+-    assert doc_path.exists()
+-    doc = doc_path.read_text(encoding="utf-8")
+-    assert "# 智能体工作台" in doc
+-    assert "## 页面用途" in doc
+-    assert "## 页面功能" in doc
+-    assert "创建智能体" in doc
+-    assert "getByRole('button', { name: '创建智能体' })" in doc
+-
+-
+-def test_write_page_artifact_tool_auto_generate_page_id(temp_base_dir):
+-    """Test auto-generating page_id from URL"""
+-    result = write_page_artifact_tool.invoke({
+-        "url": "https://test.example.com/workspace/agents/create",
+-        "title": "创建智能体",
+-        "elements": [],
+-        "project_id": "proj-test"
+-    })
+-
+-    assert result["success"] is True
+-    assert result["page_id"] == "page-workspace-agents-create"
+-    assert result["normalized_path"] == "/workspace/agents/create"
+-
+-
+-def test_write_page_artifact_tool_cross_environment(temp_base_dir):
+-    """Test that different environment URLs create the same artifact"""
+-    elements = [
+-        {
+-            "id": "btn1",
+-            "name": "Button",
+-            "role": "button",
+-            "locators": []
+-        }
+-    ]
+-
+-    # Write with test environment URL
+-    result1 = write_page_artifact_tool.invoke({
+-        "url": "https://test.example.com/workspace/agents",
+-        "title": "Test",
+-        "elements": elements,
+-        "project_id": "proj-test",
+-        "page_id": "page-workspace-agents"
+-    })
+-
+-    # Write with prod environment URL (same normalized path)
+-    result2 = write_page_artifact_tool.invoke({
+-        "url": "https://prod.example.com/workspace/agents",
+-        "title": "Prod",
+-        "elements": elements,
+-        "project_id": "proj-test",
+-        "page_id": "page-workspace-agents"
+-    })
+-
+-    # Both should write to the same file
+-    assert result1["page_id"] == result2["page_id"]
+-    assert result1["normalized_path"] == result2["normalized_path"]
+-    assert result1["file_path"] == result2["file_path"]
+-
+-    # Second write should overwrite first
+-    file_path = Path(result2["file_path"])
+-    with open(file_path, "r", encoding="utf-8") as f:
+-        data = yaml.safe_load(f)
+-
+-    assert data["page"]["title"] == "Prod"  # Latest write
+-    assert data["page"]["display_name"] == "agents"
+-    assert data["page"]["breadcrumb"] == ["workspace", "agents"]
+-
+-
+-def test_write_page_artifact_tool_uses_path_name_when_titles_repeat(temp_base_dir):
+-    """Repeated product titles must not drive the page directory name."""
+-    result1 = write_page_artifact_tool.invoke({
+-        "url": "https://test.example.com/workspace/agentStore",
+-        "title": "百融百工",
+-        "elements": [],
+-        "project_id": "proj-test",
+-    })
+-    result2 = write_page_artifact_tool.invoke({
+-        "url": "https://test.example.com/workspace/agent/detail",
+-        "title": "百融百工",
+-        "elements": [],
+-        "project_id": "proj-test",
+-    })
+-
+-    assert result1["page_id"] == "page-workspace-agentstore"
+-    assert result2["page_id"] == "page-workspace-agent-detail"
+-
+-    data1 = yaml.safe_load(Path(result1["file_path"]).read_text(encoding="utf-8"))
+-    data2 = yaml.safe_load(Path(result2["file_path"]).read_text(encoding="utf-8"))
+-
+-    assert data1["page"]["title"] == "百融百工"
+-    assert data2["page"]["title"] == "百融百工"
+-    assert data1["page"]["display_name"] == "agentstore"
+-    assert data2["page"]["display_name"] == "detail"
+-    assert data1["page"]["breadcrumb"] == ["workspace", "agentstore"]
+-    assert data2["page"]["breadcrumb"] == ["workspace", "agent", "detail"]
+-
+-
+-def test_write_page_artifact_tool_complex_elements(temp_base_dir):
+-    """Test writing complex elements with multiple locators"""
+-    elements = [
+-        {
+-            "id": "submit_btn",
+-            "name": "提交表单",
+-            "role": "button",
+-            "locators": [
+-                {
+-                    "kind": "role",
+-                    "code": "getByRole('button', { name: '提交' })",
+-                    "priority": 1,
+-                    "validation": {
+-                        "is_unique": True,
+-                        "is_visible": True,
+-                        "match_count": 1
+-                    }
+-                },
+-                {
+-                    "kind": "testid",
+-                    "code": "getByTestId('submit-form-btn')",
+-                    "priority": 2,
+-                    "validation": {
+-                        "is_unique": True,
+-                        "is_visible": True
+-                    }
+-                },
+-                {
+-                    "kind": "text",
+-                    "code": "getByText('提交')",
+-                    "priority": 3
+-                }
+-            ]
+-        }
+-    ]
++def _write_existing(path: Path, data):
++    path.parent.mkdir(parents=True, exist_ok=True)
++    path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+ 
+-    result = write_page_artifact_tool.invoke({
+-        "url": "https://test.example.com/form",
+-        "title": "表单页",
+-        "elements": elements,
+-        "project_id": "proj-test",
+-        "page_id": "page-form"
+-    })
+-
+-    assert result["success"] is True
+-
+-    # Verify complex structure
+-    file_path = Path(result["file_path"])
+-    with open(file_path, "r", encoding="utf-8") as f:
+-        data = yaml.safe_load(f)
+ 
+-    element = data["page"]["elements"][0]
+-    assert len(element["locators"]) == 3
+-    assert element["locators"][0]["kind"] == "role"
+-    assert element["locators"][0]["priority"] == 1
+-    assert element["locators"][0]["validation"]["is_unique"] is True
+-    assert element["locators"][1]["kind"] == "testid"
+-    assert element["locators"][2]["kind"] == "text"
+-
+-
+-def test_write_page_artifact_tool_empty_elements(temp_base_dir):
+-    """Test writing a page with no elements"""
+-    result = write_page_artifact_tool.invoke({
+-        "url": "https://test.example.com/empty",
+-        "title": "空页面",
+-        "elements": [],
+-        "project_id": "proj-test",
+-        "page_id": "page-empty"
+-    })
+-
+-    assert result["success"] is True
+-    assert result["element_count"] == 0
+-
+-    file_path = Path(result["file_path"])
+-    with open(file_path, "r", encoding="utf-8") as f:
+-        data = yaml.safe_load(f)
+-
+-    assert data["page"]["elements"] == []
++def test_read_non_existent(tmp_path):
++    r = read_page_artifact(
++        page_id="page-x",
++        project_id="proj-x",
++        base_dir=tmp_path,
++    )
++    assert r["exists"] is False
++    assert r["page"] is None
++
++
++def test_read_existing(tmp_path):
++    project_dir = tmp_path / "proj-x"
++    project_dir.mkdir()
++    page_yaml = project_dir / "pages" / "page-x.yaml"
++    _write_existing(page_yaml, {
++        "schema_version": "2.0",
++        "page": {"id":"page-x","title":"x","normalized_path":"/x","observed_url":"/x",
++                 "first_observed_at":"2026-07-04T10:00:00Z",
++                 "last_observed_at":"2026-07-04T10:00:00Z","observed_by_runs":["r1"]},
++        "states": [],
++    })
++    r = read_page_artifact(page_id="page-x", project_id="proj-x", base_dir=tmp_path)
++    assert r["exists"] is True
++    assert r["schema_version"] == "2.0"
++
++
++def test_merge_root_state_creates_new_file(tmp_path):
++    r = merge_page_artifact(
++        page_id="page-x",
++        project_id="proj-x",
++        run_id="r1",
++        base_dir=tmp_path,
++        observed_states=[{
++            "page_id": "page-x", "page_title": "x", "normalized_path": "/x",
++            "observed_url": "/x", "run_id": "r1",
++            "observed_at": "2026-07-04T10:00:00Z",
++            "state_type": "root", "title": "r",
++            "dom_signature": "sha256:t", "triggered_by": None,
++            "parent_state_id": None, "elements": [],
++        }],
++    )
++    assert r["skipped_due_to_lock"] is False
++    assert any(s.endswith("__root__001") for s in r["added_state_ids"])
+diff --git a/apps/backend/tests/agents/page_exploration/tools/test_url_tools.py b/apps/backend/tests/agents/page_exploration/tools/test_url_tools.py
+new file mode 100644
+index 000000000..1b93bf74b
+--- /dev/null
++++ b/apps/backend/tests/agents/page_exploration/tools/test_url_tools.py
+@@ -0,0 +1,54 @@
++"""Tests for url_tools"""
++import pytest
++from pathlib import Path
++
++from app.agents.page_exploration.tools.url_tools import check_explored_url
++
++
++def test_unexplored_url(tmp_path: Path):
++    result = check_explored_url(
++        normalized_path="/workspace",
++        project_id="proj-x",
++        base_dir=tmp_path,
++    )
++    assert result == {"explored": False, "has_state_tree": False}
++
++
++def test_old_yaml_no_state_tree(tmp_path: Path):
++    project_dir = tmp_path / "proj-x"
++    project_dir.mkdir()
++    page_yaml = project_dir / "page_exploration" / "pages" / "page-x.yaml"
++    page_yaml.parent.mkdir(parents=True, exist_ok=True)
++    page_yaml.write_text(
++        "page:\n  id: page-x\n"
++        "states: []\n",
++        encoding="utf-8"
++    )
++    result = check_explored_url(
++        normalized_path="/workspace",
++        project_id="proj-x",
++        base_dir=tmp_path,
++    )
++    assert result == {"explored": False, "has_state_tree": False}
++
++
++def test_v2_yaml_has_state_tree(tmp_path: Path):
++    project_dir = tmp_path / "proj-x"
++    project_dir.mkdir()
++    page_yaml = project_dir / "page_exploration" / "pages" / "page-x.yaml"
++    page_yaml.parent.mkdir(parents=True, exist_ok=True)
++    page_yaml.write_text(
++        "schema_version: \"2.0\"\n"
++        "page:\n  id: page-x\n  title: x\n  normalized_path: /x\n"
++        "  observed_url: /x\n  first_observed_at: 2026-07-04T10:00:00Z\n"
++        "  last_observed_at: 2026-07-04T10:00:00Z\n  observed_by_runs: [r1]\n"
++        "states: []\n",
++        encoding="utf-8"
++    )
++    result = check_explored_url(
++        normalized_path="/x",
++        project_id="proj-x",
++        base_dir=tmp_path,
++    )
++    assert result["explored"] is True
++    assert result["has_state_tree"] is True

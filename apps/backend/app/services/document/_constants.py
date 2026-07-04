@@ -1,0 +1,13 @@
+"""document 子包状态/超时常量。
+
+与业务流无副作用、仅是 enum 值。集中放避免散落到各子模块。
+"""
+from __future__ import annotations
+
+DOCUMENT_VERSIONED_STATUS = "versioned"
+DOCUMENT_PENDING_REVIEW_STATUS = "pending_review"
+CONVERSION_SUCCESS_STATUS = "success"
+CONVERSION_FAILED_STATUS = "failed"
+
+REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES = 120
+REQUIREMENT_ANALYSIS_RUN_TIMEOUT_SECONDS = REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES * 60
