@@ -24,7 +24,14 @@ from app.agents.page_exploration.tools.state_tools import (
 )
 
 from app.agents.page_exploration.tools.artifact_tools import (
-    write_page_artifact_tool,
+    make_artifact_tools,
+    read_page_artifact,
+    merge_page_artifact,
+)
+
+from app.agents.page_exploration.tools.url_tools import (
+    make_check_explored_url_tool,
+    check_explored_url,
 )
 
 
@@ -47,7 +54,7 @@ STATE_TOOLS = [
 ]
 
 ARTIFACT_TOOLS = [
-    write_page_artifact_tool,
+    # 新 v2.0 工具由 make_artifact_tools() 动态创建，不在此列表静态导出
 ]
 
 # 所有工具
@@ -85,8 +92,13 @@ __all__ = [
     # 状态工具
     "check_explored_url_tool",
     "update_explored_url_tool",
-    # 产物工具
-    "write_page_artifact_tool",
+    # 产物工具（工厂函数 + 核心函数）
+    "make_artifact_tools",
+    "read_page_artifact",
+    "merge_page_artifact",
+    # URL 工具（工厂函数 + 核心函数）
+    "make_check_explored_url_tool",
+    "check_explored_url",
     # 分类
     "NAVIGATION_TOOLS",
     "EXTRACTION_TOOLS",

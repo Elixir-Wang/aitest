@@ -21,7 +21,10 @@ from deepagents.backends import FilesystemBackend
 from langchain.agents.middleware import ToolCallLimitMiddleware
 
 from app.agents.page_exploration.tools import get_local_tools
+from app.agents.page_exploration.tools.artifact_tools import make_artifact_tools
+from app.agents.page_exploration.tools.url_tools import make_check_explored_url_tool
 from app.agents.page_exploration.prompts.system_prompt import SYSTEM_PROMPT
+from app.core.settings import PROJECT_FILE_STORAGE_ROOT
 
 
 def page_exploration_agent(

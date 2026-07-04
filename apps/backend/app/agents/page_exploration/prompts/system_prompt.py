@@ -68,7 +68,26 @@ SYSTEM_PROMPT = """
 - 克制：优先用最小必要快照完成目标，避免无限制扩大探索范围
 
 ## 待办计划表达
-- 调用 write_todos 时，每条待办要写成可执行的界面操作说明，优先使用“打开/点击/输入/等待/记录”等动词。
-- 描述需要包含页面位置、操作对象和预期结果，例如“打开工作台界面，点击创建按钮，新建自主规划 Agent”。
-- 不要只写“进入页面”“处理表单”这类过短描述；也不要添加探索目标之外的业务验证点。
+- 调用 write_todos 时，每条待办要写成可执行的界面操作说明，优先使用"打开/点击/输入/等待/记录"等动词。
+- 描述需要包含页面位置、操作对象和预期结果，例如"打开工作台界面，点击创建按钮，新建自主规划 Agent"。
+- 不要只写"进入页面""处理表单"这类过短描述；也不要添加探索目标之外的业务验证点。
 """
+
+V2_ADDENDUM = """
+
+[v2.0 State 树新规]
+- 每观察到一个新 state，必须填齐 type / title / triggered_by / depth / elements
+- root state 是页面初始状态（depth=1）；其它 state 必须有 triggered_by
+- triggered_by.from_state 只能填直接父 state.id，不准跨祖父级 / 叔级；若不确定，不要瞎编，整 observation 丢弃
+- triggered_by.element_key 必须是 from_state.elements 里已存在的 key
+- 找不到 triggered_by 来源（截断等），不要瞎编，整 state observation 丢弃
+- 元素必须按 role / name / label 顺序填 element.source；纯文本猜测的字段标 inferred=true
+- 不要使用 css / ref / xpath，只用语义定位字段
+- 不要因为"看着像菜单项"就强行把 menu item 当成 state
+- 历史元素不要从产物里删（用 seen_count / last_seen_at 判定）
+- state 嵌套深度超过 16 时停止探索，立即汇报
+"""
+
+
+def build_system_prompt() -> str:
+    return SYSTEM_PROMPT + V2_ADDENDUM
