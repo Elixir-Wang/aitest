@@ -24,7 +24,9 @@ def write_page_artifact_tool(
     project_id: str,
     page_id: Optional[str] = None,
 ) -> dict:
-    """
+    """DEPRECATED: 由 T6 删除。新入口请用 `PageArtifactWriter.merge_states`。
+    本函数暂留以避免破坏外部 import。
+
     Write or update a page artifact YAML file.
 
     Use this tool to:
