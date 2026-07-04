@@ -19,3 +19,11 @@ def test_pattern_matches():
     assert pat.fullmatch("page-abc-def__dialog__042")
     assert not pat.fullmatch("page-x__unknown__001")  # unknown 不是 type
     assert not pat.fullmatch("page-x__root__1")       # 缺零填充
+
+
+def test_seq_below_one_raises():
+    import pytest
+    with pytest.raises(ValueError):
+        make_state_id("page-x", "root", 0)
+    with pytest.raises(ValueError):
+        make_state_id("page-x", "root", -1)
