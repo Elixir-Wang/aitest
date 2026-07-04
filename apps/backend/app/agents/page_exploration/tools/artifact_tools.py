@@ -1,4 +1,4 @@
-"""read_page_artifact_tool, merge_page_artifact_tool。覆盖旧 artifact_write_tool / cache_write_tool。"""
+"""read_page_artifact_tool, merge_page_artifact_tool。v2.0 工具集。"""
 from __future__ import annotations
 
 from pathlib import Path
