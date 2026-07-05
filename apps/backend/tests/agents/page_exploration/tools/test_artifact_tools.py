@@ -27,7 +27,7 @@ def test_read_non_existent(tmp_path):
 def test_read_existing(tmp_path):
     project_dir = tmp_path / "proj-x"
     project_dir.mkdir()
-    page_yaml = project_dir / "pages" / "page-x.yaml"
+    page_yaml = project_dir / "page_exploration" / "pages" / "page-x.yaml"
     _write_existing(page_yaml, {
         "schema_version": "2.0",
         "page": {"id":"page-x","title":"x","normalized_path":"/x","observed_url":"/x",
@@ -57,3 +57,4 @@ def test_merge_root_state_creates_new_file(tmp_path):
     )
     assert r["skipped_due_to_lock"] is False
     assert any(s.endswith("__root__001") for s in r["added_state_ids"])
+    assert (tmp_path / "proj-x" / "page_exploration" / "pages" / "page-x.yaml").exists()

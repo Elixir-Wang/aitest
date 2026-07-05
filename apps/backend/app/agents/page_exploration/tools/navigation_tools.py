@@ -48,32 +48,24 @@ def playwright_click_tool(locator: str) -> dict:
     """
     Click an element on the current page.
 
-    locator 支持两种形式（按推荐顺序）：
-
-    1) Playwright Locator 字符串（推荐，跨调用稳定）：
+    locator 优先使用可复用的 Playwright Locator 字符串：
 
        getByRole('button', { name: '创建智能体' })
        getByRole('treeitem', { name: '自主规划 Agent' })
        getByLabel('用户名')
-       getByTestId('user-avatar')
        getByText('提交订单', { exact: true })
        getByPlaceholder('请输入手机号')
+       getByTestId('user-avatar')
+       page.locator('[data-testid="workspace-nav"]')  # 仅在以上定位器都不可用时兜底
 
-       优点：每次执行实时查找，DOM 抖动不会失效；定位串可直接复用到
-             后续自动化测试代码（Playwright / pytest-playwright 原生支持）。
+    不支持：observe element.id、临时 ref（"e15" / "e20"）和 XPath 字符串。
+    不要因为元素可点击就猜测为 button；只有真实原生/显式无障碍 role 才用 getByRole。
 
-    2) 上一次 snap 返回的 element.id（如 "button-create-agent-001"）：
-
-       优点：snap 已验证 unique + visible，确定性高。
-       缺点：页面变化后 id 失效，需要重新 snap。
-
-    不支持：临时 ref（"e15" / "e20"），CSS / XPath 字符串。
-
-    失败处理：失败时不要再次尝试同一 locator。改用 snap 拿新 ref，或
-    直接用 Playwright Locator 字符串重试。
+    失败处理：失败时不要再次尝试同一 locator。应重新 observe，选择
+    verified 的 Playwright Locator 字符串后重试。
 
     Args:
-        locator: Playwright Locator 字符串 或 snap 返回的 element.id
+        locator: Playwright Locator 字符串
 
     Returns:
         A dictionary containing:
@@ -93,7 +85,7 @@ def playwright_fill_tool(locator: str, value: str) -> dict:
     """
     Fill an input element with text.
 
-    locator 支持 Playwright Locator 字符串（推荐）和 snap 返回的 element.id。
+    locator 只支持可复用 Playwright Locator 字符串。
     常用形式：
 
     - getByLabel('用户名')
@@ -102,7 +94,7 @@ def playwright_fill_tool(locator: str, value: str) -> dict:
     - getByTestId('search-input')
 
     Args:
-        locator: Playwright Locator 字符串 或 snap 返回的 element.id
+        locator: Playwright Locator 字符串
         value: Text to fill into the element
 
     Returns:

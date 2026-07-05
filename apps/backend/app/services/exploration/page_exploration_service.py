@@ -903,8 +903,6 @@ async def _execute_exploration_async(
 
     # 创建agent实例（带工具调用硬截断：单次 run 最多 max_actions 步）
     agent = page_exploration_agent(model, max_actions=max(40, min(int(max_pages or 80) * 6, 200)))
-    started_at = datetime.now(timezone.utc).isoformat()
-    plan_steps = _initial_exploration_plan_steps(start_url, max_pages)
     event_bus.publish(
         run_id,
         "planning_completed",
@@ -923,33 +921,8 @@ async def _execute_exploration_async(
             "success_criteria": [
                 goal or f"最多探索 {max_pages} 个页面，并记录页面事实与关键操作。"
             ],
-            "total_steps": len(plan_steps),
-            "steps": plan_steps,
-        },
-    )
-
-    event_bus.publish(
-        run_id,
-        "step_started",
-        {
-            **plan_steps[0],
-            "total_steps": len(plan_steps),
-            "attempt": 1,
-            "started_at": started_at,
-            "message": f"准备探索入口：{start_url}",
-        },
-    )
-    event_bus.publish(
-        run_id,
-        "step_completed",
-        {
-            **plan_steps[0],
-            "total_steps": len(plan_steps),
-            "attempt": 1,
-            "started_at": started_at,
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "success": True,
-            "message": "入口和探索约束已确认。",
+            "total_steps": 0,
+            "steps": [],
         },
     )
 
@@ -973,7 +946,6 @@ async def _execute_exploration_async(
             agent,
             payload,
             run_id,
-            plan_steps,
             project_id=project_id,
             max_pages=max_pages,
         )
@@ -1646,32 +1618,24 @@ async def _invoke_agent_with_realtime_events(
     agent,
     payload: dict,
     run_id: str,
-    plan_steps: list[dict],
     *,
     project_id: str = "",
     max_pages: int = 50,
 ):
-    agent_step = plan_steps[1]
-    started_at = datetime.now(timezone.utc).isoformat()
     timeline_log = _ExplorationEventLog(project_id=project_id, run_id=run_id, filename="timeline_events.jsonl")
     raw_log = _ExplorationEventLog(project_id=project_id, run_id=run_id, filename="raw_events.jsonl")
     started_display = _status_display("agent_run", "开始页面探索", "页面探索 Agent 已开始执行。")
-    event_bus.publish(
-        run_id,
-        "step_started",
-        {
-            **agent_step,
-            "total_steps": len(plan_steps),
-            "attempt": 1,
-            "started_at": started_at,
-            "message": "页面探索 Agent 已开始执行。",
-        },
+    started_event = timeline_log.append(
+        "agent_step_started",
+        {"message": "页面探索 Agent 已开始执行。"},
         display=started_display,
     )
-    timeline_log.append(
+    event_bus.publish(
+        run_id,
         "agent_step_started",
-        {"step": agent_step, "message": "页面探索 Agent 已开始执行。"},
+        {"message": "页面探索 Agent 已开始执行。"},
         display=started_display,
+        timeline_event_id=started_event.get("event_id"),
     )
     config = _agent_recursion_config(max_pages)
     result = await _astream_agent_with_timeline_events(

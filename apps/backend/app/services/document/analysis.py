@@ -9,7 +9,7 @@ import json
 import re
 import secrets
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Tuple
 
 from app.agents.requirement_analysis.service import (
     load_run_input,
@@ -112,63 +112,34 @@ def update_requirement_preliminary_markdown(
 
 def _resolve_clarification_answer(question: dict, payload: RequirementClarificationAnswerIn) -> Tuple[str, str, str]:
     if payload.answer_type == "defer":
-        return "", "", payload.custom_answer.strip()
+        return "", "", ""
     if payload.answer_type == "custom":
         answer = payload.custom_answer.strip()
         if not answer:
             raise api_error(422, "REQUIREMENT_CLARIFICATION_CUSTOM_ANSWER_REQUIRED", "请填写自定义答复。")
-        return answer, payload.selected_option_id.strip(), answer
+        return answer, "", answer
     selected_option_id = payload.selected_option_id.strip()
     if not selected_option_id:
         raise api_error(422, "REQUIREMENT_CLARIFICATION_OPTION_REQUIRED", "请选择推荐选项。")
 
-    # 老格式澄清项（部分历史 / 第三方迁移数据）会把选项放在选项数组里。
-    for field in ("options", "recommended_options", "decision_options"):
-        for option in question.get(field) or []:
-            if option.get("id") != selected_option_id:
-                continue
-            answer = _option_answer_text(option)
-            if not answer:
-                raise api_error(422, "REQUIREMENT_CLARIFICATION_OPTION_EMPTY", "推荐选项缺少可写入内容。")
-            return answer, selected_option_id, payload.custom_answer.strip()
-
-    # 当前架构的 ClarificationItem 只把两个推荐答案存为字符串 option_a / option_b，
-    # 前端会把它们补全成 `<question_id>_option_a` / `<question_id>_option_b` 的合成 ID。
     question_id = str(question.get("id") or "")
-    synthesized_match = _match_synthesized_option(selected_option_id, question_id, question)
-    if synthesized_match is not None:
-        answer, answer_option_id = synthesized_match
+    answer = _selected_option_text(question, question_id, selected_option_id)
+    if answer is not None:
         if not answer:
             raise api_error(422, "REQUIREMENT_CLARIFICATION_OPTION_EMPTY", "推荐选项缺少可写入内容。")
-        return answer, answer_option_id, payload.custom_answer.strip()
+        return answer, selected_option_id, ""
 
     raise api_error(404, "REQUIREMENT_CLARIFICATION_OPTION_NOT_FOUND", "推荐选项不存在。")
 
 
-def _option_answer_text(option: dict) -> str:
-    return str(option.get("answer_markdown") or option.get("description") or "").strip()
-
-
-def _match_synthesized_option(
-    selected_option_id: str,
-    question_id: str,
-    question: dict,
-) -> Optional[Tuple[str, str]]:
-    """匹配前端为 option_a / option_b 合成的 option id（`<question_id>_option_a/b`）。
-
-    始终返回 (text, option_id)；文本为空时返回空串，由上层校验并抛 422。
-    """
+def _selected_option_text(question: dict, question_id: str, selected_option_id: str) -> str | None:
     if not question_id:
         return None
-    prefix = f"{question_id}_option_"
-    if not selected_option_id.startswith(prefix):
-        return None
-    suffix = selected_option_id[len(prefix):]
-    if suffix not in {"a", "b"}:
-        return None
-    field = f"option_{suffix}"
-    text = str(question.get(field) or "").strip()
-    return text, selected_option_id
+    if selected_option_id == f"{question_id}_option_a":
+        return str(question.get("option_a") or "").strip()
+    if selected_option_id == f"{question_id}_option_b":
+        return str(question.get("option_b") or "").strip()
+    return None
 
 
 def _apply_clarification_answer_to_markdown(

@@ -1,15 +1,20 @@
 """Pydantic schemas for page exploration browser tool results."""
 
+from typing import Any
+
 from pydantic import BaseModel
 
 
 class ElementInfo(BaseModel):
     """Information about a single executable page element."""
 
-    ref: str
     role: str
+    role_source: str = ""
     name: str
     text: str | None = None
+    action_type: str = ""
+    primary_selector: dict[str, Any] | None = None
+    fallback_selector: dict[str, Any] | None = None
     visible: bool
 
 

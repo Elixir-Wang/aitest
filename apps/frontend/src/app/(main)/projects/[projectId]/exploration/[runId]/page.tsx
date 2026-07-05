@@ -413,10 +413,7 @@ function mergeMonitorEvent(current: ExplorationMonitorState, event: ExplorationS
   };
 
   if (event.type === "planning_completed" || event.type === "agent_plan_updated") {
-    const steps =
-      event.type === "agent_plan_updated"
-        ? normalizeMonitorPlanSteps(payload.plan_steps)
-        : normalizeMonitorPlanSteps(payload.steps);
+    const steps = event.type === "agent_plan_updated" ? normalizeMonitorPlanSteps(payload.plan_steps) : [];
     next = {
       ...next,
       plan: {
@@ -434,7 +431,7 @@ function mergeMonitorEvent(current: ExplorationMonitorState, event: ExplorationS
         total_steps: Number(payload.total_steps || steps.length || 0),
         steps,
       },
-      steps: mergeMonitorPlanSteps(next.steps, steps),
+      steps: event.type === "agent_plan_updated" ? mergeMonitorPlanSteps(next.steps, steps) : next.steps,
     };
   }
 

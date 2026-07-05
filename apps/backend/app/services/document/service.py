@@ -1456,28 +1456,34 @@ def _find_requirement_analysis_question(output: dict, question_id: str) -> tuple
 
 def _resolve_clarification_answer(question: dict, payload: RequirementClarificationAnswerIn) -> tuple[str, str, str]:
     if payload.answer_type == "defer":
-        return "", "", payload.custom_answer.strip()
+        return "", "", ""
     if payload.answer_type == "custom":
         answer = payload.custom_answer.strip()
         if not answer:
             raise api_error(422, "REQUIREMENT_CLARIFICATION_CUSTOM_ANSWER_REQUIRED", "请填写自定义答复。")
-        return answer, payload.selected_option_id.strip(), answer
+        return answer, "", answer
     selected_option_id = payload.selected_option_id.strip()
     if not selected_option_id:
         raise api_error(422, "REQUIREMENT_CLARIFICATION_OPTION_REQUIRED", "请选择推荐选项。")
-    option_sources = [
-        question.get("options") or [],
-        question.get("recommended_options") or [],
-        question.get("decision_options") or [],
-    ]
-    for options in option_sources:
-        for option in options:
-            if option.get("id") == selected_option_id:
-                answer = str(option.get("answer_markdown") or option.get("description") or "").strip()
-                if not answer:
-                    raise api_error(422, "REQUIREMENT_CLARIFICATION_OPTION_EMPTY", "推荐选项缺少可写入内容。")
-                return answer, selected_option_id, payload.custom_answer.strip()
+
+    question_id = str(question.get("id") or "")
+    answer = _selected_option_text(question, question_id, selected_option_id)
+    if answer is not None:
+        if not answer:
+            raise api_error(422, "REQUIREMENT_CLARIFICATION_OPTION_EMPTY", "推荐选项缺少可写入内容。")
+        return answer, selected_option_id, ""
+
     raise api_error(404, "REQUIREMENT_CLARIFICATION_OPTION_NOT_FOUND", "推荐选项不存在。")
+
+
+def _selected_option_text(question: dict, question_id: str, selected_option_id: str) -> str | None:
+    if not question_id:
+        return None
+    if selected_option_id == f"{question_id}_option_a":
+        return str(question.get("option_a") or "").strip()
+    if selected_option_id == f"{question_id}_option_b":
+        return str(question.get("option_b") or "").strip()
+    return None
 
 
 def _apply_clarification_answer_to_markdown(

@@ -78,11 +78,14 @@ function contextualContainerLocator(page, container = {}) {
     const hasText = String(container.hasText || container.text || "");
     return hasText ? locator.filter({ hasText }) : locator;
   }
-  const text = String(container.text || container.hasText || "");
-  if (!text) {
-    throw new Error("Contextual selector is missing container text.");
+  if (kind === "role") {
+    const role = String(container.role || "");
+    if (!role) {
+      throw new Error("Contextual selector is missing container role.");
+    }
+    const locator = page.getByRole(role);
+    const hasText = String(container.hasText || container.text || "");
+    return hasText ? locator.filter({ hasText }) : locator;
   }
-  return page
-    .getByText(text)
-    .locator('xpath=ancestor::*[self::article or @role="listitem" or contains(concat(" ", normalize-space(@class), " "), " card ")][1]');
+  throw new Error(`Unsupported contextual container kind: ${kind || "unknown"}`);
 }

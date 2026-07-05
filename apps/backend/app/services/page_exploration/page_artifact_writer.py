@@ -167,21 +167,27 @@ class PageArtifactWriter:
                 break
 
         if target is None:
-            target = self._new_state_dict(obs, new_id)
             parent_id = obs.parent_state_id
             if parent_id is None:
+                target = self._new_state_dict(obs, new_id, depth=1)
                 existing["states"].append(target)
             else:
                 parent = self._find_state_by_id(existing["states"], parent_id)
                 if parent is None:
+                    target = self._new_state_dict(obs, new_id, depth=1)
                     existing["states"].append(target)
                 else:
+                    target = self._new_state_dict(
+                        obs,
+                        new_id,
+                        depth=parent.get("depth", 0) + 1,
+                    )
                     parent.setdefault("children", []).append(target)
             result.added_state_ids.append(new_id)
         else:
             result.updated_state_ids.append(target["id"])
 
-        self._merge_elements(target, obs.elements, result)
+        self._merge_elements(target, obs.elements, result, obs.observed_at)
         target["last_observed_at"] = max(target["last_observed_at"], obs.observed_at)
         if obs.run_id not in target["observed_by_runs"]:
             target["observed_by_runs"].append(obs.run_id)
@@ -203,7 +209,10 @@ class PageArtifactWriter:
         tb = st.get("triggered_by")
         if tb is None:
             return False
-        return tb.get("element_key") == obs.triggered_by.element_key
+        return (
+            tb.get("from_state") == obs.triggered_by.from_state
+            and tb.get("element_key") == obs.triggered_by.element_key
+        )
 
     def _find_match_in_children(self, children, obs):
         for st in children:
@@ -223,8 +232,7 @@ class PageArtifactWriter:
                 return nested
         return None
 
-    def _new_state_dict(self, obs, new_id):
-        depth = 1
+    def _new_state_dict(self, obs, new_id, depth: int):
         return {
             "id": new_id,
             "type": obs.state_type,
@@ -247,7 +255,7 @@ class PageArtifactWriter:
             "children": [],
         }
 
-    def _merge_elements(self, target, observations, result):
+    def _merge_elements(self, target, observations, result, observed_at: str):
         existing = target.setdefault("elements", [])
         obs_keys = [self._slot_key(o) for o in observations]
 
@@ -257,12 +265,12 @@ class PageArtifactWriter:
             match = next((e for e in existing if e["key"] == orig_key), None)
             if match is None:
                 # 新增（slot key 后续统一去重）
-                new_dict = self._new_element_dict(obs_el, orig_key)
+                new_dict = self._new_element_dict(obs_el, orig_key, observed_at)
                 existing.append(new_dict)
                 result.added_element_keys.append(orig_key)
             else:
                 # 更新已有
-                self._update_element(match, obs_el, result)
+                self._update_element(match, obs_el, result, observed_at)
                 result.updated_element_keys.append(orig_key)
 
         # 统一去重（处理同一 key 出现多次的情况）
@@ -276,17 +284,20 @@ class PageArtifactWriter:
     def _slot_key(self, obs_el):
         return obs_el.key
 
-    def _new_element_dict(self, obs_el, key):
+    def _new_element_dict(self, obs_el, key, observed_at: str):
         return {
             "key": key,
             "source": dict(obs_el.source),
             "inferred": obs_el.inferred,
-            "last_seen_at": "<filled-by-caller>",
+            "last_seen_at": observed_at,
             "seen_count": 1,
-            "children": [],
+            "children": [
+                self._new_element_dict(child, child.key, observed_at)
+                for child in obs_el.children
+            ],
         }
 
-    def _update_element(self, target, obs_el, result):
+    def _update_element(self, target, obs_el, result, observed_at: str):
         for k, v in obs_el.source.items():
             existing_v = target["source"].get(k)
             if existing_v is None:
@@ -296,6 +307,7 @@ class PageArtifactWriter:
                     "field": k, "attempted_value": v
                 })
         target["seen_count"] = target.get("seen_count", 0) + 1
+        target["last_seen_at"] = observed_at
 
     def _write(self, path, data):
         path.write_text(

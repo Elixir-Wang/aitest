@@ -1,0 +1,72 @@
+page:
+  id: page-agentRelease-agentId-19174-access_type-0-agent_type-1
+  title: 百融百工
+  display_name: agentRelease?agentId=19174&access_type=0&agent_type=1
+  breadcrumb:
+  - agentRelease?agentId=19174&access_type=0&agent_type=1
+  normalized_path: /agentRelease?agentId=19174&access_type=0&agent_type=1
+  structure_summary: 自动保存页面快照，发现 2 个元素。
+  path_hash: sha256-2e3ba73ec31d5c6a
+  env_urls:
+    test: https://www.cybotstar.cn/agentRelease?agentId=19174&access_type=0&agent_type=1
+  last_explored:
+    timestamp: '2026-07-05T15:34:44.493655Z'
+    run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  elements: []
+states:
+- id: snapshot-current
+  title: 百融百工
+  url: https://www.cybotstar.cn/agentRelease?agentId=19174&access_type=0&agent_type=1
+  elements:
+  - id: element-1
+    name: 发布
+    role: clickable
+    text: 发布
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''clickable'', { name: ''发布'' })'
+      priority: 1
+  - id: element-2
+    name: 请填写发布日志
+    role: textbox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请填写发布日志'' })'
+      priority: 1
+  accessibility_tree:
+  - id: ax-fallback-001
+    role: text
+    name: 发布
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-003
+    role: textbox
+    name: 请填写发布日志
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-004
+    role: text
+    name: 发布平台
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  visible_text_blocks:
+  - 发布
+  - '发布日志:'
+  - 发布平台
+  - 请填写发布日志
+quality: {}
+metadata:
+  captured_at: '2026-07-05T15:34:30.428732+00:00'
+  source: page_exploration_run
+  source_run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  source_artifact_path: /Users/wanghongbao/project/test_project/apps/backend/data/projects/project-75fec50973f2adf6/page_exploration/runs/exp_AEF5tx0X9WHsIXTDDzdQuA/pages/page-agentRelease-agentId-19174-access_type-0-agent_type-1.yaml
+  module: 主探索模块

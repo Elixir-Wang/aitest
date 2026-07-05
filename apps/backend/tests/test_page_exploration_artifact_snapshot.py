@@ -178,7 +178,6 @@ def test_invoke_agent_writes_timeline_and_raw_logs_from_projection_stream(monkey
             FakeAgent(),
             {"messages": [{"role": "user", "content": "探索工作台"}]},
             "run-log",
-            page_exploration_service._initial_exploration_plan_steps("https://example.test/workspace", 3),
             project_id="project-1",
             max_pages=3,
         )
@@ -269,7 +268,6 @@ def test_agent_stream_events_carry_timeline_event_id_for_dedup(monkeypatch, tmp_
             FakeAgent(),
             {"messages": [{"role": "user", "content": "探索工作台"}]},
             run_id,
-            page_exploration_service._initial_exploration_plan_steps("https://example.test/workspace", 3),
             project_id="project-1",
             max_pages=3,
         )
@@ -282,10 +280,6 @@ def test_agent_stream_events_carry_timeline_event_id_for_dedup(monkeypatch, tmp_
     ]
     bus_events = event_bus.get_history(run_id)
 
-    # The first entry is the lifecycle ``step_started`` from
-    # ``_invoke_agent_with_realtime_events`` which never went through the
-    # streaming loop's persisted_log.call, so it is allowed to lack a
-    # matching timeline_event_id.
     persisted_ids = {event["event_id"] for event in timeline_events}
 
     # Every streaming-loop publisher must tag the live SSE message with the
@@ -295,7 +289,7 @@ def test_agent_stream_events_carry_timeline_event_id_for_dedup(monkeypatch, tmp_
         event
         for event in bus_events
         if event["type"]
-        not in {"step_started", "run_status_updated", "run_started", "run_completed", "run_failed", "run_cancelled"}
+        not in {"run_status_updated", "run_started", "run_completed", "run_failed", "run_cancelled"}
     ]
     assert stream_only, "expected streaming-loop events to be captured in bus history"
     for event in stream_only:
@@ -343,7 +337,6 @@ def test_cancelled_agent_run_does_not_write_terminal_timeline_event(monkeypatch,
                 FakeAgent(),
                 {"messages": [{"role": "user", "content": "探索工作台"}]},
                 "run-cancelled",
-                page_exploration_service._initial_exploration_plan_steps("https://example.test/workspace", 3),
                 project_id="project-1",
                 max_pages=3,
             )
@@ -471,7 +464,6 @@ def test_invoke_agent_checkpoints_snapshot_as_page_artifact(monkeypatch, tmp_pat
             FakeAgent(),
             {"messages": [{"role": "user", "content": "探索工作台"}]},
             "run-checkpoint",
-            page_exploration_service._initial_exploration_plan_steps("https://example.test/workspace", 3),
             project_id="project-1",
             max_pages=3,
         )
@@ -675,8 +667,9 @@ def test_execute_exploration_async_publishes_realtime_events(monkeypatch) -> Non
     event_types = [event["type"] for event in events]
 
     assert "planning_completed" in event_types
-    assert "step_started" in event_types
-    assert "step_completed" in event_types
+    assert "step_started" not in event_types
+    assert "step_completed" not in event_types
+    assert "agent_step_started" in event_types
     assert event_types[-1] == "run_completed"
     assert not any(event["payload"].get("message") == "探索完成，发现工作台入口。" for event in events)
     assert events[-1]["payload"].get("status") == "completed"

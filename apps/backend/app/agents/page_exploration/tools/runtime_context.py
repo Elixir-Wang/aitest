@@ -51,22 +51,21 @@ def navigate_with_runtime_context(url: str) -> NavigateResult | None:
 def click_with_runtime_context(locator: str) -> ClickResult | None:
     """Click via the long-lived browser session.
 
-    locator 支持两种形式：
-    1) Playwright Locator 字符串（推荐，跨调用稳定）：
+    locator 优先使用可复用的 Playwright Locator 字符串：
        - getByRole('button', { name: '创建智能体' })
        - getByRole('treeitem', { name: '自主规划 Agent' })
        - getByLabel('用户名')
-       - getByTestId('user-avatar')
        - getByText('提交订单')
        - getByPlaceholder('请输入手机号')
-    2) 上一次 snap 返回的 element.id（形如 "button-create-agent-001"）：
-       - 优点：snap 已验证 unique + visible
-       - 缺点：页面变化后 id 会失效，需重新 snap
+       - getByTestId('user-avatar')
+       - page.locator('[data-testid="workspace-nav"]')  # 仅在以上定位器都不可用时兜底
+
+    不要因为元素可点击就猜测为 button；只有真实原生/显式无障碍 role 才用 getByRole。
 
     与前一版不同：失败不再自动 observe（observe 会让 LLM 拿到的旧 id
     仍然在上下文中，下一轮 click 同样失败，形成物理死循环）。
-    改为把错误原样透传给 LLM，由它通过 playwright_snap_tool 主动
-    刷新或直接改用 Playwright Locator 字符串重试。
+    改为把错误原样透传给 LLM，由它重新 observe 并选择 verified
+    Playwright Locator 字符串重试。
     """
     session = _browser_session.get()
     if session is None:
@@ -81,7 +80,7 @@ def click_with_runtime_context(locator: str) -> ClickResult | None:
 
 
 def fill_with_runtime_context(locator: str, value: str) -> FillResult | None:
-    """Fill via the long-lived browser session. 接受 ref 与 Playwright Locator 字符串两种形式。
+    """Fill via the long-lived browser session. 只接受可复用 Playwright Locator 字符串。
 
     失败时同样不再自动 observe，避免物理死循环。
     """
@@ -108,10 +107,13 @@ def snapshot_with_runtime_context(url: str | None = None) -> SnapshotResult | No
         page_text_summary=str(result.get("page_text_summary") or ""),
         elements=[
             ElementInfo(
-                ref=str(element.get("id") or element.get("ref") or ""),
                 role=str(element.get("role") or ""),
+                role_source=str(element.get("role_source") or ""),
                 name=str(element.get("name") or ""),
                 text=element.get("text"),
+                action_type=str(element.get("action_type") or ""),
+                primary_selector=element.get("primary_selector") if isinstance(element.get("primary_selector"), dict) else None,
+                fallback_selector=element.get("fallback_selector") if isinstance(element.get("fallback_selector"), dict) else None,
                 visible=bool(element.get("visible", True)),
             )
             for element in result.get("elements", [])

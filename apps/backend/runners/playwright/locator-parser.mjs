@@ -4,8 +4,7 @@
  * 把 LLM 传进来的 Playwright Locator 字符串解析成真实的 Locator 对象。
  *
  * 设计目的：
- * - click / fill 工具的 locator 参数既支持 snap ref（element.id），
- *   也支持直接传 Playwright Locator 字符串。
+ * - click / fill 工具的 locator 参数只支持 Playwright Locator 字符串。
  * - 后者（getByRole / getByLabel / getByTestId / getByText / getByPlaceholder）
  *   在 LLM 上下文中跨调用稳定，因为它们是"按需查询表达式"，
  *   每次执行都在 page 内实时查找，不会因 DOM 抖动失效。
@@ -21,16 +20,37 @@
  *   这里只是反向解析，所以两种字符串形式完全可逆。
  */
 
-const ROLE_PATTERN = /^getByRole\(\s*['"]([^'"]+)['"]\s*(?:,\s*\{([^)]*)\})?\s*\)$/;
-const LABEL_PATTERN = /^getByLabel\(\s*['"]([^'"]*)['"]\s*(?:,\s*\{([^)]*)\})?\s*\)$/;
-const TEST_ID_PATTERN = /^getByTestId\(\s*['"]([^'"]*)['"]\s*\)$/;
-const TEXT_PATTERN = /^getByText\(\s*['"]([^'"]*)['"]\s*(?:,\s*\{([^)]*)\})?\s*\)$/;
-const PLACEHOLDER_PATTERN = /^getByPlaceholder\(\s*['"]([^'"]*)['"]\s*(?:,\s*\{([^)]*)\})?\s*\)$/;
+const ROLE_PATTERN = /^(?:page\.)?getByRole\(\s*['"]([^'"]+)['"]\s*(?:,\s*\{([^)]*)\})?\s*\)$/;
+const LABEL_PATTERN = /^(?:page\.)?getByLabel\(\s*['"]([^'"]*)['"]\s*(?:,\s*\{([^)]*)\})?\s*\)$/;
+const TEST_ID_PATTERN = /^(?:page\.)?getByTestId\(\s*['"]([^'"]*)['"]\s*\)$/;
+const TEXT_PATTERN = /^(?:page\.)?getByText\(\s*['"]([^'"]*)['"]\s*(?:,\s*\{([^)]*)\})?\s*\)$/;
+const PLACEHOLDER_PATTERN = /^(?:page\.)?getByPlaceholder\(\s*['"]([^'"]*)['"]\s*(?:,\s*\{([^)]*)\})?\s*\)$/;
+const LOCATOR_PATTERN = /^(?:page\.)?locator\(\s*(['"])(.*?)\1\s*\)$/;
+const CONTEXTUAL_TEST_ID_ROLE_PATTERN =
+  /^(?:page\.)?getByTestId\(\s*['"]([^'"]+)['"]\s*\)\.filter\(\s*\{\s*hasText:\s*['"]([^'"]+)['"]\s*\}\s*\)\.getByRole\(\s*['"]([^'"]+)['"]\s*,\s*\{\s*name:\s*['"]([^'"]+)['"]\s*\}\s*\)$/;
+const CONTEXTUAL_ROLE_ROLE_PATTERN =
+  /^(?:page\.)?getByRole\(\s*['"]([^'"]+)['"]\s*\)\.filter\(\s*\{\s*hasText:\s*['"]([^'"]+)['"]\s*\}\s*\)\.getByRole\(\s*['"]([^'"]+)['"]\s*,\s*\{\s*name:\s*['"]([^'"]+)['"]\s*\}\s*\)$/;
 
 export function parsePlaywrightLocatorString(page, expr) {
   const trimmed = String(expr || "").trim();
-  if (!trimmed || !trimmed.startsWith("getBy")) {
+  if (!trimmed || !/^(?:page\.)?(?:getBy|locator\()/.test(trimmed)) {
     return null;
+  }
+
+  const contextualTestIdRoleMatch = trimmed.match(CONTEXTUAL_TEST_ID_ROLE_PATTERN);
+  if (contextualTestIdRoleMatch) {
+    return page
+      .getByTestId(contextualTestIdRoleMatch[1])
+      .filter({ hasText: contextualTestIdRoleMatch[2] })
+      .getByRole(contextualTestIdRoleMatch[3], { name: contextualTestIdRoleMatch[4] });
+  }
+
+  const contextualRoleRoleMatch = trimmed.match(CONTEXTUAL_ROLE_ROLE_PATTERN);
+  if (contextualRoleRoleMatch) {
+    return page
+      .getByRole(contextualRoleRoleMatch[1])
+      .filter({ hasText: contextualRoleRoleMatch[2] })
+      .getByRole(contextualRoleRoleMatch[3], { name: contextualRoleRoleMatch[4] });
   }
 
   const roleMatch = trimmed.match(ROLE_PATTERN);
@@ -58,6 +78,11 @@ export function parsePlaywrightLocatorString(page, expr) {
     return page.getByPlaceholder(placeholderMatch[1], parseOptions(placeholderMatch[2] || ""));
   }
 
+  const locatorMatch = trimmed.match(LOCATOR_PATTERN);
+  if (locatorMatch) {
+    return page.locator(locatorMatch[2]);
+  }
+
   return null;
 }
 
@@ -65,7 +90,8 @@ export function parsePlaywrightLocatorString(page, expr) {
  * 解析 Locator 字符串内的选项对象：
  *   { name: 'X', exact: true, level: 1 }
  *
- * 只支持 LLM 在探索场景下常用的几个选项，更复杂的请直接传 ref 形式。
+ * 只支持 LLM 在探索场景下常用的几个选项，更复杂的定位应先沉淀为
+ * verified Playwright locator。
  */
 function parseOptions(body) {
   const opts = {};
@@ -90,10 +116,12 @@ function parseOptions(body) {
 export function isParseableLocatorString(expr) {
   const trimmed = String(expr || "").trim();
   return (
-    /^getByRole\(/.test(trimmed) ||
-    /^getByLabel\(/.test(trimmed) ||
-    /^getByTestId\(/.test(trimmed) ||
-    /^getByText\(/.test(trimmed) ||
-    /^getByPlaceholder\(/.test(trimmed)
+    /^(?:page\.)?getByRole\(/.test(trimmed) ||
+    /^(?:page\.)?getByLabel\(/.test(trimmed) ||
+    /^(?:page\.)?getByTestId\(/.test(trimmed) ||
+    /^(?:page\.)?getByText\(/.test(trimmed) ||
+    /^(?:page\.)?getByPlaceholder\(/.test(trimmed) ||
+    /^(?:page\.)?locator\(/.test(trimmed) ||
+    /^(?:page\.)?getBy(?:Role|TestId)\([^)]*\)\.filter\(/.test(trimmed)
   );
 }

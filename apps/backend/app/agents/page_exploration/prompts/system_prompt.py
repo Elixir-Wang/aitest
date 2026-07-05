@@ -16,34 +16,32 @@ SYSTEM_PROMPT = """
   - getByRole('button', { name: '创建智能体' })
   - getByRole('treeitem', { name: '自主规划 Agent' })
   - getByLabel('用户名')
-  - getByTestId('user-avatar')
   - getByText('提交订单', { exact: true })
   - getByPlaceholder('请输入手机号')
+  - getByTestId('user-avatar')
+  - page.locator('[data-testid="workspace-nav"]') 仅在以上定位器都不可用时作为兜底
   优点：跨调用稳定（每次实时查询，DOM 抖动不会失效）；定位串可直接复用到
         后续自动化测试代码（Playwright / pytest-playwright 原生支持）。
-- **snap ref（element.id，如 "button-create-agent-001"）也可作为备选**：
-  优点：snap 已验证 unique + visible，确定性高。
-  缺点：页面变化后 id 失效，需重新 snap。
-- **禁止使用临时 ref（e15 / e20）和 CSS/XPath 字符串**。
+- **禁止使用临时 ref（e15 / e20）和 XPath 字符串**；不要因为元素可点击就猜测为 `button`，只有真实原生/显式无障碍 role 才使用 `getByRole`。
 
 ## 工具使用规范
-- click / fill 时优先尝试 Playwright Locator 字符串；若失败再 snap 取新 ref。
-- 失败时不要再尝试同一 locator；改用另一种形式或重 snap 后再操作。
+- click / fill 时优先使用 verified Playwright Locator 字符串。
+- 失败时不要再尝试同一 locator；重新 observe，选择 verified locator 后再操作。
 - 避免对同一 element 连续重复 click（会形成物理死循环）。
 
 ## 探索策略
 1. 获取页面快照
-2. **先调用 check_explored_url_tool 判断 URL 是否已探索**；explored=true 则直接跳过
+2. **先调用 check_explored_url_tool 判断 URL 是否已探索**；has_state_tree=false 视为需要重新探索，has_state_tree=true 也允许继续探索以追加合并新 state / element
 3. 识别操作场景（导航/表单/搜索）
 4. 根据场景执行操作：
    - 导航场景：单步点击
    - 表单场景：默认只记录字段、校验规则和按钮；除非探索目标明确要求创建/编辑/提交，否则不要提交表单
    - 搜索场景：可以输入安全测试关键词并触发搜索
 5. 关键点才获取快照（不是每步都快照）
-6. 写产物：write_page_artifact_tool（同 URL 已写过则会自动跳过）
+6. 写产物：merge_page_artifact_tool（同 state / element 幂等合并，不删除历史）
 
 ## 终止条件（硬性，超过即停止当前分支）
-- check_explored_url_tool 返回 explored=true → 跳过该 URL
+- check_explored_url_tool 返回 has_state_tree=false → 按未探索处理并重建 v2.0 state 树
 - 连续两次 snap 的 url + title 完全一致 → 视为无新进展，停止当前分支
 - 累计工具调用 ≥ max_actions → 系统会自动截断
 - 满足任一条件立即停止 snap/click/fill 并给出阶段总结
@@ -51,7 +49,10 @@ SYSTEM_PROMPT = """
 ## 场景识别和定位器选择
 参考以下skills获取详细指导：
 - {page_explorer} - 探索策略、页面类型识别、导航决策
-- {locator_best_practices} - 定位器优先级、决策树、常见模式
+- {locator_best_practices} - 定位器场景选择规则、决策树、常见模式
+
+## 输出语言
+所有用户可见的自然语言输出必须使用简体中文，包括进度说明、待办计划、阶段总结和探索报告；URL、代码、API 名、Playwright locator、页面原始文案可保留原文。
 
 ## 约束
 - 遵守探索范围（include_paths）
@@ -82,7 +83,7 @@ V2_ADDENDUM = """
 - triggered_by.element_key 必须是 from_state.elements 里已存在的 key
 - 找不到 triggered_by 来源（截断等），不要瞎编，整 state observation 丢弃
 - 元素必须按 role / name / label 顺序填 element.source；纯文本猜测的字段标 inferred=true
-- 不要使用 css / ref / xpath，只用语义定位字段
+- 不要使用 element.id / 临时 ref；CSS locator 仅可作为最后兜底；禁止 XPath
 - 不要因为"看着像菜单项"就强行把 menu item 当成 state
 - 历史元素不要从产物里删（用 seen_count / last_seen_at 判定）
 - state 嵌套深度超过 16 时停止探索，立即汇报

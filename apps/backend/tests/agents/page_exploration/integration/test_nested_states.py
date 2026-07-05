@@ -70,7 +70,7 @@ def test_case1_single_dialog(tmp_path: Path):
         )],
     )
     assert result["skipped_due_to_lock"] is False
-    page_yaml = tmp_path / "pages" / "page-workspace.yaml"
+    page_yaml = tmp_path / "proj-x" / "page_exploration" / "pages" / "page-workspace.yaml"
     data = yaml.safe_load(page_yaml.read_text(encoding="utf-8"))
     # states list has 1 root; dialog is its child (tree model)
     assert len(data["states"]) == 1
@@ -121,7 +121,7 @@ def test_case2_double_nested(tmp_path: Path):
         base_dir=tmp_path,
         observed_states=[form_obs],
     )
-    page_yaml = tmp_path / "pages" / "page-workspace.yaml"
+    page_yaml = tmp_path / "proj-x" / "page_exploration" / "pages" / "page-workspace.yaml"
     data = yaml.safe_load(page_yaml.read_text(encoding="utf-8"))
     state_root = data["states"][0]
     assert state_root["depth"] == 1
@@ -164,7 +164,7 @@ def test_case3_merge_idempotent(tmp_path: Path):
         observed_states=[_root_observed(run_id="run-2"), new_dialog],
     )
     assert result["added_state_ids"] == []
-    page_yaml = tmp_path / "pages" / "page-workspace.yaml"
+    page_yaml = tmp_path / "proj-x" / "page_exploration" / "pages" / "page-workspace.yaml"
     data = yaml.safe_load(page_yaml.read_text(encoding="utf-8"))
     # total states = 2 (root + dialog)
     all_states = []

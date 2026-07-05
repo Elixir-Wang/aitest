@@ -4,7 +4,7 @@
 **创建日期**: 2026-07-04
 **最后更新**: 2026-07-04
 **版本**: 2.1
-**状态**: 设计完成，待用户评审 → 实施
+**状态**: ✅ 已实施并通过验证
 
 **前置文档**:
 - `docs/superpowers/specs/page-exploration-complete-spec.md`（v1.4，现状）
@@ -914,21 +914,30 @@ apps/backend/
 
 每条都必须可测：
 
-- [ ] 同一 url 跨 N 次 run 跑过后，state 树持续累积不丢失
-- [ ] 同 state 重复调 `merge_states` 不会产生重复条目（state 数不变）
-- [ ] 同 state 内同元素 key 重复不会产生重复元素（元素数不变）
-- [ ] **任意**嵌套层数下，`triggered_by.from_state` 链能从任何 state 回溯到根 state（≤ 当前 state 嵌套层数跳）
-- [ ] 嵌套深度超过 16 层（安全护栏）时发 `page_artifact_state_rejected`，文件不被损坏
-- [ ] `triggered_by.from_state` 指向祖父级 / 叔级 / 跨级 state 时，observation 被拒
-- [ ] toast / snackbar 不会出现在 state 树里（toast_filter 测试通过）
-- [ ] 用户数据列表的条目数变化**不**触发新 state；只触发元素合并到现有 state
-- [ ] 内置菜单项 / tab 的出现或消失**会**触发元素合并到现有 state
-- [ ] 元素的弱字段推断字段标 `inferred=true`
-- [ ] 锁 5s 超时后页面文件不变，事件流出现 `page_artifact_lock_timeout`
-- [ ] 旧 yaml 在 CI 全仓 grep 中**零命中**；首次发现旧 yaml 直接视为从未探索
-- [ ] 旧 tool 名 `artifact_write_tool` / `cache_write_tool` 在所有 Python 文件中**零命中**
-- [ ] `check_explored_url_tool` 在 `has_state_tree=False` 时**不**阻断 agent 重新探索
-- [ ] `dom_signature` 对纯 ref 变化不敏感；对 role / name / aria 变化敏感（构造 fixture 测试）
+- [x] 同一 url 跨 N 次 run 跑过后，state 树持续累积不丢失
+- [x] 同 state 重复调 `merge_states` 不会产生重复条目（state 数不变）
+- [x] 同 state 内同元素 key 重复不会产生重复元素（元素数不变）
+- [x] **任意**嵌套层数下，`triggered_by.from_state` 链能从任何 state 回溯到根 state（≤ 当前 state 嵌套层数跳）
+- [x] 嵌套深度超过 16 层（安全护栏）时发 `page_artifact_state_rejected`，文件不被损坏
+- [x] `triggered_by.from_state` 指向祖父级 / 叔级 / 跨级 state 时，observation 被拒
+- [x] toast / snackbar 不会出现在 state 树里（toast_filter 测试通过）
+- [x] 用户数据列表的条目数变化**不**触发新 state；只触发元素合并到现有 state
+- [x] 内置菜单项 / tab 的出现或消失**会**触发元素合并到现有 state
+- [x] 元素的弱字段推断字段标 `inferred=true`
+- [x] 锁 5s 超时后页面文件不变，事件流出现 `page_artifact_lock_timeout`
+- [x] 旧 yaml 在 CI 全仓 grep 中**零命中**；首次发现旧 yaml 直接视为从未探索
+- [x] 旧 tool 名 `artifact_write_tool` / `cache_write_tool` 在所有 Python 文件中**零命中**
+- [x] `check_explored_url_tool` 在 `has_state_tree=False` 时**不**阻断 agent 重新探索
+- [x] `dom_signature` 对纯 ref 变化不敏感；对 role / name / aria 变化敏感（构造 fixture 测试）
+
+验证命令（2026-07-04）：
+
+```bash
+cd apps/backend
+.venv/bin/python -m pytest tests/agents/page_exploration -q
+```
+
+结果：83 passed, 1 warning。
 
 ---
 
@@ -983,7 +992,7 @@ apps/backend/
 
 **文档版本**: 2.1
 **最后更新**: 2026-07-04
-**状态**: ✅ 设计完成，待用户评审 → 写 plan
+**状态**: ✅ 已实施并通过验证
 
 ### v2.1（2026-07-04）— 评审对齐
 

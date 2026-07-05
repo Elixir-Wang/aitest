@@ -8,18 +8,23 @@ import yaml
 from app.services.page_exploration.page_artifact_writer import (
     PageArtifactWriter, NewStateObservation, NewElementObservation,
 )
-from app.agents.page_exploration.schemas import PageArtifact
+from app.agents.page_exploration.schemas import PageArtifact, TriggeredBy
 
 
 def _obs_from_dict(d: dict) -> NewStateObservation:
-    elements = []
-    for el in d.get("elements", []):
-        elements.append(NewElementObservation(
+    def _element_from_dict(el: dict) -> NewElementObservation:
+        return NewElementObservation(
             key=el.get("key"),
             source=el.get("source", {}),
             inferred=bool(el.get("inferred", False)),
-            children=[],
-        ))
+            children=[_element_from_dict(child) for child in el.get("children", [])],
+        )
+
+    triggered_by = d.get("triggered_by")
+    if isinstance(triggered_by, dict):
+        triggered_by = TriggeredBy(**triggered_by)
+
+    elements = [_element_from_dict(el) for el in d.get("elements", [])]
     return NewStateObservation(
         page_id=d["page_id"],
         page_title=d["page_title"],
@@ -30,14 +35,14 @@ def _obs_from_dict(d: dict) -> NewStateObservation:
         state_type=d["state_type"],
         title=d["title"],
         dom_signature=d.get("dom_signature") or "sha256:unknown",
-        triggered_by=d.get("triggered_by"),
+        triggered_by=triggered_by,
         parent_state_id=d.get("parent_state_id"),
         elements=elements,
     )
 
 
 def read_page_artifact(page_id: str, project_id: str, base_dir: Path) -> dict:
-    writer = PageArtifactWriter(base_dir=Path(base_dir) / project_id)
+    writer = PageArtifactWriter(base_dir=Path(base_dir) / project_id / "page_exploration")
     artifact = writer.read_existing(page_id)
     if artifact is None:
         return {"exists": False, "schema_version": None, "page": None}
@@ -55,7 +60,7 @@ def merge_page_artifact(
     base_dir: Path,
     observed_states: list[dict],
 ) -> dict:
-    writer = PageArtifactWriter(base_dir=Path(base_dir) / project_id)
+    writer = PageArtifactWriter(base_dir=Path(base_dir) / project_id / "page_exploration")
     obs = [_obs_from_dict({**d, "run_id": run_id}) for d in observed_states]
     result = writer.merge_states(obs)
     return {

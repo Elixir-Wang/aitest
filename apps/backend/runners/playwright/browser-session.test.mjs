@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { describe, it } from "node:test";
 
 describe("browser session observation", () => {
-  it("captures clickable menu divs with visible names", async () => {
+  it("captures clickable menu divs without inventing button role locators", async () => {
     const html = `
       <!doctype html>
       <html>
@@ -30,11 +30,14 @@ describe("browser session observation", () => {
       const workspace = observed.elements.find((element) => element.name === "工作台");
 
       assert.ok(workspace);
-      assert.equal(workspace.role, "button");
+      assert.equal(workspace.role, "clickable");
       assert.equal(workspace.action_type, "click");
       assert.equal(workspace.risk_hint, "safe");
+      assert.equal(workspace.primary_selector.kind, "text");
       assert.equal(workspace.primary_selector.verification.unique, true);
       assert.equal(workspace.primary_selector.verification.visible, true);
+      assert.doesNotMatch(workspace.primary_selector.code, /getByRole\('button'/);
+      assert.equal(workspace.fallback_selector.kind, "css");
     } finally {
       await session.close();
     }
@@ -68,7 +71,7 @@ describe("browser session observation", () => {
       const target = observed.elements.find((element) => element.name === "使用");
       assert.ok(target);
 
-      const result = await session.command({ type: "click", element_id: target.id });
+      const result = await session.command({ type: "click", element_id: target.primary_selector.code });
 
       assert.equal(result.status, "passed");
       assert.equal(result.error_type, "");
@@ -102,7 +105,7 @@ describe("browser session observation", () => {
       const target = observed.elements.find((element) => element.role === "combobox");
       assert.ok(target);
 
-      const result = await session.command({ type: "click", element_id: target.id });
+      const result = await session.command({ type: "click", element_id: target.primary_selector.code });
 
       assert.equal(result.status, "passed");
       assert.equal(result.error_type, "");

@@ -8,6 +8,15 @@
 
 **Tech Stack:** Python 3.12 / Pydantic v2 / LangChain `StructuredTool` / pytest / `fcntl.flock`(Windows 下走 `msvcrt.locking` 但本 plan 全用 `fcntl`，Windows fallback 由 ops 后续补)。 Playwright CLI（已有，不动）。
 
+**Implementation Status:** ✅ 已完成并验证（2026-07-04）。验证命令：
+
+```bash
+cd apps/backend
+.venv/bin/python -m pytest tests/agents/page_exploration -q
+```
+
+结果：83 passed, 1 warning。旧 tool 名与旧 page artifact yaml grep 门禁无命中。
+
 ---
 
 ## Global Constraints

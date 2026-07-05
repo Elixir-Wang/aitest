@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
 
 def check_explored_url(
     normalized_path: str,
@@ -13,13 +15,18 @@ def check_explored_url(
     pages_dir = project_root / "pages"
     if not pages_dir.exists():
         return {"explored": False, "has_state_tree": False}
-    # 简化: 找任意 page yaml 含 schema_version=2.0 视为 has_state_tree
     for yaml_path in pages_dir.glob("*.yaml"):
         try:
-            text = yaml_path.read_text(encoding="utf-8")
+            obj = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         except Exception:
             continue
-        if 'schema_version: "2.0"' in text or "schema_version: '2.0'" in text:
+        if not isinstance(obj, dict):
+            continue
+        page = obj.get("page") or {}
+        if (
+            obj.get("schema_version") == "2.0"
+            and page.get("normalized_path") == normalized_path
+        ):
             return {"explored": True, "has_state_tree": True}
     return {"explored": False, "has_state_tree": False}
 
@@ -28,7 +35,7 @@ def make_check_explored_url_tool(base_dir: Path):
     """包装成 LangChain StructuredTool, 注入 base_dir."""
     from langchain_core.tools import tool
 
-    @tool
+    @tool("check_explored_url_tool")
     def _impl(normalized_path: str, project_id: str) -> dict:
         """Check whether a normalized URL path has been explored.
         Returns: {explored: bool, has_state_tree: bool}"""

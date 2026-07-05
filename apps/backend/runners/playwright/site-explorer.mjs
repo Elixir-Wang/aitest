@@ -423,19 +423,19 @@ async function collectDomFacts(browserPage) {
     const roleOf = (el) => {
       const tagName = el.tagName.toLowerCase();
       const explicitRole = el.getAttribute("role");
-      if (explicitRole) return explicitRole;
-      if (tagName === "a") return "link";
-      if (tagName === "button") return "button";
-      if (tagName === "textarea") return "textbox";
-      if (tagName === "select") return "combobox";
+      if (explicitRole) return { role: explicitRole, roleSource: "explicit" };
+      if (tagName === "a") return { role: "link", roleSource: "native" };
+      if (tagName === "button") return { role: "button", roleSource: "native" };
+      if (tagName === "textarea") return { role: "textbox", roleSource: "native" };
+      if (tagName === "select") return { role: "combobox", roleSource: "native" };
       if (tagName === "input") {
         const inputType = (el.getAttribute("type") || "text").toLowerCase();
-        if (inputType === "checkbox") return "checkbox";
-        if (inputType === "radio") return "radio";
-        if (inputType === "button" || inputType === "submit" || inputType === "reset") return "button";
-        return "textbox";
+        if (inputType === "checkbox") return { role: "checkbox", roleSource: "native" };
+        if (inputType === "radio") return { role: "radio", roleSource: "native" };
+        if (inputType === "button" || inputType === "submit" || inputType === "reset") return { role: "button", roleSource: "native" };
+        return { role: "textbox", roleSource: "native" };
       }
-      return tagName;
+      return { role: tagName, roleSource: "native" };
     };
     const cssSelectorOf = (el) => {
       const testId = el.getAttribute("data-testid") || el.getAttribute("data-test-id") || el.getAttribute("data-test");
@@ -490,12 +490,13 @@ async function collectDomFacts(browserPage) {
       .filter(visible)
       .slice(0, 120)
       .map((el, index) => {
-        const role = roleOf(el);
+        const { role, roleSource } = roleOf(el);
         const name = labelOf(el);
         const tagName = el.tagName.toLowerCase();
         return {
           index,
           role,
+          role_source: roleSource,
           name,
           label: explicitLabelOf(el),
           testId: el.getAttribute("data-testid") || el.getAttribute("data-test-id") || el.getAttribute("data-test") || "",
@@ -585,7 +586,7 @@ async function buildPageDoc(browserPage, pageId, facts, entryPath, blockers) {
       id: makeId("action", index + 1),
       role: action.role,
       name: action.name,
-      locator_hint: selectors.primary_selector?.code || action.locator_hint,
+      locator_hint: selectors.primary_selector?.code || "",
       action_type: action.action_type,
       enabled: action.enabled,
       visible: action.visible,
@@ -751,18 +752,17 @@ async function verifyBestElementSelectors(browserPage, action) {
   const usable = verified.filter(selectorUsable);
   const semanticUsable = usable.filter((candidate) => candidate.kind !== "css");
   const cssUsable = usable.filter((candidate) => candidate.kind === "css");
-  const semanticVerified = verified.filter((candidate) => candidate.kind !== "css");
-  const primary = semanticUsable[0] || cssUsable[0] || semanticVerified[0] || verified[0];
+  const primary = semanticUsable[0] || cssUsable[0] || null;
   if (primary?.kind === "css") {
     primary.locator_confidence = "low";
     primary.needs_confirmation = true;
     primary.degraded_reason = "semantic_locators_unavailable";
   }
-  const fallback = semanticUsable.find((candidate) => candidate.code !== primary?.code)
-    || cssUsable.find((candidate) => candidate.code !== primary?.code)
-    || semanticVerified.find((candidate) => candidate.code !== primary?.code)
-    || verified.find((candidate) => candidate.code !== primary?.code)
-    || null;
+  const fallback = primary
+    ? (semanticUsable.find((candidate) => candidate.code !== primary.code)
+      || cssUsable.find((candidate) => candidate.code !== primary.code)
+      || null)
+    : null;
   return {
     primary_selector: primary || null,
     fallback_selector: fallback,

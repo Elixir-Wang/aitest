@@ -218,18 +218,6 @@ function pendingItemSourceExcerpt(item: RequirementAnalysisPendingItem) {
 }
 
 function pendingRecommendedOptions(item: RequirementAnalysisPendingItem): RequirementClarificationOption[] {
-  // 优先使用现有的 options 数组格式
-  if (item.options?.length) {
-    return item.options;
-  }
-  if (item.decision_options?.length) {
-    return item.decision_options;
-  }
-  if (item.recommended_options?.length) {
-    return item.recommended_options;
-  }
-
-  // 从 option_a 和 option_b 字段生成选项数组（新架构）
   const options: RequirementClarificationOption[] = [];
   if (item.option_a) {
     options.push({
@@ -359,14 +347,11 @@ type RequirementAnalysisQuestion = {
   test_impact?: string;
   risk_scenario?: string;
   affected_surfaces?: string[];
-  options?: RequirementClarificationOption[];
-  decision_options?: RequirementClarificationOption[];
   recommended_decision?: string;
   human_question?: string;
   option_a?: string;
   option_b?: string;
   draft_acceptance_tests?: string[];
-  recommended_options?: RequirementClarificationOption[];
   resolution_status?: string;
   answer?: RequirementClarificationAnswer;
 };
@@ -2436,7 +2421,7 @@ export default function DocumentDetailPage() {
                               </Badge>
                               <Badge variant={pendingItemSeverityVariant(item)}>{pendingItemSeverityLabel(item)}</Badge>
                             </div>
-                            <span className="block min-w-0 break-words indent-[10.5rem] text-foreground text-sm leading-6">
+                            <span className="block min-w-0 break-words text-foreground text-sm leading-6 indent-[10.5rem]">
                               {itemHeading}
                             </span>
                           </div>

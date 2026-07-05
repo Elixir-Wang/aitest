@@ -18,10 +18,7 @@ from app.agents.page_exploration.tools.extraction_tools import (
     playwright_snap_tool,
 )
 
-from app.agents.page_exploration.tools.state_tools import (
-    check_explored_url_tool,
-    update_explored_url_tool,
-)
+from app.agents.page_exploration.tools.state_tools import update_explored_url_tool
 
 from app.agents.page_exploration.tools.artifact_tools import (
     make_artifact_tools,
@@ -40,6 +37,7 @@ from app.core.settings import PROJECT_FILE_STORAGE_ROOT
 
 # ==================== 工具分类 ====================
 
+check_explored_url_tool = make_check_explored_url_tool(PROJECT_FILE_STORAGE_ROOT)
 
 NAVIGATION_TOOLS = [
     playwright_navigate_tool,

@@ -36,7 +36,7 @@ def playwright_snap_tool(
         - url: The actual URL of the page
         - title: Page title
         - page_text_summary: One-line summary of the page
-        - elements: List of element info (ref, role, name, text, visible)
+        - elements: List of element info with verified reusable selectors
         - accessibility_tree: Compact accessibility nodes (id, role, name, state)
         - visible_text_blocks: Compact visible text blocks from the page
             Only included when focus_keywords is provided.
@@ -50,7 +50,11 @@ def playwright_snap_tool(
         #   "title": "Workspace",
         #   "page_text_summary": "标题：Workspace。可交互元素：12...",
         #   "elements": [
-        #     {"ref": "e15", "role": "button", "name": "Create Agent", "visible": true}
+        #     {
+        #       "role": "button",
+        #       "name": "Create Agent",
+        #       "primary_selector": {"kind": "role", "code": "page.getByRole('button', { name: 'Create Agent' })"}
+        #     }
         #   ],
         #   "accessibility_tree": [
         #     {"id": "ax-1", "role": "button", "name": "Create Agent"}
@@ -67,10 +71,13 @@ def playwright_snap_tool(
     keywords = [kw.strip() for kw in (focus_keywords or []) if str(kw).strip()]
     elements = [
         {
-            "ref": elem.ref,
             "role": elem.role,
+            "role_source": elem.role_source,
             "name": elem.name,
             "text": elem.text,
+            "action_type": elem.action_type,
+            "primary_selector": elem.primary_selector,
+            "fallback_selector": elem.fallback_selector,
             "visible": elem.visible,
         }
         for elem in result.elements

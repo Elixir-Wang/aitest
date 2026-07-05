@@ -42,9 +42,17 @@ test("exploration progress keeps agent plan updates and survives empty snapshots
   assert.match(explorationServiceSource, /def _todo_plan_steps/);
   assert.match(pageSource, /event\.type === "planning_completed" \|\| event\.type === "agent_plan_updated"/);
   assert.match(pageSource, /normalizeMonitorPlanSteps\(payload\.plan_steps\)/);
+  assert.match(pageSource, /event\.type === "agent_plan_updated" \? mergeMonitorPlanSteps\(next\.steps, steps\) : next\.steps/);
   assert.match(pageSource, /function mergeMonitorSnapshot/);
   assert.match(pageSource, /if \(!hasMonitorProgress\(snapshot\)\)/);
   assert.match(pageSource, /current\.steps/);
+});
+
+test("planning completion does not seed placeholder left-side steps", () => {
+  assert.match(explorationServiceSource, /"total_steps": 0,\s*"steps": \[\]/);
+  assert.doesNotMatch(explorationServiceSource, /\*\*plan_steps\[0\]/);
+  assert.doesNotMatch(explorationServiceSource, /agent_step = plan_steps\[1\]/);
+  assert.match(pageSource, /event\.type === "agent_plan_updated" \? normalizeMonitorPlanSteps\(payload\.plan_steps\) : \[\]/);
 });
 
 test("exploration progress restores left-side steps from persisted plan events", () => {

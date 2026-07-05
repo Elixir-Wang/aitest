@@ -5,6 +5,12 @@ import { verifySelectorCandidate } from "./selector-validator.mjs";
 
 function locator(count, visible) {
   return {
+    filter() {
+      return this;
+    },
+    getByRole() {
+      return this;
+    },
     async count() {
       return count;
     },
@@ -66,5 +72,31 @@ describe("verifySelectorCandidate", () => {
       visible: false,
       match_count: 2,
     });
+  });
+
+  it("verifies contextual role containers without XPath", async () => {
+    const calls = [];
+    const verified = await verifySelectorCandidate(
+      fakePage({
+        role: (role, options) => {
+          calls.push(["role", role, options || null]);
+          return locator(1, true);
+        },
+      }),
+      {
+        kind: "contextual",
+        container: { kind: "role", role: "listitem", hasText: "测试_自主规划智能体" },
+        target: { kind: "role", role: "button", name: "对话历史" },
+        code: "page.getByRole('listitem').filter({ hasText: '测试_自主规划智能体' }).getByRole('button', { name: '对话历史' })",
+      },
+    );
+
+    assert.deepEqual(verified.verification, {
+      checked: true,
+      unique: true,
+      visible: true,
+      match_count: 1,
+    });
+    assert.equal(calls[0][1], "listitem");
   });
 });

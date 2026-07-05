@@ -1,7 +1,7 @@
 import readline from "node:readline";
 import { chromium } from "playwright";
 import { buildSelectorCandidates } from "./selector-generator.mjs";
-import { locatorForCandidate, verifySelectorCandidate } from "./selector-validator.mjs";
+import { verifySelectorCandidate } from "./selector-validator.mjs";
 import { parsePlaywrightLocatorString, isParseableLocatorString } from "./locator-parser.mjs";
 
 const [, , startUrl = "about:blank", channel = "", storageStatePath = ""] = process.argv;
@@ -20,7 +20,6 @@ const page = await context.newPage();
 page.setDefaultTimeout(navigationTimeout);
 page.setDefaultNavigationTimeout(navigationTimeout);
 
-let lastElements = new Map();
 let lastObservation = null;
 let shuttingDown = false;
 
@@ -130,6 +129,7 @@ async function observePage() {
     const element = {
       id,
       role: fact.role,
+      role_source: fact.role_source || "",
       name: fact.name,
       text: fact.text,
       context: fact.context || {},
@@ -143,7 +143,6 @@ async function observePage() {
     };
     elements.push(element);
   }
-  lastElements = new Map(elements.map((element) => [element.id, element]));
   const textSummary = summarizeObservation(facts, elements);
   const observation = {
     url: page.url(),
@@ -298,13 +297,6 @@ async function collectAccessibilityFallback(browserPage) {
 async function clickElement(elementIdOrLocator) {
   const raw = String(elementIdOrLocator || "").trim();
 
-  // 1) 快路径：snap ref（lastElements Map 中已有的 element）
-  const cached = lastElements.get(raw);
-  if (cached) {
-    return clickViaCachedElement(cached);
-  }
-
-  // 2) 慢路径：Playwright Locator 字符串（getByRole / getByLabel / getByTestId / getByText / getByPlaceholder）
   if (isParseableLocatorString(raw)) {
     const liveLocator = parsePlaywrightLocatorString(page, raw);
     if (liveLocator) {
@@ -312,62 +304,14 @@ async function clickElement(elementIdOrLocator) {
     }
   }
 
-  throw new Error(`Unknown element id or unsupported locator: ${raw || ""}`);
-}
-
-async function clickViaCachedElement(element) {
-  const before = await currentPageState();
-  await cleanupTransientOverlays();
-  const attempts = [];
-  let coordinateFallback = null;
-  for (const selector of selectorCandidatesFor(element)) {
-    try {
-      const locator = await actionableLocatorFor(page, locatorForCandidate(page, selector));
-      const target = await firstVisibleLocator(locator);
-      if (!target) {
-        throw new Error("Locator did not resolve to a visible element.");
-      }
-      coordinateFallback = coordinateFallback || target;
-      await Promise.all([
-        page.waitForLoadState("domcontentloaded", { timeout: 3000 }).catch(() => {}),
-        target.click({ timeout: 3000 }),
-      ]);
-      return passedActionResult(before, {
-        element,
-        actionType: "click",
-        selector,
-        attempts,
-      });
-    } catch (error) {
-      attempts.push(actionErrorAttempt(selector, error));
-      if (classifyActionError(error).error_type === "pointer_intercepted") {
-        await cleanupTransientOverlays();
-      }
-    }
-  }
-  if (coordinateFallback) {
-    try {
-      const box = await coordinateFallback.boundingBox({ timeout: 1000 }).catch(() => null);
-      if (box) {
-        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-        return passedActionResult(before, {
-          element,
-          actionType: "click",
-          selector: { code: "coordinate_fallback", kind: "coordinate" },
-          attempts,
-        });
-      }
-    } catch (error) {
-      attempts.push(actionErrorAttempt({ code: "coordinate_fallback", kind: "coordinate" }, error));
-    }
-  }
-  return failedActionResult(before, element, "click", attempts);
+  throw new Error(`Unsupported locator: ${raw || ""}`);
 }
 
 async function clickViaLiveLocator(liveLocator, rawExpr) {
   const before = await currentPageState();
   await cleanupTransientOverlays();
-  const target = await firstVisibleLocator(liveLocator);
+  const visibleTarget = await firstVisibleLocator(liveLocator);
+  const target = visibleTarget ? await actionableClickTargetFor(visibleTarget) : null;
   if (!target) {
     throw new Error(`Locator did not resolve to a visible element: ${rawExpr}`);
   }
@@ -414,13 +358,6 @@ async function clickViaLiveLocator(liveLocator, rawExpr) {
 async function fillField(elementIdOrLocator, value) {
   const raw = String(elementIdOrLocator || "").trim();
 
-  // 1) 快路径：snap ref
-  const cached = lastElements.get(raw);
-  if (cached) {
-    return fillViaCachedElement(cached, value);
-  }
-
-  // 2) 慢路径：Playwright Locator 字符串
   if (isParseableLocatorString(raw)) {
     const liveLocator = parsePlaywrightLocatorString(page, raw);
     if (liveLocator) {
@@ -428,48 +365,7 @@ async function fillField(elementIdOrLocator, value) {
     }
   }
 
-  throw new Error(`Unknown element id or unsupported locator: ${raw || ""}`);
-}
-
-async function fillViaCachedElement(element, value) {
-  const before = await currentPageState();
-  await cleanupTransientOverlays();
-  const attempts = [];
-  for (const selector of selectorCandidatesFor(element)) {
-    try {
-      const locator = await actionableLocatorFor(page, locatorForCandidate(page, selector), { preserveInput: true });
-      const target = await firstVisibleLocator(locator);
-      if (!target) {
-        throw new Error("Locator did not resolve to a visible element.");
-      }
-      await target.fill(value, { timeout: 3000 });
-      await page.waitForTimeout(500).catch(() => {});
-      const after = await currentPageState();
-      return {
-        status: "passed",
-        element_id: element.id,
-        element_name: element.name,
-        action_type: "fill",
-        selector: selector.code || "",
-        selector_kind: selector.kind || "",
-        before_url: before.url,
-        after_url: after.url,
-        value_applied: true,
-        state_signature_changed: before.signature !== after.signature,
-        result_count_changed: before.signature !== after.signature,
-        attempts,
-        error: "",
-        error_type: "",
-        error_summary: "",
-      };
-    } catch (error) {
-      attempts.push(actionErrorAttempt(selector, error));
-      if (classifyActionError(error).error_type === "pointer_intercepted") {
-        await cleanupTransientOverlays();
-      }
-    }
-  }
-  return failedActionResult(before, element, "fill", attempts);
+  throw new Error(`Unsupported locator: ${raw || ""}`);
 }
 
 async function fillViaLiveLocator(liveLocator, value, rawExpr) {
@@ -530,29 +426,7 @@ async function closeModal() {
   };
 }
 
-function selectorCandidatesFor(element) {
-  const candidates = [
-    element.primary_selector,
-    element.fallback_selector,
-    ...buildSelectorCandidates(element),
-  ].filter(Boolean);
-  const seen = new Set();
-  const unique = [];
-  for (const candidate of candidates) {
-    const key = candidate.code || JSON.stringify(candidate);
-    if (!key || seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    unique.push(candidate);
-  }
-  return unique;
-}
-
-async function actionableLocatorFor(browserPage, locator, options = {}) {
-  if (options.preserveInput) {
-    return locator;
-  }
+async function actionableClickTargetFor(locator) {
   const needsAncestor = await locator.first().evaluate((node) => {
     const element = node instanceof Element ? node : null;
     if (!element) return false;
@@ -564,9 +438,32 @@ async function actionableLocatorFor(browserPage, locator, options = {}) {
   if (!needsAncestor) {
     return locator;
   }
-  return locator.locator(
-    "xpath=ancestor-or-self::*[self::button or self::select or @role='button' or @role='combobox' or @tabindex or contains(concat(' ', normalize-space(@class), ' '), ' ant-select ') or contains(concat(' ', normalize-space(@class), ' '), ' el-select ') or contains(concat(' ', normalize-space(@class), ' '), ' uui-select ')][1]"
-  );
+  const handle = await locator.first().evaluateHandle((node) => {
+    let current = node instanceof Element ? node : null;
+    while (current) {
+      const role = current.getAttribute("role") || "";
+      const className = String(current.getAttribute("class") || "");
+      const tag = current.tagName.toLowerCase();
+      if (
+        tag === "button"
+        || tag === "select"
+        || role === "button"
+        || role === "combobox"
+        || current.hasAttribute("tabindex")
+        || /\b(ant-select|el-select|uui-select)\b/.test(className)
+      ) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+    return node;
+  }).catch(() => null);
+  const element = handle?.asElement?.();
+  if (!element) {
+    await handle?.dispose?.().catch(() => {});
+    return locator;
+  }
+  return element;
 }
 
 async function firstVisibleLocator(locator) {
@@ -587,58 +484,6 @@ async function firstVisibleLocator(locator) {
 async function cleanupTransientOverlays() {
   await page.keyboard.press("Escape").catch(() => {});
   await page.waitForTimeout(120).catch(() => {});
-}
-
-async function passedActionResult(before, { element, actionType, selector, attempts }) {
-  await page.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
-  await page.waitForTimeout(250).catch(() => {});
-  const after = await currentPageState();
-  return {
-    status: "passed",
-    element_id: element.id,
-    element_name: element.name,
-    action_type: actionType,
-    selector: selector.code || "",
-    selector_kind: selector.kind || "",
-    before_url: before.url,
-    after_url: after.url,
-    before_title: before.title,
-    after_title: after.title,
-    url_changed: normalizeUrl(before.url) !== normalizeUrl(after.url),
-    title_changed: before.title !== after.title,
-    state_signature_changed: before.signature !== after.signature,
-    new_dialog_detected: await hasVisibleDialog(page),
-    attempts,
-    error: "",
-    error_type: "",
-    error_summary: "",
-  };
-}
-
-function failedActionResult(before, element, actionType, attempts) {
-  const last = attempts.at(-1) || {};
-  return {
-    status: "failed",
-    element_id: element.id,
-    element_name: element.name,
-    action_type: actionType,
-    before_url: before.url,
-    after_url: page.url(),
-    state_signature_changed: false,
-    attempts,
-    error: last.error || "No executable selector candidate succeeded.",
-    error_type: last.error_type || "action_failed",
-    error_summary: last.error_summary || "动作执行失败，所有 selector 候选均未成功。",
-  };
-}
-
-function actionErrorAttempt(selector, error) {
-  const classified = classifyActionError(error);
-  return {
-    selector: selector?.code || "",
-    selector_kind: selector?.kind || "",
-    ...classified,
-  };
 }
 
 function classifyActionError(error) {
@@ -764,20 +609,20 @@ async function collectDomFacts(browserPage) {
     const roleOf = (el) => {
       const tagName = el.tagName.toLowerCase();
       const explicitRole = el.getAttribute("role");
-      if (explicitRole) return explicitRole;
-      if (tagName === "a") return "link";
-      if (tagName === "button") return "button";
-      if (tagName === "textarea") return "textbox";
-      if (tagName === "select") return "combobox";
+      if (explicitRole) return { role: explicitRole, roleSource: "explicit" };
+      if (tagName === "a") return { role: "link", roleSource: "native" };
+      if (tagName === "button") return { role: "button", roleSource: "native" };
+      if (tagName === "textarea") return { role: "textbox", roleSource: "native" };
+      if (tagName === "select") return { role: "combobox", roleSource: "native" };
       if (tagName === "input") {
         const inputType = (el.getAttribute("type") || "text").toLowerCase();
-        if (inputType === "checkbox") return "checkbox";
-        if (inputType === "radio") return "radio";
-        if (inputType === "button" || inputType === "submit" || inputType === "reset") return "button";
-        return "textbox";
+        if (inputType === "checkbox") return { role: "checkbox", roleSource: "native" };
+        if (inputType === "radio") return { role: "radio", roleSource: "native" };
+        if (inputType === "button" || inputType === "submit" || inputType === "reset") return { role: "button", roleSource: "native" };
+        return { role: "textbox", roleSource: "native" };
       }
-      if (hasClickableHint(el)) return "button";
-      return tagName;
+      if (hasClickableHint(el)) return { role: "clickable", roleSource: "inferred" };
+      return { role: tagName, roleSource: "native" };
     };
     const uniqueCssPathOf = (el) => {
       const parts = [];
@@ -829,13 +674,14 @@ async function collectDomFacts(browserPage) {
   const elementFacts = Array.from(document.querySelectorAll(interactiveSelector))
     .filter(visible)
     .map((el, index) => {
-      const role = roleOf(el);
+      const { role, roleSource } = roleOf(el);
       const tagName = el.tagName.toLowerCase();
       const name = labelOf(el);
       const actionType = ["input", "textarea", "select"].includes(tagName) && !["button", "checkbox", "radio"].includes(role) ? "fill" : "click";
       return {
         index,
         role,
+        role_source: roleSource,
         name,
         label: explicitLabelOf(el),
         testId: el.getAttribute("data-testid") || el.getAttribute("data-test-id") || el.getAttribute("data-test") || "",
@@ -912,18 +758,17 @@ async function verifyBestElementSelectors(browserPage, element) {
   const usable = verified.filter(usableSelector);
   const semanticUsable = usable.filter((candidate) => candidate.kind !== "css");
   const cssUsable = usable.filter((candidate) => candidate.kind === "css");
-  const semanticVerified = verified.filter((candidate) => candidate.kind !== "css");
-  const primary = semanticUsable[0] || cssUsable[0] || semanticVerified[0] || verified[0];
+  const primary = semanticUsable[0] || cssUsable[0] || null;
   if (primary?.kind === "css") {
     primary.locator_confidence = "low";
     primary.needs_confirmation = true;
     primary.degraded_reason = "semantic_locators_unavailable";
   }
-  const fallback = semanticUsable.find((candidate) => candidate.code !== primary?.code)
-    || cssUsable.find((candidate) => candidate.code !== primary?.code)
-    || semanticVerified.find((candidate) => candidate.code !== primary?.code)
-    || verified.find((candidate) => candidate.code !== primary?.code)
-    || null;
+  const fallback = primary
+    ? (semanticUsable.find((candidate) => candidate.code !== primary.code)
+      || cssUsable.find((candidate) => candidate.code !== primary.code)
+      || null)
+    : null;
   return {
     primary_selector: primary || null,
     fallback_selector: fallback,
