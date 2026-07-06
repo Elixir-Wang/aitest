@@ -5,12 +5,12 @@ page:
   breadcrumb:
   - agentStore
   normalized_path: /agentStore
-  structure_summary: 自动保存页面快照，发现 6 个元素。
+  structure_summary: 自动保存页面快照，发现 2 个元素。
   path_hash: sha256-e71b914e41060b98
   env_urls:
     test: https://www.cybotstar.cn/agentStore
   last_explored:
-    timestamp: '2026-07-06T12:21:42.914466Z'
+    timestamp: '2026-07-06T23:17:42.122279Z'
     run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
   elements: []
 states:
@@ -27,48 +27,20 @@ states:
     - kind: role
       code: 'getByRole(''button'', { name: ''创建智能体'' })'
       priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
     - kind: text
       code: 'getByText(''创建智能体'', { exact: true })'
       priority: 2
-  - id: el-2
-    name: 工作台
-    role: clickable
-    text: 工作台
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''工作台'', { exact: true })'
-      priority: 1
-  - id: el-3
-    name: 点击【⭐️收藏】 可将智能体添加到这里
-    role: clickable
-    text: 点击【⭐️收藏】 可将智能体添加到这里
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''点击【⭐️收藏】 可将智能体添加到这里'', { exact: true })'
-      priority: 1
-  - id: el-4
-    name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
-    role: clickable
-    text: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户'', { exact: true
-        })'
-      priority: 1
-  - id: el-5
-    name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
-    role: clickable
-    text: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户'', { exact: true
-        })'
-      priority: 1
-  - id: ax-6
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: ax-2
     name: 创建智能体
     role: button
     text: 创建智能体
@@ -95,37 +67,12 @@ states:
     checked: null
     disabled: null
     expanded: null
-  - id: ax-fallback-007
-    role: text
-    name: 工作台
-    level: null
-    checked: null
-    disabled: null
-    expanded: null
-  - id: ax-fallback-016
-    role: text
-    name: 可将智能体添加到这里
-    level: null
-    checked: null
-    disabled: null
-    expanded: null
-  - id: ax-fallback-066
-    role: text
-    name: 多模态核保智能助手，专注识别病历单，解析病例信息并评估投保风险，辅助输出是否建议承保的结论。 使用说明：输入病历单图片，智能体将按规范进行多模态识别与结构化解析，提取关键医疗信息，结合风险评估模型进行
-    level: null
-    checked: null
-    disabled: null
-    expanded: null
   visible_text_blocks:
   - 创建智能体
-  - 工作台
-  - 可将智能体添加到这里
-  - 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
-  - 多模态核保智能助手，专注识别病历单，解析病例信息并评估投保风险，辅助输出是否建议承保的结论。 使用说明：输入病历单图片，智能体将按规范进行多模态识别与结构化解析，提取关键医疗信息，结合风险评估模型进行分析，输出核保判断及参考结论，并提示相关
 quality: {}
 metadata:
-  captured_at: '2026-07-06T12:14:05.489742+00:00'
+  captured_at: '2026-07-06T23:17:42.118340+00:00'
   source: page_exploration_run
   source_run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
-  source_artifact_path: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\page_exploration\runs\exp_AEF5tx0X9WHsIXTDDzdQuA\pages\page-agentStore.yaml
+  source_artifact_path: /Users/wanghongbao/project/test_project/apps/backend/data/projects/project-75fec50973f2adf6/page_exploration/runs/exp_AEF5tx0X9WHsIXTDDzdQuA/pages/page-agentStore.yaml
   module: 主探索模块

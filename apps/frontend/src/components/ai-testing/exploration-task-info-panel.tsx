@@ -251,7 +251,7 @@ export function ExplorationTaskInfoPanel({
             <div className="font-medium text-muted-foreground text-sm">探索输出</div>
             <RunStatusBadge className="ml-auto" isLoading={loading || isRunning} status={status} />
           </div>
-          <ExplorationExecutionTranscript events={events} loading={loading} />
+          <ExplorationExecutionTranscript autoScrollEnabled={isRunning} events={events} loading={loading} />
         </div>
       </main>
     </div>
@@ -347,10 +347,18 @@ function ExplorationStepCard({ step }: { step: ExplorationMonitorStep }) {
   );
 }
 
-function ExplorationExecutionTranscript({ events, loading }: { events: ExplorationMonitorEvent[]; loading: boolean }) {
+function ExplorationExecutionTranscript({
+  autoScrollEnabled,
+  events,
+  loading,
+}: {
+  autoScrollEnabled: boolean;
+  events: ExplorationMonitorEvent[];
+  loading: boolean;
+}) {
   const blocks = useMemo(() => buildExecutionTranscriptBlocks(events), [events]);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [stickToBottom, setStickToBottom] = useState(true);
+  const [stickToBottom, setStickToBottom] = useState(autoScrollEnabled);
   const [openToolIds, setOpenToolIds] = useState<Set<string>>(
     () => new Set(blocks.filter((block) => block.defaultOpen).map((block) => block.id)),
   );
@@ -359,13 +367,21 @@ function ExplorationExecutionTranscript({ events, loading }: { events: Explorati
     [blocks],
   );
   const lastBlockSignatureRef = useRef<string>("");
+  const previousAutoScrollEnabledRef = useRef(autoScrollEnabled);
+
+  useEffect(() => {
+    if (!previousAutoScrollEnabledRef.current && autoScrollEnabled) {
+      setStickToBottom(true);
+    }
+    previousAutoScrollEnabledRef.current = autoScrollEnabled;
+  }, [autoScrollEnabled]);
 
   useEffect(() => {
     if (blockVersion === lastBlockSignatureRef.current) {
       return;
     }
     lastBlockSignatureRef.current = blockVersion;
-    if (!stickToBottom) {
+    if (!autoScrollEnabled || !stickToBottom) {
       return;
     }
     const node = scrollRef.current;
@@ -373,7 +389,7 @@ function ExplorationExecutionTranscript({ events, loading }: { events: Explorati
       return;
     }
     node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
-  }, [blockVersion, stickToBottom]);
+  }, [autoScrollEnabled, blockVersion, stickToBottom]);
 
   function handleScroll() {
     const node = scrollRef.current;
@@ -432,9 +448,6 @@ function buildExecutionTranscriptBlocks(events: ExplorationMonitorEvent[]): Exec
   for (const event of [...events].reverse()) {
     const display = event.display;
     if (!display) {
-      continue;
-    }
-    if (display.kind === "agent_run" && display.title === "开始页面探索") {
       continue;
     }
     const fields = display.fields?.filter((field) => field.label !== "结果") ?? [];

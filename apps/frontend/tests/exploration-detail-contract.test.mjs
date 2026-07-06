@@ -89,10 +89,17 @@ test("exploration output is a right-side card with running status in the header"
 
 test("exploration transcript auto-scrolls only while the user is near the bottom", () => {
   assert.match(taskInfoPanelSource, /const scrollRef = useRef<HTMLDivElement>\(null\)/);
-  assert.match(taskInfoPanelSource, /const \[stickToBottom, setStickToBottom\] = useState\(true\)/);
+  assert.match(taskInfoPanelSource, /autoScrollEnabled=\{isRunning\}/);
+  assert.match(taskInfoPanelSource, /const \[stickToBottom, setStickToBottom\] = useState\(autoScrollEnabled\)/);
+  assert.match(taskInfoPanelSource, /if \(!autoScrollEnabled \|\| !stickToBottom\)/);
   assert.match(taskInfoPanelSource, /distanceFromBottom < 48/);
   assert.match(taskInfoPanelSource, /node\.scrollTo\(\{ top: node\.scrollHeight, behavior: "smooth" \}\)/);
   assert.match(taskInfoPanelSource, /onScroll=\{handleScroll\}/);
+});
+
+test("exploration transcript keeps the persisted start event visible", () => {
+  assert.doesNotMatch(taskInfoPanelSource, /display\.kind === "agent_run" && display\.title === "开始页面探索"/);
+  assert.doesNotMatch(taskInfoPanelSource, /title === "开始页面探索"[\s\S]*continue/);
 });
 
 test("exploration transcript keeps slim public payloads", () => {

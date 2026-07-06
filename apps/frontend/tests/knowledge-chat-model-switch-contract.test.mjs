@@ -158,18 +158,15 @@ test("knowledge page loads conversation endpoints for all and project scopes", (
   assert.match(pageSource, /conversation_id: submittedConversationId/);
 });
 
-test("knowledge page auto opens the latest conversation after loading history once per scope", () => {
+test("knowledge page keeps the new conversation home after loading history", () => {
   const resetSource = sourceBetween("void projectResetKey;", "const loadProjectConversations = useCallback");
   const conversationLoadSource = sourceBetween("const loadProjectConversations = useCallback", "useEffect(() => {");
-  assert.match(pageSource, /const projectAutoOpenConversationKeyRef = useRef\(""\)/);
-  assert.match(resetSource, /projectAutoOpenConversationKeyRef\.current = ""/);
-  assert.match(conversationLoadSource, /const latestConversation = conversations\[0\]/);
-  assert.match(
-    conversationLoadSource,
-    /if \(latestConversation && projectAutoOpenConversationKeyRef\.current !== scopeKey\)/,
-  );
-  assert.match(conversationLoadSource, /projectAutoOpenConversationKeyRef\.current = scopeKey/);
-  assert.match(
+  assert.match(resetSource, /setProjectMessages\(\[\]\)/);
+  assert.match(resetSource, /setActiveProjectConversationId\(null\)/);
+  assert.match(conversationLoadSource, /setProjectConversations\(conversations\)/);
+  assert.doesNotMatch(pageSource, /projectAutoOpenConversationKeyRef/);
+  assert.doesNotMatch(conversationLoadSource, /const latestConversation = conversations\[0\]/);
+  assert.doesNotMatch(
     conversationLoadSource,
     /void openProjectConversation\(scope, latestConversation\.id, targetProjectId\)/,
   );
@@ -252,7 +249,10 @@ test("knowledge chat auto scroll keeps answers above the fixed input and lets ma
     /if \(!hasConversation \|\| !autoScrollEnabled \|\| latestMessageScrollKey\.length === 0\)/,
   );
   assert.match(workspaceSource, /list\.scrollTo\(\{ top: list\.scrollHeight, behavior: "auto" \}\)/);
-  assert.match(workspaceSource, /className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-muted\/20 px-4 pt-4 pb-44"/);
+  assert.match(
+    workspaceSource,
+    /className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-muted\/20 px-4 pt-4 pb-44 min-\[900px\]:px-10"/,
+  );
   assert.match(workspaceSource, /onScroll=\{handleMessageListScroll\}/);
   assert.match(workspaceSource, /ref=\{messageListRef\}/);
   assert.match(workspaceSource, /const handleSubmit = useCallback/);

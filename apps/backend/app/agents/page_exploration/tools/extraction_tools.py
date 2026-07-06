@@ -128,9 +128,13 @@ def playwright_snap_tool(
             "primary_selector": elem.primary_selector,
             "fallback_selector": elem.fallback_selector,
             "visible": elem.visible,
+            "dialog_id": elem.dialog_id,
         }
         for elem in result.elements
     ]
+    # 给每个 element 标 sibling_count（页面级，同 name+role 全页面出现次数），
+    # 让 LLM 看到 ambiguous 元素，避免写 getByRole 触发严格模式多匹配。
+    _annotate_ambiguity(elements)
     accessibility_tree = [node.model_dump() for node in result.accessibility_tree]
     visible_text_blocks = result.visible_text_blocks
     if keywords:
@@ -145,6 +149,8 @@ def playwright_snap_tool(
         elements=elements,
     )
 
+    match_groups = _build_match_groups(elements)
+
     return {
         "url": result.url,
         "title": result.title,
@@ -152,9 +158,91 @@ def playwright_snap_tool(
         "elements": elements,
         "accessibility_tree": accessibility_tree,
         "visible_text_blocks": visible_text_blocks,
+        "dialogs": [d.model_dump() for d in result.dialogs],
+        "active_dialog_id": result.active_dialog_id,
+        "match_groups": match_groups,
         "error": result.error,
         "state_observation_hint": state_observation_hint,
     }
+
+
+def _annotate_ambiguity(elements: list) -> None:
+    """给每个 element 加 sibling_count（同 name+role 全页面出现次数）+ is_ambiguous 布尔。
+
+    why: verification.unique 只验证"这个 element 的 selector 在 DOM 中唯一指向它"，
+    但严格模式下 getByRole 跨整个 DOM 匹配——同 name+role 有多元素时还是多匹配。
+    LLM 看到 sibling_count > 1 就该用 chain 容器而不是裸 getByRole。
+    """
+    counts: dict[tuple[str, str], int] = {}
+    for el in elements:
+        if not isinstance(el, dict):
+            continue
+        key = (str(el.get("name") or ""), str(el.get("role") or ""))
+        counts[key] = counts.get(key, 0) + 1
+
+    for el in elements:
+        if not isinstance(el, dict):
+            continue
+        key = (str(el.get("name") or ""), str(el.get("role") or ""))
+        sibling_count = counts.get(key, 1)
+        el["sibling_count"] = sibling_count
+        el["is_ambiguous"] = sibling_count > 1
+
+
+def _build_match_groups(elements: list) -> list[dict]:
+    """按 (name, role) 分组聚合所有候选，让 LLM 一次性看到同 name 全部元素的位置。
+
+    每组结构：
+    {
+        "name": "创建",
+        "role": "button",
+        "count": 3,
+        "candidates": [
+            {
+                "index": 0,
+                "dialog_id": None,
+                "primary_selector_code": "page.getByRole('button', { name: '创建' })",
+                "context_hint": "弹窗内 / 主页面 ...",
+            },
+            ...
+        ]
+    }
+
+    LLM 在 click 失败时能直接对照 candidates 列表选择正确的 chain。
+    """
+    groups: dict[tuple[str, str], list[int]] = {}
+    for idx, el in enumerate(elements):
+        if not isinstance(el, dict):
+            continue
+        key = (str(el.get("name") or ""), str(el.get("role") or ""))
+        groups.setdefault(key, []).append(idx)
+
+    out: list[dict] = []
+    for (name, role), indexes in groups.items():
+        if not name or not role:
+            continue
+        if len(indexes) <= 1:
+            # 唯一匹配的不进 groups（避免信息过载），用空 filter 时还能看到全页
+            continue
+        candidates: list[dict] = []
+        for order, idx in enumerate(indexes, start=1):
+            el = elements[idx]
+            primary = el.get("primary_selector") if isinstance(el.get("primary_selector"), dict) else None
+            primary_code = primary.get("code") if primary else ""
+            candidates.append({
+                "ordinal": order,
+                "element_index": idx,
+                "dialog_id": el.get("dialog_id") or None,
+                "primary_selector_code": primary_code,
+                "context_hint": "弹窗内" if el.get("dialog_id") else "主页面",
+            })
+        out.append({
+            "name": name,
+            "role": role,
+            "count": len(indexes),
+            "candidates": candidates,
+        })
+    return out
 
 
 def _build_state_observation_hint(

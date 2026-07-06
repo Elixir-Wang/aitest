@@ -958,6 +958,22 @@ async function collectDomFacts(browserPage) {
       .filter((el) => hasClickableHint(el))
       .filter((el) => clean(el.innerText || el.textContent, 160))
       .slice(0, 40);
+  // 一次性收集所有 dialog 容器（用于 element ↔ dialog 关联 + facts.dialogs 列表）
+  const dialogContainers = Array.from(document.querySelectorAll("[role='dialog'],dialog,.modal,.ant-modal,.el-dialog"))
+    .filter(visible)
+    .slice(0, 20);
+  const dialogs = dialogContainers.map((dialog, index) => ({
+    id: dialog.getAttribute("id") || `dialog-${String(index + 1).padStart(3, "0")}`,
+    title: labelOf(dialog),
+    role: dialog.getAttribute("role") || dialog.tagName.toLowerCase(),
+  }));
+  // 用 dialog 元素引用建索引 → element.closest 拿到的容器在数组里查找位置，复用同一套 id
+  const dialogIdByElement = new Map();
+  dialogContainers.forEach((dialog, index) => {
+    const id = dialog.getAttribute("id") || `dialog-${String(index + 1).padStart(3, "0")}`;
+    dialogIdByElement.set(dialog, id);
+  });
+
   const elementFacts = [...explicitCandidates, ...pointerCandidates]
     .filter(visible)
     .map((el, index) => {
@@ -967,6 +983,10 @@ async function collectDomFacts(browserPage) {
       const actionType = ["input", "textarea", "select"].includes(tagName) && !["button", "checkbox", "radio"].includes(role) ? "fill" : "click";
       const nativeInteractive = ["a", "button", "input", "textarea", "select"].includes(tagName);
       const clickHint = hasClickableHint(el);
+      // 元素所属 dialog：closest 找到 dialog 容器，通过 dialogIdByElement 复用同一套 id
+      // 找不到时为空字符串（与 dialogs 列表的 id 字段匹配规则一致）
+      const dialogContainer = el.closest("[role='dialog'],dialog,.modal,.ant-modal,.el-dialog");
+      const dialog_id = dialogContainer ? (dialogIdByElement.get(dialogContainer) || "") : "";
       return {
         index,
         role,
@@ -982,6 +1002,7 @@ async function collectDomFacts(browserPage) {
         enabled: !el.disabled && el.getAttribute("aria-disabled") !== "true",
         interactive_hint: nativeInteractive || clickHint,
         visible: true,
+        dialog_id,
       };
     })
     .filter((item) => {
@@ -997,14 +1018,6 @@ async function collectDomFacts(browserPage) {
       href: item.href,
       text: item.text,
     }));
-    const dialogs = Array.from(document.querySelectorAll("[role='dialog'],dialog,.modal,.ant-modal,.el-dialog"))
-      .filter(visible)
-      .slice(0, 20)
-      .map((dialog, index) => ({
-        id: dialog.getAttribute("id") || `dialog-${String(index + 1).padStart(3, "0")}`,
-        title: labelOf(dialog),
-        role: dialog.getAttribute("role") || dialog.tagName.toLowerCase(),
-      }));
     const forms = Array.from(document.querySelectorAll("form")).slice(0, 20).map((form, index) => ({
       id: `form-${String(index + 1).padStart(3, "0")}`,
       name: labelOf(form),

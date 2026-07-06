@@ -323,7 +323,6 @@ export default function Page() {
   const projectQueryAbortControllerRef = useRef<AbortController | null>(null);
   const projectConversationLoadRunIdRef = useRef(0);
   const projectConversationOpenRunIdRef = useRef(0);
-  const projectAutoOpenConversationKeyRef = useRef("");
   const [companyFiles, setCompanyFiles] = useState<File[]>([]);
   const [companyUploadStates, setCompanyUploadStates] = useState<
     Record<string, { progress: number; status: "idle" | "uploading" | "completed" | "error" }>
@@ -443,7 +442,6 @@ export default function Page() {
     projectConversationLoadRunIdRef.current += 1;
     projectConversationOpenRunIdRef.current += 1;
     latestProjectQueryScopeRef.current = projectResetKey;
-    projectAutoOpenConversationKeyRef.current = "";
     setProjectMessages([]);
     setProjectChatDraft("");
     setProjectConversations([]);
@@ -507,11 +505,6 @@ export default function Page() {
         const conversations = await apiRequest<ApiKnowledgeConversation[]>(conversationsPath);
         if (isCurrentConversationLoad()) {
           setProjectConversations(conversations);
-          const latestConversation = conversations[0];
-          if (latestConversation && projectAutoOpenConversationKeyRef.current !== scopeKey) {
-            projectAutoOpenConversationKeyRef.current = scopeKey;
-            void openProjectConversation(scope, latestConversation.id, targetProjectId);
-          }
         }
       } catch (nextError) {
         if (isCurrentConversationLoad()) {
@@ -524,7 +517,7 @@ export default function Page() {
         }
       }
     },
-    [openProjectConversation],
+    [],
   );
 
   useEffect(() => {

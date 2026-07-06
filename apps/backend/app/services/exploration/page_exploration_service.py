@@ -1704,6 +1704,12 @@ def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) ->
     - DOM 元素（elements）完整保留，不去重（列表中多个同名按钮需要全部出现）
     - accessibility_tree 节点只补充 DOM 中没有的（用 "ax-{role}:{name}" key 去重，
       避免纯文本节点造成重复；去重粒度宽松，避免误吞同名不同行的元素）
+
+    复用契约（外部 Playwright 自动化测试依赖此契约）：
+    - 透传 observePage 标定的 element.dialog_id（弹窗内元素归属）
+    - 把 primary_selector / fallback_selector 携带的 verification 元数据
+      （{checked, unique, visible, match_count}）按 code 匹配到对应 locator 上，
+      让外部脚本读 yaml 即可知道这个 selector 是否 verified
     """
     result: list[dict] = []
     # DOM 元素全部保留（不去重，保持列表完整性）
@@ -1713,14 +1719,21 @@ def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) ->
         name = _string(element.get("name") or element.get("text") or f"element-{len(result) + 1}")
         role = _string(element.get("role") or "element")
         role_source = _string(element.get("role_source") or "")
-        result.append({
+        artifact_element: dict = {
             "id": _string(element.get("ref") or f"el-{len(result) + 1}"),
             "name": name,
             "role": role,
             "text": element.get("text"),
             "visible": bool(element.get("visible", True)),
-            "locators": _semantic_locator_candidates(role, name, role_source),
-        })
+            "locators": _attach_verification_metadata(
+                _semantic_locator_candidates(role, name, role_source),
+                element,
+            ),
+        }
+        dialog_id = element.get("dialog_id")
+        if dialog_id:
+            artifact_element["dialog_id"] = _string(dialog_id)
+        result.append(artifact_element)
 
     # accessibility_tree 只补充 DOM 中没有的节点（用宽松 key 避免吞掉同名不同行元素）
     _TEXT_ROLES = frozenset({"text", "img", "graphic"})
@@ -1751,6 +1764,42 @@ def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) ->
     return result
 
 
+def _attach_verification_metadata(
+    candidates: list[dict], observed_element: dict
+) -> list[dict]:
+    """把 observePage 验证过的 primary_selector / fallback_selector 的 verification
+    元数据按 code 精确匹配附加到对应 candidate，让 yaml 对外暴露 verified=true/false。
+
+    匹配规则：
+    - candidate.code == selector.code → 复制 selector.verification 到 candidate.verification
+    - 没匹配上的 candidate 保留空 verification 字段（schema 占位，让 schema 知道位置）
+
+    这样外部脚本能直接读 yaml 决定复不复制这个 selector：
+        locator = page.locator(element["locators"][0]["code"])
+        if element["locators"][0].get("verification", {}).get("unique") is True:
+            ...
+    """
+    selector_index: dict[str, dict] = {}
+    for key in ("primary_selector", "fallback_selector"):
+        sel = observed_element.get(key)
+        if isinstance(sel, dict) and sel.get("code"):
+            selector_index[sel["code"]] = sel
+
+    attached: list[dict] = []
+    for candidate in candidates:
+        code = candidate.get("code", "")
+        matched_selector = selector_index.get(code)
+        if matched_selector and isinstance(matched_selector.get("verification"), dict):
+            new_candidate = dict(candidate)
+            new_candidate["verification"] = dict(matched_selector["verification"])
+            attached.append(new_candidate)
+        else:
+            new_candidate = dict(candidate)
+            new_candidate["verification"] = {"checked": False, "unique": None, "visible": None, "match_count": 0}
+            attached.append(new_candidate)
+    return attached
+
+
 _REAL_ARIA_ROLES = frozenset({
     "button", "link", "textbox", "combobox", "checkbox", "radio",
     "tab", "menuitem", "option", "treeitem", "searchbox", "switch", "spinbutton",
@@ -1766,6 +1815,9 @@ def _semantic_locator_candidates(role: str, name: str, role_source: str = "") ->
     - role 是真实 ARIA role 且非 inferred → 输出 getByRole
     - 其他情况（inferred / clickable / div / span / 占位 element）一律不输出 getByRole，
       只输出 getByText（popover / 卡片场景最稳的兜底）
+
+    注：本函数是纯生成器，不带 verification 元数据。verification 由
+    _attach_verification_metadata 在 _snapshot_elements_for_artifact 整合观察数据时附加。
     """
     if not name or not role or role == "element":
         return []

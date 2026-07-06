@@ -5,12 +5,12 @@ page:
   breadcrumb:
   - workspace
   normalized_path: /workspace
-  structure_summary: 自动保存页面快照，发现 16 个元素。
+  structure_summary: 自动保存页面快照，发现 2 个元素。
   path_hash: sha256-c52ddf65534b7b46
   env_urls:
     test: https://www.cybotstar.cn/workspace
   last_explored:
-    timestamp: '2026-07-06T12:21:43.048941Z'
+    timestamp: '2026-07-06T23:18:29.794664Z'
     run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
   elements: []
 states:
@@ -19,193 +19,60 @@ states:
   url: https://www.cybotstar.cn/workspace
   elements:
   - id: el-1
-    name: 发布管理
-    role: clickable
-    text: 发布管理
+    name: 创建智能体
+    role: button
+    text: 创建智能体
     visible: true
     locators:
-    - kind: text
-      code: 'getByText(''发布管理'', { exact: true })'
+    - kind: role
+      code: 'getByRole(''button'', { name: ''创建智能体'' })'
       priority: 1
-  - id: el-2
-    name: 11 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-06 17:15:59 自主规划 Agent
-    role: clickable
-    text: 11 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-06 17:15:59 自主规划 Agent
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''创建智能体'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: ax-2
+    name: 创建智能体
+    role: button
+    text: 创建智能体
     visible: true
     locators:
-    - kind: text
-      code: 'getByText(''11 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-06 17:15:59 自主规划
-        Agent'', { exact: true })'
+    - kind: role
+      code: 'getByRole(''button'', { name: ''创建智能体'' })'
       priority: 1
-  - id: el-3
-    name: 已发布
-    role: clickable
-    text: 已发布
-    visible: true
-    locators:
     - kind: text
-      code: 'getByText(''已发布'', { exact: true })'
-      priority: 1
-  - id: el-4
-    name: 已发布
-    role: clickable
-    text: 已发布
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''已发布'', { exact: true })'
-      priority: 1
-  - id: el-5
-    name: 123 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-06 20:16:45 自主规划 Agent
-    role: clickable
-    text: 123 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-06 20:16:45 自主规划 Agent
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''123 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-06 20:16:45 自主规划 Agent'',
-        { exact: true })'
-      priority: 1
-  - id: el-6
-    name: 草稿
-    role: clickable
-    text: 草稿
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''草稿'', { exact: true })'
-      priority: 1
-  - id: el-7
-    name: 发布
-    role: clickable
-    text: 发布
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''发布'', { exact: true })'
-      priority: 1
-  - id: el-8
-    name: 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12 自主规划 Agent
-    role: clickable
-    text: 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12 自主规划 Agent
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12
-        自主规划 Agent'', { exact: true })'
-      priority: 1
-  - id: el-9
-    name: 已发布
-    role: clickable
-    text: 已发布
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''已发布'', { exact: true })'
-      priority: 1
-  - id: el-10
-    name: 已发布
-    role: clickable
-    text: 已发布
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''已发布'', { exact: true })'
-      priority: 1
-  - id: el-11
-    name: 测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:44:36 自主规划 Agent
-    role: clickable
-    text: 测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:44:36 自主规划 Agent
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:44:36
-        自主规划 Agent'', { exact: true })'
-      priority: 1
-  - id: el-12
-    name: 已发布
-    role: clickable
-    text: 已发布
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''已发布'', { exact: true })'
-      priority: 1
-  - id: el-13
-    name: 已发布
-    role: clickable
-    text: 已发布
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''已发布'', { exact: true })'
-      priority: 1
-  - id: el-14
-    name: 卡片测试 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-12 14:08:15 自主规划 Agent
-    role: clickable
-    text: 卡片测试 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-12 14:08:15 自主规划 Agent
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''卡片测试 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-12 14:08:15
-        自主规划 Agent'', { exact: true })'
-      priority: 1
-  - id: el-15
-    name: 已发布
-    role: clickable
-    text: 已发布
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''已发布'', { exact: true })'
-      priority: 1
-  - id: el-16
-    name: 已发布
-    role: clickable
-    text: 已发布
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''已发布'', { exact: true })'
-      priority: 1
+      code: 'getByText(''创建智能体'', { exact: true })'
+      priority: 2
   accessibility_tree:
-  - id: ax-fallback-010
-    role: text
-    name: 发布管理
+  - id: ax-fallback-001
+    role: button
+    name: 创建智能体
     level: null
     checked: null
     disabled: null
     expanded: null
-  - id: ax-fallback-026
+  - id: ax-fallback-002
     role: text
-    name: 已发布
-    level: null
-    checked: null
-    disabled: null
-    expanded: null
-  - id: ax-fallback-033
-    role: text
-    name: 草稿
-    level: null
-    checked: null
-    disabled: null
-    expanded: null
-  - id: ax-fallback-035
-    role: text
-    name: 发布
+    name: 创建智能体
     level: null
     checked: null
     disabled: null
     expanded: null
   visible_text_blocks:
-  - 发布管理
-  - 已发布
-  - '123'
-  - 草稿
-  - 发布
+  - 创建智能体
 quality: {}
 metadata:
-  captured_at: '2026-07-06T12:17:03.868700+00:00'
+  captured_at: '2026-07-06T23:18:29.790357+00:00'
   source: page_exploration_run
   source_run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
-  source_artifact_path: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\page_exploration\runs\exp_AEF5tx0X9WHsIXTDDzdQuA\pages\page-workspace.yaml
+  source_artifact_path: /Users/wanghongbao/project/test_project/apps/backend/data/projects/project-75fec50973f2adf6/page_exploration/runs/exp_AEF5tx0X9WHsIXTDDzdQuA/pages/page-workspace.yaml
   module: 主探索模块

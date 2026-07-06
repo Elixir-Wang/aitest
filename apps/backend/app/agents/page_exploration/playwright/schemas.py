@@ -15,6 +15,20 @@ class ElementInfo(BaseModel):
     primary_selector: dict[str, Any] | None = None
     fallback_selector: dict[str, Any] | None = None
     visible: bool
+    # 元素所属 dialog（observePage 在收集 elementFacts 时按 DOM 树归属标记）
+    dialog_id: str | None = None
+
+
+class DialogInfo(BaseModel):
+    """A dialog / modal currently visible on the page.
+
+    来自 observePage() 收集的 facts.dialogs 列表（line 1000-1007 of browser-session.mjs）。
+    之前 SnapshotResult schema 缺这个字段，被 unmarshal 时丢弃。
+    """
+
+    id: str
+    title: str = ""
+    role: str = ""  # dialog / alertdialog
 
 
 class AccessibilityNodeInfo(BaseModel):
@@ -39,6 +53,10 @@ class SnapshotResult(BaseModel):
     visible_text_blocks: list[str] = []
     page_text_summary: str = ""
     error: str | None = None
+    # 页面级 dialog 列表（observePage 已经收集）
+    dialogs: list[DialogInfo] = []
+    # 当前 active dialog 的 id（LLM 后续动作 scope 锚定）
+    active_dialog_id: str | None = None
 
 
 class NavigateResult(BaseModel):
