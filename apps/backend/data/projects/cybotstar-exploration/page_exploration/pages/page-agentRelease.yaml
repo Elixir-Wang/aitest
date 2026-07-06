@@ -1,0 +1,11 @@
+schema_version: '2.0'
+page:
+  id: page-agentRelease
+  title: 百融百工
+  normalized_path: /agentRelease
+  url: null
+  observed_url: https://www.cybotstar.cn/agentRelease?agentId=19174&access_type=0&agent_type=1&template_uuid
+  first_observed_at: '2026-07-06T09:15:38.772065+00:00'
+  last_observed_at: '2026-07-06T09:15:38.772065+00:00'
+  observed_by_runs: []
+states: []

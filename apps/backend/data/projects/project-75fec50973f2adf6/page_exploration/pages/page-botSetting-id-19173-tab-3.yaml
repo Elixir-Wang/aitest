@@ -1,0 +1,208 @@
+page:
+  id: page-botSetting-id-19173-tab-3
+  title: 百融百工
+  display_name: botSetting?id=19173&tab=3
+  breadcrumb:
+  - botSetting?id=19173&tab=3
+  normalized_path: /botSetting?id=19173&tab=3
+  structure_summary: 自动保存页面快照，发现 15 个元素。
+  path_hash: sha256-5788ad50e1426954
+  env_urls:
+    test: https://www.cybotstar.cn/botSetting?id=19173&tab=3
+  last_explored:
+    timestamp: '2026-07-06T12:21:43.031532Z'
+    run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  elements: []
+states:
+- id: snapshot-current
+  title: 百融百工
+  url: https://www.cybotstar.cn/botSetting?id=19173&tab=3
+  elements:
+  - id: el-1
+    name: 基础配置 资源配置 高级配置 实时互动配置
+    role: clickable
+    text: 基础配置 资源配置 高级配置 实时互动配置
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''基础配置 资源配置 高级配置 实时互动配置'', { exact: true })'
+      priority: 1
+  - id: el-2
+    name: 高级配置
+    role: clickable
+    text: 高级配置
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''高级配置'', { exact: true })'
+      priority: 1
+  - id: el-3
+    name: 高级配置
+    role: clickable
+    text: 高级配置
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''高级配置'', { exact: true })'
+      priority: 1
+  - id: el-4
+    name: 123 草稿自动保存于 20:16 历史版本 发布 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0
+      个 对话流画布 query增强 同义词替换 用户问题智能优化 规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他
+      自定义高亮引用阈值
+    role: clickable
+    text: 123 草稿自动保存于 20:16 历史版本 发布 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0
+      个 对话流画布 query增强 同义词替换 用户问题智能优化 规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他
+      自定义高亮引用阈值
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''123 草稿自动保存于 20:16 历史版本 发布 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流
+        【点击编辑】对话流 已添加 0 个 对话流画布 query增强 同义词替换 用户问题智能优化 规则干预 命中关键词回复 转人工设置 触发器 安全设置
+        安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值'', { exact: true })'
+      priority: 1
+  - id: el-5
+    name: 123 草稿自动保存于 20:16 历史版本 发布 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0
+      个 对话流画布 query增强 同义词替换 用户问题智能优化 规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他
+      自定义高亮引用阈值
+    role: clickable
+    text: 123 草稿自动保存于 20:16 历史版本 发布 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0
+      个 对话流画布 query增强 同义词替换 用户问题智能优化 规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他
+      自定义高亮引用阈值
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''123 草稿自动保存于 20:16 历史版本 发布 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流
+        【点击编辑】对话流 已添加 0 个 对话流画布 query增强 同义词替换 用户问题智能优化 规则干预 命中关键词回复 转人工设置 触发器 安全设置
+        安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值'', { exact: true })'
+      priority: 1
+  - id: el-6
+    name: 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强 同义词替换 用户问题智能优化
+      规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值 调试预览 内容由AI生成
+    role: clickable
+    text: 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强 同义词替换 用户问题智能优化
+      规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值 调试预览 内容由AI生成
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强
+        同义词替换 用户问题智能优化 规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值 调试预览
+        内容由AI生成'', { exact: true })'
+      priority: 1
+  - id: el-7
+    name: 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强 同义词替换 用户问题智能优化
+      规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值 调试预览 内容由AI生成
+    role: clickable
+    text: 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强 同义词替换 用户问题智能优化
+      规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值 调试预览 内容由AI生成
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强
+        同义词替换 用户问题智能优化 规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值 调试预览
+        内容由AI生成'', { exact: true })'
+      priority: 1
+  - id: el-8
+    name: 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强 同义词替换 用户问题智能优化
+      规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值
+    role: clickable
+    text: 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强 同义词替换 用户问题智能优化
+      规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强
+        同义词替换 用户问题智能优化 规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值'',
+        { exact: true })'
+      priority: 1
+  - id: el-9
+    name: 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强 同义词替换 用户问题智能优化
+      规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值
+    role: clickable
+    text: 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强 同义词替换 用户问题智能优化
+      规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强
+        同义词替换 用户问题智能优化 规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值'',
+        { exact: true })'
+      priority: 1
+  - id: el-10
+    name: 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强 同义词替换 用户问题智能优化
+      规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值
+    role: clickable
+    text: 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强 同义词替换 用户问题智能优化
+      规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强
+        同义词替换 用户问题智能优化 规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值'',
+        { exact: true })'
+      priority: 1
+  - id: el-11
+    name: 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强 同义词替换 用户问题智能优化
+      规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值
+    role: clickable
+    text: 基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强 同义词替换 用户问题智能优化
+      规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''基础配置 资源配置 高级配置 实时互动配置 进阶编排 对话流 【点击编辑】对话流 已添加 0 个 对话流画布 query增强
+        同义词替换 用户问题智能优化 规则干预 命中关键词回复 转人工设置 触发器 安全设置 安全护栏 语音策略 口水词模型 其他 自定义高亮引用阈值'',
+        { exact: true })'
+      priority: 1
+  - id: el-12
+    name: 基础配置 资源配置 高级配置 实时互动配置
+    role: clickable
+    text: 基础配置 资源配置 高级配置 实时互动配置
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''基础配置 资源配置 高级配置 实时互动配置'', { exact: true })'
+      priority: 1
+  - id: el-13
+    name: 基础配置 资源配置 高级配置 实时互动配置
+    role: clickable
+    text: 基础配置 资源配置 高级配置 实时互动配置
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''基础配置 资源配置 高级配置 实时互动配置'', { exact: true })'
+      priority: 1
+  - id: el-14
+    name: 基础配置 资源配置 高级配置 实时互动配置
+    role: clickable
+    text: 基础配置 资源配置 高级配置 实时互动配置
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''基础配置 资源配置 高级配置 实时互动配置'', { exact: true })'
+      priority: 1
+  - id: el-15
+    name: 高级配置
+    role: clickable
+    text: 高级配置
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''高级配置'', { exact: true })'
+      priority: 1
+  accessibility_tree:
+  - id: ax-fallback-009
+    role: text
+    name: 高级配置
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  visible_text_blocks:
+  - 高级配置
+quality: {}
+metadata:
+  captured_at: '2026-07-06T12:19:11.867923+00:00'
+  source: page_exploration_run
+  source_run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  source_artifact_path: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\page_exploration\runs\exp_AEF5tx0X9WHsIXTDDzdQuA\pages\page-botSetting-id-19173-tab-3.yaml
+  module: 主探索模块

@@ -43,10 +43,25 @@ async def generate_test_cases(input_data: TestCaseGenerationInput) -> TestCaseGe
         content_parts.append("")
         content_parts.append(f"生成范围: {input_data.generation_scope}")
 
-    # 添加公司知识库标记
-    if input_data.include_company_knowledge:
+    if input_data.rejected_case_feedback:
         content_parts.append("")
-        content_parts.append("注意: 需要结合公司测试规范和最佳实践。")
+        content_parts.append("历史不采纳用例反馈（重新生成时必须参考，避免再次生成同类问题；反馈为空时不得编造拒绝原因）:")
+        for index, feedback in enumerate(input_data.rejected_case_feedback, 1):
+            content_parts.append(f"{index}. 标题: {feedback.title}")
+            if feedback.module:
+                content_parts.append(f"   模块: {feedback.module}")
+            if feedback.priority:
+                content_parts.append(f"   优先级: {feedback.priority}")
+            if feedback.preconditions:
+                content_parts.append(f"   前置条件: {feedback.preconditions}")
+            if feedback.steps:
+                content_parts.append("   步骤:")
+                for step_index, step in enumerate(feedback.steps, 1):
+                    content_parts.append(f"   {step_index}) {step.action}")
+                    content_parts.append(f"      该步预期: {step.expected_result}")
+            if feedback.expected_result:
+                content_parts.append(f"   预期结果: {feedback.expected_result}")
+            content_parts.append(f"   不采纳原因: {feedback.review_feedback or '用户未填写原因'}")
 
     content_parts.append("\n请使用 test-case-generation skill 生成测试用例集。")
     content = "\n".join(content_parts)

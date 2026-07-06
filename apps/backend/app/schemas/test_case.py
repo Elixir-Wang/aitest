@@ -1,57 +1,22 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 GenerationScopeType = Literal["all", "specified"]
-
-
-class TestCaseGenerationRequest(BaseModel):
-    """测试用例生成请求"""
-    requirement_doc_id: str = Field(min_length=1, description="需求文档ID")
-    generation_scope: str = Field(default="", description="生成范围")
-    include_company_knowledge: bool = Field(default=False, description="是否包含公司知识库")
-
-    @field_validator("requirement_doc_id", "generation_scope", mode="before")
-    @classmethod
-    def _strip_strings(cls, value: object) -> object:
-        if isinstance(value, str):
-            return value.strip()
-        return value
-
-
-class TestCaseItem(BaseModel):
-    """单个测试用例"""
-    id: str
-    module: str
-    title: str
-    priority: str
-    type: str
-    precondition: str
-    steps: list[str]
-    expected_result: str
-    test_data: str
-    notes: str
-
-
-class TestCaseGenerationResponse(BaseModel):
-    """测试用例生成响应"""
-    summary: str
-    total_count: int
-    modules: list[dict[str, Any]]
-    markdown: str
+TestCaseReviewStatus = Literal["ready_for_review", "approved", "rejected"]
 
 
 class TestCaseSetCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=120)
     requirement_doc_id: str = Field(min_length=1)
-    exploration_run_id: str = ""
-    include_company_knowledge: bool = True
     generation_scope_type: GenerationScopeType = "all"
     generation_scope_text: str = ""
     notes: str = ""
 
-    @field_validator("name", "requirement_doc_id", "exploration_run_id", "generation_scope_text", "notes", mode="before")
+    @field_validator("name", "requirement_doc_id", "generation_scope_text", "notes", mode="before")
     @classmethod
     def _strip_strings(cls, value: object) -> object:
         if isinstance(value, str):
@@ -77,6 +42,93 @@ class TestCaseGenerationRunOut(BaseModel):
     finished_at: str | None = None
 
 
+class TestCaseReviewStatsOut(BaseModel):
+    case_count: int
+    approved_count: int
+    rejected_count: int
+    pending_count: int
+    reviewed_count: int
+    adoption_rate: float
+    review_progress: float
+
+
+class TestCaseStep(BaseModel):
+    action: str = Field(min_length=1)
+    expected_result: str = ""
+
+    @field_validator("action", "expected_result", mode="before")
+    @classmethod
+    def _strip_strings(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class TestCaseReviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: TestCaseReviewStatus
+    review_feedback: str = Field(default="", max_length=1000)
+    preconditions: str | None = None
+    steps: list[TestCaseStep] | None = None
+    expected_result: str | None = None
+
+    @field_validator("review_feedback", "preconditions", "expected_result", mode="before")
+    @classmethod
+    def _strip_strings(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("steps")
+    @classmethod
+    def _validate_steps(cls, value: list[TestCaseStep] | None) -> list[TestCaseStep] | None:
+        if value is None:
+            return value
+        steps = [step for step in value if step.action]
+        if not steps:
+            raise ValueError("测试步骤不能为空。")
+        return steps
+
+    @field_validator("steps", mode="before")
+    @classmethod
+    def _normalize_steps(cls, value: object) -> object:
+        if value is None:
+            return value
+        if not isinstance(value, list):
+            return value
+        normalized = []
+        for item in value:
+            if isinstance(item, str):
+                normalized.append({"action": item, "expected_result": ""})
+            else:
+                normalized.append(item)
+        return normalized
+
+
+class TestCaseReviewOut(BaseModel):
+    case: "TestCaseOut"
+    review_stats: TestCaseReviewStatsOut
+
+
+class TestCaseOut(BaseModel):
+    id: str
+    test_case_set_id: str
+    project_id: str
+    title: str
+    module: str
+    priority: str
+    preconditions: str
+    steps: list[TestCaseStep]
+    expected_result: str
+    status: str
+    review_feedback: str = ""
+    reviewed_by: str = ""
+    reviewed_at: str | None = None
+    created_at: str
+    updated_at: str
+
+
 class TestCaseSetOut(BaseModel):
     id: str
     project_id: str
@@ -84,9 +136,6 @@ class TestCaseSetOut(BaseModel):
     name: str
     requirement_doc_id: str
     requirement_doc_title: str = ""
-    exploration_run_id: str = ""
-    exploration_run_title: str = ""
-    include_company_knowledge: bool
     generation_scope_type: GenerationScopeType
     generation_scope_text: str
     notes: str
@@ -97,3 +146,5 @@ class TestCaseSetOut(BaseModel):
     created_at: str
     updated_at: str
     generation_run: TestCaseGenerationRunOut | None = None
+    review_stats: TestCaseReviewStatsOut
+    cases: list[TestCaseOut] = Field(default_factory=list)

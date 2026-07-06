@@ -69,6 +69,12 @@ test("exploration progress restores left-side steps from persisted plan events",
   );
 });
 
+test("exploration progress dedupes live and snapshot events by stable event id", () => {
+  assert.match(pageSource, /function mergeMonitorEvents/);
+  assert.match(pageSource, /const key = event\.id/);
+  assert.doesNotMatch(pageSource, /const key = `\$\{event\.id\}:\$\{event\.type\}:/);
+});
+
 test("exploration output is a right-side card with running status in the header", () => {
   assert.match(taskInfoPanelSource, /探索输出/);
   assert.match(taskInfoPanelSource, /h-\[calc\(100vh-210px\)\]/);

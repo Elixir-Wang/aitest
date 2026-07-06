@@ -13,14 +13,17 @@ function makeFakePage() {
     getByRole(...roleArgs) {
       return chain("role", roleArgs, [...calls, ["getByRole", roleArgs]]);
     },
+    getByText(...textArgs) {
+      return chain("text", textArgs, [...calls, ["getByText", textArgs]]);
+    },
   });
   return {
     getByRole: (...args) => chain("role", args),
     getByLabel: (...args) => ({ __kind: "label", args }),
     getByTestId: (...args) => chain("testid", args),
-    getByText: (...args) => ({ __kind: "text", args }),
+    getByText: (...args) => chain("text", args),
     getByPlaceholder: (...args) => ({ __kind: "placeholder", args }),
-    locator: (...args) => ({ __kind: "css", args }),
+    locator: (...args) => chain("css", args),
   };
 }
 
@@ -117,6 +120,35 @@ test("parses contextual role + role locator expressions", () => {
   assert.equal(locator.__kind, "role");
   assert.deepEqual(locator.args, ["button", { name: "对话历史" }]);
   assert.deepEqual(locator.calls[0], ["filter", { hasText: "测试_自主规划智能体" }]);
+});
+
+test("parses locator container + filter + child text expressions", () => {
+  const page = makeFakePage();
+  const locator = parsePlaywrightLocatorString(
+    page,
+    "page.locator('[role=\"popover\"]').filter({ hasText: '自主规划 Agent' }).getByText('自主规划 Agent', { exact: true })",
+  );
+
+  assert.equal(locator.__kind, "text");
+  assert.deepEqual(locator.args, ["自主规划 Agent", { exact: true }]);
+  assert.deepEqual(locator.calls, [
+    ["filter", { hasText: "自主规划 Agent" }],
+    ["getByText", ["自主规划 Agent", { exact: true }]],
+  ]);
+});
+
+test("parses filter has locator expressions", () => {
+  const page = makeFakePage();
+  const locator = parsePlaywrightLocatorString(
+    page,
+    "page.locator('div').filter({ has: page.getByText('自主规划 Agent') }).getByText('能够自主规划任务')",
+  );
+
+  assert.equal(locator.__kind, "text");
+  assert.deepEqual(locator.args, ["能够自主规划任务", {}]);
+  assert.equal(locator.calls[0][0], "filter");
+  assert.equal(locator.calls[0][1].has.__kind, "text");
+  assert.deepEqual(locator.calls[1], ["getByText", ["能够自主规划任务", {}]]);
 });
 
 test("returns null for unknown locator forms", () => {

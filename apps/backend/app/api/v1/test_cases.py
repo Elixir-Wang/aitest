@@ -2,8 +2,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.test_case import (
-    TestCaseGenerationRequest,
-    TestCaseGenerationResponse,
+    TestCaseReviewIn,
+    TestCaseReviewOut,
     TestCaseSetCreateIn,
     TestCaseSetOut,
 )
@@ -31,19 +31,36 @@ def create_project_test_case_set(
     return created
 
 
-@router.post("/generate", response_model=TestCaseGenerationResponse)
-async def generate_test_cases(
-    project_id: str,
-    payload: TestCaseGenerationRequest,
-    actor=Depends(require_admin),
-) -> dict:
-    """根据最终需求文档生成测试用例集"""
-    return await test_case_service.generate_test_cases_from_requirement(project_id, payload, actor)
-
-
 @router.get("/{set_id}", response_model=TestCaseSetOut)
 def get_project_test_case_set(project_id: str, set_id: str, actor=Depends(current_user)) -> dict:
     return test_case_service.get_test_case_set(project_id, set_id, actor)
+
+
+@router.patch("/{set_id}/cases/{case_id}/review", response_model=TestCaseReviewOut)
+def review_project_test_case(
+    project_id: str,
+    set_id: str,
+    case_id: str,
+    payload: TestCaseReviewIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return test_case_service.review_test_case(project_id, set_id, case_id, payload, actor)
+
+
+@router.post("/{set_id}/regenerate", response_model=TestCaseSetOut)
+def regenerate_project_test_case_set(
+    project_id: str,
+    set_id: str,
+    background_tasks: BackgroundTasks,
+    actor=Depends(require_admin),
+) -> dict:
+    regenerated = test_case_service.regenerate_test_case_set(project_id, set_id, actor)
+    if regenerated["generation_run"]:
+        background_tasks.add_task(
+            test_case_service.execute_test_case_generation_run,
+            regenerated["generation_run"]["id"],
+        )
+    return regenerated
 
 
 @router.delete("/{set_id}", status_code=204)

@@ -1,7 +1,6 @@
 """
 页面导航和交互工具。
 """
-
 from langchain_core.tools import tool
 
 from app.agents.page_exploration.tools.runtime_context import (
@@ -56,13 +55,22 @@ def playwright_click_tool(locator: str) -> dict:
        getByText('提交订单', { exact: true })
        getByPlaceholder('请输入手机号')
        getByTestId('user-avatar')
+       getByRole('listitem').filter({ hasText: '自主规划' })
+           .getByRole('button', { name: '编辑' })  # 链式 filter
+       page.locator('[role="popover"]').filter({ hasText: '自主规划 Agent' })
+           .getByText('能够自主规划任务')  # 浮层/卡片容器内定位
        page.locator('[data-testid="workspace-nav"]')  # 仅在以上定位器都不可用时兜底
 
-    不支持：observe element.id、临时 ref（"e15" / "e20"）和 XPath 字符串。
-    不要因为元素可点击就猜测为 button；只有真实原生/显式无障碍 role 才用 getByRole。
-
-    失败处理：失败时不要再次尝试同一 locator。应重新 observe，选择
-    verified 的 Playwright Locator 字符串后重试。
+    失败处理（必读）：
+    - 工具返回 success=false 时，error_type 取值固定为以下之一：
+      · pointer_intercepted：目标被浮层/遮挡；re-wait + close popover 后重试
+      · locator_not_unique：严格模式违规，命中多个元素；改用 filter 链式限定范围
+      · locator_timeout：超时；snap 后用更稳的定位器
+      · not_visible：被覆盖/折叠/隐藏；snap 重新观察
+      · action_failed：其它执行失败
+    - 当 recovered=true 时，说明历史 runner 曾降级执行过；后续必须改用更精确的链式定位器。
+    - 不要因为元素可点击就猜测为 button；只有真实原生/显式无障碍 role 才用 getByRole。
+    - 不要用 .first() / .nth() 解决歧义；必须用容器、hasText 或 has 缩小到唯一元素。
 
     Args:
         locator: Playwright Locator 字符串
@@ -70,14 +78,21 @@ def playwright_click_tool(locator: str) -> dict:
     Returns:
         A dictionary containing:
         - success: True if click succeeded, False otherwise
-        - error: Error message if click failed
+        - error: 一句话错误摘要（适合日志）
+        - failure.error_type: 结构化错误类型（见上）
+        - failure.summary: 人类可读的失败原因
+        - failure.recovered: 是否来自历史 runner 的降级执行结果
+        - effective_locator: 真正命中的元素的 locator 字符串
     """
     result = click_with_runtime_context(locator)
-
-    return {
+    payload = {
         "success": result.success,
         "error": result.error,
+        "effective_locator": result.effective_locator,
     }
+    if result.failure is not None:
+        payload["failure"] = result.failure.model_dump()
+    return payload
 
 
 @tool
@@ -93,6 +108,8 @@ def playwright_fill_tool(locator: str, value: str) -> dict:
     - getByRole('textbox', { name: 'Email' })
     - getByTestId('search-input')
 
+    失败结构化透传，与 click 工具一致。
+
     Args:
         locator: Playwright Locator 字符串
         value: Text to fill into the element
@@ -101,13 +118,17 @@ def playwright_fill_tool(locator: str, value: str) -> dict:
         A dictionary containing:
         - success: True if fill succeeded, False otherwise
         - error: Error message if fill failed
+        - failure.error_type / failure.summary / failure.recovered
     """
     result = fill_with_runtime_context(locator, value)
-
-    return {
+    payload = {
         "success": result.success,
         "error": result.error,
+        "effective_locator": result.effective_locator,
     }
+    if result.failure is not None:
+        payload["failure"] = result.failure.model_dump()
+    return payload
 
 
 __all__ = [

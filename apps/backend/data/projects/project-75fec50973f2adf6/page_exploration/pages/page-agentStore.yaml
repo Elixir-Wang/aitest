@@ -5,12 +5,12 @@ page:
   breadcrumb:
   - agentStore
   normalized_path: /agentStore
-  structure_summary: 自动保存页面快照，发现 3 个元素。
+  structure_summary: 自动保存页面快照，发现 6 个元素。
   path_hash: sha256-e71b914e41060b98
   env_urls:
     test: https://www.cybotstar.cn/agentStore
   last_explored:
-    timestamp: '2026-07-05T15:34:44.496366Z'
+    timestamp: '2026-07-06T12:21:42.914466Z'
     run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
   elements: []
 states:
@@ -18,7 +18,7 @@ states:
   title: 百融百工
   url: https://www.cybotstar.cn/agentStore
   elements:
-  - id: element-1
+  - id: el-1
     name: 创建智能体
     role: button
     text: 创建智能体
@@ -27,28 +27,59 @@ states:
     - kind: role
       code: 'getByRole(''button'', { name: ''创建智能体'' })'
       priority: 1
-  - id: element-2
+    - kind: text
+      code: 'getByText(''创建智能体'', { exact: true })'
+      priority: 2
+  - id: el-2
     name: 工作台
     role: clickable
     text: 工作台
     visible: true
     locators:
-    - kind: role
-      code: 'getByRole(''clickable'', { name: ''工作台'' })'
+    - kind: text
+      code: 'getByText(''工作台'', { exact: true })'
       priority: 1
-  - id: element-3
-    name: 智能核保 知识库 对话流 多模态核保智能助手，专注识别病历单，解析病例信息并评估投保风险，辅助输出是否建议承保的结论。 使用说明：输入病历单图片，智能体将按规范进行多模态识别与结构化解析，提取关键医疗信息，结合风险评估模型进行分析，输出核保判断及参考结论，并提示相关风险要点与决策依据。
-      官方 5
+  - id: el-3
+    name: 点击【⭐️收藏】 可将智能体添加到这里
     role: clickable
-    text: 智能核保 知识库 对话流 多模态核保智能助手，专注识别病历单，解析病例信息并评估投保风险，辅助输出是否建议承保的结论。 使用说明：输入病历单图片，智能体将按规范进行多模态识别与结构化解析，提取关键医疗信息，结合风险评估模型进行分析，输出核保判断及参考结论，并提示相关风险要点与决策依据。
-      官方 5
+    text: 点击【⭐️收藏】 可将智能体添加到这里
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''点击【⭐️收藏】 可将智能体添加到这里'', { exact: true })'
+      priority: 1
+  - id: el-4
+    name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
+    role: clickable
+    text: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户'', { exact: true
+        })'
+      priority: 1
+  - id: el-5
+    name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
+    role: clickable
+    text: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户'', { exact: true
+        })'
+      priority: 1
+  - id: ax-6
+    name: 创建智能体
+    role: button
+    text: 创建智能体
     visible: true
     locators:
     - kind: role
-      code: 'getByRole(''clickable'', { name: ''智能核保 知识库 对话流 多模态核保智能助手，专注识别病历单，解析病例信息并评估投保风险，辅助输出是否建议承保的结论。
-        使用说明：输入病历单图片，智能体将按规范进行多模态识别与结构化解析，提取关键医疗信息，结合风险评估模型进行分析，输出核保判断及参考结论，并提示相关风险要点与决策依据。
-        官方 5'' })'
+      code: 'getByRole(''button'', { name: ''创建智能体'' })'
       priority: 1
+    - kind: text
+      code: 'getByText(''创建智能体'', { exact: true })'
+      priority: 2
   accessibility_tree:
   - id: ax-fallback-001
     role: button
@@ -93,8 +124,8 @@ states:
   - 多模态核保智能助手，专注识别病历单，解析病例信息并评估投保风险，辅助输出是否建议承保的结论。 使用说明：输入病历单图片，智能体将按规范进行多模态识别与结构化解析，提取关键医疗信息，结合风险评估模型进行分析，输出核保判断及参考结论，并提示相关
 quality: {}
 metadata:
-  captured_at: '2026-07-05T15:31:24.206179+00:00'
+  captured_at: '2026-07-06T12:14:05.489742+00:00'
   source: page_exploration_run
   source_run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
-  source_artifact_path: /Users/wanghongbao/project/test_project/apps/backend/data/projects/project-75fec50973f2adf6/page_exploration/runs/exp_AEF5tx0X9WHsIXTDDzdQuA/pages/page-agentStore.yaml
+  source_artifact_path: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\page_exploration\runs\exp_AEF5tx0X9WHsIXTDDzdQuA\pages\page-agentStore.yaml
   module: 主探索模块

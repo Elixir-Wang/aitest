@@ -43,7 +43,7 @@ async def stream_exploration_progress(
 
             last_status = status.get("status")
             last_updated = status.get("updated_at")
-            terminal_statuses = {"completed", "partial", "cancelled", "interrupted", "blocked", "failed"}
+            terminal_statuses = {"completed", "cancelled", "interrupted", "blocked", "failed"}
             if last_status in terminal_statuses:
                 yield sse({
                     "type": "run_completed",

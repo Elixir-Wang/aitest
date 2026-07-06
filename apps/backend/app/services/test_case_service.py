@@ -3,17 +3,22 @@ import secrets
 from pathlib import Path
 
 from app.agents.test_case_generation import generate_test_cases
-from app.agents.test_case_generation.schemas import TestCaseGenerationInput, TestCaseGenerationResult
+from app.agents.test_case_generation.schemas import (
+    RejectedTestCaseFeedback,
+    TestCaseGenerationInput,
+    TestCaseGenerationResult,
+)
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
-from app.repositories import document_repo, exploration_repo, project_repo, test_case_repo
-from app.schemas.test_case import TestCaseGenerationRequest, TestCaseSetCreateIn
+from app.repositories import document_repo, project_repo, test_case_repo
+from app.schemas.test_case import TestCaseReviewIn, TestCaseSetCreateIn
 
 
 STATUS_LABELS = {
     "generating": "生成中",
     "ready_for_review": "待评审",
+    "review_completed": "评审完成",
     "failed": "生成失败",
     "archived": "已归档",
 }
@@ -32,7 +37,7 @@ def get_test_case_set(project_id: str, set_id: str, actor) -> dict:
         row = test_case_repo.find_set_by_id(db, set_id)
         if not row or row["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "测试用例集不存在。")
-        return _serialize_set(db, row)
+        return _serialize_set(db, row, include_cases=True)
 
 
 def delete_test_case_set(project_id: str, set_id: str, actor) -> None:
@@ -45,17 +50,89 @@ def delete_test_case_set(project_id: str, set_id: str, actor) -> None:
         test_case_repo.delete_set(db, set_id)
 
 
+def review_test_case(project_id: str, set_id: str, case_id: str, payload: TestCaseReviewIn, actor) -> dict:
+    _require_admin(actor)
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = test_case_repo.find_set_by_id(db, set_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "测试用例集不存在。")
+        test_case = test_case_repo.find_case_by_id(db, case_id)
+        if not test_case or test_case["test_case_set_id"] != set_id or test_case["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "测试用例不存在。")
+
+        test_case_repo.update_case_review(
+            db,
+            case_id=case_id,
+            status=payload.status,
+            review_feedback=payload.review_feedback,
+            reviewed_by=actor["id"],
+            preconditions=payload.preconditions,
+            steps_json=json.dumps(_steps_to_jsonable(payload.steps), ensure_ascii=False) if payload.steps is not None else None,
+            expected_result=payload.expected_result,
+        )
+        updated_case = test_case_repo.find_case_by_id(db, case_id)
+        if not updated_case:
+            raise api_error(500, "TEST_CASE_REVIEW_FAILED", "测试用例评审保存失败。")
+        review_stats = test_case_repo.review_stats_by_set(db, set_id)
+        _sync_set_review_status(db, set_id, review_stats)
+        return {
+            "case": _serialize_case(updated_case),
+            "review_stats": review_stats,
+        }
+
+
+def regenerate_test_case_set(project_id: str, set_id: str, actor) -> dict:
+    _require_admin(actor)
+    run_id = f"tcgr-{secrets.token_hex(8)}"
+    task_id = f"test_case_generation:{run_id}"
+    with connect() as db:
+        project = _require_visible_project(db, project_id, actor)
+        row = test_case_repo.find_set_by_id(db, set_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "测试用例集不存在。")
+        if test_case_repo.has_active_generation_run(db, set_id):
+            raise api_error(409, "TEST_CASE_GENERATION_RUNNING", "该测试用例集正在生成中，请稍后再试。")
+        requirement = document_repo.find_by_project_and_id(db, project_id, row["requirement_doc_id"])
+        if not requirement:
+            raise api_error(400, "INVALID_REQUIREMENT_DOCUMENT", "请选择当前项目下的需求。")
+        final_requirement_version = _require_final_requirement_version(db, requirement["id"])
+        payload = TestCaseSetCreateIn(
+            name=row["name"],
+            requirement_doc_id=row["requirement_doc_id"],
+            generation_scope_type=row["generation_scope_type"],
+            generation_scope_text=row["generation_scope_text"],
+            notes=row["notes"],
+        )
+        input_snapshot = _generation_input_snapshot(
+            project=project,
+            requirement=requirement,
+            final_requirement_version=final_requirement_version,
+            payload=payload,
+            rejected_case_feedback=_serialize_rejected_feedback_rows(
+                test_case_repo.list_rejected_case_feedback_by_set(db, set_id)
+            ),
+        )
+        test_case_repo.update_set_status(db, set_id, status="generating")
+        test_case_repo.create_generation_run(
+            db,
+            run_id=run_id,
+            test_case_set_id=set_id,
+            task_id=task_id,
+            input_json=json.dumps(input_snapshot, ensure_ascii=False),
+        )
+        updated = test_case_repo.find_set_by_id(db, set_id)
+        if not updated:
+            raise api_error(500, "TEST_CASE_SET_REGENERATE_FAILED", "测试用例集重新生成失败。")
+        return _serialize_set(db, updated)
+
+
 def recover_interrupted_test_case_generation_runs() -> None:
     failure_reason = "服务已重启，内存中的测试用例生成任务已中断，请重新创建测试用例集。"
     with connect() as db:
         rows = test_case_repo.list_active_generation_runs(db)
         for row in rows:
-            test_case_repo.update_set_generation_result(
-                db,
-                row["test_case_set_id"],
-                status="failed",
-                case_count=0,
-            )
+            test_case_repo.update_set_status(db, row["test_case_set_id"], status="failed")
             test_case_repo.update_generation_run_status(
                 db,
                 row["id"],
@@ -74,18 +151,13 @@ def create_test_case_set(project_id: str, payload: TestCaseSetCreateIn, actor) -
         requirement = document_repo.find_by_project_and_id(db, project_id, payload.requirement_doc_id)
         if not requirement:
             raise api_error(400, "INVALID_REQUIREMENT_DOCUMENT", "请选择当前项目下的需求。")
+        final_requirement_version = _require_final_requirement_version(db, requirement["id"])
 
-        exploration_run_id = _resolve_exploration_run_id(
-            db,
-            project_id=project_id,
-            requirement_doc_id=payload.requirement_doc_id,
-            requested_exploration_run_id=payload.exploration_run_id,
-        )
         input_snapshot = _generation_input_snapshot(
             project=project,
             requirement=requirement,
+            final_requirement_version=final_requirement_version,
             payload=payload,
-            exploration_run_id=exploration_run_id,
         )
         test_case_repo.create_set(
             db,
@@ -93,8 +165,6 @@ def create_test_case_set(project_id: str, payload: TestCaseSetCreateIn, actor) -
             project_id=project_id,
             name=payload.name,
             requirement_doc_id=payload.requirement_doc_id,
-            exploration_run_id=exploration_run_id,
-            include_company_knowledge=payload.include_company_knowledge,
             generation_scope_type=payload.generation_scope_type,
             generation_scope_text=payload.generation_scope_text,
             notes=payload.notes,
@@ -144,12 +214,10 @@ def _build_generation_input(run_context: dict) -> TestCaseGenerationInput:
         )
         if not requirement:
             raise ValueError("需求文档不存在，无法生成测试用例。")
-        if not requirement["current_version_id"]:
-            raise ValueError("该需求文档尚未生成最终需求，请先完成需求分析。")
 
-        version = document_repo.find_version(db, requirement["current_version_id"])
+        version = document_repo.find_latest_final_requirement_version(db, requirement["id"])
         if not version:
-            raise ValueError("无法找到最终需求版本。")
+            raise ValueError("该需求文档尚未生成最终需求，请先完成需求分析。")
 
     final_requirement_content = _read_final_requirement_content(version)
     if not final_requirement_content.strip():
@@ -163,7 +231,10 @@ def _build_generation_input(run_context: dict) -> TestCaseGenerationInput:
         requirement_name=requirement["name"],
         requirement_content=final_requirement_content,
         generation_scope=generation_scope,
-        include_company_knowledge=bool(run_context["include_company_knowledge"]),
+        rejected_case_feedback=[
+            RejectedTestCaseFeedback.model_validate(item)
+            for item in _generation_run_input_snapshot(run_context).get("rejected_case_feedback", [])
+        ],
     )
 
 
@@ -188,13 +259,10 @@ def _complete_generation_run(run_context: dict, result: TestCaseGenerationResult
                     "module": test_case.module or module.module_name,
                     "priority": test_case.priority,
                     "preconditions": test_case.precondition,
-                    "steps_json": json.dumps(test_case.steps, ensure_ascii=False),
+                    "steps_json": json.dumps(_steps_to_jsonable(test_case.steps), ensure_ascii=False),
                     "expected_result": test_case.expected_result,
                     "source_requirement_refs": json.dumps([run_context["requirement_doc_id"]], ensure_ascii=False),
-                    "source_exploration_refs": json.dumps(
-                        [run_context["exploration_run_id"]] if run_context.get("exploration_run_id") else [],
-                        ensure_ascii=False,
-                    ),
+                    "source_exploration_refs": "[]",
                 }
             )
             case_index += 1
@@ -220,12 +288,7 @@ def _fail_generation_run(run_id: str, error_message: str) -> None:
         run = test_case_repo.find_generation_run(db, run_id)
         if not run:
             return
-        test_case_repo.update_set_generation_result(
-            db,
-            run["test_case_set_id"],
-            status="failed",
-            case_count=0,
-        )
+        test_case_repo.update_set_status(db, run["test_case_set_id"], status="failed")
         test_case_repo.update_generation_run_status(
             db,
             run_id,
@@ -234,49 +297,52 @@ def _fail_generation_run(run_id: str, error_message: str) -> None:
         )
 
 
-def _resolve_exploration_run_id(
-    db,
+def _require_final_requirement_version(db, document_id: str):
+    final_requirement_version = document_repo.find_latest_final_requirement_version(db, document_id)
+    if not final_requirement_version:
+        raise api_error(400, "NO_FINAL_REQUIREMENT", "该需求文档尚未生成最终需求，请先完成需求分析。")
+    return final_requirement_version
+
+
+def _generation_run_input_snapshot(run_context: dict) -> dict:
+    try:
+        snapshot = json.loads(run_context.get("input_json") or "{}")
+    except json.JSONDecodeError:
+        snapshot = {}
+    return snapshot if isinstance(snapshot, dict) else {}
+
+
+def _generation_input_snapshot(
     *,
-    project_id: str,
-    requirement_doc_id: str,
-    requested_exploration_run_id: str,
-) -> str:
-    if requested_exploration_run_id:
-        exploration = exploration_repo.find_by_id(db, requested_exploration_run_id)
-        if not exploration or exploration["project_id"] != project_id or exploration["requirement_doc_id"] != requirement_doc_id:
-            raise api_error(400, "INVALID_EXPLORATION_RUN", "请选择当前需求关联的探索任务。")
-        return requested_exploration_run_id
-    related = test_case_repo.latest_related_exploration(db, project_id, requirement_doc_id)
-    return related["id"] if related else ""
-
-
-def _generation_input_snapshot(*, project, requirement, payload: TestCaseSetCreateIn, exploration_run_id: str) -> dict:
+    project,
+    requirement,
+    final_requirement_version,
+    payload: TestCaseSetCreateIn,
+    rejected_case_feedback: list[dict] | None = None,
+) -> dict:
     return {
         "project_id": project["id"],
         "project_name": project["name"],
         "requirement_doc_id": requirement["id"],
         "requirement_doc_title": requirement["name"],
-        "exploration_run_id": exploration_run_id,
-        "include_company_knowledge": payload.include_company_knowledge,
-        "company_knowledge_role": "testing_guidance_only",
+        "final_requirement_version_id": final_requirement_version["id"],
+        "final_requirement_version_no": final_requirement_version["version_no"],
         "generation_scope_type": payload.generation_scope_type,
         "generation_scope_text": payload.generation_scope_text,
         "notes": payload.notes,
+        "rejected_case_feedback": rejected_case_feedback or [],
     }
 
 
-def _serialize_set(db, row) -> dict:
+def _serialize_set(db, row, *, include_cases: bool = False) -> dict:
     generation_run = test_case_repo.latest_generation_run(db, row["id"])
-    return {
+    result = {
         "id": row["id"],
         "project_id": row["project_id"],
         "project_name": row["project_name"],
         "name": row["name"],
         "requirement_doc_id": row["requirement_doc_id"],
         "requirement_doc_title": row["requirement_doc_title"],
-        "exploration_run_id": row["exploration_run_id"],
-        "exploration_run_title": row["exploration_run_title"],
-        "include_company_knowledge": bool(row["include_company_knowledge"]),
         "generation_scope_type": row["generation_scope_type"],
         "generation_scope_text": row["generation_scope_text"],
         "notes": row["notes"],
@@ -287,7 +353,94 @@ def _serialize_set(db, row) -> dict:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
         "generation_run": _serialize_generation_run(generation_run),
+        "review_stats": test_case_repo.review_stats_by_set(db, row["id"]),
     }
+    if include_cases:
+        result["cases"] = [_serialize_case(case) for case in test_case_repo.list_cases_by_set(db, row["id"])]
+    return result
+
+
+def _sync_set_review_status(db, set_id: str, review_stats: dict) -> None:
+    next_status = (
+        "review_completed"
+        if review_stats["case_count"] > 0 and review_stats["reviewed_count"] == review_stats["case_count"]
+        else "ready_for_review"
+    )
+    test_case_repo.update_set_status(db, set_id, status=next_status)
+
+
+def _serialize_case(row) -> dict:
+    try:
+        raw_steps = json.loads(row["steps_json"] or "[]")
+    except json.JSONDecodeError:
+        raw_steps = []
+    expected_result = row["expected_result"]
+    return {
+        "id": row["id"],
+        "test_case_set_id": row["test_case_set_id"],
+        "project_id": row["project_id"],
+        "title": row["title"],
+        "module": row["module"],
+        "priority": row["priority"],
+        "preconditions": row["preconditions"],
+        "steps": _normalize_step_rows(raw_steps, fallback_expected_result=expected_result),
+        "expected_result": expected_result,
+        "status": row["status"],
+        "review_feedback": row["review_feedback"],
+        "reviewed_by": row["reviewed_by"],
+        "reviewed_at": row["reviewed_at"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _serialize_rejected_feedback_rows(rows) -> list[dict]:
+    rejected_feedback = []
+    for row in rows:
+        try:
+            raw_steps = json.loads(row["steps_json"] or "[]")
+        except json.JSONDecodeError:
+            raw_steps = []
+        expected_result = row["expected_result"]
+        rejected_feedback.append(
+            {
+                "title": row["title"],
+                "module": row["module"],
+                "priority": row["priority"],
+                "preconditions": row["preconditions"],
+                "steps": _normalize_step_rows(raw_steps, fallback_expected_result=expected_result),
+                "expected_result": expected_result,
+                "review_feedback": row["review_feedback"],
+            }
+        )
+    return rejected_feedback
+
+
+def _steps_to_jsonable(steps) -> list[dict]:
+    return [_step_to_dict(step) for step in steps or [] if _step_to_dict(step)["action"]]
+
+
+def _normalize_step_rows(value, *, fallback_expected_result: str = "") -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    return [
+        normalized
+        for step in value
+        if (normalized := _step_to_dict(step, fallback_expected_result=fallback_expected_result))["action"]
+    ]
+
+
+def _step_to_dict(step, *, fallback_expected_result: str = "") -> dict:
+    if hasattr(step, "model_dump"):
+        step = step.model_dump()
+    if isinstance(step, str):
+        return {"action": step.strip(), "expected_result": fallback_expected_result}
+    if isinstance(step, dict):
+        return {
+            "action": str(step.get("action") or step.get("step") or "").strip(),
+            "expected_result": str(step.get("expected_result") or fallback_expected_result).strip(),
+        }
+    return {"action": "", "expected_result": ""}
 
 
 def _serialize_generation_run(row) -> dict | None:
@@ -323,57 +476,3 @@ def _require_visible_project(db, project_id: str, actor):
 def _require_admin(actor) -> None:
     if actor["role"] != "admin":
         raise api_error(403, "PERMISSION_DENIED", "无权创建测试用例集。")
-
-
-async def generate_test_cases_from_requirement(
-    project_id: str,
-    payload: TestCaseGenerationRequest,
-    actor,
-) -> dict:
-    """根据最终需求文档生成测试用例集"""
-    _require_admin(actor)
-
-    with connect() as db:
-        # 验证项目
-        project = _require_visible_project(db, project_id, actor)
-
-        # 验证需求文档
-        requirement = document_repo.find_by_project_and_id(db, project_id, payload.requirement_doc_id)
-        if not requirement:
-            raise api_error(400, "INVALID_REQUIREMENT_DOCUMENT", "请选择当前项目下的需求文档。")
-
-        # 检查是否有最终需求（current_version）
-        if not requirement["current_version_id"]:
-            raise api_error(400, "NO_FINAL_REQUIREMENT", "该需求文档尚未生成最终需求，请先完成需求分析。")
-
-        version = document_repo.find_version(db, requirement["current_version_id"])
-        if not version:
-            raise api_error(400, "NO_FINAL_REQUIREMENT_FILE", "无法找到最终需求文件。")
-        final_requirement_content = _read_final_requirement_content(version)
-        if not final_requirement_content.strip():
-            raise api_error(500, "REQUIREMENT_FILE_NOT_FOUND", "最终需求文件不存在或内容为空。")
-
-    # 构建生成输入
-    generation_input = TestCaseGenerationInput(
-        requirement_name=requirement["name"],
-        requirement_content=final_requirement_content,
-        generation_scope=payload.generation_scope,
-        include_company_knowledge=payload.include_company_knowledge,
-    )
-
-    # 调用 Agent 生成测试用例
-    result = await generate_test_cases(generation_input)
-
-    # 转换为响应格式
-    return {
-        "summary": result.summary,
-        "total_count": result.total_count,
-        "modules": [
-            {
-                "module_name": module.module_name,
-                "test_cases": [tc.model_dump() for tc in module.test_cases],
-            }
-            for module in result.modules
-        ],
-        "markdown": result.to_markdown(),
-    }

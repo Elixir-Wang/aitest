@@ -63,13 +63,18 @@ def merge_page_artifact(
     writer = PageArtifactWriter(base_dir=Path(base_dir) / project_id / "page_exploration")
     obs = [_obs_from_dict({**d, "run_id": run_id}) for d in observed_states]
     result = writer.merge_states(obs)
-    return {
+    payload = {
         "added_state_ids": result.added_state_ids,
         "updated_state_ids": result.updated_state_ids,
         "added_element_keys": result.added_element_keys,
         "updated_element_keys": result.updated_element_keys,
         "skipped_due_to_lock": result.skipped_due_to_lock,
     }
+    if result.rejected_observations:
+        payload["rejected_observations"] = result.rejected_observations
+    if getattr(result, "depth_exceeded", None):
+        payload["depth_exceeded"] = result.depth_exceeded
+    return payload
 
 
 def make_artifact_tools(base_dir: Path):
@@ -99,7 +104,18 @@ def make_artifact_tools(base_dir: Path):
           run_id, observed_at, state_type, title,
           dom_signature, triggered_by (dict|None),
           parent_state_id (str|None), elements (list)
-        Returns: same as MergeResult."""
+
+        强烈建议：把 playwright_snap_tool 返回的 state_observation_hint 直接传进来，
+        而不是手工构造 dom_signature / triggered_by 等字段。手工构造容易触发
+        v2.0 强校验失败（返回 rejected_observations 字段告诉你错在哪）。
+
+        Returns:
+          - added_state_ids, updated_state_ids
+          - added_element_keys, updated_element_keys
+          - skipped_due_to_lock (bool)
+          - rejected_observations (list, P2 强校验拒收的 observation + 原因)
+          - depth_exceeded (list, 嵌套深度 > 16 的 state_id)
+        """
         return merge_page_artifact(
             page_id=page_id, project_id=project_id, run_id=run_id,
             base_dir=base_dir, observed_states=observed_states,

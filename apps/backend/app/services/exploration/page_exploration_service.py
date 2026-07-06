@@ -102,8 +102,8 @@ def get_exploration_run(actor, run_id: str) -> dict:
         }
 
 
-def _read_recent_timeline_events(run: dict, *, limit: int = 200) -> list[dict]:
-    """Read persisted UI timeline events for exploration detail restoration."""
+def _read_recent_timeline_events(run: dict) -> list[dict]:
+    """Read all persisted UI timeline events for exploration detail restoration."""
     project_id = _string(run.get("project_id"))
     run_id = _string(run.get("id"))
     if not project_id or not run_id:
@@ -123,7 +123,7 @@ def _read_recent_timeline_events(run: dict, *, limit: int = 200) -> list[dict]:
         lines = events_path.read_text(encoding="utf-8").splitlines()
     except OSError:
         return []
-    for line in lines[-limit:]:
+    for line in lines:
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
@@ -878,10 +878,55 @@ def _exploration_agent_prompt(
                 "- 这是目标探索：以探索目标为主线和完成条件，优先执行目标描述的页面流程。",
                 "- 不要扩展为全量功能盘点；只探索完成目标所必需的页面、弹窗、字段和状态。",
                 "- 目标完成、被阻塞或达到预算上限后停止并总结，不要继续无关分支。",
+                "- **第一步必须用 `write_todos` 把上面“探索目标”拆成 3-7 个可验证子步骤**。",
+                "  每条包含：动词开头的动作描述 + 明确的完成判据。",
+                "- 后续每完成一个子步骤，必须 `write_todos` 标记 completed，再开始下一个。",
+                "- 子步骤全部 completed 或被阻塞时立即停止，输出阶段总结。",
             ]
         )
+
+    # 目标探索模式下，预先给 LLM 一个"目标分解模板"，避免它从零分解出错。
+    if exploration_mode == "goal" and goal.strip():
+        lines.append("")
+        lines.append("目标分解模板（请按此思路调整后写入 write_todos）：")
+        for index, hint in enumerate(_initial_subgoal_hints(goal), start=1):
+            lines.append(f"  {index}. {hint}")
+
     lines.append(f"最多探索 {max_pages} 个页面。")
     return "\n".join(lines)
+
+
+def _initial_subgoal_hints(goal: str) -> list[str]:
+    """根据探索目标生成粗粒度的子步骤提示，供 LLM 在第一轮 write_todos 中参考调整。
+
+    这些只是 hints，LLM 必须根据实际界面状态调整措辞和完成判据。
+    本函数不耦合任何具体业务（不写死「自主规划 / 登录 / 搜索」等关键词），
+    只提供「目标驱动的通用子步骤骨架」。
+    """
+    goal_summary = goal.strip() or "探索目标"
+    return [
+        (
+            f"步骤 1 / 进入入口：定位目标“{goal_summary}”的入口页面，"
+            "用 snap 完成基线快照（完成判据：snapshot 中能看到入口元素，且 URL/标题符合预期）。"
+        ),
+        (
+            "步骤 2 / 第一步动作：执行目标描述的第一个动作（点击/输入/选择），"
+            "完成后立即 snap 校验（完成判据：URL/弹窗/列表/详情页有可观察的预期变化）。"
+        ),
+        (
+            "步骤 3 / 中间流程：按目标描述的顺序推进，每个动作都 snap 验证，"
+            "失败时用 filter({ hasText }) / 父级容器链式定位缩小范围后再重试。"
+        ),
+        (
+            "步骤 4 / 关键表单 / 提交：填写目标涉及的关键字段并提交，"
+            "记录成功提示、跳转或列表更新（完成判据：出现成功 Toast 或跳到详情/列表）。"
+        ),
+        (
+            "步骤 5 / 终点确认：到达目标终点后，记录核心元素的稳健定位器"
+            "（优先 getByRole / getByLabel / getByTestId，回退到 filter({hasText}) 链式），"
+            "并在 merge_page_artifact_tool 中沉淀为 state tree。"
+        ),
+    ]
 
 
 async def _execute_exploration_async(
@@ -958,8 +1003,11 @@ async def _execute_exploration_async(
         scope=scope,
         exploration_mode=exploration_mode,
         max_pages=max_pages,
+        goal=goal,
     )
     _ensure_exploration_not_stopping(run_id)
+    run_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration" / "runs" / run_id
+    completion_status = _exploration_completion_status(_read_timeline_events_from_run_dir(run_dir))
 
     # 更新状态为完成
     with connect() as db:
@@ -969,7 +1017,7 @@ async def _execute_exploration_async(
         exploration_run_repo.update_status(
             db,
             run_id,
-            "completed",
+            completion_status,
             finished_at=datetime.now(timezone.utc).isoformat(),
             result_summary=artifact_summary,
         )
@@ -978,7 +1026,7 @@ async def _execute_exploration_async(
         run_id,
         "run_completed",
         {
-            "status": "completed",
+            "status": completion_status,
             "result_summary": artifact_summary,
             "finished_at": datetime.now(timezone.utc).isoformat(),
         },
@@ -994,6 +1042,7 @@ def _register_exploration_outputs(
     exploration_mode: str,
     max_pages: int,
     result_status: str = "completed",
+    goal: str = "",
 ) -> str:
     """Register file artifacts produced by the new page exploration agent."""
     run_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration" / "runs" / run_id
@@ -1002,16 +1051,22 @@ def _register_exploration_outputs(
     pages_dir.mkdir(parents=True, exist_ok=True)
 
     page_artifacts = _collect_page_artifact_files(pages_dir)
-    if not (run_dir / "summary.yaml").exists():
-        _write_exploration_summary(
-            run_dir=run_dir,
-            run_id=run_id,
-            start_url=start_url,
-            scope=scope,
-            exploration_mode=exploration_mode,
-            max_pages=max_pages,
-            page_artifacts=page_artifacts,
-        )
+    timeline_events = _read_timeline_events_from_run_dir(run_dir)
+    completion_status = (
+        result_status
+        if result_status == "failed"
+        else _exploration_completion_status(timeline_events)
+    )
+    _write_exploration_summary(
+        run_dir=run_dir,
+        run_id=run_id,
+        start_url=start_url,
+        scope=scope,
+        exploration_mode=exploration_mode,
+        max_pages=max_pages,
+        page_artifacts=page_artifacts,
+        completion_status=completion_status,
+    )
 
     report_path = _write_exploration_report(
         run_dir=run_dir,
@@ -1019,6 +1074,9 @@ def _register_exploration_outputs(
         start_url=start_url,
         exploration_mode=exploration_mode,
         page_artifacts=page_artifacts,
+        goal=goal,
+        timeline_events=timeline_events,
+        artifact_quality_warnings=_artifact_quality_warnings(page_artifacts),
     )
 
     with connect() as db:
@@ -1075,6 +1133,7 @@ def _write_exploration_summary(
     exploration_mode: str,
     max_pages: int,
     page_artifacts: list[tuple[Path, dict]],
+    completion_status: str = "completed",
 ) -> None:
     module_counts: dict[str, int] = {}
     for _, artifact in page_artifacts:
@@ -1085,13 +1144,25 @@ def _write_exploration_summary(
         {
             "module_key": module_key,
             "module_name": module_key,
-            "status": "completed",
+            "status": completion_status,
             "entry_path": scope or start_url,
             "planned_page_count": max_pages,
             "explored_page_count": count,
         }
         for module_key, count in module_counts.items()
     ]
+    if not modules:
+        module_key = scope or "主探索模块"
+        modules = [
+            {
+                "module_key": module_key,
+                "module_name": module_key,
+                "status": completion_status,
+                "entry_path": scope or start_url,
+                "planned_page_count": max_pages,
+                "explored_page_count": 0,
+            }
+        ]
     _write_yaml_file(
         run_dir / "summary.yaml",
         {
@@ -1106,6 +1177,101 @@ def _write_exploration_summary(
     )
 
 
+def _read_timeline_events_from_run_dir(run_dir: Path) -> list[dict]:
+    events_path = run_dir / "timeline_events.jsonl"
+    if not events_path.exists():
+        return []
+    events: list[dict] = []
+    try:
+        lines = events_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            events.append(event)
+    return events
+
+
+def _latest_plan_steps_from_timeline(timeline_events: list[dict]) -> list[dict]:
+    for event in reversed(timeline_events):
+        if event.get("type") != "agent_plan_updated":
+            continue
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        steps = payload.get("plan_steps")
+        if isinstance(steps, list):
+            return [step for step in steps if isinstance(step, dict)]
+    return []
+
+
+def _failed_actions_from_timeline(timeline_events: list[dict]) -> list[dict]:
+    failed: list[dict] = []
+    for event in timeline_events:
+        if event.get("type") != "agent_tool_failed":
+            continue
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        output = payload.get("output") if isinstance(payload.get("output"), dict) else {}
+        failure = payload.get("failure") if isinstance(payload.get("failure"), dict) else {}
+        if not failure:
+            failure = output.get("failure") if isinstance(output.get("failure"), dict) else {}
+        input_data = payload.get("input") if isinstance(payload.get("input"), dict) else {}
+        failed.append(
+            {
+                "tool_name": payload.get("tool_name"),
+                "error_type": failure.get("error_type") or output.get("error_type"),
+                "summary": failure.get("summary") or output.get("error") or payload.get("error_summary"),
+                "locator": payload.get("locator") or input_data.get("locator") or output.get("effective_locator"),
+            }
+        )
+    return failed
+
+
+def _exploration_completion_status(timeline_events: list[dict]) -> str:
+    """探索完成状态：只有 completed 或 failed"""
+    for event in timeline_events:
+        if event.get("type") == "agent_step_error":
+            return "failed"
+    return "completed"
+
+
+def _artifact_quality_warnings(page_artifacts: list[tuple[Path, dict]]) -> list[str]:
+    warnings: list[str] = []
+    for path, artifact in page_artifacts:
+        states = artifact.get("states") if isinstance(artifact.get("states"), list) else []
+        if not states:
+            warnings.append(f"{path.name} 未记录页面状态。")
+            continue
+        if _artifact_element_count(states) == 0:
+            warnings.append(f"{path.name} 没有采集到可操作元素。")
+        quality = artifact.get("quality") if isinstance(artifact.get("quality"), dict) else {}
+        for key in ("warnings", "issues"):
+            values = quality.get(key)
+            if isinstance(values, list):
+                for value in values:
+                    if value:
+                        warnings.append(f"{path.name}: {_string(value)}")
+    return warnings
+
+
+def _artifact_element_count(states: list[dict]) -> int:
+    total = 0
+    for state in states:
+        if not isinstance(state, dict):
+            continue
+        elements = state.get("elements")
+        if isinstance(elements, list):
+            total += len(elements)
+        children = state.get("children")
+        if isinstance(children, list):
+            total += _artifact_element_count(children)
+    return total
+
+
 def _write_exploration_report(
     *,
     run_dir: Path,
@@ -1113,8 +1279,15 @@ def _write_exploration_report(
     start_url: str,
     exploration_mode: str,
     page_artifacts: list[tuple[Path, dict]],
+    goal: str = "",
+    timeline_events: list[dict] | None = None,
+    artifact_quality_warnings: list[str] | None = None,
 ) -> Path:
     report_path = run_dir / "report.md"
+    timeline_events = timeline_events or []
+    artifact_quality_warnings = artifact_quality_warnings or []
+    latest_plan_steps = _latest_plan_steps_from_timeline(timeline_events)
+    failed_actions = _failed_actions_from_timeline(timeline_events)
     lines = [
         "# 探索报告",
         "",
@@ -1122,10 +1295,51 @@ def _write_exploration_report(
         f"- 入口 URL：`{start_url}`",
         f"- 探索方式：{_exploration_mode_label(exploration_mode)}",
         f"- 页面产物数：{len(page_artifacts)}",
+    ]
+    if goal:
+        lines.append(f"- 探索目标：{goal}")
+    lines.extend([
+        "",
+        "## 子目标状态",
+        "",
+    ])
+    if latest_plan_steps:
+        for step in latest_plan_steps:
+            description = _string(step.get("description") or step.get("content") or "")
+            status = _string(step.get("status") or "unknown")
+            lines.append(f"- [{status}] {description}")
+    else:
+        lines.append("- 未记录子目标。")
+    lines.extend([
+        "",
+        "## 失败与阻塞",
+        "",
+    ])
+    if failed_actions:
+        for action in failed_actions:
+            tool_name = _string(action.get("tool_name") or "tool")
+            error_type = _string(action.get("error_type") or "action_failed")
+            summary = _string(action.get("summary") or "工具执行失败。")
+            locator = _string(action.get("locator") or "")
+            suffix = f"（定位器：`{locator}`）" if locator else ""
+            lines.append(f"- {tool_name} / {error_type}：{summary}{suffix}")
+    else:
+        lines.append("- 未记录工具失败。")
+    lines.extend([
+        "",
+        "## 产物质量提示",
+        "",
+    ])
+    if artifact_quality_warnings:
+        for warning in artifact_quality_warnings:
+            lines.append(f"- {warning}")
+    else:
+        lines.append("- 未发现明显产物质量警告。")
+    lines.extend([
         "",
         "## 页面清单",
         "",
-    ]
+    ])
     if page_artifacts:
         for path, artifact in page_artifacts:
             page = artifact.get("page") if isinstance(artifact.get("page"), dict) else {}
@@ -1168,8 +1382,8 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
     run_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration" / "runs" / run_id
     pages_dir = run_dir / "pages"
     elements = snapshot.get("elements") if isinstance(snapshot.get("elements"), list) else []
-    artifact_elements = _snapshot_elements_for_artifact(elements)
     accessibility_tree = snapshot.get("accessibility_tree") if isinstance(snapshot.get("accessibility_tree"), list) else []
+    artifact_elements = _snapshot_elements_for_artifact(elements, accessibility_tree)
     visible_text_blocks = snapshot.get("visible_text_blocks") if isinstance(snapshot.get("visible_text_blocks"), list) else []
     captured_at = datetime.now(timezone.utc).isoformat()
     artifact = {
@@ -1479,37 +1693,96 @@ def _snapshot_page_id(normalized_path: str) -> str:
     return f"page-{value or 'home'}"
 
 
-def _snapshot_elements_for_artifact(elements: list) -> list[dict]:
-    result = []
-    for index, element in enumerate(elements, start=1):
+def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) -> list[dict]:
+    """合并 DOM 采集元素与 accessibility_tree 可见节点，去重后写入 yaml。
+
+    背景：DOM 采集（collectDomFacts）只覆盖主页面 DOM，不含 popover / dropdown 浮层内容。
+    accessibility_tree（accessibility.snapshot({ interestingOnly: false })）包含浮层节点，
+    两者合并才能产出完整的 yaml elements 列表。
+
+    合并策略：
+    - DOM 元素（elements）完整保留，不去重（列表中多个同名按钮需要全部出现）
+    - accessibility_tree 节点只补充 DOM 中没有的（用 "ax-{role}:{name}" key 去重，
+      避免纯文本节点造成重复；去重粒度宽松，避免误吞同名不同行的元素）
+    """
+    result: list[dict] = []
+    # DOM 元素全部保留（不去重，保持列表完整性）
+    for element in elements:
         if not isinstance(element, dict):
             continue
-        name = _string(element.get("name") or element.get("text") or element.get("ref") or f"element-{index}")
+        name = _string(element.get("name") or element.get("text") or f"element-{len(result) + 1}")
         role = _string(element.get("role") or "element")
-        result.append(
-            {
-                "id": _string(element.get("ref") or f"element-{index}"),
-                "name": name,
-                "role": role,
-                "text": element.get("text"),
-                "visible": bool(element.get("visible", True)),
-                "locators": _semantic_locator_candidates(role, name),
-            }
-        )
+        role_source = _string(element.get("role_source") or "")
+        result.append({
+            "id": _string(element.get("ref") or f"el-{len(result) + 1}"),
+            "name": name,
+            "role": role,
+            "text": element.get("text"),
+            "visible": bool(element.get("visible", True)),
+            "locators": _semantic_locator_candidates(role, name, role_source),
+        })
+
+    # accessibility_tree 只补充 DOM 中没有的节点（用宽松 key 避免吞掉同名不同行元素）
+    _TEXT_ROLES = frozenset({"text", "img", "graphic"})
+    seen: set[str] = set()
+    for node in accessibility_tree:
+        if not isinstance(node, dict):
+            continue
+        role = _string(node.get("role") or "")
+        name = _string(node.get("name") or "")
+        if not role or not name:
+            continue
+        if role in _TEXT_ROLES:
+            continue
+        # 宽松 key：role + name 前 30 字符，避免 "自主规划 Agent 能..." 和 "自主规划 Agent" 被误判为重复
+        key = f"{role}:{name[:30]}"
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append({
+            "id": f"ax-{len(result) + 1}",
+            "name": name,
+            "role": role,
+            "text": node.get("name"),
+            "visible": True,
+            "locators": _semantic_locator_candidates(role, name, "accessibility_tree"),
+        })
+
     return result
 
 
-def _semantic_locator_candidates(role: str, name: str) -> list[dict]:
-    if not role or role == "element" or not name:
+_REAL_ARIA_ROLES = frozenset({
+    "button", "link", "textbox", "combobox", "checkbox", "radio",
+    "tab", "menuitem", "option", "treeitem", "searchbox", "switch", "spinbutton",
+    "heading", "listitem", "row", "cell", "columnheader", "rowheader",
+    "gridcell", "dialog", "alertdialog",
+})
+
+
+def _semantic_locator_candidates(role: str, name: str, role_source: str = "") -> list[dict]:
+    """为元素生成稳定可用的 locator，写入 yaml 供后续探索使用。
+
+    规则：
+    - role 是真实 ARIA role 且非 inferred → 输出 getByRole
+    - 其他情况（inferred / clickable / div / span / 占位 element）一律不输出 getByRole，
+      只输出 getByText（popover / 卡片场景最稳的兜底）
+    """
+    if not name or not role or role == "element":
         return []
     escaped_name = name.replace("\\", "\\\\").replace("'", "\\'")
-    return [
-        {
+    candidates: list[dict] = []
+    if role in _REAL_ARIA_ROLES and role_source != "inferred":
+        candidates.append({
             "kind": "role",
             "code": f"getByRole('{role}', {{ name: '{escaped_name}' }})",
             "priority": 1,
-        }
-    ]
+        })
+    candidates.append({
+        "kind": "text",
+        "code": f"getByText('{escaped_name}', {{ exact: true }})",
+        "priority": 2 if candidates else 1,
+    })
+    return candidates
 
 
 def _upsert_exploration_page(db, **kwargs) -> None:
@@ -1760,7 +2033,7 @@ def _projection_chunk_to_timeline_events(
             readable = _projection_tool_event_to_timeline_event(
                 tool_name=tool_name,
                 tool_id=tool_id,
-                status="completed" if not output_data.get("error") else "failed",
+                status=_tool_output_status(output_data),
                 input_data=remembered.get("args") if isinstance(remembered.get("args"), dict) else {},
                 output_data=output_data,
                 raw_event_id=raw_event_id,
@@ -1774,6 +2047,17 @@ def _projection_chunk_to_timeline_events(
                     }
                 events.append(readable)
     return events
+
+
+def _tool_output_status(output_data: dict) -> str:
+    if output_data.get("success") is False:
+        return "failed"
+    if output_data.get("error"):
+        return "failed"
+    failure = output_data.get("failure")
+    if isinstance(failure, dict) and output_data.get("success") is not True:
+        return "failed"
+    return "completed"
 
 
 def _projection_seen(projection_key: str, seen_projection_keys: set[str] | None) -> bool:
@@ -1858,6 +2142,21 @@ def _projection_tool_event_to_timeline_event(
     if tool_name == "write_todos":
         if status != "completed":
             return None
+        plan_steps = _todo_plan_steps(input_data.get("todos"))
+        # 把 todo 列表落盘到 subgoals.yaml，下一次 check_explored_url 就能读出来
+        try:
+            from app.agents.page_exploration.tools.url_tools import write_subgoals_snapshot
+            from app.core import settings as _settings
+
+            write_subgoals_snapshot(
+                project_id=project_id,
+                run_id=run_id,
+                base_dir=_settings.PROJECT_FILE_STORAGE_ROOT,
+                todos=input_data.get("todos") if isinstance(input_data.get("todos"), list) else [],
+            )
+        except Exception:
+            # subgoals 落盘失败不影响主流程
+            pass
         return {
             "type": "agent_plan_updated",
             "payload": _clean_compact_payload(
@@ -1867,7 +2166,7 @@ def _projection_tool_event_to_timeline_event(
                     "status": status,
                     "raw_event_id": raw_event_id,
                     "error_summary": _compact_event_payload(output_data.get("error")),
-                    "plan_steps": _todo_plan_steps(input_data.get("todos")),
+                    "plan_steps": plan_steps,
                 }
             ),
         }
@@ -1880,6 +2179,16 @@ def _projection_tool_event_to_timeline_event(
         "raw_event_id": raw_event_id,
         "error_summary": _compact_event_payload(output_data.get("error")),
     }
+    if input_data.get("locator"):
+        payload["locator"] = _compact_event_payload(input_data.get("locator"))
+    failure = output_data.get("failure")
+    if isinstance(failure, dict):
+        payload["failure"] = {
+            "error_type": _compact_event_payload(failure.get("error_type")),
+            "summary": _compact_event_payload(failure.get("summary")),
+            "recovered": bool(failure.get("recovered", False)),
+            "recovery_warning": _compact_event_payload(failure.get("recovery_warning")),
+        }
     return {
         "type": stream_type,
         "payload": _clean_compact_payload(payload),

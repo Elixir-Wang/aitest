@@ -5,7 +5,6 @@ export type AgentPlanStatus =
   | "running"
   | "stopping"
   | "completed"
-  | "partial"
   | "blocked"
   | "waiting_human"
   | "cancelled"

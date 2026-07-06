@@ -1,0 +1,29 @@
+page:
+  id: page-botSetting-id-19173-sessionId-3kCUcYEl13KQ52OUOk8yF
+  title: 百融百工
+  display_name: botSetting?id=19173&sessionId=3kCUcYEl13KQ52OUOk8yF
+  breadcrumb:
+  - botSetting?id=19173&sessionId=3kCUcYEl13KQ52OUOk8yF
+  normalized_path: /botSetting?id=19173&sessionId=3kCUcYEl13KQ52OUOk8yF
+  structure_summary: 自动保存页面快照，发现 0 个元素。
+  path_hash: sha256-697338fb6c2c5053
+  env_urls:
+    test: https://www.cybotstar.cn/botSetting?id=19173&sessionId=3kCUcYEl13KQ52OUOk8yF
+  last_explored:
+    timestamp: '2026-07-06T09:27:30.035091Z'
+    run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  elements: []
+states:
+- id: snapshot-current
+  title: 百融百工
+  url: https://www.cybotstar.cn/botSetting?id=19173&sessionId=3kCUcYEl13KQ52OUOk8yF
+  elements: []
+  accessibility_tree: []
+  visible_text_blocks: []
+quality: {}
+metadata:
+  captured_at: '2026-07-06T09:22:26.352381+00:00'
+  source: page_exploration_run
+  source_run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  source_artifact_path: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\page_exploration\runs\exp_AEF5tx0X9WHsIXTDDzdQuA\pages\page-botSetting-id-19173-sessionId-3kCUcYEl13KQ52OUOk8yF.yaml
+  module: 主探索模块

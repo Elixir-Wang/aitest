@@ -17,6 +17,10 @@ async def test_test_case_generation_disables_thinking_for_tool_strategy_models(m
 
     class FakeAgent:
         async def ainvoke(self, payload):
+            user_content = payload["messages"][0]["content"]
+            assert "结合公司测试规范" not in user_content
+            assert "include_company_knowledge" not in user_content
+            assert "探索产物" not in user_content
             return {"structured_response": expected}
 
     def fake_build_agent_model(selection, *, extra_body=None):

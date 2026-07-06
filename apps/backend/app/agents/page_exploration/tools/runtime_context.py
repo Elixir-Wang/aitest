@@ -1,12 +1,12 @@
 """Runtime browser context for page exploration tools."""
-
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Any, Mapping
 
 from app.agents.page_exploration.playwright.schemas import (
     AccessibilityNodeInfo,
+    ActionFailure,
     ClickResult,
     ElementInfo,
     FillResult,
@@ -48,6 +48,65 @@ def navigate_with_runtime_context(url: str) -> NavigateResult | None:
     return NavigateResult(url=str(result.get("url") or url), success=True)
 
 
+def _parse_action_result(
+    result: Mapping[str, Any],
+    *,
+    raw_expr: str,
+    default_error: str,
+) -> dict:
+    """把 Node 端 action_result 解析成 LLM 友好的结构化字段。
+
+    协议（与 browser-session.mjs 对齐）：
+    - success=true            → {"success": True, "effective_locator": str|None}
+    - success=false           → {"success": False,
+                                  "failure": ActionFailure,
+                                  "effective_locator": str|None}
+    - 异常（status: error）   → {"success": False,
+                                  "failure": ActionFailure(error_type="action_failed", ...)}
+    """
+    action = result.get("action_result") or result
+    if not isinstance(action, Mapping):
+        action = {}
+
+    failure_raw = action.get("failure") or {}
+    if not isinstance(failure_raw, Mapping):
+        failure_raw = {}
+
+    # 若 Node 端没给 failure 字段（兼容旧版本），降级用 default_error 兜底
+    error_type = str(failure_raw.get("error_type") or "action_failed")
+    summary = str(failure_raw.get("summary") or default_error or "动作执行失败")
+    raw = str(
+        failure_raw.get("raw")
+        or action.get("error")
+        or default_error
+        or "动作执行失败"
+    )
+    recovered = bool(failure_raw.get("recovered", False))
+    recovery_warning = str(failure_raw.get("recovery_warning") or "")
+    failure = ActionFailure(
+        error_type=error_type,
+        summary=summary,
+        raw=raw,
+        recovered=recovered,
+        recovery_warning=recovery_warning,
+    )
+
+    if action.get("success") is True:
+        parsed = {
+            "success": True,
+            "effective_locator": action.get("effective_locator") or raw_expr,
+        }
+        if failure_raw:
+            parsed["failure"] = failure
+        return parsed
+
+    return {
+        "success": False,
+        "failure": failure,
+        "effective_locator": action.get("effective_locator") or raw_expr,
+    }
+
+
 def click_with_runtime_context(locator: str) -> ClickResult | None:
     """Click via the long-lived browser session.
 
@@ -58,40 +117,98 @@ def click_with_runtime_context(locator: str) -> ClickResult | None:
        - getByText('提交订单')
        - getByPlaceholder('请输入手机号')
        - getByTestId('user-avatar')
+       - getByRole('listitem').filter({ hasText: '自主规划' })
+              .getByRole('button', { name: '编辑' })  # 链式 filter
+       - page.locator('[role="popover"]').filter({ hasText: '自主规划 Agent' })
+              .getByText('能够自主规划任务')  # 浮层/卡片容器内定位
        - page.locator('[data-testid="workspace-nav"]')  # 仅在以上定位器都不可用时兜底
 
-    不要因为元素可点击就猜测为 button；只有真实原生/显式无障碍 role 才用 getByRole。
-
-    与前一版不同：失败不再自动 observe（observe 会让 LLM 拿到的旧 id
-    仍然在上下文中，下一轮 click 同样失败，形成物理死循环）。
-    改为把错误原样透传给 LLM，由它重新 observe 并选择 verified
-    Playwright Locator 字符串重试。
+    失败结构化透传：返回 success=False + failure(error_type, summary, raw, recovered)
+    - error_type ∈ {pointer_intercepted, locator_not_unique, locator_timeout, not_visible, action_failed}
+    - recovered=true 仅兼容历史 runner 的降级执行结果；后续应改用更精确的链式定位器。
+    - 不要用 .first() / .nth() 解决歧义；必须用容器、hasText 或 has 缩小到唯一元素。
     """
     session = _browser_session.get()
     if session is None:
         raise BrowserSessionError("Page exploration browser session is not bound.")
     try:
-        session.click(locator)
+        result = session.click(locator)
     except BrowserSessionError as exc:
-        # 把错误原样透出：让 LLM 看见具体的 element_id / 完整错误信息
-        # 错误信息（由 JS 端 classifyActionError 生成）已经包含 actionable 提示
-        return ClickResult(success=False, error=str(exc))
-    return ClickResult(success=True)
+        # Node 端协议层崩溃 → action_failed
+        return ClickResult(
+            success=False,
+            error=str(exc),
+            failure=ActionFailure(
+                error_type="action_failed",
+                summary="浏览器会话协议错误。",
+                raw=str(exc),
+            ),
+            effective_locator=locator,
+        )
+
+    parsed = _parse_action_result(
+        result,
+        raw_expr=locator,
+        default_error=f"Locator did not resolve to a visible element: {locator}",
+    )
+    if parsed["success"]:
+        return ClickResult(
+            success=True,
+            failure=parsed.get("failure"),
+            effective_locator=parsed["effective_locator"],
+        )
+
+    failure: ActionFailure = parsed["failure"]
+    return ClickResult(
+        success=False,
+        # 给 LLM 看的"一句话错误"，优先级：summary > raw
+        error=failure.summary or failure.raw,
+        failure=failure,
+        effective_locator=parsed["effective_locator"],
+    )
 
 
 def fill_with_runtime_context(locator: str, value: str) -> FillResult | None:
     """Fill via the long-lived browser session. 只接受可复用 Playwright Locator 字符串。
 
-    失败时同样不再自动 observe，避免物理死循环。
+    失败结构化透传，语义与 click_with_runtime_context 一致。
     """
     session = _browser_session.get()
     if session is None:
         raise BrowserSessionError("Page exploration browser session is not bound.")
     try:
-        session.fill(locator, value)
+        result = session.fill(locator, value)
     except BrowserSessionError as exc:
-        return FillResult(success=False, error=str(exc))
-    return FillResult(success=True)
+        return FillResult(
+            success=False,
+            error=str(exc),
+            failure=ActionFailure(
+                error_type="action_failed",
+                summary="浏览器会话协议错误。",
+                raw=str(exc),
+            ),
+            effective_locator=locator,
+        )
+
+    parsed = _parse_action_result(
+        result,
+        raw_expr=locator,
+        default_error=f"Locator did not resolve to a visible element: {locator}",
+    )
+    if parsed["success"]:
+        return FillResult(
+            success=True,
+            failure=parsed.get("failure"),
+            effective_locator=parsed["effective_locator"],
+        )
+
+    failure: ActionFailure = parsed["failure"]
+    return FillResult(
+        success=False,
+        error=failure.summary or failure.raw,
+        failure=failure,
+        effective_locator=parsed["effective_locator"],
+    )
 
 
 def snapshot_with_runtime_context(url: str | None = None) -> SnapshotResult | None:

@@ -11,7 +11,11 @@ def test_unexplored_url(tmp_path: Path):
         project_id="proj-x",
         base_dir=tmp_path,
     )
-    assert result == {"explored": False, "has_state_tree": False}
+    assert result == {
+        "explored": False,
+        "has_state_tree": False,
+        "subgoals": {"total": 0, "completed": 0, "pending": 0},
+    }
 
 
 def test_old_yaml_no_state_tree(tmp_path: Path):
@@ -29,7 +33,11 @@ def test_old_yaml_no_state_tree(tmp_path: Path):
         project_id="proj-x",
         base_dir=tmp_path,
     )
-    assert result == {"explored": False, "has_state_tree": False}
+    assert result == {
+        "explored": False,
+        "has_state_tree": False,
+        "subgoals": {"total": 0, "completed": 0, "pending": 0},
+    }
 
 
 def test_v2_yaml_has_state_tree(tmp_path: Path):
@@ -72,4 +80,8 @@ def test_v2_yaml_for_different_path_does_not_mark_current_url_explored(tmp_path:
         project_id="proj-x",
         base_dir=tmp_path,
     )
-    assert result == {"explored": False, "has_state_tree": False}
+    assert result == {
+        "explored": False,
+        "has_state_tree": False,
+        "subgoals": {"total": 0, "completed": 0, "pending": 0},
+    }

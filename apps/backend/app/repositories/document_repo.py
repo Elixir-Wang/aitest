@@ -270,7 +270,7 @@ def find_version(db: Connection, version_id: str) -> Row | None:
 def find_latest_final_requirement_version(db: Connection, document_id: str) -> Row | None:
     return db.execute(
         """
-        SELECT id, document_id, version_no, file_path, source_action, change_summary, diff_summary, created_by, created_at
+        SELECT id, document_id, version_no, markdown_content, file_path, source_action, change_summary, diff_summary, created_by, created_at
         FROM source_document_versions
         WHERE document_id = ? AND source_action IN ('requirement_analysis', 'requirement_analysis_finalize')
         ORDER BY version_no DESC, created_at DESC, id DESC

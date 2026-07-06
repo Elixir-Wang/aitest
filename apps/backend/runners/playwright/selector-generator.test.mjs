@@ -49,7 +49,7 @@ describe("buildElementSelectors", () => {
     });
 
     assert.equal(selectors.primary_selector.kind, "text");
-    assert.equal(selectors.primary_selector.code, "page.getByText('搜索')");
+    assert.equal(selectors.primary_selector.code, "page.getByText('搜索', { exact: true })");
     assert.equal(selectors.fallback_selector.kind, "testid");
     assert.equal(selectors.fallback_selector.code, "page.getByTestId('search-submit')");
   });
@@ -92,7 +92,7 @@ describe("buildElementSelectors", () => {
     });
 
     assert.equal(selectors.primary_selector.kind, "text");
-    assert.equal(selectors.primary_selector.code, "page.getByText('工作台')");
+    assert.equal(selectors.primary_selector.code, "page.getByText('工作台', { exact: true })");
     assert.equal(selectors.fallback_selector.kind, "css");
     assert.doesNotMatch(JSON.stringify(selectors), /getByRole\('button'/);
   });

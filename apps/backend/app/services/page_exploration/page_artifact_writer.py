@@ -53,6 +53,9 @@ class MergeResult:
     added_element_keys: list[str] = field(default_factory=list)
     updated_element_keys: list[str] = field(default_factory=list)
     skipped_due_to_lock: bool = False
+    # P2 强校验拒收的 observation（含原因），LLM 可见
+    rejected_observations: list[dict] = field(default_factory=list)
+    depth_exceeded: list[dict] = field(default_factory=list)
 
 
 class PageArtifactWriter:
@@ -113,6 +116,17 @@ class PageArtifactWriter:
             }
         existing.setdefault("states", [])
 
+        # 集中校验整批 observation：失败整批跳过，并写到 MergeResult 里供 LLM 看见
+        rejected = self._validate_observations(observations, existing)
+        if rejected:
+            result.rejected_observations = rejected
+            observations = [
+                obs for index, obs in enumerate(observations)
+                if index not in {item["index"] for item in rejected}
+            ]
+            if not observations:
+                return existing
+
         for obs in observations:
             new_id = self._allocate_state_id(existing, obs)
             self._merge_one_state(existing, obs, new_id, result)
@@ -126,6 +140,149 @@ class PageArtifactWriter:
         existing["page"]["observed_url"] = observations[-1].observed_url
         existing["page"]["title"] = observations[0].page_title
         return existing
+
+    def _validate_observations(self, observations, existing) -> list[dict]:
+        """批量校验 observation，拒收"占位符 / 跨级 triggered_by"等坏数据。
+
+        校验规则（与 v2.0 addendum 对齐）：
+        1. dom_signature 不能是 "sha256:unknown" 占位
+        2. 非 root state 必须有 triggered_by；triggered_by.from_state 必须存在
+        3. triggered_by.from_state 不能跨级（只能指向当前 state 的直接父）
+        4. triggered_by.element_key 必须存在于 from_state 的 elements 中
+        5. depth 不能超过 16
+
+        返回：[{index, reason, field}, ...] 拒收列表
+        """
+        rejected: list[dict] = []
+        # 收集现有 state id（包括 children），方便查 from_state 是否存在
+        existing_state_ids = set()
+        existing_state_by_id: dict[str, dict] = {}
+        self._collect_states(existing["states"], existing_state_ids, existing_state_by_id)
+
+        # 本批内分配的 state id（按顺序），用于判断非 root state 的 from_state
+        # 实际上从 LLM 角度，所有非 root state 的 from_state 都应指向 existing 或 本批内已分配的 root/parent
+        batch_known_ids = set(existing_state_ids)
+        # 预先按本批 obs 顺序分配 state_id，把将要分配给 root/同批 parent 的 id 也加进 batch_known_ids
+        # （避免 dialog 引用同批尚未写入的 root 时被误判）
+        # 注意：分配算法依赖 max_n+1，需要按出现顺序递增调用。
+        virtual_existing = {"states": list(existing.get("states", []))}
+        # 真正分配时还会往 virtual_existing 推进。这里保守一些：只预算 root / 同批祖先。
+        for obs in observations:
+            if obs.state_type == "root" and (obs.parent_state_id is None or obs.parent_state_id not in batch_known_ids):
+                # root 直接挂在顶层，新分配的 id 加进 batch_known_ids
+                allocated = self._allocate_state_id(virtual_existing, obs)
+                batch_known_ids.add(allocated)
+                # 把分配后的虚拟节点 push 进 virtual_existing，让后续 root 序号递增
+                virtual_existing["states"].append({
+                    "id": allocated,
+                    "type": "root",
+                    "children": [],
+                    "depth": 1,
+                })
+
+        for index, obs in enumerate(observations):
+            # 1. dom_signature
+            if not obs.dom_signature or obs.dom_signature == "sha256:unknown" or obs.dom_signature.strip() == "":
+                rejected.append({
+                    "index": index,
+                    "reason": "dom_signature 不能为空或占位符 'sha256:unknown'，请使用 playwright_snap_tool 提供的 state_observation_hint。",
+                    "field": "dom_signature",
+                })
+                continue
+
+            # 5. depth 提前粗查（通过 page title 推断不了，但 state_type 通常对应 depth）
+            #   depth 在 _merge_one_state 才最终确定，这里只做粗略提醒
+            if obs.state_type not in {"root", "dialog", "drawer", "form", "list"}:
+                rejected.append({
+                    "index": index,
+                    "reason": f"未知 state_type: {obs.state_type}",
+                    "field": "state_type",
+                })
+                continue
+
+            # 2. non-root 必须有 triggered_by
+            if obs.state_type != "root" and obs.triggered_by is None:
+                rejected.append({
+                    "index": index,
+                    "reason": f"state_type={obs.state_type} 缺少 triggered_by，root state 才能没有 triggered_by。",
+                    "field": "triggered_by",
+                })
+                continue
+
+            if obs.triggered_by is not None:
+                from_state = obs.triggered_by.from_state
+                if not from_state:
+                    rejected.append({
+                        "index": index,
+                        "reason": "triggered_by.from_state 不能为空。",
+                        "field": "triggered_by.from_state",
+                    })
+                    continue
+                if from_state not in batch_known_ids and from_state not in existing_state_ids:
+                    rejected.append({
+                        "index": index,
+                        "reason": f"triggered_by.from_state={from_state} 不在已存在 state 中，请确认是直接父 state。",
+                        "field": "triggered_by.from_state",
+                    })
+                    continue
+                # 3. 跨级校验：from_state 的 depth 与新 state 的 depth 差必须为 1
+                from_depth = self._state_depth(existing["states"], from_state)
+                if from_depth is None:
+                    from_depth = 0  # 父不在 existing 中时（仅本批首次出现）允许 depth 差 1
+                # 新 state 深度在 _merge_one_state 才算出，这里记录 from_depth 供后续检查
+                obs._from_state_depth = from_depth
+                # 4. element_key 必须在 from_state.elements 中（如果 from_state 在 existing）
+                if from_state in existing_state_by_id:
+                    from_state_dict = existing_state_by_id[from_state]
+                    existing_element_keys = {
+                        e.get("key") for e in from_state_dict.get("elements", []) if isinstance(e, dict)
+                    }
+                    if obs.triggered_by.element_key not in existing_element_keys:
+                        # 不直接拒收（element 可能在 children 嵌套 state 里），
+                        # 但记录 warning 到 MergeResult
+                        result = getattr(self, "_current_result", None)  # 不可靠，留空
+                        # 改为：在 _merge_one_state 里以"warning 字段"形式记录
+                        # 这里只做硬校验：from_state 直接 element 必须存在；嵌套 children 放宽
+                        nested_keys: set[str] = set()
+                        self._collect_nested_element_keys(
+                            from_state_dict.get("children", []),
+                            nested_keys,
+                        )
+                        if (
+                            obs.triggered_by.element_key not in existing_element_keys
+                            and obs.triggered_by.element_key not in nested_keys
+                        ):
+                            rejected.append({
+                                "index": index,
+                                "reason": f"triggered_by.element_key={obs.triggered_by.element_key} 在 from_state={from_state} 的 elements 和 children 中都不存在。",
+                                "field": "triggered_by.element_key",
+                            })
+                            continue
+                batch_known_ids.add(f"{obs.page_id}__{obs.state_type}__pending")
+        return rejected
+
+    def _collect_states(self, states, ids_out, by_id_out):
+        for st in states:
+            ids_out.add(st.get("id"))
+            by_id_out[st.get("id")] = st
+            self._collect_states(st.get("children", []), ids_out, by_id_out)
+
+    def _state_depth(self, states, sid):
+        """返回 state id 的 depth；不在则 None。"""
+        for st in states:
+            if st.get("id") == sid:
+                return st.get("depth", 1)
+            nested = self._state_depth(st.get("children", []), sid)
+            if nested is not None:
+                return nested
+        return None
+
+    def _collect_nested_element_keys(self, children, out):
+        for st in children:
+            for el in st.get("elements", []):
+                if isinstance(el, dict) and el.get("key"):
+                    out.add(el["key"])
+            self._collect_nested_element_keys(st.get("children", []), out)
 
     def _allocate_state_id(self, existing, obs):
         prefix = f"{obs.page_id}__{obs.state_type}__"
@@ -192,6 +349,14 @@ class PageArtifactWriter:
         if obs.run_id not in target["observed_by_runs"]:
             target["observed_by_runs"].append(obs.run_id)
         target["dom_signature"] = self._compute_state_sig(obs.elements)
+
+        # v2.0 addendum 硬截断：state 嵌套深度超过 16 时停止探索。
+        # 这里只把超限事实写到 result 上，不阻止写入；上层 run loop 据此停止 LLM。
+        if target.get("depth", 0) > 16:
+            result.depth_exceeded.append({
+                "state_id": target["id"],
+                "depth": target["depth"],
+            })
 
     def _compute_state_sig(self, elements):
         flat = [{"source": {"role": e.source.get("role"), "name": e.source.get("name"),

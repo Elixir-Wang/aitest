@@ -3,7 +3,6 @@ import { chromium } from "playwright";
 import { buildSelectorCandidates } from "./selector-generator.mjs";
 import { verifySelectorCandidate } from "./selector-validator.mjs";
 import { parsePlaywrightLocatorString, isParseableLocatorString } from "./locator-parser.mjs";
-
 const [, , startUrl = "about:blank", channel = "", storageStatePath = ""] = process.argv;
 
 const navigationTimeout = Number(process.env.AI_TESTING_EXPLORATION_NAV_TIMEOUT_MS || "20000");
@@ -304,55 +303,152 @@ async function clickElement(elementIdOrLocator) {
     }
   }
 
-  throw new Error(`Unsupported locator: ${raw || ""}`);
+  // 不支持的 locator 形式也走结构化错误，避免 Python 侧只能拿到裸字符串
+  const before = await currentPageState();
+  return await buildActionResult({
+    success: false,
+    action: "click",
+    raw,
+    before,
+    failure: {
+      error_type: "action_failed",
+      error: `Unsupported locator: ${raw || ""}`,
+      error_summary: `不支持的 locator 写法：${raw || ""}。只支持 getByRole / getByLabel / getByTestId / getByText / getByPlaceholder / getByAltText / getByTitle / page.locator，以及 filter({ hasText })、filter({ has })、容器内 getBy*、and/or 受控链式；不支持 first/nth/evaluate 等任意 JS 链式。`,
+    },
+    effectiveLocator: null,
+  });
 }
 
 async function clickViaLiveLocator(liveLocator, rawExpr) {
   const before = await currentPageState();
-  await cleanupTransientOverlays();
-  const visibleTarget = await firstVisibleLocator(liveLocator);
-  const target = visibleTarget ? await actionableClickTargetFor(visibleTarget) : null;
-  if (!target) {
-    throw new Error(`Locator did not resolve to a visible element: ${rawExpr}`);
+  const matchCount = await liveLocator.count().catch(() => 0);
+  if (matchCount > 1) {
+    const visibleMatches = await visibleLocators(liveLocator);
+    if (visibleMatches.length !== 1) {
+      return await buildActionResult({
+        success: false,
+        action: "click",
+        raw: rawExpr,
+        before,
+        failure: ambiguousLocatorFailure(rawExpr, matchCount),
+        effectiveLocator: null,
+      });
+    }
+    liveLocator = visibleMatches[0];
   }
-  await Promise.all([
-    page.waitForLoadState("domcontentloaded", { timeout: 3000 }).catch(() => {}),
-    target.click({ timeout: 3000 }),
-  ]);
-  await page.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
-  await page.waitForTimeout(250).catch(() => {});
-  const after = await currentPageState();
-  const placeholderElement = {
-    id: rawExpr,
-    name: rawExpr,
-    primary_selector: { kind: "playwright_api", code: rawExpr },
-  };
-  return {
-    status: "passed",
-    element_id: "",
-    element_name: rawExpr,
-    action_type: "click",
-    selector: rawExpr,
-    selector_kind: "playwright_api",
-    before_url: before.url,
-    after_url: after.url,
-    before_title: before.title,
-    after_title: after.title,
-    url_changed: normalizeUrl(before.url) !== normalizeUrl(after.url),
-    title_changed: before.title !== after.title,
-    state_signature_changed: before.signature !== after.signature,
-    new_dialog_detected: await hasVisibleDialog(page),
-    attempts: [{
-      selector: rawExpr,
-      selector_kind: "playwright_api",
-      error: "",
-      error_type: "",
-      error_summary: "",
-    }],
-    error: "",
-    error_type: "",
-    error_summary: "",
-  };
+  const initialVisible = await firstVisibleLocator(liveLocator);
+  if (!initialVisible) {
+    const failure = classifyActionError(new Error(`Locator did not resolve to a visible element: ${rawExpr}`));
+    return await buildActionResult({
+      success: false,
+      action: "click",
+      raw: rawExpr,
+      before,
+      failure,
+      effectiveLocator: null,
+    });
+  }
+  const target = await actionableClickTargetFor(initialVisible);
+  if (!target) {
+    const failure = classifyActionError(new Error(`Locator did not resolve to a clickable target: ${rawExpr}`));
+    return await buildActionResult({
+      success: false,
+      action: "click",
+      raw: rawExpr,
+      before,
+      failure,
+      effectiveLocator: null,
+    });
+  }
+  let clickError = null;
+  try {
+    await Promise.all([
+      page.waitForLoadState("domcontentloaded", { timeout: 3000 }).catch(() => {}),
+      target.click({ timeout: 3000 }),
+    ]);
+  } catch (error) {
+    clickError = error;
+  }
+  if (!clickError) {
+    await page.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
+    await page.waitForTimeout(250).catch(() => {});
+    const after = await currentPageState();
+    return await buildActionResult({
+      success: true,
+      action: "click",
+      raw: rawExpr,
+      before,
+      after,
+      effectiveLocator: rawExpr,
+    });
+  }
+  const classified = classifyActionError(clickError);
+  if (classified.error_type === "pointer_intercepted") {
+    await cleanupTransientOverlays();
+    const retryCount = await liveLocator.count().catch(() => 0);
+    if (retryCount > 1) {
+      return await buildActionResult({
+        success: false,
+        action: "click",
+        raw: rawExpr,
+        before,
+        failure: ambiguousLocatorFailure(rawExpr, retryCount),
+        effectiveLocator: null,
+      });
+    }
+    const retryVisible = await firstVisibleLocator(liveLocator);
+    if (retryVisible) {
+      const retryTarget = await actionableClickTargetFor(retryVisible);
+      let retryError = null;
+      try {
+        await Promise.all([
+          page.waitForLoadState("domcontentloaded", { timeout: 3000 }).catch(() => {}),
+          retryTarget.click({ timeout: 3000 }),
+        ]);
+      } catch (error) {
+        retryError = error;
+      }
+      if (!retryError) {
+        await page.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
+        await page.waitForTimeout(250).catch(() => {});
+        const after = await currentPageState();
+        return await buildActionResult({
+          success: true,
+          action: "click",
+          raw: rawExpr,
+          before,
+          after,
+          effectiveLocator: rawExpr,
+        });
+      }
+      return await buildActionResult({
+        success: false,
+        action: "click",
+        raw: rawExpr,
+        before,
+        failure: classifyActionError(retryError),
+        effectiveLocator: null,
+      });
+    }
+  }
+  if (classified.error_type === "locator_not_unique" || /resolved to \d+ elements/i.test(classified.error)) {
+    return await buildActionResult({
+      success: false,
+      action: "click",
+      raw: rawExpr,
+      before,
+      failure: classified,
+      effectiveLocator: null,
+    });
+  }
+  return await buildActionResult({
+    success: false,
+    action: "click",
+    raw: rawExpr,
+    before,
+    failure: classified,
+    effectiveLocator: null,
+  });
 }
 
 async function fillField(elementIdOrLocator, value) {
@@ -365,36 +461,200 @@ async function fillField(elementIdOrLocator, value) {
     }
   }
 
-  throw new Error(`Unsupported locator: ${raw || ""}`);
+  const before = await currentPageState();
+  return await buildActionResult({
+    success: false,
+    action: "fill",
+    raw,
+    before,
+    failure: {
+      error_type: "action_failed",
+      error: `Unsupported locator: ${raw || ""}`,
+      error_summary: `不支持的 locator 写法：${raw || ""}。只支持 getByRole / getByLabel / getByTestId / getByText / getByPlaceholder / getByAltText / getByTitle / page.locator，以及 filter({ hasText })、filter({ has })、容器内 getBy*、and/or 受控链式；不支持 first/nth/evaluate 等任意 JS 链式。`,
+    },
+    effectiveLocator: null,
+  });
 }
 
 async function fillViaLiveLocator(liveLocator, value, rawExpr) {
   const before = await currentPageState();
-  await cleanupTransientOverlays();
+  const matchCount = await liveLocator.count().catch(() => 0);
+  if (matchCount > 1) {
+    const visibleMatches = await visibleLocators(liveLocator);
+    if (visibleMatches.length !== 1) {
+      return await buildActionResult({
+        success: false,
+        action: "fill",
+        raw: rawExpr,
+        before,
+        failure: ambiguousLocatorFailure(rawExpr, matchCount),
+        effectiveLocator: null,
+      });
+    }
+    liveLocator = visibleMatches[0];
+  }
   const target = await firstVisibleLocator(liveLocator);
   if (!target) {
-    throw new Error(`Locator did not resolve to a visible element: ${rawExpr}`);
+    const failure = classifyActionError(new Error(`Locator did not resolve to a visible element: ${rawExpr}`));
+    return await buildActionResult({
+      success: false,
+      action: "fill",
+      raw: rawExpr,
+      before,
+      failure,
+      effectiveLocator: null,
+    });
   }
-  await target.fill(value, { timeout: 3000 });
-  await page.waitForTimeout(500).catch(() => {});
-  const after = await currentPageState();
-  return {
-    status: "passed",
-    element_id: "",
-    element_name: rawExpr,
-    action_type: "fill",
-    selector: rawExpr,
-    selector_kind: "playwright_api",
-    before_url: before.url,
-    after_url: after.url,
-    value_applied: true,
-    state_signature_changed: before.signature !== after.signature,
-    result_count_changed: before.signature !== after.signature,
-    attempts: [],
-    error: "",
+  let fillError = null;
+  try {
+    await target.fill(value, { timeout: 3000 });
+    await page.waitForTimeout(500).catch(() => {});
+  } catch (error) {
+    fillError = error;
+  }
+  if (!fillError) {
+    const after = await currentPageState();
+    return await buildActionResult({
+      success: true,
+      action: "fill",
+      raw: rawExpr,
+      before,
+      after,
+      effectiveLocator: rawExpr,
+      valueApplied: true,
+    });
+  }
+  const classified = classifyActionError(fillError);
+  if (classified.error_type === "pointer_intercepted") {
+    await cleanupTransientOverlays();
+    const retryCount = await liveLocator.count().catch(() => 0);
+    if (retryCount > 1) {
+      return await buildActionResult({
+        success: false,
+        action: "fill",
+        raw: rawExpr,
+        before,
+        failure: ambiguousLocatorFailure(rawExpr, retryCount),
+        effectiveLocator: null,
+      });
+    }
+    const retryTarget = await firstVisibleLocator(liveLocator);
+    if (retryTarget) {
+      let retryError = null;
+      try {
+        await retryTarget.fill(value, { timeout: 3000 });
+        await page.waitForTimeout(500).catch(() => {});
+      } catch (error) {
+        retryError = error;
+      }
+      if (!retryError) {
+        const after = await currentPageState();
+        return await buildActionResult({
+          success: true,
+          action: "fill",
+          raw: rawExpr,
+          before,
+          after,
+          effectiveLocator: rawExpr,
+          valueApplied: true,
+        });
+      }
+      return await buildActionResult({
+        success: false,
+        action: "fill",
+        raw: rawExpr,
+        before,
+        failure: classifyActionError(retryError),
+        effectiveLocator: null,
+      });
+    }
+  }
+  if (classified.error_type === "locator_not_unique" || /resolved to \d+ elements/i.test(classified.error)) {
+    return await buildActionResult({
+      success: false,
+      action: "fill",
+      raw: rawExpr,
+      before,
+      failure: classified,
+      effectiveLocator: null,
+    });
+  }
+  return await buildActionResult({
+    success: false,
+    action: "fill",
+    raw: rawExpr,
+    before,
+    failure: classified,
+    effectiveLocator: null,
+  });
+}
+
+/**
+ * 统一构造 action_result 协议。
+ * 成功：{ success: true, action, raw, before, after, effective_locator, ... }
+ * 失败：{ success: false, action, raw, before, failure: { error_type, summary, raw, recovered, recovery_warning }, effective_locator: null }
+ */
+async function buildActionResult({
+  success,
+  action,
+  raw,
+  before,
+  after,
+  failure = null,
+  effectiveLocator = null,
+  recovered = false,
+  recoveryWarning = "",
+  originalFailure = null,
+  valueApplied = false,
+}) {
+  const result = {
+    success,
+    status: success ? "passed" : "failed",
+    action,
+    raw,
+    effective_locator: effectiveLocator,
     error_type: "",
     error_summary: "",
+    error: "",
   };
+  if (after) {
+    result.before_url = before.url;
+    result.after_url = after.url;
+    result.before_title = before.title;
+    result.after_title = after.title;
+    result.url_changed = normalizeUrl(before.url) !== normalizeUrl(after.url);
+    result.title_changed = before.title !== after.title;
+    result.state_signature_changed = before.signature !== after.signature;
+    if (action === "click") {
+      result.new_dialog_detected = await hasVisibleDialog(page);
+    }
+  }
+  if (action === "fill") {
+    result.value_applied = valueApplied;
+  }
+  if (!success) {
+    result.failure = {
+      error_type: failure.error_type || "action_failed",
+      summary: failure.error_summary || failure.error || "动作执行失败。",
+      raw: failure.error || "动作执行失败。",
+      recovered: false,
+      recovery_warning: "",
+    };
+    result.error_type = result.failure.error_type;
+    result.error_summary = result.failure.summary;
+    result.error = result.failure.raw;
+  } else if (recovered) {
+    result.failure = {
+      error_type: originalFailure?.error_type || "locator_not_unique",
+      summary: originalFailure?.error_summary || "严格模式违规。",
+      raw: originalFailure?.error || "",
+      recovered: true,
+      recovery_warning: recoveryWarning,
+    };
+    result.error_type = result.failure.error_type;
+    result.error_summary = result.failure.summary;
+  }
+  return result;
 }
 
 async function goBack() {
@@ -467,18 +727,22 @@ async function actionableClickTargetFor(locator) {
 }
 
 async function firstVisibleLocator(locator) {
+  const visible = await visibleLocators(locator);
+  return visible[0] || null;
+}
+
+async function visibleLocators(locator) {
   const count = await locator.count().catch(() => 0);
-  if (count === 0) {
-    return null;
-  }
+  if (count === 0) return [];
   const limit = Math.min(count, 10);
+  const visible = [];
   for (let index = 0; index < limit; index += 1) {
     const candidate = locator.nth(index);
     if (await candidate.isVisible().catch(() => false)) {
-      return candidate;
+      visible.push(candidate);
     }
   }
-  return null;
+  return visible;
 }
 
 async function cleanupTransientOverlays() {
@@ -524,6 +788,14 @@ function classifyActionError(error) {
   };
 }
 
+function ambiguousLocatorFailure(rawExpr, count) {
+  return {
+    error: `Locator matched ${count} elements: ${rawExpr}`,
+    error_type: "locator_not_unique",
+    error_summary: `定位器匹配到 ${count} 个元素。请使用 getByRole/getByLabel/getByText 与 filter({ hasText }) 或父级容器链式定位，把范围缩小到唯一元素。`,
+  };
+}
+
 function compactErrorLine(message, pattern = null) {
   const lines = String(message || "").split(/\n/).map((line) => line.trim()).filter(Boolean);
   const selected = pattern ? lines.find((line) => pattern.test(line)) : lines[0];
@@ -560,6 +832,9 @@ async function collectDomFacts(browserPage) {
       "[tabindex]",
       "[class*='menu-item']",
       "[class*='menu-content']",
+      "[class*='option' i]",
+      "[class*='item' i]",
+      "[class*='card' i]",
       "[class*='cursor-pointer']",
       "[class*='more-btn']",
     ].join(",");
@@ -599,11 +874,14 @@ async function collectDomFacts(browserPage) {
     const hasClickableHint = (el) => {
       const className = String(el.getAttribute("class") || "");
       const tabIndex = Number(el.getAttribute("tabindex"));
+      const cursor = window.getComputedStyle(el).cursor;
       return Boolean(
         el.getAttribute("onclick")
           || el.getAttribute("role")
           || (!Number.isNaN(tabIndex) && tabIndex >= 0)
+          || cursor === "pointer"
           || /\b(menu-item|menu-content|cursor-pointer|more-btn)\b/.test(className)
+          || /(?:^|[-_\s])(option|item|card)(?:$|[-_\s])/i.test(className)
       );
     };
     const roleOf = (el) => {
@@ -671,13 +949,24 @@ async function collectDomFacts(browserPage) {
         stable_text: containerName,
       };
     };
-  const elementFacts = Array.from(document.querySelectorAll(interactiveSelector))
+    const pointerCandidateSelector = "div,span,li,article,section";
+    const explicitCandidates = Array.from(document.querySelectorAll(interactiveSelector));
+    const explicitSet = new Set(explicitCandidates);
+    const pointerCandidates = Array.from(document.querySelectorAll(pointerCandidateSelector))
+      .filter((el) => !explicitSet.has(el))
+      .filter(visible)
+      .filter((el) => hasClickableHint(el))
+      .filter((el) => clean(el.innerText || el.textContent, 160))
+      .slice(0, 40);
+  const elementFacts = [...explicitCandidates, ...pointerCandidates]
     .filter(visible)
     .map((el, index) => {
       const { role, roleSource } = roleOf(el);
       const tagName = el.tagName.toLowerCase();
       const name = labelOf(el);
       const actionType = ["input", "textarea", "select"].includes(tagName) && !["button", "checkbox", "radio"].includes(role) ? "fill" : "click";
+      const nativeInteractive = ["a", "button", "input", "textarea", "select"].includes(tagName);
+      const clickHint = hasClickableHint(el);
       return {
         index,
         role,
@@ -691,11 +980,13 @@ async function collectDomFacts(browserPage) {
         action_type: actionType,
         href: el.href || "",
         enabled: !el.disabled && el.getAttribute("aria-disabled") !== "true",
+        interactive_hint: nativeInteractive || clickHint,
         visible: true,
       };
     })
     .filter((item) => {
       if (item.action_type === "fill") return true;
+      if (!item.interactive_hint) return false;
       const hasStableName = Boolean(item.name || item.text || item.testId || item.href);
       if (!hasStableName) return false;
       return item.name.length <= 120 || item.role !== "button";

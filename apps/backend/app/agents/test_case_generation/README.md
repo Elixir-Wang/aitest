@@ -27,8 +27,7 @@ apps/backend/app/agents/test_case_generation/
 {
     "requirement_name": "用户管理系统",
     "requirement_content": "# 需求理解\n\n## 1. 需求背景\n...",
-    "generation_scope": "只生成登录模块和用户管理模块",  # 可选
-    "include_company_knowledge": false  # 是否包含公司知识库
+    "generation_scope": "只生成登录模块和用户管理模块"  # 可选
 }
 ```
 
@@ -50,10 +49,22 @@ apps/backend/app/agents/test_case_generation/
                     "type": "功能测试",
                     "precondition": "用户已注册且状态为启用",
                     "steps": [
-                        "打开登录页面",
-                        "在用户名输入框输入 'test@example.com'",
-                        "在密码输入框输入正确的密码",
-                        "点击'登录'按钮"
+                        {
+                            "action": "打开登录页面",
+                            "expected_result": "登录页面加载完成，用户名和密码输入框可见"
+                        },
+                        {
+                            "action": "在用户名输入框输入 'test@example.com'",
+                            "expected_result": "用户名输入框展示已输入的邮箱"
+                        },
+                        {
+                            "action": "在密码输入框输入正确的密码",
+                            "expected_result": "密码输入框展示已输入的掩码内容"
+                        },
+                        {
+                            "action": "点击'登录'按钮",
+                            "expected_result": "登录成功，页面跳转到首页"
+                        }
                     ],
                     "expected_result": "登录成功，页面跳转到首页",
                     "test_data": "用户名: test@example.com",
@@ -64,56 +75,6 @@ apps/backend/app/agents/test_case_generation/
     ]
 }
 ```
-
-## API 接口
-
-### POST /api/v1/projects/{project_id}/test-case-sets/generate
-
-生成测试用例集。
-
-**请求体**：
-
-```json
-{
-    "requirement_doc_id": "req-abc123",
-    "generation_scope": "只生成登录模块和订单模块的测试用例",
-    "include_company_knowledge": false
-}
-```
-
-**响应**：
-
-```json
-{
-    "summary": "本测试用例集覆盖了...",
-    "total_count": 25,
-    "modules": [...],
-    "markdown": "# 测试用例集\n\n..."
-}
-```
-
-## 前端组件
-
-### TestCaseGenerationForm
-
-测试用例生成表单组件。
-
-**属性**：
-- `projectId`: 项目 ID
-- `requirementDocId`: 需求文档 ID
-- `requirementDocTitle`: 需求文档标题
-- `onSuccess`: 生成成功回调
-- `onCancel`: 取消回调
-
-### TestCaseGenerationResult
-
-测试用例展示组件。
-
-**属性**：
-- `summary`: 测试用例集概述
-- `totalCount`: 测试用例总数
-- `modules`: 按模块组织的测试用例
-- `markdown`: Markdown 格式（可下载）
 
 ## 使用示例
 
@@ -128,7 +89,6 @@ input_data = TestCaseGenerationInput(
     requirement_name="用户管理系统",
     requirement_content=final_requirement_content,
     generation_scope="",
-    include_company_knowledge=False,
 )
 
 # 生成测试用例
@@ -136,21 +96,6 @@ result = await generate_test_cases(input_data)
 
 print(f"生成了 {result.total_count} 个测试用例")
 print(result.to_markdown())
-```
-
-### 前端调用
-
-```typescript
-import { TestCaseGenerationForm } from "@/components/ai-testing/test-case-generation-form";
-
-<TestCaseGenerationForm
-  projectId="proj-123"
-  requirementDocId="req-456"
-  requirementDocTitle="用户管理系统"
-  onSuccess={(result) => {
-    console.log(`生成了 ${result.total_count} 个测试用例`);
-  }}
-/>
 ```
 
 ## 测试用例类型
@@ -175,7 +120,6 @@ import { TestCaseGenerationForm } from "@/components/ai-testing/test-case-genera
 2. Agent 会自动从最终需求文档中提取信息
 3. 生成的测试用例可以导出为 Markdown 格式
 4. 支持指定生成范围（只生成特定模块）
-5. 可以选择是否包含公司测试规范
 
 ## 扩展方向
 

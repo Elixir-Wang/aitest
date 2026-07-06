@@ -13,6 +13,7 @@ RUNNING_INDICATOR_SOURCE_TYPES = {
     "exploration_run",
     "requirement_file",
     "requirement_analysis_run",
+    "requirement_finalization_run",
     "test_case_generation_run",
 }
 
@@ -23,9 +24,9 @@ EXPLORATION_STATUS = {
     "stopping": (RUNNING_GROUP, "停止中"),
     "cancelled": (COMPLETED_GROUP, "已取消"),
     "interrupted": (COMPLETED_GROUP, "已中断"),
-    "partial": (COMPLETED_GROUP, "部分完成"),
     "completed": (COMPLETED_GROUP, "已完成"),
     "blocked": (FAILED_GROUP, "探索阻塞"),
+    "failed": (FAILED_GROUP, "探索失败"),
 }
 
 REQUIREMENT_FILE_STATUS = {
@@ -46,6 +47,12 @@ REQUIREMENT_ANALYSIS_STATUS = {
     "failed": (FAILED_GROUP, "分析失败"),
 }
 
+REQUIREMENT_FINALIZATION_STATUS = {
+    "running": (RUNNING_GROUP, "转换中"),
+    "completed": (COMPLETED_GROUP, "转换完成"),
+    "failed": (FAILED_GROUP, "转换失败"),
+}
+
 TEST_CASE_GENERATION_STATUS = {
     "queued": (RUNNING_GROUP, "排队中"),
     "running": (RUNNING_GROUP, "生成中"),
@@ -57,6 +64,7 @@ STATUS_META_BY_SOURCE_TYPE = {
     "exploration_run": EXPLORATION_STATUS,
     "requirement_file": REQUIREMENT_FILE_STATUS,
     "requirement_analysis_run": REQUIREMENT_ANALYSIS_STATUS,
+    "requirement_finalization_run": REQUIREMENT_FINALIZATION_STATUS,
     "test_case_generation_run": TEST_CASE_GENERATION_STATUS,
 }
 
@@ -116,6 +124,7 @@ def get_task_by_source_for_event(*, source_type: str, source_id: str) -> dict | 
             *_exploration_tasks(db, project_names),
             *_requirement_file_tasks(db, project_names),
             *_requirement_analysis_run_tasks(db, project_names),
+            *_requirement_finalization_tasks(db, project_names),
             *_test_case_generation_tasks(db, project_names),
         ]:
             if task["source_type"] == source_type and task["source_id"] == source_id:
@@ -235,6 +244,7 @@ def _collect_visible_tasks(actor) -> list[dict]:
             *_exploration_tasks(db, project_names),
             *_requirement_file_tasks(db, project_names),
             *_requirement_analysis_run_tasks(db, project_names),
+            *_requirement_finalization_tasks(db, project_names),
             *_test_case_generation_tasks(db, project_names),
         ]
 
@@ -345,6 +355,40 @@ def _requirement_analysis_run_tasks(db, project_names: dict[str, str]) -> list[d
             created_at=row["created_at"],
             updated_at=row["updated_at"] or row["created_at"],
             detail_url=f"/projects/{row['project_id']}/requirements/{row['document_id']}",
+        )
+        for row in rows
+    ]
+
+
+def _requirement_finalization_tasks(db, project_names: dict[str, str]) -> list[dict]:
+    if not project_names or not _table_exists(db, "requirement_finalization_runs"):
+        return []
+    rows = db.execute(
+        """
+        SELECT r.id, r.project_id, r.document_id, r.status, r.summary, r.failure_reason,
+               r.created_at, r.updated_at, d.name AS document_name
+        FROM requirement_finalization_runs r
+        JOIN source_documents d ON d.id = r.document_id
+        WHERE r.project_id IN ({})
+        """.format(_placeholders(project_names)),
+        tuple(project_names),
+    ).fetchall()
+    return [
+        _task(
+            task_id=f"requirement_finalization:{row['id']}",
+            source_type="requirement_finalization_run",
+            source_id=row["id"],
+            project_id=row["project_id"],
+            project_name=project_names[row["project_id"]],
+            module="requirement",
+            module_label="最终需求",
+            title=row["document_name"],
+            status=row["status"],
+            status_meta=REQUIREMENT_FINALIZATION_STATUS,
+            summary=row["failure_reason"] if row["status"] == "failed" and row["failure_reason"] else row["summary"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"] or row["created_at"],
+            detail_url=f"/projects/{row['project_id']}/requirements/{row['document_id']}?tab=final",
         )
         for row in rows
     ]

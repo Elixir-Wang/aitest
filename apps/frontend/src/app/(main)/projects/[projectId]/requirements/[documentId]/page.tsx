@@ -1322,6 +1322,7 @@ export default function DocumentDetailPage() {
     }
     setFinalizingRequirement(true);
     try {
+      notifyAiTaskStarted();
       const result = await apiRequest<RequirementAnalysisFinalizeResponse>(
         `/projects/${projectId}/requirements/${documentId}/analysis/finalize`,
         {

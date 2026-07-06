@@ -7,6 +7,10 @@ const pageSource = readFileSync(
   "utf8",
 );
 const alertDialogSource = readFileSync(new URL("../src/components/ui/alert-dialog.tsx", import.meta.url), "utf8");
+const taskRunningIndicatorSource = readFileSync(
+  new URL("../src/components/ai-testing/task-running-indicator.tsx", import.meta.url),
+  "utf8",
+);
 
 test("requirement detail exposes requirement understanding and clarification subtabs", () => {
   assert.match(pageSource, /<TabsTrigger value="analysis">需求分析<\/TabsTrigger>/);
@@ -133,11 +137,19 @@ test("requirement analysis confirmation uses the standard alert dialog", () => {
 test("preliminary requirement can be finalized into the final requirement tab", () => {
   assert.match(pageSource, />转为最终需求</);
   assert.match(pageSource, /\/analysis\/finalize/);
+  assert.match(
+    pageSource,
+    /function finalizePreliminaryRequirement[\s\S]*notifyAiTaskStarted\(\)[\s\S]*\/analysis\/finalize/,
+  );
   assert.match(pageSource, /toast\.success\("已转为最终需求"\)/);
   assert.match(pageSource, /setActiveTab\("final"\)/);
   assert.match(pageSource, /const canFinalizeRequirement = Boolean\(/);
   assert.match(pageSource, /\{canFinalizeRequirement \? \([\s\S]*转为最终需求[\s\S]*\) : null\}/);
   assert.match(pageSource, /尚未生成最终需求，请先在初步需求中点击“转为最终需求”。/);
+});
+
+test("final requirement conversion can appear in the top running task indicator", () => {
+  assert.match(taskRunningIndicatorSource, /"requirement_finalization_run"/);
 });
 
 test("clarification tab keeps the clickable answer structure", () => {

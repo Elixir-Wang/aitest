@@ -84,6 +84,17 @@ def test_execute_exploration_async_invokes_deep_agent_with_user_message(monkeypa
                     "- 这是目标探索：以探索目标为主线和完成条件，优先执行目标描述的页面流程。\n"
                     "- 不要扩展为全量功能盘点；只探索完成目标所必需的页面、弹窗、字段和状态。\n"
                     "- 目标完成、被阻塞或达到预算上限后停止并总结，不要继续无关分支。\n"
+                    "- **第一步必须用 `write_todos` 把上面“探索目标”拆成 3-7 个可验证子步骤**。\n"
+                    "  每条包含：动词开头的动作描述 + 明确的完成判据。\n"
+                    "- 后续每完成一个子步骤，必须 `write_todos` 标记 completed，再开始下一个。\n"
+                    "- 子步骤全部 completed 或被阻塞时立即停止，输出阶段总结。\n"
+                    "\n"
+                    "目标分解模板（请按此思路调整后写入 write_todos）：\n"
+                    "  1. 步骤 1 / 进入入口：定位目标“进入工作台，新建自主规划agent，随机输入名称，进入草稿页面，调试预览对话框输入hi”的入口页面，用 snap 完成基线快照（完成判据：snapshot 中能看到入口元素，且 URL/标题符合预期）。\n"
+                    "  2. 步骤 2 / 第一步动作：执行目标描述的第一个动作（点击/输入/选择），完成后立即 snap 校验（完成判据：URL/弹窗/列表/详情页有可观察的预期变化）。\n"
+                    "  3. 步骤 3 / 中间流程：按目标描述的顺序推进，每个动作都 snap 验证，失败时用 filter({ hasText }) / 父级容器链式定位缩小范围后再重试。\n"
+                    "  4. 步骤 4 / 关键表单 / 提交：填写目标涉及的关键字段并提交，记录成功提示、跳转或列表更新（完成判据：出现成功 Toast 或跳到详情/列表）。\n"
+                    "  5. 步骤 5 / 终点确认：到达目标终点后，记录核心元素的稳健定位器（优先 getByRole / getByLabel / getByTestId，回退到 filter({hasText}) 链式），并在 merge_page_artifact_tool 中沉淀为 state tree。\n"
                     "最多探索 3 个页面。"
                 ),
             }
@@ -399,6 +410,38 @@ def test_exploration_detail_reads_persisted_timeline_events(monkeypatch, tmp_pat
     assert [event["event_id"] for event in events] == ["evt-000001", "evt-000002"]
     assert events[0]["payload"]["tool_name"] == "playwright_click_tool"
     assert events[0]["display"]["summary"] == "点击 登录"
+
+
+def test_exploration_detail_reads_all_persisted_timeline_events(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+    run_dir = tmp_path / "project-1" / "page_exploration" / "runs" / "run-long-log"
+    run_dir.mkdir(parents=True)
+    events_path = run_dir / "timeline_events.jsonl"
+    events_path.write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "event_id": f"evt-{index:06d}",
+                    "run_id": "run-long-log",
+                    "type": "agent_thought",
+                    "payload": {"status": "completed"},
+                    "display": {"kind": "thought", "title": "Agent", "summary": f"输出 {index}"},
+                    "occurred_at": "2026-07-01T02:14:07+00:00",
+                },
+                ensure_ascii=False,
+            )
+            for index in range(1, 221)
+        ),
+        encoding="utf-8",
+    )
+
+    events = page_exploration_service._read_recent_timeline_events(
+        {"project_id": "project-1", "id": "run-long-log"}
+    )
+
+    assert len(events) == 220
+    assert events[0]["event_id"] == "evt-000001"
+    assert events[-1]["event_id"] == "evt-000220"
 
 
 def test_invoke_agent_checkpoints_snapshot_as_page_artifact(monkeypatch, tmp_path: Path) -> None:
@@ -974,6 +1017,171 @@ def test_projection_tool_events_publish_readable_whitelisted_sse_payloads() -> N
     assert "very long debug output" not in json.dumps(events, ensure_ascii=False)
 
 
+def test_projection_tool_result_with_success_false_is_failed_event() -> None:
+    tool_inputs: dict[str, dict] = {}
+
+    page_exploration_service._projection_chunk_to_timeline_events(
+        "updates",
+        {
+            "agent": {
+                "messages": [
+                    {
+                        "tool_calls": [
+                            {
+                                "id": "tool-run-failed",
+                                "name": "playwright_click_tool",
+                                "args": {"locator": "page.getByRole('button', { name: '编辑' })"},
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        raw_event_id="evt-failed-start",
+        tool_inputs=tool_inputs,
+    )
+    completed = page_exploration_service._projection_chunk_to_timeline_events(
+        "updates",
+        {
+            "tools": {
+                "messages": [
+                    {
+                        "type": "tool",
+                        "tool_call_id": "tool-run-failed",
+                        "name": "playwright_click_tool",
+                        "content": json.dumps(
+                            {
+                                "success": False,
+                                "failure": {
+                                    "error_type": "locator_not_unique",
+                                    "summary": "定位器匹配到多个元素。",
+                                },
+                            },
+                            ensure_ascii=False,
+                        ),
+                    }
+                ]
+            }
+        },
+        raw_event_id="evt-failed-end",
+        tool_inputs=tool_inputs,
+    )
+
+    assert [event["type"] for event in completed] == ["agent_tool_failed"]
+    assert completed[0]["payload"]["status"] == "failed"
+    assert completed[0]["display"]["fields"][-1]["value"] == "失败"
+
+
+def test_write_exploration_report_includes_goal_failures_and_quality_warnings(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run-report"
+    run_dir.mkdir()
+    report = page_exploration_service._write_exploration_report(
+        run_dir=run_dir,
+        run_id="run-report",
+        start_url="https://example.test/start",
+        exploration_mode="goal",
+        page_artifacts=[
+            (
+                Path("page-list.yaml"),
+                {
+                    "page": {"semantic_title": "列表页", "url": "https://example.test/list"},
+                    "states": [{"elements": []}],
+                },
+            )
+        ],
+        goal="创建一个新条目并发布",
+        timeline_events=[
+            {
+                "type": "agent_plan_updated",
+                "payload": {
+                    "plan_steps": [
+                        {"description": "打开列表页", "status": "completed"},
+                        {"description": "点击发布", "status": "pending"},
+                    ]
+                },
+            },
+            {
+                "type": "agent_tool_failed",
+                "payload": {
+                    "tool_name": "playwright_click_tool",
+                    "output": {
+                        "failure": {
+                            "error_type": "locator_not_unique",
+                            "summary": "定位器匹配到多个元素。",
+                        }
+                    },
+                },
+            },
+        ],
+        artifact_quality_warnings=["page-list.yaml 没有采集到可操作元素"],
+    )
+
+    content = report.read_text(encoding="utf-8")
+
+    assert "探索目标" in content
+    assert "创建一个新条目并发布" in content
+    assert "子目标状态" in content
+    assert "点击发布" in content
+    assert "定位器匹配到多个元素" in content
+    assert "产物质量提示" in content
+    assert "没有采集到可操作元素" in content
+
+
+def test_exploration_completion_status_is_failed_for_step_errors(tmp_path: Path) -> None:
+    # agent_step_error 事件导致失败状态
+    assert page_exploration_service._exploration_completion_status(
+        [
+            {
+                "type": "agent_step_error",
+                "payload": {"error": "导航超时"},
+            }
+        ]
+    ) == "failed"
+
+    # 没有 step_error 事件则返回完成状态（即使有失败的工具调用）
+    assert page_exploration_service._exploration_completion_status(
+        [
+            {
+                "type": "agent_tool_failed",
+                "payload": {"tool_name": "playwright_click_tool"},
+            }
+        ]
+    ) == "completed"
+
+    # 有未完成的计划步骤也返回完成状态
+    assert page_exploration_service._exploration_completion_status(
+        [
+            {
+                "type": "agent_plan_updated",
+                "payload": {
+                    "plan_steps": [
+                        {"description": "打开页面", "status": "completed"},
+                        {"description": "提交表单", "status": "pending"},
+                    ]
+                },
+            }
+        ]
+    ) == "completed"
+
+    assert page_exploration_service._exploration_completion_status([]) == "completed"
+
+
+def test_write_exploration_summary_uses_completion_status(tmp_path: Path) -> None:
+    page_exploration_service._write_exploration_summary(
+        run_dir=tmp_path,
+        run_id="run-complete",
+        start_url="https://example.test",
+        scope="工作台",
+        exploration_mode="goal",
+        max_pages=10,
+        page_artifacts=[],
+        completion_status="completed",
+    )
+
+    content = (tmp_path / "summary.yaml").read_text(encoding="utf-8")
+    assert "status: completed" in content
+
+
 def test_projection_write_todos_only_completed_updates_plan_without_transcript_display() -> None:
     tool_inputs: dict[str, dict] = {}
     started = page_exploration_service._projection_chunk_to_timeline_events(
@@ -1143,7 +1351,9 @@ def test_projection_assistant_messages_strip_private_thinking() -> None:
 
 
 def test_exploration_stream_does_not_cancel_event_bus_subscription() -> None:
-    source = inspect.getsource(page_exploration_api.stream_exploration_progress)
+    from app.api.v1.page_exploration import events as page_exploration_events
+
+    source = inspect.getsource(page_exploration_events.stream_exploration_progress)
 
     assert "event_task.cancel()" not in source
     assert "pump_events" in source

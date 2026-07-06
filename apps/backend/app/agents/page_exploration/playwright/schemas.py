@@ -1,5 +1,4 @@
 """Pydantic schemas for page exploration browser tool results."""
-
 from typing import Any
 
 from pydantic import BaseModel
@@ -50,11 +49,38 @@ class NavigateResult(BaseModel):
     error: str | None = None
 
 
+# 统一的错误类型枚举（与 browser-session.mjs 的 classifyActionError 对齐）
+ACTION_ERROR_TYPES = {
+    "pointer_intercepted",
+    "locator_not_unique",
+    "locator_timeout",
+    "not_visible",
+    "action_failed",
+}
+
+
+class ActionFailure(BaseModel):
+    """结构化的执行失败信息，方便 LLM 直接据此选择下一步。"""
+
+    error_type: str = "action_failed"
+    summary: str = ""
+    raw: str = ""
+    # 兼容旧 runner：历史上 strict mode fail 可能返回 recovered warning。
+    recovered: bool = False
+    recovery_warning: str = ""
+
+
 class ClickResult(BaseModel):
-    """Result from a browser click."""
+    """Result from a browser click.
+
+    透传结构化失败：LLM 看到 success=False 时可直接读 error_type 判断下一步。
+    """
 
     success: bool
     error: str | None = None
+    failure: ActionFailure | None = None
+    # 真正命中的元素的可复用 locator 字符串（recovered=true 时给 LLM 一份能继续用的）
+    effective_locator: str | None = None
 
 
 class FillResult(BaseModel):
@@ -62,3 +88,5 @@ class FillResult(BaseModel):
 
     success: bool
     error: str | None = None
+    failure: ActionFailure | None = None
+    effective_locator: str | None = None

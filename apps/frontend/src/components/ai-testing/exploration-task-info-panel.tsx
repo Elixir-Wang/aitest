@@ -141,7 +141,6 @@ const stepStatusIconByStatus: Partial<Record<AgentPlanStatus, ReactNode>> = {
   completed: <CheckCircle2 className="size-4 text-green-600" />,
   failed: <XCircle className="size-4 text-red-600" />,
   "in-progress": <Loader2 className="size-4 animate-spin text-blue-600" />,
-  partial: <AlertTriangle className="size-4 text-amber-600" />,
   running: <Loader2 className="size-4 animate-spin text-blue-600" />,
 };
 
@@ -301,14 +300,6 @@ function runStatusContent(status: AgentPlanStatus): { className: string; icon: R
       className: "border-muted bg-muted/40 text-muted-foreground",
       icon: <MinusCircle className="size-3.5" />,
       label: "已停止",
-    };
-  }
-  if (status === "partial") {
-    return {
-      className:
-        "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300",
-      icon: <AlertTriangle className="size-3.5" />,
-      label: "部分完成",
     };
   }
   if (status === "running" || status === "in-progress" || status === "stopping") {

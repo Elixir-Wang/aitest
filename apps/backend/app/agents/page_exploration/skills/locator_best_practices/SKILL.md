@@ -30,7 +30,7 @@ description: Expert guidance on selecting stable, maintainable Playwright locato
 - 语义化强，代码可读性好
 
 **适用场景**:
-- 按钮: `getByRole('button', { name: '创建智能体' })`
+- 按钮: `getByRole('button', { name: '创建资源' })`
 - 链接: `getByRole('link', { name: '返回列表' })`
 - 输入框: `getByRole('textbox', { name: '用户名' })`
 - 复选框: `getByRole('checkbox', { name: '记住我' })`
@@ -50,7 +50,7 @@ description: Expert guidance on selecting stable, maintainable Playwright locato
 **示例**:
 ```python
 # ✅ 好的做法
-page.get_by_role("button", name="提交订单")
+page.get_by_role("button", name="提交任务")
 page.get_by_role("link", name="查看详情")
 page.get_by_role("textbox", name="搜索")
 
@@ -120,7 +120,7 @@ page.get_by_text("2024-01-01")  # 动态日期
 page.get_by_text("提交", exact=True)
 
 # 模糊匹配（包含即可）
-page.get_by_text("提交")  # 会匹配 "提交订单"
+page.get_by_text("提交")  # 会匹配 "提交任务"
 ```
 
 ---
@@ -135,7 +135,7 @@ page.get_by_text("提交")  # 会匹配 "提交订单"
 ```python
 # ✅ 适合的场景
 page.get_by_placeholder("请输入手机号")
-page.get_by_placeholder("搜索商品")
+page.get_by_placeholder("搜索资源")
 
 # 对应的 HTML:
 # <input placeholder="请输入手机号" />
@@ -260,7 +260,7 @@ page.locator("#order-form").get_by_role("button", name="提交")
 page.get_by_text("删除")
 
 # ✅ 使用完整文本
-page.get_by_role("button", name="删除智能体")
+page.get_by_role("button", name="删除资源")
 ```
 
 3. **组合多个定位器**
@@ -272,7 +272,7 @@ dialog.get_by_role("button", name="确定")
 
 ---
 
-## 场景决策树
+## 决策树（v2，链式 filter 优先）
 
 ```
 开始
@@ -282,20 +282,26 @@ dialog.get_by_role("button", name="确定")
  │
  ├─ 是带 label / aria-label 的表单字段？
  │   └─ 是 → 使用 getByLabel ✅
-│
-├─ 需要在列表、卡片、弹窗中缩小范围？
-│   └─ 是 → 先定位语义容器，再在容器内定位目标 ✅
-│
-├─ 是无真实 role 的文本入口，且文本唯一稳定？
-│   └─ 是 → 使用 getByText ✅
-│
-├─ 是没有 label 的输入框，且有 placeholder？
-│   └─ 是 → 使用 getByPlaceholder ✅
-│
-├─ 有明确 data-testid 测试契约？
-│   └─ 是 → 使用 getByTestId ✅
-│
-└─ 以上都不适用？
+ │
+ ├─ 目标在列表/卡片/表格/对话框/弹窗中，且会出现多个同名元素？
+ │   ├─ 列表/卡片/行/单元格有稳定容器 role（listitem/row/cell/dialog/tabpanel）？
+ │   │   └─ 是 → page.getByRole('listitem').filter({ hasText: '...' }).getByRole('button', { name: '...' })
+ │   ├─ 容器有 data-testid？
+ │   │   └─ 是 → page.getByTestId('xxx').filter({ hasText: '...' }).getByRole('button', { name: '...' })
+ │   ├─ 容器是 form / dialog 且有 aria-label？
+ │   │   └─ 是 → page.getByLabel('容器名').getByRole('button', { name: '...' })
+ │   └─ 以上都不行 → page.locator('...').filter({ hasText: '...' }).getByRole(...)
+ │
+ ├─ 是无真实 role 的文本入口，且文本唯一稳定？
+ │   └─ 是 → 使用 getByText('...', { exact: true }) ✅
+ │
+ ├─ 是没有 label 的输入框，且有 placeholder？
+ │   └─ 是 → 使用 getByPlaceholder('...', { exact: true }) ✅
+ │
+ ├─ 有明确 data-testid 测试契约？
+ │   └─ 是 → 使用 getByTestId('...') ✅
+ │
+ └─ 以上都不适用？
      └─ 使用 CSS 选择器（尽量用 data 属性或 id）⚠️
 ```
 
@@ -307,8 +313,8 @@ dialog.get_by_role("button", name="确定")
 
 ```python
 # ✅ 好的做法
-page.get_by_role("navigation").get_by_role("link", name="智能体工作台")
-page.get_by_role("navigation").get_by_role("link", name="知识库")
+page.get_by_role("navigation").get_by_role("link", name="资源管理")
+page.get_by_role("navigation").get_by_role("link", name="系统设置")
 
 # ❌ 避免
 page.locator(".nav-menu a:nth-child(1)")
@@ -355,15 +361,15 @@ page.locator("table tr:nth-child(2) td:last-child button").click()
 
 ```python
 # ✅ 好的做法
-page.get_by_role("textbox", name="搜索").fill("智能体")
+page.get_by_role("textbox", name="搜索").fill("资源")
 page.get_by_role("button", name="搜索").click()
 
 # 或者使用 placeholder
-page.get_by_placeholder("请输入关键词").fill("智能体")
+page.get_by_placeholder("请输入关键词").fill("资源")
 page.get_by_role("button", name="搜索").click()
 
 # ❌ 避免
-page.locator(".search-input").fill("智能体")
+page.locator(".search-input").fill("资源")
 page.locator(".search-btn").click()
 ```
 
@@ -440,3 +446,121 @@ page.locator("ref=e15")
 **用户看到什么，你就定位什么。**
 
 这是选择定位器的黄金法则。
+
+---
+
+# 链式 filter 写法（企业 B 端场景主力）
+
+> 来自 [Playwright 官方 Locators 文档](https://playwright.cn/docs/locators) 的
+> 过滤定位器（filtering locators）章节。"列表中第 N 个"几乎一定走这条路。
+
+## 核心：先定位语义容器，再在容器内定位目标
+
+AntD / Pro / Material / Element Plus 类企业应用里，列表/卡片/表格/弹窗
+经常出现多个"查看"、"编辑"、"删除"按钮。仅用 `getByRole('button', { name: '编辑' })`
+必然 strict mode violation。
+
+### 模式 A：role 锚点 + filter(hasText) + role 子元素
+
+```python
+# 资源列表中"资源 2"的编辑按钮
+page.get_by_role('listitem').filter(has_text='资源 2').get_by_role('button', name='编辑')
+```
+
+适用范围：列表/表格行/卡片/列表项（role 是 `listitem` / `row` / `article` / `cell`）。
+
+### 模式 B：testid 锚点 + filter(hasText) + role 子元素
+
+```python
+# 卡片有 data-testid="card-001" 时
+page.get_by_test_id('card-001').get_by_role('button', name='编辑')
+```
+
+### 模式 C：testid 锚点 + filter(has: getByText) + role 子元素
+
+```python
+# 容器不直接有 text，但子元素有 —— 用 has 锚定
+page.get_by_test_id('resource-list').filter(has=page.get_by_text('资源 A')).get_by_role('button', name='编辑')
+```
+
+### 模式 D：dialog/form 用 aria-label 锚点
+
+```python
+page.get_by_role('dialog', name='创建').get_by_role('button', name='确定')
+# 或
+page.get_by_label('创建资源表单').get_by_role('button', name='保存')
+```
+
+### 模式 E：链式多 filter
+
+```python
+# 同时按文本 + 子元素过滤
+page.get_by_role('listitem').filter(has_text='Mary').filter(has=page.get_by_role('button', name='Say goodbye'))
+```
+
+### 模式 F：and / or
+
+```python
+# 同时满足"role=button 且 title=Subscribe"
+page.get_by_role('button').and(page.get_by_title('Subscribe'))
+# 匹配"新邮件按钮 或 安全对话框"；仅当任一目标都可接受时才使用 first()
+new_email = page.get_by_role('button', name='新邮件')
+dialog = page.get_by_text('确认安全设置')
+new_email.or(dialog).first.click()
+```
+
+## 严格模式违规的处理策略
+
+定位器命中多个元素时 Playwright 抛 `strict mode violation`。
+后端 `click` / `fill` 工具会返回 `failure.error_type == locator_not_unique`，不会自动选择第一个元素：
+
+1. 不要重复尝试同一 locator
+2. 重新 snap 或观察当前上下文
+3. 用父级容器、`filter({ hasText })`、`has` 或更精确的 role/name 缩小到唯一元素
+4. 页面探索工具不使用 `.first()` / `.nth()` 解决歧义；必须用容器、`filter({ hasText })`、`filter({ has })` 或更精确的 role/name 缩小到唯一元素
+
+## 严格禁止的写法
+
+```python
+# ❌ 临时 ref（每次 snap 都会变）
+page.locator("ref=e15")
+page.locator("ref=e20")
+
+# ❌ XPath（DOM 改版就坏）
+page.locator("//button[text()='提交']")
+page.locator("xpath=//button")
+
+# ❌ 动态类名（CSS Modules / 内联样式会变）
+page.locator(".css-abc123")
+page.locator("[class*='makeStyles-']")
+
+# ❌ 结构依赖（页面布局变了就坏）
+page.locator("div.container > div.content > div.panel > button")
+page.locator("button:nth-child(3)")
+```
+
+## 红旗警告（v2 更新）
+
+除了旧红旗，新增：
+
+- 🚩 多个同名"编辑"/"删除"按钮没限定容器 → 必加 `.filter`
+- 🚩 没用 `{ exact: true }` 的 placeholder/text 定位器 → 长文本/截断会失效
+- 🚩 收到 `failure.recovered=true` 后还在 retry 同一定位器 → 浪费工具调用
+- 🚩 弹窗内按钮没限定 dialog 容器 → 误中主页面同名按钮
+- 🚩 `getByRole('button')` 不带 name → strict mode violation
+- 🚩 用 `.first()` / `.nth()` 绕过 strict mode → 容易误点第一个同名元素
+
+## popover / 弹层选项定位（必读）
+
+snap 返回的元素中，`role` 为 `clickable`、`div`、`span` 且 `role_source` 为 `inferred` 的，
+是 B 端 popover / dropdown 内的卡片式选项。这些元素**没有真实 ARIA role**。
+
+**处理规则**：
+
+1. **不要用 `getByRole('clickable', ...)`** —— Playwright 不支持 `clickable` 这个 role，永远会失败
+2. **直接用 yaml 中的 text 候选**：`getByText('选项显示文本', { exact: true })`
+3. **如果收到 `not_visible` 错误**：说明 popover 整体已被关闭（从 DOM 卸载），**必须重新点触发按钮**重新打开 popover，再点选项。不要改 locator。
+4. **如果同名选项有多个**（strict mode）：用 popover/dialog 容器限定，例如：
+   ```python
+   page.locator('[role="popover"]').getByText('自主规划 Agent', { exact: true })
+   ```

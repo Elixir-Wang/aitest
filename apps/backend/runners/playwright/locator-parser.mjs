@@ -1,127 +1,311 @@
 /**
- * parsePlaywrightLocatorString
+ * Parse the small Playwright locator expression subset accepted by page
+ * exploration tools.
  *
- * 把 LLM 传进来的 Playwright Locator 字符串解析成真实的 Locator 对象。
- *
- * 设计目的：
- * - click / fill 工具的 locator 参数只支持 Playwright Locator 字符串。
- * - 后者（getByRole / getByLabel / getByTestId / getByText / getByPlaceholder）
- *   在 LLM 上下文中跨调用稳定，因为它们是"按需查询表达式"，
- *   每次执行都在 page 内实时查找，不会因 DOM 抖动失效。
- *
- * 与 selector-validator.mjs 的关系：
- * - selector-validator.mjs:locatorForCandidate(page, candidate) 接收结构化对象
- *   {kind: "role", role: "X", name: "Y"}；
- * - 本函数接收字符串 "getByRole('X', { name: 'Y' })"，
- *   解析成相同语义，最后调用 page.getByRole(...) 直接拿 Locator。
- *
- * 与 selector-generator.mjs 的关系：
- * - snap 时 selector-generator 已把元素的 primary_selector 渲染成同样的字符串。
- *   这里只是反向解析，所以两种字符串形式完全可逆。
+ * The accepted grammar intentionally mirrors the locators we ask the agent to
+ * use: page/getBy* bases, page.locator CSS fallback, chained filter(), child
+ * getBy* calls, and explicit and/or composition. We do not eval arbitrary JS.
  */
 
-const ROLE_PATTERN = /^(?:page\.)?getByRole\(\s*['"]([^'"]+)['"]\s*(?:,\s*\{([^)]*)\})?\s*\)$/;
-const LABEL_PATTERN = /^(?:page\.)?getByLabel\(\s*['"]([^'"]*)['"]\s*(?:,\s*\{([^)]*)\})?\s*\)$/;
-const TEST_ID_PATTERN = /^(?:page\.)?getByTestId\(\s*['"]([^'"]*)['"]\s*\)$/;
-const TEXT_PATTERN = /^(?:page\.)?getByText\(\s*['"]([^'"]*)['"]\s*(?:,\s*\{([^)]*)\})?\s*\)$/;
-const PLACEHOLDER_PATTERN = /^(?:page\.)?getByPlaceholder\(\s*['"]([^'"]*)['"]\s*(?:,\s*\{([^)]*)\})?\s*\)$/;
-const LOCATOR_PATTERN = /^(?:page\.)?locator\(\s*(['"])(.*?)\1\s*\)$/;
-const CONTEXTUAL_TEST_ID_ROLE_PATTERN =
-  /^(?:page\.)?getByTestId\(\s*['"]([^'"]+)['"]\s*\)\.filter\(\s*\{\s*hasText:\s*['"]([^'"]+)['"]\s*\}\s*\)\.getByRole\(\s*['"]([^'"]+)['"]\s*,\s*\{\s*name:\s*['"]([^'"]+)['"]\s*\}\s*\)$/;
-const CONTEXTUAL_ROLE_ROLE_PATTERN =
-  /^(?:page\.)?getByRole\(\s*['"]([^'"]+)['"]\s*\)\.filter\(\s*\{\s*hasText:\s*['"]([^'"]+)['"]\s*\}\s*\)\.getByRole\(\s*['"]([^'"]+)['"]\s*,\s*\{\s*name:\s*['"]([^'"]+)['"]\s*\}\s*\)$/;
+const BASE_METHODS = new Set([
+  "getByRole",
+  "getByLabel",
+  "getByTestId",
+  "getByText",
+  "getByPlaceholder",
+  "getByAltText",
+  "getByTitle",
+  "locator",
+]);
+
+const CHAIN_METHODS = new Set([
+  ...BASE_METHODS,
+  "filter",
+  "and",
+  "or",
+]);
 
 export function parsePlaywrightLocatorString(page, expr) {
   const trimmed = String(expr || "").trim();
-  if (!trimmed || !/^(?:page\.)?(?:getBy|locator\()/.test(trimmed)) {
+  if (!trimmed || !isParseableLocatorString(trimmed)) {
+    return null;
+  }
+  try {
+    return parseLocatorChain(page, page, trimmed);
+  } catch {
+    return null;
+  }
+}
+
+export function isParseableLocatorString(expr) {
+  const trimmed = String(expr || "").trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (/^(?:page\.)?(?:getByRole|getByLabel|getByTestId|getByText|getByPlaceholder|getByAltText|getByTitle|locator)\(/.test(trimmed)) {
+    return true;
+  }
+  if (/^(?:page\.)?(?:getByRole|getByLabel|getByTestId|getByText|getByPlaceholder|getByAltText|getByTitle|locator)\([^)]*\)\./.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+function parseLocatorChain(page, scope, expr) {
+  const segments = splitChain(expr);
+  if (segments[0] === "page") {
+    segments.shift();
+  }
+  if (!segments.length) {
     return null;
   }
 
-  const contextualTestIdRoleMatch = trimmed.match(CONTEXTUAL_TEST_ID_ROLE_PATTERN);
-  if (contextualTestIdRoleMatch) {
-    return page
-      .getByTestId(contextualTestIdRoleMatch[1])
-      .filter({ hasText: contextualTestIdRoleMatch[2] })
-      .getByRole(contextualTestIdRoleMatch[3], { name: contextualTestIdRoleMatch[4] });
-  }
+  let locator = null;
+  for (const segment of segments) {
+    const call = parseMethodCall(segment);
+    if (!call || !CHAIN_METHODS.has(call.method)) {
+      return null;
+    }
 
-  const contextualRoleRoleMatch = trimmed.match(CONTEXTUAL_ROLE_ROLE_PATTERN);
-  if (contextualRoleRoleMatch) {
-    return page
-      .getByRole(contextualRoleRoleMatch[1])
-      .filter({ hasText: contextualRoleRoleMatch[2] })
-      .getByRole(contextualRoleRoleMatch[3], { name: contextualRoleRoleMatch[4] });
-  }
+    if (!locator) {
+      if (!BASE_METHODS.has(call.method)) {
+        return null;
+      }
+      locator = applyLocatorMethod(scope, call);
+      continue;
+    }
 
-  const roleMatch = trimmed.match(ROLE_PATTERN);
-  if (roleMatch) {
-    return page.getByRole(roleMatch[1], parseOptions(roleMatch[2] || ""));
+    if (call.method === "filter") {
+      locator = locator.filter(parseFilterOptions(page, call.args));
+    } else if (call.method === "and") {
+      locator = locator.and(parseLocatorChain(page, page, call.args));
+    } else if (call.method === "or") {
+      locator = locator.or(parseLocatorChain(page, page, call.args));
+    } else {
+      locator = applyLocatorMethod(locator, call);
+    }
   }
-
-  const labelMatch = trimmed.match(LABEL_PATTERN);
-  if (labelMatch) {
-    return page.getByLabel(labelMatch[1], parseOptions(labelMatch[2] || ""));
-  }
-
-  const testIdMatch = trimmed.match(TEST_ID_PATTERN);
-  if (testIdMatch) {
-    return page.getByTestId(testIdMatch[1]);
-  }
-
-  const textMatch = trimmed.match(TEXT_PATTERN);
-  if (textMatch) {
-    return page.getByText(textMatch[1], parseOptions(textMatch[2] || ""));
-  }
-
-  const placeholderMatch = trimmed.match(PLACEHOLDER_PATTERN);
-  if (placeholderMatch) {
-    return page.getByPlaceholder(placeholderMatch[1], parseOptions(placeholderMatch[2] || ""));
-  }
-
-  const locatorMatch = trimmed.match(LOCATOR_PATTERN);
-  if (locatorMatch) {
-    return page.locator(locatorMatch[2]);
-  }
-
-  return null;
+  return locator;
 }
 
-/**
- * 解析 Locator 字符串内的选项对象：
- *   { name: 'X', exact: true, level: 1 }
- *
- * 只支持 LLM 在探索场景下常用的几个选项，更复杂的定位应先沉淀为
- * verified Playwright locator。
- */
+function applyLocatorMethod(scope, call) {
+  if (!scope || typeof scope[call.method] !== "function") {
+    throw new Error(`Unsupported locator method: ${call.method}`);
+  }
+  if (call.method === "getByRole") {
+    const [role, rest] = parseFirstString(call.args);
+    return scope.getByRole(role, parseOptions(rest));
+  }
+  if (call.method === "getByLabel") {
+    const [label, rest] = parseFirstString(call.args);
+    return scope.getByLabel(label, parseOptions(rest));
+  }
+  if (call.method === "getByTestId") {
+    const [testId] = parseFirstString(call.args);
+    return scope.getByTestId(testId);
+  }
+  if (call.method === "getByText") {
+    const [text, rest] = parseFirstString(call.args);
+    return scope.getByText(text, parseOptions(rest));
+  }
+  if (call.method === "getByPlaceholder") {
+    const [placeholder, rest] = parseFirstString(call.args);
+    return scope.getByPlaceholder(placeholder, parseOptions(rest));
+  }
+  if (call.method === "getByAltText") {
+    const [alt, rest] = parseFirstString(call.args);
+    return scope.getByAltText(alt, parseOptions(rest));
+  }
+  if (call.method === "getByTitle") {
+    const [title, rest] = parseFirstString(call.args);
+    return scope.getByTitle(title, parseOptions(rest));
+  }
+  if (call.method === "locator") {
+    const [selector] = parseFirstString(call.args);
+    return scope.locator(selector);
+  }
+  throw new Error(`Unsupported locator method: ${call.method}`);
+}
+
+function splitChain(expr) {
+  const segments = [];
+  let current = "";
+  let quote = "";
+  let escaped = false;
+  let parens = 0;
+  let braces = 0;
+  for (const char of String(expr)) {
+    if (quote) {
+      current += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (char === "(") parens += 1;
+    if (char === ")") parens -= 1;
+    if (char === "{") braces += 1;
+    if (char === "}") braces -= 1;
+    if (char === "." && parens === 0 && braces === 0) {
+      if (current.trim()) {
+        segments.push(current.trim());
+      }
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) {
+    segments.push(current.trim());
+  }
+  return segments;
+}
+
+function parseMethodCall(segment) {
+  const match = String(segment || "").trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\(([\s\S]*)\)$/);
+  if (!match) {
+    return null;
+  }
+  return { method: match[1], args: match[2].trim() };
+}
+
+function parseFirstString(args) {
+  const source = String(args || "").trim();
+  const quote = source[0];
+  if (quote !== "'" && quote !== '"') {
+    throw new Error("Locator argument must start with a string literal.");
+  }
+  let value = "";
+  let escaped = false;
+  for (let index = 1; index < source.length; index += 1) {
+    const char = source[index];
+    if (escaped) {
+      value += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === quote) {
+      return [value, source.slice(index + 1).trim().replace(/^,/, "").trim()];
+    }
+    value += char;
+  }
+  throw new Error("Unterminated string literal.");
+}
+
 function parseOptions(body) {
   const opts = {};
-  if (!body) return opts;
+  const normalized = stripOuterObject(String(body || "").trim());
+  if (!normalized) return opts;
 
-  const nameMatch = body.match(/name:\s*['"]([^'"]*)['"]/);
-  if (nameMatch) opts.name = nameMatch[1];
+  const name = extractStringProperty(normalized, "name");
+  if (name !== null) opts.name = name;
 
-  const exactMatch = body.match(/exact:\s*(true|false)/);
-  if (exactMatch) opts.exact = exactMatch[1] === "true";
+  const exact = extractBooleanProperty(normalized, "exact");
+  if (exact !== null) opts.exact = exact;
 
-  const levelMatch = body.match(/level:\s*(\d+)/);
-  if (levelMatch) opts.level = Number(levelMatch[1]);
+  const level = extractNumberProperty(normalized, "level");
+  if (level !== null) opts.level = level;
 
   return opts;
 }
 
-/**
- * 判断 locator 字符串是否能被本解析器处理。
- * 用于 click / fill 工具快速判断是否走 live-locator 分支。
- */
-export function isParseableLocatorString(expr) {
-  const trimmed = String(expr || "").trim();
-  return (
-    /^(?:page\.)?getByRole\(/.test(trimmed) ||
-    /^(?:page\.)?getByLabel\(/.test(trimmed) ||
-    /^(?:page\.)?getByTestId\(/.test(trimmed) ||
-    /^(?:page\.)?getByText\(/.test(trimmed) ||
-    /^(?:page\.)?getByPlaceholder\(/.test(trimmed) ||
-    /^(?:page\.)?locator\(/.test(trimmed) ||
-    /^(?:page\.)?getBy(?:Role|TestId)\([^)]*\)\.filter\(/.test(trimmed)
-  );
+function parseFilterOptions(page, args) {
+  const body = stripOuterObject(String(args || "").trim());
+  if (!body) {
+    return {};
+  }
+  const options = {};
+  const hasText = extractStringProperty(body, "hasText");
+  if (hasText !== null) {
+    options.hasText = hasText;
+  }
+  const hasLocatorExpr = extractLocatorProperty(body, "has");
+  if (hasLocatorExpr) {
+    options.has = parseLocatorChain(page, page, hasLocatorExpr);
+  }
+  const visible = extractBooleanProperty(body, "visible");
+  if (visible !== null) {
+    options.visible = visible;
+  }
+  return options;
+}
+
+function stripOuterObject(value) {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function extractStringProperty(body, key) {
+  const match = body.match(new RegExp(`${key}\\s*:\\s*(['"])((?:\\\\.|(?!\\1).)*)\\1`));
+  return match ? match[2].replace(/\\(['"\\])/g, "$1") : null;
+}
+
+function extractBooleanProperty(body, key) {
+  const match = body.match(new RegExp(`${key}\\s*:\\s*(true|false)`));
+  return match ? match[1] === "true" : null;
+}
+
+function extractNumberProperty(body, key) {
+  const match = body.match(new RegExp(`${key}\\s*:\\s*(\\d+)`));
+  return match ? Number(match[1]) : null;
+}
+
+function extractLocatorProperty(body, key) {
+  const prefix = body.match(new RegExp(`${key}\\s*:\\s*`));
+  if (!prefix) {
+    return "";
+  }
+  const start = prefix.index + prefix[0].length;
+  return readExpressionUntilTopLevelComma(body.slice(start)).trim();
+}
+
+function readExpressionUntilTopLevelComma(source) {
+  let quote = "";
+  let escaped = false;
+  let parens = 0;
+  let braces = 0;
+  let result = "";
+  for (const char of source) {
+    if (quote) {
+      result += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      result += char;
+      continue;
+    }
+    if (char === "(") parens += 1;
+    if (char === ")") parens -= 1;
+    if (char === "{") braces += 1;
+    if (char === "}") braces -= 1;
+    if (char === "," && parens === 0 && braces === 0) {
+      break;
+    }
+    result += char;
+  }
+  return result;
 }

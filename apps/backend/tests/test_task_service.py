@@ -237,6 +237,42 @@ def test_running_tasks_include_active_requirement_analysis_run(monkeypatch: pyte
     assert tasks[0]["status_label"] == "分析中"
 
 
+def test_running_tasks_include_active_requirement_finalization_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_project(db)
+        _seed_requirement_document(db)
+        db.execute(
+            """
+            INSERT INTO requirement_analyses
+              (id, project_id, document_id, status, analysis_summary, output_json,
+               quality_result, created_by, created_at)
+            VALUES
+              ('analysis-1', 'project-1', 'doc-1', 'completed', '分析完成',
+               '{"understanding_markdown":"# 初步需求"}', 'passed', 'u-admin', '2026-06-04 17:00:01')
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO requirement_finalization_runs
+              (id, project_id, document_id, analysis_id, status, summary, created_by, created_at)
+            VALUES
+              ('finalize-1', 'project-1', 'doc-1', 'analysis-1', 'running',
+               '最终需求智能体正在转换。', 'u-admin', '2026-06-04 17:00:02')
+            """
+        )
+
+    tasks = task_service.list_running_tasks(ACTOR)
+
+    assert [task["id"] for task in tasks] == ["requirement_finalization:finalize-1"]
+    assert tasks[0]["source_type"] == "requirement_finalization_run"
+    assert tasks[0]["module_label"] == "最终需求"
+    assert tasks[0]["status_label"] == "转换中"
+    assert tasks[0]["detail_url"] == "/projects/project-1/requirements/doc-1?tab=final"
+
+
 def test_running_tasks_exclude_requirement_analysis_waiting_for_clarification(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

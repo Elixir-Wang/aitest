@@ -181,7 +181,6 @@ const statusLabels: Record<string, string> = {
   stopping: "正在停止",
   cancelled: "已停止",
   interrupted: "已中断",
-  partial: "部分完成",
   completed: "已完成",
   blocked: "阻塞",
 };

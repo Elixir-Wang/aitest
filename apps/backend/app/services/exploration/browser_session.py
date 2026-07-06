@@ -67,11 +67,21 @@ class PlaywrightBrowserSession:
         return self.command({"type": "observe"})
 
     def click(self, element_id: str) -> dict[str, Any]:
-        """Click an element from the latest observation."""
+        """Click an element from the latest observation.
+
+        返回结构化结果（不再 raise 整段字符串）：
+        - 成功：{status: "ok", action_result: {success: true, ...}}
+        - 失败：{status: "ok", action_result: {success: false, failure: {error_type, summary, raw, recovered, ...}, ...}}
+        业务层（在 caller.py/runtime_context.py 中）通过 action_result 判定，
+        error_type 不再丢失在 Python 侧。
+        """
         return self.command({"type": "click", "element_id": element_id})
 
     def fill(self, element_id: str, value: str) -> dict[str, Any]:
-        """Fill an element from the latest observation."""
+        """Fill an element from the latest observation.
+
+        同 click：返回结构化 action_result，把 error_type 完整带回来。
+        """
         return self.command({"type": "fill", "element_id": element_id, "value": value})
 
     def go_back(self) -> dict[str, Any]:
@@ -83,7 +93,16 @@ class PlaywrightBrowserSession:
         return self.command({"type": "wait", "ms": ms})
 
     def command(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Send a raw browser-session command and return its result."""
+        """Send a raw browser-session command and return its result.
+
+        协议约定（与 browser-session.mjs 对齐）：
+        - 子进程每次回复一行 JSON。
+        - status: "ok" 表示 Node 端整体处理没崩，action_result.success 才是真正的执行结果。
+        - status: "error" 表示 Node 端崩溃或协议错（极少发生）。
+        - action_result.failure 一定包含 error_type ∈ {pointer_intercepted,
+          locator_not_unique, locator_timeout, not_visible, action_failed}，
+          以及 summary/raw/recovered/recovery_warning。
+        """
         if self._closed:
             raise BrowserSessionError("Browser session is already closed.")
         command_id = self._next_command_id()

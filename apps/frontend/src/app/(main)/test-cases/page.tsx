@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { ClipboardCheck, Loader2, Play, Search, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+
+import { ClipboardCheck, Loader2, Play, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
-import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
+import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +28,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import {
-  type ApiExplorationRun,
   type ApiProject,
   type ApiRequirementDocument,
   type ApiTestCaseGenerationScopeType,
@@ -41,34 +42,55 @@ type TestCaseSetForm = {
   name: string;
   projectId: string;
   requirementDocId: string;
-  explorationRunId: string;
-  includeCompanyKnowledge: boolean;
   generationScopeType: ApiTestCaseGenerationScopeType;
   generationScopeText: string;
   notes: string;
 };
 
-const NO_EXPLORATION_VALUE = "__none__";
+const NO_EXPLORATION_ARTIFACTS_VALUE = "no_exploration_artifacts";
+const NO_COMPANY_KNOWLEDGE_VALUE = "no_company_knowledge";
 const ACTIVE_GENERATION_STATUSES = new Set(["queued", "running"]);
 const TEST_CASE_SET_POLL_INTERVAL_MS = 5000;
+const finalRequirementVersionActions = new Set(["requirement_analysis", "requirement_analysis_finalize"]);
+const testCaseSetStatusLabels: Record<string, string> = {
+  generating: "生成中",
+  ready_for_review: "待评审",
+  review_completed: "评审完成",
+  failed: "生成失败",
+  archived: "已归档",
+};
+
+function isFinalRequirement(requirement: ApiRequirementDocument) {
+  return requirement.current_version
+    ? finalRequirementVersionActions.has(requirement.current_version.source_action)
+    : false;
+}
+
+function isTestCaseSetGenerating(item: ApiTestCaseSet) {
+  return item.generation_run
+    ? ACTIVE_GENERATION_STATUSES.has(item.generation_run.status)
+    : item.status === "generating";
+}
+
+function testCaseSetStatusLabel(item: ApiTestCaseSet) {
+  return testCaseSetStatusLabels[item.status] ?? item.status_label;
+}
 
 const emptyForm: TestCaseSetForm = {
   name: "",
   projectId: "",
   requirementDocId: "",
-  explorationRunId: "",
-  includeCompanyKnowledge: true,
   generationScopeType: "all",
   generationScopeText: "",
   notes: "",
 };
 
 export default function Page() {
+  const router = useRouter();
   const { scope: projectScope, currentProjectId, hydrate, hasHydrated } = useProjectContextStore();
   const [projects, setProjects] = useState<ApiProject[]>([]);
   const setSelection = useLocalTableSelection<ApiTestCaseSet>([]);
   const [requirements, setRequirements] = useState<ApiRequirementDocument[]>([]);
-  const [explorations, setExplorations] = useState<ApiExplorationRun[]>([]);
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -86,20 +108,12 @@ export default function Page() {
     projectScope === "project" ? (projects.find((item) => item.id === currentProjectId)?.name ?? "") : "";
   const selectedProjectName =
     projectScope === "project" ? currentProjectName : (projects.find((item) => item.id === form.projectId)?.name ?? "");
+  const finalRequirements = requirements.filter(isFinalRequirement);
 
   const filteredRows = setSelection.rows.filter((item) =>
-    [
-      item.name,
-      item.requirement_doc_title,
-      item.exploration_run_title,
-      item.status_label,
-      item.generation_scope_text,
-    ].some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase())),
-  );
-
-  const relatedExplorations = useMemo(
-    () => explorations.filter((item) => item.requirement_doc_id === form.requirementDocId),
-    [explorations, form.requirementDocId],
+    [item.name, item.requirement_doc_title, testCaseSetStatusLabel(item), item.generation_scope_text].some((value) =>
+      value.toLowerCase().includes(searchText.trim().toLowerCase()),
+    ),
   );
 
   const loadProjects = useCallback(async () => {
@@ -110,15 +124,10 @@ export default function Page() {
   const loadProjectInputs = useCallback(async (nextProjectId: string) => {
     if (!nextProjectId) {
       setRequirements([]);
-      setExplorations([]);
       return;
     }
-    const [nextRequirements, nextExplorations] = await Promise.all([
-      apiRequest<ApiRequirementDocument[]>(`/projects/${nextProjectId}/requirements`),
-      apiRequest<ApiExplorationRun[]>(`/page-exploration/runs?project_id=${nextProjectId}`),
-    ]);
+    const nextRequirements = await apiRequest<ApiRequirementDocument[]>(`/projects/${nextProjectId}/requirements`);
     setRequirements(nextRequirements);
-    setExplorations(nextExplorations);
   }, []);
 
   const loadSets = useCallback(
@@ -155,7 +164,6 @@ export default function Page() {
       ...current,
       projectId: nextProjectId,
       requirementDocId: current.projectId === nextProjectId ? current.requirementDocId : "",
-      explorationRunId: current.projectId === nextProjectId ? current.explorationRunId : "",
     }));
   }, [currentProjectId, projectScope, projects]);
 
@@ -194,12 +202,6 @@ export default function Page() {
     };
   }, [loadSets, projectScope, projects, selectedProjectId, setSelection.rows]);
 
-  function relatedExplorationForRequirement(requirementId: string) {
-    return explorations.find(
-      (item) => item.requirement_doc_id === requirementId && ["completed", "partial"].includes(item.status),
-    );
-  }
-
   function openCreateDialog() {
     const nextProjectId =
       projectScope === "project" ? (currentProjectId ?? "") : form.projectId || projects[0]?.id || "";
@@ -208,13 +210,11 @@ export default function Page() {
   }
 
   function handleRequirementChange(value: string) {
-    const requirement = requirements.find((item) => item.id === value);
-    const related = relatedExplorationForRequirement(value);
+    const requirement = finalRequirements.find((item) => item.id === value);
     setForm((current) => ({
       ...current,
       requirementDocId: value,
       name: current.name || (requirement ? `${requirement.name}测试用例集` : current.name),
-      explorationRunId: related?.id ?? "",
     }));
   }
 
@@ -240,8 +240,6 @@ export default function Page() {
       const payload: ApiTestCaseSetCreate = {
         name: form.name.trim(),
         requirement_doc_id: form.requirementDocId,
-        exploration_run_id: form.explorationRunId,
-        include_company_knowledge: form.includeCompanyKnowledge,
         generation_scope_type: form.generationScopeType,
         generation_scope_text: form.generationScopeType === "specified" ? form.generationScopeText.trim() : "",
         notes: form.notes.trim(),
@@ -281,6 +279,23 @@ export default function Page() {
     }
   }
 
+  async function regenerateTestCaseSet(item: ApiTestCaseSet) {
+    if (isTestCaseSetGenerating(item)) {
+      return;
+    }
+    try {
+      const regenerated = await apiRequest<ApiTestCaseSet>(
+        `/projects/${item.project_id}/test-case-sets/${item.id}/regenerate`,
+        { method: "POST" },
+      );
+      setSelection.setRows((current) => current.map((row) => (row.id === regenerated.id ? regenerated : row)));
+      toast.success("测试用例重新生成任务已创建");
+      notifyAiTaskStarted();
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "测试用例重新生成失败");
+    }
+  }
+
   return (
     <PageShell
       breadcrumbs={["项目工作区", "测试用例"]}
@@ -288,33 +303,13 @@ export default function Page() {
       projectScope={projectScope}
       title="测试用例"
     >
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard
-          helper="当前项目测试用例集数量"
-          icon={ClipboardCheck}
-          label="测试用例集"
-          value={String(setSelection.rows.length)}
-        />
-        <MetricCard
-          helper="生成完成后展示待评审用例"
-          icon={ClipboardCheck}
-          label="测试用例"
-          value={String(setSelection.rows.reduce((total, item) => total + item.case_count, 0))}
-        />
-        <MetricCard
-          helper="生成中的用例集"
-          icon={Loader2}
-          label="生成中"
-          value={String(setSelection.rows.filter((item) => item.status === "generating").length)}
-        />
-      </div>
       <ShellSection>
         <ListToolbar
           createLabel="新建测试用例集"
           onBatchDelete={() => deleteTestCaseSets(setSelection.selectedIds)}
           onCreate={openCreateDialog}
           onSearch={setSearchText}
-          placeholder="搜索用例集、需求或探索"
+          placeholder="搜索用例集或需求"
           selectedCount={setSelection.selectedCount}
           title="测试用例集列表"
         />
@@ -332,7 +327,6 @@ export default function Page() {
                 </TableHead>
                 <TableHead>用例集名称</TableHead>
                 <TableHead>需求</TableHead>
-                <TableHead>关联探索</TableHead>
                 <TableHead>生成范围</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>用例数量</TableHead>
@@ -341,7 +335,7 @@ export default function Page() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? <TableLoadingRow colSpan={9} label="测试用例集加载中" /> : null}
+              {loading ? <TableLoadingRow colSpan={8} label="测试用例集加载中" /> : null}
               {!loading
                 ? filteredRows.map((item) => (
                     <TableRow
@@ -355,15 +349,27 @@ export default function Page() {
                           onCheckedChange={(checked) => setSelection.toggleOne(item.id, Boolean(checked))}
                         />
                       </TableCell>
-                      <TableCell className="font-medium">{item.name}</TableCell>
+                      <TableCell className="font-medium">
+                        <Button
+                          className="h-auto justify-start p-0 font-medium text-foreground hover:text-primary"
+                          onClick={() => router.push(`/test-cases/${item.id}/review?project=${item.project_id}`)}
+                          type="button"
+                          variant="link"
+                        >
+                          {item.name}
+                        </Button>
+                      </TableCell>
                       <TableCell>{item.requirement_doc_title}</TableCell>
-                      <TableCell>{item.exploration_run_title || "不使用探索"}</TableCell>
                       <TableCell>
                         {item.generation_scope_type === "all" ? "全部需求内容" : item.generation_scope_text}
                       </TableCell>
                       <TableCell>
                         <Badge variant={item.status === "generating" ? "outline" : "secondary"}>
-                          {item.status_label}
+                          {item.status === "generating" ? (
+                            <ProcessingState label={testCaseSetStatusLabel(item)} />
+                          ) : (
+                            testCaseSetStatusLabel(item)
+                          )}
                         </Badge>
                       </TableCell>
                       <TableCell>{item.case_count}</TableCell>
@@ -371,7 +377,18 @@ export default function Page() {
                       <TableCell>
                         <RowActions
                           actions={[
-                            { label: "查看", href: `/test-cases?set=${item.id}`, icon: Search },
+                            {
+                              label: "查看",
+                              icon: ClipboardCheck,
+                              href: `/test-cases/${item.id}/review?project=${item.project_id}`,
+                              disabled: item.case_count === 0 || isTestCaseSetGenerating(item),
+                            },
+                            {
+                              label: "重新生成",
+                              icon: RefreshCw,
+                              disabled: isTestCaseSetGenerating(item),
+                              onSelect: () => regenerateTestCaseSet(item),
+                            },
                             {
                               label: "删除",
                               icon: Trash2,
@@ -387,7 +404,7 @@ export default function Page() {
                 : null}
               {!loading && filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={9}>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={8}>
                     暂无测试用例。可新建测试用例集，选择需求后生成测试用例。
                   </TableCell>
                 </TableRow>
@@ -400,7 +417,7 @@ export default function Page() {
         <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
           <DialogHeader className="shrink-0 gap-3 px-6 pt-6">
             <DialogTitle>新建测试用例集</DialogTitle>
-            <DialogDescription>选择一个需求，配置探索、公司知识库和生成范围后生成测试用例。</DialogDescription>
+            <DialogDescription>选择一个需求，配置生成范围后生成测试用例。</DialogDescription>
           </DialogHeader>
           <FieldGroup className="grid min-h-0 gap-x-6 gap-y-5 overflow-y-auto px-6 py-5 sm:grid-cols-2">
             <Field>
@@ -416,9 +433,7 @@ export default function Page() {
               <Select
                 disabled={projectScope === "project"}
                 placeholder={projectScope === "project" ? selectedProjectName || "当前项目" : "选择项目"}
-                setValue={(value) =>
-                  setForm((current) => ({ ...current, projectId: value, requirementDocId: "", explorationRunId: "" }))
-                }
+                setValue={(value) => setForm((current) => ({ ...current, projectId: value, requirementDocId: "" }))}
                 value={form.projectId}
               >
                 {projectScope === "project" && currentProjectId ? (
@@ -435,7 +450,7 @@ export default function Page() {
             <Field>
               <FieldLabel htmlFor="test-case-set-requirement">需求</FieldLabel>
               <Select placeholder="选择需求" setValue={handleRequirementChange} value={form.requirementDocId}>
-                {requirements.map((requirement) => (
+                {finalRequirements.map((requirement) => (
                   <SelectOption key={requirement.id} value={requirement.id}>
                     {requirement.name}
                   </SelectOption>
@@ -443,47 +458,26 @@ export default function Page() {
               </Select>
             </Field>
             <Field>
-              <FieldLabel htmlFor="test-case-set-exploration">关联探索</FieldLabel>
+              <FieldLabel htmlFor="test-case-set-exploration">使用探索产物</FieldLabel>
               <Select
-                placeholder="选择探索或不使用"
-                setValue={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    explorationRunId: value === NO_EXPLORATION_VALUE ? "" : value,
-                  }))
-                }
-                value={form.explorationRunId || NO_EXPLORATION_VALUE}
+                disabled
+                placeholder="暂未接入，后续开放。"
+                setValue={() => undefined}
+                value={NO_EXPLORATION_ARTIFACTS_VALUE}
               >
-                <SelectOption value={NO_EXPLORATION_VALUE}>不使用探索</SelectOption>
-                {(relatedExplorations.length > 0 ? relatedExplorations : explorations).map((exploration) => (
-                  <SelectOption key={exploration.id} value={exploration.id}>
-                    {exploration.title}
-                  </SelectOption>
-                ))}
+                <SelectOption value={NO_EXPLORATION_ARTIFACTS_VALUE}>不使用探索产物</SelectOption>
               </Select>
-              {relatedExplorations.length > 0 ? (
-                <p className="text-muted-foreground text-xs">已根据所选需求自动选择关联探索，可手动调整。</p>
-              ) : (
-                <p className="text-muted-foreground text-xs">未找到关联探索，仍可基于需求和公司知识库生成。</p>
-              )}
             </Field>
             <Field>
               <FieldLabel htmlFor="test-case-set-company-knowledge">使用公司知识库</FieldLabel>
-              <div className="flex items-start gap-3 rounded-md border p-3 text-sm">
-                <Checkbox
-                  checked={form.includeCompanyKnowledge}
-                  id="test-case-set-company-knowledge"
-                  onCheckedChange={(checked) =>
-                    setForm((current) => ({ ...current, includeCompanyKnowledge: Boolean(checked) }))
-                  }
-                />
-                <span className="grid gap-1">
-                  <span>默认开启</span>
-                  <span className="text-muted-foreground text-xs">
-                    用于查询通用测试规范、模板和术语。不确定的业务规则仍会标记为待确认。
-                  </span>
-                </span>
-              </div>
+              <Select
+                disabled
+                placeholder="暂未接入，后续开放。"
+                setValue={() => undefined}
+                value={NO_COMPANY_KNOWLEDGE_VALUE}
+              >
+                <SelectOption value={NO_COMPANY_KNOWLEDGE_VALUE}>不使用公司知识库</SelectOption>
+              </Select>
             </Field>
             <Field>
               <FieldLabel htmlFor="test-case-set-scope-type">生成范围</FieldLabel>

@@ -30,23 +30,16 @@ def requirement_analysis_agent(
     Returns:
         配置好的需求分析 Agent
     """
-    # 创建 Skill Middleware
     skill_middleware = SkillMiddleware(
         skill_path=Path(__file__).parent / "skills" / "requirements-analysis",
         load_references=load_references,
     )
 
-    # 使用基础提示词（如果提供）
-    if base_prompt is None:
-        base_prompt = "你是需求分析专家。"
-
     return create_agent(
         model=model,
         tools=[],
-        system_prompt=base_prompt,         # 基础提示词
-        middleware=[skill_middleware],      # ⭐ Skill 中间件
+        system_prompt=base_prompt,
+        middleware=[skill_middleware],
         response_format=ToolStrategy(RequirementAnalysisResult),
     )
 
-
-__all__ = ["requirement_analysis_agent"]

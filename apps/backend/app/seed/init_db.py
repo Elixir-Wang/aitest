@@ -201,6 +201,22 @@ def init_db() -> None:
               FOREIGN KEY(analysis_id) REFERENCES requirement_analyses(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS requirement_finalization_runs (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              document_id TEXT NOT NULL,
+              analysis_id TEXT NOT NULL,
+              status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed')),
+              summary TEXT NOT NULL DEFAULT '',
+              failure_reason TEXT NOT NULL DEFAULT '',
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+              FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
+              FOREIGN KEY(analysis_id) REFERENCES requirement_analyses(id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS dashboard_daily_stats (
               id TEXT PRIMARY KEY,
               project_id TEXT NOT NULL,
@@ -219,11 +235,11 @@ def init_db() -> None:
               name TEXT NOT NULL,
               requirement_doc_id TEXT NOT NULL,
               exploration_run_id TEXT NOT NULL DEFAULT '',
-              include_company_knowledge INTEGER NOT NULL DEFAULT 1,
+              include_company_knowledge INTEGER NOT NULL DEFAULT 0,
               generation_scope_type TEXT NOT NULL CHECK(generation_scope_type IN ('all', 'specified')),
               generation_scope_text TEXT NOT NULL DEFAULT '',
               notes TEXT NOT NULL DEFAULT '',
-              status TEXT NOT NULL CHECK(status IN ('generating', 'ready_for_review', 'failed', 'archived')),
+              status TEXT NOT NULL CHECK(status IN ('generating', 'ready_for_review', 'review_completed', 'failed', 'archived')),
               case_count INTEGER NOT NULL DEFAULT 0,
               created_by TEXT NOT NULL,
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -266,6 +282,9 @@ def init_db() -> None:
               source_requirement_refs TEXT NOT NULL DEFAULT '[]',
               source_exploration_refs TEXT NOT NULL DEFAULT '[]',
               status TEXT NOT NULL CHECK(status IN ('draft', 'ready_for_review', 'approved', 'rejected')) DEFAULT 'draft',
+              review_feedback TEXT NOT NULL DEFAULT '',
+              reviewed_by TEXT NOT NULL DEFAULT '',
+              reviewed_at TEXT,
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               FOREIGN KEY(test_case_set_id) REFERENCES test_case_sets(id) ON DELETE CASCADE,
@@ -297,7 +316,7 @@ def init_db() -> None:
               environment_id TEXT NOT NULL,
               requirement_doc_id TEXT NOT NULL DEFAULT '',
               title TEXT NOT NULL,
-              status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'interrupted', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
+              status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'interrupted', 'completed', 'blocked', 'failed')) DEFAULT 'pending',
               exploration_mode TEXT NOT NULL DEFAULT 'goal' CHECK(exploration_mode IN ('goal', 'autonomous')),
               scope TEXT NOT NULL DEFAULT '',
               forbidden_paths TEXT NOT NULL DEFAULT '',
@@ -559,6 +578,7 @@ def init_db() -> None:
         _migrate_file_mappings(db)
         _migrate_requirement_analyses(db)
         _migrate_requirement_analysis_run_statuses(db)
+        _migrate_test_case_set_statuses(db)
         _migrate_agent_model_assignments(db)
         _migrate_knowledge_query_model_assignment(db)
         _migrate_requirement_standardization_model_assignment(db)
@@ -568,6 +588,9 @@ def init_db() -> None:
         _ensure_all_projects_conversation_scope(db)
         _ensure_global_environments_project(db)
         _migrate_exploration_environments_to_global(db)
+        _ensure_column(db, "test_cases", "review_feedback", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(db, "test_cases", "reviewed_by", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(db, "test_cases", "reviewed_at", "TEXT")
         _seed_user(db, "u-admin", "admin", "admin@example.com", "平台管理员", "admin", "admin", "enabled", "全部项目", "平台管理员，负责用户、模型和项目权限维护。")
         _sync_seed_password(db, "u-admin", "admin")
 
@@ -755,7 +778,7 @@ def _migrate_exploration_run_statuses(db: sqlite3.Connection) -> None:
           environment_id TEXT NOT NULL,
           requirement_doc_id TEXT NOT NULL DEFAULT '',
           title TEXT NOT NULL,
-          status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'interrupted', 'partial', 'completed', 'blocked')) DEFAULT 'pending',
+          status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'interrupted', 'completed', 'blocked', 'failed')) DEFAULT 'pending',
           exploration_mode TEXT NOT NULL DEFAULT 'goal' CHECK(exploration_mode IN ('goal', 'autonomous')),
           scope TEXT NOT NULL DEFAULT '',
           forbidden_paths TEXT NOT NULL DEFAULT '',
@@ -952,6 +975,80 @@ def _migrate_requirement_analysis_run_statuses(db: sqlite3.Connection) -> None:
         """
         DROP TABLE requirement_analysis_runs;
         ALTER TABLE requirement_analysis_runs_new RENAME TO requirement_analysis_runs;
+        """
+    )
+    db.execute("PRAGMA foreign_keys=on")
+
+
+def _migrate_test_case_set_statuses(db: sqlite3.Connection) -> None:
+    table = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'test_case_sets'",
+    ).fetchone()
+    if not table or "'review_completed'" in table["sql"]:
+        return
+
+    source_count = db.execute("SELECT COUNT(*) AS count FROM test_case_sets").fetchone()["count"]
+
+    db.execute("PRAGMA foreign_keys=off")
+    db.executescript(
+        """
+        DROP TABLE IF EXISTS test_case_sets_new;
+        CREATE TABLE IF NOT EXISTS test_case_sets_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          requirement_doc_id TEXT NOT NULL,
+          exploration_run_id TEXT NOT NULL DEFAULT '',
+          include_company_knowledge INTEGER NOT NULL DEFAULT 0,
+          generation_scope_type TEXT NOT NULL CHECK(generation_scope_type IN ('all', 'specified')),
+          generation_scope_text TEXT NOT NULL DEFAULT '',
+          notes TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL CHECK(status IN ('generating', 'ready_for_review', 'review_completed', 'failed', 'archived')),
+          case_count INTEGER NOT NULL DEFAULT 0,
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(requirement_doc_id) REFERENCES source_documents(id) ON DELETE RESTRICT
+        );
+        INSERT INTO test_case_sets_new
+          (id, project_id, name, requirement_doc_id, exploration_run_id, include_company_knowledge,
+           generation_scope_type, generation_scope_text, notes, status, case_count, created_by, created_at, updated_at)
+        SELECT
+          id, project_id, name, requirement_doc_id, exploration_run_id, include_company_knowledge,
+          generation_scope_type, generation_scope_text, notes, status, case_count, created_by, created_at, updated_at
+        FROM test_case_sets;
+        UPDATE test_case_sets_new
+        SET status = 'review_completed'
+        WHERE status = 'ready_for_review'
+          AND case_count > 0
+          AND (
+            SELECT COUNT(*)
+            FROM test_cases
+            WHERE test_cases.test_case_set_id = test_case_sets_new.id
+          ) = case_count
+          AND NOT EXISTS (
+            SELECT 1
+            FROM test_cases
+            WHERE test_cases.test_case_set_id = test_case_sets_new.id
+              AND test_cases.status = 'ready_for_review'
+          );
+        """
+    )
+    migrated_count = db.execute("SELECT COUNT(*) AS count FROM test_case_sets_new").fetchone()["count"]
+    if migrated_count != source_count:
+        db.execute("DROP TABLE IF EXISTS test_case_sets_new")
+        db.execute("PRAGMA foreign_keys=on")
+        raise RuntimeError(f"测试用例集迁移行数不一致：原表 {source_count} 行，新表 {migrated_count} 行。")
+
+    db.executescript(
+        """
+        DROP TABLE test_case_sets;
+        ALTER TABLE test_case_sets_new RENAME TO test_case_sets;
+        CREATE INDEX IF NOT EXISTS idx_test_case_sets_project_updated
+          ON test_case_sets(project_id, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_test_case_sets_requirement
+          ON test_case_sets(requirement_doc_id);
         """
     )
     db.execute("PRAGMA foreign_keys=on")

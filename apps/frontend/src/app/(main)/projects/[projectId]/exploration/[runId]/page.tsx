@@ -494,7 +494,7 @@ function mergeMonitorEvents(
   const seen = new Set<string>();
   const merged: ExplorationMonitorEvent[] = [];
   for (const event of [...incoming, ...current]) {
-    const key = `${event.id}:${event.type}:${event.occurred_at}:${event.summary}`;
+    const key = event.id;
     if (seen.has(key)) {
       continue;
     }
@@ -532,7 +532,7 @@ function finalizeRunningMonitorSteps(monitor: ExplorationMonitorState, runStatus
 }
 
 function finalMonitorStepStatusFromRunStatus(runStatus: string): AgentPlanStatus | null {
-  if (runStatus === "completed" || runStatus === "partial") {
+  if (runStatus === "completed") {
     return "completed";
   }
   if (runStatus === "failed" || runStatus === "blocked" || runStatus === "interrupted") {
@@ -545,7 +545,7 @@ function finalMonitorStepStatusFromRunStatus(runStatus: string): AgentPlanStatus
 }
 
 function finalMonitorStepMessage(runStatus: string): string {
-  if (runStatus === "completed" || runStatus === "partial") {
+  if (runStatus === "completed") {
     return "探索任务已结束。";
   }
   if (runStatus === "cancelled") {
@@ -755,7 +755,6 @@ function monitorPhaseFromRunStatus(status: string): string {
   if (status === "queued") return "planning";
   if (status === "running" || status === "stopping") return "executing";
   if (status === "completed" || status === "partial") return "completed";
-  if (status === "blocked" || status === "failed" || status === "interrupted") return "failed";
   if (status === "cancelled") return "cancelled";
   return "idle";
 }
@@ -869,8 +868,7 @@ function upsertMonitorStep(
 function monitorStepStatusFromEvent(eventType: string): AgentPlanStatus {
   if (eventType === "step_started" || eventType === "step_retrying") return "running";
   if (eventType === "step_completed") return "completed";
-  if (eventType === "step_failed") return "failed";
-  if (eventType === "step_skipped") return "partial";
+  if (eventType === "step_failed" || eventType === "step_skipped") return "failed";
   return "pending";
 }
 
@@ -1266,9 +1264,6 @@ function normalizeAgentPlanStatus(status: string): AgentPlanStatus {
   if (status === "cancelled") {
     return "cancelled";
   }
-  if (status === "partial") {
-    return "partial";
-  }
   if (status === "failed") {
     return "failed";
   }
@@ -1286,7 +1281,7 @@ function isActiveStatus(status: string): boolean {
 }
 
 function isTerminalStatus(status: string): boolean {
-  return ["completed", "partial", "blocked", "cancelled", "interrupted", "failed"].includes(status);
+  return ["completed", "blocked", "cancelled", "interrupted", "failed"].includes(status);
 }
 
 function hasExplorationStarted(run: ExplorationRun): boolean {
@@ -1510,7 +1505,7 @@ export default function Page() {
   }
 
   const canStart = run
-    ? ["pending", "partial", "completed", "blocked", "cancelled", "interrupted", "failed"].includes(run.status)
+    ? ["pending", "completed", "blocked", "cancelled", "interrupted", "failed"].includes(run.status)
     : false;
   const canStop = run ? stoppableStatuses.has(run.status) : false;
   const activeDetail = streamDetail ?? detail;

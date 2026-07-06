@@ -2,17 +2,55 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ==================== 新的数据结构（核心）====================
+
+class TestCaseStep(BaseModel):
+    """单个测试步骤及对应预期"""
+
+    action: str = Field(..., min_length=1, description="测试动作")
+    expected_result: str = Field(..., min_length=1, description="该步骤完成后的可验证预期结果")
+
+    @field_validator("action", "expected_result", mode="before")
+    @classmethod
+    def _strip_strings(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class RejectedTestCaseFeedback(BaseModel):
+    """历史不采纳测试用例反馈"""
+    title: str = Field(..., description="被拒绝测试用例标题")
+    module: str = Field(default="", description="所属模块")
+    priority: str = Field(default="", description="优先级")
+    preconditions: str = Field(default="", description="前置条件")
+    steps: list[TestCaseStep] = Field(default_factory=list, description="测试步骤及每步预期")
+    expected_result: str = Field(default="", description="预期结果")
+    review_feedback: str = Field(default="", description="用户不采纳原因，可为空")
+
+    @field_validator("steps", mode="before")
+    @classmethod
+    def _normalize_steps(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        normalized = []
+        for item in value:
+            if isinstance(item, str):
+                normalized.append({"action": item, "expected_result": "原用例未记录该步骤预期结果。"})
+            else:
+                normalized.append(item)
+        return normalized
+
 
 class TestCaseGenerationInput(BaseModel):
     """测试用例生成输入"""
     requirement_name: str = Field(..., description="需求名称")
     requirement_content: str = Field(..., description="最终需求内容（需求理解）")
     generation_scope: str = Field(default="", description="生成范围（可选，如：只生成登录模块的测试用例）")
-    include_company_knowledge: bool = Field(default=False, description="是否包含公司知识库")
+    rejected_case_feedback: list[RejectedTestCaseFeedback] = Field(default_factory=list, description="历史不采纳用例反馈")
 
 
 class TestCase(BaseModel):
@@ -25,8 +63,8 @@ class TestCase(BaseModel):
         ..., description="测试类型"
     )
     precondition: str = Field(default="", description="前置条件")
-    steps: list[str] = Field(..., min_items=1, description="测试步骤")
-    expected_result: str = Field(..., min_length=1, description="预期结果")
+    steps: list[TestCaseStep] = Field(..., min_length=1, description="测试步骤及每步预期")
+    expected_result: str = Field(..., min_length=1, description="整条用例的最终或汇总预期结果")
     test_data: str = Field(default="", description="测试数据")
     notes: str = Field(default="", description="备注")
 
@@ -71,7 +109,8 @@ class TestCaseGenerationResult(BaseModel):
                 lines.append("")
                 lines.append("**测试步骤**:")
                 for i, step in enumerate(tc.steps, 1):
-                    lines.append(f"{i}. {step}")
+                    lines.append(f"{i}. {step.action}")
+                    lines.append(f"   - 预期结果：{step.expected_result}")
 
                 lines.append("")
                 lines.append(f"**预期结果**: {tc.expected_result}")
@@ -90,6 +129,8 @@ class TestCaseGenerationResult(BaseModel):
 
 
 __all__ = [
+    "RejectedTestCaseFeedback",
+    "TestCaseStep",
     "TestCaseGenerationInput",
     "TestCase",
     "TestCaseModule",

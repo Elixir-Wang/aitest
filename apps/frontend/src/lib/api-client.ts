@@ -111,6 +111,16 @@ export type ApiRequirementDocument = {
   created_by: string;
   created_at: string;
   updated_at: string;
+  current_version: {
+    id: string;
+    version_no: number;
+    file_path: string;
+    source_action: string;
+    change_summary: string;
+    diff_summary: string;
+    created_by: string;
+    created_at: string;
+  } | null;
 };
 
 export type ApiExplorationRun = {
@@ -150,6 +160,54 @@ type ApiTestCaseGenerationRun = {
   finished_at: string | null;
 };
 
+export type ApiTestCaseStep = {
+  action: string;
+  step?: string;
+  description?: string;
+  expected_result: string;
+};
+
+export type ApiTestCase = {
+  id: string;
+  test_case_set_id: string;
+  project_id: string;
+  title: string;
+  module: string;
+  priority: string;
+  preconditions: string;
+  steps: ApiTestCaseStep[];
+  expected_result: string;
+  status: string;
+  review_feedback: string;
+  reviewed_by: string;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiTestCaseReviewStats = {
+  case_count: number;
+  approved_count: number;
+  rejected_count: number;
+  pending_count: number;
+  reviewed_count: number;
+  adoption_rate: number;
+  review_progress: number;
+};
+
+export type ApiTestCaseReviewUpdate = {
+  status: "ready_for_review" | "approved" | "rejected";
+  review_feedback: string;
+  preconditions?: string;
+  steps?: ApiTestCaseStep[];
+  expected_result?: string;
+};
+
+export type ApiTestCaseReviewResult = {
+  case: ApiTestCase;
+  review_stats: ApiTestCaseReviewStats;
+};
+
 export type ApiTestCaseSet = {
   id: string;
   project_id: string;
@@ -157,9 +215,6 @@ export type ApiTestCaseSet = {
   name: string;
   requirement_doc_id: string;
   requirement_doc_title: string;
-  exploration_run_id: string;
-  exploration_run_title: string;
-  include_company_knowledge: boolean;
   generation_scope_type: ApiTestCaseGenerationScopeType;
   generation_scope_text: string;
   notes: string;
@@ -170,13 +225,13 @@ export type ApiTestCaseSet = {
   created_at: string;
   updated_at: string;
   generation_run: ApiTestCaseGenerationRun | null;
+  review_stats: ApiTestCaseReviewStats;
+  cases: ApiTestCase[];
 };
 
 export type ApiTestCaseSetCreate = {
   name: string;
   requirement_doc_id: string;
-  exploration_run_id: string;
-  include_company_knowledge: boolean;
   generation_scope_type: ApiTestCaseGenerationScopeType;
   generation_scope_text: string;
   notes: string;

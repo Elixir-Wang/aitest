@@ -69,7 +69,12 @@ def test_snap_tool_uses_runtime_browser_session_when_available():
     assert result["url"] == "https://test.com/authed"
     assert result["title"] == "Authed"
     assert result["page_text_summary"] == "Authed summary."
-    assert result["elements"][0]["ref"] == "button-save"
+    # v2.0: result["elements"] 是 raw ElementInfo 列表，state_observation_hint["elements"] 才是带 key 的 v2.0 shape
+    hint_elements = result["state_observation_hint"]["elements"]
+    assert hint_elements[0]["source"]["role"] == "button"
+    assert hint_elements[0]["source"]["name"] == "Save"
+    # element_key 由 _stable_element_key 派生，格式为 {role/name 归一化}-{index}
+    assert hint_elements[0]["key"].startswith("button-save")
     assert result["accessibility_tree"][0]["name"] == "Save"
     assert result["visible_text_blocks"] == ["Save"]
     assert "raw_output" not in result
@@ -163,7 +168,11 @@ def test_snap_tool_focus_keywords_filters_elements_and_tree():
             "focus_keywords": ["create"],
         })
 
-    assert [element["ref"] for element in result["elements"]] == ["create-btn"]
+    # focus_keywords 过滤后只剩 create 相关元素
+    assert len(result["elements"]) == 1
+    hint_elements = result["state_observation_hint"]["elements"]
+    assert len(hint_elements) == 1
+    assert {el["source"]["name"] for el in hint_elements} == {"Create Agent"}
     assert [node["name"] for node in result["accessibility_tree"]] == ["Create Agent"]
     assert result["visible_text_blocks"] == ["Create Agent"]
 
@@ -209,5 +218,8 @@ def test_snap_tool_focus_keywords_falls_back_to_full_snapshot_when_no_match():
             "focus_keywords": ["missing"],
         })
 
-    assert [element["ref"] for element in result["elements"]] == ["save-btn"]
+    assert len(result["elements"]) == 1
+    hint_elements = result["state_observation_hint"]["elements"]
+    assert len(hint_elements) == 1
+    assert hint_elements[0]["source"]["name"] == "Save"
     assert [node["name"] for node in result["accessibility_tree"]] == ["Save"]

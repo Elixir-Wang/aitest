@@ -46,6 +46,7 @@
     "react-dom": "^19.2.6",
     "react-hook-form": "^7.75.0",
     "react-markdown": "^10.1.0",
+    "react-use-measure": "^2.1.7",
     "recharts": "^3.8.0",
     "remark-gfm": "^4.0.1",
     "shadcn": "^4.7.0",

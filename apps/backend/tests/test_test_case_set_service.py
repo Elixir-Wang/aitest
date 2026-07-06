@@ -1,23 +1,39 @@
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from app.agents.test_case_generation.schemas import (
     TestCase as AgentTestCase,
     TestCaseGenerationResult as AgentTestCaseGenerationResult,
     TestCaseModule as AgentTestCaseModule,
+    TestCaseStep as AgentTestCaseStep,
 )
 from app.core import db as core_db
 from app.core import storage
 from app.seed.init_db import init_db
-from app.schemas.test_case import TestCaseSetCreateIn
+from app.schemas.test_case import TestCaseReviewIn, TestCaseSetCreateIn
 from app.services import task_service, test_case_service
 
 
 ACTOR = {"id": "u-admin", "role": "admin", "nickname": "管理员", "username": "admin", "project_scope": "全部项目"}
 GUEST = {"id": "u-guest", "role": "guest", "nickname": "访客", "username": "guest", "project_scope": "全部项目"}
+
+
+def _agent_steps(*actions: str) -> list[AgentTestCaseStep]:
+    expected_by_action = {
+        "打开登录页": "展示登录表单。",
+        "输入正确账号密码": "账号密码填写完成。",
+        "提交登录": "进入系统首页。",
+        "输入账号密码": "账号密码填写完成。",
+    }
+    return [
+        AgentTestCaseStep(action=action, expected_result=expected_by_action.get(action, f"{action}完成。"))
+        for action in actions
+    ]
 
 
 def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -45,7 +61,7 @@ def _seed_project_requirement_and_exploration() -> None:
             """
             INSERT INTO source_document_versions
               (id, document_id, version_no, markdown_content, file_path, source_action, change_summary, created_by)
-            VALUES (?, ?, 1, ?, ?, 'finalize_requirement_analysis', '确认最终需求', ?)
+            VALUES (?, ?, 1, ?, ?, 'requirement_analysis_finalize', '确认最终需求', ?)
             """,
             ("version-1", "doc-1", "# 登录需求\n\n用户可以登录系统。", "project-1/requirements/doc-1/versions/v1.md", ACTOR["id"]),
         )
@@ -66,7 +82,7 @@ def _seed_project_requirement_and_exploration() -> None:
         )
 
 
-def test_create_test_case_set_defaults_company_knowledge_and_related_exploration(
+def test_create_test_case_set_defaults_to_requirement_only_generation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -86,15 +102,16 @@ def test_create_test_case_set_defaults_company_knowledge_and_related_exploration
     assert created["name"] == "登录需求测试用例集"
     assert created["requirement_doc_id"] == "doc-1"
     assert created["requirement_doc_title"] == "登录需求"
-    assert created["exploration_run_id"] == "explore-1"
-    assert created["exploration_run_title"] == "登录探索"
-    assert created["include_company_knowledge"] is True
+    assert "exploration_run_id" not in created
+    assert "exploration_run_title" not in created
+    assert "include_company_knowledge" not in created
     assert created["generation_scope_type"] == "all"
     assert created["generation_scope_text"] == ""
     assert created["status"] == "generating"
     assert created["case_count"] == 0
     assert created["generation_run"]["status"] == "queued"
-    assert created["generation_run"]["input_snapshot"]["company_knowledge_role"] == "testing_guidance_only"
+    assert "use_exploration_artifacts" not in created["generation_run"]["input_snapshot"]
+    assert "include_company_knowledge" not in created["generation_run"]["input_snapshot"]
 
 
 def test_create_test_case_set_requires_specified_scope_text(
@@ -110,6 +127,22 @@ def test_create_test_case_set_requires_specified_scope_text(
             requirement_doc_id="doc-1",
             generation_scope_type="specified",
             generation_scope_text="",
+        )
+
+
+def test_create_test_case_set_rejects_removed_generation_source_parameters(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+
+    with pytest.raises(ValidationError):
+        TestCaseSetCreateIn(
+            name="登录需求测试用例集",
+            requirement_doc_id="doc-1",
+            use_exploration_artifacts=True,
+            include_company_knowledge=True,
         )
 
 
@@ -140,6 +173,42 @@ def test_create_test_case_set_rejects_requirement_from_other_project(
         )
 
     assert exc_info.value.detail["code"] == "INVALID_REQUIREMENT_DOCUMENT"
+
+
+def test_create_test_case_set_rejects_requirement_without_final_version(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        db.execute(
+            "INSERT INTO projects (id, name, status, description, created_by) VALUES (?, ?, 'active', '', ?)",
+            ("project-1", "测试项目", ACTOR["id"]),
+        )
+        db.execute(
+            """
+            INSERT INTO source_documents (id, project_id, name, document_type, current_version_id, status, created_by)
+            VALUES (?, ?, ?, 'PRD', 'version-draft', 'versioned', ?)
+            """,
+            ("doc-draft", "project-1", "未最终需求", ACTOR["id"]),
+        )
+        db.execute(
+            """
+            INSERT INTO source_document_versions
+              (id, document_id, version_no, markdown_content, file_path, source_action, change_summary, created_by)
+            VALUES (?, ?, 1, ?, '', 'upload', '上传原始需求', ?)
+            """,
+            ("version-draft", "doc-draft", "# 原始需求\n\n尚未转为最终需求。", ACTOR["id"]),
+        )
+
+    with pytest.raises(HTTPException) as exc_info:
+        test_case_service.create_test_case_set(
+            "project-1",
+            TestCaseSetCreateIn(name="非法用例集", requirement_doc_id="doc-draft"),
+            ACTOR,
+        )
+
+    assert exc_info.value.detail["code"] == "NO_FINAL_REQUIREMENT"
 
 
 def test_guest_cannot_create_test_case_set(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -253,7 +322,8 @@ def test_execute_test_case_generation_run_completes_and_persists_cases(
     async def fake_generate_test_cases(input_data):
         assert input_data.requirement_name == "登录需求"
         assert "用户可以登录系统" in input_data.requirement_content
-        assert input_data.include_company_knowledge is True
+        assert "原始需求" not in input_data.requirement_content
+        assert not hasattr(input_data, "include_company_knowledge")
         return AgentTestCaseGenerationResult(
             summary="覆盖登录成功和失败场景。",
             total_count=1,
@@ -268,7 +338,7 @@ def test_execute_test_case_generation_run_completes_and_persists_cases(
                             priority="P0",
                             type="功能测试",
                             precondition="用户已注册。",
-                            steps=["打开登录页", "输入正确账号密码", "提交登录"],
+                            steps=_agent_steps("打开登录页", "输入正确账号密码", "提交登录"),
                             expected_result="进入系统首页。",
                         )
                     ],
@@ -289,6 +359,318 @@ def test_execute_test_case_generation_run_completes_and_persists_cases(
     assert len(rows) == 1
     assert rows[0]["title"] == "账号密码登录成功"
     assert rows[0]["status"] == "ready_for_review"
+    assert json.loads(rows[0]["steps_json"]) == [
+        {"action": "打开登录页", "expected_result": "展示登录表单。"},
+        {"action": "输入正确账号密码", "expected_result": "账号密码填写完成。"},
+        {"action": "提交登录", "expected_result": "进入系统首页。"},
+    ]
+    assert rows[0]["source_exploration_refs"] == "[]"
+
+
+def test_get_test_case_set_returns_persisted_case_details(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+    test_case_service._complete_generation_run(
+        {
+            "id": created["generation_run"]["id"],
+            "test_case_set_id": created["id"],
+            "project_id": "project-1",
+            "requirement_doc_id": "doc-1",
+        },
+        AgentTestCaseGenerationResult(
+            summary="覆盖登录成功场景。",
+            total_count=1,
+            modules=[
+                AgentTestCaseModule(
+                    module_name="登录",
+                    test_cases=[
+                        AgentTestCase(
+                            id="tc-001",
+                            module="登录",
+                            title="账号密码登录成功",
+                            priority="P0",
+                            type="功能测试",
+                            precondition="用户已注册。",
+                            steps=_agent_steps("打开登录页", "输入正确账号密码", "提交登录"),
+                            expected_result="进入系统首页。",
+                        )
+                    ],
+                )
+            ],
+        ),
+    )
+
+    detail = test_case_service.get_test_case_set("project-1", created["id"], ACTOR)
+
+    assert detail["cases"] == [
+        {
+            "id": f"{created['id']}-tc-001",
+            "test_case_set_id": created["id"],
+            "project_id": "project-1",
+            "title": "账号密码登录成功",
+            "module": "登录",
+            "priority": "P0",
+            "preconditions": "用户已注册。",
+            "steps": [
+                {"action": "打开登录页", "expected_result": "展示登录表单。"},
+                {"action": "输入正确账号密码", "expected_result": "账号密码填写完成。"},
+                {"action": "提交登录", "expected_result": "进入系统首页。"},
+            ],
+            "expected_result": "进入系统首页。",
+            "status": "ready_for_review",
+            "review_feedback": "",
+            "reviewed_by": "",
+            "reviewed_at": None,
+            "created_at": detail["cases"][0]["created_at"],
+            "updated_at": detail["cases"][0]["updated_at"],
+        }
+    ]
+
+
+def test_review_test_case_updates_status_feedback_and_stats(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+    test_case_service._complete_generation_run(
+        {
+            "id": created["generation_run"]["id"],
+            "test_case_set_id": created["id"],
+            "project_id": "project-1",
+            "requirement_doc_id": "doc-1",
+        },
+        AgentTestCaseGenerationResult(
+            summary="覆盖登录成功场景。",
+            total_count=1,
+            modules=[
+                AgentTestCaseModule(
+                    module_name="登录",
+                    test_cases=[
+                        AgentTestCase(
+                            id="tc-001",
+                            module="登录",
+                            title="账号密码登录成功",
+                            priority="P0",
+                            type="功能测试",
+                            precondition="用户已注册。",
+                            steps=_agent_steps("打开登录页", "输入正确账号密码", "提交登录"),
+                            expected_result="进入系统首页。",
+                        )
+                    ],
+                )
+            ],
+        ),
+    )
+    case_id = f"{created['id']}-tc-001"
+
+    rejected = test_case_service.review_test_case(
+        "project-1",
+        created["id"],
+        case_id,
+        TestCaseReviewIn(status="rejected", review_feedback="  预期结果不可验证  "),
+        ACTOR,
+    )
+
+    assert rejected["case"]["status"] == "rejected"
+    assert rejected["case"]["review_feedback"] == "预期结果不可验证"
+    assert rejected["case"]["reviewed_by"] == ACTOR["id"]
+    assert rejected["case"]["reviewed_at"]
+    assert rejected["review_stats"] == {
+        "case_count": 1,
+        "approved_count": 0,
+        "rejected_count": 1,
+        "pending_count": 0,
+        "reviewed_count": 1,
+        "adoption_rate": 0,
+        "review_progress": 1,
+    }
+    reviewed_set = test_case_service.get_test_case_set("project-1", created["id"], ACTOR)
+    assert reviewed_set["status"] == "review_completed"
+    assert reviewed_set["status_label"] == "评审完成"
+
+    approved = test_case_service.review_test_case(
+        "project-1",
+        created["id"],
+        case_id,
+        TestCaseReviewIn(status="approved", review_feedback="这段会被清空"),
+        ACTOR,
+    )
+
+    assert approved["case"]["status"] == "approved"
+    assert approved["case"]["review_feedback"] == ""
+    assert approved["review_stats"]["approved_count"] == 1
+    assert approved["review_stats"]["adoption_rate"] == 1
+
+    reset = test_case_service.review_test_case(
+        "project-1",
+        created["id"],
+        case_id,
+        TestCaseReviewIn(status="ready_for_review"),
+        ACTOR,
+    )
+
+    assert reset["case"]["status"] == "ready_for_review"
+    assert reset["case"]["review_feedback"] == ""
+    assert reset["case"]["reviewed_by"] == ""
+    assert reset["case"]["reviewed_at"] is None
+    assert reset["review_stats"]["pending_count"] == 1
+    pending_set = test_case_service.get_test_case_set("project-1", created["id"], ACTOR)
+    assert pending_set["status"] == "ready_for_review"
+    assert pending_set["status_label"] == "待评审"
+
+
+def test_review_test_case_allows_empty_rejection_feedback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+    test_case_service._complete_generation_run(
+        {
+            "id": created["generation_run"]["id"],
+            "test_case_set_id": created["id"],
+            "project_id": "project-1",
+            "requirement_doc_id": "doc-1",
+        },
+        AgentTestCaseGenerationResult(
+            summary="覆盖登录成功场景。",
+            total_count=1,
+            modules=[
+                AgentTestCaseModule(
+                    module_name="登录",
+                    test_cases=[
+                        AgentTestCase(
+                            id="tc-001",
+                            module="登录",
+                            title="账号密码登录成功",
+                            priority="P0",
+                            type="功能测试",
+                            precondition="用户已注册。",
+                            steps=_agent_steps("打开登录页"),
+                            expected_result="进入系统首页。",
+                        )
+                    ],
+                )
+            ],
+        ),
+    )
+
+    result = test_case_service.review_test_case(
+        "project-1",
+        created["id"],
+        f"{created['id']}-tc-001",
+        TestCaseReviewIn(status="rejected"),
+        ACTOR,
+    )
+
+    assert result["case"]["status"] == "rejected"
+    assert result["case"]["review_feedback"] == ""
+
+
+def test_review_test_case_can_update_case_content(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+    test_case_service._complete_generation_run(
+        {
+            "id": created["generation_run"]["id"],
+            "test_case_set_id": created["id"],
+            "project_id": "project-1",
+            "requirement_doc_id": "doc-1",
+        },
+        AgentTestCaseGenerationResult(
+            summary="覆盖登录成功场景。",
+            total_count=1,
+            modules=[
+                AgentTestCaseModule(
+                    module_name="登录",
+                    test_cases=[
+                        AgentTestCase(
+                            id="tc-001",
+                            module="登录",
+                            title="账号密码登录成功",
+                            priority="P0",
+                            type="功能测试",
+                            precondition="用户已注册。",
+                            steps=_agent_steps("打开登录页"),
+                            expected_result="进入系统首页。",
+                        )
+                    ],
+                )
+            ],
+        ),
+    )
+
+    result = test_case_service.review_test_case(
+        "project-1",
+        created["id"],
+        f"{created['id']}-tc-001",
+        TestCaseReviewIn(
+            status="approved",
+            preconditions="  用户已完成短信验证。  ",
+            steps=[
+                {"action": " 打开登录页 ", "expected_result": " 展示登录表单。 "},
+                {"action": "输入账号密码并提交", "expected_result": " 进入工作台首页。 "},
+            ],
+            expected_result="  进入工作台首页。  ",
+        ),
+        ACTOR,
+    )
+
+    assert result["case"]["status"] == "approved"
+    assert result["case"]["preconditions"] == "用户已完成短信验证。"
+    assert result["case"]["steps"] == [
+        {"action": "打开登录页", "expected_result": "展示登录表单。"},
+        {"action": "输入账号密码并提交", "expected_result": "进入工作台首页。"},
+    ]
+    assert result["case"]["expected_result"] == "进入工作台首页。"
+
+
+def test_guest_cannot_review_test_case(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        test_case_service.review_test_case(
+            "project-1",
+            created["id"],
+            f"{created['id']}-tc-001",
+            TestCaseReviewIn(status="approved"),
+            GUEST,
+        )
+
+    assert exc_info.value.status_code == 403
 
 
 def test_execute_test_case_generation_run_marks_failed_on_agent_error(
@@ -315,6 +697,132 @@ def test_execute_test_case_generation_run_marks_failed_on_agent_error(
     assert updated["case_count"] == 0
     assert updated["generation_run"]["status"] == "failed"
     assert "模型调用失败" in updated["generation_run"]["error_message"]
+
+
+def test_regenerate_test_case_set_creates_new_run_for_existing_set(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(
+            name="登录需求测试用例集",
+            requirement_doc_id="doc-1",
+            generation_scope_type="specified",
+            generation_scope_text="登录成功路径",
+            notes="优先覆盖主流程",
+        ),
+        ACTOR,
+    )
+    test_case_service._complete_generation_run(
+        {
+            "id": created["generation_run"]["id"],
+            "test_case_set_id": created["id"],
+            "project_id": "project-1",
+            "requirement_doc_id": "doc-1",
+        },
+        AgentTestCaseGenerationResult(
+            summary="旧用例",
+            total_count=1,
+            modules=[
+                AgentTestCaseModule(
+                    module_name="登录",
+                    test_cases=[
+                        AgentTestCase(
+                            id="tc-001",
+                            module="登录",
+                            title="旧登录用例",
+                            priority="P1",
+                            type="功能测试",
+                            precondition="已有账号。",
+                            steps=_agent_steps("打开登录页"),
+                            expected_result="展示登录页。",
+                        )
+                    ],
+                )
+            ],
+        ),
+    )
+
+    regenerated = test_case_service.regenerate_test_case_set("project-1", created["id"], ACTOR)
+
+    assert regenerated["id"] == created["id"]
+    assert regenerated["status"] == "generating"
+    assert regenerated["generation_run"]["id"] != created["generation_run"]["id"]
+    assert regenerated["generation_run"]["status"] == "queued"
+    assert regenerated["generation_run"]["input_snapshot"]["generation_scope_type"] == "specified"
+    assert regenerated["generation_run"]["input_snapshot"]["generation_scope_text"] == "登录成功路径"
+    assert regenerated["generation_run"]["input_snapshot"]["notes"] == "优先覆盖主流程"
+
+
+def test_regenerate_test_case_set_carries_rejected_case_feedback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+    test_case_service._complete_generation_run(
+        {
+            "id": created["generation_run"]["id"],
+            "test_case_set_id": created["id"],
+            "project_id": "project-1",
+            "requirement_doc_id": "doc-1",
+        },
+        AgentTestCaseGenerationResult(
+            summary="旧用例",
+            total_count=1,
+            modules=[
+                AgentTestCaseModule(
+                    module_name="登录",
+                    test_cases=[
+                        AgentTestCase(
+                            id="tc-001",
+                            module="登录",
+                            title="旧登录用例",
+                            priority="P1",
+                            type="功能测试",
+                            precondition="已有账号。",
+                            steps=_agent_steps("打开登录页", "输入账号密码"),
+                            expected_result="展示登录页。",
+                        )
+                    ],
+                )
+            ],
+        ),
+    )
+    case_id = f"{created['id']}-tc-001"
+    test_case_service.review_test_case(
+        "project-1",
+        created["id"],
+        case_id,
+        TestCaseReviewIn(status="rejected", review_feedback="缺少异常输入覆盖"),
+        ACTOR,
+    )
+
+    regenerated = test_case_service.regenerate_test_case_set("project-1", created["id"], ACTOR)
+    feedback = regenerated["generation_run"]["input_snapshot"]["rejected_case_feedback"]
+
+    assert feedback == [
+        {
+            "title": "旧登录用例",
+            "module": "登录",
+            "priority": "P1",
+            "preconditions": "已有账号。",
+            "steps": [
+                {"action": "打开登录页", "expected_result": "展示登录表单。"},
+                {"action": "输入账号密码", "expected_result": "账号密码填写完成。"},
+            ],
+            "expected_result": "展示登录页。",
+            "review_feedback": "缺少异常输入覆盖",
+        }
+    ]
 
 
 def test_recover_interrupted_test_case_generation_runs_marks_active_runs_failed(

@@ -15,6 +15,7 @@ const AGENT_BACKEND_SOURCE_TYPES = new Set([
   "exploration_run",
   "requirement_file",
   "requirement_analysis_run",
+  "requirement_finalization_run",
   "test_case_generation_run",
 ]);
 const RUNNING_TASK_POLL_INTERVAL_MS = 2_000;

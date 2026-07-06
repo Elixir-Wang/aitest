@@ -4,7 +4,7 @@ from loguru import logger
 
 from app.api.v1 import v1_router
 from app.core.logging import setup_logging
-from app.core.response import wrap_api_response
+from app.core.response import ApiResponseMiddleware
 from app.seed.init_db import init_db
 from app.services import task_service, test_case_service
 from app.services.exploration import event_bus, recover_interrupted_exploration_runs
@@ -38,7 +38,7 @@ def shutdown() -> None:
     logger.info("Application shutdown signal handled")
 
 
-app.middleware("http")(wrap_api_response)
+app.add_middleware(ApiResponseMiddleware)
 
 
 @app.get("/health")

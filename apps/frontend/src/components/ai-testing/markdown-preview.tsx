@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import type { GraphLabel } from "@dagrejs/dagre";
 import dagre from "@dagrejs/dagre";
-import { Copy } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 type MarkdownPreviewProps = {
@@ -29,73 +30,189 @@ export function MarkdownPreview({
   onVaultFileClick,
 }: MarkdownPreviewProps) {
   const markdown = content.trim();
+  const previewImages = useMemo(() => extractMarkdownImages(markdown), [markdown]);
+  const [previewImageIndex, setPreviewImageIndex] = useState<number | null>(null);
+  const previewImage = previewImageIndex === null ? null : previewImages[previewImageIndex];
+  const hasMultiplePreviewImages = previewImages.length > 1;
 
   if (!markdown) {
     return <div className={cn("markdown-preview markdown-preview-empty", className, emptyClassName)}>{emptyText}</div>;
   }
 
+  function openImagePreview(src: string, alt: string) {
+    const imageIndex = previewImages.findIndex((image) => image.src === src && image.alt === alt);
+    setPreviewImageIndex(imageIndex >= 0 ? imageIndex : 0);
+  }
+
+  function showAdjacentImage(direction: -1 | 1) {
+    setPreviewImageIndex((currentIndex) => {
+      if (currentIndex === null || previewImages.length === 0) {
+        return currentIndex;
+      }
+      return (currentIndex + direction + previewImages.length) % previewImages.length;
+    });
+  }
+
   return (
-    <article className={cn("markdown-preview", className)}>
-      <ReactMarkdown
-        components={{
-          a: ({ children, href, onClick, ...props }) => {
-            if (href && VAULT_FILE_LINK_RE.test(href) && onVaultFileClick) {
+    <>
+      <article className={cn("markdown-preview", className)}>
+        <ReactMarkdown
+          components={{
+            a: ({ children, href, onClick, ...props }) => {
+              if (href && VAULT_FILE_LINK_RE.test(href) && onVaultFileClick) {
+                return (
+                  <a
+                    {...props}
+                    href={href}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      onVaultFileClick(href);
+                      onClick?.(event);
+                    }}
+                  >
+                    {children}
+                  </a>
+                );
+              }
               return (
-                <a
-                  {...props}
-                  href={href}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    onVaultFileClick(href);
-                    onClick?.(event);
-                  }}
-                >
+                <a href={href} onClick={onClick} {...props}>
                   {children}
                 </a>
               );
-            }
-            return (
-              <a href={href} onClick={onClick} {...props}>
-                {children}
-              </a>
-            );
-          },
-          pre: ({ children }) => {
-            const child = Array.isArray(children) ? children[0] : children;
-            if (
-              typeof child === "object" &&
-              child !== null &&
-              "props" in child &&
-              typeof child.props === "object" &&
-              child.props !== null &&
-              "className" in child.props &&
-              /language-mermaid/.test(String(child.props.className || ""))
-            ) {
-              const source = String(child.props.children || "").replace(/\n$/, "");
-              return <MermaidDiagram source={source} />;
-            }
-            return <pre>{children}</pre>;
-          },
-          code: ({ children, className }) => {
-            const language = /language-(\w+)/.exec(className || "")?.[1];
-            const source = String(children).replace(/\n$/, "");
-            if (language === "mermaid") {
-              return <MermaidDiagram source={source} />;
-            }
-            return <code className={className}>{children}</code>;
-          },
-          table: ({ children }) => (
-            <div className="markdown-table-scroll">
-              <table>{children}</table>
+            },
+            img: ({ alt, src, ...props }) => {
+              const imageSrc = typeof src === "string" ? src : "";
+              if (!imageSrc) {
+                // biome-ignore lint/performance/noImgElement: Markdown image sources are dynamic document assets without known dimensions.
+                return <img alt={alt ?? ""} {...props} />;
+              }
+              const imageAlt = alt || "图片预览";
+              return (
+                <button
+                  className="markdown-image-trigger"
+                  onClick={() => openImagePreview(imageSrc, imageAlt)}
+                  type="button"
+                >
+                  {/* biome-ignore lint/performance/noImgElement: Markdown image sources are dynamic document assets without known dimensions. */}
+                  <img alt={imageAlt} src={imageSrc} {...props} />
+                </button>
+              );
+            },
+            pre: ({ children }) => {
+              const child = Array.isArray(children) ? children[0] : children;
+              if (
+                typeof child === "object" &&
+                child !== null &&
+                "props" in child &&
+                typeof child.props === "object" &&
+                child.props !== null &&
+                "className" in child.props &&
+                /language-mermaid/.test(String(child.props.className || ""))
+              ) {
+                const source = String(child.props.children || "").replace(/\n$/, "");
+                return <MermaidDiagram source={source} />;
+              }
+              return <pre>{children}</pre>;
+            },
+            code: ({ children, className }) => {
+              const language = /language-(\w+)/.exec(className || "")?.[1];
+              const source = String(children).replace(/\n$/, "");
+              if (language === "mermaid") {
+                return <MermaidDiagram source={source} />;
+              }
+              return <code className={className}>{children}</code>;
+            },
+            table: ({ children }) => (
+              <div className="markdown-table-scroll">
+                <table>{children}</table>
+              </div>
+            ),
+          }}
+          remarkPlugins={[remarkGfm, remarkHtmlBreaks]}
+        >
+          {markdown}
+        </ReactMarkdown>
+      </article>
+      <Dialog open={Boolean(previewImage)} onOpenChange={(open) => !open && setPreviewImageIndex(null)}>
+        <DialogContent className="markdown-image-preview-dialog max-h-[calc(100vh-2rem)] gap-3 overflow-hidden p-3 sm:max-w-[min(96vw,1280px)]">
+          <DialogTitle className="sr-only">{previewImage?.alt ?? "图片预览"}</DialogTitle>
+          <DialogDescription className="sr-only">点击右上角关闭按钮或按 Esc 关闭图片预览。</DialogDescription>
+          {previewImage ? (
+            <div className="markdown-image-preview-frame">
+              {hasMultiplePreviewImages ? (
+                <Button
+                  aria-label="上一张图片"
+                  className="markdown-image-preview-nav markdown-image-preview-nav-previous"
+                  onClick={() => showAdjacentImage(-1)}
+                  size="icon"
+                  type="button"
+                  variant="secondary"
+                >
+                  <ChevronLeft />
+                </Button>
+              ) : null}
+              {/* biome-ignore lint/performance/noImgElement: Markdown image sources are dynamic document assets without known dimensions. */}
+              <img alt={previewImage.alt} className="markdown-image-preview" src={previewImage.src} />
+              {hasMultiplePreviewImages ? (
+                <Button
+                  aria-label="下一张图片"
+                  className="markdown-image-preview-nav markdown-image-preview-nav-next"
+                  onClick={() => showAdjacentImage(1)}
+                  size="icon"
+                  type="button"
+                  variant="secondary"
+                >
+                  <ChevronRight />
+                </Button>
+              ) : null}
             </div>
-          ),
-        }}
-        remarkPlugins={[remarkGfm]}
-      >
-        {markdown}
-      </ReactMarkdown>
-    </article>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </>
   );
+}
+
+type MarkdownAstNode = {
+  children?: MarkdownAstNode[];
+  type: string;
+  value?: string;
+};
+
+function remarkHtmlBreaks() {
+  return function transform(tree: MarkdownAstNode) {
+    replaceHtmlBreaks(tree);
+  };
+}
+
+function replaceHtmlBreaks(node: MarkdownAstNode) {
+  if (!node.children) {
+    return;
+  }
+
+  node.children = node.children.flatMap((child) => {
+    if (child.type === "html" && typeof child.value === "string" && isOnlyHtmlBreaks(child.value)) {
+      return Array.from(child.value.matchAll(/<br\s*\/?>/gi), () => ({ type: "break" }));
+    }
+    replaceHtmlBreaks(child);
+    return child;
+  });
+}
+
+function isOnlyHtmlBreaks(value: string) {
+  return /^(?:\s*<br\s*\/?>\s*)+$/i.test(value);
+}
+
+type MarkdownImage = {
+  alt: string;
+  src: string;
+};
+
+function extractMarkdownImages(markdown: string): MarkdownImage[] {
+  return Array.from(markdown.matchAll(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g), (match) => ({
+    alt: match[1] || "图片预览",
+    src: match[2],
+  }));
 }
 
 type MermaidDiagramProps = {
