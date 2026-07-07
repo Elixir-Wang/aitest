@@ -23,6 +23,7 @@ from app.core.storage import resolve_stored_path, store_path
 from app.repositories import (
     document_repo,
     requirement_clarification_answer_repo,
+    requirement_finalization_run_repo,
 )
 from app.schemas.document import (
     RequirementAnalysisFinalizeIn,
@@ -413,6 +414,7 @@ async def finalize_requirement_analysis(
     actor,
 ) -> dict:
     finalization_input = None
+    finalization_run_id = ""
     with connect() as db:
         document = document_repo.find_by_project_and_id(db, project_id, document_id)
         if not document:
@@ -469,67 +471,90 @@ async def finalize_requirement_analysis(
             document_id=document_id,
             analysis=analysis,
         )
+        finalization_run_id = f"reqfin-{secrets.token_hex(8)}"
+        requirement_finalization_run_repo.create_run(
+            db,
+            run_id=finalization_run_id,
+            project_id=project_id,
+            document_id=document_id,
+            analysis_id=analysis["id"],
+            status="running",
+            summary="最终需求智能体正在转换。",
+            created_by=actor["id"],
+        )
 
     try:
         finalization_output = await run_requirement_finalization(finalization_input)
     except Exception as exc:
+        _mark_requirement_finalization_failed(finalization_run_id, f"最终需求智能体运行失败：{exc}")
         raise api_error(502, "REQUIREMENT_FINALIZATION_AGENT_FAILED", f"最终需求智能体运行失败：{exc}") from exc
 
     final_markdown = finalization_output.final_requirement_markdown.strip()
     if not final_markdown:
+        _mark_requirement_finalization_failed(finalization_run_id, "最终需求智能体返回内容为空。")
         raise api_error(502, "REQUIREMENT_FINALIZATION_EMPTY_OUTPUT", "最终需求智能体返回内容为空。")
 
-    with connect() as db:
-        document = document_repo.find_by_project_and_id(db, project_id, document_id)
-        if not document:
-            raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
-        analysis = document_repo.find_requirement_analysis(db, payload.analysis_id)
-        if not analysis or analysis["project_id"] != project_id or analysis["document_id"] != document_id:
-            raise api_error(404, "REQUIREMENT_ANALYSIS_NOT_FOUND", "需求分析结果不存在。")
+    try:
+        with connect() as db:
+            document = document_repo.find_by_project_and_id(db, project_id, document_id)
+            if not document:
+                raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
+            analysis = document_repo.find_requirement_analysis(db, payload.analysis_id)
+            if not analysis or analysis["project_id"] != project_id or analysis["document_id"] != document_id:
+                raise api_error(404, "REQUIREMENT_ANALYSIS_NOT_FOUND", "需求分析结果不存在。")
 
-        version_id = f"docver-{secrets.token_hex(8)}"
-        version_no = document_repo.next_version_no(db, document_id)
-        version_path = version_markdown_path(project_id, document_id, version_no)
-        version_path.parent.mkdir(parents=True, exist_ok=True)
-        version_path.write_text(final_markdown + "\n", encoding="utf-8")
-        handled_count = len(finalization_input.handled_clarifications)
-        diff_summary = finalization_output.change_summary or f"由最终需求智能体生成最终需求，回填已处理澄清 {handled_count} 项。"
+            version_id = f"docver-{secrets.token_hex(8)}"
+            version_no = document_repo.next_version_no(db, document_id)
+            version_path = version_markdown_path(project_id, document_id, version_no)
+            version_path.parent.mkdir(parents=True, exist_ok=True)
+            version_path.write_text(final_markdown + "\n", encoding="utf-8")
+            handled_count = len(finalization_input.handled_clarifications)
+            diff_summary = finalization_output.change_summary or f"由最终需求智能体生成最终需求，回填已处理澄清 {handled_count} 项。"
 
-        document_repo.create_version(
-            db,
-            version_id=version_id,
-            document_id=document_id,
-            version_no=version_no,
-            file_path=store_path(version_path) or str(version_path),
-            source_action="requirement_analysis_finalize",
-            change_summary="初步需求转为最终需求",
-            diff_summary=diff_summary,
-            created_by=actor["id"],
-        )
-        document_repo.update_current_version(db, document_id, version_id, DOCUMENT_VERSIONED_STATUS)
-        document_repo.mark_requirement_analysis_finalized(
-            db,
-            analysis_id=analysis["id"],
-            version_id=version_id,
-            finalized_by=actor["id"],
-        )
-        document_repo.create_document_version_change_log(
-            db,
-            log_id=f"doclog-{secrets.token_hex(8)}",
-            document_id=document_id,
-            version_id=version_id,
-            source_action="requirement_analysis_finalize",
-            change_summary="初步需求转为最终需求",
-            diff_summary=diff_summary,
-            affected_modules=[],
-            source_mapping_ids=[primary_mapping_id] if primary_mapping_id else [],
-            created_by=actor["id"],
-        )
-        if primary_mapping_id:
-            document_repo.link_file_mapping_to_version(db, primary_mapping_id, version_id)
+            document_repo.create_version(
+                db,
+                version_id=version_id,
+                document_id=document_id,
+                version_no=version_no,
+                file_path=store_path(version_path) or str(version_path),
+                source_action="requirement_analysis_finalize",
+                change_summary="初步需求转为最终需求",
+                diff_summary=diff_summary,
+                created_by=actor["id"],
+            )
+            document_repo.update_current_version(db, document_id, version_id, DOCUMENT_VERSIONED_STATUS)
+            document_repo.mark_requirement_analysis_finalized(
+                db,
+                analysis_id=analysis["id"],
+                version_id=version_id,
+                finalized_by=actor["id"],
+            )
+            document_repo.create_document_version_change_log(
+                db,
+                log_id=f"doclog-{secrets.token_hex(8)}",
+                document_id=document_id,
+                version_id=version_id,
+                source_action="requirement_analysis_finalize",
+                change_summary="初步需求转为最终需求",
+                diff_summary=diff_summary,
+                affected_modules=[],
+                source_mapping_ids=[primary_mapping_id] if primary_mapping_id else [],
+                created_by=actor["id"],
+            )
+            if primary_mapping_id:
+                document_repo.link_file_mapping_to_version(db, primary_mapping_id, version_id)
+            requirement_finalization_run_repo.update_status(
+                db,
+                finalization_run_id,
+                status="completed",
+                summary=diff_summary,
+            )
 
-        finalized_analysis = document_repo.find_requirement_analysis(db, analysis["id"])
-        version = document_repo.find_version(db, version_id)
+            finalized_analysis = document_repo.find_requirement_analysis(db, analysis["id"])
+            version = document_repo.find_version(db, version_id)
+    except Exception as exc:
+        _mark_requirement_finalization_failed(finalization_run_id, str(exc))
+        raise
 
     operation_log_service.record_change(
         log_type="audit",
@@ -556,3 +581,16 @@ async def finalize_requirement_analysis(
         },
         "markdown_content": final_markdown + "\n",
     }
+
+
+def _mark_requirement_finalization_failed(run_id: str, failure_reason: str) -> None:
+    if not run_id:
+        return
+    with connect() as db:
+        requirement_finalization_run_repo.update_status(
+            db,
+            run_id,
+            status="failed",
+            summary="最终需求转换失败。",
+            failure_reason=failure_reason,
+        )

@@ -11,14 +11,27 @@ from app.services.page_exploration.page_artifact_writer import (
 from app.agents.page_exploration.schemas import TriggeredBy
 
 
-def _obs(*, sid_short, state_type, triggered_by=None, parent_state_id=None, elements=None, observed_url="/x"):
+def _compute_sig(elements):
+    """Compute the actual dom_signature for a list of NewElementObservation."""
+    from app.agents.page_exploration.utils.dom_signature import compute_dom_signature
+    flat = [
+        {"source": {"role": e.source.get("role"), "name": e.source.get("name"),
+         "aria_label": e.source.get("aria_label")}, "key": e.key}
+        for e in (elements or [])
+    ]
+    return compute_dom_signature(flat)
+
+
+def _obs(*, sid_short, state_type, triggered_by=None, parent_state_id=None,
+         elements=None, observed_url="/x"):
+    sig = _compute_sig(elements)
     return NewStateObservation(
         page_id="page-x", page_title="X", normalized_path="/x",
         observed_url=observed_url, run_id="run-1",
         observed_at="2026-07-04T10:00:00Z",
         state_type=state_type,
         title=sid_short,
-        dom_signature="sha256:temp",  # 写入会被重算
+        dom_signature=sig,
         triggered_by=triggered_by,
         parent_state_id=parent_state_id,
         elements=elements or [],
@@ -59,29 +72,49 @@ def test_idempotent_repeat(tmp_path: Path):
 
 
 def test_first_to_wins_for_conflict(tmp_path: Path):
+    """相同 state（root sig 相同 / dialog triggered_by 相同）内，相同 element key 先到为强。
+
+    For non-root states (dialog/form/etc.), matching is always by triggered_by
+    (regardless of dom_signature), so the same-state merge and first-write-wins
+    element logic works as before. Root states now require matching dom_signature.
+    """
     writer = PageArtifactWriter(tmp_path)
-    el_a = NewElementObservation(
-        key="button-a", source={"role": "button", "name": "Alpha"},
-        inferred=False
-    )
-    obs1 = _obs(sid_short="root", state_type="root",
-                elements=[NewElementObservation(
-                    key="button-x", source={"role":"button","name":"X"},
-                    inferred=False
-                )])
-    obs2 = _obs(sid_short="root", state_type="root",
-                elements=[NewElementObservation(
-                    key="button-x", source={"role":"button","name":"X-different"},
-                    inferred=True
-                )])
-    # 第一次: name="X"；第二次故意改 name
-    writer.merge_states([obs1])
-    result2 = writer.merge_states([obs2])
+    # Dialog 1: button-x with name="X"
+    dialog1 = _obs(sid_short="dialog", state_type="dialog",
+                  triggered_by=_tb("page-x__root__001"),
+                  parent_state_id="page-x__root__001",
+                  elements=[
+                      NewElementObservation(
+                          key="button-x", source={"role": "button", "name": "X"},
+                          inferred=False
+                      ),
+                  ])
+    # Root + dialog1: write root first (needed for dialog's triggered_by)
+    root = _obs(sid_short="root", state_type="root",
+                 elements=[NewElementObservation(
+                     key="button-a", source={"role": "button", "name": "A"},
+                     inferred=False
+                 )])
+    writer.merge_states([root, dialog1])
+
+    # Dialog 2: same key button-x but different name → first-write-wins
+    dialog2 = _obs(sid_short="dialog", state_type="dialog",
+                  triggered_by=_tb("page-x__root__001"),
+                  parent_state_id="page-x__root__001",
+                  elements=[
+                      NewElementObservation(
+                          key="button-x", source={"role": "button", "name": "X-different"},
+                          inferred=True
+                      ),
+                  ])
+    result2 = writer.merge_states([dialog2])
+
     import yaml
     data = yaml.safe_load((tmp_path / "pages" / "page-x.yaml").read_text(encoding="utf-8"))
-    el = data["states"][0]["elements"][0]
-    assert el["source"]["name"] == "X"   # 先到为强
-    assert "conflicts" in el  # 冲突被记录
+    dialog = data["states"][0]["children"][0]
+    el = dialog["elements"][0]
+    assert el["source"]["name"] == "X", "first-write-wins failed"
+    assert "conflicts" in el, "conflict should be recorded"
 
 
 def test_lock_timeout_returns_flag(tmp_path: Path, monkeypatch):

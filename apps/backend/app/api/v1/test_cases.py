@@ -1,4 +1,6 @@
-from fastapi import APIRouter, BackgroundTasks, Depends
+from urllib.parse import quote
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Response
 
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.test_case import (
@@ -34,6 +36,16 @@ def create_project_test_case_set(
 @router.get("/{set_id}", response_model=TestCaseSetOut)
 def get_project_test_case_set(project_id: str, set_id: str, actor=Depends(current_user)) -> dict:
     return test_case_service.get_test_case_set(project_id, set_id, actor)
+
+
+@router.get("/{set_id}/export/xmind")
+def export_project_test_case_set_xmind(project_id: str, set_id: str, actor=Depends(current_user)) -> Response:
+    content, filename = test_case_service.export_test_case_set_xmind(project_id, set_id, actor)
+    return Response(
+        content=content,
+        media_type="application/vnd.xmind.workbook",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 @router.patch("/{set_id}/cases/{case_id}/review", response_model=TestCaseReviewOut)

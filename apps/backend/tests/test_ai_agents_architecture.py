@@ -66,29 +66,19 @@ def test_requirement_standardization_agent_exists_as_canonical_package() -> None
     assert not (NEW_AGENTS_ROOT / "requirement_standardization" / "tools.py").exists()
 
 
-def test_site_exploration_agent_uses_child_agents() -> None:
-    package = NEW_AGENTS_ROOT / "site_exploration"
-    assert not (package / "agent.py").exists()
-    assert not (package / "service.py").exists()
-    assert not (package / "schemas.py").exists()
-    assert not (package / "tools.py").exists()
-    assert (package / "__init__.py").exists()
-    assert not (package / "planning").exists()
-    assert not (package / "planning" / "plan.py").exists()
-    assert not (package / "planning" / "plan_service.py").exists()
-    assert not (package / "planning" / "plan_schemas.py").exists()
-    assert not (package / "planning" / "tools.py").exists()
-    assert (package / "execution_decision" / "agent.py").exists()
-    assert (package / "execution_decision" / "service.py").exists()
-    assert (package / "execution_decision" / "schemas.py").exists()
+def test_legacy_site_exploration_agent_package_removed() -> None:
+    assert not (NEW_AGENTS_ROOT / "site_exploration").exists()
+    assert (NEW_AGENTS_ROOT / "page_exploration" / "agent.py").exists()
 
 
-def test_site_exploration_services_use_child_agents() -> None:
-    unified_orchestrator_path = BACKEND_APP / "services" / "exploration" / "unified_orchestrator.py"
-    unified_orchestrator_source = unified_orchestrator_path.read_text(encoding="utf-8")
+def test_legacy_site_exploration_services_removed() -> None:
+    legacy_sources = [
+        path
+        for path in (BACKEND_APP / "services" / "exploration").rglob("*.py")
+        if "__pycache__" not in path.parts
+    ]
+    assert legacy_sources == []
 
-    assert "app.services.exploration.plan_and_execute.planner" in unified_orchestrator_source
-    assert "app.agents.site_exploration.execution_decision" in unified_orchestrator_source
 
 
 def test_requirement_analysis_agent_uses_child_agent_package_layout() -> None:
@@ -116,8 +106,11 @@ def test_requirement_analysis_agent_uses_child_agent_package_layout() -> None:
 
 
 def test_requirement_analysis_service_uses_langgraph_agent_directly() -> None:
-    service_path = BACKEND_APP / "services" / "document" / "service.py"
-    text = service_path.read_text(encoding="utf-8")
+    service_paths = [
+        BACKEND_APP / "services" / "document" / "analysis.py",
+        BACKEND_APP / "services" / "document" / "analysis_runs.py",
+    ]
+    text = "\n".join(path.read_text(encoding="utf-8") for path in service_paths)
 
     assert "app.agents.requirement_analysis.service" in text
     assert "app.agents.requirement_analysis.orchestrator" not in text

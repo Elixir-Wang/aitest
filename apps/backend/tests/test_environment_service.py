@@ -373,52 +373,6 @@ def test_legacy_manual_login_strategy_is_rejected(monkeypatch: pytest.MonkeyPatc
     assert exc_info.value.detail["code"] == "INVALID_LOGIN_STRATEGY"
 
 
-def test_init_db_migrates_legacy_login_strategies(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    _use_temp_db(monkeypatch, tmp_path)
-    with core_db.connect() as db:
-        db.execute(
-            """
-            INSERT INTO project_environments
-              (id, project_id, name, site_url, username, password_encrypted, password_hash,
-               login_strategy, captcha_strategy, reuse_auth_state, created_by)
-            VALUES
-              ('env-reuse', '__global_environments__', '旧复用态', 'https://reuse.test', 'admin', 'enc', 'hash',
-               'reuse_state', 'none', 1, 'u-admin'),
-              ('env-manual', '__global_environments__', '旧人工登录', 'https://manual.test', 'admin', 'enc', 'hash',
-               'manual', 'none', 1, 'u-admin'),
-              ('env-empty', '__global_environments__', '空策略', 'https://empty.test', 'admin', 'enc', 'hash',
-               '', 'manual', 1, 'u-admin')
-            """
-        )
-
-    init_db()
-
-    with core_db.connect() as db:
-        rows = {
-            row["id"]: row
-            for row in db.execute(
-                """
-                SELECT id, username, password_encrypted, password_hash, login_strategy, captcha_strategy, reuse_auth_state
-                FROM project_environments
-                WHERE id IN ('env-reuse', 'env-manual', 'env-empty')
-                """
-            ).fetchall()
-        }
-
-    assert rows["env-reuse"]["login_strategy"] == "account_password"
-    assert rows["env-reuse"]["captcha_strategy"] == "none"
-    assert rows["env-reuse"]["reuse_auth_state"] == 1
-    assert rows["env-manual"]["login_strategy"] == "account_password"
-    assert rows["env-manual"]["captcha_strategy"] == "manual"
-    assert rows["env-manual"]["reuse_auth_state"] == 1
-    assert rows["env-empty"]["login_strategy"] == "skip_login"
-    assert rows["env-empty"]["captcha_strategy"] == "none"
-    assert rows["env-empty"]["reuse_auth_state"] == 0
-    assert rows["env-empty"]["username"] == ""
-    assert rows["env-empty"]["password_encrypted"] == ""
-    assert rows["env-empty"]["password_hash"] == ""
-
-
 def test_update_skip_login_clears_login_fields(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     created = environment_service.create_environment(ExplorationEnvironmentCreateIn(

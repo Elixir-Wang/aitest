@@ -1,6 +1,8 @@
 import asyncio
 import json
+import zipfile
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 import pytest
 from fastapi import HTTPException
@@ -433,6 +435,97 @@ def test_get_test_case_set_returns_persisted_case_details(
             "updated_at": detail["cases"][0]["updated_at"],
         }
     ]
+
+
+def test_export_test_case_set_xmind_uses_legacy_structure_without_description(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+    test_case_service._complete_generation_run(
+        {
+            "id": created["generation_run"]["id"],
+            "test_case_set_id": created["id"],
+            "project_id": "project-1",
+            "requirement_doc_id": "doc-1",
+        },
+        AgentTestCaseGenerationResult(
+            summary="覆盖登录成功场景。",
+            total_count=1,
+            modules=[
+                AgentTestCaseModule(
+                    module_name="登录",
+                    test_cases=[
+                        AgentTestCase(
+                            id="tc-001",
+                            module="登录",
+                            title="账号密码登录成功",
+                            priority="P0",
+                            type="功能测试",
+                            precondition="用户已注册。",
+                            steps=_agent_steps("打开登录页", "输入正确账号密码"),
+                            expected_result="进入系统首页。",
+                        )
+                    ],
+                )
+            ],
+        ),
+    )
+
+    content, filename = test_case_service.export_test_case_set_xmind("project-1", created["id"], ACTOR)
+
+    assert filename == "登录需求测试用例集.xmind"
+    xmind_path = tmp_path / filename
+    xmind_path.write_bytes(content)
+    with zipfile.ZipFile(xmind_path) as archive:
+        assert sorted(archive.namelist()) == ["META-INF/manifest.xml", "content.xml"]
+        content_xml = archive.read("content.xml")
+        archive.read("META-INF/manifest.xml")
+
+    root = ET.fromstring(content_xml)
+    titles = [element.text for element in root.iter() if element.tag.endswith("title")]
+    assert "登录需求测试用例集测试用例" in titles
+    assert "登录需求测试用例集" in titles
+    assert "登录" in titles
+    assert "tc-p0: 账号密码登录成功" in titles
+    assert "pc: 用户已注册。" in titles
+    assert "步骤1: 打开登录页" in titles
+    assert "结果1: 展示登录表单。" in titles
+    assert "步骤2: 输入正确账号密码" in titles
+    assert "结果2: 账号密码填写完成。" in titles
+    assert all(not (title or "").startswith("tx:") for title in titles)
+
+
+def test_export_empty_test_case_set_xmind_keeps_root_with_empty_hint(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name='登录/需求:"测试"', requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+
+    content, filename = test_case_service.export_test_case_set_xmind("project-1", created["id"], ACTOR)
+
+    assert filename == "登录_需求_测试_.xmind"
+    xmind_path = tmp_path / filename
+    xmind_path.write_bytes(content)
+    with zipfile.ZipFile(xmind_path) as archive:
+        content_xml = archive.read("content.xml")
+
+    root = ET.fromstring(content_xml)
+    titles = [element.text for element in root.iter() if element.tag.endswith("title")]
+    assert "登录/需求:\"测试\"" in titles
+    assert "暂无测试用例" in titles
 
 
 def test_review_test_case_updates_status_feedback_and_stats(

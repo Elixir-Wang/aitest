@@ -79,7 +79,16 @@ const NavItemExpanded = ({
             </SidebarMenuButton>
           ) : (
             <SidebarMenuButton asChild aria-disabled={item.comingSoon} isActive={isActive(href)} tooltip={item.title}>
-              <Link prefetch={false} href={href} target={item.newTab ? "_blank" : undefined}>
+              <Link
+                prefetch={false}
+                href={href}
+                target={item.newTab ? "_blank" : undefined}
+                onClick={(event) => {
+                  if (item.comingSoon) {
+                    event.preventDefault();
+                  }
+                }}
+              >
                 {item.icon && <item.icon />}
                 <span>{item.title}</span>
                 {item.comingSoon && <IsComingSoon />}
@@ -230,7 +239,16 @@ export function NavMain({ items }: NavMainProps) {
                             tooltip={item.title}
                             isActive={isItemActive(href)}
                           >
-                            <Link prefetch={false} href={href} target={item.newTab ? "_blank" : undefined}>
+                            <Link
+                              prefetch={false}
+                              href={href}
+                              target={item.newTab ? "_blank" : undefined}
+                              onClick={(event) => {
+                                if (item.comingSoon) {
+                                  event.preventDefault();
+                                }
+                              }}
+                            >
                               {item.icon && <item.icon />}
                               <span>{item.title}</span>
                             </Link>

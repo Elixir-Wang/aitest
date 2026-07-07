@@ -8,12 +8,19 @@ from app.agents.page_exploration.tools.artifact_tools import merge_page_artifact
 
 
 def _root_observed(run_id="run-1"):
+    """Root observation for test_case3.
+
+    dom_signature 是由 elements 内容决定的，不可用占位符。
+    用 sha256:root 表示"同一 DOM 结构的稳定签名"，每次调用
+    elements 相同则签名相同（_compute_state_sig 忽略 run_id）。
+    """
     return {
         "page_id": "page-workspace", "page_title": "工作台",
         "normalized_path": "/workspace",
         "observed_url": "/workspace", "run_id": run_id,
         "observed_at": "2026-07-04T10:00:00Z",
         "state_type": "root", "title": "工作台 - 列表状态",
+        # 稳定签名：此 elements 内容对应的 signature 由 PageArtifactWriter._compute_state_sig 决定
         "dom_signature": "sha256:root",
         "triggered_by": None,
         "parent_state_id": None,
@@ -135,7 +142,7 @@ def test_case2_double_nested(tmp_path: Path):
     assert "dialog=create&type=auto" in form["triggered_by"]["observed_url"]
 
 
-# ---- Case 3: 跨 run 合并幂等 ----
+# ---- Case 3: 跨 run 合并幂等（dom_signature 驱动） ----
 def test_case3_merge_idempotent(tmp_path: Path):
     # run 1: 1 root + 1 dialog
     merge_page_artifact(
@@ -145,14 +152,20 @@ def test_case3_merge_idempotent(tmp_path: Path):
             parent_id="page-workspace__root__001"
         )],
     )
-    # run 2: 同一 dialog with a new element appended (element_key collision avoided)
+    page_yaml = tmp_path / "proj-x" / "page_exploration" / "pages" / "page-workspace.yaml"
+    data = yaml.safe_load(page_yaml.read_text(encoding="utf-8"))
+    # 从写入后的 state 读取真实 dom_signature（由 elements 内容决定）
+    root_sig = data["states"][0]["dom_signature"]
+
+    # run 2: 同一 page_id，root 用相同 sig → 应合并到同一 root state
+    root_run2 = _root_observed(run_id="run-2")
+    root_run2["dom_signature"] = root_sig
     new_dialog = _dialog_observed(parent_id="page-workspace__root__001")
     new_dialog["elements"].append({
         "key": "button-create-team",
         "source": {"role": "button", "name": "团队创建"},
         "inferred": False,
     })
-    # Also update triggered_by to use same element_key as run-1 dialog
     new_dialog["triggered_by"] = {
         "from_state": "page-workspace__root__001",
         "element_key": "button-create-agent",  # same as run-1 dialog
@@ -161,10 +174,12 @@ def test_case3_merge_idempotent(tmp_path: Path):
     result = merge_page_artifact(
         page_id="page-workspace", project_id="proj-x", run_id="run-2",
         base_dir=tmp_path,
-        observed_states=[_root_observed(run_id="run-2"), new_dialog],
+        observed_states=[root_run2, new_dialog],
     )
-    assert result["added_state_ids"] == []
-    page_yaml = tmp_path / "proj-x" / "page_exploration" / "pages" / "page-workspace.yaml"
+    # root + dialog 都应更新而非新增
+    assert result["added_state_ids"] == [], f"期望无新增 state，实际: {result['added_state_ids']}"
+    assert result["updated_state_ids"] == ["page-workspace__root__001", "page-workspace__dialog__001"]
+
     data = yaml.safe_load(page_yaml.read_text(encoding="utf-8"))
     # total states = 2 (root + dialog)
     all_states = []
@@ -178,6 +193,26 @@ def test_case3_merge_idempotent(tmp_path: Path):
     dialog = data["states"][0]["children"][0]
     dialog_element_keys = {e["key"] for e in dialog["elements"]}
     assert "button-create-team" in dialog_element_keys
+
+
+def test_case3b_root_sig_mismatch_creates_new_state(tmp_path: Path):
+    """root state dom_signature 不同时应视为不同 state，追加新的 root。"""
+    merge_page_artifact(
+        page_id="page-workspace", project_id="proj-x", run_id="run-1",
+        base_dir=tmp_path,
+        observed_states=[_root_observed()],
+    )
+    # run 2: root sig 不同 → 视为新 state（模拟页面内容变化）
+    root_run2 = _root_observed(run_id="run-2")
+    root_run2["dom_signature"] = "sha256:different"  # 故意设不同
+    result = merge_page_artifact(
+        page_id="page-workspace", project_id="proj-x", run_id="run-2",
+        base_dir=tmp_path,
+        observed_states=[root_run2],
+    )
+    # 原有 root 保留，新增第二个 root；sig 不匹配则旧 root 不在 updated_state_ids
+    assert result["added_state_ids"] == ["page-workspace__root__002"]
+    assert result["updated_state_ids"] == []
 
 
 # ---- Case 4: 跨祖父级拒绝 ----

@@ -120,7 +120,7 @@ def test_finalize_requirement_analysis_records_finalization_task(monkeypatch, tm
     from app.core import storage as core_storage
     from app.seed.init_db import init_db
     from app.schemas.document import RequirementAnalysisFinalizeIn
-    from app.services.document import service as document_service
+    from app.services.document import analysis as document_analysis
 
     data_dir = tmp_path / "data"
     monkeypatch.setattr(core_db, "DATA_DIR", data_dir)
@@ -175,11 +175,11 @@ def test_finalize_requirement_analysis_records_finalization_task(monkeypatch, tm
             assert running_task["status"] == "running"
         return SimpleNamespace(final_requirement_markdown="# 最终需求\n", change_summary="已生成最终需求")
 
-    monkeypatch.setattr(document_service, "run_requirement_finalization", fake_run_requirement_finalization)
+    monkeypatch.setattr(document_analysis, "run_requirement_finalization", fake_run_requirement_finalization)
 
     actor = {"id": "u-admin", "role": "admin", "nickname": "管理员", "username": "admin", "project_scope": "全部项目"}
     result = asyncio.run(
-        document_service.finalize_requirement_analysis(
+        document_analysis.finalize_requirement_analysis(
             "project-1",
             "doc-1",
             RequirementAnalysisFinalizeIn(analysis_id="analysis-1"),

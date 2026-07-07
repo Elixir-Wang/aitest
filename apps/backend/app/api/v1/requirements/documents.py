@@ -12,14 +12,14 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.document import SourceDocumentUpdateIn
-from app.services.document import service as document_service
+from app.services.document import documents as document_documents
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirements"])
 
 
 @router.get("")
 def list_requirements(project_id: str, actor=Depends(current_user)) -> list[dict]:
-    return document_service.list_documents(project_id, actor)
+    return document_documents.list_documents(project_id, actor)
 
 
 @router.post("")
@@ -32,7 +32,7 @@ async def upload_requirements(
     existing_document_id: str = Form(default=""),
     actor=Depends(current_user),
 ) -> dict:
-    result = await document_service.upload_documents(
+    result = await document_documents.upload_documents(
         project_id,
         files,
         actor,
@@ -41,7 +41,7 @@ async def upload_requirements(
         existing_document_id=existing_document_id,
     )
     background_tasks.add_task(
-        document_service.convert_pending_file_mappings,
+        document_documents.convert_pending_file_mappings,
         [item["id"] for item in result["files"]],
         dict(actor),
         auto_continue=(mode == "new"),
@@ -51,13 +51,13 @@ async def upload_requirements(
 
 @router.get("/{document_id}")
 def get_requirement(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
-    return document_service.get_document_detail(project_id, document_id, actor)
+    return document_documents.get_document_detail(project_id, document_id, actor)
 
 
 @router.get("/{document_id}/files")
 def list_requirement_files(project_id: str, document_id: str, actor=Depends(current_user)) -> list[dict]:
     _ = actor
-    return document_service.list_document_files(project_id, document_id)
+    return document_documents.list_document_files(project_id, document_id)
 
 
 @router.put("/{document_id}")
@@ -67,9 +67,9 @@ def update_requirement(
     payload: SourceDocumentUpdateIn,
     actor=Depends(require_admin),
 ) -> dict:
-    return document_service.update_document(project_id, document_id, payload, actor)
+    return document_documents.update_document(project_id, document_id, payload, actor)
 
 
 @router.delete("/{document_id}")
 def delete_requirement(project_id: str, document_id: str, actor=Depends(require_admin)) -> dict:
-    return document_service.delete_document(project_id, document_id, actor)
+    return document_documents.delete_document(project_id, document_id, actor)

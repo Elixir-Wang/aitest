@@ -66,6 +66,18 @@ test("review page calls the case review endpoint", () => {
   assert.match(reviewPageSource, /type ApiTestCaseReviewResult/);
 });
 
+test("review page exports the current test case set as xmind", () => {
+  assert.match(reviewPageSource, /导出测试用例/);
+  assert.match(reviewPageSource, /Download/);
+  assert.match(reviewPageSource, /apiBlobRequest/);
+  assert.match(reviewPageSource, /`\/projects\/\$\{projectId\}\/test-case-sets\/\$\{testCaseSet\.id\}\/export\/xmind`/);
+  assert.match(reviewPageSource, /function exportTestCases\(\)/);
+  assert.match(reviewPageSource, /function downloadBlob\(blob: Blob, filename: string\)/);
+  assert.match(reviewPageSource, /function safeDownloadName\(value: string\)/);
+  assert.match(reviewPageSource, /测试用例已导出/);
+  assert.match(reviewPageSource, /测试用例导出失败/);
+});
+
 test("review page supports approve reject and reset actions", () => {
   assert.match(reviewPageSource, /采纳/);
   assert.match(reviewPageSource, /不采纳/);

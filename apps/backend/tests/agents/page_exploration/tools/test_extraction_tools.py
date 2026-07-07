@@ -5,7 +5,7 @@ import pytest
 
 from app.agents.page_exploration.tools.extraction_tools import playwright_snap_tool
 from app.agents.page_exploration.tools.runtime_context import browser_session_context
-from app.services.exploration.browser_session import BrowserSessionError
+from app.services.page_exploration.browser_session import BrowserSessionError
 
 
 def _snapshot_result(url: str = "https://test.com/current"):

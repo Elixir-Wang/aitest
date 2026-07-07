@@ -5,8 +5,8 @@ import inspect
 
 import pytest
 
-from app.services.exploration import event_bus
-from app.services.exploration import page_exploration_service
+from app.services.page_exploration import event_bus
+from app.services.page_exploration import service as page_exploration_service
 from app.api.v1 import page_exploration as page_exploration_api
 
 
@@ -206,11 +206,12 @@ def test_invoke_agent_writes_timeline_and_raw_logs_from_projection_stream(monkey
     timeline_events = [json.loads(line) for line in timeline_path.read_text(encoding="utf-8").splitlines()]
     raw_events = [json.loads(line) for line in raw_path.read_text(encoding="utf-8").splitlines()]
     assert [event["type"] for event in timeline_events] == [
-        "agent_step_started",
         "agent_tool_started",
         "agent_tool_completed",
     ]
-    assert timeline_events[1]["display"]["title"] == "采集页面快照"
+    assert timeline_events[0]["display"]["title"] == "采集页面快照"
+    assert "开始页面探索" not in json.dumps(timeline_events, ensure_ascii=False)
+    assert "页面探索 Agent 已开始执行" not in json.dumps(timeline_events, ensure_ascii=False)
     assert all(event.get("display") for event in timeline_events)
     assert raw_events[0]["type"] == "agent_projection_event"
     assert raw_events[0]["payload"]["mode"] == "updates"
@@ -358,9 +359,7 @@ def test_cancelled_agent_run_does_not_write_terminal_timeline_event(monkeypatch,
         json.loads(line)
         for line in (run_dir / "timeline_events.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    assert [event["type"] for event in timeline_events] == [
-        "agent_step_started",
-    ]
+    assert [event["type"] for event in timeline_events] == []
     serialized_events = json.dumps(timeline_events, ensure_ascii=False)
     assert "页面探索已停止" not in serialized_events
     assert "页面探索失败" not in json.dumps(timeline_events, ensure_ascii=False)
@@ -712,7 +711,7 @@ def test_execute_exploration_async_publishes_realtime_events(monkeypatch) -> Non
     assert "planning_completed" in event_types
     assert "step_started" not in event_types
     assert "step_completed" not in event_types
-    assert "agent_step_started" in event_types
+    assert "agent_step_started" not in event_types
     assert event_types[-1] == "run_completed"
     assert not any(event["payload"].get("message") == "探索完成，发现工作台入口。" for event in events)
     assert events[-1]["payload"].get("status") == "completed"
@@ -1101,6 +1100,30 @@ def test_write_exploration_report_includes_goal_failures_and_quality_warnings(tm
                 },
             },
             {
+                "type": "agent_tool_completed",
+                "payload": {
+                    "tool_name": "playwright_snap_tool",
+                    "status": "completed",
+                },
+                "display": {
+                    "summary": "采集 列表页 的页面结构",
+                    "fields": [
+                        {"label": "页面", "value": "列表页"},
+                        {"label": "URL", "value": "/list"},
+                    ],
+                },
+            },
+            {
+                "type": "agent_tool_started",
+                "payload": {
+                    "tool_name": "playwright_click_tool",
+                    "locator": "button-publish-1",
+                },
+                "display": {
+                    "summary": "点击 发布",
+                },
+            },
+            {
                 "type": "agent_tool_failed",
                 "payload": {
                     "tool_name": "playwright_click_tool",
@@ -1120,8 +1143,12 @@ def test_write_exploration_report_includes_goal_failures_and_quality_warnings(tm
 
     assert "探索目标" in content
     assert "创建一个新条目并发布" in content
-    assert "子目标状态" in content
+    assert "目标达成" in content
     assert "点击发布" in content
+    assert "探索路径图" in content
+    assert "flowchart TD" in content
+    assert "列表页" in content
+    assert "点击 发布" in content
     assert "定位器匹配到多个元素" in content
     assert "产物质量提示" in content
     assert "没有采集到可操作元素" in content

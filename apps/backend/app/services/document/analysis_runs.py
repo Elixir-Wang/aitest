@@ -16,6 +16,7 @@ from app.agents.requirement_analysis.service import (
     build_requirement_analysis_output_json,
     next_analysis_id,
     normalize_analysis_output_markdown,
+    write_requirement_analysis_artifacts,
 )
 from app.core.db import connect
 from app.core.exceptions import api_error
@@ -251,7 +252,8 @@ async def review_primary_requirement_file(project_id: str, document_id: str, act
 
     _ensure_requirement_analysis_run_not_stopping(task_id)
 
-    output_data = build_requirement_analysis_output_json(analysis_output)
+    artifact_paths = write_requirement_analysis_artifacts(task_id, analysis_output)
+    output_data = build_requirement_analysis_output_json(analysis_output, artifact_paths)
     output_data = normalize_analysis_output_markdown(output_data)
 
     analysis_id = next_analysis_id()

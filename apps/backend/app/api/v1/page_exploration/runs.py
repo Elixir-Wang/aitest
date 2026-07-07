@@ -8,7 +8,7 @@ from app.api.v1.page_exploration.schemas import (
     UpdateExplorationRunRequest,
 )
 from app.dependencies.auth import current_user
-from app.services.exploration import page_exploration_service
+from app.services.page_exploration import page_exploration_service
 
 router = APIRouter()
 

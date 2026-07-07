@@ -242,7 +242,7 @@
       }
     ]
   },
-  "app.services.exploration.page_exploration_service": {
+  "app.services.page_exploration.service": {
     "names": {
       "public": [
         "Any",
@@ -534,9 +534,9 @@
     },
     "external_imports_app": [
       {
-        "file": "services\\exploration\\__init__.py",
+        "file": "services\\page_exploration\\__init__.py",
         "lineno": 3,
-        "import_module": "app.services.exploration.page_exploration_service",
+        "import_module": "app.services.page_exploration.service",
         "level": 0,
         "names": [
           "recover_interrupted_exploration_runs"

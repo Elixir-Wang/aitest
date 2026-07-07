@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 
 # ==================== 新的数据结构（核心）====================
@@ -107,74 +107,9 @@ class RequirementAnalysisResult(BaseModel):
         return "\n".join(lines)
 
 
-# ==================== 旧的数据结构（向后兼容）====================
-
-class AuxiliaryRequirementDocument(BaseModel):
-    """辅助需求文档（旧格式）"""
-    filename: str
-    markdown_content: str
-
-
-class RequirementAnalysisRunInput(BaseModel):
-    """需求分析运行输入（旧格式）"""
-    run_id: str = Field(min_length=1)
-
-
-class RequirementAnalysisAgentInput(BaseModel):
-    """需求分析 Agent 输入（旧格式）"""
-    requirement_name: str
-    primary_filename: str
-    primary_markdown_content: str
-    auxiliary_documents: list[AuxiliaryRequirementDocument] = Field(default_factory=list)
-
-
-class RequirementClarificationItem(BaseModel):
-    """澄清问题项（旧格式，向后兼容）"""
-    id: str = Field(min_length=1)
-    priority: Literal["P0", "P1", "P2", "P3"]
-    module: str = Field(min_length=1)
-    question: str = Field(min_length=1)
-    option_a: str = Field(default="", description="推荐答案 A")
-    option_b: str = Field(default="", description="推荐答案 B")
-    source_excerpt: str = Field(default="", description="问题来源的原文片段")
-    impact: str = Field(min_length=1)
-
-
-class RequirementAnalysisAgentOutput(BaseModel):
-    """需求分析 Agent 输出（旧格式）"""
-    status: Literal["completed", "needs_clarification"]
-    understanding_markdown: str = Field(min_length=1)
-    clarification_markdown: str = Field(min_length=1)
-    clarification_items: list[RequirementClarificationItem] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def status_matches_clarifications(self) -> "RequirementAnalysisAgentOutput":
-        expected_status = "needs_clarification" if self.clarification_items else "completed"
-        if self.status != expected_status:
-            raise ValueError("status 必须由 clarification_items 是否为空决定。")
-        return self
-
-
-class RequirementAnalysisRunOutput(BaseModel):
-    """需求分析运行输出（旧格式）"""
-    status: Literal["completed", "needs_clarification"]
-    understanding_markdown: str
-    clarification_markdown: str
-    clarification_items: list[RequirementClarificationItem]
-    artifact_paths: dict[str, str] = Field(default_factory=dict)
-
-
 __all__ = [
-    # 新的（推荐使用）
     "RequirementInput",
     "RequirementUnderstanding",
     "ClarificationItem",
     "RequirementAnalysisResult",
-    # 旧的（向后兼容）
-    "AuxiliaryRequirementDocument",
-    "RequirementAnalysisRunInput",
-    "RequirementAnalysisAgentInput",
-    "RequirementClarificationItem",
-    "RequirementAnalysisAgentOutput",
-    "RequirementAnalysisRunOutput",
 ]

@@ -11,14 +11,15 @@ from fastapi import APIRouter, Depends
 
 from app.dependencies.auth import current_user
 from app.schemas.document import RequirementAnalysisFinalizeIn, RequirementClarificationAnswerIn, RequirementPreliminaryUpdateIn
-from app.services.document import service as document_service
+from app.services.document import analysis as document_analysis
+from app.services.document import analysis_runs as document_analysis_runs
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirements"])
 
 
 @router.get("/{document_id}/analysis")
 def get_requirement_analysis(project_id: str, document_id: str, actor=Depends(current_user)) -> dict:
-    return document_service.get_latest_requirement_analysis(project_id, document_id, actor)
+    return document_analysis_runs.get_latest_requirement_analysis(project_id, document_id, actor)
 
 
 @router.post("/{document_id}/analysis/finalize")
@@ -28,7 +29,7 @@ async def finalize_requirement_analysis(
     payload: RequirementAnalysisFinalizeIn,
     actor=Depends(current_user),
 ) -> dict:
-    return await document_service.finalize_requirement_analysis(project_id, document_id, payload, actor)
+    return await document_analysis.finalize_requirement_analysis(project_id, document_id, payload, actor)
 
 
 @router.put("/{document_id}/analysis/{analysis_id}/preliminary")
@@ -39,7 +40,7 @@ def update_requirement_preliminary_markdown(
     payload: RequirementPreliminaryUpdateIn,
     actor=Depends(current_user),
 ) -> dict:
-    return document_service.update_requirement_preliminary_markdown(project_id, document_id, analysis_id, payload, actor)
+    return document_analysis.update_requirement_preliminary_markdown(project_id, document_id, analysis_id, payload, actor)
 
 
 @router.get("/{document_id}/analysis/{analysis_id}/clarification-answers")
@@ -49,7 +50,7 @@ def list_requirement_clarification_answers(
     analysis_id: str,
     actor=Depends(current_user),
 ) -> dict:
-    return document_service.list_requirement_clarification_answers(project_id, document_id, analysis_id, actor)
+    return document_analysis_runs.list_requirement_clarification_answers(project_id, document_id, analysis_id, actor)
 
 
 @router.post("/{document_id}/analysis/{analysis_id}/clarification-answers")
@@ -60,4 +61,4 @@ def save_requirement_clarification_answer(
     payload: RequirementClarificationAnswerIn,
     actor=Depends(current_user),
 ) -> dict:
-    return document_service.save_requirement_clarification_answer(project_id, document_id, analysis_id, payload, actor)
+    return document_analysis.save_requirement_clarification_answer(project_id, document_id, analysis_id, payload, actor)

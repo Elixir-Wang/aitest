@@ -365,8 +365,17 @@ class PageArtifactWriter:
         return compute_dom_signature(flat)
 
     def _state_matches_observation(self, st, obs):
+        # root state 的匹配必须同时比较 dom_signature：
+        # - 相同 → 同一 state，merge elements（seen_count 递增）
+        # - 不同 → 视为不同 state，追加新的 root state
+        # 这样即使同一 URL 被多次 snap，只要 DOM 内容不同就各自独立记录，
+        # 避免新 observation 用更多 accessibility_tree 节点覆盖旧有签名。
         if obs.state_type == "root":
-            return st["type"] == "root"
+            if st["type"] != "root":
+                return False
+            # 已有 root 的 dom_signature 与新 observation 一致则合并
+            existing_sig = st.get("dom_signature", "")
+            return existing_sig and existing_sig == obs.dom_signature
         if st["type"] != obs.state_type:
             return False
         if not obs.triggered_by:

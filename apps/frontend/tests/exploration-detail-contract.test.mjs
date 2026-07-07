@@ -97,9 +97,9 @@ test("exploration transcript auto-scrolls only while the user is near the bottom
   assert.match(taskInfoPanelSource, /onScroll=\{handleScroll\}/);
 });
 
-test("exploration transcript keeps the persisted start event visible", () => {
-  assert.doesNotMatch(taskInfoPanelSource, /display\.kind === "agent_run" && display\.title === "开始页面探索"/);
-  assert.doesNotMatch(taskInfoPanelSource, /title === "开始页面探索"[\s\S]*continue/);
+test("exploration transcript hides the persisted start event", () => {
+  assert.match(taskInfoPanelSource, /event\.type === "agent_step_started" && display\.kind === "agent_run"/);
+  assert.match(taskInfoPanelSource, /continue/);
 });
 
 test("exploration transcript keeps slim public payloads", () => {

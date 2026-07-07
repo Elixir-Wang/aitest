@@ -4,7 +4,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
-import { Check, ChevronLeft, ChevronRight, CircleX, Loader2, Pencil, Search, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CircleX, Download, Loader2, Pencil, Search, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
@@ -30,6 +30,7 @@ import {
   type ApiTestCaseReviewUpdate,
   type ApiTestCaseSet,
   type ApiTestCaseStep,
+  apiBlobRequest,
   apiRequest,
 } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -106,6 +107,7 @@ export default function TestCaseReviewPage() {
   const [filter, setFilter] = useState<ReviewFilter>("ready_for_review");
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [savingCaseId, setSavingCaseId] = useState("");
   const [rejectDialog, setRejectDialog] = useState<RejectDialogState>({ open: false, caseId: "", feedback: "" });
   const [inlineEdit, setInlineEdit] = useState<InlineEditState>({
@@ -269,15 +271,35 @@ export default function TestCaseReviewPage() {
     }
   }
 
+  async function exportTestCases() {
+    if (!testCaseSet || !projectId) return;
+    setExporting(true);
+    try {
+      const blob = await apiBlobRequest(`/projects/${projectId}/test-case-sets/${testCaseSet.id}/export/xmind`);
+      downloadBlob(blob, `${safeDownloadName(testCaseSet.name)}.xmind`);
+      toast.success("测试用例已导出");
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "测试用例导出失败");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const selectedCaseIsEditing = selectedCase?.id === inlineEdit.caseId;
 
   return (
     <PageShell
       actions={
-        <Button onClick={() => router.push("/test-cases")} variant="outline">
-          <ChevronLeft className="size-4" />
-          返回列表
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => router.push("/test-cases")} variant="outline">
+            <ChevronLeft className="size-4" />
+            返回列表
+          </Button>
+          <Button disabled={exporting || !testCaseSet || !projectId} onClick={exportTestCases} variant="outline">
+            {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+            导出测试用例
+          </Button>
+        </div>
       }
       breadcrumbs={["项目工作区", "测试用例", "用例评审"]}
       description="逐条采纳或不采纳生成用例，并沉淀下次重新生成需要避开的反馈。"
@@ -331,8 +353,8 @@ export default function TestCaseReviewPage() {
                 {filteredCases.map((item) => (
                   <button
                     className={cn(
-                      "mb-2 w-full rounded-lg border bg-white p-3 text-left transition hover:border-blue-200 hover:bg-blue-50/40",
-                      selectedCase?.id === item.id && "border-blue-300 bg-blue-50 shadow-sm",
+                      "mb-2 w-full rounded-lg border border-slate-200/70 bg-white p-3 text-left transition hover:border-blue-200 hover:bg-blue-50/30 hover:shadow-sm",
+                      selectedCase?.id === item.id && "border-blue-300 bg-blue-50/70 shadow-sm ring-1 ring-blue-100",
                     )}
                     key={item.id}
                     onClick={() => setSelectedCaseId(item.id)}
@@ -470,6 +492,21 @@ export default function TestCaseReviewPage() {
       </Dialog>
     </PageShell>
   );
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function safeDownloadName(value: string) {
+  return value.trim().replace(/[\\/:*?"<>|]+/g, "_") || "test-cases";
 }
 
 function ReviewSummaryStrip({ stats }: { stats: ApiTestCaseReviewStats }) {

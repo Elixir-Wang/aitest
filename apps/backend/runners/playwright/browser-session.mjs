@@ -1,8 +1,11 @@
 import readline from "node:readline";
 import { chromium } from "playwright";
-import { buildSelectorCandidates } from "./selector-generator.mjs";
-import { verifySelectorCandidate } from "./selector-validator.mjs";
 import { parsePlaywrightLocatorString, isParseableLocatorString } from "./locator-parser.mjs";
+import {
+  normalizeUrl,
+  stableElementId,
+  verifyBestElementSelectors,
+} from "./page-facts.mjs";
 const [, , startUrl = "about:blank", channel = "", storageStatePath = ""] = process.argv;
 
 const navigationTimeout = Number(process.env.AI_TESTING_EXPLORATION_NAV_TIMEOUT_MS || "20000");
@@ -958,21 +961,27 @@ async function collectDomFacts(browserPage) {
       .filter((el) => hasClickableHint(el))
       .filter((el) => clean(el.innerText || el.textContent, 160))
       .slice(0, 40);
-  // 一次性收集所有 dialog 容器（用于 element ↔ dialog 关联 + facts.dialogs 列表）
-  const dialogContainers = Array.from(document.querySelectorAll("[role='dialog'],dialog,.modal,.ant-modal,.el-dialog"))
-    .filter(visible)
-    .slice(0, 20);
-  const dialogs = dialogContainers.map((dialog, index) => ({
-    id: dialog.getAttribute("id") || `dialog-${String(index + 1).padStart(3, "0")}`,
-    title: labelOf(dialog),
-    role: dialog.getAttribute("role") || dialog.tagName.toLowerCase(),
-  }));
-  // 用 dialog 元素引用建索引 → element.closest 拿到的容器在数组里查找位置，复用同一套 id
-  const dialogIdByElement = new Map();
-  dialogContainers.forEach((dialog, index) => {
-    const id = dialog.getAttribute("id") || `dialog-${String(index + 1).padStart(3, "0")}`;
-    dialogIdByElement.set(dialog, id);
-  });
+  // 祖先链：截取 element → body 路径中最有结构意义的中间层（最多 5 层）
+  // 用于让 LLM 直接从 DOM 结构判断元素所在上下文，不再依赖 JS 枚举 dialog 容器列表
+  // 始终收集（role 或 tagName 作为标识），让 LLM 看到完整的 DOM 路径来消歧
+  const ancestorChainOf = (el) => {
+    const chain = [];
+    let current = el.parentElement;
+    while (current && current !== document.documentElement) {
+      const tagName = current.tagName ? current.tagName.toLowerCase() : "";
+      const role = current.getAttribute("role") || "";
+      const name = labelOf(current);
+      // role 属性优先，否则用 tagName；name 可能为空（div 等容器）
+      chain.unshift({
+        role: role || tagName,
+        name: name || "",
+      });
+      if (chain.length >= 5) break;
+      current = current.parentElement;
+    }
+    console.log(`[DEBUG ancestorChainOf] tag=${el.tagName} parentEl=${!!el.parentElement} chainLen=${chain.length} body=${!!document.body} docElem=${!!document.documentElement}`);
+    return chain;
+  };
 
   const elementFacts = [...explicitCandidates, ...pointerCandidates]
     .filter(visible)
@@ -983,10 +992,7 @@ async function collectDomFacts(browserPage) {
       const actionType = ["input", "textarea", "select"].includes(tagName) && !["button", "checkbox", "radio"].includes(role) ? "fill" : "click";
       const nativeInteractive = ["a", "button", "input", "textarea", "select"].includes(tagName);
       const clickHint = hasClickableHint(el);
-      // 元素所属 dialog：closest 找到 dialog 容器，通过 dialogIdByElement 复用同一套 id
-      // 找不到时为空字符串（与 dialogs 列表的 id 字段匹配规则一致）
-      const dialogContainer = el.closest("[role='dialog'],dialog,.modal,.ant-modal,.el-dialog");
-      const dialog_id = dialogContainer ? (dialogIdByElement.get(dialogContainer) || "") : "";
+      const ancestor_chain = ancestorChainOf(el);
       return {
         index,
         role,
@@ -1002,7 +1008,7 @@ async function collectDomFacts(browserPage) {
         enabled: !el.disabled && el.getAttribute("aria-disabled") !== "true",
         interactive_hint: nativeInteractive || clickHint,
         visible: true,
-        dialog_id,
+        ancestor_chain: ancestor_chain,
       };
     })
     .filter((item) => {
@@ -1043,44 +1049,10 @@ async function collectDomFacts(browserPage) {
       elements: elementFacts,
       links,
       forms,
-      dialogs,
       tables,
       breadcrumbs,
     };
   });
-}
-
-async function verifyBestElementSelectors(browserPage, element) {
-  const candidates = buildSelectorCandidates(element);
-  if (!candidates.length) {
-    return {};
-  }
-  const verified = [];
-  for (const candidate of candidates) {
-    verified.push(await verifySelectorCandidate(browserPage, candidate));
-  }
-  const usable = verified.filter(usableSelector);
-  const semanticUsable = usable.filter((candidate) => candidate.kind !== "css");
-  const cssUsable = usable.filter((candidate) => candidate.kind === "css");
-  const primary = semanticUsable[0] || cssUsable[0] || null;
-  if (primary?.kind === "css") {
-    primary.locator_confidence = "low";
-    primary.needs_confirmation = true;
-    primary.degraded_reason = "semantic_locators_unavailable";
-  }
-  const fallback = primary
-    ? (semanticUsable.find((candidate) => candidate.code !== primary.code)
-      || cssUsable.find((candidate) => candidate.code !== primary.code)
-      || null)
-    : null;
-  return {
-    primary_selector: primary || null,
-    fallback_selector: fallback,
-  };
-}
-
-function usableSelector(selector) {
-  return Boolean(selector?.verification?.checked && selector.verification.unique && selector.verification.visible);
 }
 
 async function hasVisibleDialog(browserPage) {
@@ -1118,11 +1090,6 @@ function summarizeObservation(facts, elements) {
   return `标题：${facts.title || "-"}。可交互元素：${elements.length}。链接：${facts.links.length}。表单：${facts.forms.length}。表格：${facts.tables.length}。主要元素：${sampleNames || "-"}。正文：${textExcerpt || "-"}。`;
 }
 
-function stableElementId(element, index) {
-  const base = slugify(`${element.role || element.action_type || "element"}-${element.name || element.text || index}`);
-  return `${base || "element"}-${String(index).padStart(3, "0")}`;
-}
-
 function signatureFor(payload) {
   const value = JSON.stringify(payload);
   let hash = 5381;
@@ -1130,28 +1097,6 @@ function signatureFor(payload) {
     hash = ((hash << 5) + hash) ^ value.charCodeAt(index);
   }
   return `state-${(hash >>> 0).toString(16)}`;
-}
-
-function normalizeUrl(value) {
-  try {
-    const url = new URL(value);
-    url.hash = "";
-    if (url.pathname.endsWith("/") && url.pathname !== "/") {
-      url.pathname = url.pathname.slice(0, -1);
-    }
-    return url.href;
-  } catch {
-    return String(value || "");
-  }
-}
-
-function slugify(value) {
-  return String(value || "element")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-zA-Z0-9\u4e00-\u9fff]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40) || "element";
 }
 
 function writeLine(payload) {

@@ -8,7 +8,7 @@
 from fastapi import APIRouter, Depends
 
 from app.dependencies.auth import current_user
-from app.services.document import service as document_service
+from app.services.document import versions as document_versions
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirements"])
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirem
 def list_requirement_versions(project_id: str, document_id: str, actor=Depends(current_user)) -> list[dict]:
     _ = project_id
     _ = actor
-    return document_service.get_document_versions(document_id)
+    return document_versions.get_document_versions(document_id)
 
 
 @router.get("/{document_id}/versions/{version_id}")
@@ -28,7 +28,7 @@ def get_requirement_version_detail(
     actor=Depends(current_user),
 ) -> dict:
     _ = actor
-    return document_service.get_document_version_detail(project_id, document_id, version_id)
+    return document_versions.get_document_version_detail(project_id, document_id, version_id)
 
 
 @router.put("/{document_id}/versions/{version_id}/current")
@@ -38,4 +38,4 @@ def switch_requirement_current_version(
     version_id: str,
     actor=Depends(current_user),
 ) -> dict:
-    return document_service.switch_document_current_version(project_id, document_id, version_id, actor)
+    return document_versions.switch_document_current_version(project_id, document_id, version_id, actor)

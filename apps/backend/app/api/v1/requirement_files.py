@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 
 from app.dependencies.auth import current_user
 from app.schemas.document import SourceMarkdownUpdateIn
-from app.services.document import service as document_service
+from app.services.document import file_service as document_files
 
 router = APIRouter(prefix="/requirement-files", tags=["requirement-files"])
 
@@ -20,13 +20,13 @@ router = APIRouter(prefix="/requirement-files", tags=["requirement-files"])
 @router.get("/{mapping_id}/original")
 def get_requirement_original_file(mapping_id: str, actor=Depends(current_user)) -> dict:
     _ = actor
-    return document_service.get_original_file(mapping_id)
+    return document_files.get_original_file(mapping_id)
 
 
 @router.get("/{mapping_id}/original/content")
 def get_requirement_original_file_content(mapping_id: str, actor=Depends(current_user)) -> FileResponse:
     _ = actor
-    original_file = document_service.get_original_file(mapping_id)
+    original_file = document_files.get_original_file(mapping_id)
     if original_file["content_type"] == "text":
         path = original_file["content_path"]
         media_type = "text/plain; charset=utf-8"
@@ -44,18 +44,18 @@ def get_requirement_original_file_content(mapping_id: str, actor=Depends(current
 @router.get("/{mapping_id}/markdown")
 def get_requirement_markdown_file(mapping_id: str, actor=Depends(current_user)) -> dict:
     _ = actor
-    return document_service.get_converted_markdown(mapping_id)
+    return document_files.get_converted_markdown(mapping_id)
 
 
 @router.post("/{mapping_id}/convert")
 async def convert_requirement_file(mapping_id: str, actor=Depends(current_user)) -> dict:
     _ = actor
-    return await document_service.convert_source_file_mapping(mapping_id)
+    return await document_files.convert_source_file_mapping(mapping_id)
 
 
 @router.delete("/{mapping_id}")
 def delete_requirement_file(mapping_id: str, actor=Depends(current_user)) -> dict:
-    return document_service.delete_source_file(mapping_id, actor)
+    return document_files.delete_source_file(mapping_id, actor)
 
 
 @router.put("/{mapping_id}/markdown")
@@ -64,7 +64,7 @@ def update_requirement_markdown_file(
     payload: SourceMarkdownUpdateIn,
     actor=Depends(current_user),
 ) -> dict:
-    return document_service.update_converted_markdown(
+    return document_files.update_converted_markdown(
         mapping_id,
         markdown_content=payload.markdown_content,
         change_summary=payload.change_summary,

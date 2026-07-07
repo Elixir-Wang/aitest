@@ -1,13 +1,17 @@
 """
 页面信息提取工具。
 """
-import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
 
 from app.agents.page_exploration.tools.runtime_context import snapshot_with_runtime_context
+from app.agents.page_exploration.utils.page_id import (
+    make_page_id,
+    compute_dom_signature_from_elements,
+)
+from app.agents.page_exploration.utils.element_key import build_element_key
 
 
 def _semantic_selector_code(selector: Optional[Dict[str, Any]]) -> str:
@@ -33,26 +37,6 @@ def _semantic_selector_code(selector: Optional[Dict[str, Any]]) -> str:
         return f"page.locator('{selector['css']}')"
     return ""
 
-
-def _dom_signature_for_url_title(url: str, title: str, sample: str) -> str:
-    """生成确定性 dom_signature（避免 LLM 写占位符）。
-
-    用 URL + title + 前 160 字 body 作为指纹来源（Playwright 不会泄漏到这里，
-    用我们自己的 hash 即可）。"""
-    digest_source = f"{normalize_url_for_sig(url)}|{title}|{sample[:160]}"
-    return f"sha256-{hashlib.sha256(digest_source.encode('utf-8')).hexdigest()[:16]}"
-
-
-def normalize_url_for_sig(url: str) -> str:
-    from urllib.parse import urlparse
-    try:
-        parsed = urlparse(url or "")
-        path = parsed.path or "/"
-        if parsed.query:
-            path = f"{path}?{parsed.query}"
-        return path
-    except Exception:
-        return url or ""
 
 
 @tool
@@ -128,7 +112,7 @@ def playwright_snap_tool(
             "primary_selector": elem.primary_selector,
             "fallback_selector": elem.fallback_selector,
             "visible": elem.visible,
-            "dialog_id": elem.dialog_id,
+            "ancestor_chain": elem.ancestor_chain,
         }
         for elem in result.elements
     ]
@@ -145,7 +129,6 @@ def playwright_snap_tool(
     state_observation_hint = _build_state_observation_hint(
         url=result.url,
         title=result.title,
-        page_text=result.page_text_summary,
         elements=elements,
     )
 
@@ -158,8 +141,6 @@ def playwright_snap_tool(
         "elements": elements,
         "accessibility_tree": accessibility_tree,
         "visible_text_blocks": visible_text_blocks,
-        "dialogs": [d.model_dump() for d in result.dialogs],
-        "active_dialog_id": result.active_dialog_id,
         "match_groups": match_groups,
         "error": result.error,
         "state_observation_hint": state_observation_hint,
@@ -200,9 +181,9 @@ def _build_match_groups(elements: list) -> list[dict]:
         "candidates": [
             {
                 "index": 0,
-                "dialog_id": None,
+                "ancestor_chain": [{"role": "popover", "name": ""}],
                 "primary_selector_code": "page.getByRole('button', { name: '创建' })",
-                "context_hint": "弹窗内 / 主页面 ...",
+                "context_hint": "popover / dialog / main ...",
             },
             ...
         ]
@@ -229,12 +210,17 @@ def _build_match_groups(elements: list) -> list[dict]:
             el = elements[idx]
             primary = el.get("primary_selector") if isinstance(el.get("primary_selector"), dict) else None
             primary_code = primary.get("code") if primary else ""
+            ancestor_chain = el.get("ancestor_chain") or []
+            # 从 ancestor_chain 提取最有区分力的结构信息作为 context_hint
+            overlay_roles = {"popover", "dialog", "alertdialog", "menu", "tooltip"}
+            overlay = next((a.get("role") or "" for a in ancestor_chain if a.get("role") in overlay_roles), "")
+            context_hint = overlay or "main"
             candidates.append({
                 "ordinal": order,
                 "element_index": idx,
-                "dialog_id": el.get("dialog_id") or None,
+                "ancestor_chain": ancestor_chain,
                 "primary_selector_code": primary_code,
-                "context_hint": "弹窗内" if el.get("dialog_id") else "主页面",
+                "context_hint": context_hint,
             })
         out.append({
             "name": name,
@@ -249,21 +235,23 @@ def _build_state_observation_hint(
     *,
     url: str,
     title: str,
-    page_text: str,
     elements: list[dict],
 ) -> dict:
     """把 snap 结果直接转成 v2.0 NewStateObservation 候选。
 
     关键设计：
-    - **禁止 LLM 手工填 dom_signature**：由 snap 自动从 url+title+page_text 算
+    - **禁止 LLM 手工填 dom_signature**：由 snap 自动从 elements 计算
     - **禁止 LLM 手工填 triggered_by**：root state 留空，其它 state 由 service
       根据前序 state 推断
     - element.source 优先用 verified primary_selector（已包含 is_semantic 标记）
     - 纯文本猜测 / role 不可信时标 inferred=true
     """
-    normalized_path = normalize_url_for_sig(url)
+    from urllib.parse import urlparse
+    parsed = urlparse(url or "")
+    normalized_path = parsed.path or "/"
+    if parsed.query:
+        normalized_path = f"{normalized_path}?{parsed.query}"
     now = datetime.now(timezone.utc).isoformat()
-    dom_signature = _dom_signature_for_url_title(url, title, page_text)
 
     children: list[dict] = []
     for index, element in enumerate(elements, start=1):
@@ -279,7 +267,8 @@ def _build_state_observation_hint(
         if not (primary or (role and name)):
             continue
         source_code = _semantic_selector_code(primary)
-        element_key = _stable_element_key(role or action_type, name or element.get("text") or "", index)
+        # 使用共享 build_element_key，与 PageArtifactWriter/element_key.py 完全一致
+        element_key = build_element_key({"role": role or action_type, "name": name})
         children.append({
             "key": element_key,
             "source": {
@@ -295,8 +284,11 @@ def _build_state_observation_hint(
             "children": [],
         })
 
+    # 用共享函数从 elements 计算 dom_signature
+    dom_signature = compute_dom_signature_from_elements(children)
+
     return {
-        "page_id": _snapshot_page_id_hint(normalized_path),
+        "page_id": make_page_id(normalized_path),
         "page_title": title or url or "探索页面",
         "normalized_path": normalized_path,
         "observed_url": url,
@@ -309,27 +301,6 @@ def _build_state_observation_hint(
         "elements": children,
     }
 
-
-def _snapshot_page_id_hint(normalized_path: str) -> str:
-    value = (normalized_path or "").strip("/") or "home"
-    for char in ("?", "&", "=", "#", "%", ":"):
-        value = value.replace(char, "-")
-    value = value.replace("/", "-")
-    value = "-".join(part for part in value.split("-") if part)
-    return f"page-{value or 'home'}"
-
-
-def _stable_element_key(role: str, name: str, index: int) -> str:
-    base = (name or role or f"element-{index}").strip().lower()
-    # 仅保留字母数字和中文，其余转 -
-    cleaned = "".join(
-        ch if (ch.isalnum() or "\u4e00" <= ch <= "\u9fff") else "-"
-        for ch in base
-    )
-    cleaned = "-".join(part for part in cleaned.split("-") if part)
-    if not cleaned:
-        cleaned = f"element-{index}"
-    return f"{role or 'el'}-{cleaned[:48]}-{index:03d}"[:80]
 
 
 def _matches_keywords(text: Optional[str], keywords: List[str]) -> bool:
@@ -391,5 +362,4 @@ def _focus_visible_text_blocks(blocks: List[str], keywords: List[str], max_block
 __all__ = [
     "playwright_snap_tool",
     "build_state_observation_hint",
-    "normalize_url_for_sig",
 ]

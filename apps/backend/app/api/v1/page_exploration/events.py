@@ -8,8 +8,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from app.dependencies.auth import current_user
-from app.services.exploration import event_bus
-from app.services.exploration import page_exploration_service
+from app.services.page_exploration import event_bus, page_exploration_service
 
 router = APIRouter()
 

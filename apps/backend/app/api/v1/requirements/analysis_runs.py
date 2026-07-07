@@ -9,7 +9,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends
 
 from app.dependencies.auth import current_user
-from app.services.document import service as document_service
+from app.services.document import analysis_runs as document_analysis_runs
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirements"])
 
@@ -21,8 +21,8 @@ def review_requirement(
     background_tasks: BackgroundTasks,
     actor=Depends(current_user),
 ) -> dict:
-    task = document_service.start_requirement_review_run(project_id, document_id, actor)
-    background_tasks.add_task(document_service.execute_requirement_review_run, task["source_id"], dict(actor))
+    task = document_analysis_runs.start_requirement_review_run(project_id, document_id, actor)
+    background_tasks.add_task(document_analysis_runs.execute_requirement_review_run, task["source_id"], dict(actor))
     return task
 
 
@@ -33,8 +33,8 @@ def create_requirement_analysis_run(
     background_tasks: BackgroundTasks,
     actor=Depends(current_user),
 ) -> dict:
-    task = document_service.start_requirement_review_run(project_id, document_id, actor)
-    background_tasks.add_task(document_service.execute_requirement_review_run, task["source_id"], dict(actor))
+    task = document_analysis_runs.start_requirement_review_run(project_id, document_id, actor)
+    background_tasks.add_task(document_analysis_runs.execute_requirement_review_run, task["source_id"], dict(actor))
     return task
 
 
@@ -45,9 +45,9 @@ def stop_requirement_analysis_run(
     run_id: str,
     actor=Depends(current_user),
 ) -> dict:
-    return document_service.stop_requirement_analysis_run(project_id, document_id, run_id, actor)
+    return document_analysis_runs.stop_requirement_analysis_run(project_id, document_id, run_id, actor)
 
 
 @router.get("/{document_id}/analysis-runs")
 def list_requirement_analysis_runs(project_id: str, document_id: str, actor=Depends(current_user)) -> list[dict]:
-    return document_service.list_requirement_analysis_runs(project_id, document_id, actor)
+    return document_analysis_runs.list_requirement_analysis_runs(project_id, document_id, actor)

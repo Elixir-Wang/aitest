@@ -8,13 +8,12 @@ from app.agents.page_exploration.playwright.schemas import (
     AccessibilityNodeInfo,
     ActionFailure,
     ClickResult,
-    DialogInfo,
     ElementInfo,
     FillResult,
     NavigateResult,
     SnapshotResult,
 )
-from app.services.exploration.browser_session import BrowserSessionError, PlaywrightBrowserSession
+from app.services.page_exploration.browser_session import BrowserSessionError, PlaywrightBrowserSession
 
 
 _browser_session: ContextVar[PlaywrightBrowserSession | None] = ContextVar(
@@ -39,6 +38,7 @@ def browser_session_context(
             yield
         finally:
             _browser_session.reset(token)
+            session.close()
 
 
 def navigate_with_runtime_context(url: str) -> NavigateResult | None:
@@ -59,7 +59,7 @@ def _enrich_locator_not_unique_summary(raw_summary: str, error_type: str, raw: s
 
     why: 单纯"匹配 N 个"对 LLM 没用——LLM 不知道 N 个匹配各自是什么；
     重新 snap 后能在 match_groups[(name, role)].candidates 看到 N 个候选的位置，
-    按 dialog_id / context_hint 区分。
+    每个候选含 ancestor_chain 让 LLM 判断哪个在弹窗里。
     """
     if error_type != "locator_not_unique":
         return raw_summary
@@ -69,8 +69,8 @@ def _enrich_locator_not_unique_summary(raw_summary: str, error_type: str, raw: s
     return (
         f"{raw_summary} "
         "再次调用 playwright_snap_tool 查响应里 match_groups 字段，"
-        "找到 (name, role) 对应组的 candidates 列表（每项含 dialog_id 与 primary_selector_code），"
-        "按上下文（弹窗内 / 主页面）选用 filter({ hasText }) 或父级容器链式定位。"
+        "找到 (name, role) 对应组的 candidates 列表（每项含 ancestor_chain 与 primary_selector_code），"
+        "按 ancestor_chain 中的结构信息（popover / dialog / main 等）选用 filter({ hasText }) 或父级容器链式定位。"
     )
 
 
@@ -264,7 +264,7 @@ def snapshot_with_runtime_context(url: str | None = None) -> SnapshotResult | No
                 primary_selector=element.get("primary_selector") if isinstance(element.get("primary_selector"), dict) else None,
                 fallback_selector=element.get("fallback_selector") if isinstance(element.get("fallback_selector"), dict) else None,
                 visible=bool(element.get("visible", True)),
-                dialog_id=element.get("dialog_id") if isinstance(element.get("dialog_id"), str) else None,
+                ancestor_chain=element.get("ancestor_chain") if isinstance(element.get("ancestor_chain"), list) else [],
             )
             for element in result.get("elements", [])
             if isinstance(element, dict)
@@ -287,14 +287,4 @@ def snapshot_with_runtime_context(url: str | None = None) -> SnapshotResult | No
             for item in result.get("visible_text_blocks", [])
             if str(item).strip()
         ],
-        dialogs=[
-            DialogInfo(
-                id=str(d.get("id") or f"dialog-{idx}"),
-                title=str(d.get("title") or ""),
-                role=str(d.get("role") or ""),
-            )
-            for idx, d in enumerate(result.get("dialogs", []), start=1)
-            if isinstance(d, dict)
-        ],
-        active_dialog_id=result.get("active_dialog_id") if isinstance(result.get("active_dialog_id"), str) else None,
     )

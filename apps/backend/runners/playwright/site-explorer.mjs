@@ -1,6 +1,14 @@
 import { chromium } from "playwright";
-import { buildSelectorCandidates } from "./selector-generator.mjs";
 import { locatorForCandidate, verifySelectorCandidate } from "./selector-validator.mjs";
+import {
+  normalizeUrl as normalizeSharedUrl,
+  selectorUsable,
+  slugify,
+  stableElementId,
+  verifyBestElementSelectors,
+} from "./page-facts.mjs";
+
+const normalizeUrl = (value) => normalizeSharedUrl(value, { invalidFallback: "raw" });
 
 const [, , startUrl, artifactRoot, channel = "", forbiddenInput = "", storageStatePath = ""] = process.argv;
 
@@ -138,7 +146,7 @@ try {
       page_id: pageId,
       url: pageDoc.page.url,
       title: pageDoc.page.title,
-      artifact_path: `pages/${pageId}-${slugify(pageDoc.page.title || pageDoc.page.url)}.yaml`,
+      artifact_path: `pages/${pageId}-${slugify(pageDoc.page.title || pageDoc.page.url, "page")}.yaml`,
     });
 
     for (const link of facts.links) {
@@ -288,7 +296,7 @@ try {
       emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
       actionCount += 1;
     }
-    addPageStep(pageDoc, "artifact_written", "写入页面事实", `写入 pages/${pageId}-${slugify(pageDoc.page.title || pageDoc.page.url)}.yaml`);
+    addPageStep(pageDoc, "artifact_written", "写入页面事实", `写入 pages/${pageId}-${slugify(pageDoc.page.title || pageDoc.page.url, "page")}.yaml`);
     emitProgress("step_recorded", { module_key: "site-entry", page_id: pageId, step: pageDoc.steps.at(-1) });
     addPageStep(pageDoc, pageDoc.page.status === "blocked" ? "blocked" : "completed", pageDoc.page.status === "blocked" ? "页面阻塞" : "页面探索完成", pageDoc.page.status === "blocked" ? pageDoc.quality.blockers.join("；") : pageDoc.page.structure_summary);
     emitProgress(pageDoc.page.status === "blocked" ? "page_blocked" : "page_completed", {
@@ -581,7 +589,7 @@ async function buildPageDoc(browserPage, pageId, facts, entryPath, blockers) {
   const stateElements = [];
   for (const [index, action] of facts.actions.entries()) {
     const selectors = await verifyBestElementSelectors(browserPage, action);
-    const elementId = stableElementId(action, index + 1);
+    const elementId = stableElementId(action, index + 1, { useTextFallback: false });
     actions.push({
       id: makeId("action", index + 1),
       role: action.role,
@@ -740,35 +748,6 @@ function normalizedElementName(value) {
   return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-async function verifyBestElementSelectors(browserPage, action) {
-  const candidates = buildSelectorCandidates(action);
-  if (!candidates.length) {
-    return {};
-  }
-  const verified = [];
-  for (const candidate of candidates) {
-    verified.push(await verifySelectorCandidate(browserPage, candidate));
-  }
-  const usable = verified.filter(selectorUsable);
-  const semanticUsable = usable.filter((candidate) => candidate.kind !== "css");
-  const cssUsable = usable.filter((candidate) => candidate.kind === "css");
-  const primary = semanticUsable[0] || cssUsable[0] || null;
-  if (primary?.kind === "css") {
-    primary.locator_confidence = "low";
-    primary.needs_confirmation = true;
-    primary.degraded_reason = "semantic_locators_unavailable";
-  }
-  const fallback = primary
-    ? (semanticUsable.find((candidate) => candidate.code !== primary.code)
-      || cssUsable.find((candidate) => candidate.code !== primary.code)
-      || null)
-    : null;
-  return {
-    primary_selector: primary || null,
-    fallback_selector: fallback,
-  };
-}
-
 function addPageStep(pageDoc, type, title, detail = "", status = "completed") {
   pageDoc.steps.push(makeStep(makeId("step", pageDoc.steps.length + 1), type, title, detail, status));
 }
@@ -833,15 +812,6 @@ function selectorConfidence(selector) {
   return "low";
 }
 
-function selectorUsable(selector) {
-  return Boolean(selector?.verification?.checked && selector.verification.unique && selector.verification.visible);
-}
-
-function stableElementId(action, index) {
-  const base = slugify(`${action.role || action.action_type || "element"}-${action.name || index}`);
-  return `${base || "element"}-${String(index).padStart(3, "0")}`;
-}
-
 async function captureStateAfterSafeOpenAction(browserPage, pageDoc, action, storedAction) {
   if (!shouldCapturePostClickState(action, storedAction)) {
     return null;
@@ -866,7 +836,7 @@ async function captureStateAfterSafeOpenAction(browserPage, pageDoc, action, sto
     for (const [index, element] of visibleState.elements.entries()) {
       const selectors = await verifyBestElementSelectors(browserPage, element);
       elements.push({
-        id: stableElementId(element, index + 1),
+        id: stableElementId(element, index + 1, { useTextFallback: false }),
         name: element.name || "",
         role: element.role || "",
         action: element.action_type || "inspect",
@@ -880,12 +850,12 @@ async function captureStateAfterSafeOpenAction(browserPage, pageDoc, action, sto
     }
     const rootSelector = await rootSelectorForState(browserPage, visibleState);
     return {
-      id: `${slugify(action.name || action.locator_hint || "state")}-${String(pageDoc.states.length + 1).padStart(3, "0")}`,
+      id: `${slugify(action.name || action.locator_hint || "state", "page")}-${String(pageDoc.states.length + 1).padStart(3, "0")}`,
       type: stateTypeFromRole(visibleState.role),
       title: visibleState.title || action.name || "页面内状态",
       parent_state: "default",
       trigger: {
-        element_id: stableElementId(action, actionIndex(action)),
+        element_id: stableElementId(action, actionIndex(action), { useTextFallback: false }),
         action: "click",
       },
       root_selector: rootSelector,
@@ -1075,19 +1045,6 @@ function sameOriginHref(href, start) {
   }
 }
 
-function normalizeUrl(value) {
-  try {
-    const url = new URL(value);
-    url.hash = "";
-    if (url.pathname.endsWith("/") && url.pathname !== "/") {
-      url.pathname = url.pathname.slice(0, -1);
-    }
-    return url.href;
-  } catch {
-    return value;
-  }
-}
-
 function isForbidden(value) {
   const lower = String(value || "").toLowerCase();
   return forbiddenTerms.some((term) => lower.includes(term));
@@ -1109,11 +1066,3 @@ function inferModuleName(title, url) {
   }
 }
 
-function slugify(value) {
-  return String(value || "page")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-zA-Z0-9\u4e00-\u9fff]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40) || "page";
-}

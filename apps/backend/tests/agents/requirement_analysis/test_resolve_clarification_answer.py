@@ -9,7 +9,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.schemas.document import RequirementClarificationAnswerIn
-from app.services.document.service import (
+from app.services.document.analysis import (
     _resolve_clarification_answer,
     _selected_option_text,
 )

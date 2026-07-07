@@ -13,6 +13,7 @@ from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
 from app.repositories import document_repo, project_repo, test_case_repo
 from app.schemas.test_case import TestCaseReviewIn, TestCaseSetCreateIn
+from app.services.test_case_xmind_exporter import build_test_case_set_xmind, safe_xmind_filename
 
 
 STATUS_LABELS = {
@@ -38,6 +39,16 @@ def get_test_case_set(project_id: str, set_id: str, actor) -> dict:
         if not row or row["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "测试用例集不存在。")
         return _serialize_set(db, row, include_cases=True)
+
+
+def export_test_case_set_xmind(project_id: str, set_id: str, actor) -> tuple[bytes, str]:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = test_case_repo.find_set_by_id(db, set_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "测试用例集不存在。")
+        cases = [_serialize_case(case) for case in test_case_repo.list_cases_by_set(db, row["id"])]
+    return build_test_case_set_xmind(dict(row), cases), safe_xmind_filename(row["name"])
 
 
 def delete_test_case_set(project_id: str, set_id: str, actor) -> None:

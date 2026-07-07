@@ -7,7 +7,9 @@ from app.core.logging import setup_logging
 from app.core.response import ApiResponseMiddleware
 from app.seed.init_db import init_db
 from app.services import task_service, test_case_service
-from app.services.exploration import event_bus, recover_interrupted_exploration_runs
+from app.services.page_exploration import event_bus, page_exploration_service
+
+recover_interrupted_exploration_runs = page_exploration_service.recover_interrupted_exploration_runs
 
 # 日志在模块导入阶段即初始化，确保 uvicorn worker 启动日志也被捕获
 setup_logging()
@@ -35,6 +37,23 @@ def startup() -> None:
 @app.on_event("shutdown")
 def shutdown() -> None:
     event_bus.close_all()
+    # 杀掉所有 browser-session.mjs Node 子进程（正常路径由 runtime_context 关闭，
+    # 但 Ctrl+C / kill 时 ContextVar 未执行，需要兜底）
+    import subprocess, sys
+    try:
+        result = subprocess.run(
+            [
+                sys.executable, "-c",
+                "import subprocess, sys; "
+                "procs = subprocess.run(['powershell', '-Command', "
+                "'Get-CimInstance Win32_Process | Where-Object { $_.Name -eq \"node.exe\" -and $_.CommandLine -like \"*browser-session*\" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }'], "
+                "capture_output=True, text=True)"
+            ],
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        pass
     logger.info("Application shutdown signal handled")
 
 

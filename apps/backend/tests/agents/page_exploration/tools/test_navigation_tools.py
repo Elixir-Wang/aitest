@@ -8,7 +8,7 @@ from app.agents.page_exploration.tools.navigation_tools import (
     playwright_navigate_tool,
 )
 from app.agents.page_exploration.tools.runtime_context import browser_session_context
-from app.services.exploration.browser_session import BrowserSessionError
+from app.services.page_exploration.browser_session import BrowserSessionError
 
 
 def test_click_and_fill_use_runtime_browser_session_for_snapshot_refs():

@@ -450,6 +450,9 @@ function buildExecutionTranscriptBlocks(events: ExplorationMonitorEvent[]): Exec
     if (!display) {
       continue;
     }
+    if (event.type === "agent_step_started" && display.kind === "agent_run") {
+      continue;
+    }
     const fields = display.fields?.filter((field) => field.label !== "结果") ?? [];
     const isToolEvent =
       event.type === "agent_tool_started" ||

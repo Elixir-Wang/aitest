@@ -25,7 +25,7 @@ from app.api.v1.requirements import (
     versions,
 )
 from app.dependencies.auth import current_user
-from app.services.document import service as document_service
+from app.services.document import documents as document_documents
 
 # 占位 router：所有路径都来自子模块，主 router 自身不挂任何路径，仅用于聚合子路由。
 # 真实的 prefix 在子模块的 router 上声明。
@@ -43,7 +43,7 @@ global_router = APIRouter(prefix="/requirements", tags=["requirements"])
 
 @global_router.get("")
 def list_visible_requirements(actor=Depends(current_user)) -> list[dict]:
-    return document_service.list_visible_documents(actor)
+    return document_documents.list_visible_documents(actor)
 
 
 __all__ = ["router", "global_router"]

@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from app.core import db as core_db
 from app.core import storage as core_storage
 from app.seed.init_db import init_db
-from app.services.document import service as document_service
+from app.services.document import documents as document_service
 
 
 ACTOR = {

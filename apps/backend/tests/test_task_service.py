@@ -3,7 +3,7 @@ import pytest
 from app.core import db as core_db
 from app.seed.init_db import init_db
 from app.services import task_service
-from app.services.exploration import page_exploration_service as exploration_service
+from app.services.page_exploration import service as exploration_service
 
 
 ACTOR = {"id": "u-admin", "role": "admin", "nickname": "管理员", "username": "admin", "project_scope": "全部项目"}

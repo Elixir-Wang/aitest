@@ -3,14 +3,11 @@
 import pytest
 from app.agents.model_selection import ModelSelection
 from app.agents.requirement_analysis import (
+    ClarificationItem,
     RequirementInput,
     RequirementAnalysisResult,
     analyze_requirement,
-    # 旧接口
-    RequirementAnalysisRunInput,
-    RequirementAnalysisAgentInput,
     run_requirement_analysis,
-    analyze_requirement_legacy,
 )
 
 
@@ -31,23 +28,17 @@ def test_new_schemas_structure():
     assert input_data.auxiliary_docs == []
 
 
-def test_old_schemas_still_work():
-    """测试旧的数据结构仍然可用"""
-    # 测试旧的 RunInput
-    run_input = RequirementAnalysisRunInput(run_id="test-123")
-    assert run_input.run_id == "test-123"
+def test_legacy_contract_is_not_exported():
+    """旧 compatibility 契约不再从 requirement_analysis 包导出。"""
+    import app.agents.requirement_analysis as requirement_analysis
 
-    # 测试旧的 AgentInput
-    agent_input = RequirementAnalysisAgentInput(
-        requirement_name="测试",
-        primary_filename="test.md",
-        primary_markdown_content="# 测试内容",
-        auxiliary_documents=[]
-    )
-    assert agent_input.requirement_name == "测试"
+    assert not hasattr(requirement_analysis, "RequirementAnalysisRunInput")
+    assert not hasattr(requirement_analysis, "RequirementAnalysisAgentInput")
+    assert not hasattr(requirement_analysis, "RequirementAnalysisAgentOutput")
+    assert not hasattr(requirement_analysis, "analyze_requirement_legacy")
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_new_api_mock(monkeypatch):
     """测试新的 API（Mock）"""
     from app.agents.requirement_analysis.schemas import (
@@ -122,13 +113,14 @@ async def test_new_api_mock(monkeypatch):
 
     clarification_md = result.to_clarification_markdown()
     assert "# 待澄清问题" in clarification_md
-    assert "clar-001" in clarification_md
+    assert "未登录用户能否访问？" in clarification_md
 
 
-@pytest.mark.asyncio
-async def test_legacy_api_compatibility(monkeypatch):
-    """测试旧 API 兼容性"""
+@pytest.mark.anyio
+async def test_run_requirement_analysis_uses_new_input_contract(monkeypatch):
+    """测试运行入口直接接收新输入契约。"""
     from app.agents.requirement_analysis.schemas import (
+        ClarificationItem,
         RequirementUnderstanding,
         RequirementAnalysisResult,
     )
@@ -176,21 +168,17 @@ async def test_legacy_api_compatibility(monkeypatch):
         lambda sel, *, extra_body=None: "mock_model"
     )
 
-    # 使用旧接口
-    old_input = RequirementAnalysisAgentInput(
-        requirement_name="测试",
-        primary_filename="test.md",
-        primary_markdown_content="# 测试内容",
-        auxiliary_documents=[]
+    result = await run_requirement_analysis(
+        RequirementInput(
+            requirement_name="测试",
+            requirement_content="# 测试内容",
+            auxiliary_docs=[],
+        )
     )
 
-    old_output = await analyze_requirement_legacy(old_input)
-
-    # 验证旧格式输出
-    assert old_output.status == "needs_clarification"
-    assert "# 需求理解" in old_output.understanding_markdown
-    assert "背景" in old_output.understanding_markdown
-    assert len(old_output.clarification_items) == 1
+    assert result.status == "needs_clarification"
+    assert result.understanding.background == "背景"
+    assert len(result.clarifications) == 1
 
 
 def test_markdown_conversion():

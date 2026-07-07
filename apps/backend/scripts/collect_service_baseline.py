@@ -2,9 +2,9 @@
 
 输出 ``service-baseline.json``，包含：
 - ``document.service``: 顶层名称（import * 会拿到的东西）
-- ``exploration.page_exploration_service``: 顶层名称
+- ``page_exploration.service``: 顶层名称
 - ``document.service.used_by_external``: 列出哪些外部模块用了里面的名字（精确 non-from-import 集合）
-- ``exploration.page_exploration_service.used_by_external``: 同上
+- ``page_exploration.service.used_by_external``: 同上
 
 设计要点（仅采集，不改业务）：
 - 在 ``app.services`` 已正确初始化的前提下 import，避免触发不可预测的副作用
@@ -84,7 +84,7 @@ def main() -> int:
 
     targets = [
         "app.services.document.service",
-        "app.services.exploration.page_exploration_service",
+        "app.services.page_exploration.service",
     ]
 
     baseline: dict = {}
