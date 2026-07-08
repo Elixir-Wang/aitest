@@ -69,7 +69,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={["工作台", "控制台"]}
+      breadcrumbs={[{ label: "工作台", href: "/dashboard" }, { label: "控制台" }]}
       description="跨项目查看测试资产规模、采纳情况和自动化建设进度。"
       projectScope="all"
       title="控制台"

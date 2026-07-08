@@ -390,6 +390,24 @@ CREATE TABLE IF NOT EXISTS api_generation_runs (
 CREATE INDEX IF NOT EXISTS idx_api_generation_runs_project_created
   ON api_generation_runs(project_id, created_at);
 
+CREATE TABLE IF NOT EXISTS api_test_case_sets (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  notes TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK(status IN ('draft', 'generating', 'ready', 'failed', 'archived')) DEFAULT 'draft',
+  case_count INTEGER NOT NULL DEFAULT 0,
+  latest_generation_run_id TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(latest_generation_run_id) REFERENCES api_generation_runs(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_test_case_sets_project_updated
+  ON api_test_case_sets(project_id, updated_at);
+
 CREATE TABLE IF NOT EXISTS api_test_cases (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
@@ -565,22 +583,6 @@ CREATE TABLE IF NOT EXISTS exploration_pages (
   trace_path TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(exploration_run_id) REFERENCES exploration_runs(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS exploration_elements (
-  id TEXT PRIMARY KEY,
-  exploration_run_id TEXT NOT NULL,
-  page_id TEXT,
-  module_key TEXT NOT NULL DEFAULT '',
-  element_name TEXT NOT NULL,
-  element_type TEXT NOT NULL DEFAULT '',
-  recommended_locator TEXT NOT NULL DEFAULT '',
-  fallback_locator TEXT NOT NULL DEFAULT '',
-  stability_note TEXT NOT NULL DEFAULT '',
-  source_ref TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(exploration_run_id) REFERENCES exploration_runs(id) ON DELETE CASCADE,
-  FOREIGN KEY(page_id) REFERENCES exploration_pages(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS exploration_blockers (

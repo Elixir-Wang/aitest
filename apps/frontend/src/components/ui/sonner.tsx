@@ -11,18 +11,20 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      closeButton
+      swipeDirections={[]}
       icons={{
         success: (
-          <CircleCheckIcon className="size-4" />
+          <CircleCheckIcon className="size-4 text-green-600 dark:text-green-400" />
         ),
         info: (
-          <InfoIcon className="size-4" />
+          <InfoIcon className="size-4 text-muted-foreground" />
         ),
         warning: (
-          <TriangleAlertIcon className="size-4" />
+          <TriangleAlertIcon className="size-4 text-amber-600 dark:text-amber-400" />
         ),
         error: (
-          <OctagonXIcon className="size-4" />
+          <OctagonXIcon className="size-4 text-destructive" />
         ),
         loading: (
           <Loader2Icon className="size-4 animate-spin" />
@@ -38,7 +40,18 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }
       toastOptions={{
         classNames: {
-          toast: "cn-toast",
+          toast: "cn-toast select-text rounded-xl border pr-12 shadow-md",
+          default: "bg-card border-border text-foreground",
+          success: "bg-card border-green-600/50 text-foreground",
+          info: "bg-card border-border text-foreground",
+          warning: "bg-card border-amber-600/50 text-foreground",
+          error: "bg-card border-destructive/50 text-foreground",
+          title: "select-text text-xs font-medium leading-none",
+          description: "select-text text-xs text-muted-foreground",
+          closeButton:
+            "!right-3 !left-auto !top-1/2 !-translate-y-1/2 size-7 rounded-md border border-transparent bg-muted/70 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+          actionButton:
+            "border border-border bg-background text-foreground hover:bg-muted/10 dark:hover:bg-muted/20",
         },
       }}
       {...props}

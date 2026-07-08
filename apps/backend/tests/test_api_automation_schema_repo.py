@@ -7,6 +7,8 @@ from app.core import db as db_core
 from app.core.db import connect
 from app.repositories import api_automation_repo
 from app.seed.init_db import init_db
+from app.schemas.api_automation import ApiTestCaseSetIn
+from app.services.api_automation import service
 
 
 def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -162,3 +164,27 @@ def test_generation_case_script_and_run_records(monkeypatch: pytest.MonkeyPatch,
     assert cases[0]["id"] == case_id
     assert script["api_test_case_id"] == case_id
     assert api_automation_repo.loads_json(run["script_ids_json"], []) == [script_id]
+
+
+def test_update_api_test_case_set_changes_name_and_notes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+    actor = {"id": "u-admin", "role": "admin", "nickname": "管理员", "username": "admin", "project_scope": "全部项目"}
+
+    created = service.create_api_test_case_set(
+        "project-1",
+        ApiTestCaseSetIn(name="旧接口集", notes="旧备注"),
+        actor,
+    )
+
+    updated = service.update_api_test_case_set(
+        "project-1",
+        created["id"],
+        ApiTestCaseSetIn(name="新接口集", notes="新备注"),
+        actor,
+    )
+
+    assert updated["id"] == created["id"]
+    assert updated["name"] == "新接口集"
+    assert updated["notes"] == "新备注"
+    assert updated["updated_at"] >= created["updated_at"]

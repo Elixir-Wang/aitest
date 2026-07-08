@@ -101,14 +101,13 @@ export const sidebarItems: NavGroup[] = [
         title: "UI 自动化",
         url: "/automation/ui",
         icon: PlaySquare,
+        comingSoon: true,
+        disabled: true,
       },
       {
         title: "接口自动化",
-        url: "/projects/:projectId/automation/api",
+        url: "/automation/api",
         icon: TestTubeDiagonal,
-        comingSoon: true,
-        disabled: true,
-        projectScoped: true,
       },
       {
         title: "性能测试",

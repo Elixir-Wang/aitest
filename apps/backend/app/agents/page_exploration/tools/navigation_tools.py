@@ -89,6 +89,9 @@ def playwright_click_tool(locator: str) -> dict:
         "success": result.success,
         "error": result.error,
         "effective_locator": result.effective_locator,
+        "verification_required": result.verification_required,
+        "next_step_hint": result.next_step_hint,
+        "risk": result.risk,
     }
     if result.failure is not None:
         payload["failure"] = result.failure.model_dump()
@@ -125,6 +128,9 @@ def playwright_fill_tool(locator: str, value: str) -> dict:
         "success": result.success,
         "error": result.error,
         "effective_locator": result.effective_locator,
+        "verification_required": result.verification_required,
+        "next_step_hint": result.next_step_hint,
+        "risk": result.risk,
     }
     if result.failure is not None:
         payload["failure"] = result.failure.model_dump()

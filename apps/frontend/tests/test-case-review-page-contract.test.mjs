@@ -32,13 +32,15 @@ test("api client exposes review feedback contracts", () => {
 });
 
 test("review page includes adoption metrics and review filters", () => {
-  assert.match(reviewPageSource, /<ReviewSummaryStrip stats=\{stats\} \/>/);
+  assert.match(reviewPageSource, /<ReviewSummaryStrip/);
+  assert.match(reviewPageSource, /stats=\{stats\}/);
   assert.match(reviewPageSource, /SlidingNumber/);
   assert.match(reviewPageSource, /采纳率/);
   assert.match(reviewPageSource, /评审进度/);
   assert.match(reviewPageSource, /用例数量/);
   assert.doesNotMatch(reviewPageSource, /用例总数/);
-  assert.match(reviewPageSource, /grid w-full overflow-hidden rounded-lg/);
+  assert.match(reviewPageSource, /lg:flex-row lg:items-center lg:justify-between/);
+  assert.match(reviewPageSource, /lg:max-w-2xl/);
   assert.match(reviewPageSource, /type ReviewFilter = "all" \| "ready_for_review" \| "approved" \| "rejected"/);
   assert.match(
     reviewPageSource,

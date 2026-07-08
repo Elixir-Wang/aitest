@@ -177,7 +177,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={["项目工作区", "项目"]}
+      breadcrumbs={[{ label: "项目工作区" }, { label: "项目" }]}
       description="管理项目、成员、环境配置和测试资产健康度。"
       projectScope="all"
       title="项目"

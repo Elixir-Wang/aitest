@@ -92,6 +92,25 @@ class ApiEndpointOut(BaseModel):
     updated_at: str
 
 
+class ApiEndpointDebugIn(_StrippedModel):
+    api_environment_id: str | None = None
+    path_params: dict[str, Any] = Field(default_factory=dict)
+    query_params: dict[str, Any] = Field(default_factory=dict)
+    headers: dict[str, Any] = Field(default_factory=dict)
+    cookies: dict[str, Any] = Field(default_factory=dict)
+    body: Any = None
+
+
+class ApiEndpointDebugOut(BaseModel):
+    request: dict[str, Any]
+    status_code: int
+    elapsed_ms: int
+    headers: dict[str, str]
+    body_text: str
+    body_json: Any = None
+    error_message: str = ""
+
+
 class ApiEnvironmentIn(_StrippedModel):
     name: str = Field(min_length=1)
     api_base_url: str = Field(min_length=1)
@@ -149,6 +168,23 @@ class ApiGenerationRunOut(BaseModel):
     error_message: str
     created_at: str
     finished_at: str | None = None
+
+
+class ApiTestCaseSetIn(_StrippedModel):
+    name: str = Field(min_length=1)
+    notes: str = ""
+
+
+class ApiTestCaseSetOut(BaseModel):
+    id: str
+    project_id: str
+    name: str
+    notes: str
+    status: str
+    case_count: int
+    latest_generation_run_id: str | None
+    created_at: str
+    updated_at: str
 
 
 class ApiTestCaseUpdateIn(_StrippedModel):

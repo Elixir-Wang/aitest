@@ -207,7 +207,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={["系统管理", "用户与权限"]}
+      breadcrumbs={[{ label: "系统管理" }, { label: "用户与权限" }]}
       description="管理管理员、测试工程师、访客账号和项目分配。"
       projectScope="none"
       title="用户与权限"

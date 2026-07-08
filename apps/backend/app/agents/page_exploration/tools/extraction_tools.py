@@ -209,16 +209,30 @@ def _build_match_groups(elements: list) -> list[dict]:
             primary = el.get("primary_selector") if isinstance(el.get("primary_selector"), dict) else None
             primary_code = primary.get("code") if primary else ""
             ancestor_chain = el.get("ancestor_chain") or []
+            ancestor_names = [
+                str(a.get("name") or "").strip()
+                for a in ancestor_chain
+                if isinstance(a, dict) and str(a.get("name") or "").strip()
+            ]
+            ancestor_text = " / ".join(ancestor_names[:5])
             # 从 ancestor_chain 提取最有区分力的结构信息作为 context_hint
             overlay_roles = {"popover", "dialog", "alertdialog", "menu", "tooltip"}
             overlay = next((a.get("role") or "" for a in ancestor_chain if a.get("role") in overlay_roles), "")
             context_hint = overlay or "main"
+            scope_hint = _build_scope_hint(
+                role=role,
+                name=name,
+                context_hint=context_hint,
+                ancestor_text=ancestor_text,
+            )
             candidates.append({
                 "ordinal": order,
                 "element_index": idx,
                 "ancestor_chain": ancestor_chain,
+                "ancestor_text": ancestor_text,
                 "primary_selector_code": primary_code,
                 "context_hint": context_hint,
+                "scope_hint": scope_hint,
             })
         out.append({
             "name": name,
@@ -227,6 +241,28 @@ def _build_match_groups(elements: list) -> list[dict]:
             "candidates": candidates,
         })
     return out
+
+
+def _build_scope_hint(*, role: str, name: str, context_hint: str, ancestor_text: str) -> str:
+    """Give the LLM a concrete disambiguation pattern without choosing for it."""
+    escaped_name = name.replace("'", "\\'")
+    if context_hint in {"dialog", "alertdialog"}:
+        return (
+            f"优先用弹窗容器限定：page.getByRole('{context_hint}')."
+            f"filter({{ hasText: '关键表单字段或标题' }}).getByRole('{role}', {{ name: '{escaped_name}' }})"
+        )
+    if context_hint in {"popover", "menu"}:
+        return (
+            f"优先用浮层容器限定：page.locator('[role=\"{context_hint}\"]')."
+            f"filter({{ hasText: '关键选项文本' }}).getByText('{escaped_name}', {{ exact: true }})"
+        )
+    if ancestor_text:
+        short_text = ancestor_text[:80].replace("'", "\\'")
+        return (
+            "当前候选的祖先文本可作上下文锚点；优先选择包含目标业务字段/卡片名的容器，"
+            f"例如 filter({{ hasText: '{short_text}' }}) 后再定位 '{escaped_name}'。"
+        )
+    return "该同名元素缺少明显容器上下文；请先 snap 聚焦相关关键词，再用字段/卡片/弹窗文本限定范围。"
 
 
 def _build_state_observation_hint(

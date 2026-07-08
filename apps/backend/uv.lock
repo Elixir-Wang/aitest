@@ -22,6 +22,7 @@ dependencies = [
     { name = "pytest" },
     { name = "python-docx" },
     { name = "python-multipart" },
+    { name = "requests" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -47,6 +48,7 @@ requires-dist = [
     { name = "pytest", specifier = ">=9.0.1" },
     { name = "python-docx", specifier = "==1.2.0" },
     { name = "python-multipart", specifier = "==0.0.20" },
+    { name = "requests", specifier = "==2.34.2" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.38.0" },
 ]
 

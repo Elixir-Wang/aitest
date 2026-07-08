@@ -533,6 +533,10 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     throwApiError(response, payload);
   }
 
+  if (response.status === 204 || payload === null) {
+    return undefined as T;
+  }
+
   return (payload as ApiEnvelope<T>).data;
 }
 
@@ -596,6 +600,20 @@ export type ApiAutomationEndpoint = {
   updated_at: string;
 };
 
+export type ApiAutomationDocument = {
+  id: string;
+  project_id: string;
+  name: string;
+  source_type: string;
+  source_url: string;
+  file_path: string;
+  version: string;
+  status: string;
+  endpoint_count: number;
+  error_message: string;
+  created_at: string;
+};
+
 export type ApiAutomationEnvironment = {
   id: string;
   project_id: string;
@@ -610,6 +628,27 @@ export type ApiAutomationEnvironment = {
   verify_ssl: boolean;
   auth_state_ttl_seconds: number;
   description: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiAutomationDebugPayload = {
+  api_environment_id?: string | null;
+  path_params?: Record<string, unknown>;
+  query_params?: Record<string, unknown>;
+  headers?: Record<string, unknown>;
+  cookies?: Record<string, unknown>;
+  body?: unknown;
+};
+
+export type ApiAutomationDebugResult = {
+  request: Record<string, unknown>;
+  status_code: number;
+  elapsed_ms: number;
+  headers: Record<string, string>;
+  body_text: string;
+  body_json: unknown;
+  error_message: string;
 };
 
 export type ApiAutomationGenerationRun = {
@@ -671,12 +710,40 @@ export type ApiAutomationRun = {
   finished_at: string | null;
 };
 
+export type ApiAutomationCaseSet = {
+  id: string;
+  project_id: string;
+  name: string;
+  notes: string;
+  status: string;
+  case_count: number;
+  latest_generation_run_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export function listApiAutomationEndpoints(projectId: string) {
   return apiRequest<ApiAutomationEndpoint[]>(`/projects/${projectId}/api-endpoints`);
 }
 
-export function importOpenApiDocument(projectId: string, payload: { source_type: "file" | "url"; content?: string; url?: string; name?: string }) {
-  return apiRequest(`/projects/${projectId}/api-documents/import`, {
+export function deleteApiAutomationEndpoint(projectId: string, endpointId: string) {
+  return apiRequest<void>(`/projects/${projectId}/api-endpoints/${endpointId}`, {
+    method: "DELETE",
+  });
+}
+
+export function debugApiAutomationEndpoint(projectId: string, endpointId: string, payload: ApiAutomationDebugPayload) {
+  return apiRequest<ApiAutomationDebugResult>(`/projects/${projectId}/api-endpoints/${endpointId}/debug`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function importOpenApiDocument(
+  projectId: string,
+  payload: { source_type: "file" | "url"; content?: string; url?: string; name?: string },
+) {
+  return apiRequest<ApiAutomationDocument>(`/projects/${projectId}/api-documents/import`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -693,9 +760,48 @@ export function createApiAutomationEnvironment(projectId: string, payload: Recor
   });
 }
 
+export function updateApiAutomationEnvironment(
+  projectId: string,
+  environmentId: string,
+  payload: Record<string, unknown>,
+) {
+  return apiRequest<ApiAutomationEnvironment>(`/projects/${projectId}/api-environments/${environmentId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteApiAutomationEnvironment(projectId: string, environmentId: string) {
+  return apiRequest<void>(`/projects/${projectId}/api-environments/${environmentId}`, {
+    method: "DELETE",
+  });
+}
+
 export function generateApiAutomation(projectId: string, payload: Record<string, unknown>) {
   return apiRequest<ApiAutomationGenerationRun>(`/projects/${projectId}/api-automation/generate`, {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listApiAutomationGenerationRuns(projectId: string) {
+  return apiRequest<ApiAutomationGenerationRun[]>(`/projects/${projectId}/api-automation/generation-runs`);
+}
+
+export function listApiAutomationCaseSets(projectId: string) {
+  return apiRequest<ApiAutomationCaseSet[]>(`/projects/${projectId}/api-case-sets`);
+}
+
+export function createApiAutomationCaseSet(projectId: string, payload: { name: string; notes: string }) {
+  return apiRequest<ApiAutomationCaseSet>(`/projects/${projectId}/api-case-sets`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateApiAutomationCaseSet(projectId: string, setId: string, payload: { name: string; notes: string }) {
+  return apiRequest<ApiAutomationCaseSet>(`/projects/${projectId}/api-case-sets/${setId}`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 }
@@ -704,14 +810,23 @@ export function getApiAutomationGenerationRun(projectId: string, runId: string) 
   return apiRequest<ApiAutomationGenerationRun>(`/projects/${projectId}/api-automation/generation-runs/${runId}`);
 }
 
-export function generateApiAutomationScripts(projectId: string, payload: { api_test_case_ids: string[]; api_environment_id?: string | null }) {
-  return apiRequest<{ suite_id: string; scripts: ApiAutomationScript[] }>(`/projects/${projectId}/api-automation/scripts/generate`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+export function generateApiAutomationScripts(
+  projectId: string,
+  payload: { api_test_case_ids: string[]; api_environment_id?: string | null },
+) {
+  return apiRequest<{ suite_id: string; scripts: ApiAutomationScript[] }>(
+    `/projects/${projectId}/api-automation/scripts/generate`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
-export function createApiAutomationRun(projectId: string, payload: { script_ids: string[]; api_environment_id?: string | null }) {
+export function createApiAutomationRun(
+  projectId: string,
+  payload: { script_ids: string[]; api_environment_id?: string | null },
+) {
   return apiRequest<ApiAutomationRun>(`/projects/${projectId}/api-runs`, {
     method: "POST",
     body: JSON.stringify(payload),

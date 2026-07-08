@@ -14,6 +14,7 @@ import {
   requirementVersionActionLabel,
   requirementVersionSummary,
 } from "@/components/ai-testing/requirement-version-detail-content";
+import { useProjectName } from "@/components/ai-testing/use-project-name";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiRequest, formatDateTime } from "@/lib/api-client";
@@ -32,6 +33,7 @@ export default function RequirementVersionPreviewPage() {
   const router = useRouter();
   const params = useParams<{ projectId: string; documentId: string; versionId: string }>();
   const { projectId, documentId, versionId } = params;
+  const projectName = useProjectName(projectId);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
   const [error, setError] = useState("");
@@ -93,7 +95,16 @@ export default function RequirementVersionPreviewPage() {
 
   if (error || !version) {
     return (
-      <PageShell breadcrumbs={["项目", "需求"]} description="查看指定需求版本的最终需求内容。" title="版本预览">
+      <PageShell
+        breadcrumbs={[
+          { label: "项目", href: "/projects" },
+          { label: projectName, href: `/projects/${projectId}` },
+          { label: "需求", href: "/requirements" },
+          { label: "版本预览" },
+        ]}
+        description="查看指定需求版本的最终需求内容。"
+        title="版本预览"
+      >
         <ShellSection>
           <div className="flex items-center justify-between gap-3">
             <div className="text-destructive text-sm">{error || "未找到版本预览。"}</div>
@@ -137,7 +148,14 @@ export default function RequirementVersionPreviewPage() {
             ) : null}
           </>
         }
-        breadcrumbs={["项目", "需求", documentName || "需求文档", `v${version.version_no}`]}
+        breadcrumbs={[
+          { label: "项目", href: "/projects" },
+          { label: projectName, href: `/projects/${projectId}` },
+          { label: "需求", href: "/requirements" },
+          { label: documentName || "需求文档", href: `/projects/${projectId}/requirements/${documentId}` },
+          { label: "版本记录", href: `/projects/${projectId}/requirements/${documentId}/versions` },
+          { label: `v${version.version_no}` },
+        ]}
         description="查看该版本的最终需求内容。"
         title={`v${version.version_no} 版本预览`}
       >

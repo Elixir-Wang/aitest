@@ -289,24 +289,26 @@ export default function TestCaseReviewPage() {
 
   return (
     <PageShell
-      actions={
-        <div className="flex items-center gap-2">
-          <Button onClick={() => router.push("/test-cases")} variant="outline">
-            <ChevronLeft className="size-4" />
-            返回列表
-          </Button>
-          <Button disabled={exporting || !testCaseSet || !projectId} onClick={exportTestCases} variant="outline">
-            {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-            导出测试用例
-          </Button>
-        </div>
-      }
-      breadcrumbs={["项目工作区", "测试用例", "用例评审"]}
+      breadcrumbs={[{ label: "测试资产" }, { label: "测试用例", href: "/test-cases" }, { label: "用例评审" }]}
       description="逐条采纳或不采纳生成用例，并沉淀下次重新生成需要避开的反馈。"
       fillViewport
       title={testCaseSet?.name ?? "测试用例评审"}
     >
-      <ReviewSummaryStrip stats={stats} />
+      <ReviewSummaryStrip
+        actions={
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <Button onClick={() => router.push("/test-cases")} variant="outline">
+              <ChevronLeft className="size-4" />
+              返回列表
+            </Button>
+            <Button disabled={exporting || !testCaseSet || !projectId} onClick={exportTestCases} variant="outline">
+              {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+              导出测试用例
+            </Button>
+          </div>
+        }
+        stats={stats}
+      />
 
       <ShellSection className="min-h-[640px] bg-[#F7F8FA] p-0">
         {loading ? (
@@ -509,15 +511,18 @@ function safeDownloadName(value: string) {
   return value.trim().replace(/[\\/:*?"<>|]+/g, "_") || "test-cases";
 }
 
-function ReviewSummaryStrip({ stats }: { stats: ApiTestCaseReviewStats }) {
+function ReviewSummaryStrip({ actions, stats }: { actions: ReactNode; stats: ApiTestCaseReviewStats }) {
   const adoptionRate = stats.reviewed_count === 0 ? 0 : Number((stats.adoption_rate * 100).toFixed(1));
   const reviewProgress = Number((stats.review_progress * 100).toFixed(1));
 
   return (
-    <div className="grid w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm sm:grid-cols-3">
-      <ReviewSummaryModule accent="blue" label="采纳率" suffix="%" value={adoptionRate} />
-      <ReviewSummaryModule accent="slate" label="评审进度" suffix="%" value={reviewProgress} />
-      <ReviewSummaryModule accent="green" label="用例数量" value={stats.case_count} />
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="grid min-w-0 flex-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm sm:grid-cols-3 lg:max-w-2xl">
+        <ReviewSummaryModule accent="blue" label="采纳率" suffix="%" value={adoptionRate} />
+        <ReviewSummaryModule accent="slate" label="评审进度" suffix="%" value={reviewProgress} />
+        <ReviewSummaryModule accent="green" label="用例数量" value={stats.case_count} />
+      </div>
+      {actions}
     </div>
   );
 }
@@ -541,13 +546,13 @@ function ReviewSummaryModule({
   const tone = accentClasses[accent];
 
   return (
-    <div className="flex h-12 min-w-0 items-center justify-center gap-5 border-slate-100 border-t px-5 first:border-t-0 sm:border-t-0 sm:border-l sm:first:border-l-0">
-      <div className={cn("flex shrink-0 items-center gap-2 rounded-md px-2 py-1", tone.label)}>
-        <span className={cn("h-2 w-2 rounded-full", tone.dot)} />
-        <span className="font-medium text-sm">{label}</span>
+    <div className="flex h-10 min-w-0 items-center justify-center gap-3 border-slate-100 border-t px-3 first:border-t-0 sm:border-t-0 sm:border-l sm:first:border-l-0">
+      <div className={cn("flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5", tone.label)}>
+        <span className={cn("h-1.5 w-1.5 rounded-full", tone.dot)} />
+        <span className="font-medium text-xs">{label}</span>
       </div>
       <div className="flex min-w-0 items-baseline">
-        <span className="inline-flex items-baseline font-mono font-semibold text-[#101828] text-sm leading-none">
+        <span className="inline-flex items-baseline font-mono font-semibold text-[#101828] text-xs leading-none">
           <SlidingNumber value={value} />
           {suffix ? <span>{suffix}</span> : null}
         </span>

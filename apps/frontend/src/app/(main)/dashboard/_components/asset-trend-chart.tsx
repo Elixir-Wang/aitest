@@ -120,21 +120,21 @@ export function AssetTrendChart({
               fillOpacity={1}
               stroke="var(--color-caseAssets)"
               strokeWidth={1.25}
-              type="natural"
+              type="monotone"
             />
             <Line
               dataKey="adoptedCases"
               dot={false}
               stroke="var(--color-adoptedCases)"
               strokeWidth={1.4}
-              type="natural"
+              type="monotone"
             />
             <Line
               dataKey="automationCases"
               dot={false}
               stroke="var(--color-automationCases)"
               strokeWidth={1.2}
-              type="natural"
+              type="monotone"
             />
           </ComposedChart>
         </ChartContainer>

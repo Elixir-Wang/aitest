@@ -16,38 +16,33 @@ AI_CAPABILITIES: tuple[AiCapability, ...] = (
     ),
     AiCapability(
         id="requirement_standardization",
-        name="需求标准化智能体",
+        name="需求标准化",
         description="负责将上传的 PDF、Word、TXT 和 Markdown 需求文件标准化为结构稳定的标准 Markdown。",
     ),
     AiCapability(
         id="requirement_analysis",
-        name="需求分析智能体",
+        name="需求分析",
         description="基于当前主需求 Markdown 工作稿，生成模块分析、澄清问题、可测试性检查和质量门禁结果。",
     ),
     AiCapability(
         id="knowledge_query",
-        name="项目知识库查询智能体",
+        name="项目知识库查询",
         description="基于最终需求文档执行 agentic 检索，返回带来源引用的项目知识库答案。",
     ),
     AiCapability(
         id="test_case_generation",
-        name="测试用例生成智能体",
+        name="测试用例生成",
         description="根据最终需求文档生成完整、系统、可执行的测试用例集。",
     ),
     AiCapability(
         id="api_test_generation",
-        name="接口自动化用例生成智能体",
+        name="接口自动化用例生成",
         description="根据 OpenAPI 接口定义、接口环境摘要和测试重点生成结构化接口自动化用例。",
     ),
     AiCapability(
-        id="site_exploration",
-        name="站点探索智能体",
-        description="负责自动化探索 Web 应用，包括页面分析、元素识别、登录表单分析和验证码识别等多模态任务。",
-    ),
-    AiCapability(
         id="page_exploration",
-        name="页面探索智能体",
-        description="负责按探索任务重新探索页面流程，生成页面产物、实时事件和探索报告。",
+        name="站点探索",
+        description="负责自动化探索 Web 应用，包括页面分析、元素识别、登录表单分析和验证码识别等多模态任务。",
     ),
 )
 

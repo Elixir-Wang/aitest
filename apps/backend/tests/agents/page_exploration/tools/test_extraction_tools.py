@@ -263,3 +263,78 @@ def test_snap_tool_focus_keywords_falls_back_to_full_snapshot_when_no_match():
     assert len(hint_elements) == 1
     assert hint_elements[0]["source"]["name"] == "Save"
     assert [node["name"] for node in result["accessibility_tree"]] == ["Save"]
+
+
+def test_snap_tool_match_groups_include_contextual_disambiguation_hints():
+    class FakeSession:
+        def __init__(self, *, start_url, storage_state_path):
+            self.start_url = start_url
+            self.storage_state_path = storage_state_path
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def navigate(self, url):
+            return {"url": url}
+
+        def observe(self):
+            return {
+                "url": "https://test.com/agentStore",
+                "title": "Agent Store",
+                "page_text_summary": "Agent Store summary.",
+                "elements": [
+                    {
+                        "role": "button",
+                        "role_source": "native",
+                        "name": "创建",
+                        "text": "创建",
+                        "visible": True,
+                        "primary_selector": {
+                            "kind": "role",
+                            "code": "page.getByRole('button', { name: '创建' })",
+                        },
+                        "ancestor_chain": [
+                            {"role": "navigation", "name": "创建智能体 工作台"},
+                        ],
+                    },
+                    {
+                        "role": "button",
+                        "role_source": "native",
+                        "name": "创建",
+                        "text": "创建",
+                        "visible": True,
+                        "primary_selector": {
+                            "kind": "role",
+                            "code": "page.getByRole('button', { name: '创建' })",
+                        },
+                        "ancestor_chain": [
+                            {"role": "div", "name": "智能体名称 请输入智能体名称 智能体功能介绍 创建"},
+                        ],
+                    },
+                ],
+                "accessibility_tree": [],
+                "visible_text_blocks": ["创建", "智能体名称", "请输入智能体名称"],
+            }
+
+        def close(self):
+            pass
+
+    with (
+        patch("app.agents.page_exploration.tools.runtime_context.PlaywrightBrowserSession", FakeSession),
+        browser_session_context(start_url="https://test.com", storage_state_path=None),
+    ):
+        result = playwright_snap_tool.invoke({})
+
+    groups = [
+        group
+        for group in result["match_groups"]
+        if group["name"] == "创建" and group["role"] == "button"
+    ]
+    assert groups
+    candidates = groups[0]["candidates"]
+    assert candidates[1]["ancestor_text"] == "智能体名称 请输入智能体名称 智能体功能介绍 创建"
+    assert "filter" in candidates[1]["scope_hint"]
+    assert "请输入智能体名称" in candidates[1]["scope_hint"]

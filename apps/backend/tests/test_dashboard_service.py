@@ -71,11 +71,11 @@ def test_dashboard_all_scope_uses_real_test_cases_not_stale_daily_stats(monkeypa
     assert metrics["用例资产数"]["value"] == "3"
     assert metrics["用例资产数"]["helper"] == "已采纳 1 条"
     assert metrics["测试用例采纳率"]["value"] == "33%"
-    assert metrics["自动化用例数量"]["value"] == "3"
-    assert metrics["自动化用例数量"]["helper"] == "用例数量 3 条"
+    assert metrics["自动化用例数量"]["value"] == "0"
+    assert metrics["自动化用例数量"]["helper"] == "用例数量 0 条"
     assert overview["trend"][-1]["caseAssets"] == 3
     assert overview["trend"][-1]["adoptedCases"] == 1
-    assert overview["trend"][-1]["automationCases"] == 3
+    assert overview["trend"][-1]["automationCases"] == 0
 
 
 def test_dashboard_project_scope_counts_only_selected_project(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -96,4 +96,4 @@ def test_dashboard_project_scope_counts_only_selected_project(monkeypatch: pytes
     assert metrics["项目数"]["value"] == "1"
     assert metrics["用例资产数"]["value"] == "2"
     assert metrics["测试用例采纳率"]["value"] == "50%"
-    assert metrics["自动化用例数量"]["value"] == "2"
+    assert metrics["自动化用例数量"]["value"] == "0"

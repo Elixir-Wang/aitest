@@ -4,6 +4,7 @@ from app.core.security import hash_secret
 
 
 def seed_system_defaults(db: sqlite3.Connection) -> None:
+    _migrate_legacy_site_exploration_assignment(db)
     _seed_operation_log_retention_policy(db)
     _ensure_all_projects_conversation_scope(db)
     _ensure_global_environments_project(db)
@@ -31,6 +32,21 @@ def seed_admin_user(db: sqlite3.Connection) -> None:
         "UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         (hash_secret("admin"), "u-admin"),
     )
+
+
+def _migrate_legacy_site_exploration_assignment(db: sqlite3.Connection) -> None:
+    db.execute(
+        """
+        INSERT INTO model_assignments (capability_id, model_provider_id)
+        SELECT 'page_exploration', model_provider_id
+        FROM model_assignments
+        WHERE capability_id = 'site_exploration'
+          AND NOT EXISTS (
+            SELECT 1 FROM model_assignments WHERE capability_id = 'page_exploration'
+          )
+        """
+    )
+    db.execute("DELETE FROM model_assignments WHERE capability_id = 'site_exploration'")
 
 
 def _seed_operation_log_retention_policy(db: sqlite3.Connection) -> None:

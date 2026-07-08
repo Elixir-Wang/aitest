@@ -3,7 +3,7 @@ import { PageShell, SoonPage } from "@/components/ai-testing/page-shell";
 export default function Page() {
   return (
     <PageShell
-      breadcrumbs={["系统管理", "系统设置"]}
+      breadcrumbs={[{ label: "系统管理" }, { label: "系统设置" }]}
       description="系统设置暂不开放。"
       projectScope="none"
       title="系统设置"

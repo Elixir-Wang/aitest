@@ -1,99 +1,12 @@
-const THEME_MODE_OPTIONS = [
-  { label: "Light", value: "light" },
+export const THEME_MODE_OPTIONS = [
+  { label: "Default", value: "light" },
+  { label: "Claude", value: "claude" },
   { label: "Dark", value: "dark" },
 ] as const;
 
+export const THEME_SCHEME_OPTIONS = THEME_MODE_OPTIONS.filter((option) => option.value !== "dark");
 export const THEME_MODE_VALUES = THEME_MODE_OPTIONS.map((o) => o.value);
+export const THEME_SCHEME_VALUES = THEME_SCHEME_OPTIONS.map((o) => o.value);
 export type ThemeMode = (typeof THEME_MODE_VALUES)[number];
+export type ThemeScheme = (typeof THEME_SCHEME_VALUES)[number];
 export type ResolvedThemeMode = "light" | "dark";
-
-// --- generated:themePresets:start ---
-
-export const THEME_PRESET_OPTIONS = [
-  {
-    label: "Default",
-    value: "default",
-    primary: {
-      light: "oklch(0.205 0 0)",
-      dark: "oklch(0.922 0 0)",
-    },
-  },
-  {
-    label: "Brutalist",
-    value: "brutalist",
-    primary: {
-      light: "oklch(0.6489 0.237 26.9728)",
-      dark: "oklch(0.7044 0.1872 23.1858)",
-    },
-  },
-  {
-    label: "Burgundy",
-    value: "burgundy",
-    primary: {
-      light: "oklch(0.42 0.16 10)",
-      dark: "oklch(0.58 0.18 12)",
-    },
-  },
-  {
-    label: "Cherry Blossom",
-    value: "cherry-blossom",
-    primary: {
-      light: "oklch(0.65 0.15 350)",
-      dark: "oklch(0.7 0.16 348)",
-    },
-  },
-  {
-    label: "Lavender Dusk",
-    value: "lavender-dusk",
-    primary: {
-      light: "oklch(0.62 0.14 310)",
-      dark: "oklch(0.7 0.15 312)",
-    },
-  },
-  {
-    label: "Peach Cream",
-    value: "peach-cream",
-    primary: {
-      light: "oklch(0.68 0.13 40)",
-      dark: "oklch(0.73 0.14 42)",
-    },
-  },
-  {
-    label: "Rose Gold",
-    value: "rose-gold",
-    primary: {
-      light: "oklch(0.58 0.12 15)",
-      dark: "oklch(0.68 0.13 18)",
-    },
-  },
-  {
-    label: "Soft Pop",
-    value: "soft-pop",
-    primary: {
-      light: "oklch(0.5106 0.2301 276.9656)",
-      dark: "oklch(0.6801 0.1583 276.9349)",
-    },
-  },
-  {
-    label: "Sunset Glow",
-    value: "sunset-glow",
-    primary: {
-      light: "oklch(0.62 0.19 35)",
-      dark: "oklch(0.68 0.18 40)",
-    },
-  },
-  {
-    label: "Tangerine",
-    value: "tangerine",
-    primary: {
-      light: "oklch(0.64 0.17 36.44)",
-      dark: "oklch(0.64 0.17 36.44)",
-    },
-  },
-] as const;
-
-export const THEME_PRESET_VALUES = THEME_PRESET_OPTIONS.map((p) => p.value);
-
-export type ThemePreset = (typeof THEME_PRESET_OPTIONS)[number]["value"];
-
-// --- generated:themePresets:end ---

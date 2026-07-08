@@ -84,6 +84,9 @@ class ClickResult(BaseModel):
     failure: ActionFailure | None = None
     # 真正命中的元素的可复用 locator 字符串（recovered=true 时给 LLM 一份能继续用的）
     effective_locator: str | None = None
+    verification_required: bool = True
+    next_step_hint: str = ""
+    risk: str = ""
 
 
 class FillResult(BaseModel):
@@ -93,3 +96,6 @@ class FillResult(BaseModel):
     error: str | None = None
     failure: ActionFailure | None = None
     effective_locator: str | None = None
+    verification_required: bool = True
+    next_step_hint: str = ""
+    risk: str = ""

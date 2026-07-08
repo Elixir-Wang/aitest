@@ -66,9 +66,15 @@ def extract_endpoints(openapi_spec: dict[str, Any]) -> list[dict[str, Any]]:
                     "summary": _string(method_spec.get("summary")),
                     "description": _string(method_spec.get("description")),
                     "tags": tags,
-                    "parameters": parameters,
-                    "request_body": method_spec.get("requestBody") if isinstance(method_spec.get("requestBody"), dict) else {},
-                    "responses": method_spec.get("responses") if isinstance(method_spec.get("responses"), dict) else {},
+                    "parameters": _resolve_refs(parameters, openapi_spec),
+                    "request_body": _resolve_refs(
+                        method_spec.get("requestBody") if isinstance(method_spec.get("requestBody"), dict) else {},
+                        openapi_spec,
+                    ),
+                    "responses": _resolve_refs(
+                        method_spec.get("responses") if isinstance(method_spec.get("responses"), dict) else {},
+                        openapi_spec,
+                    ),
                     "auth": {
                         "security": method_spec.get("security", global_security),
                     },
@@ -88,6 +94,33 @@ def normalize_path(path: str) -> str:
     if not normalized.startswith("/"):
         normalized = f"/{normalized}"
     return normalized
+
+
+def _resolve_refs(value: Any, root: dict[str, Any], seen: set[str] | None = None) -> Any:
+    seen = seen or set()
+    if isinstance(value, list):
+        return [_resolve_refs(item, root, seen.copy()) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    ref = value.get("$ref")
+    if isinstance(ref, str) and ref.startswith("#/") and ref not in seen:
+        target = _lookup_ref(root, ref)
+        if isinstance(target, dict):
+            merged = {**target, **{key: item for key, item in value.items() if key != "$ref"}}
+            return _resolve_refs(merged, root, {*seen, ref})
+
+    return {key: _resolve_refs(item, root, seen.copy()) for key, item in value.items()}
+
+
+def _lookup_ref(root: dict[str, Any], ref: str) -> Any:
+    current: Any = root
+    for raw_part in ref.removeprefix("#/").split("/"):
+        part = raw_part.replace("~1", "/").replace("~0", "~")
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
 
 
 def _load_document(raw: str, *, source_name: str) -> Any:

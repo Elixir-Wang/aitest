@@ -1,0 +1,4983 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "百工 cybotstar 接口文档转换稿",
+    "version": "2026-07-08",
+    "description": "由百工接口文档站 cURL 示例转换，仅导入可兼容 OpenAPI 的 HTTP 接口。"
+  },
+  "servers": [
+    {
+      "url": "https://www.cybotstar.cn"
+    }
+  ],
+  "paths": {
+    "/openapi/v1/batch-task/dataset/": {
+      "post": {
+        "tags": [
+          "批处理任务"
+        ],
+        "summary": "创建数据集",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/batch_task/dataset/create",
+        "operationId": "post_openapi_v1_batch_task_dataset",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/batch_task/dataset/create",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/batch-task/dataset/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "批处理任务"
+        ],
+        "summary": "删除任务",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/batch_task/task/delete",
+        "operationId": "delete_openapi_v1_batch_task_dataset",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/batch_task/task/delete",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/batch-task/dataset/"
+      },
+      "get": {
+        "tags": [
+          "批处理任务"
+        ],
+        "summary": "获取数据集列表",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/batch_task/dataset/get",
+        "operationId": "get_openapi_v1_batch_task_dataset",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/batch_task/dataset/get",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/batch-task/dataset/"
+      },
+      "put": {
+        "tags": [
+          "批处理任务"
+        ],
+        "summary": "更新数据集",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/batch_task/dataset/update",
+        "operationId": "put_openapi_v1_batch_task_dataset",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/batch_task/dataset/update",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/batch-task/dataset/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/batch-task/dataset/{dataset_id}/": {
+      "get": {
+        "tags": [
+          "批处理任务"
+        ],
+        "summary": "获取数据集详细信息",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/batch_task/dataset/detail",
+        "operationId": "get_openapi_v1_batch_task_dataset_dataset_id",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/batch_task/dataset/detail",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/batch-task/dataset/{dataset_id}/"
+      }
+    },
+    "/openapi/v1/batch-task/task/robots/": {
+      "get": {
+        "tags": [
+          "批处理任务"
+        ],
+        "summary": "根据指定任务类型获取robot列表",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/batch_task/dataset/robot",
+        "operationId": "get_openapi_v1_batch_task_task_robots",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/batch_task/dataset/robot",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/batch-task/task/robots/"
+      }
+    },
+    "/openapi/v1/batch-task/task/change-status/": {
+      "post": {
+        "tags": [
+          "批处理任务"
+        ],
+        "summary": "修改任务状态",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/batch_task/task/change_status",
+        "operationId": "post_openapi_v1_batch_task_task_change_status",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/batch_task/task/change_status",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/batch-task/task/change-status/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/batch-task/task/": {
+      "post": {
+        "tags": [
+          "批处理任务"
+        ],
+        "summary": "创建任务",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/batch_task/task/create",
+        "operationId": "post_openapi_v1_batch_task_task",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/batch_task/task/create",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/batch-task/task/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "批处理任务"
+        ],
+        "summary": "获取任务列表",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/batch_task/task/get",
+        "operationId": "get_openapi_v1_batch_task_task",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/batch_task/task/get",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/batch-task/task/"
+      }
+    },
+    "/openapi/v1/batch-task/task/report/": {
+      "get": {
+        "tags": [
+          "批处理任务"
+        ],
+        "summary": "导出任务报告",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/batch_task/task/report",
+        "operationId": "get_openapi_v1_batch_task_task_report",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/batch_task/task/report",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/batch-task/task/report/"
+      }
+    },
+    "/openapi/v1/batch-task/task/{task_id}/": {
+      "put": {
+        "tags": [
+          "批处理任务"
+        ],
+        "summary": "更新任务",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/batch_task/task/update",
+        "operationId": "put_openapi_v1_batch_task_task_task_id",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/batch_task/task/update",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/batch-task/task/{task_id}/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/chatflow/process_workflow/add_task/": {
+      "post": {
+        "tags": [
+          "对话流"
+        ],
+        "summary": "添加对话流任务",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/chatflow/basic/add_task",
+        "operationId": "post_openapi_v1_chatflow_process_workflow_add_task",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/chatflow/basic/add_task",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/chatflow/process_workflow/add_task/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/chatflow/export/": {
+      "post": {
+        "tags": [
+          "对话流"
+        ],
+        "summary": "对话流导出",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/chatflow/basic/export",
+        "operationId": "post_openapi_v1_chatflow_export",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/chatflow/basic/export",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/chatflow/export/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/chatflow/import/": {
+      "post": {
+        "tags": [
+          "对话流"
+        ],
+        "summary": "对话流导入接口",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/chatflow/basic/import",
+        "operationId": "post_openapi_v1_chatflow_import",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/chatflow/basic/import",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/chatflow/import/",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/chatflow/node/setting/": {
+      "post": {
+        "tags": [
+          "对话流"
+        ],
+        "summary": "对话流节点配置",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/chatflow/basic/node_setting",
+        "operationId": "post_openapi_v1_chatflow_node_setting",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/chatflow/basic/node_setting",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/chatflow/node/setting/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/chatflow/delete_files/": {
+      "post": {
+        "tags": [
+          "对话流"
+        ],
+        "summary": "删除对话流中已上传的文件",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/chatflow/file/delete",
+        "operationId": "post_openapi_v1_chatflow_delete_files",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/chatflow/file/delete",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/chatflow/delete_files/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/chatflow/download_file/": {
+      "post": {
+        "tags": [
+          "对话流"
+        ],
+        "summary": "下载对话流中上传的文件",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/chatflow/file/download",
+        "operationId": "post_openapi_v1_chatflow_download_file",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/chatflow/file/download",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/chatflow/download_file/"
+      }
+    },
+    "/openapi/v1/chatflow/get_file_content/": {
+      "post": {
+        "tags": [
+          "对话流"
+        ],
+        "summary": "查询对话流中上传文件的解析结果",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/chatflow/file/get_file_content",
+        "operationId": "post_openapi_v1_chatflow_get_file_content",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/chatflow/file/get_file_content",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/chatflow/get_file_content/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/chatflow/get_offline_file_status/": {
+      "get": {
+        "tags": [
+          "对话流"
+        ],
+        "summary": "对话流中查询离线上传文件状态",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/chatflow/file/offline_get_file_content",
+        "operationId": "get_openapi_v1_chatflow_get_offline_file_status",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/chatflow/file/offline_get_file_content",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/chatflow/get_offline_file_status/"
+      }
+    },
+    "/openapi/v1/chatflow/offline_task/status/": {
+      "get": {
+        "tags": [
+          "对话流"
+        ],
+        "summary": "获取离线任务的状态和结果",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/chatflow/file/offline_get_task_content",
+        "operationId": "get_openapi_v1_chatflow_offline_task_status",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/chatflow/file/offline_get_task_content",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/chatflow/offline_task/status/"
+      }
+    },
+    "/openapi/v1/chatflow/offline_task/start/": {
+      "post": {
+        "tags": [
+          "对话流"
+        ],
+        "summary": "开始离线工作流任务（批量文件）",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/chatflow/file/offline_task_start",
+        "operationId": "post_openapi_v1_chatflow_offline_task_start",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/chatflow/file/offline_task_start",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/chatflow/offline_task/start/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/chatflow/offline_upload_file/": {
+      "post": {
+        "tags": [
+          "对话流"
+        ],
+        "summary": "对话流中的离线上传功能",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/chatflow/file/offline_upload",
+        "operationId": "post_openapi_v1_chatflow_offline_upload_file",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/chatflow/file/offline_upload",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/chatflow/offline_upload_file/",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/chatflow/upload_file/": {
+      "post": {
+        "tags": [
+          "对话流"
+        ],
+        "summary": "对话流上传文件",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/chatflow/file/upload",
+        "operationId": "post_openapi_v1_chatflow_upload_file",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/chatflow/file/upload",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/chatflow/upload_file/",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/agent/analysis/": {
+      "post": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "智能体数据分析",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/agent_analysis",
+        "operationId": "post_openapi_v1_agent_analysis",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/agent_analysis",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/agent/analysis/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/agent/export/": {
+      "get": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "Agent导出",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/agent_export",
+        "operationId": "get_openapi_v1_agent_export",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/agent_export",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/agent/export/"
+      }
+    },
+    "/openapi/v1/agent/import/": {
+      "post": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "Agent导入",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/agent_import",
+        "operationId": "post_openapi_v1_agent_import",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/agent_import",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/agent/import/",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/agent/publish/": {
+      "post": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "Agent发布",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/agent_publish",
+        "operationId": "post_openapi_v1_agent_publish",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/agent_publish",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/agent/publish/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/conversation/dialog/": {
+      "post": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "智能体对话",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/dialog",
+        "operationId": "post_openapi_v1_conversation_dialog",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/dialog",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/conversation/dialog/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/conversation/feedback_operation/": {
+      "post": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "智能体对话点赞操作",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/feedback_operation",
+        "operationId": "post_openapi_v1_conversation_feedback_operation",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/feedback_operation",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/conversation/feedback_operation/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/conversation/get_conversation_history_in_space/": {
+      "post": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "获取空间内智能体对话历史",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/get_conversation_history_in_space",
+        "operationId": "post_openapi_v1_conversation_get_conversation_history_in_space",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/get_conversation_history_in_space",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/conversation/get_conversation_history_in_space/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/conversation/get_conversation_segment_history/": {
+      "get": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "获取智能体对话历史",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/get_conversation_segment_history",
+        "operationId": "get_openapi_v1_conversation_get_conversation_segment_history",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/get_conversation_segment_history",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/conversation/get_conversation_segment_history/"
+      }
+    },
+    "/openapi/v1/conversation/knowledge/": {
+      "post": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "获取智能体对话引用的知识库",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/knowledge",
+        "operationId": "post_openapi_v1_conversation_knowledge",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/knowledge",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/conversation/knowledge/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/conversation/segment/create/": {
+      "post": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "创建智能体会话",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/segment/create",
+        "operationId": "post_openapi_v1_conversation_segment_create",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/segment/create",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/conversation/segment/create/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/conversation/segment/detail_list/": {
+      "post": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "智能体某个会话的历史记录列表",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/segment/detail_list",
+        "operationId": "post_openapi_v1_conversation_segment_detail_list",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/segment/detail_list",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/conversation/segment/detail_list/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/conversation/segment/get_list/": {
+      "post": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "获取智能体会话历史",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/segment/get_list",
+        "operationId": "post_openapi_v1_conversation_segment_get_list",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/segment/get_list",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/conversation/segment/get_list/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/conversation/segment/get_list_in_space/": {
+      "get": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "获取空间内智能体会话历史",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/segment/get_list_in_space",
+        "operationId": "get_openapi_v1_conversation_segment_get_list_in_space",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/segment/get_list_in_space",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/conversation/segment/get_list_in_space/"
+      }
+    },
+    "/openapi/v1/session_file/add/": {
+      "post": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "上传会话文件",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/segment/session_file_add",
+        "operationId": "post_openapi_v1_session_file_add",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/segment/session_file_add",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/session_file/add/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/session_file/bind/": {
+      "post": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "绑定文件到对话",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/segment/session_file_bind",
+        "operationId": "post_openapi_v1_session_file_bind",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/segment/session_file_bind",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/session_file/bind/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/session_file/delete/": {
+      "delete": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "删除文件",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/segment/session_file_delete",
+        "operationId": "delete_openapi_v1_session_file_delete",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/segment/session_file_delete",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/session_file/delete/"
+      }
+    },
+    "/openapi/v1/session_file/list/": {
+      "get": {
+        "tags": [
+          "智能体/会话"
+        ],
+        "summary": "查询文件列表",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/conversation/segment/session_file_list",
+        "operationId": "get_openapi_v1_session_file_list",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/segment/session_file_list",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/session_file/list/"
+      }
+    },
+    "/openapi/v1/file/batch/complete": {
+      "post": {
+        "tags": [
+          "文件系统"
+        ],
+        "summary": "完成文件上传",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/file/complete",
+        "operationId": "post_openapi_v1_file_batch_complete",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/file/complete",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/file/batch/complete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/file/batch": {
+      "delete": {
+        "tags": [
+          "文件系统"
+        ],
+        "summary": "删除文件",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/file/delete_file",
+        "operationId": "delete_openapi_v1_file_batch",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/file/delete_file",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/file/batch"
+      },
+      "get": {
+        "tags": [
+          "文件系统"
+        ],
+        "summary": "下载文件",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/file/download_file",
+        "operationId": "get_openapi_v1_file_batch",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/file/download_file",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/file/batch"
+      }
+    },
+    "/openapi/v1/file/batch/part": {
+      "get": {
+        "tags": [
+          "文件系统"
+        ],
+        "summary": "下载文件分片",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/file/download_part",
+        "operationId": "get_openapi_v1_file_batch_part",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/file/download_part",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/file/batch/part"
+      },
+      "post": {
+        "tags": [
+          "文件系统"
+        ],
+        "summary": "上传文件分片",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/file/upload_part",
+        "operationId": "post_openapi_v1_file_batch_part",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/file/upload_part",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/file/batch/part",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/file/expire/{uuid}": {
+      "put": {
+        "tags": [
+          "文件系统"
+        ],
+        "summary": "重置文件过期时间",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/file/file_expire",
+        "operationId": "put_openapi_v1_file_expire_uuid",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/file/file_expire",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/file/expire/{uuid}",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/file/batch/info": {
+      "get": {
+        "tags": [
+          "文件系统"
+        ],
+        "summary": "获取文件信息",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/file/info",
+        "operationId": "get_openapi_v1_file_batch_info",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/file/info",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/file/batch/info"
+      }
+    },
+    "/openapi/v1/file/batch/init": {
+      "post": {
+        "tags": [
+          "文件系统"
+        ],
+        "summary": "上传文件初始化",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/file/init",
+        "operationId": "post_openapi_v1_file_batch_init",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/file/init",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/file/batch/init",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/file/upload": {
+      "post": {
+        "tags": [
+          "文件系统"
+        ],
+        "summary": "上传文件-单体",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/file/upload_single",
+        "operationId": "post_openapi_v1_file_upload",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/file/upload_single",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/file/upload",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/file/images/conversion": {
+      "post": {
+        "tags": [
+          "图片转换"
+        ],
+        "summary": "提交图片转换任务",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/image_conversion/conversion_create",
+        "operationId": "post_openapi_v1_file_images_conversion",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/image_conversion/conversion_create",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/file/images/conversion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/file/images/formats": {
+      "get": {
+        "tags": [
+          "图片转换"
+        ],
+        "summary": "获取支持的图片格式",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/image_conversion/formats",
+        "operationId": "get_openapi_v1_file_images_formats",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/image_conversion/formats",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/file/images/formats"
+      }
+    },
+    "/openapi/v1/file/images/{task_id}": {
+      "delete": {
+        "tags": [
+          "图片转换"
+        ],
+        "summary": "取消转换任务",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/image_conversion/task_cancel",
+        "operationId": "delete_openapi_v1_file_images_task_id",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/image_conversion/task_cancel",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/file/images/{task_id}"
+      },
+      "get": {
+        "tags": [
+          "图片转换"
+        ],
+        "summary": "查询任务状态",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/image_conversion/task_status",
+        "operationId": "get_openapi_v1_file_images_task_id",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/image_conversion/task_status",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/file/images/{task_id}"
+      }
+    },
+    "/openapi/v1/knowledge/attachment/": {
+      "post": {
+        "tags": [
+          "知识库 v1"
+        ],
+        "summary": "附件创建知识内容",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge/base/attachment",
+        "operationId": "post_openapi_v1_knowledge_attachment",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge/base/attachment",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/knowledge/attachment/",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/knowledge/search/": {
+      "post": {
+        "tags": [
+          "知识库 v1"
+        ],
+        "summary": "知识库检索",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge/base/search",
+        "operationId": "post_openapi_v1_knowledge_search",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge/base/search",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/knowledge/search/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/knowledge/image/": {
+      "post": {
+        "tags": [
+          "知识库 v1"
+        ],
+        "summary": "创建图片知识",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge/image/create",
+        "operationId": "post_openapi_v1_knowledge_image",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge/image/create",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/knowledge/image/",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v2/knowledge/info/": {
+      "post": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "创建知识库",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/base/create",
+        "operationId": "post_openapi_v2_knowledge_info",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/base/create",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/info/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "获取知识库基本信息",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/base/info",
+        "operationId": "get_openapi_v2_knowledge_info",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/base/info",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/info/"
+      }
+    },
+    "/openapi/v2/knowledge/file/": {
+      "post": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "创建文件",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/file/create",
+        "operationId": "post_openapi_v2_knowledge_file",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/file/create",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/file/",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "删除文件",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/file/delete",
+        "operationId": "delete_openapi_v2_knowledge_file",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/file/delete",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/file/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "获取文件",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/file/get",
+        "operationId": "get_openapi_v2_knowledge_file",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/file/get",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/file/"
+      },
+      "put": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "修改文件",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/file/update",
+        "operationId": "put_openapi_v2_knowledge_file",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/file/update",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/file/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v2/knowledge/file-batch/": {
+      "delete": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "批量删除文件",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/file/delete_batch",
+        "operationId": "delete_openapi_v2_knowledge_file_batch",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/file/delete_batch",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/file-batch/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v2/knowledge/folder/": {
+      "post": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "创建文件夹",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/folder/create",
+        "operationId": "post_openapi_v2_knowledge_folder",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/folder/create",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/folder/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "删除知识库下的文件夹",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/folder/delete",
+        "operationId": "delete_openapi_v2_knowledge_folder",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/folder/delete",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/folder/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "获取知识库下的文件夹或者文件",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/folder/get",
+        "operationId": "get_openapi_v2_knowledge_folder",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/folder/get",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/folder/"
+      },
+      "put": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "更新知识库下的文件夹",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/folder/update",
+        "operationId": "put_openapi_v2_knowledge_folder",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/folder/update",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/folder/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v2/knowledge/qa-batch/": {
+      "post": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "批量创建QA",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/qa/batch",
+        "operationId": "post_openapi_v2_knowledge_qa_batch",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/qa/batch",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/qa-batch/",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v2/knowledge/qa/": {
+      "post": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "创建QA",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/qa/create",
+        "operationId": "post_openapi_v2_knowledge_qa",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/qa/create",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/qa/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "删除QA",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/qa/delete",
+        "operationId": "delete_openapi_v2_knowledge_qa",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/qa/delete",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/qa/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "获取QA",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/qa/get",
+        "operationId": "get_openapi_v2_knowledge_qa",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/qa/get",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/qa/"
+      },
+      "put": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "修改QA",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/qa/update",
+        "operationId": "put_openapi_v2_knowledge_qa",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/qa/update",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/qa/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v2/knowledge/text/": {
+      "post": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "创建文本",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/text/create",
+        "operationId": "post_openapi_v2_knowledge_text",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/text/create",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/text/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "删除文本",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/text/delete",
+        "operationId": "delete_openapi_v2_knowledge_text",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/text/delete",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/text/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "获取文本知识",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/text/get",
+        "operationId": "get_openapi_v2_knowledge_text",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/text/get",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/text/"
+      },
+      "put": {
+        "tags": [
+          "知识库 v2"
+        ],
+        "summary": "修改文本",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/knowledge_v2/text/update",
+        "operationId": "put_openapi_v2_knowledge_text",
+        "parameters": [
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "username",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/knowledge_v2/text/update",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v2/knowledge/text/",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi/v1/gw/multi-agent/segment-code/gen": {
+      "post": {
+        "tags": [
+          "Multi-Agent"
+        ],
+        "summary": "生成SegmentCode",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/multi_agent/gen",
+        "operationId": "post_openapi_v1_gw_multi_agent_segment_code_gen",
+        "parameters": [
+          {
+            "name": "cybertron-app-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/multi_agent/gen",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/gw/multi-agent/segment-code/gen",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/taskScheduler/v1/batchQueryTasks": {
+      "post": {
+        "tags": [
+          "调度平台"
+        ],
+        "summary": "批量查询任务基本详情",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/scheduler/batch_query_task",
+        "operationId": "post_taskScheduler_v1_batchQueryTasks",
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/scheduler/batch_query_task",
+        "x-original-url": "https://www.cybotstar.cn/taskScheduler/v1/batchQueryTasks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/taskScheduler/v1/cancel": {
+      "post": {
+        "tags": [
+          "调度平台"
+        ],
+        "summary": "取消任务",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/scheduler/cancel",
+        "operationId": "post_taskScheduler_v1_cancel",
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/scheduler/cancel",
+        "x-original-url": "https://www.cybotstar.cn/taskScheduler/v1/cancel",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/taskScheduler/v1/queryTask": {
+      "get": {
+        "tags": [
+          "调度平台"
+        ],
+        "summary": "查询任务基本详情",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/scheduler/query_task",
+        "operationId": "get_taskScheduler_v1_queryTask",
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/scheduler/query_task",
+        "x-original-url": "https://www.cybotstar.cn/taskScheduler/v1/queryTask"
+      }
+    },
+    "/taskScheduler/v1/queryTaskLog": {
+      "get": {
+        "tags": [
+          "调度平台"
+        ],
+        "summary": "查询任务执行日志日志",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/scheduler/query_task_log",
+        "operationId": "get_taskScheduler_v1_queryTaskLog",
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/scheduler/query_task_log",
+        "x-original-url": "https://www.cybotstar.cn/taskScheduler/v1/queryTaskLog"
+      }
+    },
+    "/taskScheduler/v1/register": {
+      "post": {
+        "tags": [
+          "调度平台"
+        ],
+        "summary": "注册一个任务",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/scheduler/register",
+        "operationId": "post_taskScheduler_v1_register",
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/scheduler/register",
+        "x-original-url": "https://www.cybotstar.cn/taskScheduler/v1/register",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/taskScheduler/v1/registerBatchTask": {
+      "post": {
+        "tags": [
+          "调度平台"
+        ],
+        "summary": "注册批量任务",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/scheduler/register_batch_task",
+        "operationId": "post_taskScheduler_v1_registerBatchTask",
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/scheduler/register_batch_task",
+        "x-original-url": "https://www.cybotstar.cn/taskScheduler/v1/registerBatchTask",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/taskScheduler/v1/replay": {
+      "post": {
+        "tags": [
+          "调度平台"
+        ],
+        "summary": "重放一个任务",
+        "description": "由百工接口文档页转换。来源：http://192.168.160.65:30000/api-reference/scheduler/replay",
+        "operationId": "post_taskScheduler_v1_replay",
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/scheduler/replay",
+        "x-original-url": "https://www.cybotstar.cn/taskScheduler/v1/replay",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

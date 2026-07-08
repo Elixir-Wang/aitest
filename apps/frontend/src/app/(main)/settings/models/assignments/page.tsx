@@ -71,7 +71,7 @@ export default function Page() {
   return (
     <PageShell
       activeTab="模型分配"
-      breadcrumbs={["系统管理", "模型配置"]}
+      breadcrumbs={[{ label: "系统管理" }, { label: "模型配置", href: "/settings/models" }, { label: "项目分配" }]}
       description="为智能体指定调用的模型配置。"
       projectScope="none"
       tabs={[

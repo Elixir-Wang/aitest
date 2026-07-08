@@ -49,6 +49,31 @@ def test_model_assignment_update_and_selection_resolves_model_config(monkeypatch
     assert selection.api_key == "sk-test"
 
 
+def test_legacy_site_exploration_assignment_migrates_to_page_exploration(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _create_provider()
+    with core_db.connect() as db:
+        model_repo.upsert_model_assignment(
+            db,
+            capability_id="site_exploration",
+            model_provider_id="mp-openai",
+        )
+
+    from app.seed.init_db import init_db
+
+    init_db()
+
+    assignments = model_service.list_model_assignments({"id": "u-admin"})
+    assignment_ids = [item["capability_id"] for item in assignments]
+    page_assignment = next(item for item in assignments if item["capability_id"] == "page_exploration")
+
+    assert "site_exploration" not in assignment_ids
+    assert page_assignment["model_provider_id"] == "mp-openai"
+
+
 def test_model_assignment_rejects_unknown_capability(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _create_provider()

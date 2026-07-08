@@ -189,7 +189,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={["系统管理", "模型配置"]}
+      breadcrumbs={[{ label: "系统管理" }, { label: "模型配置" }]}
       description="管理模型提供商、模型、Base URL 和密钥配置。"
       projectScope="none"
       activeTab="模型管理"

@@ -14,8 +14,8 @@ from app.services import operation_log_service
 
 STATUSES = {"active", "archived"}
 
-# 使用站点探索智能体的模型配置来优化探索目标
-EXPLORATION_GOAL_OPTIMIZE_CAPABILITY_ID = "site_exploration"
+# 使用站点探索的模型配置来优化探索目标
+EXPLORATION_GOAL_OPTIMIZE_CAPABILITY_ID = "page_exploration"
 
 
 def list_projects(actor) -> list[dict]:

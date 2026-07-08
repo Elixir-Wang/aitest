@@ -69,6 +69,15 @@ click / fill 工具失败时会返回结构化错误：
 - 不要因为元素可点击就猜测为 button；只有真实原生/显式无障碍 role 才用 getByRole
 - 失败时不要重复尝试同一 locator；重新 snap 一次再选新的
 
+## 动作后验证（硬性）
+
+- `playwright_click_tool` / `playwright_fill_tool` 返回 `success=true` 只表示浏览器动作执行成功，**不表示当前 todo 的业务完成判据已满足**。
+- 每次 click / fill 成功后，必须调用 `playwright_snap_tool` 或观察 URL/Toast/弹窗/字段值/状态文本变化，确认当前 todo 的完成判据；确认前禁止把 todo 标记为 completed。
+- 如果工具返回 `verification_required=true`，必须按 `next_step_hint` 进行验证；如果返回 `risk` 非空，必须优先检查是否误点了同名按钮、结构 CSS 或历史降级定位器。
+- 同名按钮超过 1 个时，禁止全局点击；必须用表单字段、弹窗标题、卡片名称或列表行内容反向限定容器。
+- 表单提交按钮优先使用"包含关键输入框/必填字段的容器"限定，例如包含 placeholder `请输入智能体名称` 的弹层，再点击其中的 `创建`。
+- 不允许把任意 textbox 猜成目标字段；必须通过邻近 label、标题、section 或当前 todo 语义验证。比如 Prompt/角色设定字段不能用"调试预览"里的聊天输入框替代。
+
 ## 探索策略
 1. **先做目标分解**：用 `write_todos` 把目标拆成 3-7 个子步骤（每条带完成判据）
 2. 获取页面快照 `playwright_snap_tool`（必要时传 `focus_keywords` 缩小范围）

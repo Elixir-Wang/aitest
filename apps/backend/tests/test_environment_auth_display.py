@@ -33,7 +33,7 @@ def test_resolve_auth_display_login_failed(monkeypatch: pytest.MonkeyPatch) -> N
         "app.presentation.serializers.get_auto_auth_status",
         lambda _environment_id: {
             "status": "failed",
-            "message": "AI 能力未分配可用模型配置，无法运行：站点探索智能体",
+            "message": "AI 能力未分配可用模型配置，无法运行：站点探索",
             "updated_at": None,
             "last_error_code": "CAPTCHA_SOLVE_FAILED",
         },

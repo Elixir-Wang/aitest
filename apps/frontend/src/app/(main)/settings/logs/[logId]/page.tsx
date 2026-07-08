@@ -50,7 +50,7 @@ export default function Page() {
           </Link>
         </Button>
       }
-      breadcrumbs={["系统管理", "日志", "日志详情"]}
+      breadcrumbs={[{ label: "系统管理" }, { label: "系统日志", href: "/settings/logs" }, { label: "日志详情" }]}
       description="查看单条系统日志的上下文、追踪 ID 和脱敏后的错误摘要。"
       projectScope="none"
       title="日志详情"

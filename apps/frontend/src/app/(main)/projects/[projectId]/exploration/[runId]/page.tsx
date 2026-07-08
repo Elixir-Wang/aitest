@@ -1514,7 +1514,12 @@ export default function Page() {
   const templateLabel = run?.exploration_mode === "goal" ? "目标探索模板" : "自主探索";
   return (
     <PageShell
-      breadcrumbs={["项目", projectName, "探索", run?.title ?? "探索任务"]}
+      breadcrumbs={[
+        { label: "项目", href: "/projects" },
+        { label: projectName, href: `/projects/${params.projectId}` },
+        { label: "探索", href: "/exploration" },
+        { label: run?.title ?? "探索任务" },
+      ]}
       tabActions={
         <>
           <Button onClick={() => router.push("/exploration")} size="sm" variant="outline">

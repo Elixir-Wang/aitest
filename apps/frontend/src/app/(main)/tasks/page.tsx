@@ -110,7 +110,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={["工作台", "任务中心"]}
+      breadcrumbs={[{ label: "工作台", href: "/dashboard" }, { label: "任务中心" }]}
       description="汇总需求分析、探索、知识库、用例、UI 自动化和失败诊断任务。"
       projectScope="all"
       tabs={["全部任务", "等待人工", "失败任务"]}

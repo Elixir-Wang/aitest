@@ -1,4 +1,6 @@
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+"use client";
+
+import { type ComponentPropsWithoutRef, type ReactNode, useEffect } from "react";
 
 import Link from "next/link";
 
@@ -20,8 +22,12 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
+import { type BreadcrumbItem, useWorkspaceBreadcrumbs } from "./workspace-breadcrumbs";
+
 type ProjectScope = "all" | "project" | "none";
 type ModuleTab = string | { label: string; href: string };
+type BreadcrumbInput = string | BreadcrumbItem;
+export type PageBreadcrumb = BreadcrumbInput;
 type RowAction = {
   label: string;
   icon: LucideIcon;
@@ -34,7 +40,7 @@ type RowAction = {
 interface PageShellProps {
   title: string;
   description: string;
-  breadcrumbs: string[];
+  breadcrumbs: BreadcrumbInput[];
   projectScope?: ProjectScope;
   tabs?: ModuleTab[];
   activeTab?: string;
@@ -55,8 +61,6 @@ interface MetricCardProps {
 }
 
 export function PageShell({
-  title,
-  description,
   breadcrumbs,
   tabs = [],
   activeTab,
@@ -68,16 +72,22 @@ export function PageShell({
   children,
   fillViewport = false,
 }: PageShellProps) {
+  const { setBreadcrumbs } = useWorkspaceBreadcrumbs();
+  const breadcrumbKey = JSON.stringify(breadcrumbs);
+  const hasActions = actions !== undefined && actions !== null;
+  const hasPrimaryAction = primaryAction !== undefined && primaryAction.length > 0;
+
+  useEffect(() => {
+    setBreadcrumbs(normalizeBreadcrumbs(JSON.parse(breadcrumbKey) as BreadcrumbInput[]));
+
+    return () => setBreadcrumbs([]);
+  }, [breadcrumbKey, setBreadcrumbs]);
+
   return (
     <div className={cn("@container/main flex flex-col gap-4 md:gap-6", fillViewport && "min-h-0 flex-1")}>
-      <PageHeader
-        breadcrumbs={breadcrumbs}
-        description={description}
-        onPrimaryAction={onPrimaryAction}
-        primaryAction={primaryAction}
-        actions={actions}
-        title={title}
-      />
+      {(hasActions || hasPrimaryAction) && (
+        <PageHeader onPrimaryAction={onPrimaryAction} primaryAction={primaryAction} actions={actions} />
+      )}
       {tabs.length > 0 && (
         <ModuleTabs actions={tabActions} activeTab={activeTab} onTabChange={onTabChange} tabs={tabs} />
       )}
@@ -86,26 +96,21 @@ export function PageShell({
   );
 }
 
+function normalizeBreadcrumbs(items: BreadcrumbInput[]): BreadcrumbItem[] {
+  return items.map((item) => (typeof item === "string" ? { label: item } : item));
+}
+
 function PageHeader({
-  title,
   primaryAction,
   onPrimaryAction,
   actions,
 }: {
-  title: string;
-  description: string;
-  breadcrumbs: string[];
   primaryAction?: string;
   onPrimaryAction?: () => void;
   actions?: ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-      <div className="min-w-0 space-y-2">
-        <div className="space-y-1">
-          <h1 className="font-heading font-semibold text-2xl tracking-normal">{title}</h1>
-        </div>
-      </div>
       <div className="flex flex-wrap items-center gap-2">
         {actions}
         {primaryAction && <Button onClick={onPrimaryAction}>{primaryAction}</Button>}

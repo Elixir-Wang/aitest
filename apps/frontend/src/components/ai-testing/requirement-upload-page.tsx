@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { PageShell, type PageBreadcrumb, ShellSection } from "@/components/ai-testing/page-shell";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -22,7 +22,7 @@ import { useAuthStore } from "@/stores/auth-store";
 
 type RequirementUploadPageProps = {
   title: string;
-  breadcrumbs: string[];
+  breadcrumbs: PageBreadcrumb[];
   description: string;
   defaultProjectId: string;
   projects: ApiProject[];

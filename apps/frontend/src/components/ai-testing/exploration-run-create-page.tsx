@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, CircleHelp, FileText, Gauge, Loader2, Play, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { PageShell, type PageBreadcrumb, ShellSection } from "@/components/ai-testing/page-shell";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -77,7 +77,7 @@ type ExplorationForm = {
 };
 
 type ExplorationRunCreatePageProps = {
-  breadcrumbs: string[];
+  breadcrumbs: PageBreadcrumb[];
   mode?: "create" | "edit";
   projectId?: string;
   projectName?: string;

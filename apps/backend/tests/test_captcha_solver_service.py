@@ -85,7 +85,7 @@ def test_solve_letter_captcha_requires_existing_file(tmp_path: Path) -> None:
         captcha_solver_service.solve_letter_captcha(tmp_path / "missing.png")
 
 
-def test_build_captcha_solver_model_uses_site_exploration(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_captcha_solver_model_uses_page_exploration(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, str] = {}
 
     def fake_resolve(capability_id: str):
@@ -97,7 +97,7 @@ def test_build_captcha_solver_model_uses_site_exploration(monkeypatch: pytest.Mo
     with pytest.raises(ValueError, match="stop"):
         captcha_solver_service.build_captcha_solver_model()
 
-    assert captured["capability_id"] == "site_exploration"
+    assert captured["capability_id"] == "page_exploration"
 
 
 def test_extract_captcha_code_returns_plain_answer() -> None:

@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { ListToolbar, PageShell, type PageBreadcrumb, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
@@ -135,7 +135,7 @@ type ExplorationPageTreeNode = {
 };
 
 type ExplorationWorkspaceProps = {
-  breadcrumbs: string[];
+  breadcrumbs: PageBreadcrumb[];
   description: string;
   projectId?: string;
   projectName?: string;

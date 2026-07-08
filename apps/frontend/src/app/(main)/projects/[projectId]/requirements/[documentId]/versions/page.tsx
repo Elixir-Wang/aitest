@@ -13,6 +13,7 @@ import {
   type RequirementVersionDetail,
   requirementVersionSummary,
 } from "@/components/ai-testing/requirement-version-detail-content";
+import { useProjectName } from "@/components/ai-testing/use-project-name";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiRequest, formatDateTime } from "@/lib/api-client";
@@ -39,6 +40,7 @@ export default function RequirementVersionsPage() {
   const router = useRouter();
   const params = useParams<{ projectId: string; documentId: string }>();
   const { projectId, documentId } = params;
+  const projectName = useProjectName(projectId);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [detail, setDetail] = useState<RequirementVersionPageResponse | null>(null);
@@ -72,7 +74,16 @@ export default function RequirementVersionsPage() {
 
   if (error || !detail) {
     return (
-      <PageShell breadcrumbs={["项目", "需求"]} description="查看需求文档每个版本的变更信息。" title="版本记录">
+      <PageShell
+        breadcrumbs={[
+          { label: "项目", href: "/projects" },
+          { label: projectName, href: `/projects/${projectId}` },
+          { label: "需求", href: "/requirements" },
+          { label: "版本记录" },
+        ]}
+        description="查看需求文档每个版本的变更信息。"
+        title="版本记录"
+      >
         <ShellSection>
           <div className="flex items-center justify-between gap-3">
             <div className="text-destructive text-sm">{error || "未找到需求文档版本记录。"}</div>
@@ -88,7 +99,13 @@ export default function RequirementVersionsPage() {
 
   return (
     <PageShell
-      breadcrumbs={["项目", "需求", detail.document.name, "版本记录"]}
+      breadcrumbs={[
+        { label: "项目", href: "/projects" },
+        { label: projectName, href: `/projects/${projectId}` },
+        { label: "需求", href: "/requirements" },
+        { label: detail.document.name, href: `/projects/${projectId}/requirements/${documentId}` },
+        { label: "版本记录" },
+      ]}
       description="记录该需求每次最终需求变更的摘要与创建时间。"
       title="版本记录"
     >

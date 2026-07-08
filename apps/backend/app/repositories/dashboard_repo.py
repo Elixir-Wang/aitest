@@ -19,7 +19,7 @@ def get_current_stats(db: Connection, project_ids: list[str]) -> dict:
     return {
         "caseAssets": case_assets,
         "adoptedCases": adopted_cases,
-        "automationCases": case_assets,
+        "automationCases": 0,
     }
 
 
@@ -78,7 +78,7 @@ def get_trend(db: Connection, project_ids: list[str], days: int) -> list[dict]:
                 "date": date_key,
                 "caseAssets": cumulative_case_assets,
                 "adoptedCases": cumulative_adopted_cases,
-                "automationCases": cumulative_case_assets,
+                "automationCases": 0,
             }
         )
     return trend

@@ -10,10 +10,12 @@ const taskInfoPanelSource = readFileSync(
   new URL("../src/components/ai-testing/exploration-task-info-panel.tsx", import.meta.url),
   "utf8",
 );
-const explorationServiceSource = readFileSync(
-  new URL("../../backend/app/services/exploration/page_exploration_service.py", import.meta.url),
-  "utf8",
-);
+const explorationServiceSource = [
+  "../../backend/app/services/page_exploration/runner.py",
+  "../../backend/app/services/page_exploration/timeline_projection.py",
+]
+  .map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
+  .join("\n");
 
 test("exploration overview uses a plain dialogue transcript instead of the old event card timeline", () => {
   assert.match(taskInfoPanelSource, /function ExplorationExecutionTranscript\(/);
@@ -38,7 +40,7 @@ test("exploration transcript merges tool lifecycle events by step id", () => {
 });
 
 test("exploration progress keeps agent plan updates and survives empty snapshots", () => {
-  assert.match(explorationServiceSource, /"plan_steps": _todo_plan_steps/);
+  assert.match(explorationServiceSource, /"plan_steps": plan_steps/);
   assert.match(explorationServiceSource, /def _todo_plan_steps/);
   assert.match(pageSource, /event\.type === "planning_completed" \|\| event\.type === "agent_plan_updated"/);
   assert.match(pageSource, /normalizeMonitorPlanSteps\(payload\.plan_steps\)/);

@@ -25,3 +25,7 @@ test("all api request helpers use the shared unauthorized response handling", ()
   assert.match(apiClientSource, /function throwApiError\(response: Response, payload: unknown\): never/);
   assert.match(apiClientSource, /if \(isAuthRequiredError\(error\)\) {\s*redirectToLoginAfterAuthExpired\(\);\s*}/);
 });
+
+test("api request handles successful empty responses without reading data from null payload", () => {
+  assert.match(apiClientSource, /if \(response\.status === 204 \|\| payload === null\) {\s*return undefined as T;\s*}/);
+});

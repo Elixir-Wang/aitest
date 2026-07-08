@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 import { ClipboardCheck, Loader2, Play, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -86,7 +86,6 @@ const emptyForm: TestCaseSetForm = {
 };
 
 export default function Page() {
-  const router = useRouter();
   const { scope: projectScope, currentProjectId, hydrate, hasHydrated } = useProjectContextStore();
   const [projects, setProjects] = useState<ApiProject[]>([]);
   const setSelection = useLocalTableSelection<ApiTestCaseSet>([]);
@@ -298,7 +297,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={["项目工作区", "测试用例"]}
+      breadcrumbs={[{ label: "测试资产" }, { label: "测试用例" }]}
       description="查看测试用例集、生成状态和用例数量。"
       projectScope={projectScope}
       title="测试用例"
@@ -350,14 +349,13 @@ export default function Page() {
                         />
                       </TableCell>
                       <TableCell className="font-medium">
-                        <Button
-                          className="h-auto justify-start p-0 font-medium text-foreground hover:text-primary"
-                          onClick={() => router.push(`/test-cases/${item.id}/review?project=${item.project_id}`)}
-                          type="button"
-                          variant="link"
+                        <Link
+                          className="block truncate hover:underline"
+                          href={`/test-cases/${item.id}/review?project=${item.project_id}`}
+                          title={item.name}
                         >
                           {item.name}
-                        </Button>
+                        </Link>
                       </TableCell>
                       <TableCell>{item.requirement_doc_title}</TableCell>
                       <TableCell>

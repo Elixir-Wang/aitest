@@ -44,13 +44,14 @@ test("test case set row actions expose regenerate with a refresh icon", () => {
 test("test case set name and view action navigate to review page", () => {
   assert.match(
     pageSource,
-    /onClick=\{\(\) => router\.push\(`\/test-cases\/\$\{item\.id\}\/review\?project=\$\{item\.project_id\}`\)\}/,
+    /<Link\s+className="block truncate hover:underline"\s+href=\{`\/test-cases\/\$\{item\.id\}\/review\?project=\$\{item\.project_id\}`\}\s+title=\{item\.name\}/,
   );
   assert.match(
     pageSource,
     /label: "查看",\s+icon: ClipboardCheck,\s+href: `\/test-cases\/\$\{item\.id\}\/review\?project=\$\{item\.project_id\}`/,
   );
   assert.doesNotMatch(pageSource, /openTestCaseSetDetail/);
+  assert.doesNotMatch(pageSource, /router\.push\(`\/test-cases\/\$\{item\.id\}\/review/);
   assert.doesNotMatch(pageSource, /selectedSetDetail/);
   assert.doesNotMatch(pageSource, /<DialogTitle>测试用例集详情<\/DialogTitle>/);
 });

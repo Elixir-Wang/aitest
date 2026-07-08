@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { Eye, History, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { ListToolbar, type PageBreadcrumb, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -41,7 +41,7 @@ type RequirementRow = {
 
 type RequirementPageProps = {
   title: string;
-  breadcrumbs: string[];
+  breadcrumbs: PageBreadcrumb[];
   projectScope: "all" | "project";
   description: string;
   projectId?: string;

@@ -6,15 +6,12 @@
  * "localStorage"   → save only on the client (non-layout stuff).
  * "none"           → no saving, resets on reload.
  *
- * Layout-critical prefs (sidebar_variant / sidebar_collapsible)
- * must stay consistent during SSR → so they can’t use localStorage.
- * Others are flexible and can use any persistence.
+ * Layout-critical prefs must stay consistent during SSR, so they cannot use
+ * localStorage. Others are flexible and can use any persistence.
  */
 
-import type { FontKey } from "@/lib/fonts/registry";
-
-import type { ContentLayout, NavbarStyle, SidebarCollapsible, SidebarVariant } from "./layout";
-import type { ThemeMode, ThemePreset } from "./theme";
+import type { SidebarVariant } from "./layout";
+import type { ThemeMode, ThemeScheme } from "./theme";
 
 type PreferencePersistence = "none" | "client-cookie" | "server-cookie" | "localStorage";
 
@@ -23,12 +20,8 @@ type PreferencePersistence = "none" | "client-cookie" | "server-cookie" | "local
  */
 export type PreferenceValueMap = {
   theme_mode: ThemeMode;
-  theme_preset: ThemePreset;
-  font: FontKey;
-  content_layout: ContentLayout;
-  navbar_style: NavbarStyle;
+  theme_scheme: ThemeScheme;
   sidebar_variant: SidebarVariant;
-  sidebar_collapsible: SidebarCollapsible;
 };
 
 export type PreferenceKey = keyof PreferenceValueMap;
@@ -37,7 +30,7 @@ export type PreferenceKey = keyof PreferenceValueMap;
  * Layout-critical keys → these affect SSR UI (sidebar shape)
  * so they must be accessible on the server.
  */
-const LAYOUT_CRITICAL_KEYS = ["sidebar_variant", "sidebar_collapsible"] as const;
+const LAYOUT_CRITICAL_KEYS = ["sidebar_variant"] as const;
 type LayoutCriticalKey = (typeof LAYOUT_CRITICAL_KEYS)[number];
 
 /**
@@ -67,12 +60,8 @@ type PreferencePersistenceConfig = {
  */
 export const PREFERENCE_DEFAULTS: PreferenceValueMap = {
   theme_mode: "light",
-  theme_preset: "default",
-  font: "geist",
-  content_layout: "centered",
-  navbar_style: "sticky",
+  theme_scheme: "light",
   sidebar_variant: "inset",
-  sidebar_collapsible: "icon",
 };
 
 /**
@@ -81,10 +70,6 @@ export const PREFERENCE_DEFAULTS: PreferenceValueMap = {
  */
 export const PREFERENCE_PERSISTENCE: PreferencePersistenceConfig = {
   theme_mode: "client-cookie",
-  theme_preset: "client-cookie",
-  font: "client-cookie",
-  content_layout: "client-cookie",
-  navbar_style: "client-cookie",
-  sidebar_variant: "client-cookie", // layout-critical → cannot be "localStorage"
-  sidebar_collapsible: "client-cookie", // layout-critical → cannot be "localStorage"
+  theme_scheme: "client-cookie",
+  sidebar_variant: "client-cookie",
 };

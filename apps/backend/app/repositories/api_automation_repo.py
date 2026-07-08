@@ -276,6 +276,64 @@ def find_generation_run(db: Connection, run_id: str) -> Row | None:
     return db.execute("SELECT * FROM api_generation_runs WHERE id = ?", (run_id,)).fetchone()
 
 
+def list_generation_runs(db: Connection, project_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT *
+        FROM api_generation_runs
+        WHERE project_id = ?
+        ORDER BY updated_at DESC, created_at DESC
+        """,
+        (project_id,),
+    ).fetchall()
+
+
+def create_api_test_case_set(
+    db: Connection,
+    *,
+    set_id: str,
+    project_id: str,
+    name: str,
+    notes: str,
+    created_by: str,
+) -> str:
+    db.execute(
+        """
+        INSERT INTO api_test_case_sets (id, project_id, name, notes, created_by)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (set_id, project_id, name, notes, created_by),
+    )
+    return set_id
+
+
+def list_api_test_case_sets(db: Connection, project_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT *
+        FROM api_test_case_sets
+        WHERE project_id = ?
+        ORDER BY updated_at DESC, created_at DESC
+        """,
+        (project_id,),
+    ).fetchall()
+
+
+def find_api_test_case_set(db: Connection, set_id: str) -> Row | None:
+    return db.execute("SELECT * FROM api_test_case_sets WHERE id = ?", (set_id,)).fetchone()
+
+
+def update_api_test_case_set(db: Connection, set_id: str, *, name: str, notes: str) -> None:
+    db.execute(
+        """
+        UPDATE api_test_case_sets
+        SET name = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (name, notes, set_id),
+    )
+
+
 def create_api_test_case(
     db: Connection,
     *,

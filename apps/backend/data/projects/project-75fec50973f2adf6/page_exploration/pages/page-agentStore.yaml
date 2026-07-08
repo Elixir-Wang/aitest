@@ -10,7 +10,7 @@ page:
   env_urls:
     test: https://www.cybotstar.cn/agentStore
   last_explored:
-    timestamp: '2026-07-08T06:31:22.681259Z'
+    timestamp: '2026-07-08T12:02:01.018930Z'
     run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
   elements: []
 states:
@@ -32,6 +32,19 @@ states:
         unique: null
         visible: null
         match_count: 0
+    ancestor_chain:
+    - role: div
+      name: 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
+        管理中心 空间管理 文档中心
+    - role: div
+      name: 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
+        管理中心 空间管理 文档中心
+    - role: div
+      name: hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理 文档中心
+    - role: div
+      name: 运行中心 发布管理 线上观测 自动优化
+    - role: div
+      name: 发布管理 线上观测 自动优化
   - id: el-2
     name: 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序
     role: clickable
@@ -46,6 +59,22 @@ states:
         unique: null
         visible: null
         match_count: 0
+    ancestor_chain:
+    - role: div
+      name: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部
+        排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设
+    - role: div
+      name: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部
+        排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设
+    - role: div
+      name: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部
+        排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设
+    - role: div
+      name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序
+        按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设问题（如行
+    - role: div
+      name: 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务
+        零售场景 人力资源 报告生成 其他
   - id: el-3
     name: 语言 选择语言 类型 全部 排序 按发布时间排序
     role: clickable
@@ -60,6 +89,21 @@ states:
         unique: null
         visible: null
         match_count: 0
+    ancestor_chain:
+    - role: div
+      name: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部
+        排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设
+    - role: div
+      name: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部
+        排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设
+    - role: div
+      name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序
+        按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设问题（如行
+    - role: div
+      name: 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务
+        零售场景 人力资源 报告生成 其他
+    - role: div
+      name: 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序
   - id: el-4
     name: 排序 按发布时间排序
     role: clickable
@@ -74,6 +118,20 @@ states:
         unique: null
         visible: null
         match_count: 0
+    ancestor_chain:
+    - role: div
+      name: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部
+        排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设
+    - role: div
+      name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序
+        按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设问题（如行
+    - role: div
+      name: 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务
+        零售场景 人力资源 报告生成 其他
+    - role: div
+      name: 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序
+    - role: div
+      name: 语言 选择语言 类型 全部 排序 按发布时间排序
   - id: el-5
     name: 按发布时间排序
     role: clickable
@@ -88,6 +146,19 @@ states:
         unique: null
         visible: null
         match_count: 0
+    ancestor_chain:
+    - role: div
+      name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序
+        按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设问题（如行
+    - role: div
+      name: 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务
+        零售场景 人力资源 报告生成 其他
+    - role: div
+      name: 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序
+    - role: div
+      name: 语言 选择语言 类型 全部 排序 按发布时间排序
+    - role: div
+      name: 排序 按发布时间排序
   - id: el-6
     name: 按发布时间排序
     role: clickable
@@ -102,6 +173,17 @@ states:
         unique: null
         visible: null
         match_count: 0
+    ancestor_chain:
+    - role: div
+      name: 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序
+    - role: div
+      name: 语言 选择语言 类型 全部 排序 按发布时间排序
+    - role: div
+      name: 排序 按发布时间排序
+    - role: div
+      name: 按发布时间排序
+    - role: div
+      name: 选择排序
   accessibility_tree:
   - id: ax-fallback-010
     role: text
@@ -122,7 +204,7 @@ states:
   - 按发布时间排序
 quality: {}
 metadata:
-  captured_at: '2026-07-08T06:24:34.583449+00:00'
+  captured_at: '2026-07-08T11:57:41.729277+00:00'
   source: page_exploration_run
   source_run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
   source_artifact_path: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\page_exploration\runs\exp_AEF5tx0X9WHsIXTDDzdQuA\pages\page-agentStore.yaml

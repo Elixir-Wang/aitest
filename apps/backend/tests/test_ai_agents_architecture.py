@@ -132,7 +132,7 @@ def test_requirement_standardization_capability_uses_canonical_id() -> None:
 
     capability = get_ai_capability("requirement_standardization")
 
-    assert capability.name == "需求标准化智能体"
+    assert capability.name == "需求标准化"
     assert "标准 Markdown" in capability.description
     assert "解析为 Markdown 工作稿" not in capability.description
 

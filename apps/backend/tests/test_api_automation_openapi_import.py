@@ -66,6 +66,69 @@ def test_parse_openapi_document_extracts_endpoint() -> None:
     assert endpoint["responses"]["200"]["description"] == "ok"
 
 
+def test_parse_openapi_document_resolves_local_schema_refs() -> None:
+    result = openapi_parser.parse_openapi_document(
+        """{
+          "openapi": "3.0.3",
+          "info": {"title": "Operation Logs", "version": "1.0.0"},
+          "paths": {
+            "/operation-logs/retention-policy": {
+              "put": {
+                "summary": "Update Retention Policy",
+                "parameters": [
+                  {"name": "authorization", "in": "header", "schema": {"$ref": "#/components/schemas/AuthHeader"}}
+                ],
+                "requestBody": {
+                  "required": true,
+                  "content": {
+                    "application/json": {
+                      "schema": {"$ref": "#/components/schemas/OperationLogRetentionPolicyUpdate"}
+                    }
+                  }
+                },
+                "responses": {
+                  "200": {
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {"$ref": "#/components/schemas/OperationLogRetentionPolicyOut"}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "components": {
+            "schemas": {
+              "AuthHeader": {"type": "object", "properties": {"token": {"type": "string"}}},
+              "OperationLogRetentionPolicyUpdate": {
+                "type": "object",
+                "required": ["retention_days"],
+                "properties": {
+                  "retention_days": {"type": "integer", "description": "保留天数"}
+                }
+              },
+              "OperationLogRetentionPolicyOut": {
+                "type": "object",
+                "properties": {
+                  "retention_days": {"type": "integer"}
+                }
+              }
+            }
+          }
+        }""",
+        source_name="operation-logs.json",
+    )
+
+    endpoint = result["endpoints"][0]
+    assert endpoint["parameters"][0]["schema"]["properties"]["token"]["type"] == "string"
+    request_schema = endpoint["request_body"]["content"]["application/json"]["schema"]
+    assert request_schema["properties"]["retention_days"]["description"] == "保留天数"
+    response_schema = endpoint["responses"]["200"]["content"]["application/json"]["schema"]
+    assert response_schema["properties"]["retention_days"]["type"] == "integer"
+
+
 def test_parse_openapi_document_rejects_missing_paths() -> None:
     with pytest.raises(openapi_parser.OpenAPIParseError, match="paths"):
         openapi_parser.parse_openapi_document('{"openapi":"3.0.3","info":{"title":"Bad"}}')
@@ -103,6 +166,36 @@ def test_import_openapi_text_saves_document_file_and_upserts_endpoints(
     assert len(endpoints) == 1
     assert endpoints[0]["summary"] == "Get pet updated"
     assert Path(storage.resolve_stored_path(first["file_path"])).read_text(encoding="utf-8") == OPENAPI_JSON
+
+
+def test_import_openapi_url_uses_requests_get(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+    calls = []
+
+    class Response:
+        text = OPENAPI_JSON
+
+        def raise_for_status(self) -> None:
+            pass
+
+    def fake_get(url: str, *, timeout: float, allow_redirects: bool) -> Response:
+        calls.append({"url": url, "timeout": timeout, "allow_redirects": allow_redirects})
+        return Response()
+
+    monkeypatch.setattr(service.requests, "get", fake_get)
+
+    result = service.import_openapi_url(
+        "project-1",
+        url="http://localhost:8000/openapi.json",
+        actor=ACTOR,
+        name="Petstore URL",
+    )
+
+    assert calls == [{"url": "http://localhost:8000/openapi.json", "timeout": 15.0, "allow_redirects": True}]
+    assert result["name"] == "Petstore URL"
+    assert result["source_type"] == "url"
+    assert result["source_url"] == "http://localhost:8000/openapi.json"
 
 
 def test_guest_cannot_import_openapi(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

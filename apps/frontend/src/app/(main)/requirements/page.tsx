@@ -28,7 +28,7 @@ export default function Page() {
 
   return (
     <RequirementsPage
-      breadcrumbs={["项目工作区", "需求"]}
+      breadcrumbs={[{ label: "项目工作区" }, { label: "需求" }]}
       description={
         scope === "all"
           ? "查看全部项目的需求文档、评审状态和版本记录。"

@@ -17,7 +17,7 @@ export default function Page() {
 
   return (
     <ExplorationWorkspace
-      breadcrumbs={["项目工作区", "探索"]}
+      breadcrumbs={[{ label: "项目工作区" }, { label: "探索" }]}
       description="查看全部项目的探索任务、页面事实和冲突项。"
       projectId={scopedProjectId ?? undefined}
       projectScope={scope}

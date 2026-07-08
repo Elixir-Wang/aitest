@@ -1150,8 +1150,9 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={["项目工作区", "知识库"]}
+      breadcrumbs={[{ label: "项目工作区" }, { label: "知识库" }]}
       description="查看项目知识库与公司知识库的知识块、来源材料和版本记录。"
+      fillViewport
       projectScope="all"
       title="知识库"
     >
@@ -1610,7 +1611,7 @@ function ProjectKnowledgeWorkspace({
   }, [projectSelected]);
 
   return (
-    <ShellSection className="h-[calc(100dvh-14rem)] min-h-[28rem] overflow-hidden p-0">
+    <ShellSection className="min-h-[28rem] flex-1 overflow-hidden p-0">
       <div
         className={
           projectHistoryOpen
@@ -1682,7 +1683,7 @@ function ProjectKnowledgeWorkspace({
         ) : null}
 
         {!hasConversation ? (
-          <div className="relative flex min-h-[calc(100dvh-14rem)] flex-col items-center justify-center px-4 py-6 min-[900px]:py-10">
+          <div className="relative flex h-full min-h-0 flex-col items-center justify-center px-4 py-6 min-[900px]:py-10">
             <div className="relative mb-5 text-center min-[900px]:mb-8">
               <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-lg border bg-primary text-primary-foreground shadow-sm min-[900px]:mb-6 min-[900px]:size-20">
                 <Command className="size-8 min-[900px]:size-10" />

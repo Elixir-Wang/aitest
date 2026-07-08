@@ -1,8 +1,10 @@
 import secrets
+import time
 from pathlib import Path
 from sqlite3 import Row
+from urllib.parse import urljoin, urlparse
 
-import httpx
+import requests
 
 from app.agents.api_automation import service as api_generation_agent_service
 from app.agents.api_automation.schemas import ApiAutomationGenerationInput
@@ -14,12 +16,14 @@ from app.core.exceptions import api_error
 from app.repositories import api_automation_repo, project_repo
 from app.schemas.api_automation import (
     ApiAutomationGenerateIn,
+    ApiEndpointDebugIn,
     ApiEndpointIn,
     ApiEndpointUpdateIn,
     ApiEnvironmentIn,
     ApiRunCreateIn,
     ApiScenarioIn,
     ApiScenarioStepIn,
+    ApiTestCaseSetIn,
 )
 from app.services.api_automation.openapi_parser import OpenAPIParseError, parse_openapi_document
 from app.services.api_automation.runner import run_script_suite
@@ -27,6 +31,7 @@ from app.services.api_automation.script_generator import generate_pytest_suite
 
 
 MAX_OPENAPI_BYTES = 2 * 1024 * 1024
+MAX_DEBUG_RESPONSE_CHARS = 200_000
 
 
 def import_openapi_url(project_id: str, *, url: str, actor, name: str = "") -> dict:
@@ -34,9 +39,9 @@ def import_openapi_url(project_id: str, *, url: str, actor, name: str = "") -> d
     if not url:
         raise api_error(400, "OPENAPI_URL_REQUIRED", "请填写 OpenAPI/Swagger URL。")
     try:
-        response = httpx.get(url, timeout=15.0, follow_redirects=True)
+        response = requests.get(url, timeout=15.0, allow_redirects=True)
         response.raise_for_status()
-    except httpx.HTTPError as exc:
+    except requests.RequestException as exc:
         raise api_error(400, "OPENAPI_URL_FETCH_FAILED", f"OpenAPI URL 获取失败：{exc}") from exc
     content = response.text
     if len(content.encode("utf-8")) > MAX_OPENAPI_BYTES:
@@ -195,6 +200,61 @@ def delete_project_endpoint(project_id: str, endpoint_id: str, actor) -> None:
         api_automation_repo.delete_endpoint(db, endpoint_id)
 
 
+def debug_project_endpoint(project_id: str, endpoint_id: str, payload: ApiEndpointDebugIn, actor) -> dict:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        endpoint_row = api_automation_repo.find_endpoint(db, endpoint_id)
+        if not endpoint_row or endpoint_row["project_id"] != project_id:
+            raise api_error(404, "API_ENDPOINT_NOT_FOUND", "接口不存在。")
+        endpoint = _serialize_endpoint(endpoint_row)
+        environment = _build_debug_environment(db, project_id, payload.api_environment_id)
+
+    request = _build_debug_request(endpoint, environment, payload)
+    started = time.perf_counter()
+    try:
+        response = requests.request(
+            method=request["method"],
+            url=request["url"],
+            params=request["query_params"],
+            headers=request["headers"],
+            cookies=request["cookies"],
+            json=request["json_body"],
+            data=request["raw_body"],
+            timeout=environment["timeout_seconds"],
+            verify=environment["verify_ssl"],
+            allow_redirects=False,
+        )
+    except requests.RequestException as exc:
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        return {
+            "request": _public_debug_request(request),
+            "status_code": 0,
+            "elapsed_ms": elapsed_ms,
+            "headers": {},
+            "body_text": "",
+            "body_json": None,
+            "error_message": str(exc),
+        }
+
+    elapsed_ms = round(response.elapsed.total_seconds() * 1000)
+    body_text = response.text
+    if len(body_text) > MAX_DEBUG_RESPONSE_CHARS:
+        body_text = f"{body_text[:MAX_DEBUG_RESPONSE_CHARS]}\n... 响应内容已截断"
+    try:
+        body_json = response.json()
+    except ValueError:
+        body_json = None
+    return {
+        "request": _public_debug_request(request),
+        "status_code": response.status_code,
+        "elapsed_ms": elapsed_ms,
+        "headers": dict(response.headers),
+        "body_text": body_text,
+        "body_json": body_json,
+        "error_message": "",
+    }
+
+
 def create_api_environment(project_id: str, payload: ApiEnvironmentIn, actor) -> dict:
     _require_admin(actor)
     _validate_auth_config(payload.auth_type, payload.auth_config)
@@ -311,6 +371,47 @@ def create_generation_run(project_id: str, payload: ApiAutomationGenerateIn, act
         if not row:
             raise api_error(500, "API_GENERATION_RUN_CREATE_FAILED", "接口自动化生成任务创建失败。")
         return _serialize_generation_run(row)
+
+
+def list_generation_runs(project_id: str, actor) -> list[dict]:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        return [_serialize_generation_run(row) for row in api_automation_repo.list_generation_runs(db, project_id)]
+
+
+def create_api_test_case_set(project_id: str, payload: ApiTestCaseSetIn, actor) -> dict:
+    _require_admin(actor)
+    set_id = f"apicaseset-{secrets.token_hex(8)}"
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        api_automation_repo.create_api_test_case_set(
+            db,
+            set_id=set_id,
+            project_id=project_id,
+            name=payload.name,
+            notes=payload.notes,
+            created_by=actor["id"],
+        )
+        row = api_automation_repo.find_api_test_case_set(db, set_id)
+        return _serialize_api_test_case_set(row)
+
+
+def list_api_test_case_sets(project_id: str, actor) -> list[dict]:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        return [_serialize_api_test_case_set(row) for row in api_automation_repo.list_api_test_case_sets(db, project_id)]
+
+
+def update_api_test_case_set(project_id: str, set_id: str, payload: ApiTestCaseSetIn, actor) -> dict:
+    _require_admin(actor)
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        existing = api_automation_repo.find_api_test_case_set(db, set_id)
+        if not existing or existing["project_id"] != project_id:
+            raise api_error(404, "API_TEST_CASE_SET_NOT_FOUND", "接口集不存在。")
+        api_automation_repo.update_api_test_case_set(db, set_id, name=payload.name, notes=payload.notes)
+        row = api_automation_repo.find_api_test_case_set(db, set_id)
+        return _serialize_api_test_case_set(row)
 
 
 def execute_generation_run(run_id: str) -> dict:
@@ -786,6 +887,22 @@ def _serialize_generation_run(row: Row | None) -> dict:
     }
 
 
+def _serialize_api_test_case_set(row: Row | None) -> dict:
+    if row is None:
+        raise api_error(404, "API_TEST_CASE_SET_NOT_FOUND", "接口用例集不存在。")
+    return {
+        "id": row["id"],
+        "project_id": row["project_id"],
+        "name": row["name"],
+        "notes": row["notes"],
+        "status": row["status"],
+        "case_count": row["case_count"],
+        "latest_generation_run_id": row["latest_generation_run_id"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
 def _serialize_api_test_case(row: Row) -> dict:
     return {
         "id": row["id"],
@@ -891,6 +1008,104 @@ def _resolve_generated_path(project_id: str, stored_path: str) -> Path:
     if not resolved.exists():
         raise api_error(404, "API_SCRIPT_FILE_NOT_FOUND", "脚本文件不存在。")
     return resolved
+
+
+def _build_debug_environment(db, project_id: str, api_environment_id: str | None) -> dict:
+    if not api_environment_id:
+        return {
+            "api_base_url": "",
+            "timeout_seconds": 30,
+            "verify_ssl": True,
+            "headers": {},
+            "cookies": {},
+        }
+    row = api_automation_repo.find_api_environment(db, api_environment_id)
+    if not row or row["project_id"] != project_id:
+        raise api_error(404, "API_ENVIRONMENT_NOT_FOUND", "接口环境不存在。")
+    auth_config = api_automation_repo.loads_json(row["auth_config_json"], {})
+    headers = _stringify_mapping(api_automation_repo.loads_json(row["default_headers_json"], {}))
+    cookies = {}
+    if row["auth_type"] == "static_bearer" and auth_config.get("token_encrypted"):
+        token = decrypt_api_environment_secret(auth_config["token_encrypted"]) or ""
+        if token:
+            headers.setdefault("Authorization", f"Bearer {token}")
+    if row["auth_type"] == "static_headers":
+        for key, encrypted_value in api_automation_repo.loads_json(row["auth_config_json"], {}).get("headers_encrypted", {}).items():
+            headers[str(key)] = decrypt_api_environment_secret(str(encrypted_value)) or ""
+    if row["auth_type"] == "cookie" and auth_config.get("cookie_name") and auth_config.get("cookie_value_encrypted"):
+        cookies[str(auth_config["cookie_name"])] = decrypt_api_environment_secret(auth_config["cookie_value_encrypted"]) or ""
+    return {
+        "api_base_url": row["api_base_url"],
+        "timeout_seconds": row["timeout_seconds"],
+        "verify_ssl": bool(row["verify_ssl"]),
+        "headers": headers,
+        "cookies": cookies,
+    }
+
+
+def _build_debug_request(endpoint: dict, environment: dict, payload: ApiEndpointDebugIn) -> dict:
+    url = _build_debug_url(environment["api_base_url"], endpoint["path"], payload.path_params)
+    headers = {**environment["headers"], **_stringify_mapping(payload.headers)}
+    cookies = {**environment["cookies"], **_stringify_mapping(payload.cookies)}
+    query_params = _clean_mapping(payload.query_params)
+    body = payload.body
+    json_body = None
+    raw_body = None
+    if isinstance(body, (dict, list)):
+        json_body = body
+        headers.setdefault("Content-Type", "application/json")
+    elif body is not None and str(body) != "":
+        raw_body = str(body)
+    return {
+        "method": endpoint["method"].upper(),
+        "url": url,
+        "query_params": query_params,
+        "headers": headers,
+        "cookies": cookies,
+        "json_body": json_body,
+        "raw_body": raw_body,
+    }
+
+
+def _build_debug_url(base_url: str, endpoint_path: str, path_params: dict[str, object]) -> str:
+    path = endpoint_path
+    for key, value in path_params.items():
+        path = path.replace(f"{{{key}}}", str(value)).replace(f":{key}", str(value))
+    if not path.startswith(("http://", "https://")):
+        if not base_url:
+            raise api_error(400, "API_DEBUG_BASE_URL_REQUIRED", "请先选择带 API Base URL 的接口环境。")
+        path = urljoin(f"{base_url.rstrip('/')}/", path.lstrip("/"))
+    parsed = urlparse(path)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise api_error(400, "API_DEBUG_URL_INVALID", "调试地址必须是有效的 HTTP/HTTPS URL。")
+    return path
+
+
+def _public_debug_request(request: dict) -> dict:
+    return {
+        "method": request["method"],
+        "url": request["url"],
+        "query_params": request["query_params"],
+        "headers": _mask_debug_headers(request["headers"]),
+        "cookies": sorted(request["cookies"].keys()),
+        "body": request["json_body"] if request["json_body"] is not None else request["raw_body"],
+    }
+
+
+def _mask_debug_headers(headers: dict[str, str]) -> dict[str, str]:
+    sensitive_names = {"authorization", "cookie", "set-cookie", "x-api-key", "api-key"}
+    return {
+        key: ("******" if key.lower() in sensitive_names else value)
+        for key, value in headers.items()
+    }
+
+
+def _stringify_mapping(value: dict[str, object]) -> dict[str, str]:
+    return {str(key): str(item) for key, item in value.items() if str(key).strip() and item is not None}
+
+
+def _clean_mapping(value: dict[str, object]) -> dict[str, object]:
+    return {str(key): item for key, item in value.items() if str(key).strip() and item not in (None, "")}
 
 
 def _build_runtime_environment(db, api_environment_id: str | None) -> dict:

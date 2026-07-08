@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage
 from app.agents.model_selection import build_agent_model, resolve_model_selection
 
 # 验证码识别优先使用 ddddocr（开源、稳定、无内容限制），失败时回退到 AI 模型
-CAPTCHA_MODEL_CAPABILITY_ID = "site_exploration"
+CAPTCHA_MODEL_CAPABILITY_ID = "page_exploration"
 _NORMALIZE_PATTERN = re.compile(r"[^A-Za-z0-9]")
 _THINK_TAG_PATTERN = re.compile(
     r"`(?:think|thinking)`[\s\S]*?`(?:/think|/thinking)`",

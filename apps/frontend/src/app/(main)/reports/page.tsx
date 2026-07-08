@@ -26,7 +26,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={["测试资产", "报告中心"]}
+      breadcrumbs={[{ label: "测试资产" }, { label: "报告中心" }]}
       description="按全局或项目范围查看运行记录、Allure 报告、失败诊断和内部 Bug 记录。"
       projectScope="all"
       tabs={["运行记录", "Allure 报告", "失败诊断", "内部 Bug 记录"]}

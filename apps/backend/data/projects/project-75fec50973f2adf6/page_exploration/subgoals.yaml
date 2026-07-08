@@ -1,31 +1,25 @@
 run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
 project_id: project-75fec50973f2adf6
-updated_at: '2026-07-08T06:26:25.383123+00:00'
+updated_at: '2026-07-08T12:01:39.257476+00:00'
 items:
 - id: ''
-  content: 打开工作台首页，验证 agentStore 页面加载并可见「工作台」与「创建智能体」入口
+  content: 打开工作台界面，点击创建按钮，新建自主规划Agent。**完成判据：出现'新建 Agent'对话框且名称字段可见。**
   status: completed
 - id: ''
-  content: 点击「创建智能体」按钮，验证 popover 浮层显示 Agent 类型选择
+  content: 输入名称'哈哈'创建智能体。**完成判据：智能体创建成功，进入编辑页面。**
   status: completed
 - id: ''
-  content: 选择「自主规划 Agent」类型，验证创建表单弹窗出现
+  content: 填写角色设定'你是一个友好的助手'。**完成判据：Prompt字段已写入内容。**
   status: completed
 - id: ''
-  content: 输入智能体名称「哈哈」并点击「创建」完成创建，验证跳转到 botSetting 详情页
+  content: 点击发布按钮，进入发布页面。**完成判据：URL变为/agentRelease，出现版本号和发布日志输入框。**
   status: completed
 - id: ''
-  content: 在 Prompt（角色设定）输入框输入「你是一个友好的助手」
-  status: in_progress
+  content: 输入版本号'1.0.0'和发布日志'首次发布测试版本'。**完成判据：两个输入框已填入内容。**
+  status: completed
 - id: ''
-  content: 点击右上角「发布」按钮，验证发布弹窗出现
-  status: pending
+  content: 点击发布确认，完成发布。**完成判据：出现'发布中...'提示，URL包含version参数。**
+  status: completed
 - id: ''
-  content: 在发布弹窗中输入版本号
-  status: pending
-- id: ''
-  content: 在发布弹窗中输入发布日志
-  status: pending
-- id: ''
-  content: 再次点击「发布」完成发布，验证 Toast/状态变化
-  status: pending
+  content: 沉淀核心元素定位器到state tree。**完成判据：使用merge_page_artifact_tool记录关键元素。**
+  status: completed

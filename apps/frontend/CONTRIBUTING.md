@@ -93,7 +93,6 @@ If you’d like a more detailed example of this setup, check out the [Next Coloc
 - **Dashboard Screens**: Feature dashboards like CRM, Finance, Analytics → `src/app/(main)/dashboard/`
 - **Components**: Reusable UI goes in `src/components/`  
 - **Hooks**: Custom logic goes in `src/hooks/`  
-- **Themes**: New presets under `src/styles/presets/`  
 
 ---
 

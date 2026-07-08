@@ -299,7 +299,6 @@ def _clear_previous_exploration_outputs(run: dict) -> None:
 
     with connect() as db:
         db.execute("DELETE FROM exploration_artifacts WHERE exploration_run_id = ?", (run_id,))
-        db.execute("DELETE FROM exploration_elements WHERE exploration_run_id = ?", (run_id,))
         db.execute("DELETE FROM exploration_blockers WHERE exploration_run_id = ?", (run_id,))
         db.execute("DELETE FROM exploration_module_coverages WHERE exploration_run_id = ?", (run_id,))
         db.execute("DELETE FROM exploration_pages WHERE exploration_run_id = ?", (run_id,))

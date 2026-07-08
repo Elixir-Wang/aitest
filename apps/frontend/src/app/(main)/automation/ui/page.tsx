@@ -33,7 +33,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={["项目工作区", "UI 自动化"]}
+      breadcrumbs={[{ label: "测试资产" }, { label: "UI 自动化" }]}
       description="查看全部项目的 UI 自动化任务、套件和执行状态。"
       projectScope="all"
       title="UI 自动化"

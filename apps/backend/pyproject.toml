@@ -20,6 +20,7 @@ dependencies = [
     "pytest>=9.0.1",
     "python-docx==1.2.0",
     "python-multipart==0.0.20",
+    "requests==2.34.2",
     "uvicorn[standard]==0.38.0",
 ]
 

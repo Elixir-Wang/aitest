@@ -48,7 +48,12 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={["项目工作区", "项目", projectName, "项目设置"]}
+      breadcrumbs={[
+        { label: "项目工作区" },
+        { label: "项目", href: "/projects" },
+        { label: projectName, href: `/projects/${projectId}` },
+        { label: "项目设置" },
+      ]}
       description="维护项目基础信息、成员权限、环境配置和测试资产策略。"
       primaryAction="保存设置"
       projectScope="project"

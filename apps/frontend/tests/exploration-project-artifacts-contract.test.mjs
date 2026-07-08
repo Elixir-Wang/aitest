@@ -7,13 +7,15 @@ const workspaceSource = readFileSync(
   "utf8",
 );
 const pageExplorationApiSource = readFileSync(
-  new URL("../../backend/app/api/v1/page_exploration.py", import.meta.url),
+  new URL("../../backend/app/api/v1/page_exploration/pages.py", import.meta.url),
   "utf8",
 );
-const pageExplorationServiceSource = readFileSync(
-  new URL("../../backend/app/services/exploration/page_exploration_service.py", import.meta.url),
-  "utf8",
-);
+const pageExplorationServiceSource = [
+  "../../backend/app/services/page_exploration/service.py",
+  "../../backend/app/services/page_exploration/output_registry.py",
+]
+  .map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
+  .join("\n");
 
 test("exploration artifacts tab reads project-level page artifacts directly", () => {
   assert.match(workspaceSource, /\/page-exploration\/projects\/\$\{project\.project_id\}\/pages/);
@@ -31,7 +33,7 @@ test("backend exposes project-level page artifact listing", () => {
 test("snapshot checkpoints write project-level page artifacts", () => {
   assert.match(
     pageExplorationServiceSource,
-    /settings\.PROJECT_FILE_STORAGE_ROOT \/ project_id \/ "page_exploration" \/ "pages"/,
+    /base_dir = .* \/ project_id \/ "page_exploration"[\s\S]*pages_dir = base_dir \/ "pages"/,
   );
   assert.doesNotMatch(pageExplorationServiceSource, /def _next_snapshot_page_id/);
 });

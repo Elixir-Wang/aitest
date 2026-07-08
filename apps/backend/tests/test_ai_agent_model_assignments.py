@@ -19,6 +19,14 @@ def test_ai_capabilities_include_business_agents() -> None:
     ids = [capability.id for capability in list_ai_capabilities()]
     assert "document_editor" in ids
     assert "requirement_analysis" in ids
+    assert "page_exploration" in ids
+    assert "site_exploration" not in ids
+
+
+def test_ai_capability_names_do_not_repeat_agent_suffix() -> None:
+    names = [capability.name for capability in list_ai_capabilities()]
+
+    assert all("智能体" not in name for name in names)
 
 
 def test_ai_capabilities_exclude_letter_captcha_recognition() -> None:

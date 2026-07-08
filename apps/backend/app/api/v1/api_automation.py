@@ -4,6 +4,8 @@ from app.dependencies.auth import current_user, require_admin
 from app.schemas.api_automation import (
     ApiAutomationGenerateIn,
     ApiDocumentOut,
+    ApiEndpointDebugIn,
+    ApiEndpointDebugOut,
     ApiEndpointIn,
     ApiEndpointOut,
     ApiEndpointUpdateIn,
@@ -15,6 +17,8 @@ from app.schemas.api_automation import (
     ApiScenarioStepIn,
     ApiScriptGenerateIn,
     ApiScriptUpdateIn,
+    ApiTestCaseSetIn,
+    ApiTestCaseSetOut,
     OpenAPIImportIn,
 )
 from app.services.api_automation import service
@@ -57,6 +61,16 @@ def create_api_endpoint(project_id: str, payload: ApiEndpointIn, actor=Depends(r
 @router.get("/api-endpoints/{endpoint_id}", response_model=ApiEndpointOut)
 def get_api_endpoint(project_id: str, endpoint_id: str, actor=Depends(current_user)) -> dict:
     return service.get_project_endpoint(project_id, endpoint_id, actor)
+
+
+@router.post("/api-endpoints/{endpoint_id}/debug", response_model=ApiEndpointDebugOut)
+def debug_api_endpoint(
+    project_id: str,
+    endpoint_id: str,
+    payload: ApiEndpointDebugIn,
+    actor=Depends(current_user),
+) -> dict:
+    return service.debug_project_endpoint(project_id, endpoint_id, payload, actor)
 
 
 @router.patch("/api-endpoints/{endpoint_id}", response_model=ApiEndpointOut)
@@ -109,6 +123,31 @@ def generate_api_automation(
     created = service.create_generation_run(project_id, payload, actor)
     background_tasks.add_task(service.execute_generation_run, created["id"])
     return created
+
+
+@router.get("/api-automation/generation-runs", response_model=list[ApiGenerationRunOut])
+def list_api_automation_generation_runs(project_id: str, actor=Depends(current_user)) -> list[dict]:
+    return service.list_generation_runs(project_id, actor)
+
+
+@router.get("/api-case-sets", response_model=list[ApiTestCaseSetOut])
+def list_api_test_case_sets(project_id: str, actor=Depends(current_user)) -> list[dict]:
+    return service.list_api_test_case_sets(project_id, actor)
+
+
+@router.post("/api-case-sets", response_model=ApiTestCaseSetOut)
+def create_api_test_case_set(project_id: str, payload: ApiTestCaseSetIn, actor=Depends(require_admin)) -> dict:
+    return service.create_api_test_case_set(project_id, payload, actor)
+
+
+@router.patch("/api-case-sets/{set_id}", response_model=ApiTestCaseSetOut)
+def update_api_test_case_set(
+    project_id: str,
+    set_id: str,
+    payload: ApiTestCaseSetIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return service.update_api_test_case_set(project_id, set_id, payload, actor)
 
 
 @router.get("/api-automation/generation-runs/{run_id}")

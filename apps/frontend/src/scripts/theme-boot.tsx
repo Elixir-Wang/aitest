@@ -1,33 +1,27 @@
 /**
- * Boot script that reads user preference values (theme mode, theme preset,
- * content layout, navbar style) from cookies or localStorage based on the
- * configured persistence mode.
+ * Boot script that reads user preference values from cookies or localStorage
+ * based on the configured persistence mode.
  *
  * Runs early in <head> to apply the correct data attributes before hydration,
- * preventing layout or theme flicker and keeping RootLayout fully static.
+ * preventing theme flicker and keeping RootLayout fully static.
  */
 import { PREFERENCE_DEFAULTS, PREFERENCE_PERSISTENCE } from "@/lib/preferences/preferences-config";
+import { THEME_MODE_VALUES, THEME_SCHEME_VALUES } from "@/lib/preferences/theme";
 
 export function ThemeBootScript() {
   const persistence = JSON.stringify({
     theme_mode: PREFERENCE_PERSISTENCE.theme_mode,
-    theme_preset: PREFERENCE_PERSISTENCE.theme_preset,
-    font: PREFERENCE_PERSISTENCE.font,
-    content_layout: PREFERENCE_PERSISTENCE.content_layout,
-    navbar_style: PREFERENCE_PERSISTENCE.navbar_style,
+    theme_scheme: PREFERENCE_PERSISTENCE.theme_scheme,
     sidebar_variant: PREFERENCE_PERSISTENCE.sidebar_variant,
-    sidebar_collapsible: PREFERENCE_PERSISTENCE.sidebar_collapsible,
   });
 
   const defaults = JSON.stringify({
     theme_mode: PREFERENCE_DEFAULTS.theme_mode,
-    theme_preset: PREFERENCE_DEFAULTS.theme_preset,
-    font: PREFERENCE_DEFAULTS.font,
-    content_layout: PREFERENCE_DEFAULTS.content_layout,
-    navbar_style: PREFERENCE_DEFAULTS.navbar_style,
+    theme_scheme: PREFERENCE_DEFAULTS.theme_scheme,
     sidebar_variant: PREFERENCE_DEFAULTS.sidebar_variant,
-    sidebar_collapsible: PREFERENCE_DEFAULTS.sidebar_collapsible,
   });
+  const themeModes = JSON.stringify(THEME_MODE_VALUES);
+  const themeSchemes = JSON.stringify(THEME_SCHEME_VALUES);
 
   const code = `
     (function () {
@@ -35,6 +29,8 @@ export function ThemeBootScript() {
         var root = document.documentElement;
         var PERSISTENCE = ${persistence};
         var DEFAULTS = ${defaults};
+        var THEME_MODES = ${themeModes};
+        var THEME_SCHEMES = ${themeSchemes};
 
         function readCookie(name) {
           var match = document.cookie.split("; ").find(function(c) {
@@ -71,31 +67,21 @@ export function ThemeBootScript() {
         }
 
         var rawMode = readPreference("theme_mode", DEFAULTS.theme_mode);
-        var rawPreset = readPreference("theme_preset", DEFAULTS.theme_preset);
-        var rawFont = readPreference("font", DEFAULTS.font);
-        var rawContentLayout = readPreference("content_layout", DEFAULTS.content_layout);
-        var rawNavbarStyle = readPreference("navbar_style", DEFAULTS.navbar_style);
+        var rawScheme = readPreference("theme_scheme", DEFAULTS.theme_scheme);
         var rawSidebarVariant = readPreference("sidebar_variant", DEFAULTS.sidebar_variant);
-        var rawSidebarCollapsible = readPreference("sidebar_collapsible", DEFAULTS.sidebar_collapsible);
 
-        var isValidMode = rawMode === "dark" || rawMode === "light";
-        var mode = isValidMode ? rawMode : DEFAULTS.theme_mode;
-        var resolvedMode = mode;
-        var preset = rawPreset || DEFAULTS.theme_preset;
-        var font = rawFont || DEFAULTS.font;
-        var contentLayout = rawContentLayout || DEFAULTS.content_layout;
-        var navbarStyle = rawNavbarStyle || DEFAULTS.navbar_style;
+        var isValidMode = THEME_MODES.indexOf(rawMode) !== -1;
+        var isValidScheme = THEME_SCHEMES.indexOf(rawScheme) !== -1;
+        var migratedScheme = THEME_SCHEMES.indexOf(rawMode) !== -1 ? rawMode : DEFAULTS.theme_scheme;
+        var scheme = isValidScheme ? rawScheme : migratedScheme;
+        var mode = isValidMode ? rawMode : scheme;
+        var resolvedMode = mode === "dark" ? "dark" : "light";
         var sidebarVariant = rawSidebarVariant || DEFAULTS.sidebar_variant;
-        var sidebarCollapsible = rawSidebarCollapsible || DEFAULTS.sidebar_collapsible;
 
         root.classList.toggle("dark", resolvedMode === "dark");
         root.setAttribute("data-theme-mode", mode);
-        root.setAttribute("data-theme-preset", preset);
-        root.setAttribute("data-font", font);
-        root.setAttribute("data-content-layout", contentLayout);
-        root.setAttribute("data-navbar-style", navbarStyle);
+        root.setAttribute("data-theme-scheme", scheme);
         root.setAttribute("data-sidebar-variant", sidebarVariant);
-        root.setAttribute("data-sidebar-collapsible", sidebarCollapsible);
 
         root.style.colorScheme = resolvedMode === "dark" ? "dark" : "light";
 

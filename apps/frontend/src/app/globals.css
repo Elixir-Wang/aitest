@@ -6,17 +6,6 @@
 @import "@fontsource/noto-sans-sc/600.css";
 @import "@fontsource/noto-sans-sc/700.css";
 
-/* Theme preset styles: these override CSS variables based on the selected data-theme-preset */
-@import "../styles/presets/brutalist.css";
-@import "../styles/presets/burgundy.css";
-@import "../styles/presets/cherry-blossom.css";
-@import "../styles/presets/lavender-dusk.css";
-@import "../styles/presets/peach-cream.css";
-@import "../styles/presets/rose-gold.css";
-@import "../styles/presets/soft-pop.css";
-@import "../styles/presets/sunset-glow.css";
-@import "../styles/presets/tangerine.css";
-
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -63,8 +52,7 @@
   --font-sans: var(--font-sans);
 }
 
-/* Default theme styles (used when no data-theme-preset is set or when 'default' is selected).
-These serve as the fallback; there is no separate default.css file. */
+/* Default theme styles. */
 :root {
   --radius: 0.625rem;
   --card: #ffffff;
@@ -100,26 +88,45 @@ These serve as the fallback; there is no separate default.css file. */
 
   /* fonts */
   --font-noto-sans-sc: "Noto Sans SC";
-  --font-geist: var(--font-noto-sans-sc);
-  --font-inter: var(--font-noto-sans-sc);
-  --font-noto-sans: var(--font-noto-sans-sc);
-  --font-nunito-sans: var(--font-noto-sans-sc);
-  --font-figtree: var(--font-noto-sans-sc);
-  --font-roboto: var(--font-noto-sans-sc);
-  --font-raleway: var(--font-noto-sans-sc);
-  --font-dm-sans: var(--font-noto-sans-sc);
-  --font-public-sans: var(--font-noto-sans-sc);
-  --font-outfit: var(--font-noto-sans-sc);
-  --font-geist-pixel-square: var(--font-noto-sans-sc);
-  --font-noto-serif: var(--font-noto-sans-sc);
-  --font-roboto-slab: var(--font-noto-sans-sc);
-  --font-merriweather: var(--font-noto-sans-sc);
-  --font-lora: var(--font-noto-sans-sc);
-  --font-playfair-display: var(--font-noto-sans-sc);
   --font-sans: var(--font-noto-sans-sc);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: "Cascadia Code", Consolas, monospace;
   --background: #f6f9fc;
   --foreground: #1f2a37;
+}
+
+[data-theme-mode="claude"] {
+  --background: #ffffff;
+  --foreground: #1f2328;
+  --card: #ffffff;
+  --card-foreground: #1f2328;
+  --popover: #ffffff;
+  --popover-foreground: #1f2328;
+  --primary: #d0922f;
+  --primary-foreground: #ffffff;
+  --secondary: #f6f8f7;
+  --secondary-foreground: #313832;
+  --muted: #f6f8f7;
+  --muted-foreground: #7a817d;
+  --accent: #e2f4e9;
+  --accent-foreground: #03984f;
+  --destructive: #d64545;
+  --destructive-foreground: #ffffff;
+  --border: #edf0ee;
+  --input: #edf0ee;
+  --ring: #0aa85a;
+  --chart-1: #0aa85a;
+  --chart-2: #d0922f;
+  --chart-3: #79c99f;
+  --chart-4: #e7b86a;
+  --chart-5: #2f5f46;
+  --sidebar: #fbfcfb;
+  --sidebar-foreground: #303833;
+  --sidebar-primary: #0aa85a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e2f4e9;
+  --sidebar-accent-foreground: #03984f;
+  --sidebar-border: #edf0ee;
+  --sidebar-ring: #0aa85a;
 }
 
 .dark {
@@ -1010,97 +1017,16 @@ These serve as the fallback; there is no separate default.css file. */
   }
 }
 
-@layer utilities {
-  [data-theme-preset]:not([data-theme-preset="default"]) .shadow-2xs {
-    box-shadow: var(--shadow-2xs);
-  }
-
-  [data-theme-preset]:not([data-theme-preset="default"]) .shadow-xs {
-    box-shadow: var(--shadow-xs);
-  }
-
-  [data-theme-preset]:not([data-theme-preset="default"]) .shadow-sm {
-    box-shadow: var(--shadow-sm);
-  }
-
-  [data-theme-preset]:not([data-theme-preset="default"]) .shadow {
-    box-shadow: var(--shadow);
-  }
-
-  [data-theme-preset]:not([data-theme-preset="default"]) .shadow-md {
-    box-shadow: var(--shadow-md);
-  }
-
-  [data-theme-preset]:not([data-theme-preset="default"]) .shadow-lg {
-    box-shadow: var(--shadow-lg);
-  }
-
-  [data-theme-preset]:not([data-theme-preset="default"]) .shadow-xl {
-    box-shadow: var(--shadow-xl);
-  }
-
-  [data-theme-preset]:not([data-theme-preset="default"]) .shadow-2xl {
-    box-shadow: var(--shadow-2xl);
-  }
-
-  html[data-font="inter"] body {
-    --font-sans: var(--font-inter);
-  }
-  html[data-font="notoSans"] body {
-    --font-sans: var(--font-noto-sans);
-  }
-  html[data-font="nunitoSans"] body {
-    --font-sans: var(--font-nunito-sans);
-  }
-  html[data-font="figtree"] body {
-    --font-sans: var(--font-figtree);
-  }
-  html[data-font="roboto"] body {
-    --font-sans: var(--font-roboto);
-  }
-  html[data-font="geist"] body {
-    --font-sans: var(--font-geist);
-  }
-  html[data-font="raleway"] body {
-    --font-sans: var(--font-raleway);
-  }
-  html[data-font="dmSans"] body {
-    --font-sans: var(--font-dm-sans);
-  }
-  html[data-font="publicSans"] body {
-    --font-sans: var(--font-public-sans);
-  }
-  html[data-font="outfit"] body {
-    --font-sans: var(--font-outfit);
-  }
-  html[data-font="geistMono"] body {
-    --font-sans: var(--font-geist-mono);
-  }
-  html[data-font="geistPixelSquare"] body {
-    --font-sans: var(--font-geist-pixel-square);
-  }
-  html[data-font="jetBrainsMono"] body {
-    --font-sans: var(--font-jetbrains-mono);
-  }
-  html[data-font="notoSerif"] body {
-    --font-sans: var(--font-noto-serif);
-  }
-  html[data-font="robotoSlab"] body {
-    --font-sans: var(--font-roboto-slab);
-  }
-  html[data-font="merriweather"] body {
-    --font-sans: var(--font-merriweather);
-  }
-  html[data-font="lora"] body {
-    --font-sans: var(--font-lora);
-  }
-  html[data-font="playfairDisplay"] body {
-    --font-sans: var(--font-playfair-display);
-  }
-}
-
 html {
   overscroll-behavior: none;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 .disable-transitions * {

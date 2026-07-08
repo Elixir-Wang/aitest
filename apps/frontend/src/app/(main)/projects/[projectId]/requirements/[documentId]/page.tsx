@@ -39,6 +39,7 @@ import {
 } from "@/components/ai-testing/requirement-version-detail-content";
 import { StandardMarkdownEditor } from "@/components/ai-testing/standard-markdown-editor";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
+import { useProjectName } from "@/components/ai-testing/use-project-name";
 import { AiEditInput } from "@/components/ui/ai-input";
 import {
   AlertDialog,
@@ -473,6 +474,7 @@ export default function DocumentDetailPage() {
   const searchParams = useSearchParams();
   const params = useParams<{ projectId: string; documentId: string }>();
   const { projectId, documentId } = params;
+  const projectName = useProjectName(projectId);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [overview, setOverview] = useState<RequirementOverviewResponse | null>(null);
@@ -1604,7 +1606,16 @@ export default function DocumentDetailPage() {
 
   if (error || !overview) {
     return (
-      <PageShell breadcrumbs={["项目", "需求"]} description="查看需求文件处理进度。" title="需求概览">
+      <PageShell
+        breadcrumbs={[
+          { label: "项目", href: "/projects" },
+          { label: projectName, href: `/projects/${projectId}` },
+          { label: "需求", href: "/requirements" },
+          { label: "需求概览" },
+        ]}
+        description="查看需求文件处理进度。"
+        title="需求概览"
+      >
         <ShellSection>
           <div className="flex items-center justify-between gap-3">
             <div className="text-destructive text-sm">{error || "未找到需求文档。"}</div>
@@ -1641,7 +1652,12 @@ export default function DocumentDetailPage() {
         : `#${FINAL_REQUIREMENT_SECTION_ID} .requirement-document-preview`;
   return (
     <PageShell
-      breadcrumbs={["项目", "需求", overview.document.name]}
+      breadcrumbs={[
+        { label: "项目", href: "/projects" },
+        { label: projectName, href: `/projects/${projectId}` },
+        { label: "需求", href: "/requirements" },
+        { label: overview.document.name },
+      ]}
       description="查看原始文件、标准文件、主需求和分析结果。"
       title="需求概览"
     >

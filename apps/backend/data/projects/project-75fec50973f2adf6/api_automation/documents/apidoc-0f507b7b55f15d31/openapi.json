@@ -1,0 +1,127 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Multi-Agent SegmentCode API",
+    "version": "1.0.0",
+    "description": "Manual OpenAPI document generated from the Multi-Agent SegmentCode interface documentation."
+  },
+  "servers": [
+    {
+      "url": "https://www.cybotstar.cn"
+    }
+  ],
+  "paths": {
+    "/openapi/v1/gw/multi-agent/segment-code/gen": {
+      "post": {
+        "tags": [
+          "Multi-Agent"
+        ],
+        "summary": "生成SegmentCode",
+        "description": "生成SegmentCode，返回值。",
+        "operationId": "post_openapi_v1_gw_multi_agent_segment_code_gen",
+        "parameters": [
+          {
+            "name": "cybertron-app-id",
+            "in": "header",
+            "required": true,
+            "description": "应用ID。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-key",
+            "in": "header",
+            "required": true,
+            "description": "机器人Key。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cybertron-robot-token",
+            "in": "header",
+            "required": true,
+            "description": "机器人Token。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "message_source"
+                ],
+                "properties": {
+                  "message_source": {
+                    "type": "string",
+                    "description": "对话来源，标识消息的产生渠道，这里用openai-ws"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "example": {
+                "message_source": "openai-ws"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "生成SegmentCode，返回值",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "description": "000000为正常，其他异常"
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "状态说明"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "segment_code": {
+                          "type": "string",
+                          "description": "生成的SegmentCode"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "example": {
+                  "code": "000000",
+                  "message": "success",
+                  "data": {
+                    "segment_code": "example-segment-code"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error Response"
+          }
+        },
+        "x-source-doc-url": "http://192.168.160.65:30000/api-reference/multi_agent/gen",
+        "x-original-url": "https://www.cybotstar.cn/openapi/v1/gw/multi-agent/segment-code/gen"
+      }
+    }
+  }
+}

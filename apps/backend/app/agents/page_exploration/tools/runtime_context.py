@@ -22,6 +22,25 @@ _browser_session: ContextVar[PlaywrightBrowserSession | None] = ContextVar(
 )
 
 
+ACTION_VERIFICATION_HINT = (
+    "动作已执行，但这不代表当前 todo 的业务完成判据已满足。"
+    "请调用 playwright_snap_tool 验证 URL、Toast、弹窗、字段值或状态文本变化后，"
+    "再决定是否标记子步骤 completed。"
+)
+
+
+def _locator_risk(locator: str, failure: ActionFailure | None = None) -> str:
+    """Return a compact risk flag for locators that need stricter post-action checks."""
+    lowered = locator.lower()
+    if failure is not None and failure.recovered:
+        return "ambiguous_or_recovered_locator"
+    if "nth-of-type" in lowered or "nth-child" in lowered:
+        return "structural_css_locator"
+    if "page.locator(" in locator and not any(token in lowered for token in ("data-testid", "[role=", "#")):
+        return "low_confidence_css_locator"
+    return ""
+
+
 @contextmanager
 def browser_session_context(
     *,
@@ -176,6 +195,7 @@ def click_with_runtime_context(locator: str) -> ClickResult | None:
                 raw=str(exc),
             ),
             effective_locator=locator,
+            next_step_hint="动作失败。请先 snap 观察当前页面状态，再更换定位器或处理遮挡/歧义。",
         )
 
     parsed = _parse_action_result(
@@ -188,6 +208,9 @@ def click_with_runtime_context(locator: str) -> ClickResult | None:
             success=True,
             failure=parsed.get("failure"),
             effective_locator=parsed["effective_locator"],
+            verification_required=True,
+            next_step_hint=ACTION_VERIFICATION_HINT,
+            risk=_locator_risk(parsed["effective_locator"], parsed.get("failure")),
         )
 
     failure: ActionFailure = parsed["failure"]
@@ -197,6 +220,9 @@ def click_with_runtime_context(locator: str) -> ClickResult | None:
         error=failure.summary or failure.raw,
         failure=failure,
         effective_locator=parsed["effective_locator"],
+        verification_required=False,
+        next_step_hint="动作失败。不要重复尝试同一 locator；请 snap 后结合 failure.error_type 和 match_groups 重新定位。",
+        risk=_locator_risk(parsed["effective_locator"], failure),
     )
 
 
@@ -220,6 +246,7 @@ def fill_with_runtime_context(locator: str, value: str) -> FillResult | None:
                 raw=str(exc),
             ),
             effective_locator=locator,
+            next_step_hint="填充失败。请先 snap 观察当前页面状态，再更换定位器或处理遮挡/歧义。",
         )
 
     parsed = _parse_action_result(
@@ -232,6 +259,9 @@ def fill_with_runtime_context(locator: str, value: str) -> FillResult | None:
             success=True,
             failure=parsed.get("failure"),
             effective_locator=parsed["effective_locator"],
+            verification_required=True,
+            next_step_hint=ACTION_VERIFICATION_HINT,
+            risk=_locator_risk(parsed["effective_locator"], parsed.get("failure")),
         )
 
     failure: ActionFailure = parsed["failure"]
@@ -240,6 +270,9 @@ def fill_with_runtime_context(locator: str, value: str) -> FillResult | None:
         error=failure.summary or failure.raw,
         failure=failure,
         effective_locator=parsed["effective_locator"],
+        verification_required=False,
+        next_step_hint="填充失败。不要重复尝试同一 locator；请 snap 后结合 failure.error_type 和 match_groups 重新定位。",
+        risk=_locator_risk(parsed["effective_locator"], failure),
     )
 
 
