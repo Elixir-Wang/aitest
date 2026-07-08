@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const pageSource = readFileSync(
-  new URL("../src/app/(main)/projects/[projectId]/requirements/[documentId]/versions/[versionId]/page.tsx", import.meta.url),
+  new URL(
+    "../src/app/(main)/projects/[projectId]/requirements/[documentId]/versions/[versionId]/page.tsx",
+    import.meta.url,
+  ),
   "utf8",
 );
 
@@ -15,4 +18,12 @@ test("requirement version detail back action returns to the requirement overview
   assert.match(pageSource, /router\.push\(versionHistoryTabPath\)/);
   assert.doesNotMatch(pageSource, /\/requirements\/\$\{documentId\}\/versions`/);
   assert.doesNotMatch(pageSource, /router\.back\(\)/);
+});
+
+test("requirement version breadcrumb uses the loaded document name without fallback", () => {
+  assert.match(
+    pageSource,
+    /\.\.\.\(documentName \? \[\{ label: documentName, href: `\/projects\/\$\{projectId\}\/requirements\/\$\{documentId\}` \}\] : \[\]\)/,
+  );
+  assert.doesNotMatch(pageSource, /\{ label: documentName \|\| "需求文档"/);
 });

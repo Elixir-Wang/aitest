@@ -49,6 +49,11 @@ test("review page includes adoption metrics and review filters", () => {
   assert.match(reviewPageSource, /useState<ReviewFilter>\("ready_for_review"\)/);
 });
 
+test("review page uses the test case set name as the final breadcrumb", () => {
+  assert.match(reviewPageSource, /\.\.\.\(testCaseSet \? \[\{ label: testCaseSet\.name \}\] : \[\]\)/);
+  assert.doesNotMatch(reviewPageSource, /\{ label: testCaseSet\?\.name \?\? "用例评审" \}/);
+});
+
 test("review filters show status counts", () => {
   assert.match(reviewPageSource, /const filterCounts: Record<ReviewFilter, number> =/);
   assert.match(reviewPageSource, /all: stats\.case_count/);

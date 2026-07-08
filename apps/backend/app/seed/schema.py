@@ -351,7 +351,7 @@ CREATE TABLE IF NOT EXISTS api_test_environments (
   username TEXT NOT NULL DEFAULT '',
   password_encrypted TEXT NOT NULL DEFAULT '',
   password_hash TEXT NOT NULL DEFAULT '',
-  auth_type TEXT NOT NULL CHECK(auth_type IN ('none', 'static_bearer', 'static_headers', 'cookie', 'login_request')) DEFAULT 'none',
+  auth_type TEXT NOT NULL CHECK(auth_type IN ('none', 'account_password', 'cybertron_agent')) DEFAULT 'none',
   auth_config_json TEXT NOT NULL DEFAULT '{}',
   variables_json TEXT NOT NULL DEFAULT '{}',
   default_headers_json TEXT NOT NULL DEFAULT '{}',

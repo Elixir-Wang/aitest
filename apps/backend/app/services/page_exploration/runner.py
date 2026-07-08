@@ -1,6 +1,7 @@
 # apps/backend/app/services/page_exploration/runner.py
 
 import asyncio
+import logging
 import sys
 import threading
 from datetime import datetime, timezone
@@ -14,7 +15,10 @@ from app.services.page_exploration import event_bus as default_event_bus
 from app.services.page_exploration.event_log import _ExplorationEventLog, _publish_run_terminal_event
 from app.services.page_exploration.event_payload import _compact_event_payload
 from app.services.page_exploration.output_registry import (
+    _append_project_page_edge,
     _checkpoint_snapshot_artifact_from_event,
+    _element_name_from_locator,
+    _page_identity_from_url,
     _register_exploration_outputs,
 )
 from app.services.page_exploration.report_writer import (
@@ -27,6 +31,7 @@ from app.services.page_exploration.timeline_projection import _projection_chunk_
 
 _running_explorations: dict[str, dict[str, object]] = {}
 _exploration_lock = threading.Lock()
+logger = logging.getLogger(__name__)
 
 
 class ExplorationCancelledError(Exception):
@@ -232,8 +237,9 @@ def _register_failed_exploration_outputs(run_id: str) -> str:
             max_pages=int(run_dict.get("max_pages") or 0),
             result_status="failed",
         )
-    except Exception:
-        return ""
+    except Exception as exc:
+        logger.warning("failed to register failed exploration outputs: run_id=%s error=%s", run_id, exc)
+        return f"失败产物登记失败：{exc}"
 
 
 def _exploration_start_url(run_config: dict) -> str:
@@ -483,6 +489,7 @@ async def _astream_agent_with_timeline_events(
     final_result: dict | None = None
     tool_inputs: dict[str, dict] = {}
     seen_projection_keys: set[str] = set()
+    page_transition_state: dict[str, str | dict] = {}
     async for chunk in agent.astream(payload, config=config, stream_mode=["updates", "messages", "values"]):
         _ensure_exploration_not_stopping(run_id)
         mode, data = _stream_chunk_parts(chunk)
@@ -518,9 +525,67 @@ async def _astream_agent_with_timeline_events(
             snapshot_event = readable_event.get("snapshot_event")
             if isinstance(snapshot_event, dict):
                 _checkpoint_snapshot_artifact_from_event(snapshot_event, project_id=project_id, run_id=run_id)
+                _record_page_transition_from_snapshot(
+                    snapshot_event,
+                    project_id=project_id,
+                    run_id=run_id,
+                    state=page_transition_state,
+                )
+            _remember_page_transition_action(readable_event, page_transition_state)
         if mode == "values" and isinstance(data, dict):
             final_result = data
     return final_result or {}
+
+
+def _remember_page_transition_action(readable_event: dict, state: dict) -> None:
+    payload = readable_event.get("payload") if isinstance(readable_event.get("payload"), dict) else {}
+    if readable_event.get("type") != "agent_tool_completed":
+        return
+    if payload.get("tool_name") != "playwright_click_tool":
+        return
+    locator = _string(payload.get("locator"))
+    state["last_action"] = {
+        "action": "click",
+        "locator": locator,
+        "element_name": _element_name_from_locator(locator),
+    }
+
+
+def _record_page_transition_from_snapshot(
+    snapshot_event: dict,
+    *,
+    project_id: str,
+    run_id: str,
+    state: dict,
+) -> None:
+    data = snapshot_event.get("data") if isinstance(snapshot_event.get("data"), dict) else {}
+    output = data.get("output") if isinstance(data.get("output"), dict) else {}
+    url = _string(output.get("url"))
+    if not url:
+        return
+    current_page_id, current_path = _page_identity_from_url(url)
+    previous_page_id = _string(state.get("last_page_id"))
+    previous_url = _string(state.get("last_url"))
+    last_action = state.get("last_action") if isinstance(state.get("last_action"), dict) else {}
+
+    if previous_page_id and previous_page_id != current_page_id and last_action:
+        _append_project_page_edge(
+            project_id=project_id,
+            run_id=run_id,
+            from_page_id=previous_page_id,
+            to_page_id=current_page_id,
+            action=_string(last_action.get("action")) or "click",
+            element_name=_string(last_action.get("element_name")),
+            locator=_string(last_action.get("locator")),
+            from_url=previous_url,
+            to_url=url,
+        )
+        state["last_action"] = {}
+    elif previous_page_id == current_page_id and last_action:
+        state["last_action"] = {}
+
+    state["last_page_id"] = current_page_id
+    state["last_url"] = current_path
 
 
 def _stream_chunk_parts(chunk) -> tuple[str | None, object]:

@@ -22,38 +22,23 @@ from app.services.page_exploration.output_registry import (
     _attach_verification_metadata,
     _checkpoint_snapshot_artifact_from_event,
     _inline_list_pages,
+    _list_project_page_edges,
     _register_exploration_outputs,
     _semantic_locator_candidates,
     _snapshot_elements_for_artifact,
 )
 from app.services.page_exploration.run_detail import (
-    _artifact_module_key,
-    _artifact_root_path,
     _module_shell,
-    _modules_from_artifacts,
     _modules_from_db_pages,
-    _modules_from_live_state,
-    _modules_from_progress_json,
-    _modules_from_summary_and_pages,
     _normalize_exploration_run_detail,
-    _normalize_progress_page,
-    _normalize_steps,
     _page_from_db_page,
-    _page_from_live_state,
-    _page_from_page_artifact,
-    _progress_pages_from_state,
-    _read_json_file,
-    _read_page_artifacts,
     _read_recent_timeline_events,
-    _read_yaml_file,
     _refresh_module_counts,
-    _steps_from_actions,
 )
 from app.services.page_exploration.report_writer import (
     _exploration_completion_status,
     _read_timeline_events_from_run_dir,
     _write_exploration_report,
-    _write_exploration_summary,
 )
 from app.services.page_exploration.runner import (
     ExplorationCancelledError,
@@ -136,11 +121,11 @@ def get_exploration_run(actor, run_id: str) -> dict:
         pages = exploration_page_repo.list_by_run(db, run_id)
         run_dict = _normalize_exploration_run_detail(dict(run))
 
-        modules = _modules_from_db_pages(run_dict, [dict(page) for page in pages]) if pages else _modules_from_artifacts(run_dict)
+        modules = _modules_from_db_pages(run_dict, [dict(page) for page in pages])
 
         return {
             "run": run_dict,
-            "artifact_schema_version": 2 if modules else 1,
+            "artifact_schema_version": 2,
             "unsupported_artifact": False,
             "unsupported_reason": "",
             "modules": modules,
@@ -409,6 +394,7 @@ def list_run_pages(actor, run_id: str) -> list[dict]:
 def list_project_pages(actor, project_id: str) -> list[dict]:
     """列出项目级探索页面产物。"""
     base_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration"
+    parent_by_page_id = _project_page_parent_index(project_id)
     rows = []
     for page in _inline_list_pages(project_id):
         last_explored = page.get("last_explored") if isinstance(page.get("last_explored"), dict) else {}
@@ -423,6 +409,7 @@ def list_project_pages(actor, project_id: str) -> list[dict]:
                 "title": _string(page.get("title") or page_id),
                 "display_name": _string(page.get("display_name") or page_id),
                 "breadcrumb": page.get("breadcrumb") if isinstance(page.get("breadcrumb"), list) else [],
+                "parent_id": parent_by_page_id.get(page_id, ""),
                 "url": "",
                 "entry_path": _string(page.get("normalized_path") or ""),
                 "structure_summary": _string(page.get("structure_summary") or ""),
@@ -434,6 +421,16 @@ def list_project_pages(actor, project_id: str) -> list[dict]:
             }
         )
     return rows
+
+
+def _project_page_parent_index(project_id: str) -> dict[str, str]:
+    parent_by_page_id: dict[str, str] = {}
+    for edge in _list_project_page_edges(project_id):
+        from_page_id = _string(edge.get("from_page_id"))
+        to_page_id = _string(edge.get("to_page_id"))
+        if from_page_id and to_page_id and from_page_id != to_page_id:
+            parent_by_page_id[to_page_id] = from_page_id
+    return parent_by_page_id
 
 
 def list_run_artifacts(actor, run_id: str) -> list[dict]:

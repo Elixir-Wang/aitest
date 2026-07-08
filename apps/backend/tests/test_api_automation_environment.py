@@ -37,7 +37,9 @@ def _seed_project() -> None:
         )
 
 
-def test_create_api_environment_encrypts_password_and_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_create_api_environment_encrypts_password_and_cybertron_secret(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project()
 
@@ -48,8 +50,12 @@ def test_create_api_environment_encrypts_password_and_token(monkeypatch: pytest.
             api_base_url="https://api.example.test",
             username="tester",
             password="secret-password",
-            auth_type="static_bearer",
-            auth_config={"token": "plain-token"},
+            auth_type="cybertron_agent",
+            auth_config={
+                "cybertron_robot_key": "plain-key",
+                "cybertron_robot_token": "plain-token",
+                "username": "robot-user",
+            },
         ),
         ACTOR,
     )
@@ -63,9 +69,15 @@ def test_create_api_environment_encrypts_password_and_token(monkeypatch: pytest.
     assert row["password_encrypted"] != "secret-password"
     assert decrypt_api_environment_secret(row["password_encrypted"]) == "secret-password"
     auth_config = api_automation_repo.loads_json(row["auth_config_json"], {})
-    assert "token" not in auth_config
-    assert auth_config["token_encrypted"] != "plain-token"
-    assert decrypt_api_environment_secret(auth_config["token_encrypted"]) == "plain-token"
+    assert "cybertron_robot_key" not in auth_config
+    assert "cybertron_robot_token" not in auth_config
+    assert auth_config["cybertron_robot_key_encrypted"] != "plain-key"
+    assert auth_config["cybertron_robot_token_encrypted"] != "plain-token"
+    assert decrypt_api_environment_secret(auth_config["cybertron_robot_key_encrypted"]) == "plain-key"
+    assert decrypt_api_environment_secret(auth_config["cybertron_robot_token_encrypted"]) == "plain-token"
+    assert auth_config["username"] == "robot-user"
+    default_headers = api_automation_repo.loads_json(row["default_headers_json"], {})
+    assert default_headers == {}
 
 
 def test_list_api_environments_masks_sensitive_auth_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -76,15 +88,111 @@ def test_list_api_environments_masks_sensitive_auth_config(monkeypatch: pytest.M
         ApiEnvironmentIn(
             name="测试环境",
             api_base_url="https://api.example.test",
-            auth_type="static_bearer",
-            auth_config={"token": "plain-token"},
+            auth_type="cybertron_agent",
+            auth_config={
+                "cybertron_robot_key": "plain-key",
+                "cybertron_robot_token": "plain-token",
+                "username": "robot-user",
+            },
         ),
         ACTOR,
     )
 
     environments = service.list_api_environments("project-1", ACTOR)
 
-    assert environments[0]["auth_config"] == {"token_saved": True}
+    assert environments[0]["auth_config"] == {
+        "cybertron_robot_key_saved": True,
+        "cybertron_robot_token_saved": True,
+        "username": "robot-user",
+    }
+    assert environments[0]["default_headers"] == {}
+
+
+def test_cybertron_environment_builds_runtime_headers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+    created = service.create_api_environment(
+        "project-1",
+        ApiEnvironmentIn(
+            name="测试环境",
+            api_base_url="https://api.example.test",
+            auth_type="cybertron_agent",
+            auth_config={
+                "cybertron_robot_key": "plain-key",
+                "cybertron_robot_token": "plain-token",
+                "username": "robot-user",
+            },
+        ),
+        ACTOR,
+    )
+
+    with connect() as db:
+        environment = service._build_debug_environment(db, "project-1", created["id"])
+
+    assert "Content-Type" not in environment["headers"]
+    assert environment["headers"]["cybertron-robot-key"] == "plain-key"
+    assert environment["headers"]["cybertron-robot-token"] == "plain-token"
+    assert environment["headers"]["username"] == "robot-user"
+
+
+def test_update_api_environment_preserves_omitted_hidden_fields(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+    created = service.create_api_environment(
+        "project-1",
+        ApiEnvironmentIn(
+            name="测试环境",
+            api_base_url="https://api.example.test",
+            variables={"tenant": "demo"},
+            verify_ssl=False,
+        ),
+        ACTOR,
+    )
+
+    updated = service.update_api_environment(
+        "project-1",
+        created["id"],
+        ApiEnvironmentIn(
+            name="测试环境-改名",
+            api_base_url="https://api.example.test",
+            timeout_seconds=45,
+        ),
+        ACTOR,
+    )
+
+    assert updated["name"] == "测试环境-改名"
+    assert updated["timeout_seconds"] == 45
+    assert updated["variables"] == {"tenant": "demo"}
+    assert updated["verify_ssl"] is False
+
+
+def test_update_api_environment_preserves_omitted_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+    created = service.create_api_environment(
+        "project-1",
+        ApiEnvironmentIn(
+            name="测试环境",
+            api_base_url="https://api.example.test",
+            timeout_seconds=45,
+        ),
+        ACTOR,
+    )
+
+    updated = service.update_api_environment(
+        "project-1",
+        created["id"],
+        ApiEnvironmentIn(
+            name="测试环境-改名",
+            api_base_url="https://api.example.test",
+        ),
+        ACTOR,
+    )
+
+    assert updated["name"] == "测试环境-改名"
+    assert updated["timeout_seconds"] == 45
 
 
 def test_guest_cannot_create_api_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

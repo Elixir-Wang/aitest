@@ -2,20 +2,16 @@
 
 import hashlib
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+logger = logging.getLogger(__name__)
+
 
 def _string(value) -> str:
     return "" if value is None else str(value)
-
-
-def _write_yaml_file(path: Path, payload: dict) -> None:
-    import yaml
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
 def _exploration_mode_label(exploration_mode: str) -> str:
@@ -49,59 +45,6 @@ def _locator_label(locator: str) -> str:
     if match:
         return " / ".join(part for part in match.group(1).split("-") if part)
     return locator[:64]
-
-
-def _write_exploration_summary(
-    *,
-    run_dir: Path,
-    run_id: str,
-    start_url: str,
-    scope: str,
-    exploration_mode: str,
-    max_pages: int,
-    page_artifacts: list[tuple[Path, dict]],
-    completion_status: str = "completed",
-) -> None:
-    module_counts: dict[str, int] = {}
-    for _, artifact in page_artifacts:
-        page = artifact.get("page") if isinstance(artifact.get("page"), dict) else {}
-        module_key = _string(page.get("module_key") or page.get("module") or scope or "主探索模块")
-        module_counts[module_key] = module_counts.get(module_key, 0) + 1
-    modules = [
-        {
-            "module_key": module_key,
-            "module_name": module_key,
-            "status": completion_status,
-            "entry_path": scope or start_url,
-            "planned_page_count": max_pages,
-            "explored_page_count": count,
-        }
-        for module_key, count in module_counts.items()
-    ]
-    if not modules:
-        module_key = scope or "主探索模块"
-        modules = [
-            {
-                "module_key": module_key,
-                "module_name": module_key,
-                "status": completion_status,
-                "entry_path": scope or start_url,
-                "planned_page_count": max_pages,
-                "explored_page_count": 0,
-            }
-        ]
-    _write_yaml_file(
-        run_dir / "summary.yaml",
-        {
-            "run_id": run_id,
-            "artifact_schema_version": 2,
-            "start_url": start_url,
-            "exploration_mode": exploration_mode,
-            "scope": scope,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "modules": modules,
-        },
-    )
 
 
 def _read_timeline_events_from_run_dir(run_dir: Path) -> list[dict]:
@@ -747,9 +690,15 @@ def _render_exploration_summary_from_db(run_id: str, db_path: Path) -> dict:
                 "structure_summary": row["structure_summary"] or "",
                 "created_at": row["created_at"] or "",
             }
-    except Exception:
-        pass
-    conn.close()
+    except Exception as exc:
+        logger.warning(
+            "failed to read exploration pages from db for report: run_id=%s db_path=%s error=%s",
+            run_id,
+            db_path,
+            exc,
+        )
+    finally:
+        conn.close()
     return pages
 
     try:

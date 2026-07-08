@@ -1,0 +1,19 @@
+edges:
+  - id: edge-current-workspace-botsetting
+    run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+    from_page_id: page-workspace
+    to_page_id: page-botSetting
+    action: click
+    element_name: 创建
+    from_url: /workspace
+    to_url: /botSetting
+    observed_at: '2026-07-08T12:02:00+00:00'
+  - id: edge-current-botsetting-agentrelease
+    run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+    from_page_id: page-botSetting
+    to_page_id: page-agentRelease
+    action: click
+    element_name: 发布
+    from_url: /botSetting
+    to_url: /agentRelease
+    observed_at: '2026-07-08T12:02:00+00:00'

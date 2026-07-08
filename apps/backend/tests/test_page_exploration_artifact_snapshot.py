@@ -515,21 +515,20 @@ def test_invoke_agent_checkpoints_snapshot_as_page_artifact(monkeypatch, tmp_pat
         tmp_path
         / "project-1"
         / "page_exploration"
-        / "runs"
-        / "run-checkpoint"
         / "pages"
         / "page-workspace.yaml"
     )
     assert page_path.exists()
+    assert not (
+        tmp_path / "project-1" / "page_exploration" / "runs" / "run-checkpoint" / "pages"
+    ).exists()
     import yaml
 
     data = yaml.safe_load(page_path.read_text(encoding="utf-8"))
     assert data["page"]["id"] == "page-workspace"
     assert data["page"]["normalized_path"] == "/workspace"
-    assert data["page"]["url"] == "https://example.test/workspace?tab=agents"
-    assert data["page"]["elements"][0]["locators"][0]["code"] == "getByRole('button', { name: '创建智能体' })"
-    assert data["page"]["accessibility_tree"][1]["name"] == "自主规划 Agent"
-    assert "Multi-Agent" in data["page"]["visible_text_blocks"]
+    assert data["page"]["env_urls"]["test"] == "https://example.test/workspace?tab=agents"
+    assert data["states"][0]["elements"][0]["locators"][0]["code"] == "getByRole('button', { name: '创建智能体' })"
     assert data["states"][0]["accessibility_tree"][2]["name"] == "Multi-Agent"
     assert "raw_output" not in data["states"][0]
 
@@ -1248,22 +1247,6 @@ def test_exploration_completion_status_is_failed_for_step_errors(tmp_path: Path)
     assert page_exploration_service._exploration_completion_status([]) == "completed"
 
 
-def test_write_exploration_summary_uses_completion_status(tmp_path: Path) -> None:
-    page_exploration_service._write_exploration_summary(
-        run_dir=tmp_path,
-        run_id="run-complete",
-        start_url="https://example.test",
-        scope="工作台",
-        exploration_mode="goal",
-        max_pages=10,
-        page_artifacts=[],
-        completion_status="completed",
-    )
-
-    content = (tmp_path / "summary.yaml").read_text(encoding="utf-8")
-    assert "status: completed" in content
-
-
 def test_projection_write_todos_only_completed_updates_plan_without_transcript_display() -> None:
     tool_inputs: dict[str, dict] = {}
     started = page_exploration_service._projection_chunk_to_timeline_events(
@@ -1441,81 +1424,6 @@ def test_exploration_stream_does_not_cancel_event_bus_subscription() -> None:
     assert "pump_events" in source
 
 
-def test_modules_from_artifacts_builds_frontend_progress_when_db_pages_are_empty(tmp_path: Path) -> None:
-    run_dir = tmp_path / "project-1" / "exploration" / "explore-1"
-    live_dir = run_dir / "live"
-    live_dir.mkdir(parents=True)
-
-    (live_dir / "state.json").write_text(
-        json.dumps(
-            {
-                "artifact_schema_version": 2,
-                "summary": {
-                    "modules": [
-                        {
-                            "module_key": "planned-01",
-                            "module_name": "工作台模块",
-                            "status": "running",
-                            "planned_page_count": 2,
-                            "explored_page_count": 1,
-                            "action_count": 3,
-                            "entry_path": "工作台",
-                        }
-                    ]
-                },
-                "pages": [
-                    {
-                        "file_path": "live/pages/page-001.yaml",
-                        "page_url": "https://example.test/workspace",
-                        "title": "百融百工",
-                        "content": {
-                            "page": {
-                                "id": "page-001",
-                                "semantic_title": "工作台",
-                                "title": "百融百工",
-                                "url": "https://example.test/workspace",
-                                "normalized_url": "/workspace",
-                                "module": "工作台",
-                                "status": "explored",
-                                "structure_summary": "发现工作台卡片。",
-                            },
-                            "steps": [
-                                {
-                                    "id": "step-001",
-                                    "type": "click",
-                                    "title": "创建按钮",
-                                    "detail": "打开创建弹窗。",
-                                    "status": "completed",
-                                }
-                            ],
-                        },
-                    }
-                ],
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-
-    modules = page_exploration_service._modules_from_artifacts(
-        {
-            "id": "explore-1",
-            "status": "running",
-            "scope": "工作台",
-            "artifact_root": str(run_dir),
-            "result_summary": "正在探索。",
-        }
-    )
-
-    assert len(modules) == 1
-    assert modules[0]["module_key"] == "planned-01"
-    assert modules[0]["module_name"] == "工作台模块"
-    assert modules[0]["completion_status"] == "running"
-    assert modules[0]["explored_page_count"] == 1
-    assert modules[0]["pages"][0]["title"] == "工作台"
-    assert modules[0]["pages"][0]["steps"][0]["title"] == "创建按钮"
-
-
 def test_modules_from_db_pages_preserves_module_grouping() -> None:
     modules = page_exploration_service._modules_from_db_pages(
         {
@@ -1586,6 +1494,7 @@ page:
             "title": "工作台首页",
             "display_name": "workspace",
             "breadcrumb": ["workspace"],
+            "parent_id": "",
             "url": "",
             "entry_path": "/workspace",
             "structure_summary": "发现工作台入口。",
@@ -1627,8 +1536,63 @@ page:
     assert rows[0]["id"] == "page-workspace-botSetting"
     assert rows[0]["display_name"] == "botSetting"
     assert rows[0]["breadcrumb"] == ["workspace", "botSetting"]
+    assert rows[0]["parent_id"] == ""
     assert rows[0]["entry_path"] == "/workspace/botSetting"
     assert "?" not in rows[0]["entry_path"]
+
+
+def test_list_project_pages_uses_page_edges_as_parent_relation(monkeypatch, tmp_path: Path) -> None:
+    page_root = tmp_path / "project-1" / "page_exploration"
+    project_pages = page_root / "pages"
+    project_pages.mkdir(parents=True)
+    (project_pages / "page-workspace.yaml").write_text(
+        """
+page:
+  id: page-workspace
+  title: 工作台
+  display_name: workspace
+  normalized_path: /workspace
+  last_explored:
+    run_id: run-1
+    timestamp: '2026-07-08T10:00:00Z'
+""",
+        encoding="utf-8",
+    )
+    (project_pages / "page-botSetting.yaml").write_text(
+        """
+page:
+  id: page-botSetting
+  title: Bot Setting
+  display_name: botSetting
+  normalized_path: /botSetting
+  last_explored:
+    run_id: run-1
+    timestamp: '2026-07-08T10:01:00Z'
+""",
+        encoding="utf-8",
+    )
+    (page_root / "page_edges.yaml").write_text(
+        """
+edges:
+  - id: edge-1
+    run_id: run-1
+    from_page_id: page-workspace
+    to_page_id: page-botSetting
+    action: click
+    element_name: 创建
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+
+    rows = page_exploration_service.list_project_pages(actor={"id": "u-1"}, project_id="project-1")
+    parent_by_id = {row["id"]: row["parent_id"] for row in rows}
+
+    assert parent_by_id == {
+        "page-workspace": "",
+        "page-botSetting": "page-workspace",
+    }
 
 
 def test_get_project_page_yaml_content_reads_shared_page_yaml(monkeypatch, tmp_path: Path) -> None:
@@ -1656,17 +1620,20 @@ def test_get_project_page_yaml_content_reads_shared_page_yaml(monkeypatch, tmp_p
 
 def test_register_exploration_outputs_indexes_page_and_report(monkeypatch, tmp_path: Path) -> None:
     page_root = tmp_path / "project-1" / "page_exploration"
-    pages_dir = page_root / "runs" / "run-1" / "pages"
+    pages_dir = page_root / "pages"
     pages_dir.mkdir(parents=True)
     (pages_dir / "page-workspace.yaml").write_text(
         """
 page:
   id: page-workspace
   title: 工作台
-  url: https://example.test/workspace
-  normalized_url: /workspace
-  module: 工作台
+  normalized_path: /workspace
+  env_urls:
+    test: https://example.test/workspace
   structure_summary: 发现工作台入口。
+  last_explored:
+    run_id: run-1
+    timestamp: '2026-07-02T11:34:59Z'
 states:
   - id: default
     elements:
@@ -1720,23 +1687,29 @@ states:
     page_artifact = next(params for params in calls["artifacts"] if params[2] == "page_yaml")
     assert page_artifact[3] == str(page_root / "pages" / "page-workspace.yaml")
     assert (page_root / "pages" / "page-workspace.yaml").exists()
-    assert (page_root / "runs" / "run-1" / "summary.yaml").exists()
+    assert not (page_root / "runs" / "run-1" / "pages").exists()
+    assert not (page_root / "runs" / "run-1" / "summary.yaml").exists()
     assert (page_root / "runs" / "run-1" / "report.md").exists()
 
 
 def test_failed_exploration_registers_current_partial_outputs(monkeypatch, tmp_path: Path) -> None:
     run_dir = tmp_path / "project-1" / "page_exploration" / "runs" / "run-failed"
-    pages_dir = run_dir / "pages"
+    pages_dir = tmp_path / "project-1" / "page_exploration" / "pages"
     pages_dir.mkdir(parents=True)
     (pages_dir / "page-current.yaml").write_text(
         """
 page:
   id: page-current
   title: 当前轮页面
-  url: https://example.test/current
-  normalized_url: /current
-  module: 当前模块
+  normalized_path: /current
+  env_urls:
+    test: https://example.test/current
   structure_summary: 当前轮已经采集到页面事实。
+  last_explored:
+    run_id: run-failed
+    timestamp: '2026-07-02T11:34:59Z'
+metadata:
+  module: 当前模块
 """,
         encoding="utf-8",
     )

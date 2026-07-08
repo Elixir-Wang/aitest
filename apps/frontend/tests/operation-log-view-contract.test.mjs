@@ -28,15 +28,15 @@ test("operation log action labels cover requirement analysis lifecycle actions",
   assert.match(apiClientSource, /finish_requirement_analysis: "完成需求分析"/);
 });
 
-test("operation log filters load dynamic options from the backend with static fallback", () => {
+test("operation log filters use dynamic options from the backend without static fallback", () => {
   assert.match(apiClientSource, /export type ApiOperationLogFilterOptions = \{/);
   assert.match(viewSource, /apiRequest<ApiOperationLogFilterOptions>\(`\$\{endpoint\}\/filter-options\$\{suffix\}`\)/);
   assert.match(viewSource, /params\.set\("project_id", projectId\);/);
   assert.match(viewSource, /setProjects\(await apiRequest<ApiProject\[\]>\("\/projects"\)\);/);
-  assert.match(viewSource, /function mergeOptions\(fallback: string\[\], dynamicOptions: string\[\] \| undefined\)/);
-  assert.match(viewSource, /const moduleOptions = useMemo\(/);
-  assert.match(viewSource, /const actionOptions = useMemo\(/);
-  assert.match(viewSource, /const resultOptions = useMemo\(/);
+  assert.doesNotMatch(viewSource, /function mergeOptions/);
+  assert.match(viewSource, /const moduleOptions = useMemo\(\(\) => \["", \.\.\.\(filterOptions\?\.modules \?\? \[\]\)\]/);
+  assert.match(viewSource, /const actionOptions = useMemo\(\(\) => \["", \.\.\.\(filterOptions\?\.actions \?\? \[\]\)\]/);
+  assert.match(viewSource, /const resultOptions = useMemo\(\(\) => \["", \.\.\.\(filterOptions\?\.results \?\? \[\]\)\]/);
 });
 
 test("operation log view exports the current filters as a csv download", () => {

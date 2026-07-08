@@ -60,8 +60,12 @@ def test_debug_project_endpoint_sends_request_through_backend(monkeypatch: pytes
         ApiEnvironmentIn(
             name="测试环境",
             api_base_url="https://api.example.test/openapi/v2",
-            auth_type="static_bearer",
-            auth_config={"token": "secret-token"},
+            auth_type="cybertron_agent",
+            auth_config={
+                "cybertron_robot_key": "robot-key",
+                "cybertron_robot_token": "robot-token",
+                "username": "robot-user",
+            },
             default_headers={"X-Env": "env"},
         ),
         ACTOR,
@@ -106,8 +110,120 @@ def test_debug_project_endpoint_sends_request_through_backend(monkeypatch: pytes
     assert captured["params"] == {"verbose": "1"}
     assert captured["headers"]["X-Env"] == "env"
     assert captured["headers"]["X-Request"] == "debug"
-    assert captured["headers"]["Authorization"] == "Bearer secret-token"
+    assert captured["headers"]["Content-Type"] == "application/json"
+    assert captured["headers"]["cybertron-robot-key"] == "robot-key"
+    assert captured["headers"]["cybertron-robot-token"] == "robot-token"
+    assert captured["headers"]["username"] == "robot-user"
     assert captured["json"] == {"question": "你好"}
     assert result["status_code"] == 201
     assert result["body_json"] == {"ok": True}
-    assert result["request"]["headers"]["Authorization"] == "******"
+    assert result["request"]["headers"]["cybertron-robot-key"] == "******"
+    assert result["request"]["headers"]["cybertron-robot-token"] == "******"
+
+
+def test_debug_project_endpoint_uses_request_body_content_type(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint()
+    with connect() as db:
+        api_automation_repo.upsert_endpoint(
+            db,
+            endpoint_id="apiend-form",
+            project_id="project-1",
+            document_id=None,
+            method="POST",
+            path="/upload",
+            normalized_path="/upload",
+            summary="上传",
+            description="",
+            tags=["knowledge"],
+            parameters=[],
+            request_body={"content": {"application/x-www-form-urlencoded": {"schema": {"type": "object"}}}},
+            responses={"200": {"description": "ok"}},
+            auth={},
+            source={"source_type": "manual"},
+            created_by=ACTOR["id"],
+        )
+    environment = service.create_api_environment(
+        "project-1",
+        ApiEnvironmentIn(name="测试环境", api_base_url="https://api.example.test", default_headers={}),
+        ACTOR,
+    )
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        headers = {}
+        text = "{}"
+
+        class elapsed:
+            @staticmethod
+            def total_seconds() -> float:
+                return 0.001
+
+        @staticmethod
+        def json() -> dict:
+            return {}
+
+    def fake_request(**kwargs):
+        captured.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr(service.requests, "request", fake_request)
+
+    service.debug_project_endpoint(
+        "project-1",
+        "apiend-form",
+        ApiEndpointDebugIn(api_environment_id=environment["id"], body={"name": "demo"}),
+        ACTOR,
+    )
+
+    assert captured["headers"]["Content-Type"] == "application/x-www-form-urlencoded"
+
+
+def test_debug_project_endpoint_preserves_explicit_content_type(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint()
+    environment = service.create_api_environment(
+        "project-1",
+        ApiEnvironmentIn(
+            name="测试环境",
+            api_base_url="https://api.example.test",
+            default_headers={"content-type": "text/plain"},
+        ),
+        ACTOR,
+    )
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        headers = {}
+        text = "{}"
+
+        class elapsed:
+            @staticmethod
+            def total_seconds() -> float:
+                return 0.001
+
+        @staticmethod
+        def json() -> dict:
+            return {}
+
+    def fake_request(**kwargs):
+        captured.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr(service.requests, "request", fake_request)
+
+    service.debug_project_endpoint(
+        "project-1",
+        "apiend-1",
+        ApiEndpointDebugIn(api_environment_id=environment["id"], body={"question": "你好"}),
+        ACTOR,
+    )
+
+    assert captured["headers"]["content-type"] == "text/plain"
+    assert "Content-Type" not in captured["headers"]

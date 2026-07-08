@@ -34,65 +34,6 @@ type OperationLogViewProps = {
   showProjectFilter?: boolean;
 };
 
-const modules = [
-  "",
-  "project",
-  "requirement",
-  "environment",
-  "exploration",
-  "knowledge",
-  "operation_log",
-  "system_setting",
-  "model",
-  "task",
-  "auth",
-  "agent",
-  "user",
-  "frontend",
-];
-const actions = [
-  "",
-  "create",
-  "update",
-  "delete",
-  "merge",
-  "confirm",
-  "cancel",
-  "run",
-  "start",
-  "finish",
-  "generate",
-  "publish",
-  "retry",
-  "export",
-  "login",
-  "logout",
-  "upload",
-  "upload_global_knowledge",
-  "update_global_knowledge",
-  "create_global_knowledge_version",
-  "archive_global_knowledge",
-  "submit_requirement_analysis",
-  "start_requirement_analysis",
-  "finish_requirement_analysis",
-  "fail_requirement_analysis",
-  "answer_requirement_clarification",
-  "finalize_requirement_analysis",
-  "set_primary_file",
-  "assign_model",
-  "resolve_conflict",
-  "update_retention_policy",
-  "cleanup",
-  "client_error",
-  "auto_auth_login",
-  "query",
-  "delete_conversation",
-  "cancel_requirement_analysis",
-  "interrupt_exploration",
-  "stop_stale_test_case_generation",
-];
-const results = ["", "success", "failed", "partial_success", "cancelled"];
-
 type PageItem = number | "ellipsis-start" | "ellipsis-end";
 
 function getVisiblePages(currentPage: number, pageCount: number): PageItem[] {
@@ -139,9 +80,9 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(Math.max(page, 1), pageCount);
   const visiblePages = getVisiblePages(safePage, pageCount);
-  const moduleOptions = useMemo(() => mergeOptions(modules, filterOptions?.modules), [filterOptions?.modules]);
-  const actionOptions = useMemo(() => mergeOptions(actions, filterOptions?.actions), [filterOptions?.actions]);
-  const resultOptions = useMemo(() => mergeOptions(results, filterOptions?.results), [filterOptions?.results]);
+  const moduleOptions = useMemo(() => ["", ...(filterOptions?.modules ?? [])], [filterOptions?.modules]);
+  const actionOptions = useMemo(() => ["", ...(filterOptions?.actions ?? [])], [filterOptions?.actions]);
+  const resultOptions = useMemo(() => ["", ...(filterOptions?.results ?? [])], [filterOptions?.results]);
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
@@ -526,10 +467,6 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
       </Dialog>
     </div>
   );
-}
-
-function mergeOptions(fallback: string[], dynamicOptions: string[] | undefined) {
-  return Array.from(new Set([...fallback, ...(dynamicOptions ?? [])]));
 }
 
 function queryForExport(query: string) {

@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,8 +17,9 @@ from app.services.page_exploration.report_writer import (
     _exploration_completion_status,
     _read_timeline_events_from_run_dir,
     _write_exploration_report,
-    _write_exploration_summary,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _service_attr(name: str, default):
@@ -47,9 +49,12 @@ def _string(value) -> str:
 def _read_yaml_file(path: Path) -> dict:
     import yaml
 
+    if not path.exists():
+        return {}
     try:
         loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError):
+    except (OSError, yaml.YAMLError) as exc:
+        logger.warning("failed to read page exploration yaml: path=%s error=%s", path, exc)
         return {}
     return loaded if isinstance(loaded, dict) else {}
 
@@ -67,28 +72,15 @@ def _register_exploration_outputs(
 ) -> str:
     """Register file artifacts produced by the new page exploration agent."""
     run_dir = _project_file_storage_root() / project_id / "page_exploration" / "runs" / run_id
-    pages_dir = run_dir / "pages"
     run_dir.mkdir(parents=True, exist_ok=True)
-    pages_dir.mkdir(parents=True, exist_ok=True)
 
-    page_artifacts = _collect_page_artifact_files(pages_dir)
+    page_artifacts = _collect_project_page_artifacts_for_run(project_id=project_id, run_id=run_id)
     timeline_events = _read_timeline_events_from_run_dir(run_dir)
     completion_status = (
         result_status
         if result_status == "failed"
         else _exploration_completion_status(timeline_events)
     )
-    _write_exploration_summary(
-        run_dir=run_dir,
-        run_id=run_id,
-        start_url=start_url,
-        scope=scope,
-        exploration_mode=exploration_mode,
-        max_pages=max_pages,
-        page_artifacts=page_artifacts,
-        completion_status=completion_status,
-    )
-
     report_path = _write_exploration_report(
         run_dir=run_dir,
         run_id=run_id,
@@ -147,6 +139,113 @@ def _collect_page_artifact_files(*directories: Path) -> list[tuple[Path, dict]]:
     return artifacts
 
 
+def _collect_project_page_artifacts_for_run(*, project_id: str, run_id: str) -> list[tuple[Path, dict]]:
+    pages_dir = _project_file_storage_root() / project_id / "page_exploration" / "pages"
+    artifacts: list[tuple[Path, dict]] = []
+    for path, artifact in _collect_page_artifact_files(pages_dir):
+        page = artifact.get("page") if isinstance(artifact.get("page"), dict) else {}
+        last_explored = page.get("last_explored") if isinstance(page.get("last_explored"), dict) else {}
+        if _string(last_explored.get("run_id")) == run_id:
+            artifacts.append((path, artifact))
+    return artifacts
+
+
+def _append_project_page_edge(
+    *,
+    project_id: str,
+    run_id: str,
+    from_page_id: str,
+    to_page_id: str,
+    action: str = "click",
+    element_name: str = "",
+    locator: str = "",
+    from_url: str = "",
+    to_url: str = "",
+) -> dict | None:
+    if not project_id or not run_id or not from_page_id or not to_page_id or from_page_id == to_page_id:
+        return None
+
+    path = _project_page_edges_path(project_id)
+    payload = _read_yaml_file(path)
+    edges = payload.get("edges") if isinstance(payload.get("edges"), list) else []
+    edge = {
+        "id": _page_edge_id(
+            run_id=run_id,
+            from_page_id=from_page_id,
+            to_page_id=to_page_id,
+            action=action,
+            element_name=element_name,
+            locator=locator,
+        ),
+        "run_id": run_id,
+        "from_page_id": from_page_id,
+        "to_page_id": to_page_id,
+        "action": action or "click",
+        "element_name": element_name,
+        "locator": locator,
+        "from_url": _normalize_snapshot_url_path(from_url) if from_url else "",
+        "to_url": _normalize_snapshot_url_path(to_url) if to_url else "",
+        "observed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    edge = {key: value for key, value in edge.items() if value not in ("", None)}
+
+    existing_index = next((index for index, item in enumerate(edges) if isinstance(item, dict) and item.get("id") == edge["id"]), -1)
+    if existing_index >= 0:
+        edges[existing_index] = {**edges[existing_index], **edge}
+    else:
+        edges.append(edge)
+    _write_yaml_file(path, {"edges": edges})
+    return edge
+
+
+def _list_project_page_edges(project_id: str, *, run_id: str = "") -> list[dict]:
+    payload = _read_yaml_file(_project_page_edges_path(project_id))
+    raw_edges = payload.get("edges") if isinstance(payload.get("edges"), list) else []
+    edges = [edge for edge in raw_edges if isinstance(edge, dict)]
+    if run_id:
+        edges = [edge for edge in edges if _string(edge.get("run_id")) == run_id]
+    return edges
+
+
+def _project_page_edges_path(project_id: str) -> Path:
+    return _project_file_storage_root() / project_id / "page_exploration" / "page_edges.yaml"
+
+
+def _page_edge_id(
+    *,
+    run_id: str,
+    from_page_id: str,
+    to_page_id: str,
+    action: str,
+    element_name: str,
+    locator: str,
+) -> str:
+    raw = "|".join([run_id, from_page_id, to_page_id, action or "click", element_name, locator])
+    return f"edge-{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _page_identity_from_url(url: str) -> tuple[str, str]:
+    normalized_path = _normalize_snapshot_url_path(url)
+    return make_page_id(normalized_path), normalized_path
+
+
+def _element_name_from_locator(locator: str) -> str:
+    import re
+
+    patterns = [
+        r"name\s*:\s*['\"]([^'\"]+)['\"]",
+        r"getByText\(['\"]([^'\"]+)['\"]",
+        r"getByLabel\(['\"]([^'\"]+)['\"]",
+        r"getByPlaceholder\(['\"]([^'\"]+)['\"]",
+        r"hasText\s*:\s*['\"]([^'\"]+)['\"]",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, locator or "")
+        if match:
+            return match.group(1)
+    return ""
+
+
 
 
 def _write_yaml_file(path: Path, payload: dict) -> None:
@@ -176,7 +275,6 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
     normalized_path = _normalize_snapshot_url_path(url)
     page_id = make_page_id(normalized_path)
     run_dir = _project_file_storage_root() / project_id / "page_exploration" / "runs" / run_id
-    pages_dir = run_dir / "pages"
     elements = snapshot.get("elements") if isinstance(snapshot.get("elements"), list) else []
     accessibility_tree = snapshot.get("accessibility_tree") if isinstance(snapshot.get("accessibility_tree"), list) else []
     artifact_elements = _snapshot_elements_for_artifact(elements, accessibility_tree)
@@ -227,8 +325,15 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
         },
     }
 
-    path = pages_dir / f"{page_id}.yaml"
-    _write_yaml_file(path, artifact)
+    saved_path = Path(
+        _save_project_page_artifact(
+            project_id=project_id,
+            run_id=run_id,
+            artifact=artifact,
+            source_path=Path(f"pages/{page_id}.yaml"),
+            scope="主探索模块",
+        )
+    )
     try:
         with _connect() as db:
             _register_page_artifact_file(
@@ -236,15 +341,23 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
                 project_id=project_id,
                 run_dir=run_dir,
                 run_id=run_id,
-                path=path,
+                path=Path(f"pages/{page_id}.yaml"),
                 artifact=artifact,
                 scope="主探索模块",
+                project_page_path=saved_path,
             )
-    except Exception:
+    except Exception as exc:
         # Snapshot checkpoints are best-effort. The final exploration output
         # registration re-indexes all run-scoped page artifacts.
-        pass
-    return path
+        logger.warning(
+            "failed to register snapshot checkpoint artifact: project_id=%s run_id=%s page_id=%s path=%s error=%s",
+            project_id,
+            run_id,
+            page_id,
+            saved_path,
+            exc,
+        )
+    return saved_path
 
 
 def _register_page_artifact_file(
@@ -256,16 +369,30 @@ def _register_page_artifact_file(
     path: Path,
     artifact: dict,
     scope: str,
-) -> None:
+    project_page_path: Path | None = None,
+) -> Path:
     page = artifact.get("page") if isinstance(artifact.get("page"), dict) else {}
+    metadata = artifact.get("metadata") if isinstance(artifact.get("metadata"), dict) else {}
+    env_urls = page.get("env_urls") if isinstance(page.get("env_urls"), dict) else {}
     page_id = _string(page.get("id") or path.stem)
     title = _string(page.get("semantic_title") or page.get("title") or path.stem)
-    url = _string(page.get("url") or page.get("env_url") or "")
+    url = _string(page.get("url") or page.get("env_url") or env_urls.get("test") or next(iter(env_urls.values()), "") or "")
     entry_path = _string(page.get("normalized_url") or page.get("normalized_path") or page.get("entry_path") or "")
-    module_key = _string(page.get("module_key") or page.get("module") or scope or "主探索模块")
+    module_key = _string(page.get("module_key") or page.get("module") or metadata.get("module") or scope or "主探索模块")
     structure_summary = _string(page.get("structure_summary") or _page_structure_summary(artifact))
 
     _exploration_run_repo().update_artifact_root(db, run_id, str(run_dir))
+    if project_page_path is None:
+        project_page_path = Path(
+            _save_project_page_artifact(
+                project_id=project_id,
+                run_id=run_id,
+                artifact=artifact,
+                source_path=path,
+                scope=scope,
+            )
+        )
+
     _upsert_exploration_page(
         db,
         page_id=page_id,
@@ -275,23 +402,18 @@ def _register_page_artifact_file(
         entry_path=entry_path,
         module_key=module_key,
         structure_summary=structure_summary,
-        snapshot_path=str(path),
+        snapshot_path=str(project_page_path),
     )
     _upsert_exploration_artifact(
         db,
         artifact_id=f"{run_id}-{path.stem}-yaml",
         run_id=run_id,
         artifact_type="page_yaml",
-        file_path=_save_project_page_artifact(
-            project_id=project_id,
-            run_id=run_id,
-            artifact=artifact,
-            source_path=path,
-            scope=scope,
-        ),
+        file_path=str(project_page_path),
         title=title,
         summary=structure_summary,
     )
+    return project_page_path
 
 
 # --- Inlined from ProjectPagesService ---
@@ -323,8 +445,8 @@ def _inline_save_page(
             if existing:
                 env_urls = existing.get("page", {}).get("env_urls", {})
                 env_urls[env] = url
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("failed to merge existing project page env urls: path=%s error=%s", page_file, exc)
 
     full_page_data = {
         "page": {
@@ -381,8 +503,8 @@ def _inline_list_pages(project_id: str):
                     "file": page_file.name,
                 }
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("failed to read project page yaml: project_id=%s path=%s error=%s", project_id, page_file, exc)
     return pages
 
 
@@ -678,7 +800,3 @@ def _page_structure_summary(artifact: dict) -> str:
                 if isinstance(state, dict) and isinstance(state.get("elements"), list):
                     elements.extend(state["elements"])
     return f"发现 {len(elements)} 个元素"
-
-
-
-

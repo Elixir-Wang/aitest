@@ -152,8 +152,8 @@ export default function RequirementVersionPreviewPage() {
           { label: "项目", href: "/projects" },
           { label: projectName, href: `/projects/${projectId}` },
           { label: "需求", href: "/requirements" },
-          { label: documentName || "需求文档", href: `/projects/${projectId}/requirements/${documentId}` },
-          { label: "版本记录", href: `/projects/${projectId}/requirements/${documentId}/versions` },
+          ...(documentName ? [{ label: documentName, href: `/projects/${projectId}/requirements/${documentId}` }] : []),
+          { label: "版本记录", href: versionHistoryTabPath },
           { label: `v${version.version_no}` },
         ]}
         description="查看该版本的最终需求内容。"

@@ -49,7 +49,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
           title: "select-text text-xs font-medium leading-none",
           description: "select-text text-xs text-muted-foreground",
           closeButton:
-            "!right-3 !left-auto !top-1/2 !-translate-y-1/2 size-7 rounded-md border border-transparent bg-muted/70 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+            "!right-3 !left-auto !top-3 !translate-y-0 ![transform:none] size-7 rounded-md border border-transparent bg-muted/70 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
           actionButton:
             "border border-border bg-background text-foreground hover:bg-muted/10 dark:hover:bg-muted/20",
         },

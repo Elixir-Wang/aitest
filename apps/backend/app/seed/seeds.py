@@ -4,6 +4,7 @@ from app.core.security import hash_secret
 
 
 def seed_system_defaults(db: sqlite3.Connection) -> None:
+    _migrate_api_environment_auth_types(db)
     _migrate_legacy_site_exploration_assignment(db)
     _seed_operation_log_retention_policy(db)
     _ensure_all_projects_conversation_scope(db)
@@ -47,6 +48,67 @@ def _migrate_legacy_site_exploration_assignment(db: sqlite3.Connection) -> None:
         """
     )
     db.execute("DELETE FROM model_assignments WHERE capability_id = 'site_exploration'")
+
+
+def _migrate_api_environment_auth_types(db: sqlite3.Connection) -> None:
+    row = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'api_test_environments'"
+    ).fetchone()
+    table_sql = str(row["sql"] if row else "")
+    if "'account_password'" in table_sql and "'cybertron_agent'" in table_sql:
+        return
+
+    db.execute("PRAGMA foreign_keys = OFF")
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS api_test_environments_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          linked_ui_environment_id TEXT,
+          name TEXT NOT NULL,
+          api_base_url TEXT NOT NULL,
+          username TEXT NOT NULL DEFAULT '',
+          password_encrypted TEXT NOT NULL DEFAULT '',
+          password_hash TEXT NOT NULL DEFAULT '',
+          auth_type TEXT NOT NULL CHECK(auth_type IN ('none', 'account_password', 'cybertron_agent')) DEFAULT 'none',
+          auth_config_json TEXT NOT NULL DEFAULT '{}',
+          variables_json TEXT NOT NULL DEFAULT '{}',
+          default_headers_json TEXT NOT NULL DEFAULT '{}',
+          timeout_seconds INTEGER NOT NULL DEFAULT 30,
+          verify_ssl INTEGER NOT NULL DEFAULT 1,
+          auth_state_ttl_seconds INTEGER NOT NULL DEFAULT 86400,
+          description TEXT NOT NULL DEFAULT '',
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(linked_ui_environment_id) REFERENCES project_environments(id) ON DELETE SET NULL,
+          UNIQUE(project_id, name)
+        )
+        """
+    )
+    db.execute(
+        """
+        INSERT OR IGNORE INTO api_test_environments_new (
+          id, project_id, linked_ui_environment_id, name, api_base_url,
+          username, password_encrypted, password_hash, auth_type,
+          auth_config_json, variables_json, default_headers_json,
+          timeout_seconds, verify_ssl, auth_state_ttl_seconds, description,
+          created_by, created_at, updated_at
+        )
+        SELECT
+          id, project_id, linked_ui_environment_id, name, api_base_url,
+          username, password_encrypted, password_hash,
+          CASE WHEN auth_type IN ('account_password', 'cybertron_agent') THEN auth_type ELSE 'none' END,
+          CASE WHEN auth_type IN ('account_password', 'cybertron_agent') THEN auth_config_json ELSE '{}' END,
+          variables_json, default_headers_json, timeout_seconds, verify_ssl,
+          auth_state_ttl_seconds, description, created_by, created_at, updated_at
+        FROM api_test_environments
+        """
+    )
+    db.execute("DROP TABLE api_test_environments")
+    db.execute("ALTER TABLE api_test_environments_new RENAME TO api_test_environments")
+    db.execute("PRAGMA foreign_keys = ON")
 
 
 def _seed_operation_log_retention_policy(db: sqlite3.Connection) -> None:

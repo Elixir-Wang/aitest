@@ -2,10 +2,13 @@
 
 import hashlib
 import json
+import logging
 from pathlib import Path
 from urllib.parse import urlparse
 
 from app.services.page_exploration.event_payload import _clean_compact_payload, _compact_event_payload
+
+logger = logging.getLogger(__name__)
 
 
 def _string(value) -> str:
@@ -201,9 +204,13 @@ def _projection_tool_event_to_timeline_event(
                     base_dir=_settings.PROJECT_FILE_STORAGE_ROOT,
                     todos=input_data.get("todos") if isinstance(input_data.get("todos"), list) else [],
                 )
-        except Exception:
-            # subgoals 落盘失败不影响主流程
-            pass
+        except Exception as exc:
+            logger.warning(
+                "failed to persist page exploration subgoals: project_id=%s run_id=%s error=%s",
+                project_id,
+                run_id,
+                exc,
+            )
         return {
             "type": "agent_plan_updated",
             "payload": _clean_compact_payload(
@@ -504,5 +511,4 @@ def _error_reason(error: str) -> str:
     if "permission" in lowered or "denied" in lowered:
         return "权限不足或被拒绝"
     return "执行失败"
-
 

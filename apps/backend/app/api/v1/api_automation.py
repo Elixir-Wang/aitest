@@ -19,6 +19,7 @@ from app.schemas.api_automation import (
     ApiScriptUpdateIn,
     ApiTestCaseSetIn,
     ApiTestCaseSetOut,
+    ApiTestCaseOut,
     OpenAPIImportIn,
 )
 from app.services.api_automation import service
@@ -113,8 +114,8 @@ def delete_api_environment(project_id: str, environment_id: str, actor=Depends(r
     service.delete_api_environment(project_id, environment_id, actor)
 
 
-@router.post("/api-automation/generate", response_model=ApiGenerationRunOut)
-def generate_api_automation(
+@router.post("/api-test-cases/generate", response_model=ApiGenerationRunOut)
+def generate_api_test_cases(
     project_id: str,
     payload: ApiAutomationGenerateIn,
     background_tasks: BackgroundTasks,
@@ -123,6 +124,16 @@ def generate_api_automation(
     created = service.create_generation_run(project_id, payload, actor)
     background_tasks.add_task(service.execute_generation_run, created["id"])
     return created
+
+
+@router.get("/api-test-cases", response_model=list[ApiTestCaseOut])
+def list_api_test_cases(
+    project_id: str,
+    endpoint_id: str = Query(default=""),
+    status: str = Query(default=""),
+    actor=Depends(current_user),
+) -> list[dict]:
+    return service.list_api_test_cases(project_id, actor, endpoint_id=endpoint_id, status=status)
 
 
 @router.get("/api-automation/generation-runs", response_model=list[ApiGenerationRunOut])

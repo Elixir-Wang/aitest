@@ -13,104 +13,12 @@ import {
 } from "lucide-react";
 
 import type { AgentPlanStatus } from "@/components/ui/agent-plan";
-
-type ExplorationMonitorPlanStep = {
-  step_id: string;
-  step_number: number;
-  module_name: string;
-  action_type: string;
-  description: string;
-  target_description: string;
-  target_selector: string;
-  value: string;
-  expected_result: string;
-  execution_strategy: string;
-  is_critical: boolean;
-  retry_on_failure: boolean;
-  max_retries: number;
-};
-
-type ExplorationMonitorStep = ExplorationMonitorPlanStep & {
-  status: AgentPlanStatus;
-  total_steps: number;
-  attempt: number;
-  started_at: string;
-  completed_at: string;
-  success: boolean | null;
-  message: string;
-  error: string;
-  failure_type: string;
-  retryable: boolean;
-  matched_element: {
-    id: string;
-    role: string;
-    name: string;
-    selector: string;
-  };
-  page_state: {
-    url: string;
-    title: string;
-    element_count: number;
-  };
-};
-
-type ExplorationMonitorState = {
-  phase: string;
-  plan: {
-    plan_id: string;
-    goal_summary: string;
-    scope_summary: string;
-    strategy: string;
-    modules: string[];
-    estimated_duration_minutes: number | null;
-    risk_assessment: string;
-    success_criteria: string[];
-    total_steps: number;
-    steps: ExplorationMonitorPlanStep[];
-  } | null;
-  steps: ExplorationMonitorStep[];
-  events: ExplorationMonitorEvent[];
-};
-
-type ExplorationMonitorEvent = {
-  id: string;
-  type: string;
-  label: string;
-  summary: string;
-  occurred_at: string;
-  status: AgentPlanStatus;
-  payload?: Record<string, unknown>;
-  display?: ReadableExecutionDisplay;
-};
-
-type ReadableExecutionDisplayKind =
-  | "model_analysis"
-  | "thought"
-  | "agent_run"
-  | "navigate"
-  | "click"
-  | "snapshot"
-  | "file_read"
-  | "artifact_write"
-  | "todo_update"
-  | "url_record"
-  | "error"
-  | "debug";
-
-type ReadableExecutionField = {
-  label: string;
-  value: string;
-  mono?: boolean;
-  tone?: "default" | "success" | "warning" | "danger";
-};
-
-type ReadableExecutionDisplay = {
-  kind: ReadableExecutionDisplayKind;
-  title: string;
-  summary: string;
-  fields?: ReadableExecutionField[];
-  chips?: string[];
-};
+import type {
+  ExplorationMonitorEvent,
+  ExplorationMonitorState,
+  ExplorationMonitorStep,
+  ReadableExecutionField,
+} from "@/lib/exploration-types";
 
 type ExecutionTranscriptBlock = {
   id: string;

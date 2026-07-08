@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, CircleHelp, FileText, Gauge, Loader2, Play, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageShell, type PageBreadcrumb, ShellSection } from "@/components/ai-testing/page-shell";
+import { type PageBreadcrumb, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -18,43 +18,19 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import { type ApiProject, apiRequest } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
-
-type ExplorationMode = "goal" | "autonomous";
-type ProjectScope = "all" | "project";
-
-type ExplorationEnvironment = {
-  id: string;
-  name: string;
-  site_url: string;
-  login_strategy: string;
-  auth_state_status: string;
-};
+import type {
+  ExplorationEnvironment,
+  ExplorationMode,
+  ExplorationRunSummary as ExplorationRun,
+  ExplorationRunDetail,
+  ProjectScope,
+} from "@/lib/exploration-types";
 
 type RequirementDocument = {
   id: string;
   name: string;
   status: string;
   current_version_id: string | null;
-};
-
-type ExplorationRun = {
-  id: string;
-  project_id: string;
-  environment_id: string;
-  requirement_doc_id?: string;
-  title: string;
-  exploration_mode?: ExplorationMode;
-  scope?: string;
-  forbidden_paths?: string;
-  goal?: string;
-  notes?: string;
-  max_pages?: number;
-  max_actions?: number;
-  timeout_minutes?: number;
-};
-
-type ExplorationRunDetail = {
-  run: ExplorationRun;
 };
 
 type ExplorationGoalOptimizeResult = {

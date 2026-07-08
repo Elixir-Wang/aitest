@@ -9,7 +9,9 @@ from typing import Any
 from app.services.api_automation.reporting import parse_pytest_json_report
 
 
-SENSITIVE_RE = re.compile(r"(?i)(authorization:\s*bearer\s+|token=|password=|cookie:\s*)([^\s]+)")
+SENSITIVE_RE = re.compile(
+    r"(?i)(authorization:\s*bearer\s+|token=|password=|cookie:\s*|cybertron-robot-(?:key|token)[=:]\s*)([^\s]+)"
+)
 
 
 def run_script_suite(
@@ -92,7 +94,7 @@ def _write_runtime_env(run_dir: Path, environment: dict[str, Any]) -> None:
     snapshot = {
         "api_base_url": environment.get("api_base_url", ""),
         "timeout_seconds": environment.get("timeout_seconds", 30),
-        "headers": environment.get("headers", {}),
+        "headers": _mask_headers(environment.get("headers", {})),
         "variables": environment.get("variables", {}),
         "auth": _mask_auth(environment.get("auth", {})),
     }
@@ -126,6 +128,16 @@ def _mask_auth(auth: Any) -> dict[str, Any]:
     if auth.get("cookie"):
         masked["cookie_saved"] = True
     return masked
+
+
+def _mask_headers(headers: Any) -> dict[str, Any]:
+    if not isinstance(headers, dict):
+        return {}
+    sensitive_names = {"authorization", "cookie", "set-cookie", "x-api-key", "api-key", "cybertron-robot-key", "cybertron-robot-token"}
+    return {
+        str(key): "***" if str(key).lower() in sensitive_names else value
+        for key, value in headers.items()
+    }
 
 
 def _redact(value: str) -> str:

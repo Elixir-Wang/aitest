@@ -3,7 +3,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-AuthType = Literal["none", "static_bearer", "static_headers", "cookie", "login_request"]
+AuthType = Literal["none", "account_password", "cybertron_agent"]
 GenerationStatus = Literal["queued", "running", "completed", "failed", "cancelled", "interrupted"]
 ApiCaseStatus = Literal["draft", "ready", "needs_input", "archived"]
 ScriptStatus = Literal["draft", "ready", "needs_input", "failed"]
@@ -168,6 +168,24 @@ class ApiGenerationRunOut(BaseModel):
     error_message: str
     created_at: str
     finished_at: str | None = None
+
+
+class ApiTestCaseOut(BaseModel):
+    id: str
+    project_id: str
+    endpoint_id: str | None
+    title: str
+    priority: str
+    source: str
+    status: str
+    tags: list[str]
+    request: dict[str, Any]
+    expected: dict[str, Any]
+    assertions: list[dict[str, Any]]
+    variables: dict[str, Any]
+    notes: str
+    created_at: str
+    updated_at: str
 
 
 class ApiTestCaseSetIn(_StrippedModel):

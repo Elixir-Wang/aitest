@@ -777,11 +777,19 @@ export function deleteApiAutomationEnvironment(projectId: string, environmentId:
   });
 }
 
-export function generateApiAutomation(projectId: string, payload: Record<string, unknown>) {
-  return apiRequest<ApiAutomationGenerationRun>(`/projects/${projectId}/api-automation/generate`, {
+export function generateApiAutomationTestCases(projectId: string, payload: Record<string, unknown>) {
+  return apiRequest<ApiAutomationGenerationRun>(`/projects/${projectId}/api-test-cases/generate`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function listApiAutomationTestCases(projectId: string, params?: { endpoint_id?: string; status?: string }) {
+  const searchParams = new URLSearchParams();
+  if (params?.endpoint_id) searchParams.set("endpoint_id", params.endpoint_id);
+  if (params?.status) searchParams.set("status", params.status);
+  const query = searchParams.toString();
+  return apiRequest<ApiAutomationTestCase[]>(`/projects/${projectId}/api-test-cases${query ? `?${query}` : ""}`);
 }
 
 export function listApiAutomationGenerationRuns(projectId: string) {

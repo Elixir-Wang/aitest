@@ -2,6 +2,7 @@ import secrets
 import time
 from pathlib import Path
 from sqlite3 import Row
+from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -257,6 +258,7 @@ def debug_project_endpoint(project_id: str, endpoint_id: str, payload: ApiEndpoi
 
 def create_api_environment(project_id: str, payload: ApiEnvironmentIn, actor) -> dict:
     _require_admin(actor)
+    _validate_account_password_config(payload)
     _validate_auth_config(payload.auth_type, payload.auth_config)
     auth_config = _prepare_auth_config_for_storage(payload.auth_type, payload.auth_config)
     password_encrypted = encrypt_api_environment_secret(payload.password)
@@ -304,30 +306,36 @@ def list_api_environments(project_id: str, actor) -> list[dict]:
 
 def update_api_environment(project_id: str, environment_id: str, payload: ApiEnvironmentIn, actor) -> dict:
     _require_admin(actor)
-    _validate_auth_config(payload.auth_type, payload.auth_config)
-    auth_config = _prepare_auth_config_for_storage(payload.auth_type, payload.auth_config)
-    fields = {
-        "linked_ui_environment_id": payload.linked_ui_environment_id,
-        "name": payload.name,
-        "api_base_url": payload.api_base_url,
-        "username": payload.username,
-        "auth_type": payload.auth_type,
-        "auth_config": auth_config,
-        "variables": payload.variables,
-        "default_headers": payload.default_headers,
-        "timeout_seconds": payload.timeout_seconds,
-        "verify_ssl": payload.verify_ssl,
-        "auth_state_ttl_seconds": payload.auth_state_ttl_seconds,
-        "description": payload.description,
-    }
-    if payload.password:
-        fields["password_encrypted"] = encrypt_api_environment_secret(payload.password)
-        fields["password_hash"] = hash_secret(payload.password)
+    explicitly_set_fields = payload.model_fields_set
     with connect() as db:
         _require_visible_project(db, project_id, actor)
         existing = api_automation_repo.find_api_environment(db, environment_id)
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "API_ENVIRONMENT_NOT_FOUND", "接口环境不存在。")
+        _validate_account_password_config(payload, existing)
+        auth_config = _merge_auth_config_for_update(existing, payload)
+        _validate_auth_config(payload.auth_type, auth_config)
+        auth_config = _prepare_auth_config_for_storage(payload.auth_type, auth_config)
+        fields = {
+            "linked_ui_environment_id": payload.linked_ui_environment_id,
+            "name": payload.name,
+            "api_base_url": payload.api_base_url,
+            "username": payload.username,
+            "auth_type": payload.auth_type,
+            "auth_config": auth_config,
+            "default_headers": payload.default_headers,
+            "auth_state_ttl_seconds": payload.auth_state_ttl_seconds,
+            "description": payload.description,
+        }
+        if "timeout_seconds" in explicitly_set_fields:
+            fields["timeout_seconds"] = payload.timeout_seconds
+        if "variables" in explicitly_set_fields:
+            fields["variables"] = payload.variables
+        if "verify_ssl" in explicitly_set_fields:
+            fields["verify_ssl"] = payload.verify_ssl
+        if payload.password:
+            fields["password_encrypted"] = encrypt_api_environment_secret(payload.password)
+            fields["password_hash"] = hash_secret(payload.password)
         api_automation_repo.update_api_environment(db, environment_id, **fields)
         row = api_automation_repo.find_api_environment(db, environment_id)
         if not row:
@@ -377,6 +385,17 @@ def list_generation_runs(project_id: str, actor) -> list[dict]:
     with connect() as db:
         _require_visible_project(db, project_id, actor)
         return [_serialize_generation_run(row) for row in api_automation_repo.list_generation_runs(db, project_id)]
+
+
+def list_api_test_cases(project_id: str, actor, *, endpoint_id: str = "", status: str = "") -> list[dict]:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        if endpoint_id:
+            endpoint = api_automation_repo.find_endpoint(db, endpoint_id)
+            if not endpoint or endpoint["project_id"] != project_id:
+                raise api_error(404, "API_ENDPOINT_NOT_FOUND", "接口不存在。")
+        rows = api_automation_repo.list_api_test_cases(db, project_id, endpoint_id=endpoint_id, status=status)
+        return [_serialize_api_test_case(row) for row in rows]
 
 
 def create_api_test_case_set(project_id: str, payload: ApiTestCaseSetIn, actor) -> dict:
@@ -1034,6 +1053,8 @@ def _build_debug_environment(db, project_id: str, api_environment_id: str | None
             headers[str(key)] = decrypt_api_environment_secret(str(encrypted_value)) or ""
     if row["auth_type"] == "cookie" and auth_config.get("cookie_name") and auth_config.get("cookie_value_encrypted"):
         cookies[str(auth_config["cookie_name"])] = decrypt_api_environment_secret(auth_config["cookie_value_encrypted"]) or ""
+    if row["auth_type"] == "cybertron_agent":
+        _apply_cybertron_headers(headers, auth_config)
     return {
         "api_base_url": row["api_base_url"],
         "timeout_seconds": row["timeout_seconds"],
@@ -1053,7 +1074,9 @@ def _build_debug_request(endpoint: dict, environment: dict, payload: ApiEndpoint
     raw_body = None
     if isinstance(body, (dict, list)):
         json_body = body
-        headers.setdefault("Content-Type", "application/json")
+        content_type = _request_body_content_type(endpoint.get("request_body", {}))
+        if content_type:
+            _setdefault_header_case_insensitive(headers, "Content-Type", content_type)
     elif body is not None and str(body) != "":
         raw_body = str(body)
     return {
@@ -1093,7 +1116,15 @@ def _public_debug_request(request: dict) -> dict:
 
 
 def _mask_debug_headers(headers: dict[str, str]) -> dict[str, str]:
-    sensitive_names = {"authorization", "cookie", "set-cookie", "x-api-key", "api-key"}
+    sensitive_names = {
+        "authorization",
+        "cookie",
+        "set-cookie",
+        "x-api-key",
+        "api-key",
+        "cybertron-robot-key",
+        "cybertron-robot-token",
+    }
     return {
         key: ("******" if key.lower() in sensitive_names else value)
         for key, value in headers.items()
@@ -1118,11 +1149,14 @@ def _build_runtime_environment(db, api_environment_id: str | None) -> dict:
     auth = {}
     if row["auth_type"] == "static_bearer" and auth_config.get("token_encrypted"):
         auth["bearer"] = decrypt_api_environment_secret(auth_config["token_encrypted"]) or ""
+    headers = _stringify_mapping(api_automation_repo.loads_json(row["default_headers_json"], {}))
+    if row["auth_type"] == "cybertron_agent":
+        _apply_cybertron_headers(headers, auth_config)
     return {
         "api_base_url": row["api_base_url"],
         "timeout_seconds": row["timeout_seconds"],
         "auth": auth,
-        "headers": api_automation_repo.loads_json(row["default_headers_json"], {}),
+        "headers": headers,
         "variables": api_automation_repo.loads_json(row["variables_json"], {}),
     }
 
@@ -1135,7 +1169,17 @@ def _read_optional_text(stored_path: str) -> str:
 
 
 def _validate_auth_config(auth_type: str, auth_config: dict) -> None:
-    if auth_type == "none":
+    if auth_type in {"none", "account_password"}:
+        return
+    if auth_type == "cybertron_agent":
+        required = ["cybertron_robot_key", "cybertron_robot_token", "username"]
+        missing = [
+            key
+            for key in required
+            if not auth_config.get(key) and not auth_config.get(f"{key}_encrypted")
+        ]
+        if missing:
+            raise api_error(400, "API_AUTH_CYBERTRON_CONFIG_REQUIRED", f"塞伯坦智能体缺少配置：{', '.join(missing)}。")
         return
     if auth_type == "static_bearer" and not (auth_config.get("token") or auth_config.get("token_encrypted")):
         raise api_error(400, "API_AUTH_TOKEN_REQUIRED", "Bearer 鉴权必须填写 token。")
@@ -1150,25 +1194,30 @@ def _validate_auth_config(auth_type: str, auth_config: dict) -> None:
             raise api_error(400, "API_AUTH_LOGIN_CONFIG_REQUIRED", f"登录鉴权缺少配置：{', '.join(missing)}。")
 
 
+def _validate_account_password_config(payload: ApiEnvironmentIn, existing: Row | None = None) -> None:
+    if payload.auth_type != "account_password":
+        return
+    has_saved_password = bool(existing and existing["password_hash"])
+    if not payload.username or (not payload.password and not has_saved_password):
+        raise api_error(400, "API_AUTH_ACCOUNT_PASSWORD_REQUIRED", "账号密码鉴权必须填写用户名和密码。")
+
+
 def _prepare_auth_config_for_storage(auth_type: str, auth_config: dict) -> dict:
     stored = dict(auth_config)
-    if auth_type == "static_bearer" and stored.get("token"):
-        stored["token_encrypted"] = encrypt_api_environment_secret(str(stored.pop("token")))
-    if auth_type == "cookie" and stored.get("cookie_value"):
-        stored["cookie_value_encrypted"] = encrypt_api_environment_secret(str(stored.pop("cookie_value")))
-    if auth_type == "static_headers":
-        headers = stored.get("headers")
-        if isinstance(headers, dict):
-            encrypted_headers = {}
-            for key, value in headers.items():
-                encrypted_headers[key] = encrypt_api_environment_secret(str(value))
-            stored["headers_encrypted"] = encrypted_headers
-            stored.pop("headers", None)
+    if auth_type != "cybertron_agent":
+        return stored
+    for key in ("cybertron_robot_key", "cybertron_robot_token"):
+        if stored.get(key):
+            stored[f"{key}_encrypted"] = encrypt_api_environment_secret(str(stored.pop(key)))
     return stored
 
 
 def _mask_auth_config(auth_config: dict) -> dict:
     masked = dict(auth_config)
+    if masked.pop("cybertron_robot_key_encrypted", ""):
+        masked["cybertron_robot_key_saved"] = True
+    if masked.pop("cybertron_robot_token_encrypted", ""):
+        masked["cybertron_robot_token_saved"] = True
     if masked.pop("token_encrypted", ""):
         masked["token_saved"] = True
     if masked.pop("cookie_value_encrypted", ""):
@@ -1176,6 +1225,44 @@ def _mask_auth_config(auth_config: dict) -> dict:
     if "headers_encrypted" in masked:
         masked["headers_saved"] = sorted(masked.pop("headers_encrypted").keys())
     return masked
+
+
+def _merge_auth_config_for_update(existing: Row, payload: ApiEnvironmentIn) -> dict:
+    auth_config = dict(payload.auth_config)
+    if payload.auth_type != existing["auth_type"]:
+        return auth_config
+    existing_config = api_automation_repo.loads_json(existing["auth_config_json"], {})
+    if payload.auth_type == "cybertron_agent":
+        for key in ("cybertron_robot_key", "cybertron_robot_token"):
+            encrypted_key = f"{key}_encrypted"
+            if not auth_config.get(key) and existing_config.get(encrypted_key):
+                auth_config[encrypted_key] = existing_config[encrypted_key]
+    return auth_config
+
+
+def _apply_cybertron_headers(headers: dict[str, str], auth_config: dict) -> None:
+    robot_key = decrypt_api_environment_secret(auth_config.get("cybertron_robot_key_encrypted", "")) or ""
+    robot_token = decrypt_api_environment_secret(auth_config.get("cybertron_robot_token_encrypted", "")) or ""
+    username = str(auth_config.get("username", "")).strip()
+    if robot_key:
+        headers["cybertron-robot-key"] = robot_key
+    if robot_token:
+        headers["cybertron-robot-token"] = robot_token
+    if username:
+        headers["username"] = username
+
+
+def _request_body_content_type(request_body: dict[str, Any]) -> str:
+    content = request_body.get("content")
+    if not isinstance(content, dict):
+        return ""
+    return next((str(key) for key in content.keys() if str(key).strip()), "")
+
+
+def _setdefault_header_case_insensitive(headers: dict[str, str], key: str, value: str) -> None:
+    if any(existing_key.lower() == key.lower() for existing_key in headers):
+        return
+    headers[key] = value
 
 
 def _require_visible_project(db, project_id: str, actor):

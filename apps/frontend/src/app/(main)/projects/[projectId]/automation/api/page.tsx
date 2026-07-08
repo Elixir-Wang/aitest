@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { useParams, useSearchParams } from "next/navigation";
 
@@ -8,7 +8,6 @@ import {
   Braces,
   ChevronDown,
   ChevronRight,
-  CircleCheck,
   ClipboardPaste,
   FileJson,
   Globe,
@@ -27,7 +26,6 @@ import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
-import { useProjectName } from "@/components/ai-testing/use-project-name";
 import { Select as AnimatedSelect, SelectOption } from "@/components/ui/animated-select-1";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,8 +42,11 @@ import {
 import FileUpload1 from "@/components/ui/file-upload-1";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SlidingNumber } from "@/components/ui/sliding-number";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import {
   type ApiAutomationCaseSet,
   type ApiAutomationDebugResult,
@@ -54,25 +55,27 @@ import {
   type ApiAutomationGenerationRun,
   type ApiAutomationRun,
   type ApiAutomationScript,
+  type ApiAutomationTestCase,
   createApiAutomationEnvironment,
   createApiAutomationRun,
   debugApiAutomationEndpoint,
   deleteApiAutomationEndpoint,
   deleteApiAutomationEnvironment,
   formatDateTime,
-  generateApiAutomation,
   generateApiAutomationScripts,
+  generateApiAutomationTestCases,
   getApiAutomationGenerationRun,
   getApiAutomationRun,
   importOpenApiDocument,
   listApiAutomationCaseSets,
   listApiAutomationEndpoints,
   listApiAutomationEnvironments,
+  listApiAutomationTestCases,
   updateApiAutomationEnvironment,
 } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
-const tabs = ["接口资产", "接口环境", "测试脚本", "运行记录", "场景编排"];
+const tabs = ["接口资产", "接口环境", "接口用例", "测试脚本", "运行记录", "场景编排"];
 const importModes = [
   {
     value: "file",
@@ -95,25 +98,25 @@ const importModes = [
 ] as const;
 
 type ImportMode = (typeof importModes)[number]["value"];
+type EnvironmentAuthType = "none" | "account_password" | "cybertron_agent";
 type EnvironmentForm = {
   name: string;
   apiBaseUrl: string;
-  authType: "none" | "static_bearer" | "static_headers" | "cookie" | "login_request";
+  authType: EnvironmentAuthType;
   username: string;
   password: string;
+  cybertronRobotKey: string;
+  cybertronRobotToken: string;
+  cybertronUsername: string;
   defaultHeaders: string;
-  variables: string;
   timeoutSeconds: string;
-  verifySsl: boolean;
   description: string;
 };
 
 const authTypeOptions = [
   { value: "none", label: "无需鉴权" },
-  { value: "static_bearer", label: "Bearer Token" },
-  { value: "static_headers", label: "固定请求头" },
-  { value: "cookie", label: "Cookie" },
-  { value: "login_request", label: "登录接口" },
+  { value: "account_password", label: "账号密码" },
+  { value: "cybertron_agent", label: "塞伯坦智能体" },
 ] as const;
 
 const emptyEnvironmentForm: EnvironmentForm = {
@@ -122,10 +125,11 @@ const emptyEnvironmentForm: EnvironmentForm = {
   authType: "none",
   username: "",
   password: "",
-  defaultHeaders: "{}",
-  variables: "{}",
+  cybertronRobotKey: "",
+  cybertronRobotToken: "",
+  cybertronUsername: "",
+  defaultHeaders: JSON.stringify({}, null, 2),
   timeoutSeconds: "30",
-  verifySsl: true,
   description: "",
 };
 type ApiFieldRow = {
@@ -134,6 +138,7 @@ type ApiFieldRow = {
   type: string;
   required: boolean;
   description: string;
+  constraints: string[];
   depth?: number;
 };
 type EndpointDebugForm = {
@@ -141,34 +146,93 @@ type EndpointDebugForm = {
   pathParams: Record<string, string>;
   queryParams: Record<string, string>;
   headers: Record<string, string>;
-  cookies: string;
   bodyText: string;
 };
+type ApiCaseFilter = "all" | "ready" | "needs_input" | "draft";
 
 const emptyDebugForm: EndpointDebugForm = {
   environmentId: "",
   pathParams: {},
   queryParams: {},
   headers: {},
-  cookies: "{}",
   bodyText: "",
 };
+const apiCaseFilters: ApiCaseFilter[] = ["ready", "needs_input", "draft"];
+const apiCaseFilterLabels: Record<ApiCaseFilter, string> = {
+  all: "全部",
+  ready: "可执行",
+  needs_input: "待补充",
+  draft: "草稿",
+};
+
+function ApiCaseSummaryStrip({ actions, counts }: { actions: ReactNode; counts: Record<ApiCaseFilter, number> }) {
+  const reviewedCount = counts.ready + counts.needs_input;
+  const adoptionRate = reviewedCount === 0 ? 0 : Number(((counts.ready / reviewedCount) * 100).toFixed(1));
+  const reviewProgress = counts.all === 0 ? 0 : Number(((reviewedCount / counts.all) * 100).toFixed(1));
+
+  return (
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="grid min-w-0 flex-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm sm:grid-cols-3 lg:max-w-2xl">
+        <ApiCaseSummaryModule accent="blue" label="采纳率" suffix="%" value={adoptionRate} />
+        <ApiCaseSummaryModule accent="slate" label="评审进度" suffix="%" value={reviewProgress} />
+        <ApiCaseSummaryModule accent="green" label="用例数量" value={counts.all} />
+      </div>
+      {actions}
+    </div>
+  );
+}
+
+function ApiCaseSummaryModule({
+  label,
+  value,
+  accent,
+  suffix = "",
+}: {
+  label: string;
+  value: number;
+  accent: "blue" | "slate" | "green";
+  suffix?: string;
+}) {
+  const accentClasses = {
+    blue: { dot: "bg-blue-500", label: "bg-blue-50 text-blue-700" },
+    slate: { dot: "bg-slate-500", label: "bg-slate-100 text-slate-700" },
+    green: { dot: "bg-emerald-500", label: "bg-emerald-50 text-emerald-700" },
+  };
+  const tone = accentClasses[accent];
+
+  return (
+    <div className="flex h-10 min-w-0 items-center justify-center gap-3 border-slate-100 border-t px-3 first:border-t-0 sm:border-t-0 sm:border-l sm:first:border-l-0">
+      <div className={cn("flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5", tone.label)}>
+        <span className={cn("h-1.5 w-1.5 rounded-full", tone.dot)} />
+        <span className="font-medium text-xs">{label}</span>
+      </div>
+      <div className="flex min-w-0 items-baseline">
+        <span className="inline-flex items-baseline font-mono font-semibold text-[#101828] text-xs leading-none">
+          <SlidingNumber value={value} />
+          {suffix ? <span>{suffix}</span> : null}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export default function Page() {
   const params = useParams<{ projectId: string }>();
   const searchParams = useSearchParams();
   const projectId = params.projectId;
   const selectedCaseSetId = searchParams.get("set");
-  const projectName = useProjectName(projectId);
   const [activeTab, setActiveTab] = useState(tabs[0]);
   const [selectedCaseSet, setSelectedCaseSet] = useState<ApiAutomationCaseSet | null>(null);
   const [endpoints, setEndpoints] = useState<ApiAutomationEndpoint[]>([]);
   const [environments, setEnvironments] = useState<ApiAutomationEnvironment[]>([]);
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState("");
   const [generationRun, setGenerationRun] = useState<ApiAutomationGenerationRun | null>(null);
+  const [apiTestCases, setApiTestCases] = useState<ApiAutomationTestCase[]>([]);
+  const [selectedApiCaseId, setSelectedApiCaseId] = useState("");
+  const [apiCaseFilter, setApiCaseFilter] = useState<ApiCaseFilter>("ready");
+  const [apiCaseSearchText, setApiCaseSearchText] = useState("");
   const [scripts, setScripts] = useState<ApiAutomationScript[]>([]);
   const [run, setRun] = useState<ApiAutomationRun | null>(null);
-  const [selectedEndpointIds, setSelectedEndpointIds] = useState<string[]>([]);
   const [selectedEndpointAssetIds, setSelectedEndpointAssetIds] = useState<string[]>([]);
   const [activeEndpointId, setActiveEndpointId] = useState("");
   const [expandedEndpointGroups, setExpandedEndpointGroups] = useState<string[]>([]);
@@ -180,7 +244,6 @@ export default function Page() {
   const [openApiFiles, setOpenApiFiles] = useState<File[]>([]);
   const [openApiText, setOpenApiText] = useState("");
   const [openApiUrl, setOpenApiUrl] = useState("");
-  const [generationGoal, setGenerationGoal] = useState("覆盖正常响应、参数缺失和鉴权失败");
   const [environmentOpen, setEnvironmentOpen] = useState(false);
   const [editingEnvironment, setEditingEnvironment] = useState<ApiAutomationEnvironment | null>(null);
   const [environmentForm, setEnvironmentForm] = useState<EnvironmentForm>({ ...emptyEnvironmentForm });
@@ -213,10 +276,52 @@ export default function Page() {
     [activeEndpointId, endpoints],
   );
 
-  const readyCases = useMemo(
-    () => generationRun?.test_cases?.filter((item) => item.status === "ready") ?? [],
-    [generationRun],
+  const endpointById = useMemo(() => new Map(endpoints.map((endpoint) => [endpoint.id, endpoint])), [endpoints]);
+
+  const filteredApiTestCases = useMemo(() => {
+    const keyword = apiCaseSearchText.trim().toLowerCase();
+    return apiTestCases.filter((testCase) => {
+      const endpoint = testCase.endpoint_id ? endpointById.get(testCase.endpoint_id) : null;
+      const matchesFilter = apiCaseFilter === "all" || testCase.status === apiCaseFilter;
+      const matchesSearch =
+        !keyword ||
+        [
+          testCase.title,
+          testCase.priority,
+          testCase.status,
+          testCase.source,
+          endpoint?.method,
+          endpoint?.path,
+          endpoint?.summary,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(keyword);
+      return matchesFilter && matchesSearch;
+    });
+  }, [apiCaseFilter, apiCaseSearchText, apiTestCases, endpointById]);
+
+  const selectedApiCase = useMemo(
+    () => apiTestCases.find((testCase) => testCase.id === selectedApiCaseId) ?? filteredApiTestCases[0] ?? null,
+    [apiTestCases, filteredApiTestCases, selectedApiCaseId],
   );
+
+  const apiCaseCounts = useMemo(
+    () =>
+      apiTestCases.reduce<Record<ApiCaseFilter, number>>(
+        (counts, testCase) => {
+          counts.all += 1;
+          if (testCase.status === "ready" || testCase.status === "needs_input" || testCase.status === "draft") {
+            counts[testCase.status] += 1;
+          }
+          return counts;
+        },
+        { all: 0, ready: 0, needs_input: 0, draft: 0 },
+      ),
+    [apiTestCases],
+  );
+
+  const readyCases = useMemo(() => apiTestCases.filter((item) => item.status === "ready"), [apiTestCases]);
 
   const selectedEnvironment = useMemo(
     () => environments.find((environment) => environment.id === selectedEnvironmentId) ?? environments[0] ?? null,
@@ -267,15 +372,19 @@ export default function Page() {
   async function refresh() {
     setBusy(true);
     try {
-      const [endpointRows, environmentRows] = await Promise.all([
+      const [endpointRows, environmentRows, apiCaseRows] = await Promise.all([
         listApiAutomationEndpoints(projectId),
         listApiAutomationEnvironments(projectId),
+        listApiAutomationTestCases(projectId),
       ]);
       setEndpoints(endpointRows);
       setSelectedEndpointAssetIds((current) =>
         current.filter((id) => endpointRows.some((endpoint) => endpoint.id === id)),
       );
-      setSelectedEndpointIds((current) => current.filter((id) => endpointRows.some((endpoint) => endpoint.id === id)));
+      setApiTestCases(apiCaseRows);
+      setSelectedApiCaseId((current) =>
+        current && apiCaseRows.some((testCase) => testCase.id === current) ? current : (apiCaseRows[0]?.id ?? ""),
+      );
       setEnvironments(environmentRows);
       setActiveEndpointId((current) =>
         current && endpointRows.some((endpoint) => endpoint.id === current) ? current : (endpointRows[0]?.id ?? ""),
@@ -300,15 +409,21 @@ export default function Page() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([listApiAutomationEndpoints(projectId), listApiAutomationEnvironments(projectId)])
-      .then(([endpointRows, environmentRows]) => {
+    Promise.all([
+      listApiAutomationEndpoints(projectId),
+      listApiAutomationEnvironments(projectId),
+      listApiAutomationTestCases(projectId),
+    ])
+      .then(([endpointRows, environmentRows, apiCaseRows]) => {
         if (cancelled) {
           return;
         }
         setEndpoints(endpointRows);
         setEnvironments(environmentRows);
+        setApiTestCases(apiCaseRows);
         setActiveEndpointId(endpointRows[0]?.id ?? "");
         setSelectedEnvironmentId(environmentRows[0]?.id ?? "");
+        setSelectedApiCaseId(apiCaseRows[0]?.id ?? "");
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "接口自动化数据加载失败"));
 
@@ -405,28 +520,48 @@ export default function Page() {
     }
 
     let defaultHeaders: Record<string, unknown>;
-    let variables: Record<string, unknown>;
     try {
       defaultHeaders = parseJsonObject(environmentForm.defaultHeaders, "默认请求头");
-      variables = parseJsonObject(environmentForm.variables, "环境变量");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "环境配置格式不正确");
+      return;
+    }
+    if (
+      environmentForm.authType === "account_password" &&
+      (!environmentForm.username.trim() || (!environmentForm.password.trim() && !editingEnvironment))
+    ) {
+      toast.error("账号密码鉴权必须填写用户名和密码");
+      return;
+    }
+    if (
+      environmentForm.authType === "cybertron_agent" &&
+      (!environmentForm.cybertronUsername.trim() ||
+        (!environmentForm.cybertronRobotKey.trim() && !editingEnvironment?.auth_config.cybertron_robot_key_saved) ||
+        (!environmentForm.cybertronRobotToken.trim() && !editingEnvironment?.auth_config.cybertron_robot_token_saved))
+    ) {
+      toast.error("塞伯坦智能体必须填写 robot key、robot token 和 username");
       return;
     }
 
     setBusy(true);
     try {
+      const authConfig =
+        environmentForm.authType === "cybertron_agent"
+          ? {
+              cybertron_robot_key: environmentForm.cybertronRobotKey,
+              cybertron_robot_token: environmentForm.cybertronRobotToken,
+              username: environmentForm.cybertronUsername,
+            }
+          : {};
       const payload = {
         name,
         api_base_url: apiBaseUrl,
-        username: environmentForm.username,
-        password: environmentForm.password,
+        username: environmentForm.authType === "account_password" ? environmentForm.username : "",
+        password: environmentForm.authType === "account_password" ? environmentForm.password : "",
         auth_type: environmentForm.authType,
-        auth_config: {},
-        variables,
+        auth_config: authConfig,
         default_headers: defaultHeaders,
         timeout_seconds: timeoutSeconds,
-        verify_ssl: environmentForm.verifySsl,
         description: environmentForm.description,
       };
       const saved = editingEnvironment
@@ -446,18 +581,23 @@ export default function Page() {
   }
 
   async function handleGenerate() {
+    if (selectedEndpointAssetIds.length === 0) {
+      toast.error("请先选择接口");
+      return;
+    }
     setBusy(true);
     try {
-      const created = await generateApiAutomation(projectId, {
-        endpoint_ids: selectedEndpointIds,
+      const created = await generateApiAutomationTestCases(projectId, {
+        endpoint_ids: selectedEndpointAssetIds,
         api_environment_id: selectedEnvironment?.id ?? null,
-        generation_goal: generationGoal,
+        generation_goal: "直接生成所选接口的自动化测试用例",
         include_security_cases: false,
         generate_code: false,
       });
       setGenerationRun(created);
-      setActiveTab("测试脚本");
-      toast.success("生成任务已创建，稍后刷新查看用例");
+      setActiveTab("接口用例");
+      toast.success("接口用例生成任务已创建");
+      notifyAiTaskStarted();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "生成失败");
     } finally {
@@ -491,17 +631,12 @@ export default function Page() {
       setRun(created);
       setActiveTab("运行记录");
       toast.success("执行任务已创建");
+      notifyAiTaskStarted();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "执行失败");
     } finally {
       setBusy(false);
     }
-  }
-
-  function toggleEndpoint(endpointId: string) {
-    setSelectedEndpointIds((current) =>
-      current.includes(endpointId) ? current.filter((item) => item !== endpointId) : [...current, endpointId],
-    );
   }
 
   function toggleEndpointAsset(endpointId: string, checked: boolean) {
@@ -528,7 +663,6 @@ export default function Page() {
     try {
       await Promise.all(ids.map((endpointId) => deleteApiAutomationEndpoint(projectId, endpointId)));
       setSelectedEndpointAssetIds((current) => current.filter((id) => !ids.includes(id)));
-      setSelectedEndpointIds((current) => current.filter((id) => !ids.includes(id)));
       if (activeEndpointId && ids.includes(activeEndpointId)) {
         setActiveEndpointId("");
       }
@@ -583,10 +717,8 @@ export default function Page() {
       toast.error("请选择接口环境");
       return;
     }
-    let cookies: Record<string, unknown>;
     let body: unknown = null;
     try {
-      cookies = parseJsonObject(debugForm.cookies, "Cookie");
       body = parseDebugBody(debugForm.bodyText);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "调试参数格式不正确");
@@ -601,7 +733,7 @@ export default function Page() {
         path_params: debugForm.pathParams,
         query_params: debugForm.queryParams,
         headers: debugForm.headers,
-        cookies,
+        cookies: {},
         body,
       });
       setDebugResult(result);
@@ -655,22 +787,33 @@ export default function Page() {
       breadcrumbs={[
         { label: "测试资产" },
         { label: "接口自动化", href: "/automation/api" },
-        { label: selectedCaseSet?.name ?? projectName },
+        ...(selectedCaseSet ? [{ label: selectedCaseSet.name }] : []),
       ]}
       description="导入 OpenAPI、生成接口自动化用例、生成 pytest 脚本并执行。"
       onTabChange={setActiveTab}
       projectScope="project"
       tabActions={
-        <div className="flex items-center gap-2">
-          <Button disabled={busy} onClick={() => openImportDialog("file")}>
-            <ImportIcon className="size-4" />
-            导入
-          </Button>
-          <Button disabled={busy} onClick={() => refresh()} size="sm" variant="outline">
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-            刷新
-          </Button>
-        </div>
+        activeTab === "接口资产" ? (
+          <div className="flex items-center gap-2">
+            <div className="relative w-72 max-w-[42vw]">
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-9 bg-background pl-9"
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder="搜索 method、path、tag"
+                value={searchText}
+              />
+            </div>
+            <Button disabled={busy} onClick={() => openImportDialog("file")}>
+              <ImportIcon className="size-4" />
+              导入
+            </Button>
+            <Button disabled={busy} onClick={() => refresh()} size="sm" variant="outline">
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+              刷新
+            </Button>
+          </div>
+        ) : null
       }
       tabs={tabs}
       title="接口自动化"
@@ -693,27 +836,22 @@ export default function Page() {
                   disabled={busy || visibleEndpointIds.length === 0}
                   onCheckedChange={(checked) => toggleVisibleEndpointAssets(Boolean(checked))}
                 />
-                <div className="relative min-w-0 flex-1">
-                  <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    className="h-9 bg-background pl-9"
-                    onChange={(event) => setSearchText(event.target.value)}
-                    placeholder="搜索 method、path、tag"
-                    value={searchText}
-                  />
-                </div>
-                {selectedEndpointAssetIds.length > 0 ? (
+                <div className="ml-auto flex items-center gap-2">
                   <Button
                     className="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100 hover:text-red-800"
-                    disabled={busy}
+                    disabled={busy || selectedEndpointAssetIds.length === 0}
                     onClick={() => deleteEndpoints(selectedEndpointAssetIds)}
                     size="sm"
                     variant="outline"
                   >
                     <Trash2 className="size-4" />
-                    删除 ({selectedEndpointAssetIds.length})
+                    删除
                   </Button>
-                ) : null}
+                  <Button disabled={busy || selectedEndpointAssetIds.length === 0} onClick={handleGenerate} size="sm">
+                    {busy ? <Loader2 className="size-4 animate-spin" /> : <WandSparkles className="size-4" />}
+                    生成用例
+                  </Button>
+                </div>
               </div>
             </div>
             <div className="p-2">
@@ -727,8 +865,9 @@ export default function Page() {
                       aria-expanded={!isCollapsed}
                       aria-label={`${group} 分组，${rows.length} 个接口，${isCollapsed ? "展开" : "折叠"}`}
                       className={cn(
-                        "mb-1 flex w-full items-center gap-2 rounded-md border border-transparent bg-slate-100/70 px-2 py-1.5 text-left font-medium text-muted-foreground text-xs transition-colors hover:border-slate-200 hover:bg-slate-100",
-                        hasActiveEndpoint && "border-sky-200 bg-sky-50/80 text-sky-800",
+                        "mb-1 flex w-full items-center gap-2 rounded-md border border-transparent bg-slate-100/70 px-2 py-1.5 text-left font-medium text-muted-foreground text-xs transition-colors hover:border-slate-200 hover:bg-slate-100 dark:bg-muted/25 dark:hover:border-border dark:hover:bg-muted/45",
+                        hasActiveEndpoint &&
+                          "border-sky-200 bg-sky-50/80 text-sky-800 dark:border-sky-500/35 dark:bg-sky-500/15 dark:text-sky-200",
                       )}
                       onClick={() => toggleEndpointGroup(group)}
                       type="button"
@@ -739,7 +878,7 @@ export default function Page() {
                         <ChevronDown className="size-3.5 shrink-0" />
                       )}
                       <span className="min-w-0 flex-1 truncate">{group}</span>
-                      <span className="rounded-full bg-sky-100 px-2 py-0.5 font-semibold text-sky-700 tabular-nums">
+                      <span className="rounded-full bg-sky-100 px-2 py-0.5 font-semibold text-sky-700 tabular-nums dark:bg-sky-500/20 dark:text-sky-200">
                         {rows.length}
                       </span>
                     </button>
@@ -748,8 +887,9 @@ export default function Page() {
                         {rows.map((endpoint) => (
                           <div
                             className={cn(
-                              "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-background",
-                              activeEndpoint?.id === endpoint.id && "bg-background shadow-xs ring-1 ring-border",
+                              "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-background dark:hover:bg-muted/30",
+                              activeEndpoint?.id === endpoint.id &&
+                                "bg-background shadow-xs ring-1 ring-border dark:bg-muted/35 dark:shadow-none",
                             )}
                             key={endpoint.id}
                           >
@@ -769,9 +909,6 @@ export default function Page() {
                               <span className="min-w-0 flex-1 truncate text-xs">
                                 {endpoint.summary || endpoint.path}
                               </span>
-                              {selectedEndpointIds.includes(endpoint.id) ? (
-                                <CircleCheck className="size-4 shrink-0 text-emerald-600" />
-                              ) : null}
                             </button>
                           </div>
                         ))}
@@ -805,7 +942,11 @@ export default function Page() {
                       <div className="flex flex-wrap items-center gap-2">
                         {activeEndpoint.tags.length > 0 ? (
                           activeEndpoint.tags.map((tag) => (
-                            <Badge className="bg-emerald-50 text-emerald-700" key={tag} variant="secondary">
+                            <Badge
+                              className="bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
+                              key={tag}
+                              variant="secondary"
+                            >
                               {tag}
                             </Badge>
                           ))
@@ -832,10 +973,6 @@ export default function Page() {
                       <Button onClick={() => openEndpointDebugDialog(activeEndpoint)}>
                         <Play className="size-4" />
                         测试一下
-                      </Button>
-                      <Button onClick={() => toggleEndpoint(activeEndpoint.id)} variant="outline">
-                        <CircleCheck className="size-4" />
-                        {selectedEndpointIds.includes(activeEndpoint.id) ? "已选择" : "加入生成"}
                       </Button>
                     </div>
                   </div>
@@ -891,9 +1028,8 @@ export default function Page() {
                   </TableHead>
                   <TableHead>环境名称</TableHead>
                   <TableHead>API Base URL</TableHead>
-                  <TableHead>鉴权方式</TableHead>
+                  <TableHead className="text-left">鉴权方式</TableHead>
                   <TableHead>超时</TableHead>
-                  <TableHead>SSL</TableHead>
                   <TableHead>更新时间</TableHead>
                   <TableHead className="w-16">操作</TableHead>
                 </TableRow>
@@ -928,11 +1064,10 @@ export default function Page() {
                         {environment.api_base_url}
                       </span>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{authTypeLabel(environment.auth_type)}</Badge>
+                    <TableCell className="text-left">
+                      <EnvironmentAuthBadge authType={environment.auth_type} />
                     </TableCell>
                     <TableCell>{environment.timeout_seconds} 秒</TableCell>
-                    <TableCell>{environment.verify_ssl ? "开启" : "关闭"}</TableCell>
                     <TableCell>{formatDateTime(environment.updated_at)}</TableCell>
                     <TableCell>
                       <RowActions
@@ -958,11 +1093,11 @@ export default function Page() {
                   </TableRow>
                 ))}
                 {busy && filteredEnvironments.length === 0 ? (
-                  <TableLoadingRow colSpan={8} label="环境列表加载中" />
+                  <TableLoadingRow colSpan={7} label="环境列表加载中" />
                 ) : null}
                 {!busy && filteredEnvironments.length === 0 ? (
                   <TableRow>
-                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={8}>
+                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={7}>
                       暂无接口环境。新增环境后，可用于生成用例、生成脚本和执行接口自动化。
                     </TableCell>
                   </TableRow>
@@ -973,14 +1108,146 @@ export default function Page() {
         </ShellSection>
       )}
 
+      {activeTab === "接口用例" && (
+        <div className="space-y-3">
+          <ApiCaseSummaryStrip
+            actions={
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                <Button disabled={busy} onClick={() => refresh()} variant="outline">
+                  {busy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                  刷新
+                </Button>
+                <Button
+                  disabled={busy || readyCases.length === 0 || !selectedEnvironment}
+                  onClick={handleGenerateScripts}
+                >
+                  生成脚本
+                </Button>
+              </div>
+            }
+            counts={apiCaseCounts}
+          />
+          <ShellSection className="min-h-[640px] bg-[#F7F8FA] p-0">
+            <div className="grid min-h-[640px] grid-cols-1 overflow-hidden rounded-xl lg:grid-cols-[360px_minmax(0,1fr)]">
+              <aside className="border-b bg-white lg:border-r lg:border-b-0">
+                <div className="flex flex-col gap-3 border-b p-4">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      className="pl-9"
+                      onChange={(event) => setApiCaseSearchText(event.target.value)}
+                      placeholder="搜索标题、接口、状态"
+                      value={apiCaseSearchText}
+                    />
+                  </div>
+                  <Tabs onValueChange={(value) => setApiCaseFilter(value as ApiCaseFilter)} value={apiCaseFilter}>
+                    <TabsList className="grid h-auto w-full grid-cols-3">
+                      {apiCaseFilters.map((item) => (
+                        <TabsTrigger className="min-w-0 gap-1 px-2 text-xs" key={item} value={item}>
+                          <span className="truncate">{apiCaseFilterLabels[item]}</span>
+                          <span
+                            className={cn(
+                              "shrink-0 rounded-full px-1.5 font-mono text-[10px]",
+                              apiCaseFilterCountTone(item, apiCaseFilter),
+                            )}
+                          >
+                            {apiCaseCounts[item]}
+                          </span>
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </Tabs>
+                </div>
+                <div className="max-h-[560px] overflow-auto p-3">
+                  {filteredApiTestCases.map((item) => {
+                    const endpoint = item.endpoint_id ? endpointById.get(item.endpoint_id) : null;
+                    return (
+                      <button
+                        className={cn(
+                          "mb-2 w-full rounded-lg border border-slate-200/70 bg-white p-3 text-left transition hover:border-blue-200 hover:bg-blue-50/30 hover:shadow-sm",
+                          selectedApiCase?.id === item.id &&
+                            "border-blue-300 bg-blue-50/70 shadow-sm ring-1 ring-blue-100",
+                        )}
+                        key={item.id}
+                        onClick={() => setSelectedApiCaseId(item.id)}
+                        type="button"
+                      >
+                        <div className="flex items-start gap-2">
+                          <Badge
+                            className={cn("shrink-0 border", apiCasePriorityTone(item.priority))}
+                            variant="outline"
+                          >
+                            {item.priority || "P2"}
+                          </Badge>
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="line-clamp-2 font-medium text-[#101828] text-sm">{item.title}</div>
+                            <div className="flex min-w-0 items-center gap-1.5 text-[#667085] text-xs">
+                              {endpoint ? <MethodBadge method={endpoint.method} /> : null}
+                              <span className="min-w-0 truncate font-mono">{endpoint?.path ?? "未关联接口"}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {filteredApiTestCases.length === 0 ? (
+                    <div className="rounded-lg border border-dashed bg-white p-6 text-center text-muted-foreground text-sm">
+                      没有匹配的接口用例。
+                    </div>
+                  ) : null}
+                </div>
+              </aside>
+
+              <main className="flex min-w-0 flex-col bg-white">
+                {selectedApiCase ? (
+                  <>
+                    <div className="border-b p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="min-w-0 space-y-1.5">
+                          <ApiCaseEndpointPath
+                            endpoint={
+                              selectedApiCase.endpoint_id ? endpointById.get(selectedApiCase.endpoint_id) : null
+                            }
+                          />
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <h2 className="min-w-0 max-w-full font-semibold text-[#101828] text-lg">
+                              {selectedApiCase.title}
+                            </h2>
+                            <ApiCaseStatusBadge status={selectedApiCase.status} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex-1 overflow-auto p-5">
+                      <div className="space-y-4">
+                        <ReviewBlock title="请求信息">
+                          <JsonBlock value={selectedApiCase.request} />
+                        </ReviewBlock>
+                        <ReviewBlock title="预期结果">
+                          <JsonBlock value={selectedApiCase.expected} />
+                        </ReviewBlock>
+                        <ReviewBlock title="断言">
+                          <JsonBlock value={selectedApiCase.assertions} />
+                        </ReviewBlock>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                    请选择一个接口用例查看详情。
+                  </div>
+                )}
+              </main>
+            </div>
+          </ShellSection>
+        </div>
+      )}
+
       {activeTab === "测试脚本" && (
         <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <WandSparkles className="size-4" />
-                生成
-              </CardTitle>
+              <CardTitle className="text-base">脚本生成</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-2">
@@ -1001,13 +1268,6 @@ export default function Page() {
                   {selectedEnvironment?.api_base_url ?? "请先在接口环境页签新建环境。"}
                 </div>
               </div>
-              <Textarea value={generationGoal} onChange={(event) => setGenerationGoal(event.target.value)} />
-              <Button
-                disabled={busy || selectedEndpointIds.length === 0 || !selectedEnvironment}
-                onClick={handleGenerate}
-              >
-                生成用例
-              </Button>
               <Button
                 disabled={busy || readyCases.length === 0 || !selectedEnvironment}
                 onClick={handleGenerateScripts}
@@ -1023,14 +1283,6 @@ export default function Page() {
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm">生成任务：{generationRun?.status ?? "-"}</p>
-              {generationRun?.test_cases?.map((item) => (
-                <div className="rounded-md border px-3 py-2 text-sm" key={item.id}>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="min-w-0 truncate">{item.title}</span>
-                    <Badge>{item.status}</Badge>
-                  </div>
-                </div>
-              ))}
               {scripts.map((script) => (
                 <div className="rounded-md border px-3 py-2 text-sm" key={script.id}>
                   <div className="font-medium">{script.name}</div>
@@ -1111,55 +1363,79 @@ export default function Page() {
             />
             <div className="space-y-2">
               <div className="font-medium text-sm">鉴权方式</div>
-              <Select
-                value={environmentForm.authType}
-                onValueChange={(value) =>
+              <AnimatedSelect
+                id="api-environment-auth-type"
+                placeholder="选择鉴权方式"
+                setValue={(value) =>
                   setEnvironmentForm((current) => ({ ...current, authType: value as EnvironmentForm["authType"] }))
                 }
+                value={environmentForm.authType}
               >
-                <SelectTrigger className="h-9 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {authTypeOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                {authTypeOptions.map((option) => (
+                  <SelectOption key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectOption>
+                ))}
+              </AnimatedSelect>
             </div>
-            <FieldText
-              label="用户名"
-              onChange={(value) => setEnvironmentForm((current) => ({ ...current, username: value }))}
-              placeholder="可选"
-              value={environmentForm.username}
-            />
-            <FieldText
-              label="密码 / Token"
-              onChange={(value) => setEnvironmentForm((current) => ({ ...current, password: value }))}
-              placeholder="可选"
-              type="password"
-              value={environmentForm.password}
-            />
             <FieldText
               label="超时时间（秒）"
               onChange={(value) => setEnvironmentForm((current) => ({ ...current, timeoutSeconds: value }))}
               placeholder="30"
               value={environmentForm.timeoutSeconds}
             />
-            <div className="flex items-center gap-3 rounded-md border bg-muted/20 px-3 py-2">
-              <Checkbox
-                checked={environmentForm.verifySsl}
-                id="api-environment-verify-ssl"
-                onCheckedChange={(checked) =>
-                  setEnvironmentForm((current) => ({ ...current, verifySsl: checked === true }))
-                }
-              />
-              <label className="font-medium text-sm" htmlFor="api-environment-verify-ssl">
-                校验 SSL 证书
-              </label>
-            </div>
+            {environmentForm.authType === "account_password" ? (
+              <>
+                <FieldText
+                  label="用户名"
+                  onChange={(value) => setEnvironmentForm((current) => ({ ...current, username: value }))}
+                  placeholder="请输入账号"
+                  value={environmentForm.username}
+                />
+                <FieldText
+                  label="密码"
+                  onChange={(value) => setEnvironmentForm((current) => ({ ...current, password: value }))}
+                  placeholder={editingEnvironment ? "不填写则保留原密码" : "请输入密码"}
+                  type="password"
+                  value={environmentForm.password}
+                />
+              </>
+            ) : null}
+            {environmentForm.authType === "cybertron_agent" ? (
+              <div className="grid gap-4 md:col-span-2">
+                <FieldText
+                  label="cybertron-robot-key"
+                  mono
+                  onChange={(value) => setEnvironmentForm((current) => ({ ...current, cybertronRobotKey: value }))}
+                  placeholder={
+                    editingEnvironment?.auth_config.cybertron_robot_key_saved
+                      ? "已保存，不填写则保留"
+                      : "请输入 robot key"
+                  }
+                  type="password"
+                  value={environmentForm.cybertronRobotKey}
+                />
+                <FieldText
+                  label="cybertron-robot-token"
+                  mono
+                  onChange={(value) => setEnvironmentForm((current) => ({ ...current, cybertronRobotToken: value }))}
+                  placeholder={
+                    editingEnvironment?.auth_config.cybertron_robot_token_saved
+                      ? "已保存，不填写则保留"
+                      : "请输入 robot token"
+                  }
+                  type="password"
+                  value={environmentForm.cybertronRobotToken}
+                />
+                <FieldText
+                  label="username"
+                  mono
+                  onChange={(value) => setEnvironmentForm((current) => ({ ...current, cybertronUsername: value }))}
+                  placeholder="请输入 username"
+                  value={environmentForm.cybertronUsername}
+                />
+              </div>
+            ) : null}
             <div className="space-y-2 md:col-span-2">
               <div className="font-medium text-sm">默认请求头（JSON）</div>
               <Textarea
@@ -1168,14 +1444,6 @@ export default function Page() {
                   setEnvironmentForm((current) => ({ ...current, defaultHeaders: event.target.value }))
                 }
                 value={environmentForm.defaultHeaders}
-              />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <div className="font-medium text-sm">环境变量（JSON）</div>
-              <Textarea
-                className="min-h-28 font-mono text-xs"
-                onChange={(event) => setEnvironmentForm((current) => ({ ...current, variables: event.target.value }))}
-                value={environmentForm.variables}
               />
             </div>
             <div className="space-y-2 md:col-span-2">
@@ -1201,7 +1469,7 @@ export default function Page() {
       </Dialog>
 
       <Dialog open={debugOpen} onOpenChange={setDebugOpen}>
-        <DialogContent className="max-h-[calc(100vh-2rem)] overflow-hidden p-0 sm:max-w-5xl">
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0 sm:max-w-5xl">
           <DialogHeader className="px-6 pt-6">
             <DialogTitle>接口调试</DialogTitle>
             <DialogDescription>通过后端代理发送请求，填写参数后可查看响应状态、耗时和返回内容。</DialogDescription>
@@ -1238,35 +1506,26 @@ export default function Page() {
             ) : null}
 
             <div className="grid gap-5 lg:grid-cols-2">
-              <DebugMapSection
-                emptyLabel="该接口没有路径参数。"
-                fields={debugForm.pathParams}
-                onChange={(key, value) => updateDebugMapField("pathParams", key, value)}
-                rows={activeEndpoint ? getParameterRows(activeEndpoint.parameters, "path") : []}
-                title="路径参数"
-              />
-              <DebugMapSection
-                emptyLabel="该接口没有 Query 参数。"
-                fields={debugForm.queryParams}
-                onChange={(key, value) => updateDebugMapField("queryParams", key, value)}
-                rows={activeEndpoint ? getParameterRows(activeEndpoint.parameters, "query") : []}
-                title="Query 参数"
-              />
-              <DebugMapSection
-                emptyLabel="该接口没有 Header 参数。环境默认请求头会在后端自动合并。"
-                fields={debugForm.headers}
-                onChange={(key, value) => updateDebugMapField("headers", key, value)}
-                rows={activeEndpoint ? getParameterRows(activeEndpoint.parameters, "header") : []}
-                title="Header 参数"
-              />
-              <div className="space-y-2">
-                <div className="font-medium text-sm">Cookie（JSON）</div>
-                <Textarea
-                  className="min-h-32 font-mono text-xs"
-                  onChange={(event) => setDebugForm((current) => ({ ...current, cookies: event.target.value }))}
-                  value={debugForm.cookies}
+              {activeEndpoint && getParameterRows(activeEndpoint.parameters, "path").length > 0 ? (
+                <DebugMapSection
+                  fields={debugForm.pathParams}
+                  onChange={(key, value) => updateDebugMapField("pathParams", key, value)}
+                  rows={getParameterRows(activeEndpoint.parameters, "path")}
+                  title="路径参数"
                 />
-              </div>
+              ) : null}
+              {activeEndpoint && getParameterRows(activeEndpoint.parameters, "query").length > 0 ? (
+                <DebugMapSection
+                  fields={debugForm.queryParams}
+                  onChange={(key, value) => updateDebugMapField("queryParams", key, value)}
+                  rows={getParameterRows(activeEndpoint.parameters, "query")}
+                  title="Query 参数"
+                />
+              ) : null}
+              <DebugHeaderSection
+                className="lg:col-span-2"
+                rows={activeEndpoint ? getParameterRows(activeEndpoint.parameters, "header") : []}
+              />
             </div>
 
             {activeEndpoint && getRequestBodyRows(activeEndpoint.request_body).length > 0 ? (
@@ -1278,9 +1537,10 @@ export default function Page() {
                   />
                 </div>
                 <Textarea
-                  className="min-h-44 font-mono text-xs"
+                  className="max-h-64 min-h-0 overflow-y-auto font-mono text-xs"
                   onChange={(event) => setDebugForm((current) => ({ ...current, bodyText: event.target.value }))}
                   placeholder='{"key":"value"}'
+                  rows={getTextareaRows(debugForm.bodyText, 3, 12)}
                   value={debugForm.bodyText}
                 />
               </div>
@@ -1410,6 +1670,81 @@ function fileNameWithoutExtension(filename: string) {
   return baseName.replace(/\.(json|ya?ml)$/i, "");
 }
 
+function ApiCaseEndpointPath({ endpoint }: { endpoint: ApiAutomationEndpoint | null | undefined }) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2 text-[#667085] text-xs">
+      <span className="font-medium text-[#98A2B3]">接口</span>
+      {endpoint ? (
+        <>
+          <MethodBadge method={endpoint.method} />
+          <span className="min-w-0 truncate font-mono text-[#344054]">{endpoint.path}</span>
+        </>
+      ) : (
+        <span className="text-[#475467]">未关联接口</span>
+      )}
+    </div>
+  );
+}
+
+function ApiCaseStatusBadge({ status }: { status: string }) {
+  const tone =
+    {
+      ready: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      needs_input: "border-amber-200 bg-amber-50 text-amber-700",
+      draft: "border-slate-200 bg-slate-50 text-slate-700",
+      archived: "border-slate-200 bg-slate-50 text-slate-500",
+    }[status] ?? "border-slate-200 bg-slate-50 text-slate-700";
+
+  return (
+    <Badge className={cn("border", tone)} variant="outline">
+      {apiCaseStatusLabel(status)}
+    </Badge>
+  );
+}
+
+function ReviewBlock({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="rounded-lg border bg-white p-4">
+      <h3 className="mb-3 font-medium text-[#101828] text-sm">{title}</h3>
+      <div className="whitespace-pre-wrap text-[#101828] text-sm leading-6">{children}</div>
+    </section>
+  );
+}
+
+function JsonBlock({ value }: { value: unknown }) {
+  return (
+    <pre className="max-h-96 overflow-auto rounded-md bg-[#F7F8FA] p-3 font-mono text-[#101828] text-xs">
+      {JSON.stringify(value ?? {}, null, 2)}
+    </pre>
+  );
+}
+
+function apiCasePriorityTone(priority: string) {
+  const normalized = priority.trim().toUpperCase();
+  if (normalized === "P0") return "border-red-200 bg-red-50 text-red-700";
+  if (normalized === "P1") return "border-amber-200 bg-amber-50 text-amber-700";
+  if (normalized === "P2") return "border-blue-200 bg-blue-50 text-blue-700";
+  return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function apiCaseFilterCountTone(item: ApiCaseFilter, current: ApiCaseFilter) {
+  if (item === current) return "bg-[#101828] text-white";
+  if (item === "needs_input") return "bg-amber-100 text-amber-700";
+  if (item === "ready") return "bg-emerald-100 text-emerald-700";
+  return "bg-slate-100 text-slate-600";
+}
+
+function apiCaseStatusLabel(status: string) {
+  return (
+    {
+      ready: "可执行",
+      needs_input: "待补充",
+      draft: "草稿",
+      archived: "已归档",
+    }[status] ?? status
+  );
+}
+
 function FieldText({
   label,
   mono,
@@ -1443,44 +1778,70 @@ function DebugMapSection({
   title,
   rows,
   fields,
-  emptyLabel,
   onChange,
 }: {
   title: string;
   rows: ApiFieldRow[];
   fields: Record<string, string>;
-  emptyLabel: string;
   onChange: (key: string, value: string) => void;
 }) {
   return (
     <div className="space-y-2">
       <div className="font-medium text-sm">{title}</div>
-      {rows.length === 0 ? (
-        <div className="rounded-md border bg-muted/20 px-3 py-2 text-muted-foreground text-sm">{emptyLabel}</div>
-      ) : (
-        <div className="space-y-2">
-          {rows.map((row) => (
-            <div className="grid gap-2 sm:grid-cols-[minmax(140px,0.9fr)_1fr]" key={`${row.location}-${row.name}`}>
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="truncate font-mono text-sm" title={row.name}>
-                  {row.name}
-                </span>
-                {row.required ? (
-                  <Badge className="bg-rose-50 text-rose-600" variant="secondary">
-                    必填
-                  </Badge>
-                ) : null}
-              </div>
-              <Input
-                className="font-mono text-xs"
-                onChange={(event) => onChange(row.name, event.target.value)}
-                placeholder={row.description || row.type}
-                value={fields[row.name] ?? ""}
-              />
+      <div className="space-y-2">
+        {rows.map((row) => (
+          <div className="grid gap-2 sm:grid-cols-[minmax(140px,0.9fr)_1fr]" key={`${row.location}-${row.name}`}>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-mono text-sm" title={row.name}>
+                {row.name}
+              </span>
+              {row.required ? (
+                <Badge className="bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-200" variant="secondary">
+                  必填
+                </Badge>
+              ) : null}
             </div>
-          ))}
-        </div>
-      )}
+            <Input
+              className="font-mono text-xs"
+              onChange={(event) => onChange(row.name, event.target.value)}
+              placeholder={row.description || row.type}
+              value={fields[row.name] ?? ""}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DebugHeaderSection({ className, rows }: { className?: string; rows: ApiFieldRow[] }) {
+  return (
+    <div className={cn("space-y-2", className)}>
+      <div className="font-medium text-sm">Header 参数</div>
+      <div className="space-y-2 rounded-md border bg-muted/20 px-3 py-3">
+        {rows.length > 0 ? (
+          <div className="space-y-2">
+            {rows.map((row) => (
+              <div className="grid gap-2 sm:grid-cols-[minmax(140px,0.9fr)_1fr]" key={`${row.location}-${row.name}`}>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="min-w-0 truncate font-mono text-sm" title={row.name}>
+                    {row.name}
+                  </span>
+                  {row.required ? (
+                    <Badge
+                      className="bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-200"
+                      variant="secondary"
+                    >
+                      必填
+                    </Badge>
+                  ) : null}
+                </div>
+                <Input className="font-mono text-muted-foreground text-xs" disabled value="已由环境填充" />
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1494,8 +1855,29 @@ function DebugResultBlock({ title, value }: { title: string; value: string }) {
   );
 }
 
+function getTextareaRows(value: string, minRows: number, maxRows: number) {
+  const lineCount = Math.max(1, value.split("\n").length);
+  return Math.min(maxRows, Math.max(minRows, lineCount));
+}
+
 function authTypeLabel(value: string) {
   return authTypeOptions.find((option) => option.value === value)?.label ?? value;
+}
+
+function EnvironmentAuthBadge({ authType }: { authType: string }) {
+  const className =
+    {
+      none: "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300",
+      account_password:
+        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300",
+      cybertron_agent: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/50 dark:text-sky-300",
+    }[authType] ?? "border-border bg-background text-muted-foreground";
+
+  return (
+    <Badge className={cn("justify-start rounded-md border px-2.5 font-medium", className)} variant="outline">
+      {authTypeLabel(authType)}
+    </Badge>
+  );
 }
 
 function formFromEndpoint(endpoint: ApiAutomationEndpoint, environmentId: string): EndpointDebugForm {
@@ -1506,13 +1888,13 @@ function formFromEndpoint(endpoint: ApiAutomationEndpoint, environmentId: string
     environmentId,
     pathParams: rowsToEmptyValues(getParameterRows(endpoint.parameters, "path")),
     queryParams: rowsToEmptyValues(getParameterRows(endpoint.parameters, "query")),
-    headers: rowsToEmptyValues(getParameterRows(endpoint.parameters, "header")),
-    cookies: "{}",
+    headers: {},
     bodyText: bodyExample,
   };
 }
 
 function formFromEnvironment(environment: ApiAutomationEnvironment): EnvironmentForm {
+  const authConfig = environment.auth_config ?? {};
   return {
     name: environment.name,
     apiBaseUrl: environment.api_base_url,
@@ -1521,10 +1903,11 @@ function formFromEnvironment(environment: ApiAutomationEnvironment): Environment
       : "none") as EnvironmentForm["authType"],
     username: environment.username,
     password: "",
+    cybertronRobotKey: "",
+    cybertronRobotToken: "",
+    cybertronUsername: asString(authConfig.username),
     defaultHeaders: JSON.stringify(environment.default_headers ?? {}, null, 2),
-    variables: JSON.stringify(environment.variables ?? {}, null, 2),
     timeoutSeconds: String(environment.timeout_seconds),
-    verifySsl: environment.verify_ssl,
     description: environment.description,
   };
 }
@@ -1569,12 +1952,14 @@ function MethodBadge({ method }: { method: string }) {
   const upper = method.toUpperCase();
   const tone =
     {
-      GET: "border-emerald-200 bg-emerald-50 text-emerald-700",
-      POST: "border-sky-200 bg-sky-50 text-sky-700",
-      PUT: "border-amber-200 bg-amber-50 text-amber-700",
-      PATCH: "border-violet-200 bg-violet-50 text-violet-700",
-      DELETE: "border-rose-200 bg-rose-50 text-rose-700",
-    }[upper] ?? "border-slate-200 bg-slate-50 text-slate-700";
+      GET: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200",
+      POST: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/35 dark:bg-sky-500/15 dark:text-sky-200",
+      PUT: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-200",
+      PATCH:
+        "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/35 dark:bg-violet-500/15 dark:text-violet-200",
+      DELETE: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/35 dark:bg-rose-500/15 dark:text-rose-200",
+    }[upper] ??
+    "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-500/35 dark:bg-slate-500/15 dark:text-slate-200";
 
   return (
     <span
@@ -1620,7 +2005,7 @@ function FieldRow({ row }: { row: ApiFieldRow }) {
   return (
     <div className="grid gap-3 py-3 md:grid-cols-[minmax(220px,1.1fr)_64px_64px_56px_minmax(220px,1.4fr)] md:items-center md:gap-2">
       <span
-        className="min-w-0 truncate font-mono font-semibold text-emerald-600 text-sm"
+        className="min-w-0 truncate font-mono font-semibold text-emerald-600 text-sm dark:text-emerald-300"
         style={{ paddingLeft: `${(row.depth ?? 0) * 16}px` }}
         title={row.name}
       >
@@ -1633,13 +2018,24 @@ function FieldRow({ row }: { row: ApiFieldRow }) {
         {row.location}
       </Badge>
       {row.required ? (
-        <Badge className="w-fit bg-rose-50 text-rose-600" variant="secondary">
+        <Badge className="w-fit bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-200" variant="secondary">
           必填
         </Badge>
       ) : (
         <span className="hidden md:block" />
       )}
-      <p className="min-w-0 text-muted-foreground text-sm">{row.description || "暂无说明"}</p>
+      <div className="min-w-0 space-y-1">
+        <p className="min-w-0 text-muted-foreground text-sm">{row.description || "暂无说明"}</p>
+        {row.constraints.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {row.constraints.map((constraint) => (
+              <Badge className="w-fit font-normal" key={constraint} variant="outline">
+                {constraint}
+              </Badge>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1721,6 +2117,7 @@ function getParameterRows(parameters: Record<string, unknown>[], ...locations: s
         type: getSchemaType(schema),
         required: Boolean(parameter.required),
         description: asString(parameter.description),
+        constraints: getSchemaConstraints(schema),
       };
     })
     .filter((row) => acceptedLocations.has(row.location));
@@ -1807,6 +2204,7 @@ function getSchemaRows(
         type: getSchemaType(schema),
         required: Boolean(options.required),
         description: options.description ?? asString(schema.description),
+        constraints: getSchemaConstraints(schema),
         depth: options.depth ?? 0,
       },
     ];
@@ -1821,6 +2219,7 @@ function getSchemaRows(
       type: getSchemaType(propertySchema),
       required: required.has(name),
       description: asString(propertySchema.description),
+      constraints: getSchemaConstraints(propertySchema),
       depth: options.depth ?? 0,
     };
     const children = getSchemaRows(propertySchema, {
@@ -1832,12 +2231,93 @@ function getSchemaRows(
   });
 }
 
+function getSchemaConstraints(schema: Record<string, unknown>): string[] {
+  const constraints: string[] = [];
+  const type = getSchemaType(schema);
+  const minLength = asDisplayValue(schema.minLength);
+  const maxLength = asDisplayValue(schema.maxLength);
+  const pattern = asString(schema.pattern);
+  const minimum = asDisplayValue(schema.minimum);
+  const maximum = asDisplayValue(schema.maximum);
+  const exclusiveMinimum = asDisplayValue(schema.exclusiveMinimum);
+  const exclusiveMaximum = asDisplayValue(schema.exclusiveMaximum);
+  const minItems = asDisplayValue(schema.minItems);
+  const maxItems = asDisplayValue(schema.maxItems);
+  const minProperties = asDisplayValue(schema.minProperties);
+  const maxProperties = asDisplayValue(schema.maxProperties);
+  const multipleOf = asDisplayValue(schema.multipleOf);
+  const defaultValue = asDisplayValue(schema.default);
+  const enumValues = Array.isArray(schema.enum) ? schema.enum.map(asDisplayValue).filter(Boolean) : [];
+
+  if (minLength) {
+    constraints.push(`Minimum string length: ${minLength}`);
+  }
+  if (maxLength) {
+    constraints.push(`Maximum string length: ${maxLength}`);
+  }
+  if (pattern) {
+    constraints.push(`Pattern: ${pattern}`);
+  }
+  if (minimum) {
+    constraints.push(`Minimum: ${minimum}`);
+  }
+  if (maximum) {
+    constraints.push(`Maximum: ${maximum}`);
+  }
+  if (exclusiveMinimum) {
+    constraints.push(`Exclusive minimum: ${exclusiveMinimum}`);
+  }
+  if (exclusiveMaximum) {
+    constraints.push(`Exclusive maximum: ${exclusiveMaximum}`);
+  }
+  if (minItems) {
+    constraints.push(`Minimum items: ${minItems}`);
+  }
+  if (maxItems) {
+    constraints.push(`Maximum items: ${maxItems}`);
+  }
+  if (minProperties) {
+    constraints.push(`Minimum properties: ${minProperties}`);
+  }
+  if (maxProperties) {
+    constraints.push(`Maximum properties: ${maxProperties}`);
+  }
+  if (multipleOf) {
+    constraints.push(`Multiple of: ${multipleOf}`);
+  }
+  if (enumValues.length > 0) {
+    constraints.push(`Allowed values: ${enumValues.join(", ")}`);
+  }
+  if (defaultValue) {
+    constraints.push(`Default: ${defaultValue}`);
+  }
+
+  if (type.endsWith("[]")) {
+    const itemConstraints = getSchemaConstraints(asRecord(schema.items));
+    constraints.push(
+      ...itemConstraints.map((constraint) => `Item ${constraint.charAt(0).toLowerCase()}${constraint.slice(1)}`),
+    );
+  }
+
+  return constraints;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function asDisplayValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
 }
 
 function asStringArray(value: unknown): string[] {

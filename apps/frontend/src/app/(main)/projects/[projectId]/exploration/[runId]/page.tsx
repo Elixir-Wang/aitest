@@ -24,247 +24,20 @@ import {
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import { API_BASE_URL, apiAuthHeaders, apiRequest, formatDateTime } from "@/lib/api-client";
 import { reportError as reportApiError } from "@/lib/error-feedback";
-
-type ExplorationMode = "goal" | "autonomous";
-
-type ExplorationRun = {
-  id: string;
-  project_id: string;
-  project_name: string;
-  environment_id: string;
-  environment_name: string;
-  environment_site_url: string;
-  requirement_doc_id: string;
-  requirement_doc_title: string;
-  title: string;
-  status: string;
-  exploration_mode: ExplorationMode;
-  scope: string;
-  forbidden_paths: string;
-  login_strategy: string;
-  goal: string;
-  notes: string;
-  max_pages: number;
-  max_actions: number;
-  timeout_minutes: number;
-  artifact_root: string;
-  result_summary: string;
-  created_at: string;
-  updated_at: string;
-  started_at: string | null;
-  finished_at: string | null;
-  available_actions: string[];
-};
-
-type ExplorationRunDetail = {
-  run: ExplorationRun;
-  artifact_schema_version: number;
-  unsupported_artifact: boolean;
-  unsupported_reason: string;
-  timeline_events?: PersistedExplorationEvent[];
-  modules: Array<{
-    id: string;
-    module_key: string;
-    module_name: string;
-    entry_path: string;
-    planned_page_count: number;
-    explored_page_count: number;
-    blocked_page_count: number;
-    action_count: number;
-    field_count: number;
-    state_transition_count: number;
-    completion_status: string;
-    completion_summary: string;
-    pages: Array<{
-      id: string;
-      title: string;
-      url: string;
-      entry_path: string;
-      yaml_path?: string | null;
-      status?: string | null;
-      blocker_reason?: string | null;
-      recent_event?: string | null;
-      structure_summary: string;
-      steps?: ExplorationStep[];
-    }>;
-    elements: Array<{
-      id: string;
-      page_id: string | null;
-      element_name: string;
-      element_type: string;
-      recommended_locator: string;
-      fallback_locator: string;
-      stability_note: string;
-      source_ref: string;
-      primary_selector: ExplorationSelector;
-      fallback_selector: ExplorationSelector;
-    }>;
-    blockers: Array<{
-      id: string;
-      page_ref: string;
-      reason_type: string;
-      reason: string;
-      suggested_action: string;
-      is_blocking: boolean;
-    }>;
-  }>;
-};
-
-type ExplorationStep = {
-  id: string;
-  type: string;
-  title: string;
-  detail?: string;
-  status?: AgentPlanStatus;
-  occurred_at?: string | null;
-  artifact_path?: string;
-  source?: string;
-};
-
-type ExplorationPage = ExplorationRunDetail["modules"][number]["pages"][number];
-
-type ExplorationReport = {
-  run_id: string;
-  version_no: number | null;
-  title: string;
-  markdown_content: string;
-  change_summary: string;
-  created_at: string | null;
-  artifact_schema_version: number;
-  unsupported_artifact: boolean;
-  unsupported_reason: string;
-};
-
-type ExplorationSelector = {
-  kind?: string;
-  code?: string;
-  confidence?: string;
-  reason?: string;
-  verification?: {
-    checked?: boolean;
-    unique?: boolean;
-    visible?: boolean;
-    match_count?: number;
-    reason?: string;
-  };
-  [key: string]: unknown;
-};
-
-type ExplorationStreamEvent = {
-  event_id?: number;
-  type: string;
-  run_id: string;
-  payload: Record<string, unknown> | ExplorationRunDetail;
-  display?: ReadableExecutionDisplay;
-  timeline_event_id?: string;
-};
-
-type PersistedExplorationEvent = {
-  event_id?: string | number;
-  type: string;
-  run_id?: string;
-  payload?: Record<string, unknown>;
-  display?: ReadableExecutionDisplay;
-  occurred_at?: string;
-  timestamp?: string;
-};
-
-type ExplorationMonitorPlanStep = {
-  step_id: string;
-  step_number: number;
-  module_name: string;
-  action_type: string;
-  description: string;
-  target_description: string;
-  target_selector: string;
-  value: string;
-  expected_result: string;
-  execution_strategy: string;
-  is_critical: boolean;
-  retry_on_failure: boolean;
-  max_retries: number;
-};
-
-type ExplorationMonitorStep = ExplorationMonitorPlanStep & {
-  status: AgentPlanStatus;
-  total_steps: number;
-  attempt: number;
-  started_at: string;
-  completed_at: string;
-  success: boolean | null;
-  message: string;
-  error: string;
-  failure_type: string;
-  retryable: boolean;
-  matched_element: {
-    id: string;
-    role: string;
-    name: string;
-    selector: string;
-  };
-  page_state: {
-    url: string;
-    title: string;
-    element_count: number;
-  };
-};
-
-type ExplorationMonitorEvent = {
-  id: string;
-  type: string;
-  label: string;
-  summary: string;
-  occurred_at: string;
-  status: AgentPlanStatus;
-  payload?: Record<string, unknown>;
-  display?: ReadableExecutionDisplay;
-};
-
-type ReadableExecutionDisplayKind =
-  | "model_analysis"
-  | "thought"
-  | "navigate"
-  | "click"
-  | "snapshot"
-  | "file_read"
-  | "artifact_write"
-  | "todo_update"
-  | "url_record"
-  | "error"
-  | "debug";
-
-type ReadableExecutionField = {
-  label: string;
-  value: string;
-  mono?: boolean;
-  tone?: "default" | "success" | "warning" | "danger";
-};
-
-type ReadableExecutionDisplay = {
-  kind: ReadableExecutionDisplayKind;
-  title: string;
-  summary: string;
-  fields?: ReadableExecutionField[];
-  chips?: string[];
-};
-
-type ExplorationMonitorState = {
-  phase: string;
-  plan: {
-    plan_id: string;
-    goal_summary: string;
-    scope_summary: string;
-    strategy: string;
-    modules: string[];
-    estimated_duration_minutes: number | null;
-    risk_assessment: string;
-    success_criteria: string[];
-    total_steps: number;
-    steps: ExplorationMonitorPlanStep[];
-  } | null;
-  steps: ExplorationMonitorStep[];
-  events: ExplorationMonitorEvent[];
-};
+import type {
+  ExplorationMonitorEvent,
+  ExplorationMonitorPlanStep,
+  ExplorationMonitorState,
+  ExplorationMonitorStep,
+  ExplorationReport,
+  ExplorationRun,
+  ExplorationRunDetail,
+  ExplorationStep,
+  ExplorationStreamEvent,
+  ReadableExecutionDisplay,
+  ReadableExecutionDisplayKind,
+  ReadableExecutionField,
+} from "@/lib/exploration-types";
 
 const logTypeLabels: Record<string, string> = {
   run_started: "探索开始",
@@ -1177,78 +950,8 @@ function mergeBlockerEvent(
   return { ...detail, modules };
 }
 
-function _resolvePagePlanStatus(page: ExplorationPage): AgentPlanStatus {
-  const normalizedPageStatus = normalizeAgentPlanStatus(page.status || "pending");
-  if (normalizedPageStatus !== "running") {
-    return normalizedPageStatus;
-  }
-  const actionStep = [...(page.steps ?? [])].reverse().find((step) => step.type === "action_result");
-  if (!actionStep) {
-    return normalizedPageStatus;
-  }
-  const actionStatus = normalizeAgentPlanStatus(actionStep.status || "completed");
-  return actionStatus === "running" || actionStatus === "pending" ? "completed" : actionStatus;
-}
-
-function _buildExplorationPageTaskTitle(page: ExplorationPage): string {
-  const steps = page.steps ?? [];
-  const actionStep = [...steps].reverse().find((step) => step.type === "action_result" && step.detail);
-  if (actionStep?.detail) {
-    return formatActionStepTitle(actionStep.detail);
-  }
-  const decisionStep = [...steps].reverse().find((step) => step.type === "agent_decision" && step.detail);
-  if (decisionStep?.detail) {
-    return `决策：${compactText(decisionStep.detail)}`;
-  }
-  return page.url || page.entry_path || page.title || "未命名页面";
-}
-
-function _buildExplorationPageTaskMeta(page: ExplorationPage): string[] {
-  const meta = [page.title, page.url || page.entry_path].filter((item): item is string => Boolean(item));
-  return Array.from(new Set(meta));
-}
-
-function formatActionStepTitle(detail: string): string {
-  const firstSentence = detail.split(/[，。]/)[0] ?? detail;
-  const withoutStatus = firstSentence.replace(
-    /\s*[：:]\s*(passed|failed|skipped|completed|unknown|unverified)\s*$/i,
-    "",
-  );
-  const actionMatch = withoutStatus.match(/^(click|fill|navigate|go_back|close_modal|wait)\s+(.+)$/i);
-  if (!actionMatch) {
-    return compactText(withoutStatus || detail);
-  }
-  const actionLabels: Record<string, string> = {
-    click: "点击",
-    fill: "填写",
-    navigate: "跳转",
-    go_back: "返回",
-    close_modal: "关闭弹窗",
-    wait: "等待",
-  };
-  const action = actionLabels[actionMatch[1].toLowerCase()] ?? actionMatch[1];
-  return `${action}：${compactText(actionMatch[2])}`;
-}
-
-function compactText(value: string, maxLength = 48): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
-}
-
 function normalizeExplorationRunDetail(data: ExplorationRunDetail): ExplorationRunDetail {
   return data;
-}
-
-function _resolveModulePlanStatus(runStatus: string, moduleStatus: string): AgentPlanStatus {
-  const normalizedModuleStatus = normalizeAgentPlanStatus(moduleStatus);
-  const canFollowRunStatus = normalizedModuleStatus === "pending" || normalizedModuleStatus === "running";
-  if (isActiveStatus(runStatus) && canFollowRunStatus) {
-    return normalizeAgentPlanStatus(runStatus);
-  }
-  if (isTerminalStatus(runStatus) && normalizedModuleStatus === "running") {
-    return normalizeAgentPlanStatus(runStatus);
-  }
-  return normalizedModuleStatus;
 }
 
 function normalizeAgentPlanStatus(status: string): AgentPlanStatus {
@@ -1518,7 +1221,7 @@ export default function Page() {
         { label: "项目", href: "/projects" },
         { label: projectName, href: `/projects/${params.projectId}` },
         { label: "探索", href: "/exploration" },
-        { label: run?.title ?? "探索任务" },
+        ...(run ? [{ label: run.title }] : []),
       ]}
       tabActions={
         <>

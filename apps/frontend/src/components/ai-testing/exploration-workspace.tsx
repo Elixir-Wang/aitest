@@ -1,36 +1,44 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-import {
-  ChevronDown,
-  ChevronRight,
-  CircleHelp,
-  Eye,
-  EyeOff,
-  FileCode2,
-  FileText,
-  Folder,
-  FolderOpen,
-  LogIn,
-  Pencil,
-  Play,
-  Plus,
-  Save,
-  Square,
-  Trash2,
-  X,
-} from "lucide-react";
+import { CircleHelp, Eye, EyeOff, LogIn, Plus, Save, Square, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { ListToolbar, PageShell, type PageBreadcrumb, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
-import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
+import {
+  authStateStatusLabels,
+  captchaStrategyLabels,
+  captchaStrategyOptions,
+  EnvironmentAuthStateBadge,
+  type EnvironmentForm,
+  emptyEnvironmentForm,
+  environmentLoginStrategyOptions,
+  explorationStatusLabels,
+  formatAuthStateExpiresAt,
+  formFromEnvironment,
+  formMatchesSavedManualAuthConfig,
+  isActiveManualAuthSession,
+  isAiLetterAutoAuthEnabled,
+  isManualAuthEnabled,
+  isManualAuthSessionEnded,
+  isMissingManualAuthSessionError,
+  loginStrategyLabels,
+  type ManualAuthSession,
+  reuseAuthStateLabels,
+  reuseAuthStateOptions,
+} from "@/components/ai-testing/exploration-environment-utils";
+import { ExplorationEnvironmentsTable } from "@/components/ai-testing/exploration-environments-table";
+import {
+  type ExplorationPageRecord,
+  ExplorationProjectPagesTree,
+} from "@/components/ai-testing/exploration-project-pages-tree";
+import { ExplorationRunsTable } from "@/components/ai-testing/exploration-runs-table";
+import { ListToolbar, type PageBreadcrumb, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -41,668 +49,31 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Loader } from "@/components/ui/loader";
-import { authStateStatusTone, explorationStatusTone, StatusBadge } from "@/components/ui/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
-import { type ApiProject, ApiRequestError, apiRequest, formatDateTime } from "@/lib/api-client";
+import { type ApiProject, apiRequest } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
-
-type ProjectScope = "all" | "project";
-type ExplorationMode = "goal" | "autonomous";
-
-type ExplorationEnvironment = {
-  id: string;
-  name: string;
-  site_url: string;
-  username: string;
-  login_strategy: string;
-  captcha_strategy: string;
-  reuse_auth_state: boolean;
-  has_saved_credentials: boolean;
-  auth_state_status: string;
-  auth_state_expires_at: string | null;
-  auth_state_message?: string;
-  auto_auth_status?: string;
-  auto_auth_message?: string;
-  description: string;
-  created_at: string;
-  updated_at: string;
-  available_actions: string[];
-};
-
-type ExplorationRun = {
-  id: string;
-  project_id: string;
-  project_name: string;
-  environment_id: string;
-  environment_name: string;
-  requirement_doc_id: string;
-  requirement_doc_title: string;
-  title: string;
-  status: string;
-  exploration_mode: ExplorationMode;
-  scope: string;
-  forbidden_paths: string;
-  login_strategy: string;
-  goal: string;
-  notes: string;
-  max_pages: number;
-  max_actions: number;
-  timeout_minutes: number;
-  created_at: string;
-  updated_at: string;
-  available_actions: string[];
-};
+import type {
+  ExplorationEnvironment,
+  ExplorationRunSummary as ExplorationRun,
+  ProjectScope,
+} from "@/lib/exploration-types";
 
 type ProjectArtifactRow = {
   project_id: string;
   project_name: string;
 };
 
-type ExplorationPageRecord = {
-  id: string;
-  exploration_run_id: string;
-  module_key: string;
-  title: string;
-  display_name?: string;
-  breadcrumb?: string[];
-  url: string;
-  entry_path: string;
-  structure_summary: string;
-  snapshot_path: string;
-  trace_path: string;
-  created_at: string;
-  updated_at: string;
-};
-
-type ExplorationPageYamlContent = {
-  page_id: string;
-  file_name: string;
-  file_path: string;
-  content: string;
-};
-
-type ExplorationPageTreeNode = {
-  id: string;
-  name: string;
-  path: string;
-  type: "folder" | "page";
-  children: ExplorationPageTreeNode[];
-  page?: ExplorationPageRecord;
-};
-
 type ExplorationWorkspaceProps = {
   breadcrumbs: PageBreadcrumb[];
   description: string;
   projectId?: string;
-  projectName?: string;
   projectScope: ProjectScope;
   title: string;
 };
 
-type EnvironmentForm = {
-  name: string;
-  siteUrl: string;
-  username: string;
-  password: string;
-  loginStrategy: string;
-  captchaStrategy: string;
-  reuseAuthState: boolean;
-  description: string;
-};
-
-type ManualAuthSession = {
-  session_id: string;
-  status: string;
-  auth_state_status: string;
-  auth_state_expires_at: string | null;
-  has_saved_credentials: boolean;
-  message: string;
-};
-
-const emptyForm: EnvironmentForm = {
-  name: "",
-  siteUrl: "",
-  username: "",
-  password: "",
-  loginStrategy: "skip_login",
-  captchaStrategy: "none",
-  reuseAuthState: true,
-  description: "",
-};
-
-const statusLabels: Record<string, string> = {
-  pending: "待执行",
-  queued: "排队中",
-  running: "探索中",
-  stopping: "正在停止",
-  cancelled: "已停止",
-  interrupted: "已中断",
-  completed: "已完成",
-  blocked: "阻塞",
-};
-
-const loginStrategyLabels: Record<string, string> = {
-  account_password: "账号密码",
-  skip_login: "无需登录",
-};
-
-const captchaStrategyLabels: Record<string, string> = {
-  none: "无",
-  ai_letter: "字母 AI 校验",
-  manual: "人工登录",
-};
-
-const reuseAuthStateLabels: Record<string, string> = {
-  enabled: "开启",
-  disabled: "关闭",
-};
-
-const authStateStatusLabels: Record<string, string> = {
-  none: "无",
-  valid: "有效",
-  expired: "过期",
-  unknown: "未检测",
-  logging_in: "登录中",
-  login_failed: "登录失败",
-};
-
-const LOGGING_IN_AUTH_STATE_STATUSES = new Set(["logging_in"]);
-
-function formatAuthStateExpiresAt(expiresAt: string | null | undefined) {
-  return expiresAt ? formatDateTime(expiresAt) : "有效期未知";
-}
-
-const environmentLoginStrategyOptions = ["skip_login", "account_password"];
-const captchaStrategyOptions = ["none", "ai_letter", "manual"];
-const reuseAuthStateOptions = ["enabled", "disabled"];
-
 const explorationTabs = ["探索列表", "探索环境", "探索产物"];
-const STOPPABLE_EXPLORATION_STATUSES = new Set(["queued", "running"]);
-const LOADING_EXPLORATION_STATUSES = new Set(["queued", "running", "stopping"]);
-const ACTIVE_MANUAL_AUTH_SESSION_STATUSES = new Set(["waiting_human"]);
-
-function formFromEnvironment(environment: ExplorationEnvironment): EnvironmentForm {
-  return {
-    name: environment.name,
-    siteUrl: environment.site_url,
-    username: environment.username,
-    password: "",
-    loginStrategy: environment.login_strategy,
-    captchaStrategy: environment.captcha_strategy ?? "none",
-    reuseAuthState: environment.reuse_auth_state ?? true,
-    description: environment.description,
-  };
-}
-
-function isManualAuthEnabled(environment: ExplorationEnvironment | null) {
-  return Boolean(
-    environment &&
-      environment.login_strategy === "account_password" &&
-      environment.captcha_strategy === "manual" &&
-      environment.reuse_auth_state,
-  );
-}
-
-function isAiLetterAutoAuthEnabled(environment: ExplorationEnvironment | null) {
-  return Boolean(
-    environment &&
-      environment.login_strategy === "account_password" &&
-      environment.captcha_strategy === "ai_letter" &&
-      environment.reuse_auth_state,
-  );
-}
-
-function canStartAiLetterAutoAuth(environment: ExplorationEnvironment) {
-  return isAiLetterAutoAuthEnabled(environment) && environment.has_saved_credentials;
-}
-
-function formMatchesSavedManualAuthConfig(environment: ExplorationEnvironment | null, form: EnvironmentForm) {
-  return Boolean(
-    environment &&
-      form.loginStrategy === environment.login_strategy &&
-      form.captchaStrategy === environment.captcha_strategy &&
-      form.reuseAuthState === environment.reuse_auth_state &&
-      form.siteUrl === environment.site_url &&
-      form.username === environment.username &&
-      form.password.length === 0,
-  );
-}
-
-function isActiveManualAuthSession(session: ManualAuthSession | null) {
-  return Boolean(session && ACTIVE_MANUAL_AUTH_SESSION_STATUSES.has(session.status));
-}
-
-function ExplorationStatusBadge({ status }: { status: string }) {
-  const isLoading = LOADING_EXPLORATION_STATUSES.has(status);
-
-  return (
-    <StatusBadge tone={explorationStatusTone(status)}>
-      {isLoading ? <Loader className="-ml-0.5" size={12} /> : null}
-      {statusLabels[status] ?? status}
-    </StatusBadge>
-  );
-}
-
-function EnvironmentAuthStateBadge({ message, status }: { message?: string; status: string }) {
-  const isLoading = LOGGING_IN_AUTH_STATE_STATUSES.has(status);
-  const badge = (
-    <StatusBadge tone={authStateStatusTone(status)}>
-      {isLoading ? <Loader className="-ml-0.5" size={12} /> : null}
-      {authStateStatusLabels[status] ?? status}
-    </StatusBadge>
-  );
-
-  if (!message) {
-    return badge;
-  }
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">{badge}</span>
-        </TooltipTrigger>
-        <TooltipContent side="top">{message}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-function isManualAuthSessionEnded(session: ManualAuthSession) {
-  return ["ended", "cancelled", "saved", "auto_saved"].includes(session.status);
-}
-
-function isMissingManualAuthSessionError(error: unknown) {
-  return error instanceof ApiRequestError && error.code === "MANUAL_AUTH_SESSION_NOT_FOUND";
-}
-
-function pageDisplayPath(page: ExplorationPageRecord) {
-  return (
-    page.entry_path ||
-    (() => {
-      try {
-        return new URL(page.url).pathname || "/";
-      } catch {
-        return page.url || "/";
-      }
-    })()
-  );
-}
-
-function pageDirectoryName(page: ExplorationPageRecord, fallbackSegment: string) {
-  const displayName = page.display_name?.trim();
-  if (displayName) return displayName;
-  const pathSegment = fallbackSegment.trim();
-  return pathSegment ? pathSegment : page.id;
-}
-
-function buildPageTree(pages: ExplorationPageRecord[]): ExplorationPageTreeNode {
-  const root: ExplorationPageTreeNode = {
-    id: "root",
-    name: "页面",
-    path: "/",
-    type: "folder",
-    children: [],
-  };
-
-  for (const page of pages) {
-    const path = pageDisplayPath(page);
-    const segments = path.split("/").filter(Boolean);
-    const nodeSegments = segments.length > 0 ? segments : ["首页"];
-    let current = root;
-    let currentPath = "";
-
-    nodeSegments.forEach((segment, index) => {
-      currentPath = segment === "首页" && path === "/" ? "/" : `${currentPath}/${segment}`;
-      const isPage = index === nodeSegments.length - 1;
-      const nodeId = isPage ? page.id : `folder:${currentPath}`;
-      let child = current.children.find((item) => item.id === nodeId);
-      if (!child) {
-        child = {
-          id: nodeId,
-          name: isPage ? pageDirectoryName(page, segment) : segment,
-          path: isPage ? path : currentPath,
-          type: isPage ? "page" : "folder",
-          children: [],
-          page: isPage ? page : undefined,
-        };
-        current.children.push(child);
-      }
-      if (isPage) {
-        child.page = page;
-        child.name = pageDirectoryName(page, segment);
-      }
-      current = child;
-    });
-  }
-
-  return root;
-}
-
-function collectPageFolderIds(node: ExplorationPageTreeNode): string[] {
-  return node.children.flatMap((child) => [
-    ...(child.type === "folder" ? [child.id] : []),
-    ...collectPageFolderIds(child),
-  ]);
-}
-
-function findPageNode(node: ExplorationPageTreeNode, pageId: string): ExplorationPageTreeNode | null {
-  if (node.id === pageId) {
-    return node;
-  }
-  for (const child of node.children) {
-    const found = findPageNode(child, pageId);
-    if (found) {
-      return found;
-    }
-  }
-  return null;
-}
-
-function ExplorationProjectPagesTree({
-  expandedNodeIds,
-  loading,
-  onPageSelect,
-  onToggleNode,
-  pages,
-  projectId,
-  selectedPageId,
-}: {
-  expandedNodeIds: string[];
-  loading: boolean;
-  onPageSelect: (pageId: string) => void;
-  onToggleNode: (nodeId: string) => void;
-  pages: ExplorationPageRecord[];
-  projectId: string;
-  selectedPageId: string;
-}) {
-  const tree = useMemo(() => buildPageTree(pages), [pages]);
-  const selectedNode = selectedPageId ? findPageNode(tree, selectedPageId) : null;
-  const selectedPage = selectedNode?.page ?? pages[0] ?? null;
-  const effectiveExpandedIds = expandedNodeIds.length > 0 ? expandedNodeIds : collectPageFolderIds(tree);
-  const [yamlContent, setYamlContent] = useState<ExplorationPageYamlContent | null>(null);
-  const [yamlLoading, setYamlLoading] = useState(false);
-  const [yamlError, setYamlError] = useState("");
-
-  useEffect(() => {
-    if (!selectedPageId && pages[0]) {
-      onPageSelect(pages[0].id);
-    }
-  }, [onPageSelect, pages, selectedPageId]);
-
-  useEffect(() => {
-    if (!selectedPage?.id || !projectId) {
-      setYamlContent(null);
-      setYamlError("");
-      return;
-    }
-
-    let ignore = false;
-    setYamlLoading(true);
-    setYamlError("");
-
-    async function loadYamlContent() {
-      try {
-        const data = await apiRequest<ExplorationPageYamlContent>(
-          `/page-exploration/projects/${projectId}/pages/${selectedPage.id}/yaml`,
-        );
-        if (!ignore) {
-          setYamlContent(data);
-        }
-      } catch (requestError) {
-        if (!ignore) {
-          setYamlContent(null);
-          setYamlError(requestError instanceof Error ? requestError.message : "YAML 文件加载失败");
-        }
-      } finally {
-        if (!ignore) {
-          setYamlLoading(false);
-        }
-      }
-    }
-
-    void loadYamlContent();
-
-    return () => {
-      ignore = true;
-    };
-  }, [projectId, selectedPage?.id]);
-
-  return (
-    <div className="overflow-hidden rounded-lg border bg-background">
-      {loading ? (
-        <div className="p-6">
-          <Table>
-            <TableBody>
-              <TableLoadingRow colSpan={1} label="页面信息加载中" />
-            </TableBody>
-          </Table>
-        </div>
-      ) : pages.length === 0 ? (
-        <div className="p-8 text-center text-muted-foreground text-sm">暂无页面信息。</div>
-      ) : (
-        <div className="grid min-h-[30rem] lg:grid-cols-[18rem_minmax(0,1fr)]">
-          <aside className="min-h-0 border-b bg-muted/20 lg:border-r lg:border-b-0">
-            <div className="border-b px-3 py-2 font-medium text-sm">页面目录</div>
-            <div className="max-h-[34rem] overflow-auto p-2">
-              {tree.children.map((node) => (
-                <ExplorationPageTreeItem
-                  activePageId={selectedPage?.id ?? ""}
-                  depth={0}
-                  expandedNodeIds={effectiveExpandedIds}
-                  key={node.id}
-                  node={node}
-                  onPageSelect={onPageSelect}
-                  onToggleNode={onToggleNode}
-                />
-              ))}
-            </div>
-          </aside>
-          <main className="min-w-0 p-4">
-            {selectedPage ? (
-              <YamlCodePreview content={yamlContent?.content ?? ""} error={yamlError} loading={yamlLoading} />
-            ) : null}
-          </main>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ExplorationPageTreeItem({
-  activePageId,
-  depth,
-  expandedNodeIds,
-  node,
-  onPageSelect,
-  onToggleNode,
-}: {
-  activePageId: string;
-  depth: number;
-  expandedNodeIds: string[];
-  node: ExplorationPageTreeNode;
-  onPageSelect: (pageId: string) => void;
-  onToggleNode: (nodeId: string) => void;
-}) {
-  const isFolder = node.type === "folder";
-  const expanded = isFolder && expandedNodeIds.includes(node.id);
-  const active = node.type === "page" && node.id === activePageId;
-
-  return (
-    <div>
-      <div
-        className={
-          active
-            ? "flex h-8 items-center gap-1 rounded-md bg-primary/10 px-1 text-primary"
-            : "flex h-8 items-center gap-1 rounded-md px-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-        }
-        style={{ paddingLeft: `${depth * 14 + 4}px` }}
-      >
-        {isFolder ? (
-          <button
-            aria-label={expanded ? "收起页面分组" : "展开页面分组"}
-            className="flex size-5 items-center justify-center rounded-sm hover:bg-background"
-            onClick={() => onToggleNode(node.id)}
-            type="button"
-          >
-            {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-          </button>
-        ) : (
-          <span className="size-5" />
-        )}
-        <button
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm"
-          onClick={() => {
-            if (isFolder) {
-              onToggleNode(node.id);
-            } else {
-              onPageSelect(node.id);
-            }
-          }}
-          type="button"
-        >
-          {isFolder ? (
-            expanded ? (
-              <FolderOpen className="size-4 shrink-0" />
-            ) : (
-              <Folder className="size-4 shrink-0" />
-            )
-          ) : (
-            <FileText className="size-4 shrink-0" />
-          )}
-          <span className="truncate">{node.name}</span>
-        </button>
-      </div>
-      {isFolder && expanded
-        ? node.children.map((child) => (
-            <ExplorationPageTreeItem
-              activePageId={activePageId}
-              depth={depth + 1}
-              expandedNodeIds={expandedNodeIds}
-              key={child.id}
-              node={child}
-              onPageSelect={onPageSelect}
-              onToggleNode={onToggleNode}
-            />
-          ))
-        : null}
-    </div>
-  );
-}
-
-function renderYamlValue(value: string): ReactNode {
-  const trimmed = value.trim();
-  if (!trimmed) return value;
-  if (trimmed.startsWith("#")) return <span className="text-slate-400">{value}</span>;
-  if (/^["'].*["']$/.test(trimmed)) {
-    return <span className="text-emerald-700 dark:text-emerald-300">{value}</span>;
-  }
-  if (/^(true|false|null)$/i.test(trimmed)) {
-    return <span className="font-medium text-violet-700 dark:text-violet-300">{value}</span>;
-  }
-  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
-    return <span className="font-medium text-blue-700 dark:text-blue-300">{value}</span>;
-  }
-  return <span className="text-slate-700 dark:text-slate-200">{value}</span>;
-}
-
-function renderYamlLine(line: string): ReactNode {
-  if (!line.trim()) return <span>&nbsp;</span>;
-
-  const commentIndex = line.indexOf("#");
-  const content = commentIndex >= 0 ? line.slice(0, commentIndex) : line;
-  const comment = commentIndex >= 0 ? line.slice(commentIndex) : "";
-  const match = content.match(/^(\s*)(-\s*)?([^:#]+?)(\s*:\s*)(.*)$/);
-
-  if (!match) {
-    return (
-      <>
-        <span className="text-slate-700 dark:text-slate-200">{content}</span>
-        {comment ? <span className="text-slate-400">{comment}</span> : null}
-      </>
-    );
-  }
-
-  const [, indent, dash = "", key, colon, value] = match;
-  return (
-    <>
-      <span>{indent}</span>
-      {dash ? <span className="text-amber-600 dark:text-amber-300">{dash}</span> : null}
-      <span className="font-semibold text-cyan-800 dark:text-cyan-200">{key}</span>
-      <span className="text-slate-400">{colon}</span>
-      {renderYamlValue(value)}
-      {comment ? <span className="text-slate-400">{comment}</span> : null}
-    </>
-  );
-}
-
-function YamlCodePreview({ content, error, loading }: { content: string; error: string; loading: boolean }) {
-  if (loading) {
-    return (
-      <div className="grid min-h-72 place-items-center rounded-lg border border-dashed bg-slate-50 text-muted-foreground text-sm dark:bg-slate-950/40">
-        <div className="flex items-center gap-2">
-          <Loader className="size-4" />
-          YAML 文件加载中
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="rounded-lg border border-destructive/30 bg-destructive/8 p-4 text-destructive text-sm">
-        {error}
-      </div>
-    );
-  }
-
-  const lines = content
-    ? content.split("\n").map((line, index) => ({
-        id: `${index + 1}:${line}`,
-        line,
-        number: index + 1,
-      }))
-    : [];
-  if (lines.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground text-sm">
-        暂无 YAML 内容。
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-hidden rounded-lg border bg-slate-50 shadow-sm dark:bg-slate-950/60">
-      <div className="flex h-9 items-center justify-between border-b bg-white/80 px-3 dark:bg-slate-900/70">
-        <div className="flex items-center gap-2 font-medium text-slate-700 text-xs dark:text-slate-200">
-          <FileCode2 className="size-3.5 text-cyan-700 dark:text-cyan-300" />
-          YAML
-        </div>
-        <div className="text-slate-400 text-xs">{lines.length} 行</div>
-      </div>
-      <pre className="max-h-[34rem] overflow-auto p-0 font-mono text-[12px] leading-6">
-        {lines.map((line) => (
-          <div
-            className="grid grid-cols-[3.5rem_minmax(0,1fr)] border-slate-200/55 border-b last:border-b-0 dark:border-slate-800/70"
-            key={line.id}
-          >
-            <span className="select-none border-r bg-slate-100/70 px-3 text-right text-slate-400 dark:border-slate-800 dark:bg-slate-900/70">
-              {line.number}
-            </span>
-            <code className="min-w-0 whitespace-pre-wrap break-words px-3 text-slate-700 dark:text-slate-200">
-              {renderYamlLine(line.line)}
-            </code>
-          </div>
-        ))}
-      </pre>
-    </div>
-  );
-}
-
 export function ExplorationWorkspace({
   breadcrumbs,
   description,
@@ -728,7 +99,7 @@ export function ExplorationWorkspace({
   const [error, setError] = useState("");
   const [searchText, setSearchText] = useState("");
   const [projects, setProjects] = useState<ApiProject[]>([]);
-  const [form, setForm] = useState<EnvironmentForm>({ ...emptyForm });
+  const [form, setForm] = useState<EnvironmentForm>({ ...emptyEnvironmentForm });
   const [selectedArtifactProjectId, setSelectedArtifactProjectId] = useState("");
   const [projectPages, setProjectPages] = useState<ExplorationPageRecord[]>([]);
   const [projectPagesLoading, setProjectPagesLoading] = useState(false);
@@ -917,7 +288,7 @@ export function ExplorationWorkspace({
           item.project_name,
           item.environment_name,
           item.requirement_doc_title,
-          statusLabels[item.status] ?? item.status,
+          explorationStatusLabels[item.status] ?? item.status,
           item.scope,
           item.goal,
           item.notes,
@@ -1075,7 +446,7 @@ export function ExplorationWorkspace({
     setEditingEnvironment(null);
     setManualAuthSession(null);
     setManualAuthAction("");
-    setForm({ ...emptyForm });
+    setForm({ ...emptyEnvironmentForm });
     setShowPassword(false);
     setDialogOpen(true);
   }
@@ -1132,7 +503,7 @@ export function ExplorationWorkspace({
       setManualAuthSession(null);
       setManualAuthAction("");
       setShowPassword(false);
-      setForm({ ...emptyForm });
+      setForm({ ...emptyEnvironmentForm });
     }
   }
 
@@ -1478,115 +849,21 @@ export function ExplorationWorkspace({
             selectedCount={explorationSelection.selectedCount}
             title="探索任务列表"
           />
-          <div className="overflow-hidden rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <Checkbox
-                      aria-label="选择全部探索任务"
-                      checked={
-                        explorationSelection.allSelected ||
-                        (explorationSelection.partiallySelected ? "indeterminate" : false)
-                      }
-                      disabled={explorationLoading}
-                      onCheckedChange={(checked) => explorationSelection.toggleAll(Boolean(checked))}
-                    />
-                  </TableHead>
-                  <TableHead>任务名称</TableHead>
-                  <TableHead>项目</TableHead>
-                  <TableHead>关联环境</TableHead>
-                  <TableHead>关联需求</TableHead>
-                  <TableHead>任务状态</TableHead>
-                  <TableHead>登录策略</TableHead>
-                  <TableHead>更新时间</TableHead>
-                  <TableHead className="w-16">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredExplorationRows.map((item) => (
-                  <TableRow
-                    data-state={explorationSelection.selectedIds.includes(item.id) ? "selected" : undefined}
-                    key={item.id}
-                  >
-                    <TableCell>
-                      <Checkbox
-                        aria-label={`选择 ${item.title}`}
-                        checked={explorationSelection.selectedIds.includes(item.id)}
-                        onCheckedChange={(checked) => explorationSelection.toggleOne(item.id, Boolean(checked))}
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      <button className="hover:underline" onClick={() => openExplorationRun(item)} type="button">
-                        {item.title}
-                      </button>
-                    </TableCell>
-                    <TableCell>{item.project_name}</TableCell>
-                    <TableCell>{item.environment_name}</TableCell>
-                    <TableCell>{item.requirement_doc_title || "-"}</TableCell>
-                    <TableCell>
-                      <ExplorationStatusBadge status={item.status} />
-                    </TableCell>
-                    <TableCell>{loginStrategyLabels[item.login_strategy] ?? item.login_strategy}</TableCell>
-                    <TableCell>{formatDateTime(item.updated_at)}</TableCell>
-                    <TableCell>
-                      <RowActions
-                        actions={[
-                          {
-                            label: "概览",
-                            icon: Eye,
-                            onSelect: () => openExplorationRun(item),
-                          },
-                          {
-                            label: "编辑",
-                            icon: Pencil,
-                            onSelect: () => openEditExplorationDialog(item),
-                          },
-                          ...((item.available_actions ?? []).includes("start")
-                            ? [
-                                {
-                                  label: item.status === "pending" ? "开始探索" : "重新探索",
-                                  icon: Play,
-                                  disabled: startingExplorationId === item.id,
-                                  onSelect: () => void startExplorationRun(item),
-                                },
-                              ]
-                            : []),
-                          ...(STOPPABLE_EXPLORATION_STATUSES.has(item.status)
-                            ? [
-                                {
-                                  label: "停止探索",
-                                  icon: Square,
-                                  destructive: true,
-                                  onSelect: () => setStoppingExploration(item),
-                                },
-                              ]
-                            : []),
-                          {
-                            label: "删除",
-                            icon: Trash2,
-                            destructive: true,
-                            onSelect: () => deleteExplorationRuns([item.id]),
-                          },
-                        ]}
-                        label={`打开 ${item.title} 操作菜单`}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {explorationLoading && filteredExplorationRows.length === 0 ? (
-                  <TableLoadingRow colSpan={9} label="探索任务加载中" />
-                ) : null}
-                {!explorationLoading && filteredExplorationRows.length === 0 ? (
-                  <TableRow>
-                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={9}>
-                      暂无探索任务。选择环境并创建探索任务后，系统会生成页面结构与探索报告。
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </div>
+          <ExplorationRunsTable
+            allSelected={explorationSelection.allSelected}
+            loading={explorationLoading}
+            onDelete={deleteExplorationRuns}
+            onEdit={openEditExplorationDialog}
+            onOpen={openExplorationRun}
+            onStart={(run) => void startExplorationRun(run)}
+            onStop={setStoppingExploration}
+            onToggleAll={explorationSelection.toggleAll}
+            onToggleOne={explorationSelection.toggleOne}
+            partiallySelected={explorationSelection.partiallySelected}
+            rows={filteredExplorationRows}
+            selectedIds={explorationSelection.selectedIds}
+            startingExplorationId={startingExplorationId}
+          />
         </ShellSection>
       ) : null}
 
@@ -1606,89 +883,18 @@ export function ExplorationWorkspace({
             selectedCount={selectedCount}
             title="环境列表"
           />
-          <div className="overflow-hidden rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <Checkbox
-                      aria-label="选择全部环境"
-                      checked={allSelected || (partiallySelected ? "indeterminate" : false)}
-                      disabled={environmentLoading}
-                      onCheckedChange={(checked) => toggleAll(Boolean(checked))}
-                    />
-                  </TableHead>
-                  <TableHead>环境名称</TableHead>
-                  <TableHead>站点地址</TableHead>
-                  <TableHead>登录态</TableHead>
-                  <TableHead>更新时间</TableHead>
-                  <TableHead className="w-16">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredRows.map((item) => (
-                  <TableRow data-state={selectedIds.includes(item.id) ? "selected" : undefined} key={item.id}>
-                    <TableCell>
-                      <Checkbox
-                        aria-label={`选择 ${item.name}`}
-                        checked={selectedIds.includes(item.id)}
-                        onCheckedChange={(checked) => toggleOne(item.id, Boolean(checked))}
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      <button className="hover:underline" onClick={() => openEditDialog(item)} type="button">
-                        {item.name}
-                      </button>
-                    </TableCell>
-                    <TableCell>
-                      <span className="block max-w-72 truncate" title={item.site_url}>
-                        {item.site_url}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex min-w-28">
-                        <EnvironmentAuthStateBadge message={item.auth_state_message} status={item.auth_state_status} />
-                      </div>
-                    </TableCell>
-                    <TableCell>{formatDateTime(item.updated_at)}</TableCell>
-                    <TableCell>
-                      <RowActions
-                        actions={[
-                          ...(canStartAiLetterAutoAuth(item)
-                            ? [
-                                {
-                                  label: item.auth_state_status === "logging_in" ? "登录中" : "登录",
-                                  icon: LogIn,
-                                  disabled: item.auth_state_status === "logging_in",
-                                  onSelect: () => void startAiLetterAutoAuth(item),
-                                },
-                              ]
-                            : []),
-                          {
-                            label: "删除",
-                            icon: Trash2,
-                            destructive: true,
-                            onSelect: () => deleteEnvironments([item.id]),
-                          },
-                        ]}
-                        label={`打开 ${item.name} 操作菜单`}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {environmentLoading && filteredRows.length === 0 ? (
-                  <TableLoadingRow colSpan={5} label="环境列表加载中" />
-                ) : null}
-                {!environmentLoading && filteredRows.length === 0 ? (
-                  <TableRow>
-                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={5}>
-                      暂无环境。新增站点环境后，可用于后续页面探索任务。
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </div>
+          <ExplorationEnvironmentsTable
+            allSelected={allSelected}
+            loading={environmentLoading}
+            onDelete={deleteEnvironments}
+            onEdit={openEditDialog}
+            onStartAiLetterAutoAuth={(environment) => void startAiLetterAutoAuth(environment)}
+            onToggleAll={toggleAll}
+            onToggleOne={toggleOne}
+            partiallySelected={partiallySelected}
+            rows={filteredRows}
+            selectedIds={selectedIds}
+          />
         </ShellSection>
       ) : null}
 

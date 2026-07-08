@@ -11,12 +11,14 @@ import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
-const AGENT_BACKEND_SOURCE_TYPES = new Set([
+const RUNNING_INDICATOR_SOURCE_TYPES = new Set([
   "exploration_run",
   "requirement_file",
   "requirement_analysis_run",
   "requirement_finalization_run",
   "test_case_generation_run",
+  "api_automation_generation_run",
+  "api_automation_run",
 ]);
 const RUNNING_TASK_POLL_INTERVAL_MS = 2_000;
 const TASK_START_GRACE_MS = 8_000;
@@ -50,7 +52,7 @@ function toRunningTask(item: ApiTaskItem): RunningTaskItem {
 }
 
 function isAgentBackendTask(item: ApiTaskItem) {
-  return AGENT_BACKEND_SOURCE_TYPES.has(item.source_type);
+  return RUNNING_INDICATOR_SOURCE_TYPES.has(item.source_type);
 }
 
 export function TaskRunningIndicator() {
