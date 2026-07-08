@@ -9,6 +9,7 @@ import { chromium } from "playwright";
 
 import {
   collectLoginFormElements,
+  detectBrowserErrorPage,
   ensureAgreementWithPlan,
   ensureUserAgreementChecked,
   expectedCaptchaLengthWithPlan,
@@ -457,6 +458,22 @@ describe("ai letter login helpers", () => {
 
       assert.equal(result.valid, false);
       assert.equal(result.reason, "captcha_image_selector_not_visible");
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("reports browser error pages as login page unreachable", async () => {
+    const browser = await chromium.launch({ channel: "chrome", headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(`
+        <h1>无法访问此网站</h1>
+        <p>saibotan-pre6.100credit.cn 的响应时间过长。</p>
+        <span>ERR_CONNECTION_TIMED_OUT</span>
+      `);
+
+      assert.equal(await detectBrowserErrorPage(page), "login_page_unreachable");
     } finally {
       await browser.close();
     }

@@ -1,0 +1,18 @@
+run_id: exp_LK61g3aD7GfcAa6zL5_7VQ
+project_id: project-1
+updated_at: '2026-07-08T06:58:20.740843+00:00'
+items:
+- id: ''
+  content: 打开 https://www.cybotstar.cn/agentStore，进入工作台界面，完成基线快照。完成判据：snapshot 中能看到工作台入口元素（如「Agent
+    市场」「智能体市场」「工作台」等关键词），URL 包含 /agentStore。
+  status: completed
+- id: ''
+  content: 在工作台页面定位并点击「创建智能体」按钮，完成后 snap 校验。完成判据：出现创建相关弹窗/抽屉，或页面跳转到创建表单，URL 或可见弹窗有可观察的变化。
+  status: completed
+- id: ''
+  content: 在创建入口中定位「自主规划 Agent」选项并选中，完成后 snap 校验。完成判据：弹窗/表单中「自主规划 Agent」被高亮/选中，或者页面出现该类型对应的下一步表单字段。
+  status: in_progress
+- id: ''
+  content: 在 merge_page_artifact_tool 中沉淀探索产物，记录关键元素的稳健定位器（优先 getByRole / getByLabel
+    / getByText / filter 链式），并产出阶段总结。
+  status: pending

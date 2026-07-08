@@ -296,6 +296,215 @@ CREATE TABLE IF NOT EXISTS project_environments (
   UNIQUE(project_id, name)
 );
 
+CREATE TABLE IF NOT EXISTS api_documents (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  source_type TEXT NOT NULL CHECK(source_type IN ('url', 'file')),
+  source_url TEXT NOT NULL DEFAULT '',
+  file_path TEXT NOT NULL DEFAULT '',
+  version TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK(status IN ('parsed', 'failed')),
+  endpoint_count INTEGER NOT NULL DEFAULT 0,
+  error_message TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_documents_project_created
+  ON api_documents(project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS api_endpoints (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  document_id TEXT,
+  method TEXT NOT NULL,
+  path TEXT NOT NULL,
+  normalized_path TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  tags_json TEXT NOT NULL DEFAULT '[]',
+  parameters_json TEXT NOT NULL DEFAULT '[]',
+  request_body_json TEXT NOT NULL DEFAULT '{}',
+  responses_json TEXT NOT NULL DEFAULT '{}',
+  auth_json TEXT NOT NULL DEFAULT '{}',
+  source_json TEXT NOT NULL DEFAULT '{}',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(document_id) REFERENCES api_documents(id) ON DELETE SET NULL,
+  UNIQUE(project_id, method, normalized_path)
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_endpoints_project_method
+  ON api_endpoints(project_id, method);
+
+CREATE TABLE IF NOT EXISTS api_test_environments (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  linked_ui_environment_id TEXT,
+  name TEXT NOT NULL,
+  api_base_url TEXT NOT NULL,
+  username TEXT NOT NULL DEFAULT '',
+  password_encrypted TEXT NOT NULL DEFAULT '',
+  password_hash TEXT NOT NULL DEFAULT '',
+  auth_type TEXT NOT NULL CHECK(auth_type IN ('none', 'static_bearer', 'static_headers', 'cookie', 'login_request')) DEFAULT 'none',
+  auth_config_json TEXT NOT NULL DEFAULT '{}',
+  variables_json TEXT NOT NULL DEFAULT '{}',
+  default_headers_json TEXT NOT NULL DEFAULT '{}',
+  timeout_seconds INTEGER NOT NULL DEFAULT 30,
+  verify_ssl INTEGER NOT NULL DEFAULT 1,
+  auth_state_ttl_seconds INTEGER NOT NULL DEFAULT 86400,
+  description TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(linked_ui_environment_id) REFERENCES project_environments(id) ON DELETE SET NULL,
+  UNIQUE(project_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS api_generation_runs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  api_environment_id TEXT,
+  task_id TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted')),
+  endpoint_ids_json TEXT NOT NULL DEFAULT '[]',
+  source_test_case_ids_json TEXT NOT NULL DEFAULT '[]',
+  generation_goal TEXT NOT NULL DEFAULT '',
+  options_json TEXT NOT NULL DEFAULT '{}',
+  result_summary_json TEXT NOT NULL DEFAULT '{}',
+  error_message TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finished_at TEXT,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_generation_runs_project_created
+  ON api_generation_runs(project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS api_test_cases (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  endpoint_id TEXT,
+  source_test_case_id TEXT,
+  generation_run_id TEXT,
+  title TEXT NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'P2',
+  source TEXT NOT NULL CHECK(source IN ('ai_generated', 'manual', 'approved_test_case')) DEFAULT 'ai_generated',
+  status TEXT NOT NULL CHECK(status IN ('draft', 'ready', 'needs_input', 'archived')) DEFAULT 'draft',
+  tags_json TEXT NOT NULL DEFAULT '[]',
+  request_json TEXT NOT NULL DEFAULT '{}',
+  expected_json TEXT NOT NULL DEFAULT '{}',
+  assertions_json TEXT NOT NULL DEFAULT '[]',
+  variables_json TEXT NOT NULL DEFAULT '{}',
+  data_origin_json TEXT NOT NULL DEFAULT '{}',
+  data_file_path TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  updated_by TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE SET NULL,
+  FOREIGN KEY(source_test_case_id) REFERENCES test_cases(id) ON DELETE SET NULL,
+  FOREIGN KEY(generation_run_id) REFERENCES api_generation_runs(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_test_cases_project_endpoint
+  ON api_test_cases(project_id, endpoint_id);
+
+CREATE TABLE IF NOT EXISTS api_test_scripts (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  endpoint_id TEXT,
+  api_test_case_id TEXT,
+  test_case_id TEXT,
+  generation_run_id TEXT,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('draft', 'ready', 'needs_input', 'failed')),
+  suite_path TEXT NOT NULL,
+  test_file_path TEXT NOT NULL,
+  data_file_path TEXT NOT NULL DEFAULT '',
+  language TEXT NOT NULL DEFAULT 'python',
+  framework TEXT NOT NULL DEFAULT 'pytest_requests',
+  notes TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  updated_by TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE SET NULL,
+  FOREIGN KEY(api_test_case_id) REFERENCES api_test_cases(id) ON DELETE SET NULL,
+  FOREIGN KEY(test_case_id) REFERENCES test_cases(id) ON DELETE SET NULL,
+  FOREIGN KEY(generation_run_id) REFERENCES api_generation_runs(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_scripts_project_updated
+  ON api_test_scripts(project_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS api_automation_runs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  api_environment_id TEXT,
+  task_id TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'passed', 'failed', 'cancelled', 'interrupted')),
+  script_ids_json TEXT NOT NULL DEFAULT '[]',
+  command_summary TEXT NOT NULL DEFAULT '',
+  stdout_path TEXT NOT NULL DEFAULT '',
+  stderr_path TEXT NOT NULL DEFAULT '',
+  json_report_path TEXT NOT NULL DEFAULT '',
+  summary_json TEXT NOT NULL DEFAULT '{}',
+  error_message TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finished_at TEXT,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_runs_project_created
+  ON api_automation_runs(project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS api_scenarios (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK(status IN ('draft', 'ready', 'archived')) DEFAULT 'draft',
+  variables_json TEXT NOT NULL DEFAULT '{}',
+  created_by TEXT NOT NULL,
+  updated_by TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS api_scenario_steps (
+  id TEXT PRIMARY KEY,
+  scenario_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  endpoint_id TEXT,
+  step_order INTEGER NOT NULL DEFAULT 0,
+  name TEXT NOT NULL DEFAULT '',
+  request_overrides_json TEXT NOT NULL DEFAULT '{}',
+  extractors_json TEXT NOT NULL DEFAULT '[]',
+  assertions_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(scenario_id) REFERENCES api_scenarios(id) ON DELETE CASCADE,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS exploration_runs (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,

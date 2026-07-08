@@ -497,6 +497,75 @@ describe("browser session observation", () => {
       await session.close();
     }
   });
+
+  it("includes ancestor_chain for elements inside popover containers", async () => {
+    // 验证根因修复：observePage 必须返回 ancestor_chain
+    // 问题：collectDomFacts 计算了 ancestor_chain 但 observePage 丢弃了它
+    const html = `
+      <!doctype html>
+      <html>
+        <head><title>Popover test</title></head>
+        <body>
+          <button onclick="document.title = 'main'">创建</button>
+          <div role="popover" aria-label="创建智能体">
+            <button onclick="document.title = 'in-popover'">创建</button>
+          </div>
+        </body>
+      </html>
+    `;
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      const observed = await session.command({ type: "observe" });
+      const buttons = observed.elements.filter((el) => el.name === "创建" && el.role === "button");
+
+      assert.ok(buttons.length >= 1, `Expected at least 1 button, got ${buttons.length}`);
+
+      // 验证至少有一个按钮有 ancestor_chain 字段
+      const withChain = buttons.filter((el) => "ancestor_chain" in el);
+      assert.ok(withChain.length > 0, `No element has ancestor_chain. All elements: ${JSON.stringify(buttons.map(b => Object.keys(b)))}`);
+
+      // 验证 popover 内的按钮 ancestor_chain 包含 popover
+      const inPopover = buttons.find((el) =>
+        el.ancestor_chain && el.ancestor_chain.some((a) => a.role === "popover")
+      );
+      assert.ok(inPopover, `No button found with popover in ancestor_chain. Ancestor chains: ${JSON.stringify(buttons.map(b => b.ancestor_chain))}`);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("provides diagnosis for not_visible errors with visible overlay info", async () => {
+    // 验证根因修复：classifyActionError 对 not_visible 错误进行诊断
+    const html = `
+      <!doctype html>
+      <html>
+        <head><title>Not visible test</title></head>
+        <body>
+          <div role="dialog" aria-label="测试对话框">
+            <button onclick="document.title = 'clicked'">确定</button>
+          </div>
+        </body>
+      </html>
+    `;
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      // 尝试点击一个不存在的元素，触发 not_visible 错误
+      const result = await session.command({
+        type: "click",
+        element_id: "page.getByRole('button', { name: '不存在的按钮' })",
+      });
+
+      assert.equal(result.success, false);
+      assert.equal(result.error_type, "not_visible");
+      // 验证诊断信息包含可见容器
+      if (result.diagnosis) {
+        assert.ok(result.diagnosis.summary, "diagnosis.summary should not be empty");
+        assert.ok(result.diagnosis.possible_cause, "diagnosis.possible_cause should not be empty");
+      }
+    } finally {
+      await session.close();
+    }
+  });
 });
 
 async function startSession(url) {

@@ -577,6 +577,151 @@ export async function apiBlobRequest(path: string, options: RequestInit = {}): P
   return response.blob();
 }
 
+export type ApiAutomationEndpoint = {
+  id: string;
+  project_id: string;
+  document_id: string | null;
+  method: string;
+  path: string;
+  normalized_path: string;
+  summary: string;
+  description: string;
+  tags: string[];
+  parameters: Record<string, unknown>[];
+  request_body: Record<string, unknown>;
+  responses: Record<string, unknown>;
+  auth: Record<string, unknown>;
+  source: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiAutomationEnvironment = {
+  id: string;
+  project_id: string;
+  name: string;
+  api_base_url: string;
+  username: string;
+  auth_type: string;
+  auth_config: Record<string, unknown>;
+  variables: Record<string, unknown>;
+  default_headers: Record<string, unknown>;
+  timeout_seconds: number;
+  verify_ssl: boolean;
+  auth_state_ttl_seconds: number;
+  description: string;
+};
+
+export type ApiAutomationGenerationRun = {
+  id: string;
+  project_id: string;
+  api_environment_id: string | null;
+  task_id: string;
+  status: string;
+  endpoint_ids: string[];
+  source_test_case_ids: string[];
+  generation_goal: string;
+  options: Record<string, unknown>;
+  result_summary: Record<string, unknown>;
+  error_message: string;
+  created_at: string;
+  finished_at: string | null;
+  test_cases?: ApiAutomationTestCase[];
+};
+
+export type ApiAutomationTestCase = {
+  id: string;
+  project_id: string;
+  endpoint_id: string | null;
+  title: string;
+  priority: string;
+  source: string;
+  status: string;
+  request: Record<string, unknown>;
+  expected: Record<string, unknown>;
+  assertions: Record<string, unknown>[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiAutomationScript = {
+  id: string;
+  project_id: string;
+  name: string;
+  status: string;
+  suite_path: string;
+  test_file_path: string;
+  data_file_path: string;
+  content?: string;
+};
+
+export type ApiAutomationRun = {
+  id: string;
+  project_id: string;
+  api_environment_id: string | null;
+  status: string;
+  script_ids: string[];
+  command_summary: string;
+  stdout_path: string;
+  stderr_path: string;
+  json_report_path: string;
+  summary: Record<string, unknown>;
+  error_message: string;
+  created_at: string;
+  finished_at: string | null;
+};
+
+export function listApiAutomationEndpoints(projectId: string) {
+  return apiRequest<ApiAutomationEndpoint[]>(`/projects/${projectId}/api-endpoints`);
+}
+
+export function importOpenApiDocument(projectId: string, payload: { source_type: "file" | "url"; content?: string; url?: string; name?: string }) {
+  return apiRequest(`/projects/${projectId}/api-documents/import`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listApiAutomationEnvironments(projectId: string) {
+  return apiRequest<ApiAutomationEnvironment[]>(`/projects/${projectId}/api-environments`);
+}
+
+export function createApiAutomationEnvironment(projectId: string, payload: Record<string, unknown>) {
+  return apiRequest<ApiAutomationEnvironment>(`/projects/${projectId}/api-environments`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function generateApiAutomation(projectId: string, payload: Record<string, unknown>) {
+  return apiRequest<ApiAutomationGenerationRun>(`/projects/${projectId}/api-automation/generate`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getApiAutomationGenerationRun(projectId: string, runId: string) {
+  return apiRequest<ApiAutomationGenerationRun>(`/projects/${projectId}/api-automation/generation-runs/${runId}`);
+}
+
+export function generateApiAutomationScripts(projectId: string, payload: { api_test_case_ids: string[]; api_environment_id?: string | null }) {
+  return apiRequest<{ suite_id: string; scripts: ApiAutomationScript[] }>(`/projects/${projectId}/api-automation/scripts/generate`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createApiAutomationRun(projectId: string, payload: { script_ids: string[]; api_environment_id?: string | null }) {
+  return apiRequest<ApiAutomationRun>(`/projects/${projectId}/api-runs`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getApiAutomationRun(projectId: string, runId: string) {
+  return apiRequest<ApiAutomationRun>(`/projects/${projectId}/api-runs/${runId}`);
+}
+
 export function roleToLabel(role: ApiRole) {
   return { admin: "管理员", tester: "测试工程师", guest: "访客" }[role];
 }

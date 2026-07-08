@@ -69,6 +69,16 @@ def credentials_exist(environment_id: str) -> bool:
     return load_credentials(environment_id) is not None
 
 
+def encrypt_api_environment_secret(value: str) -> str:
+    if not value:
+        return ""
+    return _fernet().encrypt(value.encode("utf-8")).decode("ascii")
+
+
+def decrypt_api_environment_secret(value: str) -> str | None:
+    return _decrypt_secret(value)
+
+
 def _fernet() -> Fernet:
     return Fernet(_load_or_create_key())
 

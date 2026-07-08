@@ -1,0 +1,193 @@
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+AuthType = Literal["none", "static_bearer", "static_headers", "cookie", "login_request"]
+GenerationStatus = Literal["queued", "running", "completed", "failed", "cancelled", "interrupted"]
+ApiCaseStatus = Literal["draft", "ready", "needs_input", "archived"]
+ScriptStatus = Literal["draft", "ready", "needs_input", "failed"]
+RunStatus = Literal["queued", "running", "passed", "failed", "cancelled", "interrupted"]
+
+
+class _StrippedModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _strip_strings(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class OpenAPIImportIn(_StrippedModel):
+    source_type: Literal["url", "file"]
+    url: str = ""
+    content: str = ""
+    name: str = ""
+
+
+class ApiDocumentOut(BaseModel):
+    id: str
+    project_id: str
+    name: str
+    source_type: str
+    source_url: str
+    file_path: str
+    version: str
+    status: str
+    endpoint_count: int
+    error_message: str
+    created_at: str
+
+
+class ApiEndpointIn(_StrippedModel):
+    method: str = Field(min_length=1)
+    path: str = Field(min_length=1)
+    summary: str = ""
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
+    parameters: list[dict[str, Any]] = Field(default_factory=list)
+    request_body: dict[str, Any] = Field(default_factory=dict)
+    responses: dict[str, Any] = Field(default_factory=dict)
+    auth: dict[str, Any] = Field(default_factory=dict)
+    source: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("method")
+    @classmethod
+    def _normalize_method(cls, value: str) -> str:
+        return value.upper()
+
+
+class ApiEndpointUpdateIn(_StrippedModel):
+    method: str | None = None
+    path: str | None = None
+    summary: str | None = None
+    description: str | None = None
+    tags: list[str] | None = None
+    parameters: list[dict[str, Any]] | None = None
+    request_body: dict[str, Any] | None = None
+    responses: dict[str, Any] | None = None
+    auth: dict[str, Any] | None = None
+    source: dict[str, Any] | None = None
+
+
+class ApiEndpointOut(BaseModel):
+    id: str
+    project_id: str
+    document_id: str | None
+    method: str
+    path: str
+    normalized_path: str
+    summary: str
+    description: str
+    tags: list[str]
+    parameters: list[dict[str, Any]]
+    request_body: dict[str, Any]
+    responses: dict[str, Any]
+    auth: dict[str, Any]
+    source: dict[str, Any]
+    created_at: str
+    updated_at: str
+
+
+class ApiEnvironmentIn(_StrippedModel):
+    name: str = Field(min_length=1)
+    api_base_url: str = Field(min_length=1)
+    linked_ui_environment_id: str | None = None
+    username: str = ""
+    password: str = ""
+    auth_type: AuthType = "none"
+    auth_config: dict[str, Any] = Field(default_factory=dict)
+    variables: dict[str, Any] = Field(default_factory=dict)
+    default_headers: dict[str, Any] = Field(default_factory=dict)
+    timeout_seconds: int = Field(default=30, ge=1, le=600)
+    verify_ssl: bool = True
+    auth_state_ttl_seconds: int = Field(default=86400, ge=0)
+    description: str = ""
+
+
+class ApiEnvironmentOut(BaseModel):
+    id: str
+    project_id: str
+    name: str
+    api_base_url: str
+    username: str
+    auth_type: str
+    auth_config: dict[str, Any]
+    variables: dict[str, Any]
+    default_headers: dict[str, Any]
+    timeout_seconds: int
+    verify_ssl: bool
+    auth_state_ttl_seconds: int
+    description: str
+    created_at: str
+    updated_at: str
+
+
+class ApiAutomationGenerateIn(_StrippedModel):
+    endpoint_ids: list[str] = Field(default_factory=list)
+    test_case_ids: list[str] = Field(default_factory=list)
+    api_environment_id: str | None = None
+    generation_goal: str = ""
+    include_security_cases: bool = False
+    generate_code: bool = True
+
+
+class ApiGenerationRunOut(BaseModel):
+    id: str
+    project_id: str
+    api_environment_id: str | None
+    task_id: str
+    status: str
+    endpoint_ids: list[str]
+    source_test_case_ids: list[str]
+    generation_goal: str
+    options: dict[str, Any]
+    result_summary: dict[str, Any]
+    error_message: str
+    created_at: str
+    finished_at: str | None = None
+
+
+class ApiTestCaseUpdateIn(_StrippedModel):
+    title: str | None = None
+    priority: str | None = None
+    status: ApiCaseStatus | None = None
+    tags: list[str] | None = None
+    request: dict[str, Any] | None = None
+    expected: dict[str, Any] | None = None
+    assertions: list[dict[str, Any]] | None = None
+    variables: dict[str, Any] | None = None
+    notes: str | None = None
+
+
+class ApiScriptUpdateIn(_StrippedModel):
+    content: str = Field(min_length=1)
+    notes: str = ""
+
+
+class ApiScriptGenerateIn(_StrippedModel):
+    api_test_case_ids: list[str] = Field(min_length=1)
+    api_environment_id: str | None = None
+
+
+class ApiRunCreateIn(_StrippedModel):
+    script_ids: list[str] = Field(min_length=1)
+    api_environment_id: str | None = None
+
+
+class ApiScenarioIn(_StrippedModel):
+    name: str = Field(min_length=1)
+    description: str = ""
+    variables: dict[str, Any] = Field(default_factory=dict)
+
+
+class ApiScenarioStepIn(_StrippedModel):
+    endpoint_id: str | None = None
+    step_order: int = Field(default=0, ge=0)
+    name: str = ""
+    request_overrides: dict[str, Any] = Field(default_factory=dict)
+    extractors: list[dict[str, Any]] = Field(default_factory=list)
+    assertions: list[dict[str, Any]] = Field(default_factory=list)

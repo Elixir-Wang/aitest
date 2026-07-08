@@ -1,0 +1,1259 @@
+page:
+  id: page-login
+  title: 百融百工
+  display_name: login
+  breadcrumb:
+  - login
+  normalized_path: /login
+  structure_summary: 自动保存页面快照，发现 72 个元素。
+  path_hash: sha256-7e93fba0bc7adda8
+  env_urls:
+    test: https://www.cybotstar.cn/login
+  last_explored:
+    timestamp: '2026-07-08T03:14:07.543798Z'
+    run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  elements: []
+states:
+- id: snapshot-current
+  title: 百融百工
+  url: https://www.cybotstar.cn/login
+  elements:
+  - id: el-1
+    name: 账号密码
+    role: clickable
+    text: 账号密码
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''账号密码'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-2
+    name: 短信验证
+    role: clickable
+    text: 短信验证
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''短信验证'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-3
+    name: 账号
+    role: clickable
+    text: 账号
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''账号'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-4
+    name: 账号
+    role: clickable
+    text: 账号
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''账号'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-5
+    name: 请输入邮箱/手机号
+    role: textbox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入邮箱/手机号'' })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''请输入邮箱/手机号'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-6
+    name: 密码
+    role: clickable
+    text: 密码
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''密码'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-7
+    name: 密码
+    role: clickable
+    text: 密码
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''密码'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-8
+    name: 请输入密码
+    role: textbox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入密码'' })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''请输入密码'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-9
+    name: 验证码
+    role: clickable
+    text: 验证码
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''验证码'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-10
+    name: 验证码
+    role: clickable
+    text: 验证码
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''验证码'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-11
+    name: 请输入图形验证码
+    role: textbox
+    text: ''
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入图形验证码'' })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''请输入图形验证码'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-12
+    name: 忘记密码?
+    role: clickable
+    text: 忘记密码?
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''忘记密码?'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-13
+    name: 忘记密码?
+    role: clickable
+    text: 忘记密码?
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''忘记密码?'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-14
+    name: 登录
+    role: clickable
+    text: 登录
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''登录'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-15
+    name: 登录
+    role: clickable
+    text: 登录
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''登录'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-16
+    name: 登录
+    role: button
+    text: 登录
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''登录'' })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''登录'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-17
+    name: 《用户协议》
+    role: link
+    text: 《用户协议》
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《用户协议》'' })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''《用户协议》'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-18
+    name: 《隐私政策》
+    role: link
+    text: 《隐私政策》
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《隐私政策》'' })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''《隐私政策》'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-19
+    name: 没有账号? 去注册
+    role: clickable
+    text: 没有账号? 去注册
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''没有账号? 去注册'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-20
+    name: 没有账号? 去注册
+    role: clickable
+    text: 没有账号? 去注册
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''没有账号? 去注册'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-21
+    name: 京公网安备11010502055440号
+    role: link
+    text: 京公网安备11010502055440号
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''京公网安备11010502055440号'' })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''京公网安备11010502055440号'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-22
+    name: 《用户协议》
+    role: link
+    text: 《用户协议》
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《用户协议》'' })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''《用户协议》'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-23
+    name: 《隐私政策》
+    role: link
+    text: 《隐私政策》
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《隐私政策》'' })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''《隐私政策》'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-24
+    name: 取消
+    role: button
+    text: 取消
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''取消'' })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''取消'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-25
+    name: 同意并继续
+    role: button
+    text: 同意并继续
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''同意并继续'' })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''同意并继续'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-26
+    name: 账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录 我已阅读并同意 《用户协议》 和 《隐私政策》 没有账号? 去注册 简体中文 京公网安备11010502055440号
+    role: clickable
+    text: 账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录 我已阅读并同意 《用户协议》 和 《隐私政策》 没有账号? 去注册 简体中文 京公网安备11010502055440号
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录 我已阅读并同意 《用户协议》 和 《隐私政策》 没有账号?
+        去注册 简体中文 京公网安备11010502055440号'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-27
+    name: 账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录 我已阅读并同意 《用户协议》 和 《隐私政策》 没有账号? 去注册 简体中文
+    role: clickable
+    text: 账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录 我已阅读并同意 《用户协议》 和 《隐私政策》 没有账号? 去注册 简体中文
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录 我已阅读并同意 《用户协议》 和 《隐私政策》 没有账号?
+        去注册 简体中文'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-28
+    name: 账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录 我已阅读并同意 《用户协议》 和 《隐私政策》 没有账号? 去注册
+    role: clickable
+    text: 账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录 我已阅读并同意 《用户协议》 和 《隐私政策》 没有账号? 去注册
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录 我已阅读并同意 《用户协议》 和 《隐私政策》 没有账号?
+        去注册'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-29
+    name: 账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录 我已阅读并同意 《用户协议》 和 《隐私政策》 没有账号? 去注册
+    role: clickable
+    text: 账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录 我已阅读并同意 《用户协议》 和 《隐私政策》 没有账号? 去注册
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录 我已阅读并同意 《用户协议》 和 《隐私政策》 没有账号?
+        去注册'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-30
+    name: 账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录
+    role: clickable
+    text: 账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''账号密码 | 短信验证 账号 密码 验证码 忘记密码? 登录'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-31
+    name: 账号密码 | 短信验证
+    role: clickable
+    text: 账号密码 | 短信验证
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''账号密码 | 短信验证'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-32
+    name: '|'
+    role: clickable
+    text: '|'
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''|'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-33
+    name: 账号 密码 验证码 忘记密码? 登录
+    role: clickable
+    text: 账号 密码 验证码 忘记密码? 登录
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''账号 密码 验证码 忘记密码? 登录'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-34
+    name: 忘记密码?
+    role: clickable
+    text: 忘记密码?
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''忘记密码?'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-35
+    name: 忘记密码?
+    role: clickable
+    text: 忘记密码?
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''忘记密码?'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-36
+    name: 登录
+    role: clickable
+    text: 登录
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''登录'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-37
+    name: 我已阅读并同意 《用户协议》 和 《隐私政策》
+    role: clickable
+    text: 我已阅读并同意 《用户协议》 和 《隐私政策》
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''我已阅读并同意 《用户协议》 和 《隐私政策》'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-38
+    name: 我已阅读并同意 《用户协议》 和 《隐私政策》
+    role: clickable
+    text: 我已阅读并同意 《用户协议》 和 《隐私政策》
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''我已阅读并同意 《用户协议》 和 《隐私政策》'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-39
+    name: 我已阅读并同意
+    role: clickable
+    text: 我已阅读并同意
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''我已阅读并同意'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-40
+    name: 和
+    role: clickable
+    text: 和
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''和'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-41
+    name: 没有账号? 去注册
+    role: clickable
+    text: 没有账号? 去注册
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''没有账号? 去注册'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-42
+    name: 没有账号?
+    role: clickable
+    text: 没有账号?
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''没有账号?'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-43
+    name: 去注册
+    role: clickable
+    text: 去注册
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''去注册'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-44
+    name: 简体中文
+    role: clickable
+    text: 简体中文
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''简体中文'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-45
+    name: 简体中文
+    role: clickable
+    text: 简体中文
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''简体中文'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-46
+    name: 简体中文
+    role: clickable
+    text: 简体中文
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''简体中文'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-47
+    name: 京公网安备11010502055440号
+    role: clickable
+    text: 京公网安备11010502055440号
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''京公网安备11010502055440号'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-48
+    name: 友情提示 我已阅读并同意 《用户协议》 和 《隐私政策》 取消 同意并继续
+    role: clickable
+    text: 友情提示 我已阅读并同意 《用户协议》 和 《隐私政策》 取消 同意并继续
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''友情提示 我已阅读并同意 《用户协议》 和 《隐私政策》 取消 同意并继续'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-49
+    name: 友情提示 我已阅读并同意 《用户协议》 和 《隐私政策》 取消 同意并继续
+    role: clickable
+    text: 友情提示 我已阅读并同意 《用户协议》 和 《隐私政策》 取消 同意并继续
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''友情提示 我已阅读并同意 《用户协议》 和 《隐私政策》 取消 同意并继续'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-50
+    name: 友情提示 我已阅读并同意 《用户协议》 和 《隐私政策》 取消 同意并继续
+    role: clickable
+    text: 友情提示 我已阅读并同意 《用户协议》 和 《隐私政策》 取消 同意并继续
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''友情提示 我已阅读并同意 《用户协议》 和 《隐私政策》 取消 同意并继续'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-51
+    name: 友情提示
+    role: clickable
+    text: 友情提示
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''友情提示'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-52
+    name: 友情提示
+    role: clickable
+    text: 友情提示
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''友情提示'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-53
+    name: 友情提示
+    role: clickable
+    text: 友情提示
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''友情提示'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-54
+    name: 我已阅读并同意 《用户协议》 和 《隐私政策》
+    role: clickable
+    text: 我已阅读并同意 《用户协议》 和 《隐私政策》
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''我已阅读并同意 《用户协议》 和 《隐私政策》'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-55
+    name: 我已阅读并同意 《用户协议》 和 《隐私政策》
+    role: clickable
+    text: 我已阅读并同意 《用户协议》 和 《隐私政策》
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''我已阅读并同意 《用户协议》 和 《隐私政策》'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-56
+    name: 我已阅读并同意 《用户协议》 和 《隐私政策》
+    role: clickable
+    text: 我已阅读并同意 《用户协议》 和 《隐私政策》
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''我已阅读并同意 《用户协议》 和 《隐私政策》'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-57
+    name: 我已阅读并同意 《用户协议》 和 《隐私政策》
+    role: clickable
+    text: 我已阅读并同意 《用户协议》 和 《隐私政策》
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''我已阅读并同意 《用户协议》 和 《隐私政策》'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-58
+    name: 我已阅读并同意
+    role: clickable
+    text: 我已阅读并同意
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''我已阅读并同意'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-59
+    name: 和
+    role: clickable
+    text: 和
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''和'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-60
+    name: 取消 同意并继续
+    role: clickable
+    text: 取消 同意并继续
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''取消 同意并继续'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-61
+    name: 取消 同意并继续
+    role: clickable
+    text: 取消 同意并继续
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''取消 同意并继续'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-62
+    name: 取消
+    role: clickable
+    text: 取消
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''取消'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: el-63
+    name: 同意并继续
+    role: clickable
+    text: 同意并继续
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''同意并继续'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+  - id: ax-64
+    name: 请输入邮箱/手机号
+    role: textbox
+    text: 请输入邮箱/手机号
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入邮箱/手机号'' })'
+      priority: 1
+    - kind: text
+      code: 'getByText(''请输入邮箱/手机号'', { exact: true })'
+      priority: 2
+  - id: ax-65
+    name: 请输入密码
+    role: textbox
+    text: 请输入密码
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入密码'' })'
+      priority: 1
+    - kind: text
+      code: 'getByText(''请输入密码'', { exact: true })'
+      priority: 2
+  - id: ax-66
+    name: 请输入图形验证码
+    role: textbox
+    text: 请输入图形验证码
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入图形验证码'' })'
+      priority: 1
+    - kind: text
+      code: 'getByText(''请输入图形验证码'', { exact: true })'
+      priority: 2
+  - id: ax-67
+    name: 登录
+    role: button
+    text: 登录
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''登录'' })'
+      priority: 1
+    - kind: text
+      code: 'getByText(''登录'', { exact: true })'
+      priority: 2
+  - id: ax-68
+    name: 《用户协议》
+    role: link
+    text: 《用户协议》
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《用户协议》'' })'
+      priority: 1
+    - kind: text
+      code: 'getByText(''《用户协议》'', { exact: true })'
+      priority: 2
+  - id: ax-69
+    name: 《隐私政策》
+    role: link
+    text: 《隐私政策》
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''《隐私政策》'' })'
+      priority: 1
+    - kind: text
+      code: 'getByText(''《隐私政策》'', { exact: true })'
+      priority: 2
+  - id: ax-70
+    name: 京公网安备11010502055440号
+    role: link
+    text: 京公网安备11010502055440号
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''link'', { name: ''京公网安备11010502055440号'' })'
+      priority: 1
+    - kind: text
+      code: 'getByText(''京公网安备11010502055440号'', { exact: true })'
+      priority: 2
+  - id: ax-71
+    name: 取消
+    role: button
+    text: 取消
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''取消'' })'
+      priority: 1
+    - kind: text
+      code: 'getByText(''取消'', { exact: true })'
+      priority: 2
+  - id: ax-72
+    name: 同意并继续
+    role: button
+    text: 同意并继续
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''同意并继续'' })'
+      priority: 1
+    - kind: text
+      code: 'getByText(''同意并继续'', { exact: true })'
+      priority: 2
+  accessibility_tree:
+  - id: ax-fallback-001
+    role: textbox
+    name: 请输入邮箱/手机号
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-002
+    role: textbox
+    name: 请输入密码
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-003
+    role: textbox
+    name: 请输入图形验证码
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-004
+    role: text
+    name: 忘记密码?
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-005
+    role: button
+    name: 登录
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-006
+    role: text
+    name: 登录
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-007
+    role: text
+    name: 我已阅读并同意
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-008
+    role: link
+    name: 《用户协议》
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-009
+    role: text
+    name: 和
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-010
+    role: link
+    name: 《隐私政策》
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-011
+    role: text
+    name: 没有账号?
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-012
+    role: text
+    name: 去注册
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-013
+    role: text
+    name: 简体中文
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-014
+    role: link
+    name: 京公网安备11010502055440号
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-015
+    role: button
+    name: 取消
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-016
+    role: text
+    name: 取消
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-017
+    role: button
+    name: 同意并继续
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  - id: ax-fallback-018
+    role: text
+    name: 同意并继续
+    level: null
+    checked: null
+    disabled: null
+    expanded: null
+  visible_text_blocks:
+  - 账号密码
+  - '|'
+  - 短信验证
+  - 账号
+  - 密码
+  - 验证码
+  - 忘记密码?
+  - 登录
+  - 我已阅读并同意
+  - 《用户协议》
+  - 和
+  - 《隐私政策》
+  - 没有账号?
+  - 去注册
+  - 简体中文
+  - 京公网安备11010502055440号
+  - 友情提示
+  - 取消
+  - 同意并继续
+  - 请输入邮箱/手机号
+  - 请输入密码
+  - 请输入图形验证码
+quality: {}
+metadata:
+  captured_at: '2026-07-08T03:12:32.067311+00:00'
+  source: page_exploration_run
+  source_run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  source_artifact_path: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\page_exploration\runs\exp_AEF5tx0X9WHsIXTDDzdQuA\pages\page-login.yaml
+  module: 主探索模块

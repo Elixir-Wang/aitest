@@ -2068,7 +2068,7 @@ export default function DocumentDetailPage() {
                             <div className="space-y-3 px-4 pt-2 pb-4">
                               {itemImpact ? (
                                 <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800 text-xs leading-5 dark:text-amber-200">
-                                  <span className="font-medium">影响：</span>
+                                  <span className="font-medium">测试影响：</span>
                                   <span className="text-amber-900 dark:text-amber-100">{itemImpact}</span>
                                 </div>
                               ) : null}

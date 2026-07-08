@@ -29,7 +29,7 @@ try {
   await gotoUrl(startUrl);
   writeLine({ kind: "session_started", status: "started", url: page.url() });
 } catch (error) {
-  const classified = classifyActionError(error);
+  const classified = classifyActionError(error, page);
   writeLine({
     kind: "session_failed",
     status: "error",
@@ -142,6 +142,9 @@ async function observePage() {
       risk_hint: riskHintFor(fact),
       primary_selector: selectors.primary_selector || null,
       fallback_selector: selectors.fallback_selector || null,
+      // 祖先链：element → body 路径中最有结构意义的中间层（最多 5 层）
+      // 用于让 LLM 直接从 DOM 结构判断元素所在上下文，不再依赖 JS 枚举 dialog 容器列表
+      ancestor_chain: fact.ancestor_chain || [],
     };
     elements.push(element);
   }
@@ -341,7 +344,7 @@ async function clickViaLiveLocator(liveLocator, rawExpr) {
   }
   const initialVisible = await firstVisibleLocator(liveLocator);
   if (!initialVisible) {
-    const failure = classifyActionError(new Error(`Locator did not resolve to a visible element: ${rawExpr}`));
+    const failure = classifyActionError(new Error(`Locator did not resolve to a visible element: ${rawExpr}`), page);
     return await buildActionResult({
       success: false,
       action: "click",
@@ -353,7 +356,7 @@ async function clickViaLiveLocator(liveLocator, rawExpr) {
   }
   const target = await actionableClickTargetFor(initialVisible);
   if (!target) {
-    const failure = classifyActionError(new Error(`Locator did not resolve to a clickable target: ${rawExpr}`));
+    const failure = classifyActionError(new Error(`Locator did not resolve to a clickable target: ${rawExpr}`), page);
     return await buildActionResult({
       success: false,
       action: "click",
@@ -385,7 +388,7 @@ async function clickViaLiveLocator(liveLocator, rawExpr) {
       effectiveLocator: rawExpr,
     });
   }
-  const classified = classifyActionError(clickError);
+  const classified = classifyActionError(clickError, page);
   if (classified.error_type === "pointer_intercepted") {
     await cleanupTransientOverlays();
     const retryCount = await liveLocator.count().catch(() => 0);
@@ -429,7 +432,7 @@ async function clickViaLiveLocator(liveLocator, rawExpr) {
         action: "click",
         raw: rawExpr,
         before,
-        failure: classifyActionError(retryError),
+        failure: classifyActionError(retryError, page),
         effectiveLocator: null,
       });
     }
@@ -498,7 +501,7 @@ async function fillViaLiveLocator(liveLocator, value, rawExpr) {
   }
   const target = await firstVisibleLocator(liveLocator);
   if (!target) {
-    const failure = classifyActionError(new Error(`Locator did not resolve to a visible element: ${rawExpr}`));
+    const failure = classifyActionError(new Error(`Locator did not resolve to a visible element: ${rawExpr}`), page);
     return await buildActionResult({
       success: false,
       action: "fill",
@@ -527,7 +530,7 @@ async function fillViaLiveLocator(liveLocator, value, rawExpr) {
       valueApplied: true,
     });
   }
-  const classified = classifyActionError(fillError);
+  const classified = classifyActionError(fillError, page);
   if (classified.error_type === "pointer_intercepted") {
     await cleanupTransientOverlays();
     const retryCount = await liveLocator.count().catch(() => 0);
@@ -567,7 +570,7 @@ async function fillViaLiveLocator(liveLocator, value, rawExpr) {
         action: "fill",
         raw: rawExpr,
         before,
-        failure: classifyActionError(retryError),
+        failure: classifyActionError(retryError, page),
         effectiveLocator: null,
       });
     }
@@ -753,7 +756,7 @@ async function cleanupTransientOverlays() {
   await page.waitForTimeout(120).catch(() => {});
 }
 
-function classifyActionError(error) {
+function classifyActionError(error, page = null) {
   const message = String(error?.message || error || "");
   const cleanMessage = message.replace(/\u001b\[[0-9;]*m/g, "");
   if (/intercepts pointer events/i.test(cleanMessage)) {
@@ -778,10 +781,13 @@ function classifyActionError(error) {
     };
   }
   if (/not visible|did not resolve to a visible element/i.test(cleanMessage)) {
+    // 诊断 not_visible 场景，给出更具体的错误提示
+    const diagnosis = diagnoseNotVisibleError(page);
     return {
       error: cleanMessage,
       error_type: "not_visible",
-      error_summary: "定位器没有解析到可见元素。",
+      error_summary: diagnosis.summary,
+      diagnosis,
     };
   }
   return {
@@ -789,6 +795,99 @@ function classifyActionError(error) {
     error_type: "action_failed",
     error_summary: compactErrorLine(cleanMessage) || "动作执行失败。",
   };
+}
+
+/**
+ * 诊断 not_visible 错误的根因。
+ * 返回 { summary: string, visible_containers: string[], possible_cause: string }
+ */
+async function diagnoseNotVisibleError(page) {
+  const noVisibleContainer = {
+    summary: "定位器没有解析到可见元素。可能原因：容器(popover/dialog)不存在、已关闭或内容已被替换。请重新 snap 观察当前页面状态。",
+    visible_containers: [],
+    possible_cause: "container_missing_or_closed",
+  };
+
+  if (!page) {
+    return noVisibleContainer;
+  }
+
+  try {
+    const diagnosis = await page.evaluate(() => {
+      const visible = (el) => {
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+      };
+
+      // 检查可见的 overlay 容器
+      const overlaySelectors = [
+        "[role='dialog']",
+        "[role='popover']",
+        "[role='alertdialog']",
+        "[role='menu']",
+        ".modal",
+        ".ant-modal",
+        ".el-dialog",
+        "[class*='drawer' i]",
+        "[class*='sidebar' i]",
+        "[class*='panel' i]",
+      ];
+
+      const visibleContainers = [];
+      for (const sel of overlaySelectors) {
+        for (const el of Array.from(document.querySelectorAll(sel))) {
+          if (visible(el)) {
+            const rect = el.getBoundingClientRect();
+            const role = el.getAttribute("role") || "";
+            const tagName = el.tagName.toLowerCase();
+            const className = el.className || "";
+            // 提取容器标题/名称
+            const titleEl = el.querySelector("[class*='title' i],h1,h2,h3,[role='heading'],[aria-label]");
+            const title = titleEl?.textContent?.trim()?.slice(0, 40)
+              || el.getAttribute("aria-label")?.slice(0, 40)
+              || el.textContent?.trim()?.slice(0, 40)
+              || "";
+            visibleContainers.push({
+              selector: sel,
+              role: role || tagName,
+              name: title,
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+            });
+          }
+        }
+      }
+
+      return { visibleContainers };
+    });
+
+    const containers = diagnosis.visibleContainers || [];
+
+    if (containers.length === 0) {
+      return {
+        summary: "定位器没有解析到可见元素。当前页面没有可见的弹层/浮层(dialog/popover/menu)。请确认是否需要先触发打开弹层的操作。",
+        visible_containers: [],
+        possible_cause: "no_overlay_present",
+      };
+    }
+
+    // 找到了可见容器，提供具体的容器信息和候选建议
+    const containerList = containers
+      .map((c) => {
+        const name = c.name ? `(${c.name})` : "";
+        return `[${c.role}]${name} ${c.width}x${c.height}`;
+      })
+      .join("; ");
+
+    return {
+      summary: `定位器没有解析到可见元素。当前可见容器: ${containerList}。请确认目标元素是否在这些容器内，如果不在则可能需要先触发打开对应弹层的操作。`,
+      visible_containers: containers,
+      possible_cause: "element_not_in_visible_container",
+    };
+  } catch {
+    return noVisibleContainer;
+  }
 }
 
 function ambiguousLocatorFailure(rawExpr, count) {

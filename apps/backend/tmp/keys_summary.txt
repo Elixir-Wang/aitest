@@ -1,0 +1,39 @@
+================================================================================
+大型 JSON 工具结果文件 - 顶层 Key 提取摘要
+================================================================================
+
+【共同模式】所有 9 个文件均为 Playwright 快照（playwright_snap_tool）的输出，
+顶层结构一致：url, title, page_text_summary, elements, accessibility_tree,
+visible_text_blocks, match_groups
+
+================================================================================
+文件 1: /large_tool_results/call_TlPNuP3mddk2amNrwvOvOupQ
+================================================================================
+顶层 keys (7):
+  - url                   : "https://www.cybotstar.cn/botSetting?id=19227&type=add&sessionId=2E0YEz3m9SrYyO1DSHMqm&tab=1"
+  - title                 : "百融百工"
+  - page_text_summary     : "标题：百融百工。可交互元素：80。链接：0。表单：20。表格：7。..."
+  - elements              : array[80]  (可交互元素列表)
+  - accessibility_tree    : array[29]  (无障碍树节点)
+  - visible_text_blocks   : array[32]  (可见文本块)
+  - match_groups          : array[19]  (同名元素分组)
+
+elements[] 嵌套 keys:
+  role, role_source, name, text, action_type, primary_selector, fallback_selector,
+  visible, ancestor_chain, sibling_count, is_ambiguous
+
+primary_selector 嵌套 keys:
+  kind, suitability, code  (CSS 时) / text (text 时) / role, name (role 时)
+  verification{checked, unique, visible, match_count},
+  locator_confidence, needs_confirmation, degraded_reason
+
+verification 嵌套 keys: checked, unique, visible, match_count
+
+accessibility_tree[] 嵌套 keys:
+  id, role, name, level, checked, disabled, expanded
+
+match_groups[] 嵌套 keys:
+  name, role, count, candidates[ ordinal, element_index, ancestor_chain,
+                                  primary_selector_code, context_hint ]
+
+visible_text_blocks[]: 仅字符串数组，无嵌套 keys

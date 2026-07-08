@@ -485,6 +485,7 @@ def _storage_state_is_valid(environment_id: str, state_path: Path) -> bool:
 def _failure_message_for_reason(reason: str) -> str:
     mapping = {
         "login_page_not_ready": "登录页未加载完成或页面为空，请稍后重试。",
+        "login_page_unreachable": "登录页访问失败，可能是连接超时或站点不可达，请检查网络、代理或白名单配置。",
         "captcha_not_found": "未找到验证码区域，请确认登录页结构。",
         "captcha_answer_missing": "验证码答案缺失，自动登录已中断。",
         "captcha_exhausted": "验证码识别或登录失败，已用尽 3 次重试。",

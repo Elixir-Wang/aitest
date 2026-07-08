@@ -21,18 +21,3 @@ def normalize_url(url: str) -> str:
     return path.lower()
 
 
-class URLNormalizer:
-    """Compatibility wrapper for services that need normalization plus env labels."""
-
-    def __init__(self, domain_mapping: dict[str, str] | None = None):
-        self.domain_mapping = domain_mapping or {}
-
-    def normalize(self, url: str) -> str:
-        return normalize_url(url)
-
-    def get_environment(self, url: str) -> str:
-        hostname = urlparse(url).hostname or ""
-        for env, base_url in self.domain_mapping.items():
-            if hostname == (urlparse(base_url).hostname or ""):
-                return env
-        return "default"

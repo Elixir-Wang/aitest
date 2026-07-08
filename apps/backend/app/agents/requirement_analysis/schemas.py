@@ -36,7 +36,11 @@ class ClarificationItem(BaseModel):
     option_a: str = Field(..., min_length=1, description="推荐答案 A（最可能的答案）")
     option_b: str = Field(..., min_length=1, description="推荐答案 B（次可能的答案）")
     source_excerpt: str = Field(default="", description="问题来源的原文片段（可选）")
-    impact: str = Field(..., min_length=1, description="该问题的影响说明")
+    impact: str = Field(
+        ...,
+        min_length=1,
+        description="从 QA 视角说明不确认该问题会造成的测试设计、覆盖范围、风险判断或验收判断影响。",
+    )
 
 
 class RequirementAnalysisResult(BaseModel):
@@ -95,7 +99,7 @@ class RequirementAnalysisResult(BaseModel):
             return "# 待澄清问题\n\n暂无待澄清问题。"
 
         lines = ["# 待澄清问题\n"]
-        lines.append("| 优先级 | 模块/对象 | 澄清问题 | 选项 A | 选项 B | 影响 |")
+        lines.append("| 优先级 | 模块/对象 | 澄清问题 | 选项 A | 选项 B | 测试影响 |")
         lines.append("|-------|----------|---------|--------|--------|------|")
 
         for item in self.clarifications:

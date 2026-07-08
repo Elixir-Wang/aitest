@@ -627,10 +627,18 @@ def _failed_actions_from_timeline(timeline_events: list[dict]) -> list[dict]:
 
 
 def _exploration_completion_status(timeline_events: list[dict]) -> str:
-    """探索完成状态：只有 completed 或 failed"""
+    """Derive run status from agent errors and the latest goal plan."""
     for event in timeline_events:
         if event.get("type") == "agent_step_error":
             return "failed"
+
+    latest_plan_steps = _latest_plan_steps_from_timeline(timeline_events)
+    if latest_plan_steps:
+        completed_statuses = {"completed", "done"}
+        if any(_string(step.get("status")).strip() == "blocked" for step in latest_plan_steps):
+            return "blocked"
+        if any(_string(step.get("status")).strip() not in completed_statuses for step in latest_plan_steps):
+            return "blocked"
     return "completed"
 
 

@@ -17,10 +17,9 @@ def dashboard_overview(project_id: str, days: int, actor) -> dict:
                 raise api_error(404, "PROJECT_NOT_FOUND", "项目不存在或无权访问。")
             project_ids = [project_id]
 
+        latest = dashboard_repo.get_current_stats(db, project_ids)
         trend = dashboard_repo.get_trend(db, project_ids, days)
-        latest = trend[-1] if trend else {"caseAssets": 0, "adoptedCases": 0, "automationCases": 0}
         previous = trend[-8] if len(trend) >= 8 else (trend[0] if trend else latest)
-        generated_cases = dashboard_repo.latest_generated_cases(db, project_ids)
         active_project_count = sum(1 for project in visible_projects if project["status"] == "active")
 
         return {
@@ -40,13 +39,13 @@ def dashboard_overview(project_id: str, days: int, actor) -> dict:
                 },
                 {
                     "label": "测试用例采纳率",
-                    "value": _percent(latest["adoptedCases"], generated_cases),
+                    "value": _percent(latest["adoptedCases"], latest["caseAssets"]),
                     "helper": _delta_helper(latest["adoptedCases"], previous["adoptedCases"], "较上周"),
                 },
                 {
                     "label": "自动化用例数量",
                     "value": str(latest["automationCases"]),
-                    "helper": f"可执行 {latest['automationCases']} 条",
+                    "helper": f"用例数量 {latest['automationCases']} 条",
                 },
             ],
             "trend": trend,
@@ -76,7 +75,7 @@ def _empty_dashboard(project_id: str) -> dict:
             {"label": "项目数", "value": "0", "helper": "活跃项目 0 个"},
             {"label": "用例资产数", "value": "0", "helper": "已采纳 0 条"},
             {"label": "测试用例采纳率", "value": "0%", "helper": "较上周 -"},
-            {"label": "自动化用例数量", "value": "0", "helper": "可执行 0 条"},
+            {"label": "自动化用例数量", "value": "0", "helper": "用例数量 0 条"},
         ],
         "trend": [],
     }

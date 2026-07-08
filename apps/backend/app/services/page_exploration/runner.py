@@ -430,10 +430,11 @@ async def _execute_exploration_async(
             finished_at=datetime.now(timezone.utc).isoformat(),
             result_summary=artifact_summary,
         )
+    terminal_event_type = "run_completed" if completion_status == "completed" else "run_failed"
     _publish_run_terminal_event(
         project_id,
         run_id,
-        "run_completed",
+        terminal_event_type,
         {
             "status": completion_status,
             "result_summary": artifact_summary,

@@ -144,3 +144,41 @@ def test_clarifications_singleton_list_passes_validation() -> None:
     )
     result = RequirementAnalysisResult(understanding=understanding, clarifications=[item])
     assert len(result.clarifications) == 1
+
+
+def test_clarification_impact_schema_is_qa_oriented() -> None:
+    """impact 字段必须引导模型输出 QA 视角的测试影响，而不是研发影响。"""
+    description = str(ClarificationItem.model_fields["impact"].description)
+
+    assert "测试" in description
+    assert "开发" not in description
+
+
+def test_clarification_markdown_uses_test_impact_header() -> None:
+    """待澄清 Markdown 表格应明确展示为测试影响。"""
+    understanding = RequirementUnderstanding(
+        background="背景",
+        goals="目标",
+        users="用户",
+        scope="范围",
+        flow="流程",
+        states="状态",
+        rules="规则",
+        ui="界面",
+        data="数据",
+    )
+    item = ClarificationItem(
+        id="clar-001",
+        priority="P0",
+        module="登录",
+        question="账号冻结状态下是否允许登录？",
+        option_a="不允许登录并提示账号已冻结",
+        option_b="允许登录但限制部分功能",
+        impact="影响冻结账号场景的测试用例设计和权限断言。",
+    )
+    result = RequirementAnalysisResult(understanding=understanding, clarifications=[item])
+
+    markdown = result.to_clarification_markdown()
+
+    assert "| 优先级 | 模块/对象 | 澄清问题 | 选项 A | 选项 B | 测试影响 |" in markdown
+    assert "| 优先级 | 模块/对象 | 澄清问题 | 选项 A | 选项 B | 影响 |" not in markdown

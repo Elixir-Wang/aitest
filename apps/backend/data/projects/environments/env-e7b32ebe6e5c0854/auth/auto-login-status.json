@@ -1,6 +1,6 @@
 {
-  "status": "succeeded",
-  "message": "登录态已自动保存。",
-  "updated_at": "2026-07-03T02:44:34.606515+00:00",
-  "last_error_code": ""
+  "status": "failed",
+  "message": "未找到验证码区域，请确认登录页结构。",
+  "updated_at": "2026-07-08T03:27:36.106709+00:00",
+  "last_error_code": "CAPTCHA_NOT_FOUND"
 }

@@ -1,0 +1,31 @@
+run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+project_id: project-75fec50973f2adf6
+updated_at: '2026-07-08T06:26:25.383123+00:00'
+items:
+- id: ''
+  content: 打开工作台首页，验证 agentStore 页面加载并可见「工作台」与「创建智能体」入口
+  status: completed
+- id: ''
+  content: 点击「创建智能体」按钮，验证 popover 浮层显示 Agent 类型选择
+  status: completed
+- id: ''
+  content: 选择「自主规划 Agent」类型，验证创建表单弹窗出现
+  status: completed
+- id: ''
+  content: 输入智能体名称「哈哈」并点击「创建」完成创建，验证跳转到 botSetting 详情页
+  status: completed
+- id: ''
+  content: 在 Prompt（角色设定）输入框输入「你是一个友好的助手」
+  status: in_progress
+- id: ''
+  content: 点击右上角「发布」按钮，验证发布弹窗出现
+  status: pending
+- id: ''
+  content: 在发布弹窗中输入版本号
+  status: pending
+- id: ''
+  content: 在发布弹窗中输入发布日志
+  status: pending
+- id: ''
+  content: 再次点击「发布」完成发布，验证 Toast/状态变化
+  status: pending

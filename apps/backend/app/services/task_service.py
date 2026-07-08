@@ -15,6 +15,8 @@ RUNNING_INDICATOR_SOURCE_TYPES = {
     "requirement_analysis_run",
     "requirement_finalization_run",
     "test_case_generation_run",
+    "api_automation_generation_run",
+    "api_automation_run",
 }
 
 EXPLORATION_STATUS = {
@@ -60,12 +62,32 @@ TEST_CASE_GENERATION_STATUS = {
     "failed": (FAILED_GROUP, "生成失败"),
 }
 
+API_AUTOMATION_GENERATION_STATUS = {
+    "queued": (RUNNING_GROUP, "排队中"),
+    "running": (RUNNING_GROUP, "生成中"),
+    "completed": (COMPLETED_GROUP, "生成完成"),
+    "failed": (FAILED_GROUP, "生成失败"),
+    "cancelled": (COMPLETED_GROUP, "已取消"),
+    "interrupted": (COMPLETED_GROUP, "已中断"),
+}
+
+API_AUTOMATION_RUN_STATUS = {
+    "queued": (RUNNING_GROUP, "排队中"),
+    "running": (RUNNING_GROUP, "执行中"),
+    "passed": (COMPLETED_GROUP, "执行通过"),
+    "failed": (FAILED_GROUP, "执行失败"),
+    "cancelled": (COMPLETED_GROUP, "已取消"),
+    "interrupted": (COMPLETED_GROUP, "已中断"),
+}
+
 STATUS_META_BY_SOURCE_TYPE = {
     "exploration_run": EXPLORATION_STATUS,
     "requirement_file": REQUIREMENT_FILE_STATUS,
     "requirement_analysis_run": REQUIREMENT_ANALYSIS_STATUS,
     "requirement_finalization_run": REQUIREMENT_FINALIZATION_STATUS,
     "test_case_generation_run": TEST_CASE_GENERATION_STATUS,
+    "api_automation_generation_run": API_AUTOMATION_GENERATION_STATUS,
+    "api_automation_run": API_AUTOMATION_RUN_STATUS,
 }
 
 
@@ -126,6 +148,8 @@ def get_task_by_source_for_event(*, source_type: str, source_id: str) -> dict | 
             *_requirement_analysis_run_tasks(db, project_names),
             *_requirement_finalization_tasks(db, project_names),
             *_test_case_generation_tasks(db, project_names),
+            *_api_automation_generation_tasks(db, project_names),
+            *_api_automation_run_tasks(db, project_names),
         ]:
             if task["source_type"] == source_type and task["source_id"] == source_id:
                 return task
@@ -246,6 +270,8 @@ def _collect_visible_tasks(actor) -> list[dict]:
             *_requirement_analysis_run_tasks(db, project_names),
             *_requirement_finalization_tasks(db, project_names),
             *_test_case_generation_tasks(db, project_names),
+            *_api_automation_generation_tasks(db, project_names),
+            *_api_automation_run_tasks(db, project_names),
         ]
 
 
@@ -423,6 +449,70 @@ def _test_case_generation_tasks(db, project_names: dict[str, str]) -> list[dict]
             created_at=row["created_at"],
             updated_at=row["updated_at"] or row["created_at"],
             detail_url=f"/test-cases?set={row['test_case_set_id']}",
+        )
+        for row in rows
+    ]
+
+
+def _api_automation_generation_tasks(db, project_names: dict[str, str]) -> list[dict]:
+    if not project_names or not _table_exists(db, "api_generation_runs"):
+        return []
+    rows = db.execute(
+        """
+        SELECT id, project_id, task_id, status, generation_goal, error_message, created_at, updated_at
+        FROM api_generation_runs
+        WHERE project_id IN ({})
+        """.format(_placeholders(project_names)),
+        tuple(project_names),
+    ).fetchall()
+    return [
+        _task(
+            task_id=row["task_id"],
+            source_type="api_automation_generation_run",
+            source_id=row["id"],
+            project_id=row["project_id"],
+            project_name=project_names[row["project_id"]],
+            module="api_automation",
+            module_label="接口自动化",
+            title=row["generation_goal"] or "接口自动化用例生成",
+            status=row["status"],
+            status_meta=API_AUTOMATION_GENERATION_STATUS,
+            summary=row["error_message"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"] or row["created_at"],
+            detail_url=f"/projects/{row['project_id']}/automation/api?generationRun={row['id']}",
+        )
+        for row in rows
+    ]
+
+
+def _api_automation_run_tasks(db, project_names: dict[str, str]) -> list[dict]:
+    if not project_names or not _table_exists(db, "api_automation_runs"):
+        return []
+    rows = db.execute(
+        """
+        SELECT id, project_id, task_id, status, command_summary, error_message, created_at, updated_at
+        FROM api_automation_runs
+        WHERE project_id IN ({})
+        """.format(_placeholders(project_names)),
+        tuple(project_names),
+    ).fetchall()
+    return [
+        _task(
+            task_id=row["task_id"],
+            source_type="api_automation_run",
+            source_id=row["id"],
+            project_id=row["project_id"],
+            project_name=project_names[row["project_id"]],
+            module="api_automation",
+            module_label="接口自动化",
+            title="接口自动化执行",
+            status=row["status"],
+            status_meta=API_AUTOMATION_RUN_STATUS,
+            summary=row["error_message"] or row["command_summary"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"] or row["created_at"],
+            detail_url=f"/projects/{row['project_id']}/automation/api?run={row['id']}",
         )
         for row in rows
     ]

@@ -80,6 +80,46 @@ def test_snap_tool_uses_runtime_browser_session_when_available():
     assert "raw_output" not in result
 
 
+def test_snap_tool_state_hint_uses_path_only_page_identity():
+    class FakeSession:
+        def __init__(self, *, start_url, storage_state_path):
+            self.start_url = start_url
+            self.storage_state_path = storage_state_path
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def navigate(self, url):
+            return {"url": url}
+
+        def observe(self):
+            return {
+                "url": "https://test.com/workspace/botSetting?id=19221&type=add&tab=1",
+                "title": "Bot Setting",
+                "page_text_summary": "Bot Setting summary.",
+                "elements": [{"id": "button-save", "role": "button", "name": "Save", "visible": True}],
+                "accessibility_tree": [{"id": "ax-1", "role": "button", "name": "Save"}],
+                "visible_text_blocks": ["Save"],
+            }
+
+        def close(self):
+            pass
+
+    with (
+        patch("app.agents.page_exploration.tools.runtime_context.PlaywrightBrowserSession", FakeSession),
+        browser_session_context(start_url="https://test.com", storage_state_path=None),
+    ):
+        result = playwright_snap_tool.invoke({"url": "https://test.com/workspace/botSetting?id=19221&type=add"})
+
+    hint = result["state_observation_hint"]
+    assert hint["page_id"] == "page-workspace-botSetting"
+    assert hint["normalized_path"] == "/workspace/botSetting"
+    assert "?" not in hint["normalized_path"]
+
+
 def test_browser_session_context_starts_clean_browser_without_auth_state():
     created_sessions = []
 

@@ -7,6 +7,7 @@ from app.core.logging import setup_logging
 from app.core.response import ApiResponseMiddleware
 from app.seed.init_db import init_db
 from app.services import task_service, test_case_service
+from app.services.api_automation import service as api_automation_service
 from app.services.page_exploration import event_bus, page_exploration_service
 
 recover_interrupted_exploration_runs = page_exploration_service.recover_interrupted_exploration_runs
@@ -31,6 +32,7 @@ def startup() -> None:
     recover_interrupted_exploration_runs()
     task_service.recover_interrupted_requirement_analysis_runs()
     test_case_service.recover_interrupted_test_case_generation_runs()
+    api_automation_service.recover_interrupted_api_automation_tasks()
     logger.info("Application started — AI Testing System API v0.1.0")
 
 

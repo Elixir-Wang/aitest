@@ -51,7 +51,7 @@ class RequirementClarificationQuestion(BaseModel):
             "不要拆出“当前缺口”“缺失说明”等额外字段或解释段。"
         )
     )
-    impact: str = Field(description="不确认会造成的下游设计、开发、测试、日志或状态处理影响。")
+    impact: str = Field(description="从 QA 视角说明不确认会造成的测试设计、覆盖范围、风险判断、验收判断或缺陷定位影响。")
     dimension: Literal[
         "boundary_value",
         "exception_path",
@@ -110,7 +110,7 @@ class RequirementUnresolvedFinding(BaseModel):
             "不要拆出“当前缺口”“缺失说明”等额外字段或解释段。"
         )
     )
-    impact: str = Field(description="不确认会造成的下游设计、开发、测试、日志或状态处理影响。")
+    impact: str = Field(description="从 QA 视角说明不确认会造成的测试设计、覆盖范围、风险判断、验收判断或缺陷定位影响。")
     severity: Literal["blocker", "major", "minor"] = "major"
     primary_excerpt: str = ""
     evidence: list[RequirementEvidenceReference] = Field(default_factory=list)

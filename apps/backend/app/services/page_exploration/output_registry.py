@@ -123,8 +123,10 @@ def _register_exploration_outputs(
             summary=f"本次探索记录 {len(page_artifacts)} 个页面。",
         )
 
-    if result_status == "failed":
+    if completion_status == "failed":
         return f"已保留本次失败前生成的 {len(page_artifacts)} 个页面产物。"
+    if completion_status == "blocked":
+        return f"探索被阻塞，已登记 {len(page_artifacts)} 个页面产物。"
     return f"探索完成，已登记 {len(page_artifacts)} 个页面产物。"
 
 
@@ -172,7 +174,7 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
         return None
 
     normalized_path = _normalize_snapshot_url_path(url)
-    page_id = _snapshot_page_id(normalized_path)
+    page_id = make_page_id(normalized_path)
     run_dir = _project_file_storage_root() / project_id / "page_exploration" / "runs" / run_id
     pages_dir = run_dir / "pages"
     elements = snapshot.get("elements") if isinstance(snapshot.get("elements"), list) else []
@@ -225,7 +227,7 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
         },
     }
 
-    path = _unique_snapshot_artifact_path(pages_dir / f"{page_id}.yaml")
+    path = pages_dir / f"{page_id}.yaml"
     _write_yaml_file(path, artifact)
     try:
         with _connect() as db:
@@ -242,17 +244,6 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
         # Snapshot checkpoints are best-effort. The final exploration output
         # registration re-indexes all run-scoped page artifacts.
         pass
-    return path
-
-
-def _unique_snapshot_artifact_path(path: Path) -> Path:
-    """Resolve a non-conflicting snapshot artifact path.
-
-    修改：原来在已存在时生成 `page-workspace-2.yaml` / `-3.yaml` ...
-    的序号化重名，是当前 run 中产生 22 个重复 yaml 的直接源头。
-    改为：同 run 内同 normalized_path 已写过则直接覆盖原文件（最新
-    快照胜出），避免序号化重复；新文件则按原名创建。
-    """
     return path
 
 
@@ -430,6 +421,9 @@ def _save_project_page_artifact(
     structure_summary = _string(page.get("structure_summary") or _page_structure_summary(artifact))
     if not normalized_path and url:
         normalized_path = _normalize_snapshot_url_path(url)
+    if normalized_path:
+        normalized_path = _normalize_snapshot_url_path(normalized_path)
+        page_id = make_page_id(normalized_path)
 
     _inline_save_page(
         project_id=project_id,
@@ -472,15 +466,7 @@ def _coerce_tool_output_dict(output) -> dict:
 
 def _normalize_snapshot_url_path(url: str) -> str:
     parsed = urlparse(url)
-    path = parsed.path or "/"
-    if parsed.query:
-        path = f"{path}?{parsed.query}"
-    return path
-
-
-def _snapshot_page_id(normalized_path: str) -> str:
-    """Deprecated: use make_page_id from app.agents.page_exploration.utils.page_id."""
-    return make_page_id(normalized_path)
+    return parsed.path or "/"
 
 
 def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) -> list[dict]:

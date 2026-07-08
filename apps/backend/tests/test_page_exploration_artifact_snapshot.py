@@ -518,13 +518,14 @@ def test_invoke_agent_checkpoints_snapshot_as_page_artifact(monkeypatch, tmp_pat
         / "runs"
         / "run-checkpoint"
         / "pages"
-        / "page-workspace-tab-agents.yaml"
+        / "page-workspace.yaml"
     )
     assert page_path.exists()
     import yaml
 
     data = yaml.safe_load(page_path.read_text(encoding="utf-8"))
-    assert data["page"]["id"] == "page-workspace-tab-agents"
+    assert data["page"]["id"] == "page-workspace"
+    assert data["page"]["normalized_path"] == "/workspace"
     assert data["page"]["url"] == "https://example.test/workspace?tab=agents"
     assert data["page"]["elements"][0]["locators"][0]["code"] == "getByRole('button', { name: '创建智能体' })"
     assert data["page"]["accessibility_tree"][1]["name"] == "自主规划 Agent"
@@ -596,7 +597,7 @@ def test_snapshot_checkpoint_registers_visible_artifact(monkeypatch, tmp_path: P
 def test_repeated_snapshot_checkpoints_create_separate_visible_artifacts(monkeypatch, tmp_path: Path) -> None:
     """同 URL 重复 snap 不再序号化创建多个 artifact 文件，而是覆盖最新。
 
-    设计变更：原实现 `_unique_snapshot_artifact_path` 序号化生成
+    设计变更：旧实现曾在重名时序号化生成
     `page-workspace-2.yaml` / `-3.yaml`... 是当前 bug 的直接源头。
     新实现：同 URL 写同一文件，最新快照胜出。第二个 artifact_id
     入库但 yaml 路径覆盖原文件。
@@ -650,6 +651,46 @@ def test_repeated_snapshot_checkpoints_create_separate_visible_artifacts(monkeyp
     assert first == second
     # 数据库仍记录两次写入（用于审计）
     assert len(artifact_ids) == 2
+
+
+def test_snapshot_checkpoint_uses_path_only_page_identity(monkeypatch, tmp_path: Path) -> None:
+    artifact_paths = []
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=()):
+            if "INSERT INTO exploration_artifacts" in sql and len(params) > 3:
+                artifact_paths.append(params[3])
+            return self
+
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+    monkeypatch.setattr(page_exploration_service, "connect", lambda: FakeConnection())
+
+    for url in (
+        "https://example.test/workspace/botSetting?id=19221&type=add&tab=1",
+        "https://example.test/workspace/botSetting?id=19221&type=edit&tab=3",
+    ):
+        page_exploration_service._checkpoint_snapshot_artifact_from_event(
+            {
+                "event": "on_tool_end",
+                "name": "playwright_snap_tool",
+                "data": {"output": {"url": url, "title": "Bot Setting", "elements": []}},
+            },
+            project_id="project-1",
+            run_id="run-checkpoint",
+        )
+
+    expected_path = str(
+        tmp_path / "project-1" / "page_exploration" / "pages" / "page-workspace-botSetting.yaml"
+    )
+    assert artifact_paths == [expected_path, expected_path]
+    assert (tmp_path / "project-1" / "page_exploration" / "pages" / "page-workspace-botSetting.yaml").exists()
+    assert not list((tmp_path / "project-1" / "page_exploration" / "pages").glob("*id-19221*.yaml"))
 
 
 def test_execute_exploration_async_publishes_realtime_events(monkeypatch) -> None:
@@ -1175,7 +1216,7 @@ def test_exploration_completion_status_is_failed_for_step_errors(tmp_path: Path)
         ]
     ) == "completed"
 
-    # 有未完成的计划步骤也返回完成状态
+    # 有未完成的计划步骤应判定为 blocked，避免目标探索未达成却显示完成
     assert page_exploration_service._exploration_completion_status(
         [
             {
@@ -1188,7 +1229,21 @@ def test_exploration_completion_status_is_failed_for_step_errors(tmp_path: Path)
                 },
             }
         ]
-    ) == "completed"
+    ) == "blocked"
+
+    assert page_exploration_service._exploration_completion_status(
+        [
+            {
+                "type": "agent_plan_updated",
+                "payload": {
+                    "plan_steps": [
+                        {"description": "打开页面", "status": "completed"},
+                        {"description": "提交表单", "status": "blocked"},
+                    ]
+                },
+            }
+        ]
+    ) == "blocked"
 
     assert page_exploration_service._exploration_completion_status([]) == "completed"
 
@@ -1541,6 +1596,39 @@ page:
             "updated_at": "2026-07-02T11:34:59Z",
         }
     ]
+
+
+def test_list_project_pages_returns_path_only_entry_path(monkeypatch, tmp_path: Path) -> None:
+    page_root = tmp_path / "project-1" / "page_exploration"
+    project_pages = page_root / "pages"
+    project_pages.mkdir(parents=True)
+    (project_pages / "page-workspace-botSetting.yaml").write_text(
+        """
+page:
+  id: page-workspace-botSetting
+  title: Bot Setting
+  display_name: botSetting
+  breadcrumb:
+    - workspace
+    - botSetting
+  normalized_path: /workspace/botSetting
+  structure_summary: 发现 botSetting 页面。
+  last_explored:
+    run_id: run-1
+    timestamp: '2026-07-08T10:00:00Z'
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+
+    rows = page_exploration_service.list_project_pages(actor={"id": "u-1"}, project_id="project-1")
+
+    assert rows[0]["id"] == "page-workspace-botSetting"
+    assert rows[0]["display_name"] == "botSetting"
+    assert rows[0]["breadcrumb"] == ["workspace", "botSetting"]
+    assert rows[0]["entry_path"] == "/workspace/botSetting"
+    assert "?" not in rows[0]["entry_path"]
 
 
 def test_get_project_page_yaml_content_reads_shared_page_yaml(monkeypatch, tmp_path: Path) -> None:

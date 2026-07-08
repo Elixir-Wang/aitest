@@ -1697,9 +1697,9 @@ export function ExplorationWorkspace({
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-medium text-sm">项目列表</h2>
             <div className="flex items-center gap-3">
-              <span className="font-medium text-muted-foreground text-sm">项目选择</span>
+              <span className="font-medium text-muted-foreground text-sm">项目</span>
               <Select
-                className="w-56"
+                className="w-auto min-w-28"
                 disabled={artifactProjectOptions.length === 0}
                 placeholder="选择项目"
                 setValue={setSelectedArtifactProjectId}

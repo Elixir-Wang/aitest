@@ -7,10 +7,8 @@ from typing import Any, Dict, List, Optional
 from langchain_core.tools import tool
 
 from app.agents.page_exploration.tools.runtime_context import snapshot_with_runtime_context
-from app.agents.page_exploration.utils.page_id import (
-    make_page_id,
-    compute_dom_signature_from_elements,
-)
+from app.agents.page_exploration.utils.dom_signature import compute_dom_signature
+from app.agents.page_exploration.utils.page_id import make_page_id
 from app.agents.page_exploration.utils.element_key import build_element_key
 
 
@@ -249,8 +247,6 @@ def _build_state_observation_hint(
     from urllib.parse import urlparse
     parsed = urlparse(url or "")
     normalized_path = parsed.path or "/"
-    if parsed.query:
-        normalized_path = f"{normalized_path}?{parsed.query}"
     now = datetime.now(timezone.utc).isoformat()
 
     children: list[dict] = []
@@ -285,7 +281,7 @@ def _build_state_observation_hint(
         })
 
     # 用共享函数从 elements 计算 dom_signature
-    dom_signature = compute_dom_signature_from_elements(children)
+    dom_signature = compute_dom_signature(children)
 
     return {
         "page_id": make_page_id(normalized_path),

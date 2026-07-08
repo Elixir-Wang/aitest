@@ -1270,6 +1270,22 @@ export async function waitForLoginSuccess(context, startUrl, timeoutMs = 3000) {
   return state ? evaluateLoginSuccessSignals(state) : { success: false, reasons: ["timeout"], score: -5 };
 }
 
+export async function detectBrowserErrorPage(page) {
+  const url = page.url();
+  if (url.startsWith("chrome-error://")) {
+    return "login_page_unreachable";
+  }
+  const bodyText = await page.locator("body").innerText({ timeout: 500 }).catch(() => "");
+  if (
+    /ERR_CONNECTION_TIMED_OUT|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_REFUSED|ERR_ADDRESS_UNREACHABLE/i.test(bodyText) ||
+    bodyText.includes("无法访问此网站") ||
+    bodyText.includes("响应时间过长")
+  ) {
+    return "login_page_unreachable";
+  }
+  return "";
+}
+
 async function waitForCaptchaSurface(page) {
   // 🚀 优化：主动触发验证码加载
   // 通过聚焦输入框来触发懒加载的验证码
@@ -1406,6 +1422,11 @@ export async function runAiLetterLogin({
   try {
     await page.goto(startUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
     onEvent({ kind: "session_started", url: page.url() });
+    const browserErrorReason = await detectBrowserErrorPage(page);
+    if (browserErrorReason) {
+      onEvent({ kind: "login_failed", reason: browserErrorReason, url: page.url() });
+      return { success: false, reason: browserErrorReason };
+    }
     let plan = loadLoginPlan(loginPlanPath);
     if (plan) {
       onEvent({ kind: "login_plan_loaded", path: loginPlanPath });

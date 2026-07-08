@@ -167,6 +167,13 @@ def test_get_auto_auth_status_keeps_active_running_status(monkeypatch: pytest.Mo
     assert status["message"] == "正在识别验证码"
 
 
+def test_failure_message_for_unreachable_login_page_mentions_connection() -> None:
+    message = auto_auth_service._failure_message_for_reason("login_page_unreachable")
+
+    assert "连接" in message
+    assert "验证码" not in message
+
+
 def test_run_auto_auth_writes_storage_state_on_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_environment()

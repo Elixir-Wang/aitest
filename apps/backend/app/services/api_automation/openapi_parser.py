@@ -1,0 +1,112 @@
+import json
+from typing import Any
+
+
+HTTP_METHODS = {"get", "post", "put", "delete", "patch", "options", "head", "trace"}
+
+
+class OpenAPIParseError(ValueError):
+    """Raised when an OpenAPI or Swagger document cannot be parsed."""
+
+
+def parse_openapi_document(raw: str, *, source_name: str = "") -> dict[str, Any]:
+    spec = _load_document(raw, source_name=source_name)
+    if not isinstance(spec, dict):
+        raise OpenAPIParseError("OpenAPI 文档格式无效。")
+    paths = spec.get("paths")
+    if not isinstance(paths, dict) or not paths:
+        raise OpenAPIParseError("OpenAPI 文档必须包含非空 paths 字段。")
+
+    info = spec.get("info") if isinstance(spec.get("info"), dict) else {}
+    title = _string(info.get("title")) or source_name or "API"
+    version = _string(info.get("version")) or _string(spec.get("swagger")) or _string(spec.get("openapi")) or ""
+    endpoints = extract_endpoints(spec)
+    if not endpoints:
+        raise OpenAPIParseError("OpenAPI 文档未解析到可用接口。")
+    return {
+        "title": title,
+        "version": version,
+        "endpoint_count": len(endpoints),
+        "tags": sorted({tag for endpoint in endpoints for tag in endpoint["tags"]}),
+        "endpoints": endpoints,
+    }
+
+
+def extract_endpoints(openapi_spec: dict[str, Any]) -> list[dict[str, Any]]:
+    paths = openapi_spec.get("paths", {})
+    global_security = openapi_spec.get("security", [])
+    endpoints: list[dict[str, Any]] = []
+    if not isinstance(paths, dict):
+        return endpoints
+
+    for path, path_item in paths.items():
+        if not isinstance(path_item, dict):
+            continue
+        path_parameters = path_item.get("parameters", [])
+        for method, method_spec in path_item.items():
+            method_lower = method.lower()
+            if method_lower not in HTTP_METHODS or not isinstance(method_spec, dict):
+                continue
+            operation_parameters = method_spec.get("parameters", [])
+            parameters = []
+            if isinstance(path_parameters, list):
+                parameters.extend(path_parameters)
+            if isinstance(operation_parameters, list):
+                parameters.extend(operation_parameters)
+            tags = method_spec.get("tags", ["Other"])
+            if not isinstance(tags, list) or not tags:
+                tags = ["Other"]
+            tags = [_string(tag) or "Other" for tag in tags]
+            operation_id = _string(method_spec.get("operationId"))
+            endpoints.append(
+                {
+                    "method": method_lower.upper(),
+                    "path": _string(path),
+                    "normalized_path": normalize_path(_string(path)),
+                    "summary": _string(method_spec.get("summary")),
+                    "description": _string(method_spec.get("description")),
+                    "tags": tags,
+                    "parameters": parameters,
+                    "request_body": method_spec.get("requestBody") if isinstance(method_spec.get("requestBody"), dict) else {},
+                    "responses": method_spec.get("responses") if isinstance(method_spec.get("responses"), dict) else {},
+                    "auth": {
+                        "security": method_spec.get("security", global_security),
+                    },
+                    "source": {
+                        "operation_id": operation_id,
+                        "deprecated": bool(method_spec.get("deprecated", False)),
+                        "tag_group": tags[0],
+                    },
+                }
+            )
+    endpoints.sort(key=lambda item: (item["path"], item["method"]))
+    return endpoints
+
+
+def normalize_path(path: str) -> str:
+    normalized = path.strip()
+    if not normalized.startswith("/"):
+        normalized = f"/{normalized}"
+    return normalized
+
+
+def _load_document(raw: str, *, source_name: str) -> Any:
+    content = raw.strip()
+    if not content:
+        raise OpenAPIParseError("OpenAPI 文档不能为空。")
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as json_exc:
+        try:
+            import yaml
+        except ImportError as exc:
+            raise OpenAPIParseError("OpenAPI 文档不是有效 JSON，当前环境未安装 YAML 解析依赖。") from exc
+        try:
+            return yaml.safe_load(content)
+        except Exception as exc:  # pragma: no cover - depends on optional yaml parser
+            name = f"（{source_name}）" if source_name else ""
+            raise OpenAPIParseError(f"OpenAPI 文档{name}解析失败。") from json_exc
+
+
+def _string(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
