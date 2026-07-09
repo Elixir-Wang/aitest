@@ -136,6 +136,16 @@ def list_api_test_cases(
     return service.list_api_test_cases(project_id, actor, endpoint_id=endpoint_id, status=status)
 
 
+@router.get("/api-test-cases/{case_id}", response_model=ApiTestCaseOut)
+def get_api_test_case(project_id: str, case_id: str, actor=Depends(current_user)) -> dict:
+    return service.get_api_test_case(project_id, case_id, actor)
+
+
+@router.delete("/api-test-cases/{case_id}", status_code=204)
+def delete_api_test_case(project_id: str, case_id: str, actor=Depends(require_admin)) -> None:
+    service.delete_api_test_case(project_id, case_id, actor)
+
+
 @router.get("/api-automation/generation-runs", response_model=list[ApiGenerationRunOut])
 def list_api_automation_generation_runs(project_id: str, actor=Depends(current_user)) -> list[dict]:
     return service.list_generation_runs(project_id, actor)

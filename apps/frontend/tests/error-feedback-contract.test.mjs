@@ -5,13 +5,12 @@ import { test } from "node:test";
 const errorFeedbackSource = readFileSync(new URL("../src/lib/error-feedback.ts", import.meta.url), "utf8");
 const sonnerSource = readFileSync(new URL("../src/components/ui/sonner.tsx", import.meta.url), "utf8");
 
-test("error feedback detail action opens the operation log detail page when a log id exists", () => {
-  assert.match(
-    errorFeedbackSource,
-    /window\.location\.assign\(operationLogUrl\(result\?\.log_id, result\?\.trace_id \|\| traceId\)\)/,
-  );
-  assert.match(errorFeedbackSource, /return `\/settings\/logs\/\$\{encodeURIComponent\(logId\)\}`/);
-  assert.match(errorFeedbackSource, /return operationLogListUrl\(keyword\)/);
+test("error feedback uses a normal error toast without a detail action", () => {
+  assert.match(errorFeedbackSource, /toast\.error\(title,\s*\{/);
+  assert.match(errorFeedbackSource, /void submitClientErrorLog\(item\)/);
+  assert.doesNotMatch(errorFeedbackSource, /action:\s*\{/);
+  assert.doesNotMatch(errorFeedbackSource, /label:\s*"查看详情"/);
+  assert.doesNotMatch(errorFeedbackSource, /window\.location\.assign/);
 });
 
 test("error feedback toast stays selectable instead of adding a copy button", () => {
@@ -26,7 +25,10 @@ test("global sonner toast uses variant card styling and disables swipe gestures"
   assert.match(sonnerSource, /closeButton/);
   assert.match(sonnerSource, /swipeDirections=\{\[\]\}/);
   assert.match(sonnerSource, /toast:\s*"cn-toast select-text rounded-xl border pr-12 shadow-md"/);
-  assert.match(sonnerSource, /closeButton:\s*"!right-3 !left-auto !top-1\/2 !-translate-y-1\/2 size-7 rounded-md/);
+  assert.match(
+    sonnerSource,
+    /closeButton:\s*"!right-3 !left-auto !top-3 !translate-y-0 !\[transform:none\] size-7 rounded-md/,
+  );
   assert.match(sonnerSource, /default:\s*"bg-card border-border text-foreground"/);
   assert.match(sonnerSource, /success:\s*"bg-card border-green-600\/50 text-foreground"/);
   assert.match(sonnerSource, /error:\s*"bg-card border-destructive\/50 text-foreground"/);

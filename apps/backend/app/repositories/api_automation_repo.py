@@ -344,10 +344,13 @@ def create_api_test_case(
     generation_run_id: str | None,
     title: str,
     priority: str,
+    coverage: str,
     source: str,
     status: str,
     tags: list[str],
+    preconditions: list[str],
     request: dict[str, Any],
+    test_data: dict[str, Any],
     expected: dict[str, Any],
     assertions: list[dict[str, Any]],
     variables: dict[str, Any],
@@ -360,11 +363,11 @@ def create_api_test_case(
         """
         INSERT INTO api_test_cases (
           id, project_id, endpoint_id, source_test_case_id, generation_run_id,
-          title, priority, source, status, tags_json, request_json,
-          expected_json, assertions_json, variables_json, data_origin_json,
+          title, priority, coverage, source, status, tags_json, preconditions_json,
+          request_json, test_data_json, expected_json, assertions_json, variables_json, data_origin_json,
           data_file_path, notes, created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             case_id,
@@ -374,10 +377,13 @@ def create_api_test_case(
             generation_run_id,
             title,
             priority,
+            coverage or "positive",
             source,
             status,
             dumps_json(tags),
+            dumps_json(preconditions),
             dumps_json(request),
+            dumps_json(test_data),
             dumps_json(expected),
             dumps_json(assertions),
             dumps_json(variables),
@@ -420,12 +426,18 @@ def find_api_test_case(db: Connection, case_id: str) -> Row | None:
     return db.execute("SELECT * FROM api_test_cases WHERE id = ?", (case_id,)).fetchone()
 
 
+def delete_api_test_case(db: Connection, case_id: str) -> None:
+    db.execute("DELETE FROM api_test_cases WHERE id = ?", (case_id,))
+
+
 def update_api_test_case(db: Connection, case_id: str, **fields: Any) -> None:
     if not fields:
         return
     json_fields = {
         "tags": "tags_json",
+        "preconditions": "preconditions_json",
         "request": "request_json",
+        "test_data": "test_data_json",
         "expected": "expected_json",
         "assertions": "assertions_json",
         "variables": "variables_json",

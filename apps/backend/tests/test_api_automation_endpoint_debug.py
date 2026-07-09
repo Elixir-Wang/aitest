@@ -114,11 +114,13 @@ def test_debug_project_endpoint_sends_request_through_backend(monkeypatch: pytes
     assert captured["headers"]["cybertron-robot-key"] == "robot-key"
     assert captured["headers"]["cybertron-robot-token"] == "robot-token"
     assert captured["headers"]["username"] == "robot-user"
+    assert "cookies" not in captured
     assert captured["json"] == {"question": "你好"}
     assert result["status_code"] == 201
     assert result["body_json"] == {"ok": True}
     assert result["request"]["headers"]["cybertron-robot-key"] == "******"
     assert result["request"]["headers"]["cybertron-robot-token"] == "******"
+    assert "cookies" not in result["request"]
 
 
 def test_debug_project_endpoint_uses_request_body_content_type(

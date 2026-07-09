@@ -4,7 +4,7 @@ from app.agents.knowledge.schemas import KnowledgeQueryInput, KnowledgeQueryOutp
 
 
 def test_knowledge_agent_prompt_has_consolidated_source_rules():
-    from app.agents.knowledge.prompts import SYSTEM_PROMPT
+    from app.agents.knowledge.agent import SYSTEM_PROMPT
 
     assert "7. 如果未读取 /requirements/ 或 /company-knowledge/" in SYSTEM_PROMPT
     assert "8. 如果读取了 /requirements/，必须在 used_requirement_versions 中返回实际使用过的需求版本 ID。" in SYSTEM_PROMPT

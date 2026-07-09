@@ -173,3 +173,88 @@ def test_artifact_preserves_observation_ancestor_chain_in_e2e():
     )
     assert el.get("name") == "确认"
     assert el.get("ancestor_chain") == [{"role": "popover", "name": ""}]
+
+
+def test_artifact_elements_include_pom_context_for_ambiguous_names():
+    """POM 生成需要知道同名元素数量、候选序号和可用的容器上下文。"""
+    observation_elements = [
+        {
+            "id": "el-1",
+            "role": "button",
+            "role_source": "accessibility_tree",
+            "name": "发布",
+            "text": "发布",
+            "visible": True,
+            "action_type": "click",
+            "primary_selector": {
+                "kind": "role", "role": "button", "name": "发布",
+                "code": "getByRole('button', { name: '发布' })",
+                "verification": {"checked": True, "unique": False, "visible": True, "match_count": 2},
+            },
+            "fallback_selector": None,
+            "ancestor_chain": [{"role": "div", "name": "哈哈 草稿 编辑 发布"}],
+        },
+        {
+            "id": "el-2",
+            "role": "button",
+            "role_source": "accessibility_tree",
+            "name": "发布",
+            "text": "发布",
+            "visible": True,
+            "action_type": "click",
+            "primary_selector": {
+                "kind": "role", "role": "button", "name": "发布",
+                "code": "getByRole('button', { name: '发布' })",
+                "verification": {"checked": True, "unique": False, "visible": True, "match_count": 2},
+            },
+            "fallback_selector": None,
+            "ancestor_chain": [{"role": "dialog", "name": "发布确认"}],
+        },
+    ]
+
+    artifact_elements = _snapshot_elements_for_artifact(observation_elements, [])
+
+    first, second = artifact_elements
+    assert first["action_type"] == "click"
+    assert first["context"]["is_ambiguous"] is True
+    assert first["context"]["sibling_count"] == 2
+    assert first["context"]["ordinal"] == 1
+    assert first["context"]["ancestor_text"] == "哈哈 草稿 编辑 发布"
+    assert "scope_hint" in first["context"]
+    assert second["context"]["ordinal"] == 2
+    assert second["context"]["container_role"] == "dialog"
+    assert second["context"]["container_name"] == "发布确认"
+
+
+def test_artifact_keeps_ax_only_controls_but_skips_dom_duplicates():
+    """AX 树只补 DOM 没采到的可交互元素，避免重复 ax-* 噪音。"""
+    observation_elements = [
+        {
+            "id": "el-1",
+            "role": "button",
+            "role_source": "accessibility_tree",
+            "name": "创建",
+            "text": "创建",
+            "visible": True,
+            "action_type": "click",
+            "primary_selector": {
+                "kind": "role", "role": "button", "name": "创建",
+                "code": "getByRole('button', { name: '创建' })",
+                "verification": {"checked": True, "unique": True, "visible": True, "match_count": 1},
+            },
+            "fallback_selector": None,
+        }
+    ]
+    accessibility_tree = [
+        {"id": "ax-1", "role": "button", "name": "创建"},
+        {"id": "ax-2", "role": "button", "name": "确认"},
+        {"id": "ax-3", "role": "text", "name": "静态说明"},
+    ]
+
+    artifact_elements = _snapshot_elements_for_artifact(observation_elements, accessibility_tree)
+
+    assert [item["name"] for item in artifact_elements] == ["创建", "确认"]
+    ax_only = artifact_elements[1]
+    assert ax_only["id"] == "ax-2"
+    assert ax_only["locators"][0]["verification"]["checked"] is False
+    assert ax_only["context"]["is_ambiguous"] is False

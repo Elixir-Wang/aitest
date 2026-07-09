@@ -10,7 +10,6 @@
 apps/backend/app/agents/test_case_generation/
 ├── __init__.py                 # 模块导出
 ├── agent.py                    # Agent 定义
-├── middleware.py               # Skill 中间件
 ├── schemas.py                  # 数据结构定义
 ├── service.py                  # 服务层
 └── skills/
@@ -18,6 +17,8 @@ apps/backend/app/agents/test_case_generation/
         ├── SKILL.md            # Skill 定义
         └── references/         # 参考文档（可选）
 ```
+
+Skill 中间件复用公共实现：`app.agents.shared.skill_middleware.SkillMiddleware`。
 
 ## 数据结构
 

@@ -1,0 +1,23 @@
+{
+  "skill_name": "mintlify-api-reference-to-openapi",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "把 http://192.168.160.65:30000/api-reference/introduction 转成 docs/generated/cybotstar-openapi.generated.json，并说明哪些页面只能最小生成。",
+      "expected_output": "Uses the bundled script with --profile cybotstar-assets, generates an OpenAPI JSON file, reports page count, operation count, minimal operations, duplicates, security/header parameter handling, and validates non-empty paths.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "这个 Mintlify API reference 页面里有 openApiReferenceData，帮我抽取成 OpenAPI，不要凭页面文字猜 requestBody。",
+      "expected_output": "Prefers embedded openApiReferenceData, preserves x-source-doc-url, avoids invented request or response schemas, marks metadata-only fallbacks with x-source-warning, and adds path parameters from templated fallback paths.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "我已经有一个 OpenAPI JSON 文件了，帮我导入接口自动化模块。",
+      "expected_output": "Does not use this conversion workflow; routes to the existing project OpenAPI parser/import path because the input is already OpenAPI.",
+      "files": []
+    }
+  ]
+}

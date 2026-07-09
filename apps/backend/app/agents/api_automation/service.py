@@ -1,61 +1,70 @@
+import json
+
+from app.agents.api_automation.agent import api_automation_generation_agent
 from app.agents.api_automation.schemas import ApiAutomationGenerationInput, ApiAutomationGenerationResult
+from app.agents.model_selection import build_agent_model, resolve_model_selection, thinking_disabled_extra_body
 
 
-def generate_api_test_cases(input_data: ApiAutomationGenerationInput) -> ApiAutomationGenerationResult:
-    """Generate structured API automation cases.
+CAPABILITY_ID = "api_test_generation"
 
-    This deterministic baseline keeps the product usable when no model provider
-    is configured. A later LLM-backed implementation can replace this function
-    without changing the service layer contract.
-    """
-    cases = []
-    for endpoint in input_data.endpoints:
-        method = endpoint.get("method", "GET")
-        path = endpoint.get("path", "")
-        status_code = _first_success_status(endpoint.get("responses", {}))
-        required_inputs = _required_inputs(endpoint)
-        status = "needs_input" if required_inputs else "ready"
-        notes = f"需补充参数：{', '.join(required_inputs)}" if required_inputs else ""
-        cases.append(
-            {
-                "title": f"{endpoint.get('summary') or method + ' ' + path} - 正常响应",
-                "priority": "P1",
-                "endpoint_id": endpoint["id"],
-                "request": {
-                    "method": method,
-                    "path": path,
-                    "query": {},
-                    "headers": {},
-                },
-                "expected": {"status_code": status_code},
-                "assertions": [{"type": "status_code", "expected": status_code}],
-                "variables": {},
-                "data_origin": {
-                    "request": "openapi",
-                    "expected.status_code": "openapi",
-                    "assertions": "openapi",
-                },
-                "status": status,
-                "notes": notes,
-            }
+
+async def generate_api_test_cases(input_data: ApiAutomationGenerationInput) -> ApiAutomationGenerationResult:
+    if not input_data.endpoints:
+        raise ValueError("接口列表为空，无法生成接口自动化用例。")
+
+    content_parts = [
+        f"项目ID: {input_data.project_id}",
+        "",
+        "接口定义（来自 OpenAPI/手工维护，是接口事实来源）:",
+        json.dumps(input_data.endpoints, ensure_ascii=False, indent=2),
+    ]
+
+    if input_data.environment_summary:
+        content_parts.extend(
+            [
+                "",
+                "接口环境摘要（只用于生成可执行请求，不得输出敏感明文）:",
+                json.dumps(input_data.environment_summary, ensure_ascii=False, indent=2),
+            ]
         )
-    return ApiAutomationGenerationResult(summary=f"生成 {len(cases)} 条接口自动化用例。", cases=cases)
 
+    if input_data.source_test_cases:
+        content_parts.extend(
+            [
+                "",
+                "可参考的需求测试用例或历史用例:",
+                json.dumps(input_data.source_test_cases, ensure_ascii=False, indent=2),
+            ]
+        )
 
-def _first_success_status(responses: object) -> int:
-    if isinstance(responses, dict):
-        for key in responses:
-            if str(key).startswith("2") and str(key).isdigit():
-                return int(key)
-    return 200
+    if input_data.generation_goal:
+        content_parts.extend(["", f"生成目标: {input_data.generation_goal}"])
 
+    content_parts.extend(
+        [
+            "",
+            f"是否生成安全类用例: {input_data.include_security_cases}",
+            "",
+            "请使用 api-automation-case-generation skill 生成接口自动化用例。",
+        ]
+    )
 
-def _required_inputs(endpoint: dict) -> list[str]:
-    missing = []
-    for parameter in endpoint.get("parameters", []):
-        if isinstance(parameter, dict) and parameter.get("required"):
-            missing.append(str(parameter.get("name") or "parameter"))
-    request_body = endpoint.get("request_body")
-    if isinstance(request_body, dict) and request_body:
-        missing.append("request_body")
-    return missing
+    selection = resolve_model_selection(CAPABILITY_ID)
+    model = build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
+    agent = api_automation_generation_agent(model)
+
+    result = await agent.ainvoke({"messages": [{"role": "user", "content": "\n".join(content_parts)}]})
+    if not isinstance(result, dict):
+        raise ValueError("接口自动化用例生成智能体输出格式不正确。")
+
+    generation_result = result.get("structured_response")
+    if not generation_result:
+        raise ValueError("接口自动化用例生成智能体未返回结构化结果。")
+
+    if isinstance(generation_result, ApiAutomationGenerationResult):
+        return generation_result
+    if isinstance(generation_result, dict):
+        return ApiAutomationGenerationResult.model_validate(generation_result)
+    if isinstance(generation_result, str):
+        return ApiAutomationGenerationResult.model_validate_json(generation_result)
+    raise ValueError(f"接口自动化用例生成智能体输出类型不支持: {type(generation_result).__name__}")

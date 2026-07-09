@@ -1,14 +1,15 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import {
   Braces,
   ChevronDown,
   ChevronRight,
   ClipboardPaste,
+  Eye,
   FileJson,
   Globe,
   ImportIcon,
@@ -42,9 +43,7 @@ import {
 import FileUpload1 from "@/components/ui/file-upload-1";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SlidingNumber } from "@/components/ui/sliding-number";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import {
@@ -61,8 +60,8 @@ import {
   debugApiAutomationEndpoint,
   deleteApiAutomationEndpoint,
   deleteApiAutomationEnvironment,
+  deleteApiAutomationTestCase,
   formatDateTime,
-  generateApiAutomationScripts,
   generateApiAutomationTestCases,
   getApiAutomationGenerationRun,
   getApiAutomationRun,
@@ -76,6 +75,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const tabs = ["接口资产", "接口环境", "接口用例", "测试脚本", "运行记录", "场景编排"];
+const API_GENERATION_ACTIVE_STATUSES = new Set(["queued", "running"]);
 const importModes = [
   {
     value: "file",
@@ -148,8 +148,6 @@ type EndpointDebugForm = {
   headers: Record<string, string>;
   bodyText: string;
 };
-type ApiCaseFilter = "all" | "ready" | "needs_input" | "draft";
-
 const emptyDebugForm: EndpointDebugForm = {
   environmentId: "",
   pathParams: {},
@@ -157,67 +155,10 @@ const emptyDebugForm: EndpointDebugForm = {
   headers: {},
   bodyText: "",
 };
-const apiCaseFilters: ApiCaseFilter[] = ["ready", "needs_input", "draft"];
-const apiCaseFilterLabels: Record<ApiCaseFilter, string> = {
-  all: "全部",
-  ready: "可执行",
-  needs_input: "待补充",
-  draft: "草稿",
-};
-
-function ApiCaseSummaryStrip({ actions, counts }: { actions: ReactNode; counts: Record<ApiCaseFilter, number> }) {
-  const reviewedCount = counts.ready + counts.needs_input;
-  const adoptionRate = reviewedCount === 0 ? 0 : Number(((counts.ready / reviewedCount) * 100).toFixed(1));
-  const reviewProgress = counts.all === 0 ? 0 : Number(((reviewedCount / counts.all) * 100).toFixed(1));
-
-  return (
-    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-      <div className="grid min-w-0 flex-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm sm:grid-cols-3 lg:max-w-2xl">
-        <ApiCaseSummaryModule accent="blue" label="采纳率" suffix="%" value={adoptionRate} />
-        <ApiCaseSummaryModule accent="slate" label="评审进度" suffix="%" value={reviewProgress} />
-        <ApiCaseSummaryModule accent="green" label="用例数量" value={counts.all} />
-      </div>
-      {actions}
-    </div>
-  );
-}
-
-function ApiCaseSummaryModule({
-  label,
-  value,
-  accent,
-  suffix = "",
-}: {
-  label: string;
-  value: number;
-  accent: "blue" | "slate" | "green";
-  suffix?: string;
-}) {
-  const accentClasses = {
-    blue: { dot: "bg-blue-500", label: "bg-blue-50 text-blue-700" },
-    slate: { dot: "bg-slate-500", label: "bg-slate-100 text-slate-700" },
-    green: { dot: "bg-emerald-500", label: "bg-emerald-50 text-emerald-700" },
-  };
-  const tone = accentClasses[accent];
-
-  return (
-    <div className="flex h-10 min-w-0 items-center justify-center gap-3 border-slate-100 border-t px-3 first:border-t-0 sm:border-t-0 sm:border-l sm:first:border-l-0">
-      <div className={cn("flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5", tone.label)}>
-        <span className={cn("h-1.5 w-1.5 rounded-full", tone.dot)} />
-        <span className="font-medium text-xs">{label}</span>
-      </div>
-      <div className="flex min-w-0 items-baseline">
-        <span className="inline-flex items-baseline font-mono font-semibold text-[#101828] text-xs leading-none">
-          <SlidingNumber value={value} />
-          {suffix ? <span>{suffix}</span> : null}
-        </span>
-      </div>
-    </div>
-  );
-}
 
 export default function Page() {
   const params = useParams<{ projectId: string }>();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = params.projectId;
   const selectedCaseSetId = searchParams.get("set");
@@ -227,11 +168,14 @@ export default function Page() {
   const [environments, setEnvironments] = useState<ApiAutomationEnvironment[]>([]);
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState("");
   const [generationRun, setGenerationRun] = useState<ApiAutomationGenerationRun | null>(null);
+  const [generateBusy, setGenerateBusy] = useState(false);
   const [apiTestCases, setApiTestCases] = useState<ApiAutomationTestCase[]>([]);
-  const [selectedApiCaseId, setSelectedApiCaseId] = useState("");
-  const [apiCaseFilter, setApiCaseFilter] = useState<ApiCaseFilter>("ready");
+  const [selectedApiCaseIds, setSelectedApiCaseIds] = useState<string[]>([]);
   const [apiCaseSearchText, setApiCaseSearchText] = useState("");
-  const [scripts, setScripts] = useState<ApiAutomationScript[]>([]);
+  const [activeApiCaseEndpointId, setActiveApiCaseEndpointId] = useState("");
+  const [selectedApiCaseEndpointIds, setSelectedApiCaseEndpointIds] = useState<string[]>([]);
+  const [expandedApiCaseEndpointGroups, setExpandedApiCaseEndpointGroups] = useState<string[]>([]);
+  const [scripts] = useState<ApiAutomationScript[]>([]);
   const [run, setRun] = useState<ApiAutomationRun | null>(null);
   const [selectedEndpointAssetIds, setSelectedEndpointAssetIds] = useState<string[]>([]);
   const [activeEndpointId, setActiveEndpointId] = useState("");
@@ -276,52 +220,49 @@ export default function Page() {
     [activeEndpointId, endpoints],
   );
 
-  const endpointById = useMemo(() => new Map(endpoints.map((endpoint) => [endpoint.id, endpoint])), [endpoints]);
+  const apiCaseCountByEndpointId = useMemo(() => {
+    return apiTestCases.reduce<Record<string, number>>((counts, testCase) => {
+      if (!testCase.endpoint_id) {
+        return counts;
+      }
+      counts[testCase.endpoint_id] = (counts[testCase.endpoint_id] ?? 0) + 1;
+      return counts;
+    }, {});
+  }, [apiTestCases]);
+
+  const apiCaseEndpoints = useMemo(
+    () => endpoints.filter((endpoint) => (apiCaseCountByEndpointId[endpoint.id] ?? 0) > 0),
+    [apiCaseCountByEndpointId, endpoints],
+  );
+
+  const activeApiCaseEndpoint = useMemo(
+    () => apiCaseEndpoints.find((endpoint) => endpoint.id === activeApiCaseEndpointId) ?? apiCaseEndpoints[0] ?? null,
+    [activeApiCaseEndpointId, apiCaseEndpoints],
+  );
+
+  const groupedApiCaseEndpoints = useMemo(() => {
+    return apiCaseEndpoints.reduce<Record<string, ApiAutomationEndpoint[]>>((groups, endpoint) => {
+      const groupName = endpointGroupName(endpoint);
+      groups[groupName] = [...(groups[groupName] ?? []), endpoint];
+      return groups;
+    }, {});
+  }, [apiCaseEndpoints]);
 
   const filteredApiTestCases = useMemo(() => {
     const keyword = apiCaseSearchText.trim().toLowerCase();
     return apiTestCases.filter((testCase) => {
-      const endpoint = testCase.endpoint_id ? endpointById.get(testCase.endpoint_id) : null;
-      const matchesFilter = apiCaseFilter === "all" || testCase.status === apiCaseFilter;
+      if (!activeApiCaseEndpoint || testCase.endpoint_id !== activeApiCaseEndpoint.id) {
+        return false;
+      }
       const matchesSearch =
         !keyword ||
-        [
-          testCase.title,
-          testCase.priority,
-          testCase.status,
-          testCase.source,
-          endpoint?.method,
-          endpoint?.path,
-          endpoint?.summary,
-        ]
+        [testCase.title, testCase.priority, testCase.source, formatDateTime(testCase.updated_at)]
           .join(" ")
           .toLowerCase()
           .includes(keyword);
-      return matchesFilter && matchesSearch;
+      return matchesSearch;
     });
-  }, [apiCaseFilter, apiCaseSearchText, apiTestCases, endpointById]);
-
-  const selectedApiCase = useMemo(
-    () => apiTestCases.find((testCase) => testCase.id === selectedApiCaseId) ?? filteredApiTestCases[0] ?? null,
-    [apiTestCases, filteredApiTestCases, selectedApiCaseId],
-  );
-
-  const apiCaseCounts = useMemo(
-    () =>
-      apiTestCases.reduce<Record<ApiCaseFilter, number>>(
-        (counts, testCase) => {
-          counts.all += 1;
-          if (testCase.status === "ready" || testCase.status === "needs_input" || testCase.status === "draft") {
-            counts[testCase.status] += 1;
-          }
-          return counts;
-        },
-        { all: 0, ready: 0, needs_input: 0, draft: 0 },
-      ),
-    [apiTestCases],
-  );
-
-  const readyCases = useMemo(() => apiTestCases.filter((item) => item.status === "ready"), [apiTestCases]);
+  }, [activeApiCaseEndpoint, apiCaseSearchText, apiTestCases]);
 
   const selectedEnvironment = useMemo(
     () => environments.find((environment) => environment.id === selectedEnvironmentId) ?? environments[0] ?? null,
@@ -356,15 +297,50 @@ export default function Page() {
     () => Object.values(groupedEndpoints).flatMap((rows) => rows.map((endpoint) => endpoint.id)),
     [groupedEndpoints],
   );
+  const visibleApiCaseEndpointIds = useMemo(
+    () => Object.values(groupedApiCaseEndpoints).flatMap((rows) => rows.map((endpoint) => endpoint.id)),
+    [groupedApiCaseEndpoints],
+  );
   const selectedVisibleEndpointIds = selectedEndpointAssetIds.filter((id) => visibleEndpointIds.includes(id));
+  const selectedVisibleApiCaseEndpointIds = selectedApiCaseEndpointIds.filter((id) =>
+    visibleApiCaseEndpointIds.includes(id),
+  );
+  const allApiCasesSelected =
+    filteredApiTestCases.length > 0 &&
+    filteredApiTestCases.every((testCase) => selectedApiCaseIds.includes(testCase.id));
+  const partiallyApiCasesSelected = filteredApiTestCases.some((testCase) => selectedApiCaseIds.includes(testCase.id));
 
   const activeBaseUrl =
     selectedEnvironment?.api_base_url.trim() ||
     environments.find((item) => item.api_base_url.trim())?.api_base_url.trim() ||
     "";
 
+  const applyGenerationRun = useCallback((nextRun: ApiAutomationGenerationRun) => {
+    setGenerationRun(nextRun);
+    if (nextRun.test_cases) {
+      setApiTestCases(nextRun.test_cases);
+      setSelectedApiCaseIds((current) =>
+        current.filter((id) => nextRun.test_cases?.some((testCase) => testCase.id === id)),
+      );
+      setSelectedApiCaseEndpointIds((current) =>
+        current.filter((id) => nextRun.test_cases?.some((testCase) => testCase.endpoint_id === id)),
+      );
+      const firstGeneratedEndpointId =
+        nextRun.endpoint_ids[0] ?? nextRun.test_cases.find((testCase) => testCase.endpoint_id)?.endpoint_id ?? "";
+      if (firstGeneratedEndpointId) {
+        setActiveApiCaseEndpointId(firstGeneratedEndpointId);
+      }
+    }
+  }, []);
+
   function toggleEndpointGroup(group: string) {
     setExpandedEndpointGroups((current) =>
+      current.includes(group) ? current.filter((item) => item !== group) : [...current, group],
+    );
+  }
+
+  function toggleApiCaseEndpointGroup(group: string) {
+    setExpandedApiCaseEndpointGroups((current) =>
       current.includes(group) ? current.filter((item) => item !== group) : [...current, group],
     );
   }
@@ -382,8 +358,9 @@ export default function Page() {
         current.filter((id) => endpointRows.some((endpoint) => endpoint.id === id)),
       );
       setApiTestCases(apiCaseRows);
-      setSelectedApiCaseId((current) =>
-        current && apiCaseRows.some((testCase) => testCase.id === current) ? current : (apiCaseRows[0]?.id ?? ""),
+      setSelectedApiCaseIds((current) => current.filter((id) => apiCaseRows.some((testCase) => testCase.id === id)));
+      setSelectedApiCaseEndpointIds((current) =>
+        current.filter((id) => apiCaseRows.some((testCase) => testCase.endpoint_id === id)),
       );
       setEnvironments(environmentRows);
       setActiveEndpointId((current) =>
@@ -421,9 +398,12 @@ export default function Page() {
         setEndpoints(endpointRows);
         setEnvironments(environmentRows);
         setApiTestCases(apiCaseRows);
+        setSelectedApiCaseIds((current) => current.filter((id) => apiCaseRows.some((testCase) => testCase.id === id)));
+        setSelectedApiCaseEndpointIds((current) =>
+          current.filter((id) => apiCaseRows.some((testCase) => testCase.endpoint_id === id)),
+        );
         setActiveEndpointId(endpointRows[0]?.id ?? "");
         setSelectedEnvironmentId(environmentRows[0]?.id ?? "");
-        setSelectedApiCaseId(apiCaseRows[0]?.id ?? "");
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "接口自动化数据加载失败"));
 
@@ -456,6 +436,56 @@ export default function Page() {
       cancelled = true;
     };
   }, [projectId, selectedCaseSetId]);
+
+  useEffect(() => {
+    if (apiCaseEndpoints.length === 0) {
+      setActiveApiCaseEndpointId("");
+      setSelectedApiCaseEndpointIds([]);
+      setExpandedApiCaseEndpointGroups([]);
+      return;
+    }
+
+    setSelectedApiCaseEndpointIds((current) =>
+      current.filter((id) => apiCaseEndpoints.some((endpoint) => endpoint.id === id)),
+    );
+
+    if (!apiCaseEndpoints.some((endpoint) => endpoint.id === activeApiCaseEndpointId)) {
+      setActiveApiCaseEndpointId(apiCaseEndpoints[0]?.id ?? "");
+    }
+
+    setExpandedApiCaseEndpointGroups((current) => {
+      const groups = [...new Set(apiCaseEndpoints.map((endpoint) => endpointGroupName(endpoint)))];
+      if (current.length > 0) {
+        return current.filter((group) => groups.includes(group));
+      }
+      return groups;
+    });
+  }, [activeApiCaseEndpointId, apiCaseEndpoints]);
+
+  useEffect(() => {
+    if (!generationRun || !API_GENERATION_ACTIVE_STATUSES.has(generationRun.status)) {
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setInterval(async () => {
+      try {
+        const latest = await getApiAutomationGenerationRun(projectId, generationRun.id);
+        if (!cancelled) {
+          applyGenerationRun(latest);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : "生成任务状态刷新失败");
+        }
+      }
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [applyGenerationRun, projectId, generationRun]);
 
   async function handleImportFilesChange(nextFiles: File[]) {
     setOpenApiFiles(nextFiles);
@@ -586,6 +616,7 @@ export default function Page() {
       return;
     }
     setBusy(true);
+    setGenerateBusy(true);
     try {
       const created = await generateApiAutomationTestCases(projectId, {
         endpoint_ids: selectedEndpointAssetIds,
@@ -594,29 +625,16 @@ export default function Page() {
         include_security_cases: false,
         generate_code: false,
       });
-      setGenerationRun(created);
+      applyGenerationRun(created);
       setActiveTab("接口用例");
+      setActiveApiCaseEndpointId(created.endpoint_ids[0] ?? selectedEndpointAssetIds[0] ?? activeApiCaseEndpointId);
+      setActiveEndpointId(created.endpoint_ids[0] ?? selectedEndpointAssetIds[0] ?? activeEndpointId);
       toast.success("接口用例生成任务已创建");
       notifyAiTaskStarted();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "生成失败");
     } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleGenerateScripts() {
-    setBusy(true);
-    try {
-      const result = await generateApiAutomationScripts(projectId, {
-        api_test_case_ids: readyCases.map((item) => item.id),
-        api_environment_id: selectedEnvironment?.id ?? null,
-      });
-      setScripts(result.scripts);
-      toast.success("脚本已生成");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "脚本生成失败");
-    } finally {
+      setGenerateBusy(false);
       setBusy(false);
     }
   }
@@ -652,6 +670,67 @@ export default function Page() {
       }
       return [...new Set([...current, ...visibleEndpointIds])];
     });
+  }
+
+  function toggleApiCaseEndpoint(endpointId: string, checked: boolean) {
+    setSelectedApiCaseEndpointIds((current) =>
+      checked ? [...new Set([...current, endpointId])] : current.filter((id) => id !== endpointId),
+    );
+  }
+
+  function toggleVisibleApiCaseEndpoints(checked: boolean) {
+    setSelectedApiCaseEndpointIds((current) => {
+      if (!checked) {
+        return current.filter((id) => !visibleApiCaseEndpointIds.includes(id));
+      }
+      return [...new Set([...current, ...visibleApiCaseEndpointIds])];
+    });
+  }
+
+  function toggleApiCase(testCaseId: string, checked: boolean) {
+    setSelectedApiCaseIds((current) =>
+      checked ? [...new Set([...current, testCaseId])] : current.filter((id) => id !== testCaseId),
+    );
+  }
+
+  function toggleAllApiCases(checked: boolean) {
+    const visibleIds = filteredApiTestCases.map((testCase) => testCase.id);
+    setSelectedApiCaseIds((current) => {
+      if (!checked) {
+        return current.filter((id) => !visibleIds.includes(id));
+      }
+      return [...new Set([...current, ...visibleIds])];
+    });
+  }
+
+  async function deleteApiCaseEndpoints(endpointIds: string[]) {
+    const ids = [...new Set(endpointIds)];
+    if (ids.length === 0) {
+      return;
+    }
+    const caseIds = apiTestCases
+      .filter((testCase) => ids.includes(testCase.endpoint_id ?? ""))
+      .map((testCase) => testCase.id);
+    await deleteApiTestCases(caseIds);
+    setSelectedApiCaseEndpointIds((current) => current.filter((id) => !ids.includes(id)));
+  }
+
+  async function deleteApiTestCases(caseIds: string[]) {
+    const ids = [...new Set(caseIds)];
+    if (ids.length === 0) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await Promise.all(ids.map((caseId) => deleteApiAutomationTestCase(projectId, caseId)));
+      setApiTestCases((current) => current.filter((testCase) => !ids.includes(testCase.id)));
+      setSelectedApiCaseIds((current) => current.filter((id) => !ids.includes(id)));
+      toast.success(`已删除 ${ids.length} 个接口用例`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "接口用例删除失败");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function deleteEndpoints(endpointIds: string[]) {
@@ -733,7 +812,6 @@ export default function Page() {
         path_params: debugForm.pathParams,
         query_params: debugForm.queryParams,
         headers: debugForm.headers,
-        cookies: {},
         body,
       });
       setDebugResult(result);
@@ -795,12 +873,13 @@ export default function Page() {
       tabActions={
         activeTab === "接口资产" ? (
           <div className="flex items-center gap-2">
-            <div className="relative w-72 max-w-[42vw]">
+            <div className="relative w-64 max-w-full">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                className="h-9 bg-background pl-9"
+                aria-label="搜索 method、path、tag"
+                className="h-8 bg-background pl-9"
                 onChange={(event) => setSearchText(event.target.value)}
-                placeholder="搜索 method、path、tag"
+                placeholder="搜索"
                 value={searchText}
               />
             </div>
@@ -845,10 +924,10 @@ export default function Page() {
                     variant="outline"
                   >
                     <Trash2 className="size-4" />
-                    删除
+                    删除{selectedEndpointAssetIds.length > 0 ? ` (${selectedEndpointAssetIds.length})` : ""}
                   </Button>
                   <Button disabled={busy || selectedEndpointAssetIds.length === 0} onClick={handleGenerate} size="sm">
-                    {busy ? <Loader2 className="size-4 animate-spin" /> : <WandSparkles className="size-4" />}
+                    {generateBusy ? <Loader2 className="size-4 animate-spin" /> : <WandSparkles className="size-4" />}
                     生成用例
                   </Button>
                 </div>
@@ -1109,135 +1188,225 @@ export default function Page() {
       )}
 
       {activeTab === "接口用例" && (
-        <div className="space-y-3">
-          <ApiCaseSummaryStrip
-            actions={
-              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <div className="grid min-h-[calc(100dvh-10rem)] overflow-hidden rounded-xl border bg-background xl:grid-cols-[360px_1fr]">
+          <aside className="no-scrollbar max-h-[calc(100dvh-5rem)] overflow-y-auto overflow-x-hidden border-r bg-muted/20 xl:sticky xl:top-16">
+            <div className="border-b p-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    aria-label="选择当前接口列表"
+                    checked={
+                      visibleApiCaseEndpointIds.length > 0 &&
+                      visibleApiCaseEndpointIds.every((id) => selectedApiCaseEndpointIds.includes(id))
+                        ? true
+                        : selectedVisibleApiCaseEndpointIds.length > 0
+                          ? "indeterminate"
+                          : false
+                    }
+                    disabled={busy || visibleApiCaseEndpointIds.length === 0}
+                    onCheckedChange={(checked) => toggleVisibleApiCaseEndpoints(Boolean(checked))}
+                  />
+                  <div className="ml-auto flex items-center gap-2">
+                    <Button
+                      className="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100 hover:text-red-800"
+                      disabled={busy || selectedApiCaseEndpointIds.length === 0}
+                      onClick={() => deleteApiCaseEndpoints(selectedApiCaseEndpointIds)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      <Trash2 className="size-4" />
+                      删除{selectedApiCaseEndpointIds.length > 0 ? ` (${selectedApiCaseEndpointIds.length})` : ""}
+                    </Button>
+                    <Button
+                      disabled={busy || selectedApiCaseEndpointIds.length === 0}
+                      onClick={() => setActiveTab("测试脚本")}
+                      size="sm"
+                    >
+                      生成脚本
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="p-2">
+              {Object.entries(groupedApiCaseEndpoints).map(([group, rows]) => {
+                const hasActiveEndpoint = rows.some((endpoint) => endpoint.id === activeApiCaseEndpoint?.id);
+                const isCollapsed = !expandedApiCaseEndpointGroups.includes(group);
+                const caseCount = rows.reduce(
+                  (count, endpoint) => count + (apiCaseCountByEndpointId[endpoint.id] ?? 0),
+                  0,
+                );
+
+                return (
+                  <div className="mb-3" key={group}>
+                    <button
+                      aria-expanded={!isCollapsed}
+                      aria-label={`${group} 分组，${caseCount} 条用例，${isCollapsed ? "展开" : "折叠"}`}
+                      className={cn(
+                        "mb-1 flex w-full items-center gap-2 rounded-md border border-transparent bg-slate-100/70 px-2 py-1.5 text-left font-medium text-muted-foreground text-xs transition-colors hover:border-slate-200 hover:bg-slate-100 dark:bg-muted/25 dark:hover:border-border dark:hover:bg-muted/45",
+                        hasActiveEndpoint &&
+                          "border-sky-200 bg-sky-50/80 text-sky-800 dark:border-sky-500/35 dark:bg-sky-500/15 dark:text-sky-200",
+                      )}
+                      onClick={() => toggleApiCaseEndpointGroup(group)}
+                      type="button"
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight className="size-3.5 shrink-0" />
+                      ) : (
+                        <ChevronDown className="size-3.5 shrink-0" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate">{group}</span>
+                      <span className="rounded-full bg-sky-100 px-2 py-0.5 font-semibold text-sky-700 tabular-nums dark:bg-sky-500/20 dark:text-sky-200">
+                        {caseCount}
+                      </span>
+                    </button>
+                    {isCollapsed ? null : (
+                      <div className="space-y-1">
+                        {rows.map((endpoint) => (
+                          <div
+                            className={cn(
+                              "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-background dark:hover:bg-muted/30",
+                              activeApiCaseEndpoint?.id === endpoint.id &&
+                                "bg-background shadow-xs ring-1 ring-border dark:bg-muted/35 dark:shadow-none",
+                            )}
+                            key={endpoint.id}
+                          >
+                            <Checkbox
+                              aria-label={`选择 ${endpoint.summary || endpoint.path}`}
+                              checked={selectedApiCaseEndpointIds.includes(endpoint.id)}
+                              disabled={busy}
+                              onCheckedChange={(checked) => toggleApiCaseEndpoint(endpoint.id, Boolean(checked))}
+                            />
+                            <button
+                              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                              onClick={() => {
+                                setActiveApiCaseEndpointId(endpoint.id);
+                                setSelectedApiCaseIds([]);
+                              }}
+                              title={endpoint.path}
+                              type="button"
+                            >
+                              <MethodBadge method={endpoint.method} />
+                              <span className="min-w-0 flex-1 truncate text-xs">
+                                {endpoint.summary || endpoint.path}
+                              </span>
+                            </button>
+                            <span className="rounded-full bg-muted px-2 py-0.5 font-semibold text-muted-foreground text-xs tabular-nums">
+                              {apiCaseCountByEndpointId[endpoint.id] ?? 0}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {apiCaseEndpoints.length === 0 ? (
+                <div className="flex h-full min-h-72 flex-col items-center justify-center gap-3 px-6 text-center text-sm">
+                  <FileJson className="size-9 text-muted-foreground" />
+                  <div>
+                    <div className="font-medium">暂无接口用例</div>
+                    <div className="mt-1 text-muted-foreground">请先在接口资产页签选择接口并生成用例。</div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </aside>
+
+          <ShellSection className="min-w-0 rounded-none border-0">
+            <ListToolbar
+              actions={
                 <Button disabled={busy} onClick={() => refresh()} variant="outline">
                   {busy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
                   刷新
                 </Button>
-                <Button
-                  disabled={busy || readyCases.length === 0 || !selectedEnvironment}
-                  onClick={handleGenerateScripts}
-                >
-                  生成脚本
-                </Button>
-              </div>
-            }
-            counts={apiCaseCounts}
-          />
-          <ShellSection className="min-h-[640px] bg-[#F7F8FA] p-0">
-            <div className="grid min-h-[640px] grid-cols-1 overflow-hidden rounded-xl lg:grid-cols-[360px_minmax(0,1fr)]">
-              <aside className="border-b bg-white lg:border-r lg:border-b-0">
-                <div className="flex flex-col gap-3 border-b p-4">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      className="pl-9"
-                      onChange={(event) => setApiCaseSearchText(event.target.value)}
-                      placeholder="搜索标题、接口、状态"
-                      value={apiCaseSearchText}
-                    />
-                  </div>
-                  <Tabs onValueChange={(value) => setApiCaseFilter(value as ApiCaseFilter)} value={apiCaseFilter}>
-                    <TabsList className="grid h-auto w-full grid-cols-3">
-                      {apiCaseFilters.map((item) => (
-                        <TabsTrigger className="min-w-0 gap-1 px-2 text-xs" key={item} value={item}>
-                          <span className="truncate">{apiCaseFilterLabels[item]}</span>
-                          <span
-                            className={cn(
-                              "shrink-0 rounded-full px-1.5 font-mono text-[10px]",
-                              apiCaseFilterCountTone(item, apiCaseFilter),
-                            )}
-                          >
-                            {apiCaseCounts[item]}
-                          </span>
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                  </Tabs>
-                </div>
-                <div className="max-h-[560px] overflow-auto p-3">
-                  {filteredApiTestCases.map((item) => {
-                    const endpoint = item.endpoint_id ? endpointById.get(item.endpoint_id) : null;
-                    return (
-                      <button
-                        className={cn(
-                          "mb-2 w-full rounded-lg border border-slate-200/70 bg-white p-3 text-left transition hover:border-blue-200 hover:bg-blue-50/30 hover:shadow-sm",
-                          selectedApiCase?.id === item.id &&
-                            "border-blue-300 bg-blue-50/70 shadow-sm ring-1 ring-blue-100",
-                        )}
-                        key={item.id}
-                        onClick={() => setSelectedApiCaseId(item.id)}
-                        type="button"
-                      >
-                        <div className="flex items-start gap-2">
-                          <Badge
-                            className={cn("shrink-0 border", apiCasePriorityTone(item.priority))}
-                            variant="outline"
-                          >
-                            {item.priority || "P2"}
-                          </Badge>
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <div className="line-clamp-2 font-medium text-[#101828] text-sm">{item.title}</div>
-                            <div className="flex min-w-0 items-center gap-1.5 text-[#667085] text-xs">
-                              {endpoint ? <MethodBadge method={endpoint.method} /> : null}
-                              <span className="min-w-0 truncate font-mono">{endpoint?.path ?? "未关联接口"}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+              }
+              description={
+                activeApiCaseEndpoint
+                  ? `${activeApiCaseEndpoint.summary || activeApiCaseEndpoint.path} · ${activeApiCaseEndpoint.path}`
+                  : ""
+              }
+              onBatchDelete={() => deleteApiTestCases(selectedApiCaseIds)}
+              onSearch={setApiCaseSearchText}
+              placeholder="搜索用例名称、优先级或更新时间"
+              selectedCount={selectedApiCaseIds.length}
+              title="接口信息"
+            />
+            <div className="overflow-hidden rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        aria-label="选择全部接口用例"
+                        checked={allApiCasesSelected || (partiallyApiCasesSelected ? "indeterminate" : false)}
+                        disabled={busy || filteredApiTestCases.length === 0}
+                        onCheckedChange={(checked) => toggleAllApiCases(Boolean(checked))}
+                      />
+                    </TableHead>
+                    <TableHead>用例名称</TableHead>
+                    <TableHead>优先级</TableHead>
+                    <TableHead>更新时间</TableHead>
+                    <TableHead className="w-16">操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredApiTestCases.map((item) => (
+                    <TableRow data-state={selectedApiCaseIds.includes(item.id) ? "selected" : undefined} key={item.id}>
+                      <TableCell>
+                        <Checkbox
+                          aria-label={`选择 ${item.title}`}
+                          checked={selectedApiCaseIds.includes(item.id)}
+                          onCheckedChange={(checked) => toggleApiCase(item.id, Boolean(checked))}
+                        />
+                      </TableCell>
+                      <TableCell className="max-w-80 font-medium">
+                        <button
+                          className="block max-w-full truncate text-left hover:underline"
+                          onClick={() => router.push(apiCaseDetailHref(projectId, item.id))}
+                          title={item.title}
+                          type="button"
+                        >
+                          {item.title}
+                        </button>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={cn("border", apiCasePriorityTone(item.priority))} variant="outline">
+                          {item.priority || "P2"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{formatDateTime(item.updated_at)}</TableCell>
+                      <TableCell>
+                        <RowActions
+                          actions={[
+                            {
+                              label: "查看详情",
+                              icon: Eye,
+                              onSelect: () => router.push(apiCaseDetailHref(projectId, item.id)),
+                            },
+                            {
+                              label: "删除",
+                              icon: Trash2,
+                              destructive: true,
+                              onSelect: () => deleteApiTestCases([item.id]),
+                            },
+                          ]}
+                          label={`打开 ${item.title} 操作菜单`}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
                   {filteredApiTestCases.length === 0 ? (
-                    <div className="rounded-lg border border-dashed bg-white p-6 text-center text-muted-foreground text-sm">
-                      没有匹配的接口用例。
-                    </div>
+                    <TableRow>
+                      <TableCell className="py-8 text-center text-muted-foreground text-sm" colSpan={5}>
+                        {activeApiCaseEndpoint
+                          ? "当前接口暂无匹配的接口用例。"
+                          : "暂无接口用例。请先在接口资产页签选择接口并生成用例。"}
+                      </TableCell>
+                    </TableRow>
                   ) : null}
-                </div>
-              </aside>
-
-              <main className="flex min-w-0 flex-col bg-white">
-                {selectedApiCase ? (
-                  <>
-                    <div className="border-b p-4">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="min-w-0 space-y-1.5">
-                          <ApiCaseEndpointPath
-                            endpoint={
-                              selectedApiCase.endpoint_id ? endpointById.get(selectedApiCase.endpoint_id) : null
-                            }
-                          />
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <h2 className="min-w-0 max-w-full font-semibold text-[#101828] text-lg">
-                              {selectedApiCase.title}
-                            </h2>
-                            <ApiCaseStatusBadge status={selectedApiCase.status} />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex-1 overflow-auto p-5">
-                      <div className="space-y-4">
-                        <ReviewBlock title="请求信息">
-                          <JsonBlock value={selectedApiCase.request} />
-                        </ReviewBlock>
-                        <ReviewBlock title="预期结果">
-                          <JsonBlock value={selectedApiCase.expected} />
-                        </ReviewBlock>
-                        <ReviewBlock title="断言">
-                          <JsonBlock value={selectedApiCase.assertions} />
-                        </ReviewBlock>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-                    请选择一个接口用例查看详情。
-                  </div>
-                )}
-              </main>
+                </TableBody>
+              </Table>
             </div>
           </ShellSection>
         </div>
@@ -1268,11 +1437,7 @@ export default function Page() {
                   {selectedEnvironment?.api_base_url ?? "请先在接口环境页签新建环境。"}
                 </div>
               </div>
-              <Button
-                disabled={busy || readyCases.length === 0 || !selectedEnvironment}
-                onClick={handleGenerateScripts}
-                variant="outline"
-              >
+              <Button disabled variant="outline">
                 生成脚本
               </Button>
             </CardContent>
@@ -1516,6 +1681,7 @@ export default function Page() {
               ) : null}
               {activeEndpoint && getParameterRows(activeEndpoint.parameters, "query").length > 0 ? (
                 <DebugMapSection
+                  className="lg:col-span-2"
                   fields={debugForm.queryParams}
                   onChange={(key, value) => updateDebugMapField("queryParams", key, value)}
                   rows={getParameterRows(activeEndpoint.parameters, "query")}
@@ -1547,7 +1713,7 @@ export default function Page() {
             ) : null}
 
             {debugResult ? (
-              <div className="space-y-3 rounded-lg border bg-background p-4">
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4 shadow-sm">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge className="font-mono" variant={debugResult.error_message ? "destructive" : "outline"}>
                     {debugResult.error_message ? "ERR" : debugResult.status_code}
@@ -1558,7 +1724,11 @@ export default function Page() {
                   ) : null}
                 </div>
                 <div className="grid gap-3 lg:grid-cols-2">
-                  <DebugResultBlock title="请求信息" value={JSON.stringify(debugResult.request, null, 2)} />
+                  <DebugResultBlock
+                    title="请求信息"
+                    value={formatPythonRequestsSnippet(debugResult.request)}
+                    variant="PY"
+                  />
                   <DebugResultBlock title="响应头" value={JSON.stringify(debugResult.headers, null, 2)} />
                 </div>
                 <DebugResultBlock
@@ -1670,53 +1840,8 @@ function fileNameWithoutExtension(filename: string) {
   return baseName.replace(/\.(json|ya?ml)$/i, "");
 }
 
-function ApiCaseEndpointPath({ endpoint }: { endpoint: ApiAutomationEndpoint | null | undefined }) {
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-2 text-[#667085] text-xs">
-      <span className="font-medium text-[#98A2B3]">接口</span>
-      {endpoint ? (
-        <>
-          <MethodBadge method={endpoint.method} />
-          <span className="min-w-0 truncate font-mono text-[#344054]">{endpoint.path}</span>
-        </>
-      ) : (
-        <span className="text-[#475467]">未关联接口</span>
-      )}
-    </div>
-  );
-}
-
-function ApiCaseStatusBadge({ status }: { status: string }) {
-  const tone =
-    {
-      ready: "border-emerald-200 bg-emerald-50 text-emerald-700",
-      needs_input: "border-amber-200 bg-amber-50 text-amber-700",
-      draft: "border-slate-200 bg-slate-50 text-slate-700",
-      archived: "border-slate-200 bg-slate-50 text-slate-500",
-    }[status] ?? "border-slate-200 bg-slate-50 text-slate-700";
-
-  return (
-    <Badge className={cn("border", tone)} variant="outline">
-      {apiCaseStatusLabel(status)}
-    </Badge>
-  );
-}
-
-function ReviewBlock({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="rounded-lg border bg-white p-4">
-      <h3 className="mb-3 font-medium text-[#101828] text-sm">{title}</h3>
-      <div className="whitespace-pre-wrap text-[#101828] text-sm leading-6">{children}</div>
-    </section>
-  );
-}
-
-function JsonBlock({ value }: { value: unknown }) {
-  return (
-    <pre className="max-h-96 overflow-auto rounded-md bg-[#F7F8FA] p-3 font-mono text-[#101828] text-xs">
-      {JSON.stringify(value ?? {}, null, 2)}
-    </pre>
-  );
+function apiCaseDetailHref(projectId: string, caseId: string) {
+  return `/projects/${projectId}/automation/api/cases/${caseId}`;
 }
 
 function apiCasePriorityTone(priority: string) {
@@ -1725,24 +1850,6 @@ function apiCasePriorityTone(priority: string) {
   if (normalized === "P1") return "border-amber-200 bg-amber-50 text-amber-700";
   if (normalized === "P2") return "border-blue-200 bg-blue-50 text-blue-700";
   return "border-slate-200 bg-slate-50 text-slate-700";
-}
-
-function apiCaseFilterCountTone(item: ApiCaseFilter, current: ApiCaseFilter) {
-  if (item === current) return "bg-[#101828] text-white";
-  if (item === "needs_input") return "bg-amber-100 text-amber-700";
-  if (item === "ready") return "bg-emerald-100 text-emerald-700";
-  return "bg-slate-100 text-slate-600";
-}
-
-function apiCaseStatusLabel(status: string) {
-  return (
-    {
-      ready: "可执行",
-      needs_input: "待补充",
-      draft: "草稿",
-      archived: "已归档",
-    }[status] ?? status
-  );
 }
 
 function FieldText({
@@ -1775,24 +1882,26 @@ function FieldText({
 }
 
 function DebugMapSection({
+  className,
   title,
   rows,
   fields,
   onChange,
 }: {
+  className?: string;
   title: string;
   rows: ApiFieldRow[];
   fields: Record<string, string>;
   onChange: (key: string, value: string) => void;
 }) {
   return (
-    <div className="space-y-2">
+    <div className={cn("space-y-2", className)}>
       <div className="font-medium text-sm">{title}</div>
-      <div className="space-y-2">
+      <div className="space-y-2 rounded-md border bg-muted/20 px-3 py-3">
         {rows.map((row) => (
           <div className="grid gap-2 sm:grid-cols-[minmax(140px,0.9fr)_1fr]" key={`${row.location}-${row.name}`}>
             <div className="flex min-w-0 items-center gap-2">
-              <span className="truncate font-mono text-sm" title={row.name}>
+              <span className="min-w-0 truncate font-mono text-sm" title={row.name}>
                 {row.name}
               </span>
               {row.required ? (
@@ -1846,13 +1955,114 @@ function DebugHeaderSection({ className, rows }: { className?: string; rows: Api
   );
 }
 
-function DebugResultBlock({ title, value }: { title: string; value: string }) {
+function DebugResultBlock({ title, value, variant = "JSON" }: { title: string; value: string; variant?: string }) {
+  const preClassName =
+    "overflow-visible whitespace-pre-wrap break-words bg-white p-3 font-mono text-[12px] text-slate-800 leading-5 selection:bg-sky-100";
+
   return (
-    <div className="min-w-0 space-y-2">
-      <div className="font-medium text-sm">{title}</div>
-      <pre className="max-h-72 overflow-auto rounded-md bg-slate-950 p-3 font-mono text-slate-50 text-xs">{value}</pre>
-    </div>
+    <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-slate-200 border-b bg-slate-50 px-3 py-2">
+        <div className="font-medium text-slate-700 text-sm">{title}</div>
+        <span className="rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-500 uppercase">
+          {variant}
+        </span>
+      </div>
+      <pre className={preClassName}>{value}</pre>
+    </section>
   );
+}
+
+function formatPythonRequestsSnippet(request: Record<string, unknown>) {
+  const method = String(request.method ?? "GET").toLowerCase();
+  const url = String(request.url ?? "");
+  const queryParams = plainObject(request.query_params);
+  const headers = plainObject(request.headers);
+  const body = request.body;
+  const hasParams = Object.keys(queryParams).length > 0;
+  const hasHeaders = Object.keys(headers).length > 0;
+  const hasBody = body !== null && body !== undefined && body !== "";
+  const requestArgs: string[] = ["url"];
+
+  const lines = ["import requests", "", `url = ${pythonLiteral(url)}`];
+
+  if (hasParams) {
+    lines.push("", `params = ${pythonLiteral(queryParams)}`);
+    requestArgs.push("params=params");
+  }
+
+  if (hasHeaders) {
+    lines.push("", `headers = ${pythonLiteral(headers)}`);
+    requestArgs.push("headers=headers");
+  }
+
+  if (hasBody) {
+    lines.push("", `payload = ${pythonLiteral(body)}`);
+    requestArgs.push(isJsonLikeBody(body) ? "json=payload" : "data=payload");
+  }
+
+  const requestCall = isRequestsShortcutMethod(method)
+    ? `requests.${method}(${requestArgs.join(", ")})`
+    : `requests.request(${pythonLiteral(method.toUpperCase())}, ${requestArgs.join(", ")})`;
+
+  lines.push("", `response = ${requestCall}`, "", "print(response.text)");
+  return lines.join("\n");
+}
+
+function plainObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
+}
+
+function isJsonLikeBody(value: unknown) {
+  return Boolean(value) && typeof value === "object";
+}
+
+function isRequestsShortcutMethod(method: string) {
+  return ["get", "post", "put", "patch", "delete", "head", "options"].includes(method);
+}
+
+function pythonLiteral(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "None";
+  }
+  if (typeof value === "boolean") {
+    return value ? "True" : "False";
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "None";
+  }
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return "[]";
+    }
+    return `[\n${value.map((item) => indentPythonLiteral(pythonLiteral(item))).join(",\n")}\n]`;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) {
+      return "{}";
+    }
+    return `{\n${entries
+      .map(([key, item]) => `    ${JSON.stringify(key)}: ${indentContinuation(pythonLiteral(item))}`)
+      .join(",\n")}\n}`;
+  }
+  return JSON.stringify(String(value));
+}
+
+function indentPythonLiteral(value: string) {
+  return value
+    .split("\n")
+    .map((line) => `    ${line}`)
+    .join("\n");
+}
+
+function indentContinuation(value: string) {
+  return value.includes("\n") ? value.replace(/\n/g, "\n    ") : value;
 }
 
 function getTextareaRows(value: string, minRows: number, maxRows: number) {

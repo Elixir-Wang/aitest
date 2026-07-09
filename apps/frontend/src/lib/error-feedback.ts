@@ -25,11 +25,6 @@ type ReportedError = {
   occurredAt: string;
 };
 
-type ClientErrorReportOut = {
-  log_id: string | null;
-  trace_id: string;
-};
-
 const SENSITIVE_QUERY_PATTERN = /(token|key|secret|password|authorization|cookie|captcha|verification)/i;
 
 export function reportError(error: unknown, options: ErrorFeedbackOptions): ReportedError {
@@ -48,7 +43,7 @@ export function reportError(error: unknown, options: ErrorFeedbackOptions): Repo
     actionLabel: options.actionLabel,
     occurredAt: new Date().toISOString(),
   };
-  const logPromise = submitClientErrorLog(item);
+  void submitClientErrorLog(item);
 
   toast.error(title, {
     description: item.traceId ? `追踪 ID：${item.traceId}` : `${message}。错误会写入系统日志。`,
@@ -57,20 +52,14 @@ export function reportError(error: unknown, options: ErrorFeedbackOptions): Repo
       title: "select-text",
       description: "select-text",
     },
-    action: {
-      label: "查看详情",
-      onClick: () => {
-        void openLogDetail(logPromise, item.traceId);
-      },
-    },
   });
 
   return item;
 }
 
-async function submitClientErrorLog(error: ReportedError): Promise<ClientErrorReportOut | null> {
+async function submitClientErrorLog(error: ReportedError): Promise<void> {
   try {
-    return await apiRequest<ClientErrorReportOut>("/operation-logs/client-errors", {
+    await apiRequest("/operation-logs/client-errors", {
       method: "POST",
       body: JSON.stringify({
         title: error.title,
@@ -86,29 +75,8 @@ async function submitClientErrorLog(error: ReportedError): Promise<ClientErrorRe
       }),
     });
   } catch {
-    return null;
+    return;
   }
-}
-
-async function openLogDetail(logPromise: Promise<ClientErrorReportOut | null>, traceId?: string) {
-  const result = await logPromise;
-  window.location.assign(operationLogUrl(result?.log_id, result?.trace_id || traceId));
-}
-
-function operationLogUrl(logId?: string | null, keyword?: string) {
-  if (logId) {
-    return `/settings/logs/${encodeURIComponent(logId)}`;
-  }
-  return operationLogListUrl(keyword);
-}
-
-export const __errorFeedbackTestHooks = {
-  operationLogUrl,
-};
-
-function operationLogListUrl(keyword?: string) {
-  const query = keyword ? `?keyword=${encodeURIComponent(keyword)}` : "";
-  return `/settings/logs${query}`;
 }
 
 function safeErrorMessage(error: unknown, fallbackMessage: string) {

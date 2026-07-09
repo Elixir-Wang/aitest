@@ -5,6 +5,7 @@ from app.core.security import hash_secret
 
 def seed_system_defaults(db: sqlite3.Connection) -> None:
     _migrate_api_environment_auth_types(db)
+    _ensure_api_test_case_structure_columns(db)
     _migrate_legacy_site_exploration_assignment(db)
     _seed_operation_log_retention_policy(db)
     _ensure_all_projects_conversation_scope(db)
@@ -48,6 +49,21 @@ def _migrate_legacy_site_exploration_assignment(db: sqlite3.Connection) -> None:
         """
     )
     db.execute("DELETE FROM model_assignments WHERE capability_id = 'site_exploration'")
+
+
+def _ensure_api_test_case_structure_columns(db: sqlite3.Connection) -> None:
+    row = db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_test_cases'").fetchone()
+    if not row:
+        return
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_test_cases)").fetchall()}
+    missing_columns = {
+        "coverage": "ALTER TABLE api_test_cases ADD COLUMN coverage TEXT NOT NULL DEFAULT 'positive'",
+        "preconditions_json": "ALTER TABLE api_test_cases ADD COLUMN preconditions_json TEXT NOT NULL DEFAULT '[]'",
+        "test_data_json": "ALTER TABLE api_test_cases ADD COLUMN test_data_json TEXT NOT NULL DEFAULT '{}'",
+    }
+    for column, statement in missing_columns.items():
+        if column not in columns:
+            db.execute(statement)
 
 
 def _migrate_api_environment_auth_types(db: sqlite3.Connection) -> None:

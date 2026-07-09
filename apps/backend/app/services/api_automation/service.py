@@ -1,3 +1,4 @@
+import asyncio
 import secrets
 import time
 from pathlib import Path
@@ -15,6 +16,7 @@ from app.core import storage
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.repositories import api_automation_repo, project_repo
+from app.repositories import test_case_repo
 from app.schemas.api_automation import (
     ApiAutomationGenerateIn,
     ApiEndpointDebugIn,
@@ -218,7 +220,6 @@ def debug_project_endpoint(project_id: str, endpoint_id: str, payload: ApiEndpoi
             url=request["url"],
             params=request["query_params"],
             headers=request["headers"],
-            cookies=request["cookies"],
             json=request["json_body"],
             data=request["raw_body"],
             timeout=environment["timeout_seconds"],
@@ -398,6 +399,25 @@ def list_api_test_cases(project_id: str, actor, *, endpoint_id: str = "", status
         return [_serialize_api_test_case(row) for row in rows]
 
 
+def get_api_test_case(project_id: str, case_id: str, actor) -> dict:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = api_automation_repo.find_api_test_case(db, case_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "API_TEST_CASE_NOT_FOUND", "接口自动化用例不存在。")
+        return _serialize_api_test_case(row)
+
+
+def delete_api_test_case(project_id: str, case_id: str, actor) -> None:
+    _require_admin(actor)
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = api_automation_repo.find_api_test_case(db, case_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "API_TEST_CASE_NOT_FOUND", "接口自动化用例不存在。")
+        api_automation_repo.delete_api_test_case(db, case_id)
+
+
 def create_api_test_case_set(project_id: str, payload: ApiTestCaseSetIn, actor) -> dict:
     _require_admin(actor)
     set_id = f"apicaseset-{secrets.token_hex(8)}"
@@ -444,6 +464,11 @@ def execute_generation_run(run_id: str) -> dict:
             for endpoint_id in api_automation_repo.loads_json(run["endpoint_ids_json"], [])
             if (endpoint := api_automation_repo.find_endpoint(db, endpoint_id)) is not None
         ]
+        source_test_cases = [
+            _serialize_source_test_case(test_case)
+            for test_case_id in api_automation_repo.loads_json(run["source_test_case_ids_json"], [])
+            if (test_case := test_case_repo.find_case_by_id(db, test_case_id)) is not None
+        ]
         environment_summary = {}
         if run["api_environment_id"]:
             environment = api_automation_repo.find_api_environment(db, run["api_environment_id"])
@@ -451,18 +476,18 @@ def execute_generation_run(run_id: str) -> dict:
                 environment_summary = _serialize_api_environment(environment)
 
     try:
-        result = api_generation_agent_service.generate_api_test_cases(
+        result = asyncio.run(api_generation_agent_service.generate_api_test_cases(
             ApiAutomationGenerationInput(
                 project_id=run["project_id"],
                 endpoints=endpoints,
                 environment_summary=environment_summary,
-                source_test_cases=[],
+                source_test_cases=source_test_cases,
                 generation_goal=run["generation_goal"],
                 include_security_cases=bool(
                     api_automation_repo.loads_json(run["options_json"], {}).get("include_security_cases")
                 ),
             )
-        )
+        ))
     except Exception as exc:
         with connect() as db:
             api_automation_repo.update_generation_run(
@@ -493,10 +518,13 @@ def execute_generation_run(run_id: str) -> dict:
                 generation_run_id=run_id,
                 title=generated_case.title,
                 priority=generated_case.priority,
+                coverage=generated_case.coverage,
                 source=generated_case.source,
                 status=status,
-                tags=[],
+                tags=generated_case.tags,
+                preconditions=generated_case.preconditions,
                 request=generated_case.request,
+                test_data=generated_case.test_data,
                 expected=generated_case.expected,
                 assertions=[
                     assertion.model_dump() if hasattr(assertion, "model_dump") else assertion
@@ -929,16 +957,34 @@ def _serialize_api_test_case(row: Row) -> dict:
         "endpoint_id": row["endpoint_id"],
         "title": row["title"],
         "priority": row["priority"],
+        "coverage": row["coverage"],
         "source": row["source"],
         "status": row["status"],
         "tags": api_automation_repo.loads_json(row["tags_json"], []),
+        "preconditions": api_automation_repo.loads_json(row["preconditions_json"], []),
         "request": api_automation_repo.loads_json(row["request_json"], {}),
+        "test_data": api_automation_repo.loads_json(row["test_data_json"], {}),
         "expected": api_automation_repo.loads_json(row["expected_json"], {}),
         "assertions": api_automation_repo.loads_json(row["assertions_json"], []),
         "variables": api_automation_repo.loads_json(row["variables_json"], {}),
+        "data_origin": api_automation_repo.loads_json(row["data_origin_json"], {}),
         "notes": row["notes"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+    }
+
+
+def _serialize_source_test_case(row: Row) -> dict:
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "module": row["module"],
+        "priority": row["priority"],
+        "preconditions": row["preconditions"],
+        "steps": api_automation_repo.loads_json(row["steps_json"], []),
+        "expected_result": row["expected_result"],
+        "status": row["status"],
+        "review_feedback": row["review_feedback"],
     }
 
 
@@ -1036,14 +1082,12 @@ def _build_debug_environment(db, project_id: str, api_environment_id: str | None
             "timeout_seconds": 30,
             "verify_ssl": True,
             "headers": {},
-            "cookies": {},
         }
     row = api_automation_repo.find_api_environment(db, api_environment_id)
     if not row or row["project_id"] != project_id:
         raise api_error(404, "API_ENVIRONMENT_NOT_FOUND", "接口环境不存在。")
     auth_config = api_automation_repo.loads_json(row["auth_config_json"], {})
     headers = _stringify_mapping(api_automation_repo.loads_json(row["default_headers_json"], {}))
-    cookies = {}
     if row["auth_type"] == "static_bearer" and auth_config.get("token_encrypted"):
         token = decrypt_api_environment_secret(auth_config["token_encrypted"]) or ""
         if token:
@@ -1051,8 +1095,6 @@ def _build_debug_environment(db, project_id: str, api_environment_id: str | None
     if row["auth_type"] == "static_headers":
         for key, encrypted_value in api_automation_repo.loads_json(row["auth_config_json"], {}).get("headers_encrypted", {}).items():
             headers[str(key)] = decrypt_api_environment_secret(str(encrypted_value)) or ""
-    if row["auth_type"] == "cookie" and auth_config.get("cookie_name") and auth_config.get("cookie_value_encrypted"):
-        cookies[str(auth_config["cookie_name"])] = decrypt_api_environment_secret(auth_config["cookie_value_encrypted"]) or ""
     if row["auth_type"] == "cybertron_agent":
         _apply_cybertron_headers(headers, auth_config)
     return {
@@ -1060,14 +1102,12 @@ def _build_debug_environment(db, project_id: str, api_environment_id: str | None
         "timeout_seconds": row["timeout_seconds"],
         "verify_ssl": bool(row["verify_ssl"]),
         "headers": headers,
-        "cookies": cookies,
     }
 
 
 def _build_debug_request(endpoint: dict, environment: dict, payload: ApiEndpointDebugIn) -> dict:
     url = _build_debug_url(environment["api_base_url"], endpoint["path"], payload.path_params)
     headers = {**environment["headers"], **_stringify_mapping(payload.headers)}
-    cookies = {**environment["cookies"], **_stringify_mapping(payload.cookies)}
     query_params = _clean_mapping(payload.query_params)
     body = payload.body
     json_body = None
@@ -1084,7 +1124,6 @@ def _build_debug_request(endpoint: dict, environment: dict, payload: ApiEndpoint
         "url": url,
         "query_params": query_params,
         "headers": headers,
-        "cookies": cookies,
         "json_body": json_body,
         "raw_body": raw_body,
     }
@@ -1110,7 +1149,6 @@ def _public_debug_request(request: dict) -> dict:
         "url": request["url"],
         "query_params": request["query_params"],
         "headers": _mask_debug_headers(request["headers"]),
-        "cookies": sorted(request["cookies"].keys()),
         "body": request["json_body"] if request["json_body"] is not None else request["raw_body"],
     }
 

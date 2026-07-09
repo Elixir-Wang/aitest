@@ -529,7 +529,12 @@ def test_invoke_agent_checkpoints_snapshot_as_page_artifact(monkeypatch, tmp_pat
     assert data["page"]["normalized_path"] == "/workspace"
     assert data["page"]["env_urls"]["test"] == "https://example.test/workspace?tab=agents"
     assert data["states"][0]["elements"][0]["locators"][0]["code"] == "getByRole('button', { name: '创建智能体' })"
-    assert data["states"][0]["accessibility_tree"][2]["name"] == "Multi-Agent"
+    assert "accessibility_tree" not in data["states"][0]
+    assert "visible_text_blocks" not in data["states"][0]
+    assert data["states"][0]["type"] == "root"
+    assert "Multi-Agent" in data["states"][0]["assertion_texts"]
+    assert "elements" not in data["page"]
+    assert "path_hash" not in data["page"]
     assert "raw_output" not in data["states"][0]
 
 

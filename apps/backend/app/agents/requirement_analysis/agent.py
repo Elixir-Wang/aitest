@@ -5,7 +5,7 @@ from pathlib import Path
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 
-from app.agents.requirement_analysis.middleware import SkillMiddleware
+from app.agents.shared.skill_middleware import SkillMiddleware
 from app.agents.requirement_analysis.schemas import RequirementAnalysisResult
 
 

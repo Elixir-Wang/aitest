@@ -2,7 +2,7 @@ from pathlib import Path
 
 from langchain.agents import create_agent
 
-from app.agents.requirement_analysis.middleware import SkillMiddleware
+from app.agents.shared.skill_middleware import SkillMiddleware
 from app.agents.requirement_finalization.schemas import RequirementFinalizationOutput
 from app.agents.requirement_finalization.system_prompt import SYSTEM_PROMPT
 

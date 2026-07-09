@@ -637,7 +637,6 @@ export type ApiAutomationDebugPayload = {
   path_params?: Record<string, unknown>;
   query_params?: Record<string, unknown>;
   headers?: Record<string, unknown>;
-  cookies?: Record<string, unknown>;
   body?: unknown;
 };
 
@@ -674,11 +673,18 @@ export type ApiAutomationTestCase = {
   endpoint_id: string | null;
   title: string;
   priority: string;
+  coverage: string;
   source: string;
   status: string;
+  tags: string[];
+  preconditions: string[];
   request: Record<string, unknown>;
+  test_data: Record<string, unknown>;
   expected: Record<string, unknown>;
   assertions: Record<string, unknown>[];
+  variables: Record<string, unknown>;
+  data_origin: Record<string, unknown>;
+  notes: string;
   created_at: string;
   updated_at: string;
 };
@@ -790,6 +796,16 @@ export function listApiAutomationTestCases(projectId: string, params?: { endpoin
   if (params?.status) searchParams.set("status", params.status);
   const query = searchParams.toString();
   return apiRequest<ApiAutomationTestCase[]>(`/projects/${projectId}/api-test-cases${query ? `?${query}` : ""}`);
+}
+
+export function getApiAutomationTestCase(projectId: string, caseId: string) {
+  return apiRequest<ApiAutomationTestCase>(`/projects/${projectId}/api-test-cases/${caseId}`);
+}
+
+export function deleteApiAutomationTestCase(projectId: string, caseId: string) {
+  return apiRequest<void>(`/projects/${projectId}/api-test-cases/${caseId}`, {
+    method: "DELETE",
+  });
 }
 
 export function listApiAutomationGenerationRuns(projectId: string) {

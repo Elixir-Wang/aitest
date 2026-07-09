@@ -7,6 +7,10 @@ const projectPageSource = readFileSync(
   new URL("../src/app/(main)/projects/[projectId]/automation/api/page.tsx", import.meta.url),
   "utf8",
 );
+const caseDetailPageSource = readFileSync(
+  new URL("../src/app/(main)/projects/[projectId]/automation/api/cases/[caseId]/page.tsx", import.meta.url),
+  "utf8",
+);
 const apiClientSource = readFileSync(new URL("../src/lib/api-client.ts", import.meta.url), "utf8");
 const sidebarSource = readFileSync(new URL("../src/navigation/sidebar/sidebar-items.ts", import.meta.url), "utf8");
 const taskRunningIndicatorSource = readFileSync(
@@ -70,6 +74,7 @@ test("project api automation endpoint detail keeps debug send and removes join-g
   assert.match(projectPageSource, /<DialogTitle>接口调试<\/DialogTitle>/);
   assert.match(projectPageSource, /通过后端代理发送请求/);
   assert.match(projectPageSource, /handleDebugSend/);
+  assert.doesNotMatch(projectPageSource, /cookies: \{\}/);
   assert.doesNotMatch(projectPageSource, /toggleEndpoint\(activeEndpoint\.id\)/);
   assert.doesNotMatch(projectPageSource, /加入生成/);
   assert.doesNotMatch(projectPageSource, /deleteEndpoints\(\[activeEndpoint\.id\]\)/);
@@ -87,6 +92,13 @@ test("project api automation debug dialog keeps results visible with compact req
 });
 
 test("project api automation endpoint groups are collapsible with count badges", () => {
+  assert.match(projectPageSource, /aria-label="搜索 method、path、tag"/);
+  assert.match(projectPageSource, /placeholder="搜索"/);
+  assert.match(projectPageSource, /className="h-8 bg-background pl-9"/);
+  assert.match(
+    projectPageSource,
+    /删除\{selectedEndpointAssetIds\.length > 0 \? ` \(\$\{selectedEndpointAssetIds\.length\}\)` : ""\}/,
+  );
   assert.match(projectPageSource, /expandedEndpointGroups/);
   assert.match(projectPageSource, /toggleEndpointGroup\(group\)/);
   assert.match(projectPageSource, /!\s*expandedEndpointGroups\.includes\(group\)/);
@@ -114,12 +126,116 @@ test("project api automation exposes interface environment after interface asset
   assert.doesNotMatch(projectPageSource, /<CardTitle className="text-base">环境详情<\/CardTitle>/);
 });
 
+test("project api automation case tab shows generated endpoints and case table without status filters", () => {
+  assert.doesNotMatch(projectPageSource, /apiCaseDetailOpen/);
+  assert.match(
+    projectPageSource,
+    /const \[selectedApiCaseIds, setSelectedApiCaseIds\] = useState<string\[\]>\(\[\]\);/,
+  );
+  assert.match(projectPageSource, /const \[activeApiCaseEndpointId, setActiveApiCaseEndpointId\] = useState\(""\);/);
+  assert.match(
+    projectPageSource,
+    /const \[selectedApiCaseEndpointIds, setSelectedApiCaseEndpointIds\] = useState<string\[\]>\(\[\]\);/,
+  );
+  assert.match(projectPageSource, /const apiCaseCountByEndpointId = useMemo/);
+  assert.match(projectPageSource, /const apiCaseEndpoints = useMemo/);
+  assert.match(projectPageSource, /const groupedApiCaseEndpoints = useMemo/);
+  assert.match(projectPageSource, /testCase\.endpoint_id !== activeApiCaseEndpoint\.id/);
+  assert.doesNotMatch(projectPageSource, /ApiCaseSummaryStrip/);
+  assert.doesNotMatch(projectPageSource, /apiCaseSummaryCounts/);
+  assert.match(
+    projectPageSource,
+    /activeTab === "接口用例" && \(\s*<div className="grid min-h-\[calc\(100dvh-10rem\)\]/,
+  );
+  assert.match(projectPageSource, /aria-label="选择当前接口列表"/);
+  assert.doesNotMatch(projectPageSource, /已生成用例接口/);
+  assert.doesNotMatch(projectPageSource, /仅显示已从接口资产生成过用例的接口/);
+  assert.match(projectPageSource, /toggleVisibleApiCaseEndpoints\(Boolean\(checked\)\)/);
+  assert.match(projectPageSource, /deleteApiCaseEndpoints\(selectedApiCaseEndpointIds\)/);
+  assert.match(projectPageSource, /disabled=\{busy \|\| selectedApiCaseEndpointIds\.length === 0\}/);
+  assert.match(
+    projectPageSource,
+    /删除\{selectedApiCaseEndpointIds\.length > 0 \? ` \(\$\{selectedApiCaseEndpointIds\.length\}\)` : ""\}/,
+  );
+  assert.match(projectPageSource, /Object\.entries\(groupedApiCaseEndpoints\)/);
+  assert.match(projectPageSource, /toggleApiCaseEndpoint\(endpoint\.id, Boolean\(checked\)\)/);
+  assert.match(projectPageSource, /setActiveApiCaseEndpointId\(endpoint\.id\)/);
+  assert.match(projectPageSource, /title="接口信息"/);
+  assert.match(
+    projectPageSource,
+    /\$\{activeApiCaseEndpoint\.summary \|\| activeApiCaseEndpoint\.path\} · \$\{activeApiCaseEndpoint\.path\}/,
+  );
+  assert.match(projectPageSource, /<RefreshCw className="size-4" \/>/);
+  assert.match(projectPageSource, /placeholder="搜索用例名称、优先级或更新时间"/);
+  assert.match(projectPageSource, /onBatchDelete=\{\(\) => deleteApiTestCases\(selectedApiCaseIds\)\}/);
+  assert.match(projectPageSource, /aria-label="选择全部接口用例"/);
+  assert.match(projectPageSource, /<TableHead>用例名称<\/TableHead>/);
+  assert.doesNotMatch(projectPageSource, /<TableHead>接口<\/TableHead>/);
+  assert.doesNotMatch(projectPageSource, /<TableHead>状态<\/TableHead>/);
+  assert.doesNotMatch(projectPageSource, /apiCaseFilters/);
+  assert.doesNotMatch(projectPageSource, /ApiCaseStatusBadge/);
+  assert.doesNotMatch(projectPageSource, /ApiCaseEndpointPath/);
+  assert.doesNotMatch(projectPageSource, /可执行/);
+  assert.doesNotMatch(projectPageSource, /待补充/);
+  assert.doesNotMatch(projectPageSource, /草稿/);
+  assert.match(projectPageSource, /<TableHead className="w-16">操作<\/TableHead>/);
+  assert.match(projectPageSource, /label: "删除"/);
+  assert.match(projectPageSource, /deleteApiTestCases\(\[item\.id\]\)/);
+  assert.match(projectPageSource, /onClick=\{\(\) => setActiveTab\("测试脚本"\)\}/);
+  assert.doesNotMatch(projectPageSource, /handleGenerateScripts/);
+  assert.match(projectPageSource, /const router = useRouter\(\);/);
+  assert.match(projectPageSource, /onClick=\{\(\) => router\.push\(apiCaseDetailHref\(projectId, item\.id\)\)\}/);
+  assert.match(projectPageSource, /onSelect: \(\) => router\.push\(apiCaseDetailHref\(projectId, item\.id\)\)/);
+  assert.doesNotMatch(projectPageSource, /window\.open\(apiCaseDetailHref/);
+  assert.doesNotMatch(projectPageSource, /href=\{apiCaseDetailHref\(projectId, item\.id\)\}/);
+  assert.doesNotMatch(projectPageSource, /target="_blank"/);
+  assert.doesNotMatch(projectPageSource, /setApiCaseDetailOpen\(true\);/);
+  assert.doesNotMatch(projectPageSource, /<Dialog onOpenChange=\{setApiCaseDetailOpen\} open=\{apiCaseDetailOpen\}>/);
+  assert.doesNotMatch(projectPageSource, /ApiCaseAssetPanel/);
+});
+
+test("project api automation refreshes case list when generation run completes", () => {
+  assert.match(projectPageSource, /const API_GENERATION_ACTIVE_STATUSES = new Set\(\["queued", "running"\]\);/);
+  assert.match(projectPageSource, /const applyGenerationRun = useCallback\(\(nextRun: ApiAutomationGenerationRun\) =>/);
+  assert.match(projectPageSource, /setApiTestCases\(nextRun\.test_cases\)/);
+  assert.match(projectPageSource, /const latest = await getApiAutomationGenerationRun\(projectId, generationRun\.id\)/);
+  assert.match(projectPageSource, /applyGenerationRun\(latest\)/);
+});
+
+test("project api automation generate button spinner is scoped to generation requests", () => {
+  assert.match(projectPageSource, /const \[generateBusy, setGenerateBusy\] = useState\(false\);/);
+  assert.match(projectPageSource, /setGenerateBusy\(true\);[\s\S]*generateApiAutomationTestCases/);
+  assert.match(projectPageSource, /finally \{[\s\S]*setGenerateBusy\(false\);[\s\S]*setBusy\(false\);/);
+  assert.match(projectPageSource, /generateBusy \? <Loader2 className="size-4 animate-spin" \/> : <WandSparkles/);
+  assert.doesNotMatch(projectPageSource, /busy \? <Loader2 className="size-4 animate-spin" \/> : <WandSparkles/);
+});
+
 test("project api automation uses selected environment for generate scripts and runs", () => {
   assert.match(projectPageSource, /const \[selectedEnvironmentId, setSelectedEnvironmentId\] = useState\(""\);/);
   assert.match(projectPageSource, /api_environment_id: selectedEnvironment\?\.id \?\? null/);
   assert.doesNotMatch(projectPageSource, /api_environment_id: environments\[0\]\?\.id \?\? null/);
   assert.match(apiClientSource, /export function updateApiAutomationEnvironment/);
   assert.match(apiClientSource, /export function deleteApiAutomationEnvironment/);
+  assert.match(apiClientSource, /export function deleteApiAutomationTestCase/);
+  assert.match(apiClientSource, /`\/projects\/\$\{projectId\}\/api-test-cases\/\$\{caseId\}`/);
+});
+
+test("project api automation case detail shows structured QA review sections", () => {
+  assert.match(apiClientSource, /coverage: string;/);
+  assert.match(apiClientSource, /preconditions: string\[\];/);
+  assert.match(apiClientSource, /test_data: Record<string, unknown>;/);
+  assert.match(apiClientSource, /data_origin: Record<string, unknown>;/);
+  assert.match(apiClientSource, /export function getApiAutomationTestCase/);
+  assert.match(caseDetailPageSource, /getApiAutomationTestCase\(projectId, caseId\)/);
+  assert.match(caseDetailPageSource, /<ReviewBlock title="基础信息">/);
+  assert.match(caseDetailPageSource, /<ReviewBlock title="前置条件">/);
+  assert.match(caseDetailPageSource, /<ReviewBlock title="请求信息">/);
+  assert.match(caseDetailPageSource, /<ReviewBlock title="测试数据">/);
+  assert.match(caseDetailPageSource, /<ReviewBlock title="预期结果">/);
+  assert.match(caseDetailPageSource, /<ReviewBlock title="断言">/);
+  assert.match(caseDetailPageSource, /renderApiCaseRequest/);
+  assert.match(caseDetailPageSource, /renderApiCaseTestData/);
+  assert.match(caseDetailPageSource, /missing/);
 });
 
 test("project api automation generation and execution notify the top running task indicator", () => {

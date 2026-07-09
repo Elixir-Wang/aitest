@@ -279,6 +279,11 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
     accessibility_tree = snapshot.get("accessibility_tree") if isinstance(snapshot.get("accessibility_tree"), list) else []
     artifact_elements = _snapshot_elements_for_artifact(elements, accessibility_tree)
     visible_text_blocks = snapshot.get("visible_text_blocks") if isinstance(snapshot.get("visible_text_blocks"), list) else []
+    assertion_texts = _snapshot_assertion_texts(
+        title=title,
+        visible_text_blocks=visible_text_blocks,
+        elements=artifact_elements,
+    )
     captured_at = datetime.now(timezone.utc).isoformat()
     artifact = {
         "page": {
@@ -290,9 +295,6 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
             "module": "主探索模块",
             "status": "explored",
             "structure_summary": f"自动保存页面快照，发现 {len(artifact_elements)} 个元素。",
-            "elements": artifact_elements,
-            "accessibility_tree": accessibility_tree,
-            "visible_text_blocks": visible_text_blocks,
             "last_explored": {
                 "run_id": run_id,
                 "timestamp": captured_at,
@@ -301,11 +303,11 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
         "states": [
             {
                 "id": "snapshot-current",
+                "type": "root",
                 "title": title,
                 "url": url,
                 "elements": artifact_elements,
-                "accessibility_tree": accessibility_tree,
-                "visible_text_blocks": visible_text_blocks,
+                "assertion_texts": assertion_texts,
             }
         ],
         "actions": [
@@ -319,10 +321,7 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
                 "source": "playwright_snap_tool",
             }
         ],
-        "metadata": {
-            "captured_at": captured_at,
-            "source": "snapshot_checkpoint",
-        },
+        "metadata": {"captured_at": captured_at},
     }
 
     saved_path = Path(
@@ -448,26 +447,31 @@ def _inline_save_page(
         except Exception as exc:
             logger.warning("failed to merge existing project page env urls: path=%s error=%s", page_file, exc)
 
-    full_page_data = {
-        "page": {
-            "id": page_id,
-            "title": page_data.get("title", ""),
-            "display_name": page_data.get("display_name") or _inline_display_name_from_path(normalized_path),
-            "breadcrumb": page_data.get("breadcrumb") or _inline_breadcrumb_from_path(normalized_path),
-            "normalized_path": normalized_path,
-            "structure_summary": page_data.get("structure_summary", ""),
-            "path_hash": _inline_path_hash(normalized_path),
-            "env_urls": env_urls,
-            "last_explored": {
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-                "run_id": run_id,
-            },
-            "elements": page_data.get("elements", []),
+    page_payload = {
+        "id": page_id,
+        "title": page_data.get("title", ""),
+        "display_name": page_data.get("display_name") or _inline_display_name_from_path(normalized_path),
+        "breadcrumb": page_data.get("breadcrumb") or _inline_breadcrumb_from_path(normalized_path),
+        "normalized_path": normalized_path,
+        "structure_summary": page_data.get("structure_summary", ""),
+        "env_urls": env_urls,
+        "last_explored": {
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "run_id": run_id,
         },
+    }
+    elements = page_data.get("elements")
+    if isinstance(elements, list) and elements:
+        page_payload["elements"] = elements
+
+    full_page_data = {
+        "page": page_payload,
         "states": page_data.get("states", []),
-        "quality": page_data.get("quality", {}),
         "metadata": page_data.get("metadata", {}),
     }
+    quality = page_data.get("quality")
+    if isinstance(quality, dict) and quality:
+        full_page_data["quality"] = quality
 
     with open(page_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(full_page_data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
@@ -518,12 +522,6 @@ def _inline_display_name_from_path(normalized_path: str) -> str:
     return breadcrumb[-1] if breadcrumb else _HOME_DISPLAY_NAME
 
 
-def _inline_path_hash(normalized_path: str) -> str:
-    import hashlib
-    h = hashlib.sha256(normalized_path.encode("utf-8"))
-    return f"sha256-{h.hexdigest()[:16]}"
-
-
 # --- End inlined helpers ---
 
 
@@ -557,9 +555,6 @@ def _save_project_page_artifact(
             "quality": artifact.get("quality", {}),
             "metadata": {
                 **(artifact.get("metadata") if isinstance(artifact.get("metadata"), dict) else {}),
-                "source": "page_exploration_run",
-                "source_run_id": run_id,
-                "source_artifact_path": str(source_path),
                 "module": _string(page.get("module_key") or page.get("module") or scope),
             },
         },
@@ -591,6 +586,143 @@ def _normalize_snapshot_url_path(url: str) -> str:
     return parsed.path or "/"
 
 
+def _snapshot_assertion_texts(
+    *,
+    title: str,
+    visible_text_blocks: list,
+    elements: list[dict],
+    max_items: int = 24,
+) -> list[str]:
+    """Keep compact assertion-ready texts without persisting raw page text."""
+    values: list[str] = []
+
+    def add(value) -> None:
+        text = _string(value).strip()
+        if not text or text in values:
+            return
+        values.append(text[:240])
+
+    add(title)
+    for item in visible_text_blocks:
+        add(item)
+        if len(values) >= max_items:
+            return values
+    for element in elements:
+        if not isinstance(element, dict):
+            continue
+        role = _string(element.get("role")).lower()
+        if role in {"button", "textbox", "combobox", "checkbox", "radio", "tab", "menuitem", "option"}:
+            continue
+        add(element.get("text") or element.get("name"))
+        if len(values) >= max_items:
+            return values
+    return values
+
+
+def _normalize_action_type(role: str, action_type: str) -> str:
+    action = _string(action_type).strip().lower()
+    if action:
+        return action
+    role = _string(role).strip().lower()
+    if role in {"textbox", "searchbox", "combobox", "spinbutton"}:
+        return "fill"
+    if role in {"button", "link", "checkbox", "radio", "tab", "menuitem", "option", "treeitem", "switch"}:
+        return "click"
+    return "assert"
+
+
+def _ancestor_text(ancestor_chain: list) -> str:
+    names = [
+        _string(item.get("name")).strip()
+        for item in ancestor_chain
+        if isinstance(item, dict) and _string(item.get("name")).strip()
+    ]
+    return " / ".join(names[:5])[:300]
+
+
+def _best_container(ancestor_chain: list) -> tuple[str, str]:
+    overlay_roles = {"dialog", "alertdialog", "popover", "menu", "listbox", "drawer"}
+    for item in ancestor_chain:
+        if not isinstance(item, dict):
+            continue
+        role = _string(item.get("role")).strip()
+        if role in overlay_roles:
+            return role, _string(item.get("name")).strip()
+    for item in reversed(ancestor_chain):
+        if not isinstance(item, dict):
+            continue
+        name = _string(item.get("name")).strip()
+        if name:
+            return _string(item.get("role")).strip(), name[:120]
+    return "", ""
+
+
+def _scope_hint(*, role: str, name: str, context_hint: str, ancestor_text: str) -> str:
+    escaped_name = name.replace("'", "\\'")
+    if context_hint in {"dialog", "alertdialog"}:
+        return (
+            f"优先用弹窗容器限定：getByRole('{context_hint}')."
+            f"filter({{ hasText: '关键表单字段或标题' }}).getByRole('{role}', {{ name: '{escaped_name}' }})"
+        )
+    if context_hint in {"popover", "menu", "listbox"}:
+        return (
+            f"优先用浮层容器限定：locator('[role=\"{context_hint}\"]')."
+            f"filter({{ hasText: '关键选项文本' }}).getByText('{escaped_name}', {{ exact: true }})"
+        )
+    if ancestor_text:
+        short_text = ancestor_text[:80].replace("'", "\\'")
+        return (
+            "优先选择包含目标业务字段/卡片名的容器，"
+            f"例如 filter({{ hasText: '{short_text}' }}) 后再定位 '{escaped_name}'。"
+        )
+    return "缺少明显容器上下文；必要时重新 snap 聚焦关键词后再生成定位器。"
+
+
+def _automation_context(element: dict, *, ordinal: int, sibling_count: int) -> dict:
+    ancestor_chain = element.get("ancestor_chain") if isinstance(element.get("ancestor_chain"), list) else []
+    ancestor_text = _ancestor_text(ancestor_chain)
+    container_role, container_name = _best_container(ancestor_chain)
+    role = _string(element.get("role") or "element")
+    name = _string(element.get("name") or element.get("text") or "")
+    context_hint = container_role or "main"
+    context = {
+        "is_ambiguous": sibling_count > 1,
+        "sibling_count": sibling_count,
+        "ordinal": ordinal,
+        "container_role": container_role,
+        "container_name": container_name,
+        "ancestor_text": ancestor_text,
+    }
+    if sibling_count > 1 or ancestor_text or container_role:
+        context["scope_hint"] = _scope_hint(
+            role=role,
+            name=name,
+            context_hint=context_hint,
+            ancestor_text=ancestor_text,
+        )
+    return context
+
+
+def _element_group_counts(elements: list) -> dict[tuple[str, str], int]:
+    counts: dict[tuple[str, str], int] = {}
+    for element in elements:
+        if not isinstance(element, dict):
+            continue
+        key = (_string(element.get("role") or "element"), _string(element.get("name") or element.get("text") or ""))
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _locator_candidates_with_unverified_placeholder(role: str, name: str, role_source: str) -> list[dict]:
+    return [
+        {
+            **candidate,
+            "verification": {"checked": False, "unique": None, "visible": None, "match_count": 0},
+        }
+        for candidate in _semantic_locator_candidates(role, name, role_source)
+    ]
+
+
 def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) -> list[dict]:
     """合并 DOM 采集元素与 accessibility_tree 可见节点，去重后写入 yaml。
 
@@ -610,6 +742,9 @@ def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) ->
       让外部脚本读 yaml 即可知道这个 selector 是否 verified
     """
     result: list[dict] = []
+    counts = _element_group_counts(elements)
+    ordinals: dict[tuple[str, str], int] = {}
+    seen_ax_keys: set[str] = set()
     # DOM 元素全部保留（不去重，保持列表完整性）
     for element in elements:
         if not isinstance(element, dict):
@@ -617,15 +752,25 @@ def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) ->
         name = _string(element.get("name") or element.get("text") or f"element-{len(result) + 1}")
         role = _string(element.get("role") or "element")
         role_source = _string(element.get("role_source") or "")
+        key = (role, name)
+        ordinals[key] = ordinals.get(key, 0) + 1
+        seen_ax_keys.add(f"{role}:{name[:30]}")
+        action_type = _normalize_action_type(role, _string(element.get("action_type") or ""))
         artifact_element: dict = {
             "id": _string(element.get("ref") or f"el-{len(result) + 1}"),
             "name": name,
             "role": role,
             "text": element.get("text"),
+            "action_type": action_type,
             "visible": bool(element.get("visible", True)),
             "locators": _attach_verification_metadata(
                 _semantic_locator_candidates(role, name, role_source),
                 element,
+            ),
+            "context": _automation_context(
+                element,
+                ordinal=ordinals[key],
+                sibling_count=counts.get(key, 1),
             ),
         }
         ancestor_chain = element.get("ancestor_chain")
@@ -635,7 +780,6 @@ def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) ->
 
     # accessibility_tree 只补充 DOM 中没有的节点（用宽松 key 避免吞掉同名不同行元素）
     _TEXT_ROLES = frozenset({"text", "img", "graphic"})
-    seen: set[str] = set()
     for node in accessibility_tree:
         if not isinstance(node, dict):
             continue
@@ -647,16 +791,25 @@ def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) ->
             continue
         # 宽松 key：role + name 前 30 字符，避免 "自主规划 Agent 能..." 和 "自主规划 Agent" 被误判为重复
         key = f"{role}:{name[:30]}"
-        if key in seen:
+        if key in seen_ax_keys:
             continue
-        seen.add(key)
+        seen_ax_keys.add(key)
         result.append({
             "id": f"ax-{len(result) + 1}",
             "name": name,
             "role": role,
             "text": node.get("name"),
+            "action_type": _normalize_action_type(role, ""),
             "visible": True,
-            "locators": _semantic_locator_candidates(role, name, "accessibility_tree"),
+            "locators": _locator_candidates_with_unverified_placeholder(role, name, "accessibility_tree"),
+            "context": {
+                "is_ambiguous": False,
+                "sibling_count": 1,
+                "ordinal": 1,
+                "container_role": "",
+                "container_name": "",
+                "ancestor_text": "",
+            },
         })
 
     return result

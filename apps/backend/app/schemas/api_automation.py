@@ -97,7 +97,6 @@ class ApiEndpointDebugIn(_StrippedModel):
     path_params: dict[str, Any] = Field(default_factory=dict)
     query_params: dict[str, Any] = Field(default_factory=dict)
     headers: dict[str, Any] = Field(default_factory=dict)
-    cookies: dict[str, Any] = Field(default_factory=dict)
     body: Any = None
 
 
@@ -176,13 +175,17 @@ class ApiTestCaseOut(BaseModel):
     endpoint_id: str | None
     title: str
     priority: str
+    coverage: str
     source: str
     status: str
     tags: list[str]
+    preconditions: list[str]
     request: dict[str, Any]
+    test_data: dict[str, Any]
     expected: dict[str, Any]
     assertions: list[dict[str, Any]]
     variables: dict[str, Any]
+    data_origin: dict[str, Any]
     notes: str
     created_at: str
     updated_at: str
@@ -208,12 +211,16 @@ class ApiTestCaseSetOut(BaseModel):
 class ApiTestCaseUpdateIn(_StrippedModel):
     title: str | None = None
     priority: str | None = None
+    coverage: str | None = None
     status: ApiCaseStatus | None = None
     tags: list[str] | None = None
+    preconditions: list[str] | None = None
     request: dict[str, Any] | None = None
+    test_data: dict[str, Any] | None = None
     expected: dict[str, Any] | None = None
     assertions: list[dict[str, Any]] | None = None
     variables: dict[str, Any] | None = None
+    data_origin: dict[str, Any] | None = None
     notes: str | None = None
 
 

@@ -121,7 +121,10 @@ def test_generation_case_script_and_run_records(monkeypatch: pytest.MonkeyPatch,
             source="ai_generated",
             status="ready",
             tags=["login"],
+            coverage="positive",
+            preconditions=["用户账号存在"],
             request={"method": "POST", "path": "/login"},
+            test_data={"username": {"value": "demo", "source": "openapi_example", "required": True}},
             expected={"status_code": 200},
             assertions=[{"type": "status_code", "expected": 200}],
             variables={},
@@ -162,6 +165,10 @@ def test_generation_case_script_and_run_records(monkeypatch: pytest.MonkeyPatch,
         run = api_automation_repo.find_api_run(db, run_id)
 
     assert cases[0]["id"] == case_id
+    assert cases[0]["coverage"] == "positive"
+    assert api_automation_repo.loads_json(cases[0]["preconditions_json"], []) == ["用户账号存在"]
+    assert api_automation_repo.loads_json(cases[0]["test_data_json"], {})["username"]["value"] == "demo"
+    assert api_automation_repo.loads_json(cases[0]["data_origin_json"], {})["body.username"] == "ai_generated"
     assert script["api_test_case_id"] == case_id
     assert api_automation_repo.loads_json(run["script_ids_json"], []) == [script_id]
 
