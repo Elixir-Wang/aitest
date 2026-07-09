@@ -388,14 +388,14 @@ def list_generation_runs(project_id: str, actor) -> list[dict]:
         return [_serialize_generation_run(row) for row in api_automation_repo.list_generation_runs(db, project_id)]
 
 
-def list_api_test_cases(project_id: str, actor, *, endpoint_id: str = "", status: str = "") -> list[dict]:
+def list_api_test_cases(project_id: str, actor, *, endpoint_id: str = "") -> list[dict]:
     with connect() as db:
         _require_visible_project(db, project_id, actor)
         if endpoint_id:
             endpoint = api_automation_repo.find_endpoint(db, endpoint_id)
             if not endpoint or endpoint["project_id"] != project_id:
                 raise api_error(404, "API_ENDPOINT_NOT_FOUND", "接口不存在。")
-        rows = api_automation_repo.list_api_test_cases(db, project_id, endpoint_id=endpoint_id, status=status)
+        rows = api_automation_repo.list_api_test_cases(db, project_id, endpoint_id=endpoint_id)
         return [_serialize_api_test_case(row) for row in rows]
 
 
@@ -500,15 +500,8 @@ def execute_generation_run(run_id: str) -> dict:
             failed = api_automation_repo.find_generation_run(db, run_id)
         return _serialize_generation_run(failed)
 
-    ready_count = 0
-    needs_input_count = 0
     with connect() as db:
         for generated_case in result.cases:
-            status = generated_case.status
-            if status == "ready":
-                ready_count += 1
-            if status == "needs_input":
-                needs_input_count += 1
             api_automation_repo.create_api_test_case(
                 db,
                 case_id=f"apitc-{secrets.token_hex(8)}",
@@ -520,7 +513,6 @@ def execute_generation_run(run_id: str) -> dict:
                 priority=generated_case.priority,
                 coverage=generated_case.coverage,
                 source=generated_case.source,
-                status=status,
                 tags=generated_case.tags,
                 preconditions=generated_case.preconditions,
                 request=generated_case.request,
@@ -539,8 +531,6 @@ def execute_generation_run(run_id: str) -> dict:
         summary = {
             "summary": result.summary,
             "test_case_count": len(result.cases),
-            "ready_count": ready_count,
-            "needs_input_count": needs_input_count,
             "script_count": 0,
         }
         api_automation_repo.update_generation_run(
@@ -576,8 +566,6 @@ def generate_scripts_from_api_test_cases(project_id: str, api_test_case_ids: lis
             row = api_automation_repo.find_api_test_case(db, case_id)
             if not row or row["project_id"] != project_id:
                 raise api_error(404, "API_TEST_CASE_NOT_FOUND", f"接口自动化用例不存在：{case_id}")
-            if row["status"] != "ready":
-                raise api_error(400, "API_TEST_CASE_NOT_READY", "只有 ready 状态的接口自动化用例可以生成脚本。")
             rows.append(row)
         cases = [_serialize_api_test_case(row) for row in rows]
 
@@ -959,7 +947,6 @@ def _serialize_api_test_case(row: Row) -> dict:
         "priority": row["priority"],
         "coverage": row["coverage"],
         "source": row["source"],
-        "status": row["status"],
         "tags": api_automation_repo.loads_json(row["tags_json"], []),
         "preconditions": api_automation_repo.loads_json(row["preconditions_json"], []),
         "request": api_automation_repo.loads_json(row["request_json"], {}),

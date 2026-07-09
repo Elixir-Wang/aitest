@@ -87,7 +87,6 @@ export default function ApiAutomationCaseDetailPage() {
                   {testCase.priority || "P2"}
                 </Badge>
                 <Badge variant="outline">{testCase.coverage || "positive"}</Badge>
-                <Badge variant="secondary">{testCase.status || "draft"}</Badge>
               </div>
               <h1 className="font-semibold text-xl">{testCase.title}</h1>
             </div>
@@ -131,7 +130,6 @@ function renderApiCaseBasicInfo(testCase: ApiAutomationTestCase) {
       <InfoLine label="标题" value={testCase.title} />
       <InfoLine label="优先级" value={testCase.priority || "P2"} />
       <InfoLine label="覆盖类型" value={testCase.coverage || "positive"} />
-      <InfoLine label="状态" value={testCase.status || "draft"} />
       <InfoLine label="来源" value={testCase.source || "ai_generated"} />
       <InfoLine label="更新时间" value={formatDateTime(testCase.updated_at)} />
       <div className="space-y-1 sm:col-span-2">
@@ -199,17 +197,10 @@ function renderApiCaseTestData(testData: Record<string, unknown>) {
     <div className="space-y-3">
       {entries.map(([name, rawValue]) => {
         const item = asRecord(rawValue);
-        const status = asString(item.status) || "ready";
         return (
           <div className="rounded-md border bg-[#FCFCFD] p-3" key={name}>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div className="font-medium text-sm">{name}</div>
-              <Badge
-                className={cn("rounded-md", status === "missing" ? "border-amber-200 bg-amber-50 text-amber-700" : "")}
-                variant="outline"
-              >
-                {status}
-              </Badge>
             </div>
             <div className="grid gap-2 text-sm sm:grid-cols-2">
               <InfoLine label="值" mono value={formatUnknown(item.value)} />

@@ -7,7 +7,7 @@ ApiAssertionExpected = str | int | float | bool | None
 
 
 class ApiAssertion(BaseModel):
-    type: Literal["status_code", "jsonpath_equals", "jsonpath_exists", "schema_contains"]
+    type: Literal["status_code", "jsonpath_equals", "jsonpath_exists"]
     path: str = ""
     expected: ApiAssertionExpected = None
 
@@ -26,7 +26,6 @@ class ApiGeneratedCase(BaseModel):
     assertions: list[ApiAssertion]
     variables: dict[str, Any] = Field(default_factory=dict)
     data_origin: dict[str, Any] = Field(default_factory=dict)
-    status: Literal["draft", "ready", "needs_input"] = "draft"
     notes: str = ""
 
 

@@ -78,6 +78,18 @@ click / fill 工具失败时会返回结构化错误：
 - 表单提交按钮优先使用"包含关键输入框/必填字段的容器"限定，例如包含 placeholder `请输入智能体名称` 的弹层，再点击其中的 `创建`。
 - 不允许把任意 textbox 猜成目标字段；必须通过邻近 label、标题、section 或当前 todo 语义验证。比如 Prompt/角色设定字段不能用"调试预览"里的聊天输入框替代。
 
+## 卡住时的工具升级顺序（硬性）
+
+如果同一 URL / 同一页面状态 / 同一 todo 下连续没有进展，不要反复全页 snap 或重复同一 locator。
+按下面顺序升级工具：
+
+1. 弹层/浮层相关：先调用 `playwright_observe_overlays_tool`，确认 dialog / popover / menu 是否可见以及其中有哪些 controls。
+2. 局部 DOM 查询：对弹层或主要区域调用 `playwright_scoped_query_tool`，例如 `scope="[role='popover']"`、`text="创建"`、`role="button"`。
+3. 键盘交互：只有当 UI 明确需要按键时调用 `playwright_press_tool`，例如 `Enter` 提交搜索/当前输入框，`Escape` 关闭浮层。
+4. 仍然歧义或准备标记 blocked 前，调用 `playwright_screenshot_tool` 保存截图证据。
+
+服务端有硬性保护：同一 URL + 同一 state_signature + 同一 todo 连续失败或连续快照无变化达到阈值，会直接把探索标记为 blocked；因此不要用重复动作消耗递归预算。
+
 ## 探索策略
 1. **先做目标分解**：用 `write_todos` 把目标拆成 3-7 个子步骤（每条带完成判据）
 2. 获取页面快照 `playwright_snap_tool`（必要时传 `focus_keywords` 缩小范围）

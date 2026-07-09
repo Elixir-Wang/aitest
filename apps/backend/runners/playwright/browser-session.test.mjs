@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 
 describe("browser session observation", () => {
@@ -564,6 +567,69 @@ describe("browser session observation", () => {
       }
     } finally {
       await session.close();
+    }
+  });
+
+  it("supports overlay observation, scoped queries, key press, and screenshots", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "browser-session-"));
+    const screenshotPath = join(tempDir, "evidence.png");
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <title>Overlay tools</title>
+          <style>
+            [role="popover"] { position: fixed; top: 20px; left: 20px; width: 320px; padding: 12px; background: white; border: 1px solid #ddd; }
+          </style>
+        </head>
+        <body>
+          <div role="popover" aria-label="创建智能体">
+            <label>智能体名称 <input placeholder="请输入智能体名称" onkeydown="if (event.key === 'Enter') document.body.dataset.submitted = this.value" /></label>
+            <button onclick="document.body.dataset.clicked = 'yes'">创建</button>
+          </div>
+        </body>
+      </html>
+    `;
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      const overlays = await session.command({ type: "observe_overlays" });
+      assert.equal(overlays.overlay_count, 1);
+      assert.equal(overlays.overlays[0].role, "popover");
+
+      const query = await session.command({
+        type: "scoped_query",
+        scope: "[role='popover']",
+        text: "创建",
+        limit: 10,
+      });
+      assert.equal(query.match_count >= 1, true);
+      assert.equal(query.matches.some((item) => item.name.includes("创建")), true);
+
+      const fill = await session.command({
+        type: "fill",
+        element_id: "page.getByPlaceholder('请输入智能体名称', { exact: true })",
+        value: "测试 Agent",
+      });
+      assert.equal(fill.success, true);
+
+      const press = await session.command({
+        type: "press",
+        element_id: "page.getByPlaceholder('请输入智能体名称', { exact: true })",
+        key: "Enter",
+      });
+      assert.equal(press.success, true);
+      assert.equal(press.effective_locator, "page.getByPlaceholder('请输入智能体名称', { exact: true })");
+
+      const screenshot = await session.command({
+        type: "screenshot",
+        path: screenshotPath,
+        full_page: false,
+      });
+      assert.equal(screenshot.path, screenshotPath);
+      assert.equal(existsSync(screenshotPath), true);
+    } finally {
+      await session.close();
+      rmSync(tempDir, { recursive: true, force: true });
     }
   });
 });

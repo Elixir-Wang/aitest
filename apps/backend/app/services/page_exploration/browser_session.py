@@ -84,6 +84,37 @@ class PlaywrightBrowserSession:
         """
         return self.command({"type": "fill", "element_id": element_id, "value": value})
 
+    def press(self, element_id: str, key: str) -> dict[str, Any]:
+        """Press a keyboard key, optionally scoped to a locator."""
+        return self.command({"type": "press", "element_id": element_id, "key": key})
+
+    def scoped_query(
+        self,
+        *,
+        scope: str = "",
+        text: str = "",
+        role: str = "",
+        limit: int = 30,
+    ) -> dict[str, Any]:
+        """Query visible elements inside an overlay/scope without changing page state."""
+        return self.command(
+            {
+                "type": "scoped_query",
+                "scope": scope,
+                "text": text,
+                "role": role,
+                "limit": limit,
+            }
+        )
+
+    def observe_overlays(self) -> dict[str, Any]:
+        """Return a compact view of visible dialogs, popovers, menus, and drawers."""
+        return self.command({"type": "observe_overlays"})
+
+    def screenshot(self, path: str, *, full_page: bool = True) -> dict[str, Any]:
+        """Capture a screenshot for blocked-state evidence."""
+        return self.command({"type": "screenshot", "path": path, "full_page": full_page})
+
     def go_back(self) -> dict[str, Any]:
         """Navigate back in the active page."""
         return self.command({"type": "go_back"})

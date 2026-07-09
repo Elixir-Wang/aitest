@@ -7,6 +7,7 @@ from app.agents.page_exploration.tools.runtime_context import (
     click_with_runtime_context,
     fill_with_runtime_context,
     navigate_with_runtime_context,
+    press_with_runtime_context,
 )
 
 
@@ -137,8 +138,30 @@ def playwright_fill_tool(locator: str, value: str) -> dict:
     return payload
 
 
+@tool
+def playwright_press_tool(key: str, locator: str = "") -> dict:
+    """
+    Press a keyboard key on the current focused element or a specific locator.
+
+    Use this only when the UI naturally requires keyboard interaction, for example:
+    - press "Enter" after filling a search box or focused form field
+    - press "Escape" to close a transient popover before retrying
+    - press "Tab" only when focus movement is the explicit goal
+
+    Args:
+        key: Playwright key name, e.g. "Enter", "Escape", "Tab".
+        locator: Optional reusable Playwright Locator string. If omitted, presses
+            the key on the current focused element.
+
+    Returns:
+        A dictionary containing success/failure, effective_locator, and verification hints.
+    """
+    return press_with_runtime_context(locator=locator, key=key)
+
+
 __all__ = [
     "playwright_navigate_tool",
     "playwright_click_tool",
     "playwright_fill_tool",
+    "playwright_press_tool",
 ]

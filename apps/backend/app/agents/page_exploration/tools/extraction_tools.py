@@ -6,7 +6,12 @@ from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
 
-from app.agents.page_exploration.tools.runtime_context import snapshot_with_runtime_context
+from app.agents.page_exploration.tools.runtime_context import (
+    observe_overlays_with_runtime_context,
+    scoped_query_with_runtime_context,
+    screenshot_with_runtime_context,
+    snapshot_with_runtime_context,
+)
 from app.agents.page_exploration.utils.dom_signature import compute_dom_signature
 from app.agents.page_exploration.utils.page_id import make_page_id
 from app.agents.page_exploration.utils.element_key import build_element_key
@@ -136,6 +141,7 @@ def playwright_snap_tool(
         "url": result.url,
         "title": result.title,
         "page_text_summary": result.page_text_summary,
+        "state_signature": result.state_signature,
         "elements": elements,
         "accessibility_tree": accessibility_tree,
         "visible_text_blocks": visible_text_blocks,
@@ -143,6 +149,63 @@ def playwright_snap_tool(
         "error": result.error,
         "state_observation_hint": state_observation_hint,
     }
+
+
+@tool
+def playwright_scoped_query_tool(
+    scope: str = "",
+    text: str = "",
+    role: str = "",
+    limit: int = 30,
+) -> dict:
+    """
+    Query visible elements inside a smaller DOM scope without changing page state.
+
+    Use this after a full snap when the next target is inside a dialog/popover/menu
+    or when the full page snapshot is too broad. Prefer this over repeated full
+    page snaps while stuck on the same URL/state.
+
+    Args:
+        scope: Optional CSS scope, e.g. "[role='popover']" or "[role='dialog']".
+            If omitted, the runner chooses the first visible overlay, then main/body.
+        text: Optional text filter.
+        role: Optional role filter, e.g. "button", "textbox".
+        limit: Maximum matches to return.
+
+    Returns:
+        {url, title, scope_used, match_count, matches}
+    """
+    return scoped_query_with_runtime_context(scope=scope, text=text, role=role, limit=limit)
+
+
+@tool
+def playwright_observe_overlays_tool() -> dict:
+    """
+    Observe visible dialogs, popovers, menus, and drawers.
+
+    Use this when a click opens a floating layer, when a locator inside a popover
+    fails as not_visible, or before deciding whether to close/reopen an overlay.
+
+    Returns:
+        {url, title, overlay_count, overlays}, where each overlay includes visible
+        text, bounds, and compact controls.
+    """
+    return observe_overlays_with_runtime_context()
+
+
+@tool
+def playwright_screenshot_tool(path: str, full_page: bool = True) -> dict:
+    """
+    Capture a screenshot as evidence for a blocked or ambiguous exploration state.
+
+    Args:
+        path: Absolute filesystem path for the PNG.
+        full_page: Whether to capture the full page.
+
+    Returns:
+        {path, url, title, full_page}
+    """
+    return screenshot_with_runtime_context(path, full_page=full_page)
 
 
 def _annotate_ambiguity(elements: list) -> None:
@@ -393,5 +456,8 @@ def _focus_visible_text_blocks(blocks: List[str], keywords: List[str], max_block
 
 __all__ = [
     "playwright_snap_tool",
+    "playwright_scoped_query_tool",
+    "playwright_observe_overlays_tool",
+    "playwright_screenshot_tool",
     "build_state_observation_hint",
 ]

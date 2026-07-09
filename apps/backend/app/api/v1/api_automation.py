@@ -130,10 +130,9 @@ def generate_api_test_cases(
 def list_api_test_cases(
     project_id: str,
     endpoint_id: str = Query(default=""),
-    status: str = Query(default=""),
     actor=Depends(current_user),
 ) -> list[dict]:
-    return service.list_api_test_cases(project_id, actor, endpoint_id=endpoint_id, status=status)
+    return service.list_api_test_cases(project_id, actor, endpoint_id=endpoint_id)
 
 
 @router.get("/api-test-cases/{case_id}", response_model=ApiTestCaseOut)

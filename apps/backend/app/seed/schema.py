@@ -418,7 +418,6 @@ CREATE TABLE IF NOT EXISTS api_test_cases (
   priority TEXT NOT NULL DEFAULT 'P2',
   coverage TEXT NOT NULL DEFAULT 'positive',
   source TEXT NOT NULL CHECK(source IN ('ai_generated', 'manual', 'approved_test_case')) DEFAULT 'ai_generated',
-  status TEXT NOT NULL CHECK(status IN ('draft', 'ready', 'needs_input', 'archived')) DEFAULT 'draft',
   tags_json TEXT NOT NULL DEFAULT '[]',
   preconditions_json TEXT NOT NULL DEFAULT '[]',
   request_json TEXT NOT NULL DEFAULT '{}',

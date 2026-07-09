@@ -6,6 +6,7 @@ import inspect
 import pytest
 
 from app.services.page_exploration import event_bus
+from app.services.page_exploration import output_registry
 from app.services.page_exploration import service as page_exploration_service
 from app.api.v1 import page_exploration as page_exploration_api
 
@@ -527,15 +528,21 @@ def test_invoke_agent_checkpoints_snapshot_as_page_artifact(monkeypatch, tmp_pat
     data = yaml.safe_load(page_path.read_text(encoding="utf-8"))
     assert data["page"]["id"] == "page-workspace"
     assert data["page"]["normalized_path"] == "/workspace"
-    assert data["page"]["env_urls"]["test"] == "https://example.test/workspace?tab=agents"
+    assert data["page"]["url"] == "https://example.test/workspace?tab=agents"
     assert data["states"][0]["elements"][0]["locators"][0]["code"] == "getByRole('button', { name: '创建智能体' })"
     assert "accessibility_tree" not in data["states"][0]
     assert "visible_text_blocks" not in data["states"][0]
     assert data["states"][0]["type"] == "root"
     assert "Multi-Agent" in data["states"][0]["assertion_texts"]
     assert "elements" not in data["page"]
+    assert "env_urls" not in data["page"]
+    assert "last_explored" not in data["page"]
+    assert "actions" not in data
+    assert "metadata" not in data
+    assert "_index" not in data
     assert "path_hash" not in data["page"]
     assert "raw_output" not in data["states"][0]
+    assert (page_path.parent / "pages-index.yaml").exists()
 
 
 def test_snapshot_checkpoint_registers_visible_artifact(monkeypatch, tmp_path: Path) -> None:
@@ -1695,6 +1702,43 @@ states:
     assert not (page_root / "runs" / "run-1" / "pages").exists()
     assert not (page_root / "runs" / "run-1" / "summary.yaml").exists()
     assert (page_root / "runs" / "run-1" / "report.md").exists()
+
+
+def test_register_exploration_outputs_collects_compact_index_pages(monkeypatch, tmp_path: Path) -> None:
+    page_root = tmp_path / "project-1" / "page_exploration"
+    pages_dir = page_root / "pages"
+    pages_dir.mkdir(parents=True)
+    (pages_dir / "page-workspace.yaml").write_text(
+        """
+page:
+  id: page-workspace
+  title: 工作台
+  normalized_path: /workspace
+  url: https://example.test/workspace
+states: []
+""",
+        encoding="utf-8",
+    )
+    (pages_dir / "pages-index.yaml").write_text(
+        """
+pages:
+  page-workspace.yaml:
+    structure_summary: 发现工作台入口。
+    run_id: run-1
+    captured_at: '2026-07-02T11:34:59Z'
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+
+    artifacts = output_registry._collect_project_page_artifacts_for_run(
+        project_id="project-1",
+        run_id="run-1",
+    )
+
+    assert len(artifacts) == 1
+    assert artifacts[0][1]["page"]["id"] == "page-workspace"
 
 
 def test_failed_exploration_registers_current_partial_outputs(monkeypatch, tmp_path: Path) -> None:

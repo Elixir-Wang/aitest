@@ -64,6 +64,68 @@ def _ensure_api_test_case_structure_columns(db: sqlite3.Connection) -> None:
     for column, statement in missing_columns.items():
         if column not in columns:
             db.execute(statement)
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_test_cases)").fetchall()}
+    if "status" in columns:
+        _drop_api_test_case_status_column(db)
+
+
+def _drop_api_test_case_status_column(db: sqlite3.Connection) -> None:
+    db.execute("PRAGMA foreign_keys = OFF")
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS api_test_cases_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          endpoint_id TEXT,
+          source_test_case_id TEXT,
+          generation_run_id TEXT,
+          title TEXT NOT NULL,
+          priority TEXT NOT NULL DEFAULT 'P2',
+          coverage TEXT NOT NULL DEFAULT 'positive',
+          source TEXT NOT NULL CHECK(source IN ('ai_generated', 'manual', 'approved_test_case')) DEFAULT 'ai_generated',
+          tags_json TEXT NOT NULL DEFAULT '[]',
+          preconditions_json TEXT NOT NULL DEFAULT '[]',
+          request_json TEXT NOT NULL DEFAULT '{}',
+          test_data_json TEXT NOT NULL DEFAULT '{}',
+          expected_json TEXT NOT NULL DEFAULT '{}',
+          assertions_json TEXT NOT NULL DEFAULT '[]',
+          variables_json TEXT NOT NULL DEFAULT '{}',
+          data_origin_json TEXT NOT NULL DEFAULT '{}',
+          data_file_path TEXT NOT NULL DEFAULT '',
+          notes TEXT NOT NULL DEFAULT '',
+          created_by TEXT NOT NULL,
+          updated_by TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE SET NULL,
+          FOREIGN KEY(source_test_case_id) REFERENCES test_cases(id) ON DELETE SET NULL,
+          FOREIGN KEY(generation_run_id) REFERENCES api_generation_runs(id) ON DELETE SET NULL
+        )
+        """
+    )
+    db.execute(
+        """
+        INSERT OR IGNORE INTO api_test_cases_new (
+          id, project_id, endpoint_id, source_test_case_id, generation_run_id,
+          title, priority, coverage, source, tags_json, preconditions_json,
+          request_json, test_data_json, expected_json, assertions_json, variables_json,
+          data_origin_json, data_file_path, notes, created_by, updated_by, created_at, updated_at
+        )
+        SELECT
+          id, project_id, endpoint_id, source_test_case_id, generation_run_id,
+          title, priority, coverage, source, tags_json, preconditions_json,
+          request_json, test_data_json, expected_json, assertions_json, variables_json,
+          data_origin_json, data_file_path, notes, created_by, updated_by, created_at, updated_at
+        FROM api_test_cases
+        """
+    )
+    db.execute("DROP TABLE api_test_cases")
+    db.execute("ALTER TABLE api_test_cases_new RENAME TO api_test_cases")
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_api_test_cases_project_endpoint ON api_test_cases(project_id, endpoint_id)"
+    )
+    db.execute("PRAGMA foreign_keys = ON")
 
 
 def _migrate_api_environment_auth_types(db: sqlite3.Connection) -> None:

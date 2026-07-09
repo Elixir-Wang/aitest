@@ -5,7 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 AuthType = Literal["none", "account_password", "cybertron_agent"]
 GenerationStatus = Literal["queued", "running", "completed", "failed", "cancelled", "interrupted"]
-ApiCaseStatus = Literal["draft", "ready", "needs_input", "archived"]
 ScriptStatus = Literal["draft", "ready", "needs_input", "failed"]
 RunStatus = Literal["queued", "running", "passed", "failed", "cancelled", "interrupted"]
 
@@ -177,7 +176,6 @@ class ApiTestCaseOut(BaseModel):
     priority: str
     coverage: str
     source: str
-    status: str
     tags: list[str]
     preconditions: list[str]
     request: dict[str, Any]
@@ -212,7 +210,6 @@ class ApiTestCaseUpdateIn(_StrippedModel):
     title: str | None = None
     priority: str | None = None
     coverage: str | None = None
-    status: ApiCaseStatus | None = None
     tags: list[str] | None = None
     preconditions: list[str] | None = None
     request: dict[str, Any] | None = None

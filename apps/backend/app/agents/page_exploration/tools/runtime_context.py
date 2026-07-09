@@ -276,6 +276,82 @@ def fill_with_runtime_context(locator: str, value: str) -> FillResult | None:
     )
 
 
+def press_with_runtime_context(locator: str = "", key: str = "") -> dict:
+    """Press a key on a locator or the current focused element."""
+    session = _browser_session.get()
+    if session is None:
+        raise BrowserSessionError("Page exploration browser session is not bound.")
+    try:
+        result = session.press(locator, key)
+    except BrowserSessionError as exc:
+        return {
+            "success": False,
+            "error": str(exc),
+            "failure": {
+                "error_type": "action_failed",
+                "summary": "浏览器会话协议错误。",
+                "raw": str(exc),
+                "recovered": False,
+                "recovery_warning": "",
+            },
+            "effective_locator": locator or "activeElement",
+            "verification_required": False,
+            "next_step_hint": "按键失败。请先 snap 观察当前页面状态，再确认焦点元素或更换 locator。",
+        }
+
+    parsed = _parse_action_result(
+        result,
+        raw_expr=locator or "activeElement",
+        default_error=f"Press failed: {key}",
+    )
+    if parsed["success"]:
+        return {
+            "success": True,
+            "error": None,
+            "effective_locator": parsed["effective_locator"],
+            "verification_required": True,
+            "next_step_hint": ACTION_VERIFICATION_HINT,
+            "risk": _locator_risk(parsed["effective_locator"], parsed.get("failure")),
+        }
+    failure: ActionFailure = parsed["failure"]
+    return {
+        "success": False,
+        "error": failure.summary or failure.raw,
+        "failure": failure.model_dump(),
+        "effective_locator": parsed["effective_locator"],
+        "verification_required": False,
+        "next_step_hint": "按键失败。不要重复尝试同一 key/locator；请 snap 或 observe_overlays 后确认焦点和目标容器。",
+        "risk": _locator_risk(parsed["effective_locator"], failure),
+    }
+
+
+def scoped_query_with_runtime_context(
+    *,
+    scope: str = "",
+    text: str = "",
+    role: str = "",
+    limit: int = 30,
+) -> dict:
+    session = _browser_session.get()
+    if session is None:
+        raise BrowserSessionError("Page exploration browser session is not bound.")
+    return session.scoped_query(scope=scope, text=text, role=role, limit=limit)
+
+
+def observe_overlays_with_runtime_context() -> dict:
+    session = _browser_session.get()
+    if session is None:
+        raise BrowserSessionError("Page exploration browser session is not bound.")
+    return session.observe_overlays()
+
+
+def screenshot_with_runtime_context(path: str, *, full_page: bool = True) -> dict:
+    session = _browser_session.get()
+    if session is None:
+        raise BrowserSessionError("Page exploration browser session is not bound.")
+    return session.screenshot(path, full_page=full_page)
+
+
 def snapshot_with_runtime_context(url: str | None = None) -> SnapshotResult | None:
     session = _browser_session.get()
     if session is None:
@@ -320,4 +396,5 @@ def snapshot_with_runtime_context(url: str | None = None) -> SnapshotResult | No
             for item in result.get("visible_text_blocks", [])
             if str(item).strip()
         ],
+        state_signature=str(result.get("state_signature") or ""),
     )

@@ -38,6 +38,106 @@ class ExplorationCancelledError(Exception):
     """Raised when a user-requested exploration stop is observed."""
 
 
+class ExplorationStalledError(Exception):
+    """Raised when exploration repeats the same state without useful progress."""
+
+
+class _ExplorationProgressGuard:
+    """Stop agent loops that keep retrying the same todo on the same page state."""
+
+    def __init__(self, *, failure_limit: int = 3, stale_snapshot_limit: int = 6) -> None:
+        self.failure_limit = failure_limit
+        self.stale_snapshot_limit = stale_snapshot_limit
+        self.current_todo = "no-active-todo"
+        self.current_state_key: tuple[str, str, str] | None = None
+        self.last_snapshot_key: tuple[str, str, str] | None = None
+        self.consecutive_failures = 0
+        self.consecutive_stale_snapshots = 0
+
+    def observe(self, readable_event: dict, snapshot_event: dict | None = None) -> None:
+        event_type = _string(readable_event.get("type"))
+        payload = readable_event.get("payload") if isinstance(readable_event.get("payload"), dict) else {}
+
+        if event_type == "agent_plan_updated":
+            self.current_todo = self._active_todo_key(payload.get("plan_steps"))
+            self.consecutive_failures = 0
+            self.consecutive_stale_snapshots = 0
+            self.last_snapshot_key = None
+            return
+
+        if snapshot_event:
+            self._observe_snapshot(snapshot_event)
+
+        if event_type == "agent_tool_failed":
+            self._observe_failure(payload)
+            return
+
+        if event_type == "agent_tool_completed" and _string(payload.get("tool_name")) != "playwright_snap_tool":
+            self.consecutive_failures = 0
+
+    def _observe_snapshot(self, snapshot_event: dict) -> None:
+        output = self._snapshot_output(snapshot_event)
+        url = _string(output.get("url"))
+        signature = _string(output.get("state_signature"))
+        if not signature:
+            hint = output.get("state_observation_hint") if isinstance(output.get("state_observation_hint"), dict) else {}
+            signature = _string(hint.get("dom_signature"))
+        if not url or not signature:
+            return
+
+        key = (url, signature, self.current_todo)
+        self.current_state_key = key
+        if key == self.last_snapshot_key:
+            self.consecutive_stale_snapshots += 1
+        else:
+            self.consecutive_stale_snapshots = 1
+            self.last_snapshot_key = key
+            self.consecutive_failures = 0
+
+        if self.consecutive_stale_snapshots >= self.stale_snapshot_limit:
+            raise ExplorationStalledError(
+                "探索无进展：同一 URL、同一页面状态和同一子目标连续 "
+                f"{self.consecutive_stale_snapshots} 次快照未变化。"
+            )
+
+    def _observe_failure(self, payload: dict) -> None:
+        if self.current_state_key is None:
+            return
+        self.consecutive_failures += 1
+        if self.consecutive_failures >= self.failure_limit:
+            tool_name = _string(payload.get("tool_name")) or "tool"
+            locator = _string(payload.get("locator"))
+            failure = payload.get("failure") if isinstance(payload.get("failure"), dict) else {}
+            failure_type = _string(failure.get("error_type")) or _string(payload.get("error_summary")) or "unknown"
+            details = f"{tool_name} 连续失败 {self.consecutive_failures} 次"
+            if locator:
+                details = f"{details}，locator={locator}"
+            raise ExplorationStalledError(
+                "探索阻塞：同一 URL、同一页面状态和同一子目标下"
+                f"{details}，failure={failure_type}。"
+            )
+
+    @staticmethod
+    def _snapshot_output(snapshot_event: dict) -> dict:
+        data = snapshot_event.get("data") if isinstance(snapshot_event.get("data"), dict) else {}
+        output = data.get("output") if isinstance(data.get("output"), dict) else {}
+        return output
+
+    @staticmethod
+    def _active_todo_key(plan_steps) -> str:
+        if not isinstance(plan_steps, list):
+            return "no-active-todo"
+        for step in plan_steps:
+            if not isinstance(step, dict):
+                continue
+            if _string(step.get("status")) == "in_progress":
+                return _string(step.get("step_id")) or _string(step.get("description"))[:120] or "active-todo"
+        pending = next((step for step in plan_steps if isinstance(step, dict) and _string(step.get("status")) == "pending"), None)
+        if pending:
+            return _string(pending.get("step_id")) or _string(pending.get("description"))[:120] or "pending-todo"
+        return "no-active-todo"
+
+
 def _service_attr(name: str, default):
     service_module = sys.modules.get("app.services.page_exploration.service")
     return getattr(service_module, name, default)
@@ -158,6 +258,33 @@ def _run_exploration_background(run_id: str) -> None:
 
     except ExplorationCancelledError:
         _finalize_cancelled_exploration_run(run_id)
+    except ExplorationStalledError as e:
+        artifact_summary = _service_attr(
+            "_register_failed_exploration_outputs",
+            _register_failed_exploration_outputs,
+        )(run_id)
+        result_summary = f"探索阻塞: {str(e)}"
+        if artifact_summary:
+            result_summary = f"{result_summary}；{artifact_summary}"
+        with _connect() as db:
+            _exploration_run_repo().update_status(
+                db,
+                run_id,
+                "blocked",
+                finished_at=datetime.now(timezone.utc).isoformat(),
+                result_summary=result_summary,
+            )
+        _publish_run_terminal_event(
+            str(run_dict.get("project_id") or ""),
+            run_id,
+            "run_failed",
+            {
+                "status": "blocked",
+                "error": str(e),
+                "result_summary": result_summary,
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
     except Exception as e:
         artifact_summary = _service_attr(
             "_register_failed_exploration_outputs",
@@ -490,6 +617,7 @@ async def _astream_agent_with_timeline_events(
     tool_inputs: dict[str, dict] = {}
     seen_projection_keys: set[str] = set()
     page_transition_state: dict[str, str | dict] = {}
+    progress_guard = _ExplorationProgressGuard()
     async for chunk in agent.astream(payload, config=config, stream_mode=["updates", "messages", "values"]):
         _ensure_exploration_not_stopping(run_id)
         mode, data = _stream_chunk_parts(chunk)
@@ -532,6 +660,10 @@ async def _astream_agent_with_timeline_events(
                     state=page_transition_state,
                 )
             _remember_page_transition_action(readable_event, page_transition_state)
+            progress_guard.observe(
+                readable_event,
+                snapshot_event if isinstance(snapshot_event, dict) else None,
+            )
         if mode == "values" and isinstance(data, dict):
             final_result = data
     return final_result or {}

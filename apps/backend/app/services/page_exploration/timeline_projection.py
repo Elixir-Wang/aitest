@@ -400,6 +400,38 @@ def _readable_tool_display(tool_name: str, event_name: str, data: dict, status: 
             ],
             error,
         )
+    if tool_name == "playwright_fill_tool":
+        locator = _tool_field(input_data, "locator") or _compact_event_payload(data.get("input"))
+        target = _locator_label(locator) or "输入框"
+        return _tool_display(
+            "fill",
+            "填写字段",
+            f"填写 {target}",
+            status,
+            [
+                {"label": "目标", "value": target},
+                {"label": "定位器", "value": locator, "mono": True},
+                {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
+            ],
+            error,
+        )
+    if tool_name == "playwright_press_tool":
+        key = _tool_field(input_data, "key")
+        locator = _tool_field(input_data, "locator")
+        target = _locator_label(locator) or "当前焦点"
+        return _tool_display(
+            "keypress",
+            "键盘操作",
+            f"按下 {key or '按键'}",
+            status,
+            [
+                {"label": "按键", "value": key, "mono": True},
+                {"label": "目标", "value": target},
+                {"label": "定位器", "value": locator, "mono": True},
+                {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
+            ],
+            error,
+        )
     if tool_name == "playwright_snap_tool":
         page_title = _tool_field(output_data, "title")
         page_url = _compact_url_for_display(_tool_field(output_data, "url"))
@@ -412,6 +444,47 @@ def _readable_tool_display(tool_name: str, event_name: str, data: dict, status: 
             [
                 {"label": "页面", "value": page_title or page_identity},
                 {"label": "URL", "value": page_url, "mono": True},
+                {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
+            ],
+            error,
+        )
+    if tool_name == "playwright_scoped_query_tool":
+        scope = _tool_field(output_data, "scope_used") or _tool_field(input_data, "scope") or "自动范围"
+        count = _tool_field(output_data, "match_count")
+        return _tool_display(
+            "snapshot",
+            "局部查询",
+            f"查询 {scope} 内的可见元素",
+            status,
+            [
+                {"label": "范围", "value": scope, "mono": True},
+                {"label": "匹配数", "value": count},
+                {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
+            ],
+            error,
+        )
+    if tool_name == "playwright_observe_overlays_tool":
+        count = _tool_field(output_data, "overlay_count")
+        return _tool_display(
+            "snapshot",
+            "观察浮层",
+            f"观察当前页面可见浮层（{count or '0'} 个）",
+            status,
+            [
+                {"label": "浮层数", "value": count},
+                {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
+            ],
+            error,
+        )
+    if tool_name == "playwright_screenshot_tool":
+        path = _tool_field(output_data, "path") or _tool_field(input_data, "path")
+        return _tool_display(
+            "artifact_write",
+            "保存截图证据",
+            f"保存截图 {Path(path).name}" if path else "保存截图证据",
+            status,
+            [
+                {"label": "路径", "value": path, "mono": True},
                 {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
             ],
             error,
@@ -511,4 +584,3 @@ def _error_reason(error: str) -> str:
     if "permission" in lowered or "denied" in lowered:
         return "权限不足或被拒绝"
     return "执行失败"
-

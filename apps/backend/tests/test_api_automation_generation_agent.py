@@ -58,7 +58,7 @@ def _seed_project_endpoint() -> None:
         )
 
 
-def test_execute_generation_run_saves_ready_and_needs_input_cases(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_execute_generation_run_saves_generated_cases(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_endpoint()
 
@@ -79,7 +79,6 @@ def test_execute_generation_run_saves_ready_and_needs_input_cases(monkeypatch: p
                     expected={"status_code": 200},
                     assertions=[{"type": "status_code", "expected": 200}],
                     data_origin={"request.body": "openapi_example", "assertions": "openapi"},
-                    status="ready",
                 ),
                 ApiGeneratedCase(
                     title="登录缺少密码",
@@ -91,16 +90,14 @@ def test_execute_generation_run_saves_ready_and_needs_input_cases(monkeypatch: p
                     test_data={
                         "password": {
                             "value": "${password}",
-                            "source": "needs_input",
+                            "source": "manual_input",
                             "required": True,
-                            "status": "missing",
                             "note": "缺少密码样例",
                         }
                     },
                     expected={"status_code": 400},
                     assertions=[{"type": "status_code", "expected": 400}],
-                    data_origin={"test_data.password": "needs_input"},
-                    status="needs_input",
+                    data_origin={"test_data.password": "manual_input"},
                 ),
             ],
         )
@@ -121,19 +118,19 @@ def test_execute_generation_run_saves_ready_and_needs_input_cases(monkeypatch: p
     assert result["status"] == "completed"
     assert run["status"] == "completed"
     assert len(cases) == 2
-    assert {case["status"] for case in cases} == {"ready", "needs_input"}
     serialized_cases = service.list_api_test_cases("project-1", ACTOR)
-    ready_case = next(case for case in serialized_cases if case["status"] == "ready")
-    needs_input_case = next(case for case in serialized_cases if case["status"] == "needs_input")
-    assert ready_case["coverage"] == "positive"
-    assert ready_case["preconditions"] == ["用户账号存在"]
-    assert ready_case["test_data"]["username"]["source"] == "openapi_example"
-    assert ready_case["data_origin"]["assertions"] == "openapi"
-    assert needs_input_case["coverage"] == "negative"
-    assert needs_input_case["preconditions"] == ["用户账号存在", "缺少 password 测试数据"]
-    assert needs_input_case["test_data"]["password"]["status"] == "missing"
-    assert needs_input_case["data_origin"]["test_data.password"] == "needs_input"
-    assert api_automation_repo.loads_json(run["result_summary_json"], {})["needs_input_count"] == 1
+    success_case = next(case for case in serialized_cases if case["title"] == "登录成功")
+    manual_case = next(case for case in serialized_cases if case["title"] == "登录缺少密码")
+    assert success_case["coverage"] == "positive"
+    assert success_case["preconditions"] == ["用户账号存在"]
+    assert success_case["test_data"]["username"]["source"] == "openapi_example"
+    assert success_case["data_origin"]["assertions"] == "openapi"
+    assert "status" not in success_case
+    assert manual_case["coverage"] == "negative"
+    assert manual_case["preconditions"] == ["用户账号存在", "缺少 password 测试数据"]
+    assert manual_case["test_data"]["password"]["source"] == "manual_input"
+    assert manual_case["data_origin"]["test_data.password"] == "manual_input"
+    assert api_automation_repo.loads_json(run["result_summary_json"], {})["test_case_count"] == 2
 
 
 def test_delete_api_test_case_removes_generated_case(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -152,7 +149,6 @@ def test_delete_api_test_case_removes_generated_case(monkeypatch: pytest.MonkeyP
             priority="P1",
             coverage="positive",
             source="ai_generated",
-            status="ready",
             tags=[],
             preconditions=[],
             request={"method": "POST", "path": "/login"},
@@ -188,7 +184,6 @@ def test_get_api_test_case_returns_structured_case(monkeypatch: pytest.MonkeyPat
             priority="P1",
             coverage="positive",
             source="ai_generated",
-            status="ready",
             tags=["auth"],
             preconditions=["用户账号存在"],
             request={"method": "POST", "path": "/login"},
@@ -280,6 +275,8 @@ def test_execute_generation_run_passes_source_test_cases_to_agent(
 
 
 def test_api_automation_agent_uses_skill_middleware_and_response_format(monkeypatch: pytest.MonkeyPatch) -> None:
+    from langchain.agents.structured_output import ToolStrategy
+
     from app.agents.api_automation import agent as agent_module
 
     captured = {}
@@ -297,7 +294,9 @@ def test_api_automation_agent_uses_skill_middleware_and_response_format(monkeypa
     assert captured["tools"] == []
     assert captured["middleware"][0].name == "SkillMiddleware"
     assert "api-automation-case-generation" in str(captured["middleware"][0].skill_path)
-    assert captured["response_format"] is ApiAutomationGenerationResult
+    assert isinstance(captured["response_format"], ToolStrategy)
+    assert captured["response_format"].schema is ApiAutomationGenerationResult
+    assert captured["response_format"].handle_errors is True
 
 
 def test_api_automation_generation_result_schema_uses_typed_assertions() -> None:
@@ -330,7 +329,6 @@ async def test_generate_api_test_cases_calls_agent_with_skill_prompt(monkeypatch
                 request={"method": "POST", "path": "/login", "body": {"username": "demo", "password": "demo"}},
                 expected={"status_code": 200},
                 assertions=[{"type": "status_code", "expected": 200}],
-                status="ready",
             )
         ],
     )
@@ -375,7 +373,7 @@ async def test_generate_api_test_cases_calls_agent_with_skill_prompt(monkeypatch
 
     assert result is expected
     assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
-    assert "请使用 api-automation-case-generation skill 生成接口自动化用例" in captured["content"]
+    assert "请依据系统提示中的 api-automation-case-generation 规则生成接口自动化用例" in captured["content"]
     assert "覆盖登录正向用例" in captured["content"]
     assert "apiend-1" in captured["content"]
     assert "通用覆盖要求" not in captured["content"]
@@ -391,7 +389,7 @@ def test_api_automation_case_generation_skill_defines_coverage_dimensions() -> N
     assert "覆盖维度模型" in skill_text
     assert "适用性判断" in skill_text
     assert "取舍算法" in skill_text
-    assert "Coverage 映射" in skill_text
+    assert "覆盖类型" in skill_text
     for dimension in [
         "happy_path",
         "contract",

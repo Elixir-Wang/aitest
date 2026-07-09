@@ -12,9 +12,13 @@ from app.agents.page_exploration.tools.navigation_tools import (
     playwright_navigate_tool,
     playwright_click_tool,
     playwright_fill_tool,
+    playwright_press_tool,
 )
 
 from app.agents.page_exploration.tools.extraction_tools import (
+    playwright_observe_overlays_tool,
+    playwright_scoped_query_tool,
+    playwright_screenshot_tool,
     playwright_snap_tool,
 )
 
@@ -43,10 +47,14 @@ NAVIGATION_TOOLS = [
     playwright_navigate_tool,
     playwright_click_tool,
     playwright_fill_tool,
+    playwright_press_tool,
 ]
 
 EXTRACTION_TOOLS = [
     playwright_snap_tool,
+    playwright_scoped_query_tool,
+    playwright_observe_overlays_tool,
+    playwright_screenshot_tool,
 ]
 
 STATE_TOOLS = [
@@ -93,8 +101,12 @@ __all__ = [
     "playwright_navigate_tool",
     "playwright_click_tool",
     "playwright_fill_tool",
+    "playwright_press_tool",
     # 提取工具
     "playwright_snap_tool",
+    "playwright_scoped_query_tool",
+    "playwright_observe_overlays_tool",
+    "playwright_screenshot_tool",
     # 状态工具
     "check_explored_url_tool",
     "update_explored_url_tool",

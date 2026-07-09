@@ -1,19 +1,11 @@
 edges:
-  - id: edge-current-workspace-botsetting
-    run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
-    from_page_id: page-workspace
-    to_page_id: page-botSetting
-    action: click
-    element_name: 创建
-    from_url: /workspace
-    to_url: /botSetting
-    observed_at: '2026-07-08T12:02:00+00:00'
-  - id: edge-current-botsetting-agentrelease
-    run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
-    from_page_id: page-botSetting
-    to_page_id: page-agentRelease
-    action: click
-    element_name: 发布
-    from_url: /botSetting
-    to_url: /agentRelease
-    observed_at: '2026-07-08T12:02:00+00:00'
+- id: edge-618eb7a199a4b6a9
+  run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  from_page_id: page-agentStore
+  to_page_id: page-workspace
+  action: click
+  element_name: 工作台
+  locator: 'page.getByText(''工作台'', { exact: true })'
+  from_url: /agentStore
+  to_url: /workspace
+  observed_at: '2026-07-09T16:20:08.661622+00:00'

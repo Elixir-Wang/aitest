@@ -119,7 +119,6 @@ def test_generation_case_script_and_run_records(monkeypatch: pytest.MonkeyPatch,
             title="登录成功",
             priority="P1",
             source="ai_generated",
-            status="ready",
             tags=["login"],
             coverage="positive",
             preconditions=["用户账号存在"],
@@ -160,7 +159,7 @@ def test_generation_case_script_and_run_records(monkeypatch: pytest.MonkeyPatch,
             created_by="u-admin",
         )
 
-        cases = api_automation_repo.list_api_test_cases(db, "project-1", status="ready")
+        cases = api_automation_repo.list_api_test_cases(db, "project-1")
         script = api_automation_repo.find_script(db, script_id)
         run = api_automation_repo.find_api_run(db, run_id)
 

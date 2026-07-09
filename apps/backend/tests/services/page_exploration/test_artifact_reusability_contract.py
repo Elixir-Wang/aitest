@@ -110,6 +110,35 @@ def test_artifact_fallback_locator_carries_non_unique_verification():
     assert text_loc["verification"]["unique"] is False  # ← 关键：fallback 标 unique=false
 
 
+def test_artifact_locator_verification_matches_page_prefixed_codes():
+    """采集端可能返回 page.getByRole(...)，产物端应归一化后保留验证结果。"""
+    observation_elements = [
+        {
+            "id": "el-1",
+            "role": "button",
+            "role_source": "accessibility_tree",
+            "name": "创建智能体",
+            "text": "创建智能体",
+            "visible": True,
+            "action_type": "click",
+            "primary_selector": {
+                "kind": "role",
+                "role": "button",
+                "name": "创建智能体",
+                "code": "page.getByRole('button', { name: '创建智能体' })",
+                "verification": {"checked": True, "unique": True, "visible": True, "match_count": 1},
+            },
+            "fallback_selector": None,
+        },
+    ]
+
+    artifact_elements = _snapshot_elements_for_artifact(observation_elements, [])
+
+    locator = artifact_elements[0]["locators"][0]
+    assert locator["code"] == "getByRole('button', { name: '创建智能体' })"
+    assert locator["verification"] == {"checked": True, "unique": True, "visible": True, "match_count": 1}
+
+
 def test_artifact_external_automation_can_reuse_code_directly():
     """端到端契约：artifact element 的 locators[i].code 必须能被 Playwright 直接调用。"""
     observation_elements = [
@@ -145,8 +174,8 @@ def test_artifact_external_automation_can_reuse_code_directly():
     assert fallback_code.startswith("getByText(")
 
 
-def test_artifact_preserves_observation_ancestor_chain_in_e2e():
-    """端到端契约：observation element.ancestor_chain 必须出现在 artifact element。"""
+def test_artifact_compacts_observation_ancestor_chain_in_e2e():
+    """端到端契约：observation ancestor_chain 只提炼为自动化 context。"""
     observation_elements = [
         {
             "id": "el-1",
@@ -168,11 +197,10 @@ def test_artifact_preserves_observation_ancestor_chain_in_e2e():
     accessibility_tree: list = []
     artifact_elements = _snapshot_elements_for_artifact(observation_elements, accessibility_tree)
     el = artifact_elements[0]
-    assert el.get("ancestor_chain") == [{"role": "popover", "name": ""}], (
-        f"端到端 ancestor_chain 透传失败: {el}"
-    )
+    assert "ancestor_chain" not in el
     assert el.get("name") == "确认"
-    assert el.get("ancestor_chain") == [{"role": "popover", "name": ""}]
+    assert el["context"]["container_role"] == "popover"
+    assert el["context"]["container_name"] == ""
 
 
 def test_artifact_elements_include_pom_context_for_ambiguous_names():
@@ -219,8 +247,8 @@ def test_artifact_elements_include_pom_context_for_ambiguous_names():
     assert first["context"]["is_ambiguous"] is True
     assert first["context"]["sibling_count"] == 2
     assert first["context"]["ordinal"] == 1
-    assert first["context"]["ancestor_text"] == "哈哈 草稿 编辑 发布"
-    assert "scope_hint" in first["context"]
+    assert "ancestor_text" not in first["context"]
+    assert "scope_hint" not in first["context"]
     assert second["context"]["ordinal"] == 2
     assert second["context"]["container_role"] == "dialog"
     assert second["context"]["container_name"] == "发布确认"
@@ -258,3 +286,4 @@ def test_artifact_keeps_ax_only_controls_but_skips_dom_duplicates():
     assert ax_only["id"] == "ax-2"
     assert ax_only["locators"][0]["verification"]["checked"] is False
     assert ax_only["context"]["is_ambiguous"] is False
+    assert "ancestor_text" not in ax_only["context"]

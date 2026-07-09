@@ -1,25 +1,25 @@
 run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
 project_id: project-75fec50973f2adf6
-updated_at: '2026-07-08T12:01:39.257476+00:00'
+updated_at: '2026-07-09T16:20:26.125789+00:00'
 items:
 - id: ''
-  content: 打开工作台界面，点击创建按钮，新建自主规划Agent。**完成判据：出现'新建 Agent'对话框且名称字段可见。**
+  content: 打开工作台首页，获取基线快照。完成判据：页面加载成功，能看到工作台入口元素。
   status: completed
 - id: ''
-  content: 输入名称'哈哈'创建智能体。**完成判据：智能体创建成功，进入编辑页面。**
+  content: 点击创建按钮，进入创建智能体流程。完成判据：出现创建智能体的对话框或表单页面。
   status: completed
 - id: ''
-  content: 填写角色设定'你是一个友好的助手'。**完成判据：Prompt字段已写入内容。**
+  content: 选择自主规划Agent类型。完成判据：自主规划Agent被选中或高亮。
   status: completed
 - id: ''
-  content: 点击发布按钮，进入发布页面。**完成判据：URL变为/agentRelease，出现版本号和发布日志输入框。**
-  status: completed
+  content: 输入智能体名称"哈哈"，完成创建。完成判据：名称字段已填入"哈哈"，创建成功。
+  status: in_progress
 - id: ''
-  content: 输入版本号'1.0.0'和发布日志'首次发布测试版本'。**完成判据：两个输入框已填入内容。**
-  status: completed
+  content: 在角色设定输入框中输入"你是一个友好的助手"。完成判据：角色设定字段已填入内容。
+  status: pending
 - id: ''
-  content: 点击发布确认，完成发布。**完成判据：出现'发布中...'提示，URL包含version参数。**
-  status: completed
+  content: 点击发布按钮，输入版本号和发布日志。完成判据：出现发布对话框，版本号和发布日志字段可见。
+  status: pending
 - id: ''
-  content: 沉淀核心元素定位器到state tree。**完成判据：使用merge_page_artifact_tool记录关键元素。**
-  status: completed
+  content: 填写版本号和发布日志，再次点击发布按钮完成发布。完成判据：发布成功提示出现。
+  status: pending

@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException
 
 from app.core import db as db_core
 from app.core import settings, storage
@@ -26,7 +25,7 @@ def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     init_db()
 
 
-def _seed_ready_case(status: str = "ready") -> None:
+def _seed_case() -> None:
     with connect() as db:
         db.execute(
             "INSERT INTO projects (id, name, description, status, created_by) VALUES (?, ?, '', 'active', ?)",
@@ -43,7 +42,6 @@ def _seed_ready_case(status: str = "ready") -> None:
             priority="P1",
             coverage="positive",
             source="manual",
-            status=status,
             tags=["login"],
             preconditions=[],
             request={"method": "POST", "path": "/login", "body": {"username": "demo"}},
@@ -63,7 +61,7 @@ def test_generate_scripts_creates_pytest_project_without_hardcoded_environment(
     tmp_path: Path,
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
-    _seed_ready_case()
+    _seed_case()
 
     result = service.generate_scripts_from_api_test_cases("project-1", ["apitc-1"], ACTOR)
 
@@ -81,13 +79,3 @@ def test_generate_scripts_creates_pytest_project_without_hardcoded_environment(
     test_content = test_file.read_text(encoding="utf-8")
     assert "https://api.example" not in test_content
     assert "plain-token" not in test_content
-
-
-def test_generate_scripts_rejects_needs_input_case(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _use_temp_db(monkeypatch, tmp_path)
-    _seed_ready_case(status="needs_input")
-
-    with pytest.raises(HTTPException) as exc_info:
-        service.generate_scripts_from_api_test_cases("project-1", ["apitc-1"], ACTOR)
-
-    assert exc_info.value.status_code == 400

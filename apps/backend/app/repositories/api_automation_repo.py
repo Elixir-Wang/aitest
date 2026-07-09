@@ -346,7 +346,6 @@ def create_api_test_case(
     priority: str,
     coverage: str,
     source: str,
-    status: str,
     tags: list[str],
     preconditions: list[str],
     request: dict[str, Any],
@@ -363,11 +362,11 @@ def create_api_test_case(
         """
         INSERT INTO api_test_cases (
           id, project_id, endpoint_id, source_test_case_id, generation_run_id,
-          title, priority, coverage, source, status, tags_json, preconditions_json,
+          title, priority, coverage, source, tags_json, preconditions_json,
           request_json, test_data_json, expected_json, assertions_json, variables_json, data_origin_json,
           data_file_path, notes, created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             case_id,
@@ -379,7 +378,6 @@ def create_api_test_case(
             priority,
             coverage or "positive",
             source,
-            status,
             dumps_json(tags),
             dumps_json(preconditions),
             dumps_json(request),
@@ -401,16 +399,12 @@ def list_api_test_cases(
     project_id: str,
     *,
     endpoint_id: str = "",
-    status: str = "",
 ) -> list[Row]:
     clauses = ["project_id = ?"]
     values: list[Any] = [project_id]
     if endpoint_id:
         clauses.append("endpoint_id = ?")
         values.append(endpoint_id)
-    if status:
-        clauses.append("status = ?")
-        values.append(status)
     return db.execute(
         f"""
         SELECT *

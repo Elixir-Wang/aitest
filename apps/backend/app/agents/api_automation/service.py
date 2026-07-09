@@ -45,7 +45,7 @@ async def generate_api_test_cases(input_data: ApiAutomationGenerationInput) -> A
             "",
             f"是否生成安全类用例: {input_data.include_security_cases}",
             "",
-            "请使用 api-automation-case-generation skill 生成接口自动化用例。",
+            "请依据系统提示中的 api-automation-case-generation 规则生成接口自动化用例。",
         ]
     )
 

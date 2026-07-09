@@ -94,6 +94,18 @@ async function handleCommand(command) {
   if (type === "fill") {
     return fillField(command.element_id || command.target_element_id, String(command.value || ""));
   }
+  if (type === "press") {
+    return pressKey(command.element_id || command.target_element_id, String(command.key || ""));
+  }
+  if (type === "scoped_query") {
+    return scopedQuery(command);
+  }
+  if (type === "observe_overlays") {
+    return observeOverlays();
+  }
+  if (type === "screenshot") {
+    return takeScreenshot(String(command.path || ""), Boolean(command.full_page));
+  }
   if (type === "go_back") {
     return goBack();
   }
@@ -595,6 +607,95 @@ async function fillViaLiveLocator(liveLocator, value, rawExpr) {
   });
 }
 
+async function pressKey(elementIdOrLocator, key) {
+  const raw = String(elementIdOrLocator || "").trim();
+  const normalizedKey = String(key || "").trim();
+  const before = await currentPageState();
+  if (!normalizedKey) {
+    return await buildActionResult({
+      success: false,
+      action: "press",
+      raw,
+      before,
+      failure: {
+        error_type: "action_failed",
+        error: "Missing key for press action.",
+        error_summary: "按键操作缺少 key 参数。",
+      },
+      effectiveLocator: null,
+    });
+  }
+
+  let liveLocator = null;
+  if (raw) {
+    if (isParseableLocatorString(raw)) {
+      liveLocator = parsePlaywrightLocatorString(page, raw);
+    }
+    if (!liveLocator) {
+      return await buildActionResult({
+        success: false,
+        action: "press",
+        raw,
+        before,
+        failure: {
+          error_type: "action_failed",
+          error: `Unsupported locator: ${raw}`,
+          error_summary: `不支持的 locator 写法：${raw}。press 只支持已允许的 Playwright Locator 字符串；如要按当前焦点，请留空 locator。`,
+        },
+        effectiveLocator: null,
+      });
+    }
+  }
+
+  try {
+    if (liveLocator) {
+      const matchCount = await liveLocator.count().catch(() => 0);
+      if (matchCount > 1) {
+        const visibleMatches = await visibleLocators(liveLocator);
+        if (visibleMatches.length !== 1) {
+          return await buildActionResult({
+            success: false,
+            action: "press",
+            raw,
+            before,
+            failure: ambiguousLocatorFailure(raw, matchCount),
+            effectiveLocator: null,
+          });
+        }
+        liveLocator = visibleMatches[0];
+      }
+      const target = await firstVisibleLocator(liveLocator);
+      if (!target) {
+        const failure = classifyActionError(new Error(`Locator did not resolve to a visible element: ${raw}`), page);
+        return await buildActionResult({ success: false, action: "press", raw, before, failure, effectiveLocator: null });
+      }
+      await target.press(normalizedKey, { timeout: 3000 });
+    } else {
+      await page.keyboard.press(normalizedKey);
+    }
+    await page.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
+    await page.waitForTimeout(250).catch(() => {});
+    const after = await currentPageState();
+    return await buildActionResult({
+      success: true,
+      action: "press",
+      raw,
+      before,
+      after,
+      effectiveLocator: raw || "activeElement",
+    });
+  } catch (error) {
+    return await buildActionResult({
+      success: false,
+      action: "press",
+      raw,
+      before,
+      failure: classifyActionError(error, page),
+      effectiveLocator: null,
+    });
+  }
+}
+
 /**
  * 统一构造 action_result 协议。
  * 成功：{ success: true, action, raw, before, after, effective_locator, ... }
@@ -689,6 +790,204 @@ async function closeModal() {
     after_url: after.url,
     state_signature_changed: before.signature !== after.signature,
     error: "",
+  };
+}
+
+async function scopedQuery(command) {
+  const scope = String(command.scope || "").trim();
+  const text = String(command.text || "").trim();
+  const role = String(command.role || "").trim();
+  const limit = Math.min(Math.max(Number(command.limit || 30), 1), 80);
+  const result = await page.evaluate(({ scope, text, role, limit }) => {
+    const clean = (value, max = 180) => String(value || "").trim().replace(/\s+/g, " ").slice(0, max);
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+    };
+    const labelOf = (el) => clean(
+      el.getAttribute("aria-label")
+      || el.getAttribute("placeholder")
+      || el.getAttribute("title")
+      || el.innerText
+      || el.textContent
+      || el.getAttribute("value")
+      || el.getAttribute("name")
+      || el.getAttribute("id")
+      || "",
+      120
+    );
+    const roleOf = (el) => {
+      const explicit = el.getAttribute("role");
+      if (explicit) return explicit;
+      const tag = el.tagName.toLowerCase();
+      if (tag === "button") return "button";
+      if (tag === "a") return "link";
+      if (tag === "textarea" || tag === "input") return "textbox";
+      if (tag === "select") return "combobox";
+      return tag;
+    };
+    const selectors = scope
+      ? [scope]
+      : [
+          "[role='dialog']",
+          "[role='popover']",
+          "[role='alertdialog']",
+          "[role='menu']",
+          ".ant-popover",
+          ".ant-modal",
+          ".el-dialog",
+          "main",
+          "body",
+        ];
+    const roots = [];
+    for (const selector of selectors) {
+      for (const el of Array.from(document.querySelectorAll(selector))) {
+        if (visible(el)) roots.push(el);
+      }
+      if (roots.length) break;
+    }
+    const query = [
+      "button",
+      "a",
+      "input",
+      "textarea",
+      "select",
+      "[role]",
+      "[onclick]",
+      "[tabindex]",
+      "[class*='option' i]",
+      "[class*='item' i]",
+      "[class*='card' i]",
+    ].join(",");
+    const textLower = text.toLowerCase();
+    const roleLower = role.toLowerCase();
+    const seen = new Set();
+    const matches = [];
+    for (const root of roots) {
+      const candidates = [root, ...Array.from(root.querySelectorAll(query))];
+      for (const el of candidates) {
+        if (!visible(el) || seen.has(el)) continue;
+        seen.add(el);
+        const name = labelOf(el);
+        const candidateRole = roleOf(el);
+        const haystack = `${name} ${clean(el.textContent, 200)}`.toLowerCase();
+        if (textLower && !haystack.includes(textLower)) continue;
+        if (roleLower && candidateRole.toLowerCase() !== roleLower) continue;
+        const rect = el.getBoundingClientRect();
+        matches.push({
+          role: candidateRole,
+          name,
+          text: clean(el.textContent, 160),
+          tag: el.tagName.toLowerCase(),
+          selector_hint: selectorHint(el),
+          bounds: {
+            x: Math.round(rect.x),
+            y: Math.round(rect.y),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          },
+        });
+        if (matches.length >= limit) break;
+      }
+      if (matches.length >= limit) break;
+    }
+    function selectorHint(el) {
+      const testId = el.getAttribute("data-testid") || el.getAttribute("data-test-id") || el.getAttribute("data-test");
+      if (testId) return `page.getByTestId('${String(testId).replace(/'/g, "\\'")}')`;
+      const aria = el.getAttribute("aria-label");
+      if (aria) return `page.getByRole('${roleOf(el)}', { name: '${String(aria).replace(/'/g, "\\'")}' })`;
+      const placeholder = el.getAttribute("placeholder");
+      if (placeholder) return `page.getByPlaceholder('${String(placeholder).replace(/'/g, "\\'")}', { exact: true })`;
+      const name = labelOf(el);
+      if (name) return `page.getByText('${String(name).replace(/'/g, "\\'")}', { exact: true })`;
+      return "";
+    }
+    return {
+      url: location.href,
+      title: document.title,
+      scope_used: roots[0] ? (scope || selectors.find((selector) => document.querySelector(selector)) || "body") : "",
+      match_count: matches.length,
+      matches,
+    };
+  }, { scope, text, role, limit });
+  return result;
+}
+
+async function observeOverlays() {
+  return page.evaluate(() => {
+    const clean = (value, limit = 240) => String(value || "").trim().replace(/\s+/g, " ").slice(0, limit);
+    const visible = (el) => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+    };
+    const labelOf = (el) => clean(
+      el.getAttribute("aria-label")
+      || el.getAttribute("title")
+      || el.querySelector("[role='heading'],h1,h2,h3,.title,[class*='title' i]")?.textContent
+      || el.textContent
+      || "",
+      120
+    );
+    const selectors = [
+      "[role='dialog']",
+      "[role='popover']",
+      "[role='alertdialog']",
+      "[role='menu']",
+      ".ant-popover",
+      ".ant-modal",
+      ".el-dialog",
+      "[class*='drawer' i]",
+    ];
+    const overlays = [];
+    for (const selector of selectors) {
+      for (const el of Array.from(document.querySelectorAll(selector))) {
+        if (!visible(el)) continue;
+        const rect = el.getBoundingClientRect();
+        const controls = Array.from(el.querySelectorAll("button,a,input,textarea,select,[role],[tabindex]"))
+          .filter(visible)
+          .slice(0, 40)
+          .map((control) => ({
+            role: control.getAttribute("role") || control.tagName.toLowerCase(),
+            name: labelOf(control),
+            text: clean(control.textContent, 120),
+            placeholder: clean(control.getAttribute("placeholder"), 120),
+          }));
+        overlays.push({
+          selector,
+          role: el.getAttribute("role") || el.tagName.toLowerCase(),
+          name: labelOf(el),
+          text: clean(el.textContent, 500),
+          bounds: {
+            x: Math.round(rect.x),
+            y: Math.round(rect.y),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          },
+          controls,
+        });
+      }
+    }
+    return {
+      url: location.href,
+      title: document.title,
+      overlay_count: overlays.length,
+      overlays,
+    };
+  });
+}
+
+async function takeScreenshot(path, fullPage = true) {
+  if (!path) {
+    throw new Error("screenshot path is required");
+  }
+  await page.screenshot({ path, fullPage });
+  return {
+    path,
+    url: page.url(),
+    title: await page.title().catch(() => ""),
+    full_page: fullPage,
   };
 }
 

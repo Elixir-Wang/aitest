@@ -142,10 +142,13 @@ def _collect_page_artifact_files(*directories: Path) -> list[tuple[Path, dict]]:
 def _collect_project_page_artifacts_for_run(*, project_id: str, run_id: str) -> list[tuple[Path, dict]]:
     pages_dir = _project_file_storage_root() / project_id / "page_exploration" / "pages"
     artifacts: list[tuple[Path, dict]] = []
+    index_entries = _read_project_pages_index(project_id)
     for path, artifact in _collect_page_artifact_files(pages_dir):
         page = artifact.get("page") if isinstance(artifact.get("page"), dict) else {}
+        index_info = index_entries.get(path.name, {})
         last_explored = page.get("last_explored") if isinstance(page.get("last_explored"), dict) else {}
-        if _string(last_explored.get("run_id")) == run_id:
+        artifact_run_id = _string(index_info.get("run_id") or last_explored.get("run_id"))
+        if artifact_run_id == run_id:
             artifacts.append((path, artifact))
     return artifacts
 
@@ -284,21 +287,12 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
         visible_text_blocks=visible_text_blocks,
         elements=artifact_elements,
     )
-    captured_at = datetime.now(timezone.utc).isoformat()
     artifact = {
         "page": {
             "id": page_id,
             "title": title,
             "url": url,
-            "normalized_url": normalized_path,
             "normalized_path": normalized_path,
-            "module": "主探索模块",
-            "status": "explored",
-            "structure_summary": f"自动保存页面快照，发现 {len(artifact_elements)} 个元素。",
-            "last_explored": {
-                "run_id": run_id,
-                "timestamp": captured_at,
-            },
         },
         "states": [
             {
@@ -310,18 +304,6 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
                 "assertion_texts": assertion_texts,
             }
         ],
-        "actions": [
-            {
-                "id": "snapshot-captured",
-                "type": "snapshot",
-                "target": title,
-                "result": "浏览器快照已自动保存为页面产物。",
-                "status": "completed",
-                "occurred_at": captured_at,
-                "source": "playwright_snap_tool",
-            }
-        ],
-        "metadata": {"captured_at": captured_at},
     }
 
     saved_path = Path(
@@ -429,7 +411,12 @@ def _inline_save_page(
     normalized_path: str,
     env: str = "test",
 ) -> bool:
-    """Inlined from ProjectPagesService.save_page."""
+    """Inlined from ProjectPagesService.save_page.
+
+    The persisted YAML is optimized for UI automation consumption. Index-only
+    fields used by the product UI stay in the DB or are derived while listing
+    pages instead of being written into the automation artifact.
+    """
     import yaml
 
     base_dir = _project_file_storage_root() / project_id / "page_exploration"
@@ -437,29 +424,13 @@ def _inline_save_page(
     pages_dir.mkdir(parents=True, exist_ok=True)
     page_file = pages_dir / f"{page_id}.yaml"
 
-    env_urls = {env: url}
-    if page_file.exists():
-        try:
-            existing = yaml.safe_load(open(page_file, encoding="utf-8"))
-            if existing:
-                env_urls = existing.get("page", {}).get("env_urls", {})
-                env_urls[env] = url
-        except Exception as exc:
-            logger.warning("failed to merge existing project page env urls: path=%s error=%s", page_file, exc)
-
     page_payload = {
         "id": page_id,
         "title": page_data.get("title", ""),
-        "display_name": page_data.get("display_name") or _inline_display_name_from_path(normalized_path),
-        "breadcrumb": page_data.get("breadcrumb") or _inline_breadcrumb_from_path(normalized_path),
         "normalized_path": normalized_path,
-        "structure_summary": page_data.get("structure_summary", ""),
-        "env_urls": env_urls,
-        "last_explored": {
-            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "run_id": run_id,
-        },
     }
+    if url:
+        page_payload["url"] = url
     elements = page_data.get("elements")
     if isinstance(elements, list) and elements:
         page_payload["elements"] = elements
@@ -467,8 +438,18 @@ def _inline_save_page(
     full_page_data = {
         "page": page_payload,
         "states": page_data.get("states", []),
-        "metadata": page_data.get("metadata", {}),
     }
+    _update_project_pages_index(
+        project_id=project_id,
+        file_name=page_file.name,
+        index_payload={
+            "display_name": page_data.get("display_name") or _inline_display_name_from_path(normalized_path),
+            "breadcrumb": page_data.get("breadcrumb") or _inline_breadcrumb_from_path(normalized_path),
+            "structure_summary": page_data.get("structure_summary", ""),
+            "run_id": run_id,
+            "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        },
+    )
     quality = page_data.get("quality")
     if isinstance(quality, dict) and quality:
         full_page_data["quality"] = quality
@@ -484,6 +465,7 @@ def _inline_list_pages(project_id: str):
 
     base_dir = _project_file_storage_root() / project_id / "page_exploration"
     pages_dir = base_dir / "pages"
+    index_entries = _read_project_pages_index(project_id)
     pages = []
     if not pages_dir.exists():
         return pages
@@ -493,23 +475,47 @@ def _inline_list_pages(project_id: str):
         try:
             page_data = yaml.safe_load(open(page_file, encoding="utf-8"))
             page_info = page_data.get("page", {})
+            index_info = index_entries.get(page_file.name, {})
             pages.append(
                 {
                     "page_id": page_info.get("id"),
                     "title": page_info.get("title"),
-                    "display_name": page_info.get("display_name")
+                    "display_name": index_info.get("display_name")
+                    or page_info.get("display_name")
                     or _inline_display_name_from_path(page_info.get("normalized_path") or ""),
-                    "breadcrumb": page_info.get("breadcrumb")
+                    "breadcrumb": index_info.get("breadcrumb")
+                    or page_info.get("breadcrumb")
                     or _inline_breadcrumb_from_path(page_info.get("normalized_path") or ""),
                     "normalized_path": page_info.get("normalized_path"),
-                    "structure_summary": page_info.get("structure_summary"),
-                    "last_explored": page_info.get("last_explored"),
+                    "structure_summary": index_info.get("structure_summary") or page_info.get("structure_summary"),
+                    "last_explored": {
+                        "run_id": index_info.get("run_id"),
+                        "timestamp": index_info.get("captured_at"),
+                    } if index_info else page_info.get("last_explored"),
                     "file": page_file.name,
                 }
             )
         except Exception as exc:
             logger.warning("failed to read project page yaml: project_id=%s path=%s error=%s", project_id, page_file, exc)
     return pages
+
+
+def _read_project_pages_index(project_id: str) -> dict[str, dict]:
+    payload = _read_yaml_file(_project_pages_index_path(project_id))
+    entries = payload.get("pages") if isinstance(payload.get("pages"), dict) else {}
+    return {str(name): data for name, data in entries.items() if isinstance(data, dict)}
+
+
+def _update_project_pages_index(*, project_id: str, file_name: str, index_payload: dict) -> None:
+    path = _project_pages_index_path(project_id)
+    payload = _read_yaml_file(path)
+    entries = payload.get("pages") if isinstance(payload.get("pages"), dict) else {}
+    entries[file_name] = index_payload
+    _write_yaml_file(path, {"pages": entries})
+
+
+def _project_pages_index_path(project_id: str) -> Path:
+    return _project_file_storage_root() / project_id / "page_exploration" / "pages" / "pages-index.yaml"
 
 
 def _inline_breadcrumb_from_path(normalized_path: str) -> list:
@@ -631,15 +637,6 @@ def _normalize_action_type(role: str, action_type: str) -> str:
     return "assert"
 
 
-def _ancestor_text(ancestor_chain: list) -> str:
-    names = [
-        _string(item.get("name")).strip()
-        for item in ancestor_chain
-        if isinstance(item, dict) and _string(item.get("name")).strip()
-    ]
-    return " / ".join(names[:5])[:300]
-
-
 def _best_container(ancestor_chain: list) -> tuple[str, str]:
     overlay_roles = {"dialog", "alertdialog", "popover", "menu", "listbox", "drawer"}
     for item in ancestor_chain:
@@ -657,49 +654,16 @@ def _best_container(ancestor_chain: list) -> tuple[str, str]:
     return "", ""
 
 
-def _scope_hint(*, role: str, name: str, context_hint: str, ancestor_text: str) -> str:
-    escaped_name = name.replace("'", "\\'")
-    if context_hint in {"dialog", "alertdialog"}:
-        return (
-            f"优先用弹窗容器限定：getByRole('{context_hint}')."
-            f"filter({{ hasText: '关键表单字段或标题' }}).getByRole('{role}', {{ name: '{escaped_name}' }})"
-        )
-    if context_hint in {"popover", "menu", "listbox"}:
-        return (
-            f"优先用浮层容器限定：locator('[role=\"{context_hint}\"]')."
-            f"filter({{ hasText: '关键选项文本' }}).getByText('{escaped_name}', {{ exact: true }})"
-        )
-    if ancestor_text:
-        short_text = ancestor_text[:80].replace("'", "\\'")
-        return (
-            "优先选择包含目标业务字段/卡片名的容器，"
-            f"例如 filter({{ hasText: '{short_text}' }}) 后再定位 '{escaped_name}'。"
-        )
-    return "缺少明显容器上下文；必要时重新 snap 聚焦关键词后再生成定位器。"
-
-
 def _automation_context(element: dict, *, ordinal: int, sibling_count: int) -> dict:
     ancestor_chain = element.get("ancestor_chain") if isinstance(element.get("ancestor_chain"), list) else []
-    ancestor_text = _ancestor_text(ancestor_chain)
     container_role, container_name = _best_container(ancestor_chain)
-    role = _string(element.get("role") or "element")
-    name = _string(element.get("name") or element.get("text") or "")
-    context_hint = container_role or "main"
     context = {
         "is_ambiguous": sibling_count > 1,
         "sibling_count": sibling_count,
         "ordinal": ordinal,
         "container_role": container_role,
         "container_name": container_name,
-        "ancestor_text": ancestor_text,
     }
-    if sibling_count > 1 or ancestor_text or container_role:
-        context["scope_hint"] = _scope_hint(
-            role=role,
-            name=name,
-            context_hint=context_hint,
-            ancestor_text=ancestor_text,
-        )
     return context
 
 
@@ -736,7 +700,7 @@ def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) ->
       避免纯文本节点造成重复；去重粒度宽松，避免误吞同名不同行的元素）
 
     复用契约（外部 Playwright 自动化测试依赖此契约）：
-    - 透传 observePage 标定的 element.ancestor_chain（元素 DOM 祖先链）
+    - 将 observePage 标定的 element.ancestor_chain 提炼为 compact context，不输出长祖先链
     - 把 primary_selector / fallback_selector 携带的 verification 元数据
       （{checked, unique, visible, match_count}）按 code 匹配到对应 locator 上，
       让外部脚本读 yaml 即可知道这个 selector 是否 verified
@@ -773,9 +737,6 @@ def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) ->
                 sibling_count=counts.get(key, 1),
             ),
         }
-        ancestor_chain = element.get("ancestor_chain")
-        if isinstance(ancestor_chain, list) and ancestor_chain:
-            artifact_element["ancestor_chain"] = ancestor_chain
         result.append(artifact_element)
 
     # accessibility_tree 只补充 DOM 中没有的节点（用宽松 key 避免吞掉同名不同行元素）
@@ -808,7 +769,6 @@ def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) ->
                 "ordinal": 1,
                 "container_role": "",
                 "container_name": "",
-                "ancestor_text": "",
             },
         })
 
@@ -834,11 +794,11 @@ def _attach_verification_metadata(
     for key in ("primary_selector", "fallback_selector"):
         sel = observed_element.get(key)
         if isinstance(sel, dict) and sel.get("code"):
-            selector_index[sel["code"]] = sel
+            selector_index[_normalize_locator_code(sel["code"])] = sel
 
     attached: list[dict] = []
     for candidate in candidates:
-        code = candidate.get("code", "")
+        code = _normalize_locator_code(candidate.get("code", ""))
         matched_selector = selector_index.get(code)
         if matched_selector and isinstance(matched_selector.get("verification"), dict):
             new_candidate = dict(candidate)
@@ -849,6 +809,11 @@ def _attach_verification_metadata(
             new_candidate["verification"] = {"checked": False, "unique": None, "visible": None, "match_count": 0}
             attached.append(new_candidate)
     return attached
+
+
+def _normalize_locator_code(code: str) -> str:
+    value = _string(code).strip()
+    return value.removeprefix("page.")
 
 
 _REAL_ARIA_ROLES = frozenset({
