@@ -144,7 +144,7 @@ class ApiEnvironmentOut(BaseModel):
 
 
 class ApiAutomationGenerateIn(_StrippedModel):
-    endpoint_ids: list[str] = Field(default_factory=list)
+    endpoint_ids: list[str] = Field(default_factory=list, max_length=100)
     test_case_ids: list[str] = Field(default_factory=list)
     api_environment_id: str | None = None
     generation_goal: str = ""

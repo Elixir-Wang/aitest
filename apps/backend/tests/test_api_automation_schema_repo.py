@@ -2,13 +2,15 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from app.core import settings
 from app.core import db as db_core
 from app.core.db import connect
 from app.repositories import api_automation_repo
 from app.seed.init_db import init_db
-from app.schemas.api_automation import ApiTestCaseSetIn
+from app.schemas.api_automation import ApiAutomationGenerateIn, ApiTestCaseSetIn
+from app.seed.seeds import _ensure_api_generation_batch_structure
 from app.services.api_automation import service
 
 
@@ -56,6 +58,13 @@ def _seed_project_endpoints(endpoint_ids: list[str]) -> None:
             )
 
 
+def test_generation_request_limits_endpoint_ids_to_100() -> None:
+    assert len(ApiAutomationGenerateIn(endpoint_ids=[f"apiend-{index}" for index in range(100)]).endpoint_ids) == 100
+
+    with pytest.raises(ValidationError):
+        ApiAutomationGenerateIn(endpoint_ids=[f"apiend-{index}" for index in range(101)])
+
+
 def test_generation_items_and_attempts_are_persisted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_endpoints(["apiend-1", "apiend-2"])
@@ -90,6 +99,31 @@ def test_generation_items_and_attempts_are_persisted(monkeypatch: pytest.MonkeyP
     assert item["status"] == "completed"
     assert item["attempt_count"] == 1
     assert attempts[0]["id"] == "attempt-1"
+
+
+def test_generation_items_reject_duplicate_run_endpoint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoints(["apiend-1"])
+    with connect() as db:
+        api_automation_repo.create_generation_run(
+            db,
+            run_id="apigen-1",
+            task_id="api_automation_generation:apigen-1",
+            project_id="project-1",
+            api_environment_id=None,
+            endpoint_ids=["apiend-1"],
+            source_test_case_ids=[],
+            generation_goal="",
+            options={},
+            created_by="u-admin",
+        )
+        api_automation_repo.create_generation_items(db, "apigen-1", ["apiend-1"])
+
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO api_generation_items (id, generation_run_id, endpoint_id) VALUES (?, ?, ?)",
+                ("apigenitem-duplicate", "apigen-1", "apiend-1"),
+            )
 
 
 def test_existing_database_adds_generation_batch_structure_without_losing_cases(
@@ -133,10 +167,39 @@ def test_existing_database_adds_generation_batch_structure_without_losing_cases(
             notes="",
             created_by="u-admin",
         )
+        api_automation_repo.create_api_test_case_set(
+            db,
+            set_id="apiset-legacy",
+            project_id="project-1",
+            name="Legacy set",
+            notes="",
+            created_by="u-admin",
+        )
+        db.execute(
+            "UPDATE api_test_case_sets SET latest_generation_run_id = ? WHERE id = ?",
+            ("apigen-legacy", "apiset-legacy"),
+        )
+        api_automation_repo.create_script(
+            db,
+            script_id="apiscript-legacy",
+            project_id="project-1",
+            endpoint_id=None,
+            api_test_case_id="apitc-legacy",
+            test_case_id=None,
+            generation_run_id="apigen-legacy",
+            name="legacy_script",
+            status="ready",
+            suite_path="generated/legacy",
+            test_file_path="generated/legacy/test_legacy.py",
+            data_file_path="",
+            notes="",
+            created_by="u-admin",
+        )
 
     raw_db = sqlite3.connect(settings.DB_PATH)
     raw_db.executescript(
         """
+        PRAGMA legacy_alter_table = ON;
         DROP TABLE IF EXISTS api_generation_item_attempts;
         DROP TABLE IF EXISTS api_generation_items;
         ALTER TABLE api_generation_runs RENAME TO api_generation_runs_current;
@@ -152,14 +215,49 @@ def test_existing_database_adds_generation_batch_structure_without_losing_cases(
         );
         INSERT INTO api_generation_runs SELECT * FROM api_generation_runs_current;
         DROP TABLE api_generation_runs_current;
-        ALTER TABLE api_test_cases RENAME TO api_test_cases_current;
-        CREATE TABLE api_test_cases AS
-          SELECT id, project_id, endpoint_id, source_test_case_id, generation_run_id,
-                 title, priority, coverage, source, tags_json, preconditions_json,
-                 request_json, test_data_json, expected_json, assertions_json, variables_json,
-                 data_origin_json, data_file_path, notes, created_by, updated_by, created_at, updated_at
-          FROM api_test_cases_current;
-        DROP TABLE api_test_cases_current;
+        CREATE TABLE api_test_cases_legacy (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          endpoint_id TEXT,
+          source_test_case_id TEXT,
+          generation_run_id TEXT,
+          title TEXT NOT NULL,
+          priority TEXT NOT NULL DEFAULT 'P2',
+          coverage TEXT NOT NULL DEFAULT 'positive',
+          source TEXT NOT NULL CHECK(source IN ('ai_generated', 'manual', 'approved_test_case')) DEFAULT 'ai_generated',
+          tags_json TEXT NOT NULL DEFAULT '[]',
+          preconditions_json TEXT NOT NULL DEFAULT '[]',
+          request_json TEXT NOT NULL DEFAULT '{}',
+          test_data_json TEXT NOT NULL DEFAULT '{}',
+          expected_json TEXT NOT NULL DEFAULT '{}',
+          assertions_json TEXT NOT NULL DEFAULT '[]',
+          variables_json TEXT NOT NULL DEFAULT '{}',
+          data_origin_json TEXT NOT NULL DEFAULT '{}',
+          data_file_path TEXT NOT NULL DEFAULT '',
+          notes TEXT NOT NULL DEFAULT '',
+          created_by TEXT NOT NULL,
+          updated_by TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE SET NULL,
+          FOREIGN KEY(source_test_case_id) REFERENCES test_cases(id) ON DELETE SET NULL,
+          FOREIGN KEY(generation_run_id) REFERENCES api_generation_runs(id) ON DELETE SET NULL
+        );
+        INSERT INTO api_test_cases_legacy (
+          id, project_id, endpoint_id, source_test_case_id, generation_run_id,
+          title, priority, coverage, source, tags_json, preconditions_json,
+          request_json, test_data_json, expected_json, assertions_json, variables_json,
+          data_origin_json, data_file_path, notes, created_by, updated_by, created_at, updated_at
+        )
+        SELECT
+          id, project_id, endpoint_id, source_test_case_id, generation_run_id,
+          title, priority, coverage, source, tags_json, preconditions_json,
+          request_json, test_data_json, expected_json, assertions_json, variables_json,
+          data_origin_json, data_file_path, notes, created_by, updated_by, created_at, updated_at
+        FROM api_test_cases;
+        DROP TABLE api_test_cases;
+        ALTER TABLE api_test_cases_legacy RENAME TO api_test_cases;
         """
     )
     raw_db.close()
@@ -174,7 +272,16 @@ def test_existing_database_adds_generation_batch_structure_without_losing_cases(
             )
         }
         case_columns = {row["name"] for row in db.execute("PRAGMA table_info(api_test_cases)")}
-        case = db.execute("SELECT id FROM api_test_cases WHERE id = 'apitc-legacy'").fetchone()
+        case = db.execute(
+            "SELECT id, generation_run_id FROM api_test_cases WHERE id = 'apitc-legacy'"
+        ).fetchone()
+        case_set = db.execute(
+            "SELECT latest_generation_run_id FROM api_test_case_sets WHERE id = 'apiset-legacy'"
+        ).fetchone()
+        script = db.execute(
+            "SELECT generation_run_id FROM api_test_scripts WHERE id = 'apiscript-legacy'"
+        ).fetchone()
+        foreign_key_violations = db.execute("PRAGMA foreign_key_check").fetchall()
         run_sql = db.execute(
             "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'api_generation_runs'"
         ).fetchone()["sql"]
@@ -182,7 +289,32 @@ def test_existing_database_adds_generation_batch_structure_without_losing_cases(
     assert tables == {"api_generation_items", "api_generation_item_attempts"}
     assert {"generation_item_id", "generation_attempt_id"} <= case_columns
     assert case["id"] == "apitc-legacy"
+    assert case["generation_run_id"] == "apigen-legacy"
+    assert case_set["latest_generation_run_id"] == "apigen-legacy"
+    assert script["generation_run_id"] == "apigen-legacy"
+    assert foreign_key_violations == []
     assert "partial_success" in run_sql
+
+
+def test_generation_batch_migration_rejects_foreign_key_violations(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    raw_db = sqlite3.connect(settings.DB_PATH)
+    raw_db.row_factory = sqlite3.Row
+    raw_db.execute("PRAGMA foreign_keys = OFF")
+    raw_db.execute(
+        "INSERT INTO api_test_case_sets "
+        "(id, project_id, name, latest_generation_run_id, created_by) VALUES (?, ?, ?, ?, ?)",
+        ("apiset-invalid", "missing-project", "Invalid", "missing-run", "u-admin"),
+    )
+    raw_db.commit()
+    raw_db.execute("PRAGMA foreign_keys = ON")
+
+    with pytest.raises(RuntimeError, match="Foreign key violations remain"):
+        _ensure_api_generation_batch_structure(raw_db)
+
+    raw_db.close()
 
 
 def test_upsert_endpoint_uses_method_and_normalized_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -180,7 +180,9 @@ def _ensure_api_generation_batch_structure(db: sqlite3.Connection) -> None:
             db.execute("ALTER TABLE api_test_cases ADD COLUMN generation_item_id TEXT REFERENCES api_generation_items(id) ON DELETE SET NULL")
         if "generation_attempt_id" not in columns:
             db.execute("ALTER TABLE api_test_cases ADD COLUMN generation_attempt_id TEXT REFERENCES api_generation_item_attempts(id) ON DELETE SET NULL")
-    db.execute("PRAGMA foreign_key_check").fetchall()
+    foreign_key_violations = db.execute("PRAGMA foreign_key_check").fetchall()
+    if foreign_key_violations:
+        raise RuntimeError(f"Foreign key violations remain after API generation batch migration: {foreign_key_violations}")
 
 
 def _drop_api_test_case_status_column(db: sqlite3.Connection) -> None:
