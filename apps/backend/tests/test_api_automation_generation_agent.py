@@ -395,6 +395,148 @@ def test_execute_generation_run_passes_source_test_cases_to_agent(
     assert captured["source_test_cases"][0]["steps"][0]["action"] == "调用登录接口"
 
 
+def test_generation_run_serializes_items_and_retries_only_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint()
+    _seed_additional_endpoints(["apiend-2", "apiend-3"])
+    created = service.create_generation_run(
+        "project-1",
+        ApiAutomationGenerateIn(endpoint_ids=["apiend-1", "apiend-2", "apiend-3"], generate_code=False),
+        ACTOR,
+    )
+
+    with connect() as db:
+        items = api_automation_repo.list_generation_items(db, created["id"])
+        api_automation_repo.start_generation_item_attempt(db, items[0]["id"], "attempt-success")
+        api_automation_repo.create_api_test_case(
+            db,
+            case_id="apitc-success",
+            project_id="project-1",
+            endpoint_id="apiend-1",
+            source_test_case_id=None,
+            generation_run_id=created["id"],
+            generation_item_id=items[0]["id"],
+            generation_attempt_id="attempt-success",
+            title="登录成功",
+            priority="P1",
+            coverage="positive",
+            source="ai_generated",
+            tags=[],
+            preconditions=[],
+            request={"method": "POST", "path": "/login"},
+            test_data={},
+            expected={"status_code": 200},
+            assertions=[{"type": "status_code", "expected": 200}],
+            variables={},
+            data_origin={},
+            data_file_path="",
+            notes="",
+            created_by=ACTOR["id"],
+        )
+        api_automation_repo.finish_generation_item_attempt(
+            db, items[0]["id"], "attempt-success", status="completed", generated_case_count=1
+        )
+        for index, item in enumerate(items[1:], start=2):
+            attempt_id = f"attempt-failed-{index}"
+            api_automation_repo.start_generation_item_attempt(db, item["id"], attempt_id)
+            api_automation_repo.finish_generation_item_attempt(
+                db, item["id"], attempt_id, status="failed", error_message=f"failure-{index}"
+            )
+        api_automation_repo.update_generation_run(db, created["id"], status="partial_success", finished=True)
+
+    detail = service.get_generation_run("project-1", created["id"], ACTOR)
+
+    assert detail["total_count"] == 3
+    assert detail["completed_count"] == 3
+    assert detail["success_count"] == 1
+    assert detail["failed_count"] == 2
+    assert detail["generated_case_count"] == 1
+    assert [(item["method"], item["path"]) for item in detail["items"]] == [
+        ("POST", "/login"),
+        ("GET", "/apiend-2"),
+        ("GET", "/apiend-3"),
+    ]
+    assert detail["items"][0]["attempts"][0]["id"] == "attempt-success"
+    assert [case["id"] for case in detail["test_cases"]] == ["apitc-success"]
+
+    retried = service.retry_failed_generation_items("project-1", created["id"], ACTOR)
+
+    assert retried["status"] == "running"
+    assert retried["finished_at"] is None
+    with connect() as db:
+        refreshed_items = api_automation_repo.list_generation_items(db, created["id"])
+        cases = api_automation_repo.list_api_test_cases(db, "project-1")
+    assert refreshed_items[0]["status"] == "completed"
+    assert refreshed_items[0]["attempt_count"] == 1
+    assert [item["status"] for item in refreshed_items[1:]] == ["queued", "queued"]
+    assert [item["attempt_count"] for item in refreshed_items[1:]] == [1, 1]
+    assert [case["id"] for case in cases] == ["apitc-success"]
+
+
+def test_retry_failed_generation_items_rejects_active_or_successful_runs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint()
+    created = service.create_generation_run(
+        "project-1",
+        ApiAutomationGenerateIn(endpoint_ids=["apiend-1"], generate_code=False),
+        ACTOR,
+    )
+
+    with pytest.raises(Exception) as active_error:
+        service.retry_failed_generation_items("project-1", created["id"], ACTOR)
+    assert active_error.value.status_code == 409
+
+    with connect() as db:
+        item = api_automation_repo.list_generation_items(db, created["id"])[0]
+        api_automation_repo.start_generation_item_attempt(db, item["id"], "attempt-success")
+        api_automation_repo.finish_generation_item_attempt(
+            db, item["id"], "attempt-success", status="completed", generated_case_count=0
+        )
+        api_automation_repo.update_generation_run(db, created["id"], status="completed", finished=True)
+
+    with pytest.raises(Exception) as completed_error:
+        service.retry_failed_generation_items("project-1", created["id"], ACTOR)
+    assert completed_error.value.status_code == 409
+
+
+def test_recovery_preserves_completed_generation_items(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint()
+    _seed_additional_endpoints(["apiend-2"])
+    created = service.create_generation_run(
+        "project-1",
+        ApiAutomationGenerateIn(endpoint_ids=["apiend-1", "apiend-2"], generate_code=False),
+        ACTOR,
+    )
+
+    with connect() as db:
+        items = api_automation_repo.list_generation_items(db, created["id"])
+        api_automation_repo.start_generation_item_attempt(db, items[0]["id"], "attempt-success")
+        api_automation_repo.finish_generation_item_attempt(
+            db, items[0]["id"], "attempt-success", status="completed", generated_case_count=1
+        )
+        api_automation_repo.start_generation_item_attempt(db, items[1]["id"], "attempt-running")
+        api_automation_repo.update_generation_run(db, created["id"], status="running")
+
+    service.recover_interrupted_api_automation_tasks()
+
+    with connect() as db:
+        run = api_automation_repo.find_generation_run(db, created["id"])
+        items = api_automation_repo.list_generation_items(db, created["id"])
+        attempts = api_automation_repo.list_generation_item_attempts(db, items[1]["id"])
+    assert run["status"] == "partial_success"
+    assert "失败接口可重试" in run["error_message"]
+    assert items[0]["status"] == "completed"
+    assert items[1]["status"] == "failed"
+    assert attempts[0]["status"] == "failed"
+
+
 def test_api_automation_agent_uses_skill_middleware_and_response_format(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.agents.api_automation import agent as agent_module
 

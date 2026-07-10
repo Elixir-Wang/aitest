@@ -257,8 +257,9 @@ def update_generation_run(
     status: str,
     result_summary: dict[str, Any] | None = None,
     error_message: str = "",
-    finished: bool = False,
+    finished: bool | None = None,
 ) -> None:
+    finished_sql = "" if finished is None else ", finished_at = CURRENT_TIMESTAMP" if finished else ", finished_at = NULL"
     db.execute(
         f"""
         UPDATE api_generation_runs
@@ -266,7 +267,7 @@ def update_generation_run(
             result_summary_json = COALESCE(?, result_summary_json),
             error_message = ?,
             updated_at = CURRENT_TIMESTAMP
-            {", finished_at = CURRENT_TIMESTAMP" if finished else ""}
+            {finished_sql}
         WHERE id = ?
         """,
         (status, dumps_json(result_summary) if result_summary is not None else None, error_message, run_id),
@@ -335,6 +336,21 @@ def list_failed_generation_items(db: Connection, run_id: str) -> list[Row]:
         """,
         (run_id,),
     ).fetchall()
+
+
+def reset_failed_generation_items(db: Connection, run_id: str) -> None:
+    db.execute(
+        """
+        UPDATE api_generation_items
+        SET status = 'queued',
+            error_message = '',
+            started_at = NULL,
+            finished_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE generation_run_id = ? AND status = 'failed'
+        """,
+        (run_id,),
+    )
 
 
 def start_generation_item_attempt(db: Connection, item_id: str, attempt_id: str) -> None:
