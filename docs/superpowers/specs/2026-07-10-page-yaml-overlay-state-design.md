@@ -94,6 +94,30 @@ Nested overlays use the currently active overlay state as their parent.
 6. Closing the overlay restores the parent state; a later page snapshot updates
    that parent rather than creating an overlay-free sibling state.
 
+## Runtime Interaction Scope
+
+Opening an overlay changes both artifact ownership and live action resolution.
+
+1. After a click, the runner compares the before and after states and detects the
+   highest active Dialog, Popover, Menu, or Drawer.
+2. When an overlay is active, `interaction_scope` becomes `overlay` and the runner
+   exposes only elements owned by that overlay state.
+3. Subsequent click, fill, press, and scoped-query operations resolve visible
+   matches inside the active overlay before considering the page.
+4. A same-name element outside the overlay is not a candidate. If the active
+   overlay itself contains multiple matching elements, the action fails with
+   `locator_not_unique`; the runner never chooses the first match silently.
+5. Page-level fallback is forbidden while an overlay remains active. A failed
+   overlay lookup returns a scoped failure instead of operating on a same-name
+   page element.
+6. When the overlay closes, the runner restores its direct parent state and page
+   elements become eligible again. Nested overlays restore one parent level at a
+   time.
+
+The transient `action_locator` may execute the currently observed element, but the
+state transition and ownership rules do not depend on that locator. This keeps
+runtime safety and persisted POM locators as separate contracts.
+
 ## Locator Contract
 
 `action_locator` remains transient and is never persisted.
@@ -158,6 +182,9 @@ Focused contract tests must prove:
 - transient `action_locator` never appears in YAML;
 - structural CSS cannot be promoted to a high-confidence primary locator;
 - re-observing the same logical overlay merges it instead of duplicating it.
+- actions prefer the active overlay when the page has a same-name element;
+- a missing overlay target never falls back to a same-name page element;
+- closing and nesting overlays restore the correct direct parent scope.
 
 ## Scope
 
