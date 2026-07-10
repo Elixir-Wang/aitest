@@ -664,6 +664,68 @@ def test_repeated_snapshot_checkpoints_create_separate_visible_artifacts(monkeyp
     assert len(artifact_ids) == 2
 
 
+def test_snapshot_checkpoint_keeps_overlay_elements_out_of_root(monkeypatch, tmp_path: Path) -> None:
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=()):
+            return self
+
+    def snapshot(output):
+        return {"event": "on_tool_end", "name": "playwright_snap_tool", "data": {"output": output}}
+
+    root_id = "page-workspace__root__001"
+    root_element_key = "button-创建智能体"
+    root = snapshot({
+        "url": "https://example.test/workspace",
+        "title": "工作台",
+        "interaction_scope": "page",
+        "state_context": {"state_id": root_id, "state_type": "root", "parent_state_id": None, "triggered_by": None},
+        "elements": [{
+            "role": "button", "role_source": "native", "name": "创建智能体", "action_type": "click", "visible": True,
+            "primary_selector": {"kind": "role", "code": "page.getByRole('button', { name: '创建智能体' })", "verification": {"checked": True, "unique": True, "visible": True, "match_count": 1}},
+        }],
+    })
+    overlay = snapshot({
+        "url": "https://example.test/workspace",
+        "title": "工作台",
+        "interaction_scope": "overlay",
+        "state_context": {
+            "state_id": "page-workspace__dialog__abc12345", "state_type": "dialog", "parent_state_id": root_id,
+            "triggered_by": {"from_state": root_id, "element_key": root_element_key, "action": "click", "url_changed": False, "observed_url": "https://example.test/workspace"},
+        },
+        "overlay": {
+            "type": "dialog", "role": "dialog", "name": "创建智能体",
+            "primary_selector": {"kind": "contextual", "code": "page.getByRole('dialog', { name: '创建智能体' })", "verification": {"checked": True, "unique": True, "visible": True, "match_count": 1}},
+        },
+        "elements": [{
+            "action_locator": "page.locator('[data-ai-testing-action-ref=element-1]')",
+            "role": "button", "role_source": "native", "name": "创建", "action_type": "click", "visible": True,
+            "primary_selector": {"kind": "contextual", "code": "page.getByRole('dialog', { name: '创建智能体' }).getByRole('button', { name: '创建' })", "verification": {"checked": True, "unique": True, "visible": True, "match_count": 1}},
+        }],
+    })
+
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+    monkeypatch.setattr(page_exploration_service, "connect", lambda: FakeConnection())
+    page_exploration_service._checkpoint_snapshot_artifact_from_event(root, project_id="project-1", run_id="run-1")
+    page_path = page_exploration_service._checkpoint_snapshot_artifact_from_event(overlay, project_id="project-1", run_id="run-1")
+
+    import yaml
+    data = yaml.safe_load(page_path.read_text(encoding="utf-8"))
+    root_state = data["states"][0]
+    child = root_state["children"][0]
+    assert [item["name"] for item in root_state["elements"]] == ["创建智能体"]
+    assert root_state["elements"][0]["key"] == root_element_key
+    assert [item["name"] for item in child["elements"]] == ["创建"]
+    assert child["triggered_by"]["element_key"] == root_element_key
+    assert "getByRole('dialog'" in child["elements"][0]["locators"][0]["code"]
+    assert "data-ai-testing-action-ref" not in page_path.read_text(encoding="utf-8")
+
+
 def test_snapshot_checkpoint_uses_path_only_page_identity(monkeypatch, tmp_path: Path) -> None:
     artifact_paths = []
 
@@ -1628,6 +1690,70 @@ def test_get_project_page_yaml_content_reads_shared_page_yaml(monkeypatch, tmp_p
         "file_path": str(project_pages / "page-workspace.yaml"),
         "content": yaml_content,
     }
+
+
+def test_clear_project_artifacts_removes_project_files_and_indexes(monkeypatch, tmp_path: Path) -> None:
+    page_root = tmp_path / "project-1" / "page_exploration"
+    project_pages = page_root / "pages"
+    project_pages.mkdir(parents=True)
+    (project_pages / "page-workspace.yaml").write_text("page:\n  id: page-workspace\n", encoding="utf-8")
+    (page_root / "page_edges.yaml").write_text("edges: []\n", encoding="utf-8")
+
+    executed: list[tuple[str, list[str]]] = []
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql, params=()):
+            executed.append((sql, list(params)))
+            return self
+
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+    monkeypatch.setattr(page_exploration_service, "connect", lambda: FakeConnection())
+    monkeypatch.setattr(page_exploration_service.exploration_run_repo, "list_running", lambda db, project_id: [])
+    monkeypatch.setattr(
+        page_exploration_service.exploration_run_repo,
+        "list_by_project",
+        lambda db, project_id, limit=100: [{"id": "run-1"}, {"id": "run-2"}],
+    )
+
+    result = page_exploration_service.clear_project_artifacts(actor={"id": "u-1"}, project_id="project-1")
+
+    assert result == {"project_id": "project-1", "cleared_run_count": 2, "removed_file_count": 2}
+    assert not page_root.exists()
+    assert any("DELETE FROM exploration_artifacts" in sql and params == ["run-1", "run-2"] for sql, params in executed)
+    assert any("DELETE FROM exploration_pages" in sql and params == ["run-1", "run-2"] for sql, params in executed)
+    assert any("UPDATE exploration_runs SET artifact_root = ''" in sql for sql, _params in executed)
+
+
+def test_clear_project_artifacts_blocks_running_runs(monkeypatch, tmp_path: Path) -> None:
+    page_root = tmp_path / "project-1" / "page_exploration"
+    page_root.mkdir(parents=True)
+    (page_root / "page_edges.yaml").write_text("edges: []\n", encoding="utf-8")
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+    monkeypatch.setattr(page_exploration_service, "connect", lambda: FakeConnection())
+    monkeypatch.setattr(
+        page_exploration_service.exploration_run_repo,
+        "list_running",
+        lambda db, project_id: [{"id": "run-1"}],
+    )
+
+    with pytest.raises(ValueError, match="运行中的探索任务"):
+        page_exploration_service.clear_project_artifacts(actor={"id": "u-1"}, project_id="project-1")
+
+    assert page_root.exists()
 
 
 def test_register_exploration_outputs_indexes_page_and_report(monkeypatch, tmp_path: Path) -> None:

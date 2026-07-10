@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import Image from "next/image";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import {
@@ -868,6 +869,7 @@ export default function Page() {
         ...(selectedCaseSet ? [{ label: selectedCaseSet.name }] : []),
       ]}
       description="导入 OpenAPI、生成接口自动化用例、生成 pytest 脚本并执行。"
+      fillViewport={activeTab === "接口用例"}
       onTabChange={setActiveTab}
       projectScope="project"
       tabActions={
@@ -1188,8 +1190,8 @@ export default function Page() {
       )}
 
       {activeTab === "接口用例" && (
-        <div className="grid min-h-[calc(100dvh-10rem)] overflow-hidden rounded-xl border bg-background xl:grid-cols-[360px_1fr]">
-          <aside className="no-scrollbar max-h-[calc(100dvh-5rem)] overflow-y-auto overflow-x-hidden border-r bg-muted/20 xl:sticky xl:top-16">
+        <div className="grid min-h-[28rem] flex-1 overflow-hidden rounded-xl border bg-background xl:grid-cols-[360px_1fr]">
+          <aside className="no-scrollbar flex min-h-0 flex-col overflow-y-auto overflow-x-hidden border-r bg-muted/20">
             <div className="border-b p-3">
               <div>
                 <div className="flex items-center gap-2">
@@ -1228,7 +1230,7 @@ export default function Page() {
                 </div>
               </div>
             </div>
-            <div className="p-2">
+            <div className="flex min-h-0 flex-1 flex-col p-2">
               {Object.entries(groupedApiCaseEndpoints).map(([group, rows]) => {
                 const hasActiveEndpoint = rows.some((endpoint) => endpoint.id === activeApiCaseEndpoint?.id);
                 const isCollapsed = !expandedApiCaseEndpointGroups.includes(group);
@@ -1302,18 +1304,28 @@ export default function Page() {
                 );
               })}
               {apiCaseEndpoints.length === 0 ? (
-                <div className="flex h-full min-h-72 flex-col items-center justify-center gap-3 px-6 text-center text-sm">
-                  <FileJson className="size-9 text-muted-foreground" />
-                  <div>
-                    <div className="font-medium">暂无接口用例</div>
-                    <div className="mt-1 text-muted-foreground">请先在接口资产页签选择接口并生成用例。</div>
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 py-6 text-center">
+                  <Image
+                    alt=""
+                    aria-hidden="true"
+                    className="h-32 w-44 object-contain"
+                    height={180}
+                    src="/illustrations/api-cases-empty-left.svg"
+                    width={240}
+                  />
+                  <div className="mt-4">
+                    <div className="font-medium text-foreground text-sm">暂无接口用例</div>
+                    <div className="mt-2 text-muted-foreground text-sm">请先在接口资产页签选择接口并生成用例。</div>
                   </div>
+                  <Button className="mt-5" onClick={() => setActiveTab("接口资产")} size="sm">
+                    去选择接口
+                  </Button>
                 </div>
               ) : null}
             </div>
           </aside>
 
-          <ShellSection className="min-w-0 rounded-none border-0">
+          <ShellSection className="flex min-h-0 min-w-0 flex-col rounded-none border-0">
             <ListToolbar
               actions={
                 <Button disabled={busy} onClick={() => refresh()} variant="outline">
@@ -1328,11 +1340,11 @@ export default function Page() {
               }
               onBatchDelete={() => deleteApiTestCases(selectedApiCaseIds)}
               onSearch={setApiCaseSearchText}
-              placeholder="搜索用例名称、优先级或更新时间"
+              placeholder="搜索用例名称"
               selectedCount={selectedApiCaseIds.length}
-              title="接口信息"
+              title="接口用例列表"
             />
-            <div className="overflow-hidden rounded-lg border">
+            <div className="min-h-0 flex-1 overflow-hidden rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1398,10 +1410,23 @@ export default function Page() {
                   ))}
                   {filteredApiTestCases.length === 0 ? (
                     <TableRow>
-                      <TableCell className="py-8 text-center text-muted-foreground text-sm" colSpan={5}>
-                        {activeApiCaseEndpoint
-                          ? "当前接口暂无匹配的接口用例。"
-                          : "暂无接口用例。请先在接口资产页签选择接口并生成用例。"}
+                      <TableCell className="py-0 text-center text-sm" colSpan={5}>
+                        <div className="flex h-full min-h-[18rem] flex-col items-center justify-center gap-4">
+                          <Image
+                            alt=""
+                            aria-hidden="true"
+                            className="h-36 w-48 object-contain"
+                            height={180}
+                            src="/illustrations/api-cases-empty-right.svg"
+                            width={240}
+                          />
+                          <div>
+                            <div className="font-medium text-foreground text-sm">暂无接口用例</div>
+                            <div className="mt-1 text-muted-foreground">
+                              请在左侧选择接口进行展示测试用例。
+                            </div>
+                          </div>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : null}
@@ -1656,10 +1681,10 @@ export default function Page() {
                   value={debugForm.environmentId}
                   onValueChange={(value) => setDebugForm((current) => ({ ...current, environmentId: value }))}
                 >
-                  <SelectTrigger className="h-9 w-full bg-background lg:w-56">
+                  <SelectTrigger className="w-full lg:w-56">
                     <SelectValue placeholder="选择接口环境" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper">
                     {environments.map((environment) => (
                       <SelectItem key={environment.id} value={environment.id}>
                         {environment.name}

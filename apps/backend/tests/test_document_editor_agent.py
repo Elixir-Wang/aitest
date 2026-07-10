@@ -29,45 +29,53 @@ def test_document_editor_agent_uses_langchain_create_agent(monkeypatch: pytest.M
     assert "文档修改智能体" in calls["system_prompt"]
 
 
-def test_build_agent_model_uses_openai_compatible_client(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_agent_model_uses_deepseek_client_for_deepseek(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.agents.model_selection import build_agent_model
 
-    calls = {}
+    deepseek_calls = {}
+    openai_called = False
+
+    def fake_chat_deepseek(**kwargs):
+        deepseek_calls.update(kwargs)
+        return "deepseek-model"
 
     def fake_chat_openai(**kwargs):
-        calls.update(kwargs)
-        return "chat-model"
+        nonlocal openai_called
+        openai_called = True
+        return "openai-model"
 
     monkeypatch.setattr("app.agents.model_selection.ChatOpenAI", fake_chat_openai)
+    monkeypatch.setattr("app.agents.model_selection.ChatDeepSeek", fake_chat_deepseek, raising=False)
 
     model = build_agent_model(
         ModelSelection(
-            provider="deepseek",
+            provider="DeepSeek",
             model="deepseek-chat",
             base_url="https://api.deepseek.com",
             api_key="sk-test",
         )
     )
 
-    assert model == "chat-model"
-    assert calls["model"] == "deepseek-chat"
-    assert isinstance(calls["api_key"], SecretStr)
-    assert calls["api_key"].get_secret_value() == "sk-test"
-    assert calls["base_url"] == "https://api.deepseek.com"
-    assert calls["temperature"] == 0
-    assert calls["use_responses_api"] is False
+    assert model == "deepseek-model"
+    assert openai_called is False
+    assert deepseek_calls["model"] == "deepseek-chat"
+    assert isinstance(deepseek_calls["api_key"], SecretStr)
+    assert deepseek_calls["api_key"].get_secret_value() == "sk-test"
+    assert deepseek_calls["base_url"] == "https://api.deepseek.com"
+    assert deepseek_calls["temperature"] == 0
+    assert "use_responses_api" not in deepseek_calls
 
 
-def test_build_agent_model_passes_extra_body(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_agent_model_passes_extra_body_to_deepseek_client(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.agents.model_selection import build_agent_model
 
     calls = {}
 
-    def fake_chat_openai(**kwargs):
+    def fake_chat_deepseek(**kwargs):
         calls.update(kwargs)
-        return "chat-model"
+        return "deepseek-model"
 
-    monkeypatch.setattr("app.agents.model_selection.ChatOpenAI", fake_chat_openai)
+    monkeypatch.setattr("app.agents.model_selection.ChatDeepSeek", fake_chat_deepseek, raising=False)
 
     model = build_agent_model(
         ModelSelection(
@@ -79,9 +87,8 @@ def test_build_agent_model_passes_extra_body(monkeypatch: pytest.MonkeyPatch) ->
         extra_body={"thinking": {"type": "disabled"}},
     )
 
-    assert model == "chat-model"
+    assert model == "deepseek-model"
     assert calls["extra_body"] == {"thinking": {"type": "disabled"}}
-    assert calls["use_responses_api"] is False
 
 
 def test_build_agent_model_accepts_minimax_openai_tools_model(monkeypatch: pytest.MonkeyPatch) -> None:

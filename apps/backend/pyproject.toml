@@ -12,6 +12,7 @@ dependencies = [
     "fastapi==0.124.2",
     "httpx==0.28.1",
     "langchain>=1.0.0",
+    "langchain-deepseek>=1.1.0",
     "langchain-openai>=1.0.0",
     "loguru==0.7.3",
     "openai-agents==0.17.3",

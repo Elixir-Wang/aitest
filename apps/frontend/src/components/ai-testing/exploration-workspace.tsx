@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { CircleHelp, Eye, EyeOff, LogIn, Plus, Save, Square, X } from "lucide-react";
+import { CircleHelp, Eye, EyeOff, LogIn, Plus, Save, Square, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -105,6 +105,8 @@ export function ExplorationWorkspace({
   const [projectPagesLoading, setProjectPagesLoading] = useState(false);
   const [selectedPageId, setSelectedPageId] = useState("");
   const [expandedPageNodeIds, setExpandedPageNodeIds] = useState<string[]>([]);
+  const [clearArtifactsDialogOpen, setClearArtifactsDialogOpen] = useState(false);
+  const [clearingArtifacts, setClearingArtifacts] = useState(false);
   const explorationSelection = useLocalTableSelection<ExplorationRun>([]);
   const {
     allSelected,
@@ -328,6 +330,8 @@ export function ExplorationWorkspace({
     artifactProjectOptions[0] ??
     null;
 
+  const canClearArtifacts = Boolean(selectedArtifactProject) && !projectPagesLoading && !clearingArtifacts;
+
   useEffect(() => {
     if (activeTab !== "探索产物" || !selectedArtifactProject) {
       return;
@@ -335,6 +339,33 @@ export function ExplorationWorkspace({
 
     void loadProjectPages(selectedArtifactProject);
   }, [activeTab, loadProjectPages, selectedArtifactProject]);
+
+  async function clearProjectArtifacts() {
+    if (!selectedArtifactProject) {
+      return;
+    }
+    setClearingArtifacts(true);
+    try {
+      await apiRequest(`/page-exploration/projects/${selectedArtifactProject.project_id}/artifacts`, {
+        method: "DELETE",
+      });
+      setProjectPages([]);
+      setSelectedPageId("");
+      setExpandedPageNodeIds([]);
+      setClearArtifactsDialogOpen(false);
+      toast.success("探索产物已清空");
+      await loadProjectPages(selectedArtifactProject);
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "探索产物清空失败",
+        actionLabel: "清空探索产物",
+        method: "DELETE",
+        path: `/page-exploration/projects/${selectedArtifactProject.project_id}/artifacts`,
+      });
+    } finally {
+      setClearingArtifacts(false);
+    }
+  }
 
   const hasReusableEnvironmentPassword =
     editingEnvironment?.login_strategy === "account_password" && editingEnvironment.has_saved_credentials;
@@ -829,6 +860,20 @@ export function ExplorationWorkspace({
       breadcrumbs={breadcrumbs}
       description={description}
       projectScope={projectScope}
+      tabActions={
+        activeTab === "探索产物" ? (
+          <Button
+            disabled={!canClearArtifacts}
+            onClick={() => setClearArtifactsDialogOpen(true)}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <Trash2 className="size-4" />
+            清空产物
+          </Button>
+        ) : null
+      }
       tabs={explorationTabs}
       title={title}
       onTabChange={setActiveTab}
@@ -941,6 +986,29 @@ export function ExplorationWorkspace({
           ) : null}
         </ShellSection>
       ) : null}
+
+      <Dialog onOpenChange={setClearArtifactsDialogOpen} open={clearArtifactsDialogOpen}>
+        <DialogContent className="gap-5 p-6 sm:max-w-md">
+          <DialogHeader className="gap-3">
+            <DialogTitle>清空探索产物</DialogTitle>
+            <DialogDescription>将清空当前项目的页面 YAML、页面目录和报告索引，探索任务记录会保留。</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="-mx-6 -mb-6 px-6 py-4">
+            <Button onClick={() => setClearArtifactsDialogOpen(false)} type="button" variant="outline">
+              取消
+            </Button>
+            <Button
+              disabled={clearingArtifacts}
+              onClick={() => void clearProjectArtifacts()}
+              type="button"
+              variant="destructive"
+            >
+              <Trash2 className="size-4" />
+              清空产物
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog onOpenChange={handleEnvironmentDialogOpenChange} open={dialogOpen}>
         <DialogContent className="gap-0 p-0 sm:max-w-3xl">

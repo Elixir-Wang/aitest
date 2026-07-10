@@ -1,25 +1,20 @@
 run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
 project_id: project-75fec50973f2adf6
-updated_at: '2026-07-09T16:20:26.125789+00:00'
+updated_at: '2026-07-10T07:28:42.927947+00:00'
 items:
 - id: ''
-  content: 打开工作台首页，获取基线快照。完成判据：页面加载成功，能看到工作台入口元素。
+  content: 打开工作台界面（https://www.cybotstar.cn/agentStore），用 snap 完成基线快照。完成判据：snapshot
+    中能看到页面标题和可交互元素。
   status: completed
 - id: ''
-  content: 点击创建按钮，进入创建智能体流程。完成判据：出现创建智能体的对话框或表单页面。
+  content: 点击创建按钮，进入创建智能体流程。完成判据：出现创建智能体的对话框/表单页面。
   status: completed
 - id: ''
-  content: 选择自主规划Agent类型。完成判据：自主规划Agent被选中或高亮。
+  content: 选择自主规划Agent类型，输入智能体名称“哈哈”，创建智能体。完成判据：智能体创建成功，进入编辑页面。
   status: completed
 - id: ''
-  content: 输入智能体名称"哈哈"，完成创建。完成判据：名称字段已填入"哈哈"，创建成功。
+  content: 在角色设定输入框中输入“你是一个友好的助手”。完成判据：角色设定字段值已写入。
   status: in_progress
 - id: ''
-  content: 在角色设定输入框中输入"你是一个友好的助手"。完成判据：角色设定字段已填入内容。
-  status: pending
-- id: ''
-  content: 点击发布按钮，输入版本号和发布日志。完成判据：出现发布对话框，版本号和发布日志字段可见。
-  status: pending
-- id: ''
-  content: 填写版本号和发布日志，再次点击发布按钮完成发布。完成判据：发布成功提示出现。
+  content: 点击发布按钮，输入版本号和发布日志，再次点击发布。完成判据：发布成功提示出现。
   status: pending

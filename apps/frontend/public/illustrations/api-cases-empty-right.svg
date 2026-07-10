@@ -1,0 +1,46 @@
+<svg width="240" height="180" viewBox="0 0 240 180" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">API case list empty illustration</title>
+  <desc id="desc">A soft blue illustration of an API test case list and a paper plane.</desc>
+  <defs>
+    <linearGradient id="tray" x1="72" y1="98" x2="169" y2="153" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#DBEAFE"/>
+      <stop offset="0.55" stop-color="#93C5FD"/>
+      <stop offset="1" stop-color="#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="sheet" x1="97" y1="45" x2="151" y2="129" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F8FBFF"/>
+      <stop offset="0.6" stop-color="#C9DDFF"/>
+      <stop offset="1" stop-color="#7DB2FF"/>
+    </linearGradient>
+    <linearGradient id="plane" x1="168" y1="64" x2="198" y2="91" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <filter id="softShadow" x="49" y="34" width="151" height="128" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="14"/>
+      <feGaussianBlur stdDeviation="12"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.188 0 0 0 0 0.384 0 0 0 0 0.824 0 0 0 0.18 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_2"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_2" result="shape"/>
+    </filter>
+  </defs>
+  <ellipse cx="119" cy="154" rx="56" ry="10" fill="#DBEAFE" opacity="0.62"/>
+  <circle cx="65" cy="88" r="4" fill="#60A5FA" opacity="0.68"/>
+  <circle cx="83" cy="112" r="5" fill="#BFDBFE"/>
+  <rect x="179" y="109" width="8" height="8" rx="2" fill="#DBEAFE" transform="rotate(-34 179 109)"/>
+  <rect x="62" y="131" width="9" height="9" rx="2" fill="#2563EB" opacity="0.65" transform="rotate(-31 62 131)"/>
+  <g filter="url(#softShadow)">
+    <path d="M76.5 101.5C77.49 96.536 81.847 92.95 86.909 92.95H154.862C159.796 92.95 164.063 96.37 165.147 101.184L174.447 142.484C175.956 149.183 170.861 155.55 163.994 155.55H75.523C68.841 155.55 63.786 149.514 64.986 142.94L76.5 101.5Z" fill="url(#tray)"/>
+    <path d="M85.8 106.2C86.52 102.92 89.426 100.58 92.784 100.58H154.148C157.427 100.58 160.286 102.814 161.091 105.992L169.145 137.777C170.276 142.242 166.9 146.58 162.294 146.58H80.914C76.457 146.58 73.113 142.514 73.965 138.139L85.8 106.2Z" fill="#DDEBFF" opacity="0.36"/>
+    <rect x="96" y="44" width="64" height="88" rx="12" fill="url(#sheet)"/>
+    <rect x="107" y="61" width="35" height="8" rx="4" fill="#EFF6FF"/>
+    <rect x="107" y="80" width="43" height="8" rx="4" fill="#EFF6FF"/>
+    <rect x="107" y="99" width="30" height="8" rx="4" fill="#EFF6FF"/>
+    <path d="M95.5 90.5H75.5C71.082 90.5 67.5 94.082 67.5 98.5V122.5" stroke="#EAF2FF" stroke-width="8" stroke-linecap="round"/>
+    <path d="M162 117.5H172C176.418 117.5 180 121.082 180 125.5V139" stroke="#EAF2FF" stroke-width="8" stroke-linecap="round"/>
+    <path d="M178.2 69.8L198.8 60.9C200.022 60.372 201.248 61.594 200.725 62.818L191.934 83.416C191.457 84.535 189.96 84.747 189.19 83.806L184.464 78.03L177.949 84.545C177.363 85.131 176.414 85.131 175.828 84.545L174.707 83.424C174.121 82.838 174.121 81.888 174.707 81.303L181.222 74.788L175.55 72.537C174.412 72.085 174.368 70.295 178.2 69.8Z" fill="url(#plane)"/>
+    <path d="M170.5 87.5C164.5 97.5 166.5 107.5 178.5 113.5" stroke="#A7C7F9" stroke-width="2" stroke-dasharray="5 5" stroke-linecap="round"/>
+  </g>
+</svg>

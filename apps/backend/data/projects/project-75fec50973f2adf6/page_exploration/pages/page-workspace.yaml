@@ -1,16 +1,8 @@
 page:
   id: page-workspace
   title: 百融百工
-  display_name: workspace
-  breadcrumb:
-  - workspace
   normalized_path: /workspace
-  structure_summary: 自动保存页面快照，发现 5 个元素。
-  env_urls:
-    test: ''
-  last_explored:
-    timestamp: '2026-07-09T16:25:34.649509Z'
-    run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  url: https://www.cybotstar.cn/workspace
 states:
 - id: snapshot-current
   type: root
@@ -28,10 +20,10 @@ states:
       code: 'getByRole(''button'', { name: ''创建智能体'' })'
       priority: 1
       verification:
-        checked: false
-        unique: null
-        visible: null
-        match_count: 0
+        checked: true
+        unique: true
+        visible: true
+        match_count: 1
     - kind: text
       code: 'getByText(''创建智能体'', { exact: true })'
       priority: 2
@@ -46,38 +38,36 @@ states:
       ordinal: 1
       container_role: div
       container_name: 创建智能体
-      ancestor_text: '创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心
-        发布管理 线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 工作台 类型
-        全部 范围 全部 状态 全部 排序 按创建时间排 / 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台
-        资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
-        / 创建智能体 '
-      scope_hint: '优先选择包含目标业务字段/卡片名的容器，例如 filter({ hasText: ''创建智能体 广场 探索广场 应用 批量任务
-        hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中'' }) 后再定位 ''创建智能体''。'
-    ancestor_chain:
-    - role: div
-      name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
-        自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 工作台 类型 全部 范围 全部 状态
-        全部 排序 按创建时间排
-    - role: aside
-      name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
-        自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
-    - role: div
-      name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
-        自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
-    - role: div
-      name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
-        自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
-    - role: div
-      name: 创建智能体
   - id: el-2
-    name: 排序 按创建时间排序 | 导入 创建
+    name: 发布管理
     role: clickable
-    text: 排序 按创建时间排序 | 导入 创建
+    text: 发布管理
     action_type: click
     visible: true
     locators:
     - kind: text
-      code: 'getByText(''排序 按创建时间排序 | 导入 创建'', { exact: true })'
+      code: 'getByText(''发布管理'', { exact: true })'
+      priority: 1
+      verification:
+        checked: true
+        unique: true
+        visible: true
+        match_count: 1
+    context:
+      is_ambiguous: false
+      sibling_count: 1
+      ordinal: 1
+      container_role: div
+      container_name: 发布管理 线上观测 自动优化
+  - id: el-3
+    name: 点击【⭐️收藏】 可将智能体添加到这里
+    role: clickable
+    text: 点击【⭐️收藏】 可将智能体添加到这里
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''点击【⭐️收藏】 可将智能体添加到这里'', { exact: true })'
       priority: 1
       verification:
         checked: false
@@ -89,119 +79,24 @@ states:
       sibling_count: 1
       ordinal: 1
       container_role: div
-      container_name: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建
-      ancestor_text: 工作台 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建 无插件智能体2 已发布 1 分析 使用
-        对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12 自主规划 Agent 测试_自主规划智能体 已发布 分析 使用
-        对话历史 hongbao.wang1 编辑于 2 / 工作台 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建 无插件智能体2
-        已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12 自主规划 Agent 测试_自主规划智能体
-        已发布 分析 使用 对
-      scope_hint: '优先选择包含目标业务字段/卡片名的容器，例如 filter({ hasText: ''工作台 类型 全部 范围 全部 状态 全部
-        排序 按创建时间排序 | 导入 创建 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 '' }) 后再定位 ''排序
-        按创建时间排序 | 导入 创建''。'
-    ancestor_chain:
-    - role: div
-      name: 工作台 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1
-        编辑于 2026-06-26 22:45:12 自主规划 Agent 测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1
-        编辑于 2
-    - role: div
-      name: 工作台 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1
-        编辑于 2026-06-26 22:45:12 自主规划 Agent 测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1
-        编辑于 2
-    - role: div
-      name: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建
-    - role: div
-      name: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建
-    - role: div
-      name: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建
-  - id: el-3
-    name: 按创建时间排序
-    role: clickable
-    text: 按创建时间排序
-    action_type: click
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''按创建时间排序'', { exact: true })'
-      priority: 1
-      verification:
-        checked: false
-        unique: null
-        visible: null
-        match_count: 0
-    context:
-      is_ambiguous: true
-      sibling_count: 2
-      ordinal: 1
-      container_role: div
-      container_name: 排序 按创建时间排序
-      ancestor_text: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建 / 类型 全部 范围 全部 状态 全部 排序 按创建时间排序
-        | 导入 创建 / 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建 / 排序 按创建时间排序 | 导入 创建 / 排序 按创建时间排序
-      scope_hint: '优先选择包含目标业务字段/卡片名的容器，例如 filter({ hasText: ''类型 全部 范围 全部 状态 全部 排序
-        按创建时间排序 | 导入 创建 / 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建 / 类型'' }) 后再定位 ''按创建时间排序''。'
-    ancestor_chain:
-    - role: div
-      name: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建
-    - role: div
-      name: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建
-    - role: div
-      name: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建
-    - role: div
-      name: 排序 按创建时间排序 | 导入 创建
-    - role: div
-      name: 排序 按创建时间排序
+      container_name: 点击【⭐️收藏】 可将智能体添加到这里
   - id: el-4
-    name: 按创建时间排序
-    role: clickable
-    text: 按创建时间排序
-    action_type: click
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''按创建时间排序'', { exact: true })'
-      priority: 1
-      verification:
-        checked: false
-        unique: null
-        visible: null
-        match_count: 0
-    context:
-      is_ambiguous: true
-      sibling_count: 2
-      ordinal: 2
-      container_role: div
-      container_name: 选择排序方式
-      ancestor_text: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建 / 排序 按创建时间排序 | 导入 创建 / 排序
-        按创建时间排序 / 按创建时间排序 / 选择排序方式
-      scope_hint: '优先选择包含目标业务字段/卡片名的容器，例如 filter({ hasText: ''类型 全部 范围 全部 状态 全部 排序
-        按创建时间排序 | 导入 创建 / 排序 按创建时间排序 | 导入 创建 / 排序 按创建时间排序 / 按创建时间排序'' }) 后再定位 ''按创建时间排序''。'
-    ancestor_chain:
-    - role: div
-      name: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建
-    - role: div
-      name: 排序 按创建时间排序 | 导入 创建
-    - role: div
-      name: 排序 按创建时间排序
-    - role: div
-      name: 按创建时间排序
-    - role: div
-      name: 选择排序方式
-  - id: el-5
-    name: 创建
-    role: button
-    text: 创建
-    action_type: click
+    name: 搜索智能体
+    role: textbox
+    text: ''
+    action_type: fill
     visible: true
     locators:
     - kind: role
-      code: 'getByRole(''button'', { name: ''创建'' })'
+      code: 'getByRole(''textbox'', { name: ''搜索智能体'' })'
       priority: 1
       verification:
-        checked: false
-        unique: null
-        visible: null
-        match_count: 0
+        checked: true
+        unique: true
+        visible: true
+        match_count: 1
     - kind: text
-      code: 'getByText(''创建'', { exact: true })'
+      code: 'getByText(''搜索智能体'', { exact: true })'
       priority: 2
       verification:
         checked: false
@@ -213,28 +108,327 @@ states:
       sibling_count: 1
       ordinal: 1
       container_role: div
-      container_name: 创建
-      ancestor_text: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建 / 类型 全部 范围 全部 状态 全部 排序 按创建时间排序
-        | 导入 创建 / 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建 / 排序 按创建时间排序 | 导入 创建 / 创建
-      scope_hint: '优先选择包含目标业务字段/卡片名的容器，例如 filter({ hasText: ''类型 全部 范围 全部 状态 全部 排序
-        按创建时间排序 | 导入 创建 / 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建 / 类型'' }) 后再定位 ''创建''。'
-    ancestor_chain:
-    - role: div
-      name: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建
-    - role: div
-      name: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建
-    - role: div
-      name: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建
-    - role: div
-      name: 排序 按创建时间排序 | 导入 创建
-    - role: div
-      name: 创建
+      container_name: 工作台
+  - id: el-5
+    name: 哈哈 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-10 13:42:28 自主规划 Agent
+    role: clickable
+    text: 哈哈 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-10 13:42:28 自主规划 Agent
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''哈哈 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-10 13:42:28 自主规划 Agent'',
+        { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: false
+      sibling_count: 1
+      ordinal: 1
+      container_role: div
+      container_name: 哈哈 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-10 13:42:28 自主规划 Agent
+        无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45
+  - id: el-6
+    name: 发布
+    role: clickable
+    text: 发布
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''发布'', { exact: true })'
+      priority: 1
+      verification:
+        checked: true
+        unique: true
+        visible: true
+        match_count: 1
+    context:
+      is_ambiguous: false
+      sibling_count: 1
+      ordinal: 1
+      container_role: div
+      container_name: 编辑 发布
+  - id: el-7
+    name: 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12 自主规划 Agent
+    role: clickable
+    text: 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12 自主规划 Agent
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12
+        自主规划 Agent'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: false
+      sibling_count: 1
+      ordinal: 1
+      container_role: div
+      container_name: 哈哈 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-10 13:42:28 自主规划 Agent
+        无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45
+  - id: el-8
+    name: 已发布
+    role: clickable
+    text: 已发布
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''已发布'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: true
+      sibling_count: 8
+      ordinal: 1
+      container_role: div
+      container_name: 无插件智能体2 已发布
+  - id: el-9
+    name: 已发布
+    role: clickable
+    text: 已发布
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''已发布'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: true
+      sibling_count: 8
+      ordinal: 2
+      container_role: div
+      container_name: 已发布
+  - id: el-10
+    name: 测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:44:36 自主规划 Agent
+    role: clickable
+    text: 测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:44:36 自主规划 Agent
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:44:36
+        自主规划 Agent'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: false
+      sibling_count: 1
+      ordinal: 1
+      container_role: div
+      container_name: 哈哈 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-10 13:42:28 自主规划 Agent
+        无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45
+  - id: el-11
+    name: 已发布
+    role: clickable
+    text: 已发布
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''已发布'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: true
+      sibling_count: 8
+      ordinal: 3
+      container_role: div
+      container_name: 测试_自主规划智能体 已发布
+  - id: el-12
+    name: 已发布
+    role: clickable
+    text: 已发布
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''已发布'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: true
+      sibling_count: 8
+      ordinal: 4
+      container_role: div
+      container_name: 已发布
+  - id: el-13
+    name: 卡片测试 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-07 07:21:19 自主规划 Agent
+    role: clickable
+    text: 卡片测试 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-07 07:21:19 自主规划 Agent
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''卡片测试 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-07 07:21:19
+        自主规划 Agent'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: false
+      sibling_count: 1
+      ordinal: 1
+      container_role: div
+      container_name: 哈哈 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-10 13:42:28 自主规划 Agent
+        无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45
+  - id: el-14
+    name: 已发布
+    role: clickable
+    text: 已发布
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''已发布'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: true
+      sibling_count: 8
+      ordinal: 5
+      container_role: div
+      container_name: 卡片测试 已发布
+  - id: el-15
+    name: 已发布
+    role: clickable
+    text: 已发布
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''已发布'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: true
+      sibling_count: 8
+      ordinal: 6
+      container_role: div
+      container_name: 已发布
+  - id: el-16
+    name: textin测试 已发布 textin 分析 使用 对话历史 hongbao.wang1 编辑于 2026-05-20 10:38:27 自主规划
+      Agent
+    role: clickable
+    text: textin测试 已发布 textin 分析 使用 对话历史 hongbao.wang1 编辑于 2026-05-20 10:38:27 自主规划
+      Agent
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''textin测试 已发布 textin 分析 使用 对话历史 hongbao.wang1 编辑于 2026-05-20
+        10:38:27 自主规划 Agent'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: false
+      sibling_count: 1
+      ordinal: 1
+      container_role: div
+      container_name: 哈哈 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-10 13:42:28 自主规划 Agent
+        无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45
+  - id: el-17
+    name: 已发布
+    role: clickable
+    text: 已发布
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''已发布'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: true
+      sibling_count: 8
+      ordinal: 7
+      container_role: div
+      container_name: textin测试 已发布
+  - id: el-18
+    name: 已发布
+    role: clickable
+    text: 已发布
+    action_type: click
+    visible: true
+    locators:
+    - kind: text
+      code: 'getByText(''已发布'', { exact: true })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: true
+      sibling_count: 8
+      ordinal: 8
+      container_role: div
+      container_name: 已发布
   assertion_texts:
   - 百融百工
   - 创建智能体
-  - 按创建时间排序
-  - 创建
-  - 排序 按创建时间排序 | 导入 创建
-metadata:
-  captured_at: '2026-07-09T16:25:26.747684+00:00'
-  module: 工作台
+  - 发布管理
+  - 可将智能体添加到这里
+  - 哈哈
+  - 发布
+  - 无插件智能体2
+  - 已发布
+  - 测试_自主规划智能体
+  - 搜索智能体
+  - 点击【⭐️收藏】 可将智能体添加到这里
+  - 哈哈 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-10 13:42:28 自主规划 Agent
+  - 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12 自主规划 Agent
+  - 测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:44:36 自主规划 Agent
+  - 卡片测试 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-07 07:21:19 自主规划 Agent
+  - textin测试 已发布 textin 分析 使用 对话历史 hongbao.wang1 编辑于 2026-05-20 10:38:27 自主规划 Agent

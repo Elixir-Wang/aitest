@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from app.agents.page_exploration.utils.page_id import make_page_id
+from app.agents.page_exploration.utils.element_key import build_element_key, ensure_unique_within_state
 from app.core import settings
 from app.core.db import connect as default_connect
 from app.repositories import exploration_run_repo as default_exploration_run_repo
@@ -287,6 +288,37 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
         visible_text_blocks=visible_text_blocks,
         elements=artifact_elements,
     )
+    state_context = snapshot.get("state_context") if isinstance(snapshot.get("state_context"), dict) else {}
+    state_id = _string(state_context.get("state_id") or "snapshot-current")
+    state_type = _string(state_context.get("state_type") or "root")
+    observed_state = {
+        "id": state_id,
+        "type": state_type,
+        "title": title,
+        "url": url,
+        "elements": artifact_elements,
+        "assertion_texts": assertion_texts,
+        "children": [],
+    }
+    triggered_by = state_context.get("triggered_by")
+    if isinstance(triggered_by, dict):
+        observed_state["triggered_by"] = triggered_by
+    overlay = snapshot.get("overlay")
+    if state_type != "root" and isinstance(overlay, dict):
+        observed_state["container"] = _snapshot_overlay_container(overlay)
+
+    existing_states: list[dict] = []
+    existing_path = _project_file_storage_root() / project_id / "page_exploration" / "pages" / f"{page_id}.yaml"
+    if existing_path.exists():
+        import yaml
+        existing = yaml.safe_load(existing_path.read_text(encoding="utf-8")) or {}
+        if isinstance(existing.get("states"), list):
+            existing_states = existing["states"]
+    states = _upsert_snapshot_state(
+        existing_states,
+        observed_state,
+        parent_state_id=_string(state_context.get("parent_state_id")),
+    )
     artifact = {
         "page": {
             "id": page_id,
@@ -294,16 +326,7 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
             "url": url,
             "normalized_path": normalized_path,
         },
-        "states": [
-            {
-                "id": "snapshot-current",
-                "type": "root",
-                "title": title,
-                "url": url,
-                "elements": artifact_elements,
-                "assertion_texts": assertion_texts,
-            }
-        ],
+        "states": states,
     }
 
     saved_path = Path(
@@ -339,6 +362,53 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
             exc,
         )
     return saved_path
+
+
+def _find_snapshot_state(states: list[dict], state_id: str) -> dict | None:
+    for state in states:
+        if not isinstance(state, dict):
+            continue
+        if _string(state.get("id")) == state_id:
+            return state
+        found = _find_snapshot_state(state.get("children") if isinstance(state.get("children"), list) else [], state_id)
+        if found is not None:
+            return found
+    return None
+
+
+def _upsert_snapshot_state(states: list[dict], observed: dict, *, parent_state_id: str) -> list[dict]:
+    current = _find_snapshot_state(states, _string(observed.get("id")))
+    if current is not None:
+        children = current.get("children") if isinstance(current.get("children"), list) else []
+        current.clear()
+        current.update({**observed, "children": children})
+        return states
+    if parent_state_id:
+        parent = _find_snapshot_state(states, parent_state_id)
+        if parent is None or not isinstance(observed.get("triggered_by"), dict):
+            return states
+        parent.setdefault("children", []).append(observed)
+        return states
+    if _string(observed.get("type")) == "root":
+        return [observed]
+    return states
+
+
+def _snapshot_overlay_container(overlay: dict) -> dict:
+    container = {
+        "role": _string(overlay.get("role")),
+        "name": _string(overlay.get("name")),
+        "locators": [],
+    }
+    for selector in (overlay.get("primary_selector"), overlay.get("fallback_selector")):
+        if not isinstance(selector, dict) or not selector.get("code"):
+            continue
+        container["locators"].append({
+            "kind": _string(selector.get("kind") or "contextual"),
+            "code": _string(selector.get("code")).removeprefix("page."),
+            "verification": selector.get("verification") or {},
+        })
+    return container
 
 
 def _register_page_artifact_file(
@@ -709,6 +779,13 @@ def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) ->
     counts = _element_group_counts(elements)
     ordinals: dict[tuple[str, str], int] = {}
     seen_ax_keys: set[str] = set()
+    element_keys = ensure_unique_within_state(
+        build_element_key({
+            "role": _string(element.get("role") or "element"),
+            "name": _string(element.get("name") or element.get("text") or ""),
+        })
+        for element in elements if isinstance(element, dict)
+    )
     # DOM 元素全部保留（不去重，保持列表完整性）
     for element in elements:
         if not isinstance(element, dict):
@@ -722,6 +799,7 @@ def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) ->
         action_type = _normalize_action_type(role, _string(element.get("action_type") or ""))
         artifact_element: dict = {
             "id": _string(element.get("ref") or f"el-{len(result) + 1}"),
+            "key": next(element_keys),
             "name": name,
             "role": role,
             "text": element.get("text"),
@@ -797,15 +875,32 @@ def _attach_verification_metadata(
             selector_index[_normalize_locator_code(sel["code"])] = sel
 
     attached: list[dict] = []
+    for key in ("primary_selector", "fallback_selector"):
+        selector = observed_element.get(key)
+        if not isinstance(selector, dict) or not selector.get("code"):
+            continue
+        verification = selector.get("verification") if isinstance(selector.get("verification"), dict) else {}
+        if not (verification.get("checked") and verification.get("unique") and verification.get("visible")):
+            continue
+        attached.append({
+            "kind": _string(selector.get("kind") or "contextual"),
+            "code": _normalize_locator_code(selector["code"]),
+            "priority": len(attached) + 1,
+            "verification": dict(verification),
+        })
     for candidate in candidates:
         code = _normalize_locator_code(candidate.get("code", ""))
+        if any(item.get("code") == code for item in attached):
+            continue
         matched_selector = selector_index.get(code)
         if matched_selector and isinstance(matched_selector.get("verification"), dict):
             new_candidate = dict(candidate)
+            new_candidate["priority"] = len(attached) + 1
             new_candidate["verification"] = dict(matched_selector["verification"])
             attached.append(new_candidate)
         else:
             new_candidate = dict(candidate)
+            new_candidate["priority"] = len(attached) + 1
             new_candidate["verification"] = {"checked": False, "unique": None, "visible": None, "match_count": 0}
             attached.append(new_candidate)
     return attached

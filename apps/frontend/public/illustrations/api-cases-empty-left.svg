@@ -1,0 +1,51 @@
+<svg width="240" height="180" viewBox="0 0 240 180" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">API cases empty illustration</title>
+  <desc id="desc">A soft blue illustration of a folder containing API test case documents.</desc>
+  <defs>
+    <linearGradient id="folderFace" x1="65" y1="88" x2="176" y2="166" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#DBEAFE"/>
+      <stop offset="0.52" stop-color="#93C5FD"/>
+      <stop offset="1" stop-color="#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="folderBack" x1="65" y1="66" x2="173" y2="125" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EFF6FF"/>
+      <stop offset="1" stop-color="#BBD7FF"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="105" y1="31" x2="154" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F8FBFF"/>
+      <stop offset="1" stop-color="#B8D3FF"/>
+    </linearGradient>
+    <linearGradient id="codeBadge" x1="98" y1="105" x2="142" y2="145" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <filter id="softShadow" x="31" y="23" width="178" height="148" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="14"/>
+      <feGaussianBlur stdDeviation="12"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.188 0 0 0 0 0.384 0 0 0 0 0.824 0 0 0 0.2 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1" result="shape"/>
+    </filter>
+  </defs>
+  <ellipse cx="120" cy="154" rx="59" ry="11" fill="#DBEAFE" opacity="0.65"/>
+  <circle cx="48" cy="102" r="7" fill="#DBEAFE"/>
+  <circle cx="192" cy="92" r="5" fill="#93C5FD" opacity="0.75"/>
+  <rect x="55" y="68" width="9" height="9" rx="2" fill="#1E3A8A" opacity="0.55" transform="rotate(-37 55 68)"/>
+  <rect x="178" y="126" width="9" height="9" rx="2" fill="#2563EB" opacity="0.72" transform="rotate(-30 178 126)"/>
+  <rect x="67" y="121" width="13" height="13" rx="3" fill="#BFDBFE" transform="rotate(-38 67 121)"/>
+  <g filter="url(#softShadow)">
+    <path d="M75 72.5C75 66.701 79.701 62 85.5 62H105.2C108.551 62 111.7 63.596 113.681 66.299L118.1 72.331C120.081 75.034 123.23 76.63 126.581 76.63H161.5C167.299 76.63 172 81.331 172 87.13V138.5C172 144.299 167.299 149 161.5 149H85.5C79.701 149 75 144.299 75 138.5V72.5Z" fill="url(#folderBack)"/>
+    <rect x="95" y="36" width="65" height="88" rx="12" fill="url(#paper)" transform="rotate(8 95 36)"/>
+    <rect x="107.5" y="53" width="40" height="7" rx="3.5" fill="#EAF2FF"/>
+    <rect x="104" y="70" width="49" height="7" rx="3.5" fill="#EAF2FF"/>
+    <rect x="110" y="88" width="31" height="7" rx="3.5" fill="#EAF2FF"/>
+    <path d="M64.973 91.5C66.106 86.532 70.526 83 75.622 83H169.313C174.247 83 178.57 86.315 179.852 91.081L191.32 133.737C193.132 140.476 188.052 147.1 181.073 147.1H69.159C62.351 147.1 57.299 140.782 58.809 134.144L64.973 91.5Z" fill="url(#folderFace)"/>
+    <path d="M72 96C72.714 92.518 75.794 90 79.348 90H168.18C171.619 90 174.626 92.365 175.424 95.711L185.3 137.1C186.418 141.787 182.864 146.3 178.045 146.3H70.357C65.665 146.3 62.137 142.014 63.029 137.408L72 96Z" fill="#DDEBFF" opacity="0.32"/>
+    <rect x="96" y="103" width="50" height="42" rx="13" fill="url(#codeBadge)"/>
+    <path d="M112.2 119.4C108.9 120.8 108.9 125.2 112.2 126.6" stroke="#EFF6FF" stroke-width="4" stroke-linecap="round"/>
+    <path d="M129.8 119.4C133.1 120.8 133.1 125.2 129.8 126.6" stroke="#EFF6FF" stroke-width="4" stroke-linecap="round"/>
+    <path d="M122.6 116L119.4 130" stroke="#EFF6FF" stroke-width="4" stroke-linecap="round"/>
+  </g>
+</svg>

@@ -91,6 +91,15 @@ test("project api automation debug dialog keeps results visible with compact req
   assert.doesNotMatch(projectPageSource, /className="min-h-44 font-mono text-xs"/);
 });
 
+test("project api automation debug dialog environment select keeps global select styling", () => {
+  assert.match(
+    projectPageSource,
+    /<SelectTrigger className="w-full lg:w-56">\s*<SelectValue placeholder="选择接口环境" \/>/,
+  );
+  assert.match(projectPageSource, /<SelectContent position="popper">/);
+  assert.doesNotMatch(projectPageSource, /<SelectTrigger className="h-9 w-full bg-background lg:w-56">/);
+});
+
 test("project api automation endpoint groups are collapsible with count badges", () => {
   assert.match(projectPageSource, /aria-label="搜索 method、path、tag"/);
   assert.match(projectPageSource, /placeholder="搜索"/);

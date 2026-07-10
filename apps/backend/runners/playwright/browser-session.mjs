@@ -134,14 +134,19 @@ async function gotoUrl(url) {
 
 async function observePage() {
   const facts = await collectDomFacts(page);
+  const overlay = facts.overlay ? await verifiedOverlayDescriptor(facts.overlay) : null;
   const accessibilityTree = await collectAccessibilityTree(page);
   const visibleTextBlocks = await collectVisibleTextBlocks(page);
   const elements = [];
   for (const [index, fact] of facts.elements.entries()) {
-    const selectors = await verifyBestElementSelectors(page, fact);
+    let selectors = await verifyBestElementSelectors(page, fact);
+    if (overlay?.primary_selector?.code) {
+      selectors = await overlayScopedSelectors(overlay.primary_selector.code, selectors, fact);
+    }
     const id = stableElementId(fact, index + 1);
     const element = {
       id,
+      action_locator: fact.action_locator || "",
       role: fact.role,
       role_source: fact.role_source || "",
       name: fact.name,
@@ -165,6 +170,8 @@ async function observePage() {
     url: page.url(),
     normalized_url: normalizeUrl(page.url()),
     title: facts.title || page.url(),
+    interaction_scope: facts.interaction_scope || "page",
+    overlay,
     state_signature: signatureFor({
       url: normalizeUrl(page.url()),
       title: facts.title,
@@ -798,7 +805,47 @@ async function scopedQuery(command) {
   const text = String(command.text || "").trim();
   const role = String(command.role || "").trim();
   const limit = Math.min(Math.max(Number(command.limit || 30), 1), 80);
-  const result = await page.evaluate(({ scope, text, role, limit }) => {
+  const defaultScopes = [
+    "[role='dialog']",
+    "[role='popover']",
+    "[role='alertdialog']",
+    "[role='menu']",
+    ".ant-popover",
+    ".ant-modal",
+    ".el-dialog",
+    "main",
+    "body",
+  ];
+
+  try {
+    let scopeUsed = scope;
+    let rootLocator = scope
+      ? (parsePlaywrightLocatorString(page, scope) || page.locator(scope))
+      : null;
+    if (!rootLocator) {
+      for (const selector of defaultScopes) {
+        const candidate = page.locator(selector);
+        const count = await candidate.count();
+        let hasVisibleMatch = false;
+        for (let index = 0; index < count; index += 1) {
+          if (await candidate.nth(index).isVisible().catch(() => false)) {
+            hasVisibleMatch = true;
+            break;
+          }
+        }
+        if (hasVisibleMatch) {
+          rootLocator = candidate;
+          scopeUsed = selector;
+          break;
+        }
+      }
+    }
+    if (!rootLocator) {
+      rootLocator = page.locator("body");
+      scopeUsed = "body";
+    }
+
+    const result = await rootLocator.evaluateAll((roots, { text, role, limit }) => {
     const clean = (value, max = 180) => String(value || "").trim().replace(/\s+/g, " ").slice(0, max);
     const visible = (el) => {
       const style = window.getComputedStyle(el);
@@ -823,36 +870,19 @@ async function scopedQuery(command) {
       const tag = el.tagName.toLowerCase();
       if (tag === "button") return "button";
       if (tag === "a") return "link";
+      if (el.isContentEditable) return "textbox";
       if (tag === "textarea" || tag === "input") return "textbox";
       if (tag === "select") return "combobox";
       return tag;
     };
-    const selectors = scope
-      ? [scope]
-      : [
-          "[role='dialog']",
-          "[role='popover']",
-          "[role='alertdialog']",
-          "[role='menu']",
-          ".ant-popover",
-          ".ant-modal",
-          ".el-dialog",
-          "main",
-          "body",
-        ];
-    const roots = [];
-    for (const selector of selectors) {
-      for (const el of Array.from(document.querySelectorAll(selector))) {
-        if (visible(el)) roots.push(el);
-      }
-      if (roots.length) break;
-    }
     const query = [
       "button",
       "a",
       "input",
       "textarea",
       "select",
+      "[contenteditable='true']",
+      "[contenteditable='plaintext-only']",
       "[role]",
       "[onclick]",
       "[tabindex]",
@@ -906,12 +936,23 @@ async function scopedQuery(command) {
     return {
       url: location.href,
       title: document.title,
-      scope_used: roots[0] ? (scope || selectors.find((selector) => document.querySelector(selector)) || "body") : "",
       match_count: matches.length,
       matches,
     };
-  }, { scope, text, role, limit });
-  return result;
+    }, { text, role, limit });
+    const rootCount = await rootLocator.count();
+    return { ...result, scope_used: result.match_count || rootCount ? scopeUsed : "" };
+  } catch (error) {
+    return {
+      url: page.url(),
+      title: await page.title().catch(() => ""),
+      scope_used: scope,
+      match_count: 0,
+      matches: [],
+      error_type: "invalid_selector",
+      error_summary: String(error?.message || error).slice(0, 300),
+    };
+  }
 }
 
 async function observeOverlays() {
@@ -1047,7 +1088,72 @@ async function visibleLocators(locator) {
       visible.push(candidate);
     }
   }
-  return visible;
+  const overlayMatches = [];
+  for (const candidate of visible) {
+    const inOverlay = await candidate.evaluate((node) => Boolean(
+      node instanceof Element && node.closest("[data-ai-testing-active-overlay]")
+    )).catch(() => false);
+    if (inOverlay) overlayMatches.push(candidate);
+  }
+  const activeOverlay = await page.locator("[data-ai-testing-active-overlay]").count().catch(() => 0);
+  return activeOverlay ? overlayMatches : visible;
+}
+
+async function verifiedOverlayDescriptor(overlay) {
+  const code = String(overlay.locator || "");
+  if (!code) return null;
+  const candidate = await verifyLocatorCode(code, "overlay_container");
+  return {
+    type: overlay.type || "popover",
+    role: overlay.role || "",
+    name: overlay.name || "",
+    primary_selector: candidate,
+    fallback_selector: null,
+  };
+}
+
+async function overlayScopedSelectors(containerCode, selectors, fact) {
+  const semanticTargets = [];
+  if (fact.role && fact.name && fact.role_source !== "inferred") {
+    semanticTargets.push(`getByRole('${escapeLocatorValue(fact.role)}', { name: '${escapeLocatorValue(fact.name)}', exact: true })`);
+  }
+  if (fact.label) semanticTargets.push(`getByLabel('${escapeLocatorValue(fact.label)}')`);
+  const candidates = [
+    ...semanticTargets.map((code) => ({ code })),
+    selectors.primary_selector,
+    selectors.fallback_selector,
+  ].filter(Boolean);
+  const verified = [];
+  for (const candidate of candidates) {
+    const target = String(candidate.code || "").replace(/^page\./, "");
+    if (!target || target.startsWith("locator(")) continue;
+    verified.push(await verifyLocatorCode(`${containerCode}.${target}`, "overlay_context"));
+  }
+  const usable = verified.filter((item) => item.verification?.unique && item.verification?.visible);
+  return usable.length
+    ? { primary_selector: usable[0], fallback_selector: usable[1] || selectors.primary_selector || null }
+    : selectors;
+}
+
+function escapeLocatorValue(value) {
+  return String(value || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+async function verifyLocatorCode(code, suitability) {
+  const locator = parsePlaywrightLocatorString(page, code);
+  const matchCount = locator ? await locator.count().catch(() => 0) : 0;
+  const unique = matchCount === 1;
+  return {
+    kind: "contextual",
+    suitability,
+    code,
+    verification: {
+      checked: true,
+      unique,
+      visible: unique ? await locator.first().isVisible().catch(() => false) : false,
+      match_count: matchCount,
+    },
+  };
 }
 
 async function cleanupTransientOverlays() {
@@ -1215,6 +1321,8 @@ async function currentPageState() {
 
 async function collectDomFacts(browserPage) {
   return browserPage.evaluate(() => {
+    const actionRefAttribute = "data-ai-testing-action-ref";
+    const activeOverlayAttribute = "data-ai-testing-active-overlay";
     const clean = (value, limit = 160) => String(value || "").trim().replace(/\s+/g, " ").slice(0, limit);
     const interactiveSelector = [
       "a",
@@ -1222,6 +1330,8 @@ async function collectDomFacts(browserPage) {
       "input",
       "textarea",
       "select",
+      "[contenteditable='true']",
+      "[contenteditable='plaintext-only']",
       "[role='button']",
       "[role='link']",
       "[role='tab']",
@@ -1291,6 +1401,7 @@ async function collectDomFacts(browserPage) {
       if (explicitRole) return { role: explicitRole, roleSource: "explicit" };
       if (tagName === "a") return { role: "link", roleSource: "native" };
       if (tagName === "button") return { role: "button", roleSource: "native" };
+      if (el.isContentEditable) return { role: "textbox", roleSource: "native" };
       if (tagName === "textarea") return { role: "textbox", roleSource: "native" };
       if (tagName === "select") return { role: "combobox", roleSource: "native" };
       if (tagName === "input") {
@@ -1350,12 +1461,65 @@ async function collectDomFacts(browserPage) {
         stable_text: containerName,
       };
     };
+    const overlaySelector = [
+      "[role='dialog']",
+      "[role='popover']",
+      "[role='alertdialog']",
+      "[role='menu']",
+      "dialog",
+      "[class*='popover' i]",
+      "[class*='modal' i]",
+      "[class*='drawer' i]",
+    ].join(",");
+    const overlayCandidates = Array.from(document.querySelectorAll(overlaySelector)).filter(visible);
+    for (const el of Array.from(document.body?.querySelectorAll("div,section,aside") || [])) {
+      if (!visible(el) || overlayCandidates.includes(el)) continue;
+      const style = window.getComputedStyle(el);
+      const zIndex = Number.parseInt(style.zIndex, 10) || 0;
+      if (["fixed", "absolute"].includes(style.position) && zIndex > 0 && el.querySelector("button,input,textarea,select,[contenteditable='true'],[role]")) {
+        overlayCandidates.push(el);
+      }
+    }
+    const activeOverlay = overlayCandidates
+      .map((el) => ({
+        el,
+        zIndex: Number.parseInt(window.getComputedStyle(el).zIndex, 10) || 0,
+        area: el.getBoundingClientRect().width * el.getBoundingClientRect().height,
+      }))
+      .sort((left, right) => right.zIndex - left.zIndex || right.area - left.area)[0]?.el || null;
+    const overlayTypeOf = (el) => {
+      const role = clean(el?.getAttribute("role"), 40);
+      const className = String(el?.getAttribute("class") || "");
+      if (role === "dialog" || role === "alertdialog" || el?.tagName.toLowerCase() === "dialog") return "dialog";
+      if (role === "menu") return "menu";
+      if (/drawer/i.test(className)) return "drawer";
+      return "popover";
+    };
+    const reusableOverlayCss = (el) => {
+      if (!el) return "";
+      const testId = el.getAttribute("data-testid") || el.getAttribute("data-test-id") || el.getAttribute("data-test");
+      if (testId) return `[data-testid="${CSS.escape(testId)}"]`;
+      if (el.id) return `#${CSS.escape(el.id)}`;
+      const role = el.getAttribute("role");
+      if (role) return `[role="${CSS.escape(role)}"]`;
+      const stableClass = Array.from(el.classList).find((name) => name && !/^(css-|[a-z]{1,2}\d|\w{8,})/i.test(name));
+      return stableClass ? `.${CSS.escape(stableClass)}` : cssSelectorOf(el);
+    };
+    for (const el of document.querySelectorAll(`[${activeOverlayAttribute}]`)) {
+      el.removeAttribute(activeOverlayAttribute);
+    }
+    activeOverlay?.setAttribute(activeOverlayAttribute, "true");
+    const inActiveScope = (el) => !activeOverlay || activeOverlay === el || activeOverlay.contains(el);
     const pointerCandidateSelector = "div,span,li,article,section";
-    const explicitCandidates = Array.from(document.querySelectorAll(interactiveSelector));
+    for (const el of document.querySelectorAll(`[${actionRefAttribute}]`)) {
+      el.removeAttribute(actionRefAttribute);
+    }
+    const explicitCandidates = Array.from(document.querySelectorAll(interactiveSelector)).filter(inActiveScope);
     const explicitSet = new Set(explicitCandidates);
     const pointerCandidates = Array.from(document.querySelectorAll(pointerCandidateSelector))
       .filter((el) => !explicitSet.has(el))
       .filter(visible)
+      .filter(inActiveScope)
       .filter((el) => hasClickableHint(el))
       .filter((el) => clean(el.innerText || el.textContent, 160))
       .slice(0, 40);
@@ -1384,15 +1548,18 @@ async function collectDomFacts(browserPage) {
   const elementFacts = [...explicitCandidates, ...pointerCandidates]
     .filter(visible)
     .map((el, index) => {
+      const actionRef = `element-${index + 1}`;
+      el.setAttribute(actionRefAttribute, actionRef);
       const { role, roleSource } = roleOf(el);
       const tagName = el.tagName.toLowerCase();
       const name = labelOf(el);
-      const actionType = ["input", "textarea", "select"].includes(tagName) && !["button", "checkbox", "radio"].includes(role) ? "fill" : "click";
-      const nativeInteractive = ["a", "button", "input", "textarea", "select"].includes(tagName);
+      const actionType = (["input", "textarea", "select"].includes(tagName) || el.isContentEditable) && !["button", "checkbox", "radio"].includes(role) ? "fill" : "click";
+      const nativeInteractive = ["a", "button", "input", "textarea", "select"].includes(tagName) || el.isContentEditable;
       const clickHint = hasClickableHint(el);
       const ancestor_chain = ancestorChainOf(el);
       return {
         index,
+        action_locator: `page.locator('[${actionRefAttribute}="${actionRef}"]')`,
         role,
         role_source: roleSource,
         name,
@@ -1443,6 +1610,13 @@ async function collectDomFacts(browserPage) {
       .map((item) => clean(item.textContent));
     return {
       title: document.title || location.pathname || location.href,
+      interaction_scope: activeOverlay ? "overlay" : "page",
+      overlay: activeOverlay ? {
+        type: overlayTypeOf(activeOverlay),
+        role: clean(activeOverlay.getAttribute("role"), 40),
+        name: labelOf(activeOverlay),
+        locator: `page.locator('${reusableOverlayCss(activeOverlay).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')`,
+      } : null,
       body_text: clean(document.body?.innerText || "", 800),
       elements: elementFacts,
       links,

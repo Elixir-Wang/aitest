@@ -23,12 +23,18 @@ test("exploration overview uses a plain dialogue transcript instead of the old e
   assert.match(taskInfoPanelSource, /function ToolTranscriptItem\(/);
   assert.match(taskInfoPanelSource, /useState<Set<string>>/);
   assert.match(taskInfoPanelSource, /<button[\s\S]*aria-expanded=/);
-  assert.doesNotMatch(taskInfoPanelSource, /border-l/);
   assert.doesNotMatch(taskInfoPanelSource, /SquareTerminal/);
-  assert.doesNotMatch(taskInfoPanelSource, /grid-cols-\[28px_minmax\(0,1fr\)\]/);
   assert.doesNotMatch(pageSource, /实时动作/);
   assert.doesNotMatch(pageSource, /动作列表/);
   assert.doesNotMatch(pageSource, /张卡片/);
+});
+
+test("exploration overview uses a flat shell and status-linked execution traces", () => {
+  assert.match(pageSource, /<ShellSection className="rounded-none border-0 bg-transparent p-0">/);
+  assert.match(taskInfoPanelSource, /isLast=\{index === steps\.length - 1\}/);
+  assert.match(taskInfoPanelSource, /border-dashed/);
+  assert.match(taskInfoPanelSource, /<Bot className=/);
+  assert.match(taskInfoPanelSource, /border-primary\/25/);
 });
 
 test("exploration detail breadcrumb uses the loaded run title without fallback", () => {
@@ -91,7 +97,7 @@ test("exploration progress dedupes live and snapshot events by stable event id",
 test("exploration output is a right-side card with running status in the header", () => {
   assert.match(taskInfoPanelSource, /探索输出/);
   assert.match(taskInfoPanelSource, /h-\[calc\(100vh-210px\)\]/);
-  assert.match(taskInfoPanelSource, /rounded-xl border border-border\/70 bg-card text-card-foreground/);
+  assert.match(taskInfoPanelSource, /rounded-lg border border-border\/70 bg-card text-card-foreground/);
   assert.doesNotMatch(taskInfoPanelSource, /bg-slate-50\/80/);
   assert.match(taskInfoPanelSource, /function RunStatusBadge/);
   assert.match(taskInfoPanelSource, /className="ml-auto"/);

@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="30 -50 580 580" role="img" aria-labelledby="title desc">
+  <title id="title">A Orbit logo</title>
+  <desc id="desc">A dimensional blue letter A crossed by a cyan orbital ring with a floating sphere.</desc>
+
+  <defs>
+    <linearGradient id="a-left" x1="210" y1="376" x2="356" y2="72" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#123BEB"/>
+      <stop offset="0.52" stop-color="#1769F5"/>
+      <stop offset="1" stop-color="#20B8FF"/>
+    </linearGradient>
+    <linearGradient id="a-right" x1="338" y1="88" x2="455" y2="409" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1746DD"/>
+      <stop offset="0.58" stop-color="#167DEB"/>
+      <stop offset="1" stop-color="#8A50F1"/>
+    </linearGradient>
+    <linearGradient id="a-ridge" x1="273" y1="273" x2="389" y2="77" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#258EFF" stop-opacity="0"/>
+      <stop offset="0.48" stop-color="#79D8FF" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.5"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1="82" y1="354" x2="568" y2="170" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#12CFF2"/>
+      <stop offset="0.42" stop-color="#078CFF"/>
+      <stop offset="0.78" stop-color="#1551EF"/>
+      <stop offset="1" stop-color="#22C8EB"/>
+    </linearGradient>
+    <radialGradient id="sphere" cx="35%" cy="25%" r="72%">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.12" stop-color="#78ECFF"/>
+      <stop offset="0.52" stop-color="#139CF5"/>
+      <stop offset="1" stop-color="#4A3DE9"/>
+    </radialGradient>
+    <linearGradient id="pixel" x1="56" y1="291" x2="131" y2="376" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#14D1ED"/>
+      <stop offset="1" stop-color="#1643EF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rear orbital arc -->
+  <path
+    d="M100 270C132 215 221 181 310 168C403 154 502 157 558 187"
+    fill="none"
+    stroke="url(#orbit)"
+    stroke-width="8"
+    stroke-linecap="round"
+  />
+
+  <!-- Dimensional A -->
+  <path
+    d="M159 360L284 117C304 78 329 58 360 58C393 58 417 80 435 119L530 335C540 358 538 382 526 399C514 417 493 425 474 421C455 418 441 404 431 382L355 195L283 341C276 355 266 362 250 362Z"
+    fill="url(#a-right)"
+  />
+  <path
+    d="M159 360L284 117C304 78 329 58 360 58C377 58 390 64 402 76C380 68 360 82 344 114L283 341C276 355 266 362 250 362Z"
+    fill="url(#a-left)"
+  />
+  <path
+    d="M273 275L344 114C360 82 380 68 402 76C389 68 375 64 360 64C332 64 310 84 291 121L215 271Z"
+    fill="url(#a-ridge)"
+  />
+
+  <!-- Pixel trail -->
+  <g fill="url(#pixel)">
+    <path d="M70 289H91L84 310H62Z"/>
+    <path d="M55 327H78L70 350H47Z"/>
+    <path d="M98 321H126L117 349H89Z"/>
+    <path d="M73 361H101L92 389H64Z"/>
+    <path d="M111 360H148L136 397H99Z"/>
+  </g>
+
+  <!-- Foreground orbital sweep -->
+  <path
+    d="M150 330C222 350 319 345 413 318C510 290 574 248 584 204C590 177 574 160 546 153C578 154 600 166 606 187C620 237 555 302 446 345C334 389 216 402 132 375Z"
+    fill="url(#orbit)"
+  />
+  <path
+    d="M151 330C226 350 322 343 416 316"
+    fill="none"
+    stroke="#72E9FF"
+    stroke-width="3"
+    stroke-linecap="round"
+    opacity="0.45"
+  />
+
+  <!-- Orbital sphere -->
+  <circle cx="506" cy="116" r="25" fill="url(#sphere)"/>
+  <ellipse cx="497" cy="106" rx="8" ry="5" fill="#FFFFFF" opacity="0.55"/>
+</svg>

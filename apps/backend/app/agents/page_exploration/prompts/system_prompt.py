@@ -71,6 +71,7 @@ click / fill 工具失败时会返回结构化错误：
 
 ## 动作后验证（硬性）
 
+- `playwright_snap_tool` 返回 `interaction_scope=overlay` 时，当前交互已进入浮层；只能使用该次 `elements[].action_locator` 操作浮层内元素，禁止改用全局同名元素。浮层关闭后重新 snap，`interaction_scope=page` 才能恢复页面级操作。
 - `playwright_click_tool` / `playwright_fill_tool` 返回 `success=true` 只表示浏览器动作执行成功，**不表示当前 todo 的业务完成判据已满足**。
 - 每次 click / fill 成功后，必须调用 `playwright_snap_tool` 或观察 URL/Toast/弹窗/字段值/状态文本变化，确认当前 todo 的完成判据；确认前禁止把 todo 标记为 completed。
 - 如果工具返回 `verification_required=true`，必须按 `next_step_hint` 进行验证；如果返回 `risk` 非空，必须优先检查是否误点了同名按钮、结构 CSS 或历史降级定位器。

@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from app.agents.page_exploration.tools.extraction_tools import playwright_snap_tool
+from app.agents.page_exploration.tools.navigation_tools import playwright_click_tool
 from app.agents.page_exploration.tools.runtime_context import browser_session_context
 from app.services.page_exploration.browser_session import BrowserSessionError
 
@@ -27,6 +28,65 @@ def _snapshot_result(url: str = "https://test.com/current"):
 def test_snap_tool_requires_bound_runtime_browser_session():
     with pytest.raises(BrowserSessionError, match="browser session is not bound"):
         playwright_snap_tool.invoke({})
+
+
+def test_overlay_snapshot_records_direct_parent_trigger():
+    class FakeSession:
+        def __init__(self, *, start_url, storage_state_path):
+            self.overlay_open = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def observe(self):
+            if not self.overlay_open:
+                return {
+                    "url": "https://test.com/agents",
+                    "title": "Agents",
+                    "interaction_scope": "page",
+                    "elements": [{
+                        "role": "button", "role_source": "native", "name": "创建智能体",
+                        "action_type": "click", "visible": True,
+                        "primary_selector": {"kind": "role", "code": "page.getByRole('button', { name: '创建智能体' })"},
+                    }],
+                    "accessibility_tree": [], "visible_text_blocks": [],
+                }
+            return {
+                "url": "https://test.com/agents",
+                "title": "Agents",
+                "interaction_scope": "overlay",
+                "overlay": {"type": "dialog", "role": "dialog", "name": "创建智能体"},
+                "elements": [{
+                    "role": "button", "role_source": "native", "name": "创建",
+                    "action_type": "click", "visible": True,
+                    "primary_selector": {"kind": "contextual", "code": "page.getByRole('dialog', { name: '创建智能体' }).getByRole('button', { name: '创建' })"},
+                }],
+                "accessibility_tree": [], "visible_text_blocks": [],
+            }
+
+        def click(self, locator):
+            self.overlay_open = True
+            return {"action_result": {"success": True, "effective_locator": locator}}
+
+        def close(self):
+            pass
+
+    with (
+        patch("app.agents.page_exploration.tools.runtime_context.PlaywrightBrowserSession", FakeSession),
+        browser_session_context(start_url="https://test.com/agents", storage_state_path=None),
+    ):
+        root = playwright_snap_tool.invoke({})
+        playwright_click_tool.invoke({"locator": "page.getByRole('button', { name: '创建智能体' })"})
+        overlay = playwright_snap_tool.invoke({})
+
+    assert root["state_context"]["state_type"] == "root"
+    assert overlay["state_context"]["state_type"] == "dialog"
+    assert overlay["state_context"]["parent_state_id"] == root["state_context"]["state_id"]
+    assert overlay["state_context"]["triggered_by"]["from_state"] == root["state_context"]["state_id"]
+    assert overlay["state_context"]["triggered_by"]["element_key"].startswith("button-创建智能体")
 
 
 def test_snap_tool_uses_runtime_browser_session_when_available():

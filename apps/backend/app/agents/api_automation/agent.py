@@ -25,7 +25,7 @@ def api_automation_generation_agent(
         tools=[],
         system_prompt=base_prompt,
         middleware=[skill_middleware],
-        response_format=ApiAutomationGenerationResult,
+        response_format=ToolStrategy(ApiAutomationGenerationResult),
     )
 
 

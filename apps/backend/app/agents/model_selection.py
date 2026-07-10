@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pydantic import SecretStr
+from langchain_deepseek import ChatDeepSeek
 from langchain_openai import ChatOpenAI
 from app.agents.capabilities import get_ai_capability
 from app.core.db import connect
@@ -36,6 +37,14 @@ def build_agent_model(selection: ModelSelection, *, extra_body: dict | None = No
     kwargs = {}
     if extra_body is not None:
         kwargs["extra_body"] = extra_body
+    if is_deepseek_model(selection):
+        return ChatDeepSeek(
+            model=selection.model,
+            api_key=SecretStr(selection.api_key),
+            base_url=selection.base_url,
+            temperature=0,
+            **kwargs,
+        )
     kwargs["use_responses_api"] = should_use_responses_api(selection)
     return ChatOpenAI(
         model=selection.model,
@@ -53,9 +62,19 @@ def thinking_disabled_extra_body(selection: ModelSelection) -> dict | None:
 
 
 def supports_thinking_toggle(selection: ModelSelection) -> bool:
+    return is_deepseek_model(selection) or _is_minimax_model(selection)
+
+
+def is_deepseek_model(selection: ModelSelection) -> bool:
     provider = selection.provider.strip().lower()
     model = selection.model.strip().lower()
-    return "minimax" in provider or "minimax" in model or "deepseek" in provider or "deepseek" in model
+    return "deepseek" in provider or "deepseek" in model
+
+
+def _is_minimax_model(selection: ModelSelection) -> bool:
+    provider = selection.provider.strip().lower()
+    model = selection.model.strip().lower()
+    return "minimax" in provider or "minimax" in model
 
 
 def should_use_responses_api(selection: ModelSelection) -> bool | None:

@@ -107,6 +107,7 @@ def playwright_snap_tool(
     keywords = [kw.strip() for kw in (focus_keywords or []) if str(kw).strip()]
     elements = [
         {
+            "action_locator": elem.action_locator,
             "role": elem.role,
             "role_source": elem.role_source,
             "name": elem.name,
@@ -140,6 +141,9 @@ def playwright_snap_tool(
     return {
         "url": result.url,
         "title": result.title,
+        "interaction_scope": result.interaction_scope,
+        "overlay": result.overlay,
+        "state_context": result.state_context,
         "page_text_summary": result.page_text_summary,
         "state_signature": result.state_signature,
         "elements": elements,
@@ -166,14 +170,16 @@ def playwright_scoped_query_tool(
     page snaps while stuck on the same URL/state.
 
     Args:
-        scope: Optional CSS scope, e.g. "[role='popover']" or "[role='dialog']".
-            If omitted, the runner chooses the first visible overlay, then main/body.
+        scope: Optional Playwright selector or supported Locator expression, e.g.
+            "[role='popover']", "section:has-text('Prompt')", or
+            "page.getByRole('dialog')". If omitted, the runner chooses the first
+            visible overlay, then main/body.
         text: Optional text filter.
         role: Optional role filter, e.g. "button", "textbox".
         limit: Maximum matches to return.
 
     Returns:
-        {url, title, scope_used, match_count, matches}
+        {url, title, scope_used, match_count, matches, error_type, error_summary}
     """
     return scoped_query_with_runtime_context(scope=scope, text=text, role=role, limit=limit)
 

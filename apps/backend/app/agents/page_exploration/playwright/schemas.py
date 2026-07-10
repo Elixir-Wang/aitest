@@ -8,6 +8,7 @@ class ElementInfo(BaseModel):
     """Information about a single executable page element."""
 
     role: str
+    action_locator: str = ""
     role_source: str = ""
     name: str
     text: str | None = None
@@ -37,6 +38,9 @@ class SnapshotResult(BaseModel):
 
     url: str
     title: str
+    interaction_scope: str = "page"
+    overlay: dict[str, Any] | None = None
+    state_context: dict[str, Any] = {}
     elements: list[ElementInfo]
     accessibility_tree: list[AccessibilityNodeInfo] = []
     visible_text_blocks: list[str] = []

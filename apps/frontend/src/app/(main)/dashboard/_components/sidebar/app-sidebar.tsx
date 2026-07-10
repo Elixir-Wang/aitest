@@ -1,8 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 
-import { Command } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 
 import {
@@ -34,10 +34,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild>
+            <SidebarMenuButton asChild size="lg" className="gap-2.5">
               <Link prefetch={false} href="/dashboard">
-                <Command />
-                <span className="font-semibold text-base">{APP_CONFIG.name}</span>
+                <Image
+                  src="/brand/a-orbit-logo.svg"
+                  alt=""
+                  width={40}
+                  height={40}
+                  className="size-10 shrink-0 object-contain group-data-[collapsible=icon]:size-6"
+                  priority
+                />
+                <span className="font-semibold text-[19px]">{APP_CONFIG.name}</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

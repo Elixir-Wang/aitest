@@ -53,7 +53,7 @@ def test_requirement_finalization_reuses_requirement_analysis_model(monkeypatch)
     assert result.final_requirement_markdown == "# 最终需求\n"
 
 
-def test_requirement_finalization_agent_uses_schema_response_format(monkeypatch):
+def test_requirement_finalization_agent_uses_tool_strategy_response_format(monkeypatch):
     from langchain.agents.structured_output import ToolStrategy
 
     from app.agents.requirement_finalization import agent
@@ -69,8 +69,8 @@ def test_requirement_finalization_agent_uses_schema_response_format(monkeypatch)
 
     agent.requirement_finalization_agent("model", load_references=False)
 
-    assert seen["response_format"] is RequirementFinalizationOutput
-    assert not isinstance(seen["response_format"], ToolStrategy)
+    assert isinstance(seen["response_format"], ToolStrategy)
+    assert seen["response_format"].schema is RequirementFinalizationOutput
 
 
 def test_requirement_finalization_disables_thinking_for_reasoning_models(monkeypatch):

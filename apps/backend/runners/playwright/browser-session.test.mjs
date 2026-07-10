@@ -632,6 +632,216 @@ describe("browser session observation", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("supports Playwright selector syntax in scoped queries", async () => {
+    const html = `
+      <!doctype html>
+      <html>
+        <body>
+          <section><div><span>Prompt</span></div><textarea></textarea></section>
+        </body>
+      </html>
+    `;
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      const result = await session.command({
+        type: "scoped_query",
+        scope: "section:has-text('Prompt')",
+        role: "textbox",
+      });
+
+      assert.equal(result.match_count, 1);
+      assert.equal(result.matches[0].tag, "textarea");
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("fills an unnamed contenteditable editor through its snapshot action locator", async () => {
+    const html = `
+      <!doctype html>
+      <html>
+        <body>
+          <main>
+            <section><div>Prompt</div><div contenteditable="true"></div></section>
+          </main>
+        </body>
+      </html>
+    `;
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      const observation = await session.command({ type: "observe" });
+      const editor = observation.elements.find((item) => item.role === "textbox");
+
+      assert.equal(editor?.role, "textbox");
+      assert.equal(editor?.action_type, "fill");
+      assert.match(editor?.action_locator || "", /data-ai-testing-action-ref/);
+
+      const result = await session.command({
+        type: "fill",
+        element_id: editor.action_locator,
+        value: "你是一个友好的助手",
+      });
+      assert.equal(result.success, true, JSON.stringify(result));
+
+      const updated = await session.command({ type: "observe" });
+      assert.equal(updated.elements.some((item) => item.role === "textbox" && item.text === "你是一个友好的助手"), true);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("isolates snapshot actions to the active overlay", async () => {
+    const globalButtons = Array.from({ length: 90 }, (_, index) => `<button>全局操作 ${index}</button>`).join("");
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <style>.popover { position: fixed; z-index: 100; inset: 100px; background: white; }</style>
+        </head>
+        <body>
+          ${globalButtons}
+          <div class="popover">
+            <input placeholder="请输入智能体名称" />
+            <button>创建</button>
+          </div>
+        </body>
+      </html>
+    `;
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      const observation = await session.command({ type: "observe" });
+
+      assert.equal(observation.interaction_scope, "overlay");
+      assert.equal(observation.elements.some((item) => item.name === "请输入智能体名称"), true);
+      assert.equal(observation.elements.some((item) => item.name === "创建"), true);
+      assert.equal(observation.elements.some((item) => item.name.startsWith("全局操作")), false);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("prefers an active overlay when a semantic locator also matches the page", async () => {
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <style>.popover { position: fixed; z-index: 100; inset: 100px; background: white; }</style>
+        </head>
+        <body>
+          <button onclick="document.title = 'page'">创建</button>
+          <div class="popover">
+            <button onclick="document.title = 'overlay'">创建</button>
+          </div>
+        </body>
+      </html>
+    `;
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      await session.command({ type: "observe" });
+      const result = await session.command({
+        type: "click",
+        element_id: "page.getByRole('button', { name: '创建' })",
+      });
+
+      assert.equal(result.success, true, JSON.stringify(result));
+      assert.equal(result.after_title, "overlay");
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("generates a reusable overlay scoped locator", async () => {
+    const html = `
+      <!doctype html>
+      <html>
+        <head><style>.popover { position: fixed; z-index: 100; inset: 100px; }</style></head>
+        <body>
+          <button>创建</button>
+          <div class="popover" aria-label="创建智能体">
+            <button>创建</button>
+          </div>
+        </body>
+      </html>
+    `;
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      const observation = await session.command({ type: "observe" });
+      const button = observation.elements.find((item) => item.role === "button" && item.name === "创建");
+
+      assert.equal(observation.overlay?.type, "popover");
+      assert.equal(observation.overlay?.primary_selector?.verification?.unique, true);
+      assert.match(button?.primary_selector?.code || "", /popover.*getByRole\('button'/);
+      assert.equal(button?.primary_selector?.verification?.unique, true);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("never falls back outside an active overlay", async () => {
+    const html = `
+      <!doctype html>
+      <html>
+        <head><style>.popover { position: fixed; z-index: 100; inset: 100px; }</style></head>
+        <body>
+          <button onclick="document.title = 'page'">页面操作</button>
+          <div class="popover"><button>浮层操作</button></div>
+        </body>
+      </html>
+    `;
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      await session.command({ type: "observe" });
+      const result = await session.command({
+        type: "click",
+        element_id: "page.getByRole('button', { name: '页面操作' })",
+      });
+
+      assert.equal(result.success, false, JSON.stringify(result));
+      assert.equal(result.error_type, "not_visible");
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("keeps same name matches inside an overlay ambiguous", async () => {
+    const html = `
+      <!doctype html>
+      <html>
+        <head><style>.popover { position: fixed; z-index: 100; inset: 100px; }</style></head>
+        <body>
+          <div class="popover"><button>确认</button><button>确认</button></div>
+        </body>
+      </html>
+    `;
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      await session.command({ type: "observe" });
+      const result = await session.command({
+        type: "click",
+        element_id: "page.getByRole('button', { name: '确认' })",
+      });
+
+      assert.equal(result.success, false, JSON.stringify(result));
+      assert.equal(result.error_type, "locator_not_unique");
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("returns an invalid selector result without terminating the session", async () => {
+    const session = await startSession("data:text/html,<main>content</main>");
+    try {
+      const result = await session.command({ type: "scoped_query", scope: "div[" });
+      assert.equal(result.error_type, "invalid_selector");
+      assert.equal(result.match_count, 0);
+
+      const observation = await session.command({ type: "observe" });
+      assert.equal(observation.url.startsWith("data:text/html"), true);
+    } finally {
+      await session.close();
+    }
+  });
 });
 
 async function startSession(url) {

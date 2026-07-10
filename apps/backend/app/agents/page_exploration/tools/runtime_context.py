@@ -1,8 +1,10 @@
 """Runtime browser context for page exploration tools."""
 from contextlib import contextmanager
 from contextvars import ContextVar
+from hashlib import sha1
 from pathlib import Path
 from typing import Iterator, Any, Mapping
+from urllib.parse import urlparse
 
 from app.agents.page_exploration.playwright.schemas import (
     AccessibilityNodeInfo,
@@ -14,12 +16,15 @@ from app.agents.page_exploration.playwright.schemas import (
     SnapshotResult,
 )
 from app.services.page_exploration.browser_session import BrowserSessionError, PlaywrightBrowserSession
+from app.agents.page_exploration.utils.element_key import build_element_key
+from app.agents.page_exploration.utils.page_id import make_page_id
 
 
 _browser_session: ContextVar[PlaywrightBrowserSession | None] = ContextVar(
     "page_exploration_browser_session",
     default=None,
 )
+_state_tracker: ContextVar[dict[str, Any] | None] = ContextVar("page_exploration_state_tracker", default=None)
 
 
 ACTION_VERIFICATION_HINT = (
@@ -53,9 +58,11 @@ def browser_session_context(
         storage_state_path=storage_state_path,
     ) as session:
         token = _browser_session.set(session)
+        state_token = _state_tracker.set({"stack": [], "last_action": None})
         try:
             yield
         finally:
+            _state_tracker.reset(state_token)
             _browser_session.reset(token)
             session.close()
 
@@ -204,6 +211,9 @@ def click_with_runtime_context(locator: str) -> ClickResult | None:
         default_error=f"Locator did not resolve to a visible element: {locator}",
     )
     if parsed["success"]:
+        tracker = _state_tracker.get()
+        if tracker is not None:
+            tracker["last_action"] = {"action": "click", "locator": parsed["effective_locator"]}
         return ClickResult(
             success=True,
             failure=parsed.get("failure"),
@@ -359,12 +369,17 @@ def snapshot_with_runtime_context(url: str | None = None) -> SnapshotResult | No
     if url:
         session.navigate(url)
     result = session.observe()
+    state_context = _update_state_tracker(result)
     return SnapshotResult(
         url=str(result.get("url") or url or ""),
         title=str(result.get("title") or ""),
+        interaction_scope=str(result.get("interaction_scope") or "page"),
+        overlay=result.get("overlay") if isinstance(result.get("overlay"), dict) else None,
+        state_context=state_context,
         page_text_summary=str(result.get("page_text_summary") or ""),
         elements=[
             ElementInfo(
+                action_locator=str(element.get("action_locator") or ""),
                 role=str(element.get("role") or ""),
                 role_source=str(element.get("role_source") or ""),
                 name=str(element.get("name") or ""),
@@ -398,3 +413,57 @@ def snapshot_with_runtime_context(url: str | None = None) -> SnapshotResult | No
         ],
         state_signature=str(result.get("state_signature") or ""),
     )
+
+
+def _update_state_tracker(result: Mapping[str, Any]) -> dict[str, Any]:
+    tracker = _state_tracker.get()
+    if tracker is None:
+        return {}
+    url = str(result.get("url") or "")
+    page_id = make_page_id(urlparse(url).path or "/")
+    scope = str(result.get("interaction_scope") or "page")
+    overlay = result.get("overlay") if isinstance(result.get("overlay"), Mapping) else {}
+    identity = "|".join(str(overlay.get(key) or "") for key in ("type", "role", "name"))
+    stack = tracker["stack"]
+
+    if scope == "page":
+        state = {"state_id": f"{page_id}__root__001", "state_type": "root", "parent_state_id": None, "triggered_by": None}
+        stack[:] = [state]
+    elif stack and any(item.get("overlay_identity") == identity for item in stack):
+        index = max(i for i, item in enumerate(stack) if item.get("overlay_identity") == identity)
+        del stack[index + 1:]
+        state = stack[index]
+    else:
+        parent = stack[-1] if stack else {"state_id": f"{page_id}__root__001", "locator_keys": {}}
+        action = tracker.get("last_action") or {}
+        element_key = parent.get("locator_keys", {}).get(str(action.get("locator") or ""), "")
+        digest = sha1(f"{parent['state_id']}|{identity}|{element_key}".encode()).hexdigest()[:8]
+        state_type = str(overlay.get("type") or "dialog")
+        state = {
+            "state_id": f"{page_id}__{state_type}__{digest}",
+            "state_type": state_type,
+            "parent_state_id": parent["state_id"],
+            "triggered_by": ({
+                "from_state": parent["state_id"],
+                "element_key": element_key,
+                "action": str(action.get("action") or "click"),
+                "url_changed": False,
+                "observed_url": url,
+            } if element_key else None),
+            "overlay_identity": identity,
+        }
+        stack.append(state)
+
+    locator_keys: dict[str, str] = {}
+    for element in result.get("elements", []):
+        if not isinstance(element, Mapping):
+            continue
+        key = build_element_key({"role": element.get("role"), "name": element.get("name")})
+        for field in ("action_locator", "primary_selector", "fallback_selector"):
+            value = element.get(field)
+            locator = value.get("code") if isinstance(value, Mapping) else value
+            if locator:
+                locator_keys[str(locator)] = key
+    state["locator_keys"] = locator_keys
+    tracker["last_action"] = None
+    return {key: value for key, value in state.items() if key not in {"locator_keys", "overlay_identity"}}

@@ -1347,7 +1347,7 @@ function ExplorationModuleProgressPanel({
 
   // 使用新的双栏布局组件
   return (
-    <ShellSection>
+    <ShellSection className="rounded-none border-0 bg-transparent p-0">
       <ExplorationTaskInfoPanel monitor={monitor} loading={loading} status={normalizeAgentPlanStatus(runStatus)} />
     </ShellSection>
   );

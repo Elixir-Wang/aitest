@@ -1,16 +1,8 @@
 page:
   id: page-agentStore
   title: 百融百工
-  display_name: agentStore
-  breadcrumb:
-  - agentStore
   normalized_path: /agentStore
-  structure_summary: 自动保存页面快照，发现 5 个元素。
-  env_urls:
-    test: ''
-  last_explored:
-    timestamp: '2026-07-09T16:25:34.641893Z'
-    run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  url: https://www.cybotstar.cn/agentStore
 states:
 - id: snapshot-current
   type: root
@@ -28,10 +20,10 @@ states:
       code: 'getByRole(''button'', { name: ''创建智能体'' })'
       priority: 1
       verification:
-        checked: false
-        unique: null
-        visible: null
-        match_count: 0
+        checked: true
+        unique: true
+        visible: true
+        match_count: 1
     - kind: text
       code: 'getByText(''创建智能体'', { exact: true })'
       priority: 2
@@ -46,70 +38,7 @@ states:
       ordinal: 1
       container_role: div
       container_name: 创建智能体
-      ancestor_text: '创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心
-        发布管理 线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 探索广场 结果即刻交付
-        首个聚焦结果交付的智能体平台，快速激活 / 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库
-        效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
-        / 创建智能体 '
-      scope_hint: '优先选择包含目标业务字段/卡片名的容器，例如 filter({ hasText: ''创建智能体 广场 探索广场 应用 批量任务
-        hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中'' }) 后再定位 ''创建智能体''。'
-    ancestor_chain:
-    - role: div
-      name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
-        自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活
-    - role: aside
-      name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
-        自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
-    - role: div
-      name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
-        自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
-    - role: div
-      name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
-        自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
-    - role: div
-      name: 创建智能体
   - id: el-2
-    name: 工作台
-    role: clickable
-    text: 工作台
-    action_type: click
-    visible: true
-    locators:
-    - kind: text
-      code: 'getByText(''工作台'', { exact: true })'
-      priority: 1
-      verification:
-        checked: false
-        unique: null
-        visible: null
-        match_count: 0
-    context:
-      is_ambiguous: false
-      sibling_count: 1
-      ordinal: 1
-      container_role: div
-      container_name: 工作台 资源库 效果评测
-      ancestor_text: 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理
-        线上观测 自动优化 管理中心 空间管理 文档中心 / 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测
-        运行中心 发布管理 线上观测 自动优化 管理中心 空间管理 文档中心 / hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心
-        发布管理 线上观测 自动优化 管理中心 空间管理 文档中心 / hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 / 工作台 资源库
-        效果评测
-      scope_hint: '优先选择包含目标业务字段/卡片名的容器，例如 filter({ hasText: ''广场 探索广场 应用 批量任务 hongbao.wang
-        所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理'' }) 后再定位 ''工作台''。'
-    ancestor_chain:
-    - role: div
-      name: 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
-        管理中心 空间管理 文档中心
-    - role: div
-      name: 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
-        管理中心 空间管理 文档中心
-    - role: div
-      name: hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理 文档中心
-    - role: div
-      name: hongbao.wang 所有者 创作中心 工作台 资源库 效果评测
-    - role: div
-      name: 工作台 资源库 效果评测
-  - id: el-3
     name: 点击【⭐️收藏】 可将智能体添加到这里
     role: clickable
     text: 点击【⭐️收藏】 可将智能体添加到这里
@@ -130,29 +59,7 @@ states:
       ordinal: 1
       container_role: div
       container_name: 点击【⭐️收藏】 可将智能体添加到这里
-      ancestor_text: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心
-        发布管理 线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 / 创建智能体
-        广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心
-        空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 / 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang
-        所有者
-      scope_hint: '优先选择包含目标业务字段/卡片名的容器，例如 filter({ hasText: ''创建智能体 广场 探索广场 应用 批量任务
-        hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中'' }) 后再定位 ''点击【⭐️收藏】
-        可将智能体添加到这里''。'
-    ancestor_chain:
-    - role: aside
-      name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
-        自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
-    - role: div
-      name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
-        自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
-    - role: div
-      name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
-        自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
-    - role: div
-      name: 收藏 点击【⭐️收藏】 可将智能体添加到这里
-    - role: div
-      name: 点击【⭐️收藏】 可将智能体添加到这里
-  - id: el-4
+  - id: el-3
     name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
     role: clickable
     text: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
@@ -175,30 +82,7 @@ states:
       container_role: div
       container_name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言
         类型 全部 排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资
-      ancestor_text: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言
-        选择语言 类型 全部 排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他
-        智能面试 知识库 百融云创AI智能面试官，通过预设 / 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
-        全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景
-        人力资源 报告生成 其他 智能
-      scope_hint: '优先选择包含目标业务字段/卡片名的容器，例如 filter({ hasText: ''探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
-        全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间'' }) 后再定位 ''结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户''。'
-    ancestor_chain:
-    - role: div
-      name: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部
-        排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设
-    - role: div
-      name: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部
-        排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设
-    - role: div
-      name: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部
-        排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设
-    - role: div
-      name: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部
-        排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设
-    - role: div
-      name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序
-        按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设问题（如行
-  - id: el-5
+  - id: el-4
     name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
     role: clickable
     text: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
@@ -220,37 +104,103 @@ states:
       ordinal: 2
       container_role: div
       container_name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
-      ancestor_text: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言
-        选择语言 类型 全部 排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他
-        智能面试 知识库 百融云创AI智能面试官，通过预设 / 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
-        全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景
-        人力资源 报告生成 其他 智能
-      scope_hint: '优先选择包含目标业务字段/卡片名的容器，例如 filter({ hasText: ''探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
-        全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间'' }) 后再定位 ''结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户''。'
-    ancestor_chain:
-    - role: div
-      name: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部
-        排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设
-    - role: div
-      name: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部
-        排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设
-    - role: div
-      name: 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部
-        排序 按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设
-    - role: div
-      name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序
-        按发布时间排序 官方 客服场景 营销场景 合规与风控 金融业务 保险场景 产品服务 零售场景 人力资源 报告生成 其他 智能面试 知识库 百融云创AI智能面试官，通过预设问题（如行
-    - role: div
-      name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
+  - id: ax-5
+    name: 请输入智能体名称
+    role: textbox
+    text: 请输入智能体名称
+    action_type: fill
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入智能体名称'' })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''请输入智能体名称'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: false
+      sibling_count: 1
+      ordinal: 1
+      container_role: ''
+      container_name: ''
+  - id: ax-6
+    name: 请输入对该智能体的描述
+    role: textbox
+    text: 请输入对该智能体的描述
+    action_type: fill
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''textbox'', { name: ''请输入对该智能体的描述'' })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''请输入对该智能体的描述'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: false
+      sibling_count: 1
+      ordinal: 1
+      container_role: ''
+      container_name: ''
+  - id: ax-7
+    name: 创建
+    role: button
+    text: 创建
+    action_type: click
+    visible: true
+    locators:
+    - kind: role
+      code: 'getByRole(''button'', { name: ''创建'' })'
+      priority: 1
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    - kind: text
+      code: 'getByText(''创建'', { exact: true })'
+      priority: 2
+      verification:
+        checked: false
+        unique: null
+        visible: null
+        match_count: 0
+    context:
+      is_ambiguous: false
+      sibling_count: 1
+      ordinal: 1
+      container_role: ''
+      container_name: ''
   assertion_texts:
   - 百融百工
   - 创建智能体
-  - 工作台
   - 可将智能体添加到这里
   - 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
   - 多模态核保智能助手，专注识别病历单，解析病例信息并评估投保风险，辅助输出是否建议承保的结论。 使用说明：输入病历单图片，智能体将按规范进行多模态识别与结构化解析，提取关键医疗信息，结合风险评估模型进行分析，输出核保判断及参考结论，并提示相关
+  - 智能体名称
+  - 智能体功能介绍
+  - 创建
+  - 请输入智能体名称
+  - 请输入对该智能体的描述
   - 点击【⭐️收藏】 可将智能体添加到这里
   - 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
-metadata:
-  captured_at: '2026-07-09T16:20:04.537241+00:00'
-  module: 工作台

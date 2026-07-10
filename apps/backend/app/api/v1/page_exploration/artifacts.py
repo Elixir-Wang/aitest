@@ -44,3 +44,14 @@ def list_all_artifacts(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/projects/{project_id}/artifacts", response_model=dict)
+def clear_project_artifacts(project_id: str, actor=Depends(current_user)) -> dict:
+    """清空项目级探索产物。"""
+    try:
+        return page_exploration_service.clear_project_artifacts(actor, project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

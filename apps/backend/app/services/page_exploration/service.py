@@ -423,6 +423,43 @@ def list_project_pages(actor, project_id: str) -> list[dict]:
     return rows
 
 
+def clear_project_artifacts(actor, project_id: str) -> dict:
+    """清空项目级探索产物文件和索引，不删除探索任务本身。"""
+    with connect() as db:
+        running_runs = exploration_run_repo.list_running(db, project_id)
+        if running_runs:
+            raise ValueError("项目下存在运行中的探索任务，无法清空产物")
+
+        run_ids = [str(row["id"]) for row in exploration_run_repo.list_by_project(db, project_id, limit=10000)]
+        if run_ids:
+            placeholders = ",".join("?" for _ in run_ids)
+            db.execute(f"DELETE FROM exploration_artifacts WHERE exploration_run_id IN ({placeholders})", run_ids)
+            db.execute(f"DELETE FROM exploration_blockers WHERE exploration_run_id IN ({placeholders})", run_ids)
+            db.execute(f"DELETE FROM exploration_module_coverages WHERE exploration_run_id IN ({placeholders})", run_ids)
+            db.execute(f"DELETE FROM exploration_pages WHERE exploration_run_id IN ({placeholders})", run_ids)
+            db.execute(f"UPDATE exploration_runs SET artifact_root = '', updated_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders})", run_ids)
+
+    project_artifact_root = (settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration").resolve()
+    storage_root = settings.PROJECT_FILE_STORAGE_ROOT.resolve()
+    try:
+        project_artifact_root.relative_to(storage_root)
+    except ValueError:
+        raise ValueError("项目产物路径非法")
+
+    removed_files = 0
+    if project_artifact_root.exists():
+        removed_files = sum(1 for path in project_artifact_root.rglob("*") if path.is_file())
+        if project_artifact_root.is_dir():
+            shutil.rmtree(project_artifact_root)
+
+    event_bus.clear(project_id)
+    return {
+        "project_id": project_id,
+        "cleared_run_count": len(run_ids),
+        "removed_file_count": removed_files,
+    }
+
+
 def _project_page_parent_index(project_id: str) -> dict[str, str]:
     parent_by_page_id: dict[str, str] = {}
     for edge in _list_project_page_edges(project_id):

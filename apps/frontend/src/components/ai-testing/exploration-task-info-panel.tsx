@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AlertTriangle,
+  Bot,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -82,12 +83,14 @@ export function ExplorationTaskInfoPanel({
     loading || monitor.phase === "executing" || monitor.phase === "planning" || monitor.phase === "planned";
 
   return (
-    <div className="grid min-h-[620px] gap-5 lg:grid-cols-[380px_minmax(0,1fr)]">
-      <aside className="flex h-[calc(100vh-210px)] min-h-[620px] flex-col overflow-hidden rounded-xl border border-border/70 bg-card text-card-foreground shadow-black/5 shadow-sm dark:shadow-black/20">
-        <div className="flex min-h-12 items-center gap-3 border-b bg-muted/30 px-6 py-3">
-          <div className="font-medium text-muted-foreground text-sm">执行步骤</div>
+    <div className="grid min-h-[620px] gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
+      <aside className="flex h-[calc(100vh-210px)] min-h-[620px] flex-col overflow-hidden rounded-lg border border-border/70 bg-card text-card-foreground shadow-[0_8px_30px_rgb(31_42_55_/_0.05)] dark:shadow-black/20">
+        <div className="flex min-h-14 items-center gap-3 border-border/70 border-b px-5 py-3">
+          <ListChecks className="size-4 text-primary" />
+          <div className="font-semibold text-sm">执行步骤</div>
+          {steps.length > 0 ? <span className="ml-auto text-muted-foreground text-xs">{steps.length} 个步骤</span> : null}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
           {plan ? (
             <div className="mb-5 space-y-3">
               <button
@@ -103,9 +106,6 @@ export function ExplorationTaskInfoPanel({
                 )}
                 <ListChecks className="size-4 text-primary" />
                 <h3 className="font-semibold text-sm">探索计划</h3>
-                {plan.total_steps > 0 ? (
-                  <span className="ml-auto text-muted-foreground text-xs">{plan.total_steps} 个步骤</span>
-                ) : null}
               </button>
               {isPlanOpen ? (
                 <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/5 p-4 text-sm leading-6">
@@ -145,18 +145,19 @@ export function ExplorationTaskInfoPanel({
           ) : !hasSteps ? (
             <div className="text-muted-foreground text-sm">暂无步骤信息</div>
           ) : (
-            <div className="space-y-2 pr-1">
-              {steps.map((step) => (
-                <ExplorationStepCard key={step.step_id} step={step} />
+            <div className="space-y-3 pr-1">
+              {steps.map((step, index) => (
+                <ExplorationStepCard isLast={index === steps.length - 1} key={step.step_id} step={step} />
               ))}
             </div>
           )}
         </div>
       </aside>
       <main className="min-w-0">
-        <div className="flex h-[calc(100vh-210px)] min-h-[620px] flex-col overflow-hidden rounded-xl border border-border/70 bg-card text-card-foreground shadow-black/5 shadow-sm dark:shadow-black/20">
-          <div className="flex min-h-12 items-center gap-3 border-b bg-muted/30 px-6 py-3">
-            <div className="font-medium text-muted-foreground text-sm">探索输出</div>
+        <div className="flex h-[calc(100vh-210px)] min-h-[620px] flex-col overflow-hidden rounded-lg border border-border/70 bg-card text-card-foreground shadow-[0_8px_30px_rgb(31_42_55_/_0.05)] dark:shadow-black/20">
+          <div className="flex min-h-14 items-center gap-3 border-border/70 border-b px-5 py-3">
+            <Bot className="size-4 text-primary" />
+            <div className="font-semibold text-sm">探索输出</div>
             <RunStatusBadge className="ml-auto" isLoading={loading || isRunning} status={status} />
           </div>
           <ExplorationExecutionTranscript autoScrollEnabled={isRunning} events={events} loading={loading} />
@@ -225,15 +226,37 @@ function runStatusContent(status: AgentPlanStatus): { className: string; icon: R
   };
 }
 
-function ExplorationStepCard({ step }: { step: ExplorationMonitorStep }) {
+function ExplorationStepCard({ isLast, step }: { isLast: boolean; step: ExplorationMonitorStep }) {
   const isExpanded = step.status === "running" || step.status === "in-progress" || step.status === "failed";
+  const isActive = step.status === "running" || step.status === "in-progress";
+  const surfaceClass =
+    step.status === "failed"
+      ? "border-red-200 bg-red-50/70 dark:border-red-500/30 dark:bg-red-500/10"
+      : isActive
+        ? "border-primary/30 bg-primary/5 shadow-sm"
+        : step.status === "completed"
+          ? "border-border/70 bg-card"
+          : "border-border/60 bg-muted/15";
+  const railClass =
+    step.status === "completed"
+      ? "border-green-300 dark:border-green-500/50"
+      : step.status === "failed"
+        ? "border-red-200 dark:border-red-500/40"
+        : "border-border border-dashed";
+
   return (
-    <div className="rounded-xl border bg-background p-3 transition-colors hover:bg-muted/30">
-      <div className="flex items-start gap-2">
-        <div className="mt-0.5 shrink-0">
-          <StepStatusIcon status={step.status} />
-        </div>
-        <div className="min-w-0 flex-1 space-y-1">
+    <div className="relative pl-8">
+      {!isLast ? (
+        <span
+          aria-hidden="true"
+          className={`absolute top-6 bottom-[-0.75rem] left-[9px] border-l ${railClass}`}
+        />
+      ) : null}
+      <span className="absolute top-4 left-0 z-10 flex size-5 items-center justify-center rounded-full bg-card ring-4 ring-card">
+        <StepStatusIcon status={step.status} />
+      </span>
+      <div className={`rounded-lg border px-3 py-3 transition-colors hover:border-primary/25 ${surfaceClass}`}>
+        <div className="min-w-0 space-y-1">
           <div className="flex items-center gap-2">
             <span className="font-medium font-mono text-sm">#{step.step_number}</span>
             <span className="truncate text-sm">{step.description}</span>
@@ -322,7 +345,7 @@ function ExplorationExecutionTranscript({
   }
 
   return (
-    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5 text-sm" onScroll={handleScroll} ref={scrollRef}>
+    <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-6 text-sm" onScroll={handleScroll} ref={scrollRef}>
       {blocks.map((block) =>
         block.type === "tool" ? (
           <ToolTranscriptItem
@@ -416,15 +439,20 @@ function buildExecutionTranscriptBlocks(events: ExplorationMonitorEvent[]): Exec
 
 function DialogueTranscriptItem({ block }: { block: ExecutionTranscriptBlock }) {
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 text-muted-foreground text-sm">
-        <span>{block.title}</span>
-        {block.occurredAt ? <span className="ml-auto text-xs">{formatTime(block.occurredAt)}</span> : null}
+    <div className="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
+      <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary ring-4 ring-primary/5">
+        <Bot className="size-4" />
       </div>
-      {block.output ? (
-        <div className="max-w-4xl whitespace-pre-wrap break-words text-sm leading-6">{block.output}</div>
-      ) : null}
-      <ExecutionTranscriptStatus status={block.status} />
+      <div className="min-w-0 space-y-2">
+        <div className="flex items-center gap-2 text-sm">
+          <span className="font-semibold text-primary">{block.title}</span>
+          {block.occurredAt ? <span className="ml-auto text-muted-foreground text-xs">{formatTime(block.occurredAt)}</span> : null}
+        </div>
+        {block.output ? (
+          <div className="max-w-4xl whitespace-pre-wrap break-words text-sm leading-6">{block.output}</div>
+        ) : null}
+        <ExecutionTranscriptStatus status={block.status} />
+      </div>
     </div>
   );
 }
@@ -439,7 +467,8 @@ function ToolTranscriptItem({
   onToggle: () => void;
 }) {
   return (
-    <div className="space-y-2">
+    <div className="relative ml-3 space-y-2 border-primary/25 border-l border-dashed pl-8">
+      <span aria-hidden="true" className="absolute top-1.5 -left-[5px] size-2.5 rounded-full border-2 border-card bg-primary/70" />
       <button
         aria-expanded={isOpen}
         className="flex w-full items-center gap-2 text-left text-muted-foreground text-sm"
@@ -451,7 +480,7 @@ function ToolTranscriptItem({
         {block.occurredAt ? <span className="ml-auto text-xs">{formatTime(block.occurredAt)}</span> : null}
       </button>
       {isOpen ? (
-        <div className="ml-6 max-w-4xl rounded-xl border bg-background px-5 py-4 shadow-sm">
+        <div className="max-w-4xl rounded-lg border border-border/70 bg-muted/15 px-5 py-4">
           <div className="mb-3 font-medium text-foreground/80 text-sm">Output</div>
           {block.output ? (
             <div className="whitespace-pre-wrap break-words text-sm leading-6">{block.output}</div>
@@ -459,7 +488,7 @@ function ToolTranscriptItem({
           <ExecutionOutputDetails block={block} />
         </div>
       ) : null}
-      <div className={isOpen ? "ml-6" : "ml-6"}>
+      <div>
         <ExecutionTranscriptStatus status={block.status} />
       </div>
     </div>

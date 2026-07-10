@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import Image from "next/image";
+
 import {
   Archive,
   ArrowLeft,
@@ -10,7 +12,6 @@ import {
   Building2,
   ChevronDown,
   ChevronRight,
-  Command,
   Eye,
   FileText,
   Folder,
@@ -80,6 +81,10 @@ import {
   formatDateTime,
 } from "@/lib/api-client";
 import { useProjectContextStore } from "@/stores/project-context-store";
+
+function ProjectKnowledgeIcon({ className }: { className?: string }) {
+  return <Image src="/brand/a-orbit-logo.svg" alt="" width={16} height={16} className={className} />;
+}
 
 const knowledgeScopes = [
   { value: "project", label: "项目知识库", icon: FolderKanban },
@@ -1685,8 +1690,8 @@ function ProjectKnowledgeWorkspace({
         {!hasConversation ? (
           <div className="relative flex h-full min-h-0 flex-col items-center justify-center px-4 py-6 min-[900px]:py-10">
             <div className="relative mb-5 text-center min-[900px]:mb-8">
-              <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-lg border bg-primary text-primary-foreground shadow-sm min-[900px]:mb-6 min-[900px]:size-20">
-                <Command className="size-8 min-[900px]:size-10" />
+              <div className="mx-auto mb-1 flex size-[72px] items-center justify-center min-[900px]:size-24">
+                <ProjectKnowledgeIcon className="size-[72px] object-contain min-[900px]:size-24" />
               </div>
               <div className="mb-2 flex items-center justify-center gap-2 font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.18em] min-[900px]:mb-3 min-[900px]:text-xs">
                 <span className="h-px w-8 bg-border" />
@@ -1743,7 +1748,7 @@ function ProjectKnowledgeWorkspace({
               {messages.map((message) => (
                 <ChatMessage
                   body={message.body}
-                  icon={message.role === "user" ? User : Command}
+                  icon={message.role === "user" ? User : ProjectKnowledgeIcon}
                   key={message.id}
                   loading={running && message.role === "assistant" && message.body.length === 0}
                   thinking={message.thinking}
