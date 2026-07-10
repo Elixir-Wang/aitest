@@ -84,7 +84,10 @@ export function PageShell({
   }, [breadcrumbKey, setBreadcrumbs]);
 
   return (
-    <div className={cn("@container/main flex flex-col gap-4 md:gap-6", fillViewport && "min-h-0 flex-1")}>
+    <div
+      className={cn("@container/main flex flex-col gap-4 md:gap-6", fillViewport && "min-h-0 flex-1 overflow-hidden")}
+      style={fillViewport ? { height: "calc(100vh - 6.5rem)", maxHeight: "calc(100vh - 6.5rem)" } : undefined}
+    >
       {(hasActions || hasPrimaryAction) && (
         <PageHeader onPrimaryAction={onPrimaryAction} primaryAction={primaryAction} actions={actions} />
       )}

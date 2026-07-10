@@ -83,12 +83,14 @@ export function ExplorationTaskInfoPanel({
     loading || monitor.phase === "executing" || monitor.phase === "planning" || monitor.phase === "planned";
 
   return (
-    <div className="grid min-h-[620px] gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
-      <aside className="flex h-[calc(100vh-210px)] min-h-[620px] flex-col overflow-hidden rounded-lg border border-border/70 bg-card text-card-foreground shadow-[0_8px_30px_rgb(31_42_55_/_0.05)] dark:shadow-black/20">
+    <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
+      <aside className="flex min-h-[360px] flex-col overflow-hidden rounded-lg border border-border/70 bg-card text-card-foreground shadow-[0_8px_30px_rgb(31_42_55_/_0.05)] lg:min-h-0 dark:shadow-black/20">
         <div className="flex min-h-14 items-center gap-3 border-border/70 border-b px-5 py-3">
           <ListChecks className="size-4 text-primary" />
           <div className="font-semibold text-sm">执行步骤</div>
-          {steps.length > 0 ? <span className="ml-auto text-muted-foreground text-xs">{steps.length} 个步骤</span> : null}
+          {steps.length > 0 ? (
+            <span className="ml-auto text-muted-foreground text-xs">{steps.length} 个步骤</span>
+          ) : null}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
           {plan ? (
@@ -153,8 +155,8 @@ export function ExplorationTaskInfoPanel({
           )}
         </div>
       </aside>
-      <main className="min-w-0">
-        <div className="flex h-[calc(100vh-210px)] min-h-[620px] flex-col overflow-hidden rounded-lg border border-border/70 bg-card text-card-foreground shadow-[0_8px_30px_rgb(31_42_55_/_0.05)] dark:shadow-black/20">
+      <main className="min-h-[360px] min-w-0 lg:min-h-0">
+        <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border/70 bg-card text-card-foreground shadow-[0_8px_30px_rgb(31_42_55_/_0.05)] dark:shadow-black/20">
           <div className="flex min-h-14 items-center gap-3 border-border/70 border-b px-5 py-3">
             <Bot className="size-4 text-primary" />
             <div className="font-semibold text-sm">探索输出</div>
@@ -247,10 +249,7 @@ function ExplorationStepCard({ isLast, step }: { isLast: boolean; step: Explorat
   return (
     <div className="relative pl-8">
       {!isLast ? (
-        <span
-          aria-hidden="true"
-          className={`absolute top-6 bottom-[-0.75rem] left-[9px] border-l ${railClass}`}
-        />
+        <span aria-hidden="true" className={`absolute top-6 bottom-[-0.75rem] left-[9px] border-l ${railClass}`} />
       ) : null}
       <span className="absolute top-4 left-0 z-10 flex size-5 items-center justify-center rounded-full bg-card ring-4 ring-card">
         <StepStatusIcon status={step.status} />
@@ -446,7 +445,9 @@ function DialogueTranscriptItem({ block }: { block: ExecutionTranscriptBlock }) 
       <div className="min-w-0 space-y-2">
         <div className="flex items-center gap-2 text-sm">
           <span className="font-semibold text-primary">{block.title}</span>
-          {block.occurredAt ? <span className="ml-auto text-muted-foreground text-xs">{formatTime(block.occurredAt)}</span> : null}
+          {block.occurredAt ? (
+            <span className="ml-auto text-muted-foreground text-xs">{formatTime(block.occurredAt)}</span>
+          ) : null}
         </div>
         {block.output ? (
           <div className="max-w-4xl whitespace-pre-wrap break-words text-sm leading-6">{block.output}</div>
@@ -468,7 +469,10 @@ function ToolTranscriptItem({
 }) {
   return (
     <div className="relative ml-3 space-y-2 border-primary/25 border-l border-dashed pl-8">
-      <span aria-hidden="true" className="absolute top-1.5 -left-[5px] size-2.5 rounded-full border-2 border-card bg-primary/70" />
+      <span
+        aria-hidden="true"
+        className="absolute top-1.5 -left-[5px] size-2.5 rounded-full border-2 border-card bg-primary/70"
+      />
       <button
         aria-expanded={isOpen}
         className="flex w-full items-center gap-2 text-left text-muted-foreground text-sm"

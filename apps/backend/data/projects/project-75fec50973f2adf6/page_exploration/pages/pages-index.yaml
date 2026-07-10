@@ -3,20 +3,20 @@ pages:
     display_name: agentStore
     breadcrumb:
     - agentStore
-    structure_summary: 发现 7 个元素
+    structure_summary: 发现 1 个元素
     run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
-    captured_at: '2026-07-10T07:29:09.124580Z'
+    captured_at: '2026-07-10T13:39:40.346212Z'
   page-botSetting.yaml:
     display_name: botSetting
     breadcrumb:
     - botSetting
     structure_summary: 发现 23 个元素
     run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
-    captured_at: '2026-07-10T07:29:09.140422Z'
+    captured_at: '2026-07-10T13:39:40.357493Z'
   page-workspace.yaml:
     display_name: workspace
     breadcrumb:
     - workspace
     structure_summary: 发现 18 个元素
     run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
-    captured_at: '2026-07-10T07:29:09.174249Z'
+    captured_at: '2026-07-10T13:39:40.364799Z'

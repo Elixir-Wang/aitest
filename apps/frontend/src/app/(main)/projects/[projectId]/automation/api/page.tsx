@@ -1344,7 +1344,7 @@ export default function Page() {
               selectedCount={selectedApiCaseIds.length}
               title="接口用例列表"
             />
-            <div className="min-h-0 flex-1 overflow-hidden rounded-lg border">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1408,30 +1408,24 @@ export default function Page() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {filteredApiTestCases.length === 0 ? (
-                    <TableRow>
-                      <TableCell className="py-0 text-center text-sm" colSpan={5}>
-                        <div className="flex h-full min-h-[18rem] flex-col items-center justify-center gap-4">
-                          <Image
-                            alt=""
-                            aria-hidden="true"
-                            className="h-36 w-48 object-contain"
-                            height={180}
-                            src="/illustrations/api-cases-empty-right.svg"
-                            width={240}
-                          />
-                          <div>
-                            <div className="font-medium text-foreground text-sm">暂无接口用例</div>
-                            <div className="mt-1 text-muted-foreground">
-                              请在左侧选择接口进行展示测试用例。
-                            </div>
-                          </div>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
                 </TableBody>
               </Table>
+              {filteredApiTestCases.length === 0 ? (
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 py-6 text-center text-sm">
+                  <Image
+                    alt=""
+                    aria-hidden="true"
+                    className="h-36 w-48 object-contain"
+                    height={180}
+                    src="/illustrations/api-cases-empty-right.svg"
+                    width={240}
+                  />
+                  <div>
+                    <div className="font-medium text-foreground text-sm">暂无接口用例</div>
+                    <div className="mt-1 text-muted-foreground">请在左侧选择接口进行展示测试用例。</div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </ShellSection>
         </div>
