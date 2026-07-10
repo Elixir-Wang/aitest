@@ -152,6 +152,30 @@ class ApiAutomationGenerateIn(_StrippedModel):
     generate_code: bool = True
 
 
+class ApiGenerationAttemptOut(BaseModel):
+    id: str
+    attempt_no: int
+    status: str
+    generated_case_count: int
+    error_message: str
+    started_at: str
+    finished_at: str | None = None
+
+
+class ApiGenerationItemOut(BaseModel):
+    id: str
+    endpoint_id: str
+    method: str
+    path: str
+    status: str
+    attempt_count: int
+    generated_case_count: int
+    error_message: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    attempts: list[ApiGenerationAttemptOut] = Field(default_factory=list)
+
+
 class ApiGenerationRunOut(BaseModel):
     id: str
     project_id: str
@@ -164,6 +188,12 @@ class ApiGenerationRunOut(BaseModel):
     options: dict[str, Any]
     result_summary: dict[str, Any]
     error_message: str
+    total_count: int
+    completed_count: int
+    success_count: int
+    failed_count: int
+    generated_case_count: int
+    items: list[ApiGenerationItemOut]
     created_at: str
     finished_at: str | None = None
 

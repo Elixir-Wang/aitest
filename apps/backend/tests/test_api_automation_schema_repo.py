@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,159 @@ def _seed_project() -> None:
             """,
             ("project-1", "项目一", "", "active", "u-admin"),
         )
+
+
+def _seed_project_endpoints(endpoint_ids: list[str]) -> None:
+    _seed_project()
+    with connect() as db:
+        for index, endpoint_id in enumerate(endpoint_ids):
+            api_automation_repo.upsert_endpoint(
+                db,
+                endpoint_id=endpoint_id,
+                project_id="project-1",
+                document_id=None,
+                method="GET",
+                path=f"/items/{index}",
+                normalized_path=f"/items/{index}",
+                summary=f"Item {index}",
+                description="",
+                tags=[],
+                parameters=[],
+                request_body={},
+                responses={},
+                auth={},
+                source={},
+                created_by="u-admin",
+            )
+
+
+def test_generation_items_and_attempts_are_persisted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoints(["apiend-1", "apiend-2"])
+    with connect() as db:
+        api_automation_repo.create_generation_run(
+            db,
+            run_id="apigen-1",
+            task_id="api_automation_generation:apigen-1",
+            project_id="project-1",
+            api_environment_id=None,
+            endpoint_ids=["apiend-1", "apiend-2"],
+            source_test_case_ids=[],
+            generation_goal="批量生成",
+            options={},
+            created_by="u-admin",
+        )
+        api_automation_repo.create_generation_items(db, "apigen-1", ["apiend-1", "apiend-2"])
+        items = api_automation_repo.list_generation_items(db, "apigen-1")
+        api_automation_repo.start_generation_item_attempt(db, items[0]["id"], "attempt-1")
+        api_automation_repo.finish_generation_item_attempt(
+            db,
+            items[0]["id"],
+            "attempt-1",
+            status="completed",
+            generated_case_count=3,
+        )
+
+    assert [item["endpoint_id"] for item in items] == ["apiend-1", "apiend-2"]
+    with connect() as db:
+        item = api_automation_repo.find_generation_item(db, items[0]["id"])
+        attempts = api_automation_repo.list_generation_item_attempts(db, items[0]["id"])
+    assert item["status"] == "completed"
+    assert item["attempt_count"] == 1
+    assert attempts[0]["id"] == "attempt-1"
+
+
+def test_existing_database_adds_generation_batch_structure_without_losing_cases(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+    with connect() as db:
+        api_automation_repo.create_generation_run(
+            db,
+            run_id="apigen-legacy",
+            task_id="api_automation_generation:apigen-legacy",
+            project_id="project-1",
+            api_environment_id=None,
+            endpoint_ids=[],
+            source_test_case_ids=[],
+            generation_goal="",
+            options={},
+            created_by="u-admin",
+        )
+        api_automation_repo.create_api_test_case(
+            db,
+            case_id="apitc-legacy",
+            project_id="project-1",
+            endpoint_id=None,
+            source_test_case_id=None,
+            generation_run_id="apigen-legacy",
+            title="Legacy case",
+            priority="P2",
+            source="ai_generated",
+            tags=[],
+            coverage="positive",
+            preconditions=[],
+            request={},
+            test_data={},
+            expected={},
+            assertions=[],
+            variables={},
+            data_origin={},
+            data_file_path="",
+            notes="",
+            created_by="u-admin",
+        )
+
+    raw_db = sqlite3.connect(settings.DB_PATH)
+    raw_db.executescript(
+        """
+        DROP TABLE IF EXISTS api_generation_item_attempts;
+        DROP TABLE IF EXISTS api_generation_items;
+        ALTER TABLE api_generation_runs RENAME TO api_generation_runs_current;
+        CREATE TABLE api_generation_runs (
+          id TEXT PRIMARY KEY, project_id TEXT NOT NULL, api_environment_id TEXT,
+          task_id TEXT NOT NULL UNIQUE,
+          status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted')),
+          endpoint_ids_json TEXT NOT NULL DEFAULT '[]', source_test_case_ids_json TEXT NOT NULL DEFAULT '[]',
+          generation_goal TEXT NOT NULL DEFAULT '', options_json TEXT NOT NULL DEFAULT '{}',
+          result_summary_json TEXT NOT NULL DEFAULT '{}', error_message TEXT NOT NULL DEFAULT '',
+          created_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, finished_at TEXT
+        );
+        INSERT INTO api_generation_runs SELECT * FROM api_generation_runs_current;
+        DROP TABLE api_generation_runs_current;
+        ALTER TABLE api_test_cases RENAME TO api_test_cases_current;
+        CREATE TABLE api_test_cases AS
+          SELECT id, project_id, endpoint_id, source_test_case_id, generation_run_id,
+                 title, priority, coverage, source, tags_json, preconditions_json,
+                 request_json, test_data_json, expected_json, assertions_json, variables_json,
+                 data_origin_json, data_file_path, notes, created_by, updated_by, created_at, updated_at
+          FROM api_test_cases_current;
+        DROP TABLE api_test_cases_current;
+        """
+    )
+    raw_db.close()
+
+    init_db()
+
+    with connect() as db:
+        tables = {
+            row["name"]
+            for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'api_generation_item%'"
+            )
+        }
+        case_columns = {row["name"] for row in db.execute("PRAGMA table_info(api_test_cases)")}
+        case = db.execute("SELECT id FROM api_test_cases WHERE id = 'apitc-legacy'").fetchone()
+        run_sql = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'api_generation_runs'"
+        ).fetchone()["sql"]
+
+    assert tables == {"api_generation_items", "api_generation_item_attempts"}
+    assert {"generation_item_id", "generation_attempt_id"} <= case_columns
+    assert case["id"] == "apitc-legacy"
+    assert "partial_success" in run_sql
 
 
 def test_upsert_endpoint_uses_method_and_normalized_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -372,7 +372,7 @@ CREATE TABLE IF NOT EXISTS api_generation_runs (
   project_id TEXT NOT NULL,
   api_environment_id TEXT,
   task_id TEXT NOT NULL UNIQUE,
-  status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted')),
+  status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'partial_success', 'failed', 'cancelled', 'interrupted')),
   endpoint_ids_json TEXT NOT NULL DEFAULT '[]',
   source_test_case_ids_json TEXT NOT NULL DEFAULT '[]',
   generation_goal TEXT NOT NULL DEFAULT '',
@@ -389,6 +389,42 @@ CREATE TABLE IF NOT EXISTS api_generation_runs (
 
 CREATE INDEX IF NOT EXISTS idx_api_generation_runs_project_created
   ON api_generation_runs(project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS api_generation_items (
+  id TEXT PRIMARY KEY,
+  generation_run_id TEXT NOT NULL,
+  endpoint_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed')) DEFAULT 'queued',
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  generated_case_count INTEGER NOT NULL DEFAULT 0,
+  error_message TEXT NOT NULL DEFAULT '',
+  started_at TEXT,
+  finished_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(generation_run_id) REFERENCES api_generation_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE CASCADE,
+  UNIQUE(generation_run_id, endpoint_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_generation_items_run_status
+  ON api_generation_items(generation_run_id, status);
+
+CREATE TABLE IF NOT EXISTS api_generation_item_attempts (
+  id TEXT PRIMARY KEY,
+  generation_item_id TEXT NOT NULL,
+  attempt_no INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed')) DEFAULT 'running',
+  generated_case_count INTEGER NOT NULL DEFAULT 0,
+  error_message TEXT NOT NULL DEFAULT '',
+  started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finished_at TEXT,
+  FOREIGN KEY(generation_item_id) REFERENCES api_generation_items(id) ON DELETE CASCADE,
+  UNIQUE(generation_item_id, attempt_no)
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_generation_item_attempts_item
+  ON api_generation_item_attempts(generation_item_id, attempt_no);
 
 CREATE TABLE IF NOT EXISTS api_test_case_sets (
   id TEXT PRIMARY KEY,
@@ -414,6 +450,8 @@ CREATE TABLE IF NOT EXISTS api_test_cases (
   endpoint_id TEXT,
   source_test_case_id TEXT,
   generation_run_id TEXT,
+  generation_item_id TEXT,
+  generation_attempt_id TEXT,
   title TEXT NOT NULL,
   priority TEXT NOT NULL DEFAULT 'P2',
   coverage TEXT NOT NULL DEFAULT 'positive',
@@ -435,7 +473,9 @@ CREATE TABLE IF NOT EXISTS api_test_cases (
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
   FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE SET NULL,
   FOREIGN KEY(source_test_case_id) REFERENCES test_cases(id) ON DELETE SET NULL,
-  FOREIGN KEY(generation_run_id) REFERENCES api_generation_runs(id) ON DELETE SET NULL
+  FOREIGN KEY(generation_run_id) REFERENCES api_generation_runs(id) ON DELETE SET NULL,
+  FOREIGN KEY(generation_item_id) REFERENCES api_generation_items(id) ON DELETE SET NULL,
+  FOREIGN KEY(generation_attempt_id) REFERENCES api_generation_item_attempts(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_test_cases_project_endpoint

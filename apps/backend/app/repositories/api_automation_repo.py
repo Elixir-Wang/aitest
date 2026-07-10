@@ -1,4 +1,5 @@
 import json
+import secrets
 from sqlite3 import Connection, Row
 from typing import Any
 
@@ -285,6 +286,122 @@ def list_generation_runs(db: Connection, project_id: str) -> list[Row]:
         ORDER BY updated_at DESC, created_at DESC
         """,
         (project_id,),
+    ).fetchall()
+
+
+def create_generation_items(db: Connection, run_id: str, endpoint_ids: list[str]) -> None:
+    db.executemany(
+        """
+        INSERT OR IGNORE INTO api_generation_items (id, generation_run_id, endpoint_id)
+        VALUES (?, ?, ?)
+        """,
+        ((f"apigenitem-{secrets.token_hex(8)}", run_id, endpoint_id) for endpoint_id in endpoint_ids),
+    )
+
+
+def find_generation_item(db: Connection, item_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT item.*, endpoint.method, endpoint.path
+        FROM api_generation_items AS item
+        JOIN api_endpoints AS endpoint ON endpoint.id = item.endpoint_id
+        WHERE item.id = ?
+        """,
+        (item_id,),
+    ).fetchone()
+
+
+def list_generation_items(db: Connection, run_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT item.*, endpoint.method, endpoint.path
+        FROM api_generation_items AS item
+        JOIN api_endpoints AS endpoint ON endpoint.id = item.endpoint_id
+        WHERE item.generation_run_id = ?
+        ORDER BY item.rowid
+        """,
+        (run_id,),
+    ).fetchall()
+
+
+def list_failed_generation_items(db: Connection, run_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT item.*, endpoint.method, endpoint.path
+        FROM api_generation_items AS item
+        JOIN api_endpoints AS endpoint ON endpoint.id = item.endpoint_id
+        WHERE item.generation_run_id = ? AND item.status = 'failed'
+        ORDER BY item.rowid
+        """,
+        (run_id,),
+    ).fetchall()
+
+
+def start_generation_item_attempt(db: Connection, item_id: str, attempt_id: str) -> None:
+    db.execute(
+        """
+        UPDATE api_generation_items
+        SET status = 'running',
+            attempt_count = attempt_count + 1,
+            error_message = '',
+            started_at = CURRENT_TIMESTAMP,
+            finished_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (item_id,),
+    )
+    db.execute(
+        """
+        INSERT INTO api_generation_item_attempts (id, generation_item_id, attempt_no, status)
+        SELECT ?, id, attempt_count, 'running'
+        FROM api_generation_items
+        WHERE id = ?
+        """,
+        (attempt_id, item_id),
+    )
+
+
+def finish_generation_item_attempt(
+    db: Connection,
+    item_id: str,
+    attempt_id: str,
+    *,
+    status: str,
+    generated_case_count: int = 0,
+    error_message: str = "",
+) -> None:
+    db.execute(
+        """
+        UPDATE api_generation_item_attempts
+        SET status = ?, generated_case_count = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND generation_item_id = ?
+        """,
+        (status, generated_case_count, error_message, attempt_id, item_id),
+    )
+    db.execute(
+        """
+        UPDATE api_generation_items
+        SET status = ?,
+            generated_case_count = ?,
+            error_message = ?,
+            finished_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (status, generated_case_count, error_message, item_id),
+    )
+
+
+def list_generation_item_attempts(db: Connection, item_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT *
+        FROM api_generation_item_attempts
+        WHERE generation_item_id = ?
+        ORDER BY attempt_no
+        """,
+        (item_id,),
     ).fetchall()
 
 
