@@ -474,16 +474,19 @@ def create_api_test_case(
     data_file_path: str,
     notes: str,
     created_by: str,
+    generation_item_id: str | None = None,
+    generation_attempt_id: str | None = None,
 ) -> str:
     db.execute(
         """
         INSERT INTO api_test_cases (
           id, project_id, endpoint_id, source_test_case_id, generation_run_id,
+          generation_item_id, generation_attempt_id,
           title, priority, coverage, source, tags_json, preconditions_json,
           request_json, test_data_json, expected_json, assertions_json, variables_json, data_origin_json,
           data_file_path, notes, created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             case_id,
@@ -491,6 +494,8 @@ def create_api_test_case(
             endpoint_id,
             source_test_case_id,
             generation_run_id,
+            generation_item_id,
+            generation_attempt_id,
             title,
             priority,
             coverage or "positive",

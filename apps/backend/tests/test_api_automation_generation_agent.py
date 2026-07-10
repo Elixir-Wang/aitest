@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -56,6 +57,126 @@ def _seed_project_endpoint() -> None:
             source={"source_type": "manual"},
             created_by=ACTOR["id"],
         )
+
+
+def _seed_additional_endpoints(endpoint_ids: list[str]) -> None:
+    with connect() as db:
+        for endpoint_id in endpoint_ids:
+            api_automation_repo.upsert_endpoint(
+                db,
+                endpoint_id=endpoint_id,
+                project_id="project-1",
+                document_id=None,
+                method="GET",
+                path=f"/{endpoint_id}",
+                normalized_path=f"/{endpoint_id}",
+                summary=endpoint_id,
+                description="",
+                tags=[],
+                parameters=[],
+                request_body={},
+                responses={"200": {"description": "ok"}},
+                auth={},
+                source={"source_type": "manual"},
+                created_by=ACTOR["id"],
+            )
+
+
+def test_execute_generation_run_limits_concurrency_and_keeps_partial_success(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint()
+    endpoint_ids = ["apiend-1", *[f"apiend-{index}" for index in range(2, 13)]]
+    _seed_additional_endpoints(endpoint_ids[1:])
+    active_calls = 0
+    max_active_calls = 0
+    calls: dict[str, int] = {}
+
+    async def fake_generate_api_test_cases(input_data):
+        nonlocal active_calls, max_active_calls
+        endpoint = input_data.endpoints[0]
+        endpoint_id = endpoint["id"]
+        calls[endpoint_id] = calls.get(endpoint_id, 0) + 1
+        active_calls += 1
+        max_active_calls = max(max_active_calls, active_calls)
+        await asyncio.sleep(0.01)
+        active_calls -= 1
+        if endpoint_id == "apiend-7":
+            raise RuntimeError("model failed")
+        return ApiAutomationGenerationResult(
+            summary="生成 1 条",
+            cases=[
+                ApiGeneratedCase(
+                    title=f"{endpoint_id} success",
+                    endpoint_id=endpoint_id,
+                    request={"method": endpoint["method"], "path": endpoint["path"]},
+                    expected={"status_code": 200},
+                    assertions=[{"type": "status_code", "expected": 200}],
+                )
+            ],
+        )
+
+    monkeypatch.setattr(service.api_generation_agent_service, "generate_api_test_cases", fake_generate_api_test_cases)
+    created = service.create_generation_run(
+        "project-1",
+        ApiAutomationGenerateIn(endpoint_ids=endpoint_ids, generate_code=False),
+        ACTOR,
+    )
+
+    result = service.execute_generation_run(created["id"])
+
+    with connect() as db:
+        items = api_automation_repo.list_generation_items(db, created["id"])
+        cases = api_automation_repo.list_api_test_cases(db, "project-1")
+
+    assert max_active_calls == 5
+    assert result["status"] == "partial_success"
+    assert sum(item["status"] == "completed" for item in items) == 11
+    assert sum(item["status"] == "failed" for item in items) == 1
+    assert len(cases) == 11
+    assert calls["apiend-7"] == 1
+
+
+def test_generation_item_validation_is_atomic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint()
+
+    async def fake_generate_api_test_cases(input_data):
+        return ApiAutomationGenerationResult(
+            summary="one invalid",
+            cases=[
+                ApiGeneratedCase(
+                    title="valid",
+                    endpoint_id="apiend-1",
+                    request={"method": "POST", "path": "/login"},
+                    expected={"status_code": 200},
+                    assertions=[{"type": "status_code", "expected": 200}],
+                ),
+                ApiGeneratedCase(
+                    title="invalid",
+                    endpoint_id="apiend-other",
+                    request={"method": "POST", "path": "/login"},
+                    expected={"status_code": 200},
+                    assertions=[{"type": "status_code", "expected": 200}],
+                ),
+            ],
+        )
+
+    monkeypatch.setattr(service.api_generation_agent_service, "generate_api_test_cases", fake_generate_api_test_cases)
+    created = service.create_generation_run(
+        "project-1",
+        ApiAutomationGenerateIn(endpoint_ids=["apiend-1"], generate_code=False),
+        ACTOR,
+    )
+
+    result = service.execute_generation_run(created["id"])
+
+    with connect() as db:
+        cases = api_automation_repo.list_api_test_cases(db, "project-1")
+    assert result["status"] == "failed"
+    assert cases == []
 
 
 def test_execute_generation_run_saves_generated_cases(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -275,8 +396,6 @@ def test_execute_generation_run_passes_source_test_cases_to_agent(
 
 
 def test_api_automation_agent_uses_skill_middleware_and_response_format(monkeypatch: pytest.MonkeyPatch) -> None:
-    from langchain.agents.structured_output import ToolStrategy
-
     from app.agents.api_automation import agent as agent_module
 
     captured = {}
@@ -294,9 +413,7 @@ def test_api_automation_agent_uses_skill_middleware_and_response_format(monkeypa
     assert captured["tools"] == []
     assert captured["middleware"][0].name == "SkillMiddleware"
     assert "api-automation-case-generation" in str(captured["middleware"][0].skill_path)
-    assert isinstance(captured["response_format"], ToolStrategy)
-    assert captured["response_format"].schema is ApiAutomationGenerationResult
-    assert captured["response_format"].handle_errors is True
+    assert captured["response_format"] is ApiAutomationGenerationResult
 
 
 def test_api_automation_generation_result_schema_uses_typed_assertions() -> None:
