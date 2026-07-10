@@ -170,9 +170,24 @@ def update_api_test_case_set(
     return service.update_api_test_case_set(project_id, set_id, payload, actor)
 
 
-@router.get("/api-automation/generation-runs/{run_id}")
+@router.get("/api-automation/generation-runs/{run_id}", response_model=ApiGenerationRunOut)
 def get_api_automation_generation_run(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
     return service.get_generation_run(project_id, run_id, actor)
+
+
+@router.post(
+    "/api-automation/generation-runs/{run_id}/retry-failed",
+    response_model=ApiGenerationRunOut,
+)
+def retry_failed_api_generation_items(
+    project_id: str,
+    run_id: str,
+    background_tasks: BackgroundTasks,
+    actor=Depends(require_admin),
+) -> dict:
+    run = service.retry_failed_generation_items(project_id, run_id, actor)
+    background_tasks.add_task(service.execute_generation_run, run_id)
+    return run
 
 
 @router.post("/api-automation/scripts/generate")

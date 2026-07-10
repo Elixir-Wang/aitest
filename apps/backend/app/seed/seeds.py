@@ -6,6 +6,7 @@ from app.core.security import hash_secret
 def seed_system_defaults(db: sqlite3.Connection) -> None:
     _migrate_api_environment_auth_types(db)
     _ensure_api_test_case_structure_columns(db)
+    _ensure_api_generation_batch_structure(db)
     _migrate_legacy_site_exploration_assignment(db)
     _seed_operation_log_retention_policy(db)
     _ensure_all_projects_conversation_scope(db)
@@ -69,7 +70,125 @@ def _ensure_api_test_case_structure_columns(db: sqlite3.Connection) -> None:
         _drop_api_test_case_status_column(db)
 
 
+def _ensure_api_generation_batch_structure(db: sqlite3.Connection) -> None:
+    run_row = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'api_generation_runs'"
+    ).fetchone()
+    run_sql = str(run_row["sql"] if run_row else "")
+    if run_row and "partial_success" not in run_sql:
+        db.execute("PRAGMA foreign_keys = OFF")
+        db.execute("DROP TABLE IF EXISTS api_generation_runs_new")
+        db.execute(
+            """
+            CREATE TABLE api_generation_runs_new (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              api_environment_id TEXT,
+              task_id TEXT NOT NULL UNIQUE,
+              status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'partial_success', 'failed', 'cancelled', 'interrupted')),
+              endpoint_ids_json TEXT NOT NULL DEFAULT '[]',
+              source_test_case_ids_json TEXT NOT NULL DEFAULT '[]',
+              generation_goal TEXT NOT NULL DEFAULT '',
+              options_json TEXT NOT NULL DEFAULT '{}',
+              result_summary_json TEXT NOT NULL DEFAULT '{}',
+              error_message TEXT NOT NULL DEFAULT '',
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              finished_at TEXT,
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+              FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE SET NULL
+            )
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO api_generation_runs_new (
+              id, project_id, api_environment_id, task_id, status,
+              endpoint_ids_json, source_test_case_ids_json, generation_goal,
+              options_json, result_summary_json, error_message, created_by,
+              created_at, updated_at, finished_at
+            )
+            SELECT
+              id, project_id, api_environment_id, task_id, status,
+              endpoint_ids_json, source_test_case_ids_json, generation_goal,
+              options_json, result_summary_json, error_message, created_by,
+              created_at, updated_at, finished_at
+            FROM api_generation_runs
+            """
+        )
+        db.execute("DROP TABLE api_generation_runs")
+        db.execute("ALTER TABLE api_generation_runs_new RENAME TO api_generation_runs")
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_api_generation_runs_project_created "
+            "ON api_generation_runs(project_id, created_at)"
+        )
+        db.commit()
+        db.execute("PRAGMA foreign_keys = ON")
+
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS api_generation_items (
+          id TEXT PRIMARY KEY,
+          generation_run_id TEXT NOT NULL,
+          endpoint_id TEXT NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed')) DEFAULT 'queued',
+          attempt_count INTEGER NOT NULL DEFAULT 0,
+          generated_case_count INTEGER NOT NULL DEFAULT 0,
+          error_message TEXT NOT NULL DEFAULT '',
+          started_at TEXT,
+          finished_at TEXT,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(generation_run_id) REFERENCES api_generation_runs(id) ON DELETE CASCADE,
+          FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE CASCADE,
+          UNIQUE(generation_run_id, endpoint_id)
+        )
+        """
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_api_generation_items_run_status "
+        "ON api_generation_items(generation_run_id, status)"
+    )
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS api_generation_item_attempts (
+          id TEXT PRIMARY KEY,
+          generation_item_id TEXT NOT NULL,
+          attempt_no INTEGER NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed')) DEFAULT 'running',
+          generated_case_count INTEGER NOT NULL DEFAULT 0,
+          error_message TEXT NOT NULL DEFAULT '',
+          started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          finished_at TEXT,
+          FOREIGN KEY(generation_item_id) REFERENCES api_generation_items(id) ON DELETE CASCADE,
+          UNIQUE(generation_item_id, attempt_no)
+        )
+        """
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_api_generation_item_attempts_item "
+        "ON api_generation_item_attempts(generation_item_id, attempt_no)"
+    )
+
+    case_row = db.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_test_cases'"
+    ).fetchone()
+    if case_row:
+        columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_test_cases)")}
+        if "generation_item_id" not in columns:
+            db.execute("ALTER TABLE api_test_cases ADD COLUMN generation_item_id TEXT REFERENCES api_generation_items(id) ON DELETE SET NULL")
+        if "generation_attempt_id" not in columns:
+            db.execute("ALTER TABLE api_test_cases ADD COLUMN generation_attempt_id TEXT REFERENCES api_generation_item_attempts(id) ON DELETE SET NULL")
+    foreign_key_violations = db.execute("PRAGMA foreign_key_check").fetchall()
+    if foreign_key_violations:
+        raise RuntimeError(f"Foreign key violations remain after API generation batch migration: {foreign_key_violations}")
+
+
 def _drop_api_test_case_status_column(db: sqlite3.Connection) -> None:
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_test_cases)")}
+    generation_item_id = "generation_item_id" if "generation_item_id" in columns else "NULL"
+    generation_attempt_id = "generation_attempt_id" if "generation_attempt_id" in columns else "NULL"
     db.execute("PRAGMA foreign_keys = OFF")
     db.execute(
         """
@@ -79,6 +198,8 @@ def _drop_api_test_case_status_column(db: sqlite3.Connection) -> None:
           endpoint_id TEXT,
           source_test_case_id TEXT,
           generation_run_id TEXT,
+          generation_item_id TEXT,
+          generation_attempt_id TEXT,
           title TEXT NOT NULL,
           priority TEXT NOT NULL DEFAULT 'P2',
           coverage TEXT NOT NULL DEFAULT 'positive',
@@ -100,20 +221,24 @@ def _drop_api_test_case_status_column(db: sqlite3.Connection) -> None:
           FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
           FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE SET NULL,
           FOREIGN KEY(source_test_case_id) REFERENCES test_cases(id) ON DELETE SET NULL,
-          FOREIGN KEY(generation_run_id) REFERENCES api_generation_runs(id) ON DELETE SET NULL
+          FOREIGN KEY(generation_run_id) REFERENCES api_generation_runs(id) ON DELETE SET NULL,
+          FOREIGN KEY(generation_item_id) REFERENCES api_generation_items(id) ON DELETE SET NULL,
+          FOREIGN KEY(generation_attempt_id) REFERENCES api_generation_item_attempts(id) ON DELETE SET NULL
         )
         """
     )
     db.execute(
-        """
+        f"""
         INSERT OR IGNORE INTO api_test_cases_new (
           id, project_id, endpoint_id, source_test_case_id, generation_run_id,
+          generation_item_id, generation_attempt_id,
           title, priority, coverage, source, tags_json, preconditions_json,
           request_json, test_data_json, expected_json, assertions_json, variables_json,
           data_origin_json, data_file_path, notes, created_by, updated_by, created_at, updated_at
         )
         SELECT
           id, project_id, endpoint_id, source_test_case_id, generation_run_id,
+          {generation_item_id}, {generation_attempt_id},
           title, priority, coverage, source, tags_json, preconditions_json,
           request_json, test_data_json, expected_json, assertions_json, variables_json,
           data_origin_json, data_file_path, notes, created_by, updated_by, created_at, updated_at

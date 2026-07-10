@@ -1,5 +1,6 @@
 import asyncio
 import secrets
+import threading
 import time
 from pathlib import Path
 from sqlite3 import Row
@@ -35,6 +36,8 @@ from app.services.api_automation.script_generator import generate_pytest_suite
 
 MAX_OPENAPI_BYTES = 2 * 1024 * 1024
 MAX_DEBUG_RESPONSE_CHARS = 200_000
+API_GENERATION_CONCURRENCY = 5
+_api_generation_slots = threading.BoundedSemaphore(API_GENERATION_CONCURRENCY)
 
 
 def import_openapi_url(project_id: str, *, url: str, actor, name: str = "") -> dict:
@@ -376,16 +379,20 @@ def create_generation_run(project_id: str, payload: ApiAutomationGenerateIn, act
             },
             created_by=actor["id"],
         )
+        api_automation_repo.create_generation_items(db, run_id, payload.endpoint_ids)
         row = api_automation_repo.find_generation_run(db, run_id)
         if not row:
             raise api_error(500, "API_GENERATION_RUN_CREATE_FAILED", "接口自动化生成任务创建失败。")
-        return _serialize_generation_run(row)
+        return _serialize_generation_run(db, row)
 
 
 def list_generation_runs(project_id: str, actor) -> list[dict]:
     with connect() as db:
         _require_visible_project(db, project_id, actor)
-        return [_serialize_generation_run(row) for row in api_automation_repo.list_generation_runs(db, project_id)]
+        return [
+            _serialize_generation_run(db, row, include_attempts=False)
+            for row in api_automation_repo.list_generation_runs(db, project_id)
+        ]
 
 
 def list_api_test_cases(project_id: str, actor, *, endpoint_id: str = "") -> list[dict]:
@@ -459,89 +466,163 @@ def execute_generation_run(run_id: str) -> dict:
         if not run:
             raise api_error(404, "API_GENERATION_RUN_NOT_FOUND", "接口自动化生成任务不存在。")
         api_automation_repo.update_generation_run(db, run_id, status="running")
-        endpoints = [
-            _serialize_endpoint(endpoint)
-            for endpoint_id in api_automation_repo.loads_json(run["endpoint_ids_json"], [])
-            if (endpoint := api_automation_repo.find_endpoint(db, endpoint_id)) is not None
+        item_ids = [
+            item["id"]
+            for item in api_automation_repo.list_generation_items(db, run_id)
+            if item["status"] == "queued"
         ]
-        source_test_cases = [
-            _serialize_source_test_case(test_case)
-            for test_case_id in api_automation_repo.loads_json(run["source_test_case_ids_json"], [])
-            if (test_case := test_case_repo.find_case_by_id(db, test_case_id)) is not None
-        ]
-        environment_summary = {}
-        if run["api_environment_id"]:
-            environment = api_automation_repo.find_api_environment(db, run["api_environment_id"])
-            if environment:
-                environment_summary = _serialize_api_environment(environment)
 
-    try:
-        result = asyncio.run(api_generation_agent_service.generate_api_test_cases(
-            ApiAutomationGenerationInput(
-                project_id=run["project_id"],
-                endpoints=endpoints,
-                environment_summary=environment_summary,
-                source_test_cases=source_test_cases,
-                generation_goal=run["generation_goal"],
-                include_security_cases=bool(
-                    api_automation_repo.loads_json(run["options_json"], {}).get("include_security_cases")
-                ),
-            )
-        ))
-    except Exception as exc:
-        with connect() as db:
-            api_automation_repo.update_generation_run(
-                db,
-                run_id,
-                status="failed",
-                error_message=str(exc),
-                finished=True,
-            )
-            failed = api_automation_repo.find_generation_run(db, run_id)
-        return _serialize_generation_run(failed)
+    asyncio.run(_execute_generation_items(run_id, item_ids))
 
     with connect() as db:
-        for generated_case in result.cases:
-            api_automation_repo.create_api_test_case(
-                db,
-                case_id=f"apitc-{secrets.token_hex(8)}",
-                project_id=run["project_id"],
-                endpoint_id=generated_case.endpoint_id,
-                source_test_case_id=None,
-                generation_run_id=run_id,
-                title=generated_case.title,
-                priority=generated_case.priority,
-                coverage=generated_case.coverage,
-                source=generated_case.source,
-                tags=generated_case.tags,
-                preconditions=generated_case.preconditions,
-                request=generated_case.request,
-                test_data=generated_case.test_data,
-                expected=generated_case.expected,
-                assertions=[
-                    assertion.model_dump() if hasattr(assertion, "model_dump") else assertion
-                    for assertion in generated_case.assertions
-                ],
-                variables=generated_case.variables,
-                data_origin=generated_case.data_origin,
-                data_file_path="",
-                notes=generated_case.notes,
-                created_by="system",
-            )
+        items = api_automation_repo.list_generation_items(db, run_id)
+        success_count = sum(item["status"] == "completed" for item in items)
+        failed_count = sum(item["status"] == "failed" for item in items)
+        total_count = len(items)
+        status = "completed" if success_count == total_count else "failed" if failed_count == total_count else "partial_success"
         summary = {
-            "summary": result.summary,
-            "test_case_count": len(result.cases),
+            "summary": f"成功 {success_count}，失败 {failed_count}，共 {total_count}",
+            "total_count": total_count,
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "test_case_count": sum(item["generated_case_count"] for item in items),
             "script_count": 0,
         }
         api_automation_repo.update_generation_run(
             db,
             run_id,
-            status="completed",
+            status=status,
             result_summary=summary,
+            error_message="\n".join(item["error_message"] for item in items if item["error_message"]),
             finished=True,
         )
         completed = api_automation_repo.find_generation_run(db, run_id)
-        return _serialize_generation_run(completed)
+        return _serialize_generation_run(db, completed)
+
+
+async def _execute_generation_items(run_id: str, item_ids: list[str]) -> None:
+    await asyncio.gather(*(_execute_generation_item(run_id, item_id) for item_id in item_ids))
+
+
+async def _execute_generation_item(run_id: str, item_id: str) -> None:
+    attempt_id = f"apiattempt-{secrets.token_hex(8)}"
+    with connect() as db:
+        api_automation_repo.start_generation_item_attempt(db, item_id, attempt_id)
+        input_data = _build_generation_item_input(db, run_id, item_id)
+
+    await asyncio.to_thread(_api_generation_slots.acquire)
+    try:
+        result = await api_generation_agent_service.generate_api_test_cases(input_data)
+    except Exception as exc:
+        with connect() as db:
+            api_automation_repo.finish_generation_item_attempt(
+                db,
+                item_id,
+                attempt_id,
+                status="failed",
+                error_message=_generation_error_message(exc),
+            )
+        return
+    finally:
+        _api_generation_slots.release()
+
+    try:
+        with connect() as db:
+            generated_case_count = _persist_generation_item_cases(db, run_id, item_id, attempt_id, result)
+            api_automation_repo.finish_generation_item_attempt(
+                db,
+                item_id,
+                attempt_id,
+                status="completed",
+                generated_case_count=generated_case_count,
+            )
+    except Exception as exc:
+        with connect() as db:
+            api_automation_repo.finish_generation_item_attempt(
+                db,
+                item_id,
+                attempt_id,
+                status="failed",
+                error_message=_generation_error_message(exc),
+            )
+
+
+def _build_generation_item_input(db, run_id: str, item_id: str) -> ApiAutomationGenerationInput:
+    run = api_automation_repo.find_generation_run(db, run_id)
+    item = api_automation_repo.find_generation_item(db, item_id)
+    if not run or not item:
+        raise ValueError("接口自动化生成子任务不存在。")
+    endpoint = api_automation_repo.find_endpoint(db, item["endpoint_id"])
+    if not endpoint:
+        raise ValueError("接口自动化生成子任务关联接口不存在。")
+    source_test_cases = [
+        _serialize_source_test_case(test_case)
+        for test_case_id in api_automation_repo.loads_json(run["source_test_case_ids_json"], [])
+        if (test_case := test_case_repo.find_case_by_id(db, test_case_id)) is not None
+    ]
+    environment_summary = {}
+    if run["api_environment_id"]:
+        environment = api_automation_repo.find_api_environment(db, run["api_environment_id"])
+        if environment:
+            environment_summary = _serialize_api_environment(environment)
+    return ApiAutomationGenerationInput(
+        project_id=run["project_id"],
+        endpoints=[_serialize_endpoint(endpoint)],
+        environment_summary=environment_summary,
+        source_test_cases=source_test_cases,
+        generation_goal=run["generation_goal"],
+        include_security_cases=bool(
+            api_automation_repo.loads_json(run["options_json"], {}).get("include_security_cases")
+        ),
+    )
+
+
+def _persist_generation_item_cases(db, run_id: str, item_id: str, attempt_id: str, result) -> int:
+    item = api_automation_repo.find_generation_item(db, item_id)
+    endpoint = api_automation_repo.find_endpoint(db, item["endpoint_id"]) if item else None
+    if not item or not endpoint:
+        raise ValueError("接口自动化生成子任务关联接口不存在。")
+    for generated_case in result.cases:
+        request_method = str(generated_case.request.get("method") or "").upper()
+        request_path = str(generated_case.request.get("path") or "")
+        if (
+            generated_case.endpoint_id != endpoint["id"]
+            or request_method != str(endpoint["method"]).upper()
+            or request_path != endpoint["path"]
+        ):
+            raise ValueError("生成用例与接口定义不一致。")
+    for generated_case in result.cases:
+        api_automation_repo.create_api_test_case(
+            db,
+            case_id=f"apitc-{secrets.token_hex(8)}",
+            project_id=endpoint["project_id"],
+            endpoint_id=generated_case.endpoint_id,
+            source_test_case_id=None,
+            generation_run_id=run_id,
+            generation_item_id=item_id,
+            generation_attempt_id=attempt_id,
+            title=generated_case.title,
+            priority=generated_case.priority,
+            coverage=generated_case.coverage,
+            source=generated_case.source,
+            tags=generated_case.tags,
+            preconditions=generated_case.preconditions,
+            request=generated_case.request,
+            test_data=generated_case.test_data,
+            expected=generated_case.expected,
+            assertions=[assertion.model_dump() for assertion in generated_case.assertions],
+            variables=generated_case.variables,
+            data_origin=generated_case.data_origin,
+            data_file_path="",
+            notes=generated_case.notes,
+            created_by="system",
+        )
+    return len(result.cases)
+
+
+def _generation_error_message(exc: Exception) -> str:
+    message = str(exc)
+    return "模型输出超出长度限制" if "finish_reason" in message and "length" in message else message
 
 
 def get_generation_run(project_id: str, run_id: str, actor) -> dict:
@@ -550,9 +631,30 @@ def get_generation_run(project_id: str, run_id: str, actor) -> dict:
         row = api_automation_repo.find_generation_run(db, run_id)
         if not row or row["project_id"] != project_id:
             raise api_error(404, "API_GENERATION_RUN_NOT_FOUND", "接口自动化生成任务不存在。")
-        result = _serialize_generation_run(row)
-        result["test_cases"] = [_serialize_api_test_case(case) for case in api_automation_repo.list_api_test_cases(db, project_id)]
+        result = _serialize_generation_run(db, row)
+        result["test_cases"] = [
+            _serialize_api_test_case(case)
+            for case in api_automation_repo.list_api_test_cases(db, project_id)
+            if case["generation_run_id"] == run_id
+        ]
         return result
+
+
+def retry_failed_generation_items(project_id: str, run_id: str, actor) -> dict:
+    _require_admin(actor)
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = api_automation_repo.find_generation_run(db, run_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "API_GENERATION_RUN_NOT_FOUND", "接口自动化生成任务不存在。")
+        items = api_automation_repo.list_generation_items(db, run_id)
+        if any(item["status"] in {"queued", "running"} for item in items):
+            raise api_error(409, "API_GENERATION_RUN_ACTIVE", "接口自动化生成任务仍在执行。")
+        if not any(item["status"] == "failed" for item in items):
+            raise api_error(409, "API_GENERATION_RUN_NO_FAILURES", "没有可重试的失败接口。")
+        api_automation_repo.reset_failed_generation_items(db, run_id)
+        api_automation_repo.update_generation_run(db, run_id, status="running", error_message="", finished=False)
+        return _serialize_generation_run(db, api_automation_repo.find_generation_run(db, run_id))
 
 
 def generate_scripts_from_api_test_cases(project_id: str, api_test_case_ids: list[str], actor) -> dict:
@@ -814,16 +916,43 @@ def create_api_scenario_step(project_id: str, scenario_id: str, payload: ApiScen
 
 def recover_interrupted_api_automation_tasks() -> None:
     with connect() as db:
+        active_runs = db.execute(
+            "SELECT * FROM api_generation_runs WHERE status IN ('queued', 'running')"
+        ).fetchall()
+        recovery_error = "服务已重启，未完成接口生成已终止，失败接口可重试。"
         db.execute(
             """
-            UPDATE api_generation_runs
-            SET status = 'interrupted',
-                error_message = '服务已重启，接口自动化生成任务已中断，请重新发起。',
-                updated_at = CURRENT_TIMESTAMP,
-                finished_at = CURRENT_TIMESTAMP
+            UPDATE api_generation_item_attempts
+            SET status = 'failed', error_message = ?, finished_at = CURRENT_TIMESTAMP
             WHERE status IN ('queued', 'running')
-            """
+            """,
+            (recovery_error,),
         )
+        db.execute(
+            """
+            UPDATE api_generation_items
+            SET status = 'failed', error_message = ?, finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE status IN ('queued', 'running')
+            """,
+            (recovery_error,),
+        )
+        for run in active_runs:
+            items = api_automation_repo.list_generation_items(db, run["id"])
+            if not items:
+                api_automation_repo.update_generation_run(
+                    db, run["id"], status="interrupted", error_message=recovery_error, finished=True
+                )
+                continue
+            counts = _generation_run_counts(items)
+            status = "partial_success" if counts["success_count"] else "failed"
+            api_automation_repo.update_generation_run(
+                db,
+                run["id"],
+                status=status,
+                result_summary={"summary": recovery_error, **counts},
+                error_message=recovery_error,
+                finished=True,
+            )
         db.execute(
             """
             UPDATE api_automation_runs
@@ -902,9 +1031,48 @@ def _serialize_api_environment(row: Row) -> dict:
     }
 
 
-def _serialize_generation_run(row: Row | None) -> dict:
+def _generation_run_counts(items: list[Row]) -> dict:
+    return {
+        "total_count": len(items),
+        "completed_count": sum(item["status"] in {"completed", "failed"} for item in items),
+        "success_count": sum(item["status"] == "completed" for item in items),
+        "failed_count": sum(item["status"] == "failed" for item in items),
+        "generated_case_count": sum(item["generated_case_count"] for item in items),
+    }
+
+
+def _serialize_generation_item(db, row: Row, *, include_attempts: bool = True) -> dict:
+    attempts = api_automation_repo.list_generation_item_attempts(db, row["id"]) if include_attempts else []
+    return {
+        "id": row["id"],
+        "endpoint_id": row["endpoint_id"],
+        "method": row["method"],
+        "path": row["path"],
+        "status": row["status"],
+        "attempt_count": row["attempt_count"],
+        "generated_case_count": row["generated_case_count"],
+        "error_message": row["error_message"],
+        "started_at": row["started_at"],
+        "finished_at": row["finished_at"],
+        "attempts": [
+            {
+                "id": attempt["id"],
+                "attempt_no": attempt["attempt_no"],
+                "status": attempt["status"],
+                "generated_case_count": attempt["generated_case_count"],
+                "error_message": attempt["error_message"],
+                "started_at": attempt["started_at"],
+                "finished_at": attempt["finished_at"],
+            }
+            for attempt in attempts
+        ],
+    }
+
+
+def _serialize_generation_run(db, row: Row | None, *, include_attempts: bool = True) -> dict:
     if row is None:
         raise api_error(404, "API_GENERATION_RUN_NOT_FOUND", "接口自动化生成任务不存在。")
+    items = api_automation_repo.list_generation_items(db, row["id"])
     return {
         "id": row["id"],
         "project_id": row["project_id"],
@@ -917,6 +1085,8 @@ def _serialize_generation_run(row: Row | None) -> dict:
         "options": api_automation_repo.loads_json(row["options_json"], {}),
         "result_summary": api_automation_repo.loads_json(row["result_summary_json"], {}),
         "error_message": row["error_message"],
+        **_generation_run_counts(items),
+        "items": [_serialize_generation_item(db, item, include_attempts=include_attempts) for item in items],
         "created_at": row["created_at"],
         "finished_at": row["finished_at"],
     }
