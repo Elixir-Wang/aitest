@@ -83,6 +83,22 @@ export function PageShell({
     return () => setBreadcrumbs([]);
   }, [breadcrumbKey, setBreadcrumbs]);
 
+  useEffect(() => {
+    if (!fillViewport) {
+      return;
+    }
+
+    const previousDocumentOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.documentElement.style.overflow = previousDocumentOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [fillViewport]);
+
   return (
     <div
       className={cn("@container/main flex flex-col gap-4 md:gap-6", fillViewport && "min-h-0 flex-1 overflow-hidden")}

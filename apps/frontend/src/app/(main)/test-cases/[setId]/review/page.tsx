@@ -4,10 +4,23 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
-import { Check, ChevronLeft, ChevronRight, CircleX, Download, Loader2, Pencil, Search, X } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  CircleX,
+  Download,
+  List,
+  Loader2,
+  Network,
+  Pencil,
+  Search,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { TestCaseMindMap } from "@/components/ai-testing/test-case-mind-map";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -105,6 +118,7 @@ export default function TestCaseReviewPage() {
   const [testCaseSet, setTestCaseSet] = useState<ApiTestCaseSet | null>(null);
   const [selectedCaseId, setSelectedCaseId] = useState("");
   const [filter, setFilter] = useState<ReviewFilter>("ready_for_review");
+  const [viewMode, setViewMode] = useState<"list" | "mindmap">("list");
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -314,7 +328,7 @@ export default function TestCaseReviewPage() {
         stats={stats}
       />
 
-      <ShellSection className="min-h-[640px] bg-[#F7F8FA] p-0">
+      <ShellSection className="flex min-h-0 flex-1 bg-[#F7F8FA] p-0">
         {loading ? (
           <div className="flex h-80 items-center justify-center gap-2 text-muted-foreground text-sm">
             <Loader2 className="size-4 animate-spin" />
@@ -325,9 +339,37 @@ export default function TestCaseReviewPage() {
             未找到测试用例集或缺少项目上下文。
           </div>
         ) : (
-          <div className="grid min-h-[640px] grid-cols-1 overflow-hidden rounded-xl lg:grid-cols-[360px_minmax(0,1fr)]">
-            <aside className="border-b bg-white lg:border-r lg:border-b-0">
+          <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-xl lg:grid-cols-[360px_minmax(0,1fr)]">
+            <aside
+              className={cn(
+                "min-h-0 flex-col border-b bg-white lg:border-r lg:border-b-0",
+                viewMode === "mindmap" ? "hidden" : "flex",
+              )}
+            >
               <div className="flex flex-col gap-3 border-b p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-medium text-muted-foreground text-xs uppercase tracking-[0.14em]">评审导航</div>
+                  <div className="flex rounded-lg border bg-slate-50 p-0.5">
+                    <Button
+                      className="h-7 gap-1.5 px-2.5 text-xs"
+                      onClick={() => setViewMode("list")}
+                      size="sm"
+                      variant={viewMode === "list" ? "secondary" : "ghost"}
+                    >
+                      <List className="size-3.5" />
+                      列表
+                    </Button>
+                    <Button
+                      className="h-7 gap-1.5 px-2.5 text-xs"
+                      onClick={() => setViewMode("mindmap")}
+                      size="sm"
+                      variant={viewMode === "mindmap" ? "secondary" : "ghost"}
+                    >
+                      <Network className="size-3.5" />
+                      脑图
+                    </Button>
+                  </div>
+                </div>
                 <div className="relative">
                   <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -355,7 +397,7 @@ export default function TestCaseReviewPage() {
                   </TabsList>
                 </Tabs>
               </div>
-              <div className="max-h-[560px] overflow-auto p-3">
+              <div className="min-h-0 flex-1 overflow-auto p-3">
                 {filteredCases.map((item) => (
                   <button
                     className={cn(
@@ -386,61 +428,98 @@ export default function TestCaseReviewPage() {
               </div>
             </aside>
 
-            <main className="flex min-w-0 flex-col bg-white">
-              {selectedCase ? (
-                <>
-                  <div className="border-b p-4">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="min-w-0 space-y-1.5">
-                        <ModulePath moduleName={selectedCase.module} />
-                        <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <h2 className="min-w-0 max-w-full font-semibold text-[#101828] text-lg">
-                            {selectedCase.title}
-                          </h2>
-                          {selectedCase.status === "rejected" ? (
-                            <RejectedReasonButton
-                              feedback={selectedCase.review_feedback}
-                              onClick={() => openRejectDialog(selectedCase)}
-                            />
-                          ) : null}
-                        </div>
-                      </div>
-                      <ReviewActions
-                        disabled={savingCaseId === selectedCase.id}
-                        onApprove={() =>
-                          updateReview(selectedCase.id, { status: "approved", review_feedback: "" }, { moveNext: true })
-                        }
-                        onReject={() => openRejectDialog(selectedCase)}
-                        onEdit={() => startInlineEdit(selectedCase)}
-                        onSaveEdit={saveCaseContent}
-                        onCancelEdit={() =>
-                          setInlineEdit({ caseId: "", preconditions: "", steps: [], expectedResult: "" })
-                        }
-                        saving={savingCaseId === selectedCase.id}
-                        status={selectedCase.status}
-                        editing={selectedCaseIsEditing}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex-1 overflow-auto p-5">
-                    {selectedCaseIsEditing ? (
-                      <InlineCaseEditor editState={inlineEdit} onChange={setInlineEdit} />
-                    ) : (
-                      <div className="space-y-4">
-                        <ReviewBlock title="前置条件">{selectedCase.preconditions || "-"}</ReviewBlock>
-                        <ReviewBlock title="测试步骤与预期结果">
-                          <StepExpectationTable testCase={selectedCase} />
-                        </ReviewBlock>
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-                  请选择一个测试用例开始评审。
-                </div>
+            <main
+              className={cn(
+                "relative flex min-h-0 min-w-0 flex-col bg-white",
+                viewMode === "mindmap" && "lg:col-span-2",
               )}
+            >
+              <div
+                className={cn(
+                  "relative flex min-h-0 flex-1",
+                  viewMode !== "mindmap" && "pointer-events-none invisible absolute inset-0",
+                )}
+              >
+                <Button
+                  className="absolute top-4 right-4 z-20 bg-white/90 shadow-sm backdrop-blur"
+                  onClick={() => setViewMode("list")}
+                  size="sm"
+                  variant="outline"
+                >
+                  <List className="size-4" />
+                  返回列表
+                </Button>
+                <TestCaseMindMap
+                  active={viewMode === "mindmap"}
+                  cases={filteredCases}
+                  onSelectCase={(caseId) => {
+                    setSelectedCaseId(caseId);
+                    setViewMode("list");
+                  }}
+                  selectedCaseId={selectedCaseId}
+                  setName={testCaseSet.name}
+                />
+              </div>
+              <div className={cn("flex min-h-0 flex-1 flex-col", viewMode !== "list" && "hidden")}>
+                {selectedCase ? (
+                  <>
+                    <div className="border-b p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="min-w-0 space-y-1.5">
+                          <ModulePath moduleName={selectedCase.module} />
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <h2 className="min-w-0 max-w-full font-semibold text-[#101828] text-lg">
+                              {selectedCase.title}
+                            </h2>
+                            {selectedCase.status === "rejected" ? (
+                              <RejectedReasonButton
+                                feedback={selectedCase.review_feedback}
+                                onClick={() => openRejectDialog(selectedCase)}
+                              />
+                            ) : null}
+                          </div>
+                        </div>
+                        <ReviewActions
+                          disabled={savingCaseId === selectedCase.id}
+                          onApprove={() =>
+                            updateReview(
+                              selectedCase.id,
+                              { status: "approved", review_feedback: "" },
+                              { moveNext: true },
+                            )
+                          }
+                          onReject={() => openRejectDialog(selectedCase)}
+                          onEdit={() => startInlineEdit(selectedCase)}
+                          onSaveEdit={saveCaseContent}
+                          onCancelEdit={() =>
+                            setInlineEdit({ caseId: "", preconditions: "", steps: [], expectedResult: "" })
+                          }
+                          saving={savingCaseId === selectedCase.id}
+                          status={selectedCase.status}
+                          editing={selectedCaseIsEditing}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-auto p-5">
+                      {selectedCaseIsEditing ? (
+                        <InlineCaseEditor editState={inlineEdit} onChange={setInlineEdit} />
+                      ) : (
+                        <div className="space-y-4">
+                          <ReviewBlock title="前置条件">{selectedCase.preconditions || "-"}</ReviewBlock>
+                          <ReviewBlock title="测试步骤与预期结果">
+                            <StepExpectationTable testCase={selectedCase} />
+                          </ReviewBlock>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                    请选择一个测试用例开始评审。
+                  </div>
+                )}
+              </div>
             </main>
           </div>
         )}

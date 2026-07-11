@@ -1,6 +1,6 @@
 {
   "status": "failed",
-  "message": "未找到验证码区域，请确认登录页结构。",
-  "updated_at": "2026-07-08T03:27:36.106709+00:00",
-  "last_error_code": "CAPTCHA_NOT_FOUND"
+  "message": "登录页访问失败，可能是连接超时或站点不可达，请检查网络、代理或白名单配置。",
+  "updated_at": "2026-07-11T09:56:59.500245+00:00",
+  "last_error_code": "LOGIN_PAGE_UNREACHABLE"
 }

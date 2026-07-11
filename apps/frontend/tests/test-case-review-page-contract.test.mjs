@@ -8,6 +8,7 @@ const reviewPageSource = readFileSync(
   "utf8",
 );
 const apiClientSource = readFileSync(new URL("../src/lib/api-client.ts", import.meta.url), "utf8");
+const pageShellSource = readFileSync(new URL("../src/components/ai-testing/page-shell.tsx", import.meta.url), "utf8");
 
 test("test case set list exposes the dedicated review entry", () => {
   assert.match(listPageSource, /label: "查看"/);
@@ -129,6 +130,12 @@ test("review page aligns the list toolbar and detail header separators", () => {
   assert.match(reviewPageSource, /<div className="flex flex-col gap-3 border-b p-4">/);
   assert.match(reviewPageSource, /<div className="border-b p-4">/);
   assert.doesNotMatch(reviewPageSource, /min-h-\[124px\]/);
+});
+
+test("fill viewport pages keep browser scrolling inside the page", () => {
+  assert.match(pageShellSource, /document\.documentElement\.style\.overflow/);
+  assert.match(pageShellSource, /document\.body\.style\.overflow/);
+  assert.match(pageShellSource, /return \(\) =>/);
 });
 
 test("review page shows steps and expected result as a table", () => {
