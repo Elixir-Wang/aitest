@@ -1,25 +1,19 @@
 run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
 project_id: project-75fec50973f2adf6
-updated_at: '2026-07-10T13:38:28.393672+00:00'
+updated_at: '2026-07-12T23:24:16.850849+00:00'
 items:
 - id: ''
-  content: 打开工作台首页 https://www.cybotstar.cn/agentStore，获取基线快照。完成判据：页面加载成功，能看到智能体商店/工作台入口元素。
+  content: 步骤1：点击左侧边栏「工作台」进入工作台界面。完成判据：URL 变化到工作台页面，能看到工作台内容区域。
   status: completed
 - id: ''
-  content: 点击创建按钮，进入创建智能体流程。完成判据：出现创建智能体的对话框/表单页面。
+  content: 步骤2：在工作台页面点击「创建智能体」按钮，进入创建流程。完成判据：出现创建智能体的弹窗/页面，包含智能体类型选择。
   status: completed
 - id: ''
-  content: 选择自主规划Agent类型。完成判据：自主规划Agent被选中（高亮/勾选/进入对应表单）。
-  status: in_progress
+  content: 步骤3：选择「自主规划Agent」类型，输入智能体名称「哈哈」，点击创建。完成判据：智能体创建成功，进入编辑页面。
+  status: completed
 - id: ''
-  content: 输入智能体名称"哈哈"，点击创建按钮。完成判据：智能体创建成功，进入编辑页面或出现成功提示。
-  status: pending
+  content: 步骤4：在角色设定输入框中输入「你是一个友好的助手」。完成判据：输入框内容已写入。
+  status: completed
 - id: ''
-  content: 在角色设定输入框中输入"你是一个友好的助手"。完成判据：角色设定字段已填入文本。
-  status: pending
-- id: ''
-  content: 点击发布按钮，输入版本号和发布日志，再次点击发布。完成判据：发布成功，出现成功提示或状态变更。
-  status: pending
-- id: ''
-  content: 记录核心元素的稳健定位器，沉淀到page artifact。完成判据：所有关键元素的定位器已记录。
-  status: pending
+  content: 步骤5：点击「发布」按钮，输入版本号和发布日志，再次点击发布。完成判据：发布成功提示出现。
+  status: completed

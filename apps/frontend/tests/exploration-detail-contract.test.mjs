@@ -37,6 +37,19 @@ test("exploration overview uses a flat shell and status-linked execution traces"
   assert.match(taskInfoPanelSource, /border-primary\/25/);
 });
 
+test("exploration step descriptions clamp to two lines and expose overflowing text in a tooltip", () => {
+  assert.match(taskInfoPanelSource, /className="line-clamp-2 min-w-0 break-words text-sm leading-6"/);
+  assert.match(taskInfoPanelSource, /description\.scrollHeight > description\.clientHeight/);
+  assert.match(taskInfoPanelSource, /<TooltipTrigger asChild>\{content\}<\/TooltipTrigger>/);
+  assert.match(taskInfoPanelSource, /tabIndex=\{isOverflowing \? 0 : undefined\}/);
+});
+
+test("agent todo steps are labeled as plan items instead of browser actions", () => {
+  assert.match(taskInfoPanelSource, /step\.execution_strategy === "agent_plan"/);
+  assert.match(taskInfoPanelSource, /类型: 计划项/);
+  assert.doesNotMatch(taskInfoPanelSource, /todo: "todo"/);
+});
+
 test("exploration detail breadcrumb uses the loaded run title without fallback", () => {
   assert.match(pageSource, /\.\.\.\(run \? \[\{ label: run\.title \}\] : \[\]\)/);
   assert.doesNotMatch(pageSource, /\{ label: run\?\.title \?\? "探索任务" \}/);

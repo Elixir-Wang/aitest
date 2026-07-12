@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
-import { API_BASE_URL, apiAuthHeaders, apiRequest, formatDateTime } from "@/lib/api-client";
+import { API_BASE_URL, apiAuthHeaders, apiRequest } from "@/lib/api-client";
 import { reportError as reportApiError } from "@/lib/error-feedback";
 import type {
   ExplorationMonitorEvent,
@@ -1398,7 +1398,7 @@ function ExplorationReportPanel({
   const unsupportedReason = report?.unsupported_reason || "历史产物格式不支持新版报告，请重新探索。";
 
   return (
-    <ShellSection>
+    <ShellSection className="min-h-0 flex-1 overflow-y-auto">
       <div className="mb-4">
         <h2 className="font-medium text-sm">探索报告</h2>
       </div>
@@ -1412,37 +1412,16 @@ function ExplorationReportPanel({
       ) : report?.unsupported_artifact ? (
         <UnsupportedArtifactNotice onRestart={onRestart} reason={unsupportedReason} restarting={restarting} />
       ) : report?.markdown_content ? (
-        <div className="space-y-3">
-          <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-sm sm:grid-cols-2">
-            <InfoRow label="报告版本" value={report.version_no ? `v${report.version_no}` : "-"} />
-            <InfoRow label="生成时间" value={report.created_at ? formatDateTime(report.created_at) : "-"} />
-          </div>
-          <MarkdownPreview
-            className="rounded-lg border bg-background p-4"
-            content={report.markdown_content}
-            emptyText="当前探索报告暂无可展示内容。"
-          />
-        </div>
+        <MarkdownPreview
+          className="rounded-lg border bg-background p-4"
+          content={report.markdown_content}
+          emptyText="当前探索报告暂无可展示内容。"
+        />
       ) : (
         <div className="rounded-lg border bg-muted/20 p-4 text-muted-foreground text-sm">
           暂无探索报告。探索任务完成后会在这里展示 Markdown 格式报告。
         </div>
       )}
     </ShellSection>
-  );
-}
-
-function InfoRow({ compact = false, label, value }: { compact?: boolean; label: string; value: string }) {
-  return (
-    <div
-      className={
-        compact
-          ? "grid gap-1 border-b pb-2 last:border-b-0 last:pb-0"
-          : "grid gap-1 border-b pb-3 last:border-b-0 last:pb-0 sm:grid-cols-[96px_1fr]"
-      }
-    >
-      <div className="text-muted-foreground">{label}</div>
-      <div className="min-w-0 break-words font-medium">{value}</div>
-    </div>
   );
 }

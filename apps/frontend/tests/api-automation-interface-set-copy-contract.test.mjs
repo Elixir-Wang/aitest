@@ -22,6 +22,8 @@ test("api automation interface-set list uses requested create and count copy", (
   assert.match(pageSource, /createLabel="新建接口集"/);
   assert.match(pageSource, /<DialogTitle>\{editingSet \? "修改接口集" : "新建接口集"\}<\/DialogTitle>/);
   assert.match(pageSource, /<TableHead>接口数量<\/TableHead>/);
+  assert.match(pageSource, /<TableCell>\{item\.endpoint_count\}<\/TableCell>/);
+  assert.doesNotMatch(pageSource, /<TableCell>\{item\.case_count\}<\/TableCell>/);
   assert.doesNotMatch(pageSource, /createLabel="新建接口用例集"/);
   assert.doesNotMatch(pageSource, /<DialogTitle>新建接口用例集<\/DialogTitle>/);
   assert.doesNotMatch(pageSource, /<TableHead>用例数量<\/TableHead>/);
@@ -168,6 +170,10 @@ test("project api automation case tab shows generated endpoints and case table w
   );
   assert.match(projectPageSource, /Object\.entries\(groupedApiCaseEndpoints\)/);
   assert.match(projectPageSource, /toggleApiCaseEndpoint\(endpoint\.id, Boolean\(checked\)\)/);
+  assert.match(projectPageSource, /toggleEndpointAssetGroup\(groupEndpointIds, Boolean\(checked\)\)/);
+  assert.match(projectPageSource, /aria-label={`选择 \$\{group\} 分组的全部接口`}/);
+  assert.match(projectPageSource, /toggleApiCaseEndpointGroupSelection\(groupEndpointIds, Boolean\(checked\)\)/);
+  assert.match(projectPageSource, /aria-label={`选择 \$\{group\} 分组的全部接口用例`}/);
   assert.match(projectPageSource, /setActiveApiCaseEndpointId\(endpoint\.id\)/);
   assert.match(projectPageSource, /title="接口信息"/);
   assert.match(
@@ -190,8 +196,7 @@ test("project api automation case tab shows generated endpoints and case table w
   assert.match(projectPageSource, /<TableHead className="w-16">操作<\/TableHead>/);
   assert.match(projectPageSource, /label: "删除"/);
   assert.match(projectPageSource, /deleteApiTestCases\(\[item\.id\]\)/);
-  assert.match(projectPageSource, /onClick=\{\(\) => setActiveTab\("测试脚本"\)\}/);
-  assert.doesNotMatch(projectPageSource, /handleGenerateScripts/);
+  assert.match(projectPageSource, /onClick=\{handleGenerateScripts\}/);
   assert.match(projectPageSource, /const router = useRouter\(\);/);
   assert.match(projectPageSource, /onClick=\{\(\) => router\.push\(apiCaseDetailHref\(projectId, item\.id\)\)\}/);
   assert.match(projectPageSource, /onSelect: \(\) => router\.push\(apiCaseDetailHref\(projectId, item\.id\)\)/);
@@ -201,6 +206,18 @@ test("project api automation case tab shows generated endpoints and case table w
   assert.doesNotMatch(projectPageSource, /setApiCaseDetailOpen\(true\);/);
   assert.doesNotMatch(projectPageSource, /<Dialog onOpenChange=\{setApiCaseDetailOpen\} open=\{apiCaseDetailOpen\}>/);
   assert.doesNotMatch(projectPageSource, /ApiCaseAssetPanel/);
+});
+
+test("project api automation generates project scripts from selected interfaces", () => {
+  assert.match(projectPageSource, /const \[scripts, setScripts\] = useState<ApiAutomationScript\[]>\(\[\]\)/);
+  assert.match(projectPageSource, /const endpointIds = selectedApiCaseEndpointIds/);
+  assert.match(projectPageSource, /generateApiAutomationScripts\(projectId/);
+  assert.match(projectPageSource, /endpoint_ids: endpointIds/);
+  assert.match(projectPageSource, /listApiAutomationScripts\(projectId\)/);
+  assert.match(projectPageSource, /getApiAutomationScriptFiles\(projectId, activeScriptId\)/);
+  assert.match(projectPageSource, /handleRun\(\[script\.id\]\)/);
+  assert.match(projectPageSource, /handleRun\(selectedScriptIds\)/);
+  assert.match(projectPageSource, /scriptDetailTab === "code"/);
 });
 
 test("project api automation refreshes case list when generation run completes", () => {
@@ -233,18 +250,37 @@ test("project api automation case detail shows structured QA review sections", (
   assert.match(apiClientSource, /coverage: string;/);
   assert.match(apiClientSource, /preconditions: string\[\];/);
   assert.match(apiClientSource, /test_data: Record<string, unknown>;/);
-  assert.match(apiClientSource, /data_origin: Record<string, unknown>;/);
+  assert.match(apiClientSource, /test_description: string;/);
+  assert.doesNotMatch(apiClientSource, /export type ApiAutomationTestCase = \{[\s\S]*?\n\s+tags: string\[\];/);
+  assert.doesNotMatch(apiClientSource, /expected: Record<string, unknown>;/);
+  assert.doesNotMatch(apiClientSource, /data_origin: Record<string, unknown>;/);
   assert.match(apiClientSource, /export function getApiAutomationTestCase/);
   assert.match(caseDetailPageSource, /getApiAutomationTestCase\(projectId, caseId\)/);
-  assert.match(caseDetailPageSource, /<ReviewBlock title="基础信息">/);
-  assert.match(caseDetailPageSource, /<ReviewBlock title="前置条件">/);
-  assert.match(caseDetailPageSource, /<ReviewBlock title="请求信息">/);
+  assert.doesNotMatch(caseDetailPageSource, /testCase\.tags|>标签</);
+  assert.doesNotMatch(caseDetailPageSource, /<ReviewBlock title="基础信息">/);
+  assert.match(caseDetailPageSource, /testCase\.preconditions\.length > 0/);
+  assert.match(caseDetailPageSource, /title="请求信息"/);
   assert.match(caseDetailPageSource, /<ReviewBlock title="测试数据">/);
-  assert.match(caseDetailPageSource, /<ReviewBlock title="预期结果">/);
-  assert.match(caseDetailPageSource, /<ReviewBlock title="断言">/);
+  assert.match(caseDetailPageSource, /测试描述/);
+  assert.match(caseDetailPageSource, /<ReviewBlock icon=\{<Code2 className="size-4" \/>\} title="请求信息">/);
+  assert.match(caseDetailPageSource, /<ReviewBlock icon=\{<ShieldAlert className="size-4" \/>\} title="验证规则">/);
   assert.match(caseDetailPageSource, /renderApiCaseRequest/);
   assert.match(caseDetailPageSource, /renderApiCaseTestData/);
-  assert.match(caseDetailPageSource, /missing/);
+  assert.match(caseDetailPageSource, /hasValue\(assertion\.expected\)/);
+  assert.doesNotMatch(caseDetailPageSource, /actions=\{/);
+  assert.match(caseDetailPageSource, /formatApiCaseCoverage\(testCase\.coverage\)/);
+  assert.match(caseDetailPageSource, /negative: "负向"/);
+  assert.match(
+    caseDetailPageSource,
+    /<h1 className="max-w-3xl break-words font-semibold text-2xl tracking-tight">\{testCase\.title\}<\/h1>/,
+  );
+  assert.match(caseDetailPageSource, /href=\{`\/projects\/\$\{projectId\}\/automation\/api\?tab=cases`\}/);
+  assert.match(caseDetailPageSource, /<section className="rounded-xl border bg-card/);
+  assert.match(caseDetailPageSource, /dark:border-sky-900\/70 dark:bg-sky-950\/30/);
+  assert.match(caseDetailPageSource, /dark:border-emerald-900\/70 dark:bg-emerald-950\/30/);
+  assert.doesNotMatch(caseDetailPageSource, /bg-white p-4/);
+  assert.doesNotMatch(caseDetailPageSource, /text-\[#101828\]/);
+  assert.match(projectPageSource, /searchParams\.get\("tab"\) === "cases" \? "接口用例" : tabs\[0\]/);
 });
 
 test("project api automation generation and execution notify the top running task indicator", () => {

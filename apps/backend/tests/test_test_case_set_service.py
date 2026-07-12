@@ -1,5 +1,6 @@
 import asyncio
 import json
+import sqlite3
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -17,6 +18,7 @@ from app.agents.test_case_generation.schemas import (
 from app.core import db as core_db
 from app.core import storage
 from app.seed.init_db import init_db
+from app.seed.seeds import _ensure_test_case_display_order
 from app.schemas.test_case import TestCaseReviewIn, TestCaseSetCreateIn
 from app.services import task_service, test_case_service
 
@@ -82,6 +84,44 @@ def _seed_project_requirement_and_exploration() -> None:
             """,
             ("explore-1", "project-1", "env-1", "doc-1", "登录探索", ACTOR["id"]),
         )
+
+
+def test_existing_cases_are_backfilled_to_persisted_module_priority_order() -> None:
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.execute(
+        """
+        CREATE TABLE test_cases (
+          id TEXT PRIMARY KEY,
+          test_case_set_id TEXT NOT NULL,
+          module TEXT NOT NULL,
+          priority TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+        """
+    )
+    db.executemany(
+        "INSERT INTO test_cases (id, test_case_set_id, module, priority, created_at) VALUES (?, 'set-1', ?, ?, ?)",
+        [
+            ("tc-001", "登录", "P2", "2026-01-01 00:00:01"),
+            ("tc-002", "登录", "P0", "2026-01-01 00:00:02"),
+            ("tc-003", "账户", "P1", "2026-01-01 00:00:03"),
+            ("tc-004", "登录", "P0", "2026-01-01 00:00:04"),
+            ("tc-005", "账户", "P0", "2026-01-01 00:00:05"),
+        ],
+    )
+
+    _ensure_test_case_display_order(db)
+
+    rows = db.execute("SELECT id, display_order FROM test_cases ORDER BY display_order").fetchall()
+    assert [(row["id"], row["display_order"]) for row in rows] == [
+        ("tc-002", 0),
+        ("tc-004", 1),
+        ("tc-001", 2),
+        ("tc-005", 3),
+        ("tc-003", 4),
+    ]
+    db.close()
 
 
 def test_create_test_case_set_defaults_to_requirement_only_generation(
@@ -367,6 +407,71 @@ def test_execute_test_case_generation_run_completes_and_persists_cases(
         {"action": "提交登录", "expected_result": "进入系统首页。"},
     ]
     assert rows[0]["source_exploration_refs"] == "[]"
+
+
+def test_generation_persists_cases_in_module_priority_order(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+    created = test_case_service.create_test_case_set(
+        "project-1",
+        TestCaseSetCreateIn(name="排序测试用例集", requirement_doc_id="doc-1"),
+        ACTOR,
+    )
+
+    def agent_case(case_id: str, module: str, title: str, priority: str) -> AgentTestCase:
+        return AgentTestCase(
+            id=case_id,
+            module=module,
+            title=title,
+            priority=priority,
+            type="功能测试",
+            steps=_agent_steps("打开登录页"),
+            expected_result="展示登录表单。",
+        )
+
+    async def fake_generate_test_cases(_input_data):
+        cases = [
+            agent_case("tc-001", "登录", "登录-P2", "P2"),
+            agent_case("tc-002", "登录", "登录-P0-先", "P0"),
+            agent_case("tc-003", "登录", "登录-P1", "P1"),
+            agent_case("tc-004", "登录", "登录-P0-后", "P0"),
+            agent_case("tc-005", "账户", "账户-P1", "P1"),
+            agent_case("tc-006", "账户", "账户-P0", "P0"),
+        ]
+        return AgentTestCaseGenerationResult(
+            summary="验证持久化排序。",
+            total_count=len(cases),
+            modules=[AgentTestCaseModule(module_name="业务模块", test_cases=cases)],
+        )
+
+    monkeypatch.setattr(test_case_service, "generate_test_cases", fake_generate_test_cases)
+    asyncio.run(test_case_service.execute_test_case_generation_run(created["generation_run"]["id"]))
+
+    detail = test_case_service.get_test_case_set("project-1", created["id"], ACTOR)
+    assert [(case["module"], case["priority"], case["title"]) for case in detail["cases"]] == [
+        ("登录", "P0", "登录-P0-先"),
+        ("登录", "P0", "登录-P0-后"),
+        ("登录", "P1", "登录-P1"),
+        ("登录", "P2", "登录-P2"),
+        ("账户", "P0", "账户-P0"),
+        ("账户", "P1", "账户-P1"),
+    ]
+    with core_db.connect() as db:
+        stored = db.execute(
+            "SELECT title, display_order FROM test_cases WHERE test_case_set_id = ? ORDER BY display_order",
+            (created["id"],),
+        ).fetchall()
+    assert [(row["title"], row["display_order"]) for row in stored] == [
+        ("登录-P0-先", 0),
+        ("登录-P0-后", 1),
+        ("登录-P1", 2),
+        ("登录-P2", 3),
+        ("账户-P0", 4),
+        ("账户-P1", 5),
+    ]
 
 
 def test_get_test_case_set_returns_persisted_case_details(

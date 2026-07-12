@@ -15,16 +15,14 @@ from typing import Any
 
 from app.core import settings
 from app.core.db import connect
-from app.repositories import exploration_artifact_repo, exploration_page_repo, exploration_run_repo
+from app.repositories import environment_repo, exploration_artifact_repo, exploration_page_repo, exploration_run_repo
 from app.services.page_exploration import event_bus
 from app.services.page_exploration.event_log import _publish_run_terminal_event
 from app.services.page_exploration.output_registry import (
-    _attach_verification_metadata,
     _checkpoint_snapshot_artifact_from_event,
     _inline_list_pages,
     _list_project_page_edges,
     _register_exploration_outputs,
-    _semantic_locator_candidates,
     _snapshot_elements_for_artifact,
 )
 from app.services.page_exploration.run_detail import (
@@ -87,6 +85,8 @@ def create_exploration_run(
     run_id = f"exp_{secrets.token_urlsafe(16)}"
 
     with connect() as db:
+        if not environment_repo.belongs_to_project(db, environment_id, project_id):
+            raise ValueError("所选环境不属于当前项目")
         exploration_run_repo.create(
             db,
             run_id=run_id,
@@ -125,7 +125,7 @@ def get_exploration_run(actor, run_id: str) -> dict:
 
         return {
             "run": run_dict,
-            "artifact_schema_version": 2,
+            "artifact_schema_version": 3,
             "unsupported_artifact": False,
             "unsupported_reason": "",
             "modules": modules,
@@ -159,6 +159,10 @@ def update_exploration_run(actor, run_id: str, update_data: dict) -> dict:
         if dict(run)["status"] in ["running", "queued", "stopping"]:
             raise ValueError("探索任务正在运行，无法更新配置")
 
+        environment_id = update_data.get("environment_id")
+        if environment_id and not environment_repo.belongs_to_project(db, environment_id, run["project_id"]):
+            raise ValueError("所选环境不属于当前项目")
+
         # 更新字段
         exploration_run_repo.update(db, run_id, **update_data)
 
@@ -176,8 +180,13 @@ def start_exploration_async(actor, run_id: str) -> dict:
 
         run_dict = dict(run)
 
-        # 检查是否已经在运行
-        if run_dict["status"] in ["running", "queued"]:
+        # running 一定不可重复启动；queued 只有在本进程已登记运行实例时才是幂等请求。
+        # 新建任务和服务重启后恢复的任务都可能是 queued，但尚未真正调度。
+        with _exploration_lock:
+            queued_in_process = run_id in _running_explorations
+        if run_dict["status"] == "running" or (
+            run_dict["status"] == "queued" and queued_in_process
+        ):
             return run_dict
 
         event_bus.clear(run_id)
@@ -500,12 +509,10 @@ def get_exploration_report(actor, run_id: str) -> dict:
 
         return {
             "run_id": run_id,
-            "version_no": 1,
             "title": f"{run_dict['title']} - 探索报告",
             "markdown_content": report_content,
             "change_summary": "",
-            "created_at": run_dict.get("finished_at") or run_dict.get("updated_at"),
-            "artifact_schema_version": 2,
+            "artifact_schema_version": 3,
             "unsupported_artifact": False,
             "unsupported_reason": "",
         }

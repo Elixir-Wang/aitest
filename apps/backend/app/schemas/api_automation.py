@@ -203,17 +203,14 @@ class ApiTestCaseOut(BaseModel):
     project_id: str
     endpoint_id: str | None
     title: str
+    test_description: str
     priority: str
     coverage: str
     source: str
-    tags: list[str]
     preconditions: list[str]
     request: dict[str, Any]
     test_data: dict[str, Any]
-    expected: dict[str, Any]
     assertions: list[dict[str, Any]]
-    variables: dict[str, Any]
-    data_origin: dict[str, Any]
     notes: str
     created_at: str
     updated_at: str
@@ -230,6 +227,7 @@ class ApiTestCaseSetOut(BaseModel):
     name: str
     notes: str
     status: str
+    endpoint_count: int
     case_count: int
     latest_generation_run_id: str | None
     created_at: str
@@ -240,7 +238,6 @@ class ApiTestCaseUpdateIn(_StrippedModel):
     title: str | None = None
     priority: str | None = None
     coverage: str | None = None
-    tags: list[str] | None = None
     preconditions: list[str] | None = None
     request: dict[str, Any] | None = None
     test_data: dict[str, Any] | None = None
@@ -257,7 +254,8 @@ class ApiScriptUpdateIn(_StrippedModel):
 
 
 class ApiScriptGenerateIn(_StrippedModel):
-    api_test_case_ids: list[str] = Field(min_length=1)
+    endpoint_ids: list[str] = Field(min_length=1, max_length=100)
+    force: bool = False
     api_environment_id: str | None = None
 
 

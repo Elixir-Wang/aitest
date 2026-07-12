@@ -135,6 +135,7 @@ export function ExplorationRunCreatePage({
     ...emptyExplorationForm,
     projectId: projectId ?? "",
   });
+  const selectedProjectId = projectScope === "project" ? (projectId ?? "") : form.projectId;
 
   useEffect(() => {
     resizeTextarea(scopeRef.current);
@@ -241,11 +242,24 @@ export function ExplorationRunCreatePage({
     let ignore = false;
 
     async function loadEnvironments() {
+      if (!selectedProjectId) {
+        setEnvironments([]);
+        setEnvironmentLoading(false);
+        setForm((current) => ({ ...current, environmentId: "" }));
+        return;
+      }
       setEnvironmentLoading(true);
       try {
-        const data = await apiRequest<ExplorationEnvironment[]>("/environments");
+        const path = `/environments?project_id=${selectedProjectId}`;
+        const data = await apiRequest<ExplorationEnvironment[]>(path);
         if (!ignore) {
           setEnvironments(data);
+          setForm((current) => ({
+            ...current,
+            environmentId: data.some((environment) => environment.id === current.environmentId)
+              ? current.environmentId
+              : "",
+          }));
         }
       } catch (requestError) {
         if (!ignore) {
@@ -253,7 +267,7 @@ export function ExplorationRunCreatePage({
             fallbackMessage: "环境列表加载失败",
             actionLabel: "加载环境",
             method: "GET",
-            path: "/environments",
+            path: `/environments?project_id=${selectedProjectId}`,
           });
         }
       } finally {
@@ -268,9 +282,7 @@ export function ExplorationRunCreatePage({
     return () => {
       ignore = true;
     };
-  }, []);
-
-  const selectedProjectId = projectScope === "project" ? (projectId ?? "") : form.projectId;
+  }, [selectedProjectId]);
 
   useEffect(() => {
     let ignore = false;
@@ -573,9 +585,9 @@ export function ExplorationRunCreatePage({
               <Field>
                 <FieldLabel htmlFor="exploration-environment">环境 *</FieldLabel>
                 <Select
-                  disabled={environmentLoading}
+                  disabled={environmentLoading || !selectedProjectId}
                   id="exploration-environment"
-                  placeholder={environmentLoading ? "加载环境中..." : "选择环境"}
+                  placeholder={!selectedProjectId ? "请先选择项目" : environmentLoading ? "加载环境中..." : "选择环境"}
                   setValue={(value) => setForm((current) => ({ ...current, environmentId: value }))}
                   value={form.environmentId}
                 >

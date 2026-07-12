@@ -1,7 +1,6 @@
 """
 页面信息提取工具。
 """
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
@@ -12,35 +11,6 @@ from app.agents.page_exploration.tools.runtime_context import (
     screenshot_with_runtime_context,
     snapshot_with_runtime_context,
 )
-from app.agents.page_exploration.utils.dom_signature import compute_dom_signature
-from app.agents.page_exploration.utils.page_id import make_page_id
-from app.agents.page_exploration.utils.element_key import build_element_key
-
-
-def _semantic_selector_code(selector: Optional[Dict[str, Any]]) -> str:
-    """把 snap 端 primary_selector 结构化对象还原成可读 locator 字符串（用作 source.code）。"""
-    if not isinstance(selector, dict):
-        return ""
-    kind = selector.get("kind")
-    if kind == "playwright_api" and isinstance(selector.get("code"), str):
-        return selector["code"]
-    if kind == "role":
-        name = (selector.get("name") or "").replace("'", "\\'")
-        role = (selector.get("role") or "").replace("'", "\\'")
-        return f"page.getByRole('{role}', {{ name: '{name}' }})"
-    if kind == "label":
-        return f"page.getByLabel('{selector.get('label', '')}')"
-    if kind == "placeholder":
-        return f"page.getByPlaceholder('{selector.get('placeholder', '')}')"
-    if kind == "testid":
-        return f"page.getByTestId('{selector.get('testId', '')}')"
-    if kind == "text":
-        return f"page.getByText('{selector.get('text', '')}')"
-    if kind == "css" and isinstance(selector.get("css"), str):
-        return f"page.locator('{selector['css']}')"
-    return ""
-
-
 
 @tool
 def playwright_snap_tool(
@@ -74,9 +44,6 @@ def playwright_snap_tool(
         - visible_text_blocks: Compact visible text blocks from the page
             Only included when focus_keywords is provided.
         - error: Error message if snapshot failed
-        - state_observation_hint: Pre-shaped v2.0 state observation (use as
-            observed_states argument for merge_page_artifact_tool to avoid
-            manual construction errors like 'sha256:unknown' placeholder)
 
     Example:
         result = playwright_snap_tool(url="https://app.example.com/workspace")
@@ -107,14 +74,17 @@ def playwright_snap_tool(
     keywords = [kw.strip() for kw in (focus_keywords or []) if str(kw).strip()]
     elements = [
         {
-            "action_locator": elem.action_locator,
+            "element_id": elem.element_id,
             "role": elem.role,
             "role_source": elem.role_source,
             "name": elem.name,
             "text": elem.text,
+            "value": elem.value,
+            "overlay_id": elem.overlay_id,
+            "primary_selector": getattr(elem, "primary_selector", None),
+            "fallback_selector": getattr(elem, "fallback_selector", None),
+            "context": elem.context,
             "action_type": elem.action_type,
-            "primary_selector": elem.primary_selector,
-            "fallback_selector": elem.fallback_selector,
             "visible": elem.visible,
             "ancestor_chain": elem.ancestor_chain,
         }
@@ -130,28 +100,20 @@ def playwright_snap_tool(
         accessibility_tree = _focus_accessibility_tree(accessibility_tree, keywords)
         visible_text_blocks = _focus_visible_text_blocks(visible_text_blocks, keywords)
 
-    state_observation_hint = _build_state_observation_hint(
-        url=result.url,
-        title=result.title,
-        elements=elements,
-    )
-
-    match_groups = _build_match_groups(elements)
-
     return {
+        "observation_id": result.observation_id,
         "url": result.url,
         "title": result.title,
         "interaction_scope": result.interaction_scope,
         "overlay": result.overlay,
+        "overlay_registry": result.overlay_registry,
         "state_context": result.state_context,
         "page_text_summary": result.page_text_summary,
         "state_signature": result.state_signature,
         "elements": elements,
         "accessibility_tree": accessibility_tree,
         "visible_text_blocks": visible_text_blocks,
-        "match_groups": match_groups,
         "error": result.error,
-        "state_observation_hint": state_observation_hint,
     }
 
 
@@ -334,76 +296,6 @@ def _build_scope_hint(*, role: str, name: str, context_hint: str, ancestor_text:
     return "该同名元素缺少明显容器上下文；请先 snap 聚焦相关关键词，再用字段/卡片/弹窗文本限定范围。"
 
 
-def _build_state_observation_hint(
-    *,
-    url: str,
-    title: str,
-    elements: list[dict],
-) -> dict:
-    """把 snap 结果直接转成 v2.0 NewStateObservation 候选。
-
-    关键设计：
-    - **禁止 LLM 手工填 dom_signature**：由 snap 自动从 elements 计算
-    - **禁止 LLM 手工填 triggered_by**：root state 留空，其它 state 由 service
-      根据前序 state 推断
-    - element.source 优先用 verified primary_selector（已包含 is_semantic 标记）
-    - 纯文本猜测 / role 不可信时标 inferred=true
-    """
-    from urllib.parse import urlparse
-    parsed = urlparse(url or "")
-    normalized_path = parsed.path or "/"
-    now = datetime.now(timezone.utc).isoformat()
-
-    children: list[dict] = []
-    for index, element in enumerate(elements, start=1):
-        if not isinstance(element, dict):
-            continue
-        primary = element.get("primary_selector") if isinstance(element.get("primary_selector"), dict) else None
-        role = str(element.get("role") or "").strip()
-        name = str(element.get("name") or "").strip()
-        role_source = str(element.get("role_source") or "")
-        action_type = str(element.get("action_type") or "click")
-        is_semantic = bool(primary) and primary.get("kind") != "css" and role_source != "inferred"
-        # 仅在 role/name 至少一项可定位时保留 element_key；纯文本/无 role 的丢
-        if not (primary or (role and name)):
-            continue
-        source_code = _semantic_selector_code(primary)
-        # 使用共享 build_element_key，与 PageArtifactWriter/element_key.py 完全一致
-        element_key = build_element_key({"role": role or action_type, "name": name})
-        children.append({
-            "key": element_key,
-            "source": {
-                "kind": primary.get("kind") if primary else "inferred",
-                "code": source_code,
-                "role": role,
-                "name": name,
-                "label": element.get("label") or "",
-                "placeholder": element.get("placeholder") or "",
-                "test_id": element.get("testId") or "",
-            },
-            "inferred": not is_semantic,
-            "children": [],
-        })
-
-    # 用共享函数从 elements 计算 dom_signature
-    dom_signature = compute_dom_signature(children)
-
-    return {
-        "page_id": make_page_id(normalized_path),
-        "page_title": title or url or "探索页面",
-        "normalized_path": normalized_path,
-        "observed_url": url,
-        "observed_at": now,
-        "state_type": "page",
-        "title": title or "页面初始状态",
-        "dom_signature": dom_signature,
-        "triggered_by": None,  # 根 state 始终不填；非根 state 由 service 推断
-        "parent_state_id": None,
-        "elements": children,
-    }
-
-
-
 def _matches_keywords(text: Optional[str], keywords: List[str]) -> bool:
     value = str(text or "").lower()
     return any(keyword.lower() in value for keyword in keywords)
@@ -414,7 +306,12 @@ def _focus_elements(elements: List[Dict[str, Any]], keywords: List[str]) -> List
         return elements
     matched = []
     for element in elements:
-        if _matches_keywords(element.get("name"), keywords) or _matches_keywords(element.get("text"), keywords):
+        unnamed_fill_target = element.get("action_type") == "fill" and not str(element.get("name") or "").strip()
+        if (
+            unnamed_fill_target
+            or _matches_keywords(element.get("name"), keywords)
+            or _matches_keywords(element.get("text"), keywords)
+        ):
             matched.append(element)
     return matched or elements
 
@@ -465,5 +362,4 @@ __all__ = [
     "playwright_scoped_query_tool",
     "playwright_observe_overlays_tool",
     "playwright_screenshot_tool",
-    "build_state_observation_hint",
 ]

@@ -17,6 +17,10 @@ from app.services.api_automation import service
 ACTOR = {"id": "u-admin", "role": "admin", "nickname": "管理员", "username": "admin", "project_scope": "全部项目"}
 
 
+def test_generated_case_schema_does_not_expose_tags() -> None:
+    assert "tags" not in ApiGeneratedCase.model_fields
+
+
 def _model_selection(provider: str = "openai", model: str = "gpt-4o-mini") -> ModelSelection:
     return ModelSelection(provider=provider, model=model, base_url=None, api_key="test-key")
 
@@ -243,14 +247,14 @@ def test_execute_generation_run_saves_generated_cases(monkeypatch: pytest.Monkey
     success_case = next(case for case in serialized_cases if case["title"] == "登录成功")
     manual_case = next(case for case in serialized_cases if case["title"] == "登录缺少密码")
     assert success_case["coverage"] == "positive"
-    assert success_case["preconditions"] == ["用户账号存在"]
+    assert success_case["preconditions"] == []
     assert success_case["test_data"]["username"]["source"] == "openapi_example"
-    assert success_case["data_origin"]["assertions"] == "openapi"
+    assert "data_origin" not in success_case
     assert "status" not in success_case
     assert manual_case["coverage"] == "negative"
-    assert manual_case["preconditions"] == ["用户账号存在", "缺少 password 测试数据"]
+    assert manual_case["preconditions"] == []
     assert manual_case["test_data"]["password"]["source"] == "manual_input"
-    assert manual_case["data_origin"]["test_data.password"] == "manual_input"
+    assert "data_origin" not in manual_case
     assert api_automation_repo.loads_json(run["result_summary_json"], {})["test_case_count"] == 2
 
 
@@ -270,7 +274,6 @@ def test_delete_api_test_case_removes_generated_case(monkeypatch: pytest.MonkeyP
             priority="P1",
             coverage="positive",
             source="ai_generated",
-            tags=[],
             preconditions=[],
             request={"method": "POST", "path": "/login"},
             test_data={},
@@ -305,7 +308,6 @@ def test_get_api_test_case_returns_structured_case(monkeypatch: pytest.MonkeyPat
             priority="P1",
             coverage="positive",
             source="ai_generated",
-            tags=["auth"],
             preconditions=["用户账号存在"],
             request={"method": "POST", "path": "/login"},
             test_data={"username": {"value": "demo", "source": "openapi_example", "required": True}},
@@ -324,7 +326,8 @@ def test_get_api_test_case_returns_structured_case(monkeypatch: pytest.MonkeyPat
     assert detail["coverage"] == "positive"
     assert detail["preconditions"] == ["用户账号存在"]
     assert detail["test_data"]["username"]["value"] == "demo"
-    assert detail["data_origin"]["test_data.username"] == "openapi_example"
+    assert "tags" not in detail
+    assert "data_origin" not in detail
 
 
 def test_execute_generation_run_passes_source_test_cases_to_agent(
@@ -424,7 +427,6 @@ def test_generation_run_serializes_items_and_retries_only_failures(
             priority="P1",
             coverage="positive",
             source="ai_generated",
-            tags=[],
             preconditions=[],
             request={"method": "POST", "path": "/login"},
             test_data={},
@@ -538,6 +540,8 @@ def test_recovery_preserves_completed_generation_items(monkeypatch: pytest.Monke
 
 
 def test_api_automation_agent_uses_skill_middleware_and_response_format(monkeypatch: pytest.MonkeyPatch) -> None:
+    from langchain.agents.structured_output import ToolStrategy
+
     from app.agents.api_automation import agent as agent_module
 
     captured = {}
@@ -554,8 +558,76 @@ def test_api_automation_agent_uses_skill_middleware_and_response_format(monkeypa
     assert captured["model"] == "model"
     assert captured["tools"] == []
     assert captured["middleware"][0].name == "SkillMiddleware"
+    assert captured["middleware"][1].name == "InvalidToolCallRecoveryMiddleware"
     assert "api-automation-case-generation" in str(captured["middleware"][0].skill_path)
-    assert captured["response_format"] is ApiAutomationGenerationResult
+    assert isinstance(captured["response_format"], ToolStrategy)
+    assert captured["response_format"].schema is ApiAutomationGenerationResult
+    assert captured["response_format"].handle_errors is True
+
+
+@pytest.mark.anyio
+async def test_api_automation_agent_recovers_from_invalid_structured_tool_call() -> None:
+    from typing import Any
+
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+    from typing_extensions import override
+
+    from app.agents.api_automation.agent import api_automation_generation_agent
+
+    class RecordingFakeModel(FakeMessagesListChatModel):
+        requests: list[list[BaseMessage]] = []
+
+        @override
+        def bind_tools(self, tools: Any, **kwargs: Any):
+            return self
+
+        @override
+        def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any):
+            self.requests.append(messages)
+            return super()._generate(messages, *args, **kwargs)
+
+    tool_call_id = "call-invalid-json"
+    model = RecordingFakeModel(
+        responses=[
+            AIMessage(
+                content="",
+                invalid_tool_calls=[
+                    {
+                        "id": tool_call_id,
+                        "name": "ApiAutomationGenerationResult",
+                        "args": '{"summary": "broken", "cases": [}',
+                        "error": "invalid JSON",
+                        "type": "invalid_tool_call",
+                    }
+                ],
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call-valid-json",
+                        "name": "ApiAutomationGenerationResult",
+                        "args": {"summary": "recovered", "cases": []},
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+        ]
+    )
+
+    agent = api_automation_generation_agent(model, load_references=False)
+    result = await agent.ainvoke({"messages": [{"role": "user", "content": "generate"}]})
+
+    assert result["structured_response"] == ApiAutomationGenerationResult(
+        summary="recovered",
+        cases=[],
+    )
+    assert len(model.requests) == 2
+    recovery_messages = [message for message in model.requests[1] if isinstance(message, ToolMessage)]
+    assert len(recovery_messages) == 1
+    assert recovery_messages[0].tool_call_id == tool_call_id
+    assert recovery_messages[0].status == "error"
 
 
 def test_api_automation_generation_result_schema_uses_typed_assertions() -> None:
@@ -645,24 +717,26 @@ def test_api_automation_case_generation_skill_defines_coverage_dimensions() -> N
         encoding="utf-8"
     )
 
-    assert "覆盖维度模型" in skill_text
-    assert "适用性判断" in skill_text
-    assert "取舍算法" in skill_text
+    assert "测试点全集" in skill_text
+    assert "强制工作流" in skill_text
+    assert "组合与去重" in skill_text
     assert "覆盖类型" in skill_text
-    for dimension in [
-        "happy_path",
-        "contract",
-        "input_validation",
-        "auth_access",
-        "business_rule",
-        "error_handling",
-        "query_semantics",
-        "data_effect",
-        "integration_mode",
-        "scenario_flow",
+    for test_point in [
+        "字段存在性和可空性",
+        "类型、格式和约束",
+        "字符与序列化",
+        "日期、时间和字段关系",
+        "鉴权与安全",
+        "查询语义",
+        "业务规则、数据影响和重复操作",
+        "请求和响应契约",
+        "上传接口",
+        "下载接口",
     ]:
-        assert dimension in skill_text
+        assert test_point in skill_text
 
-    assert "required 字段缺失只是 `input_validation` 的一种等价类" in skill_text
-    assert "不要把所有接口机械套同一批场景" in skill_text
-    assert "同一维度下使用等价类压缩" in skill_text
+    assert "不设固定数量" in skill_text
+    assert "优先级只用于排序，不得用于截断测试点" in skill_text
+    assert "不生成 `scenario`" in skill_text
+    assert '"files"' in skill_text
+    assert "body_not_empty" in skill_text

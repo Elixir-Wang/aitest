@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.environment import (
@@ -14,8 +14,11 @@ router = APIRouter(prefix="/environments", tags=["environments"])
 
 
 @router.get("", response_model=list[ExplorationEnvironmentOut])
-def list_environments(actor=Depends(current_user)) -> list[dict]:
-    return environment_service.list_visible_environments(actor)
+def list_environments(
+    project_id: str | None = Query(default=None),
+    actor=Depends(current_user),
+) -> list[dict]:
+    return environment_service.list_visible_environments(actor, project_id)
 
 
 @router.post("", response_model=ExplorationEnvironmentOut)

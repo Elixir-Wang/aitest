@@ -1,8 +1,10 @@
 from pathlib import Path
 
 from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
 
 from app.agents.api_automation import ApiAutomationGenerationResult
+from app.agents.shared.invalid_tool_call_recovery import InvalidToolCallRecoveryMiddleware
 from app.agents.shared.skill_middleware import SkillMiddleware
 
 
@@ -23,8 +25,8 @@ def api_automation_generation_agent(
         model=model,
         tools=[],
         system_prompt=base_prompt,
-        middleware=[skill_middleware],
-        response_format=ApiAutomationGenerationResult,
+        middleware=[skill_middleware, InvalidToolCallRecoveryMiddleware()],
+        response_format=ToolStrategy(ApiAutomationGenerationResult),
     )
 
 

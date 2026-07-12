@@ -55,6 +55,7 @@ import {
   type ApiAutomationGenerationRun,
   type ApiAutomationRun,
   type ApiAutomationScript,
+  type ApiAutomationScriptFile,
   type ApiAutomationTestCase,
   createApiAutomationEnvironment,
   createApiAutomationRun,
@@ -63,13 +64,16 @@ import {
   deleteApiAutomationEnvironment,
   deleteApiAutomationTestCase,
   formatDateTime,
+  generateApiAutomationScripts,
   generateApiAutomationTestCases,
+  getApiAutomationScriptFiles,
   getApiAutomationGenerationRun,
   getApiAutomationRun,
   importOpenApiDocument,
   listApiAutomationCaseSets,
   listApiAutomationEndpoints,
   listApiAutomationEnvironments,
+  listApiAutomationScripts,
   listApiAutomationTestCases,
   updateApiAutomationEnvironment,
 } from "@/lib/api-client";
@@ -163,7 +167,7 @@ export default function Page() {
   const searchParams = useSearchParams();
   const projectId = params.projectId;
   const selectedCaseSetId = searchParams.get("set");
-  const [activeTab, setActiveTab] = useState(tabs[0]);
+  const [activeTab, setActiveTab] = useState(() => (searchParams.get("tab") === "cases" ? "接口用例" : tabs[0]));
   const [selectedCaseSet, setSelectedCaseSet] = useState<ApiAutomationCaseSet | null>(null);
   const [endpoints, setEndpoints] = useState<ApiAutomationEndpoint[]>([]);
   const [environments, setEnvironments] = useState<ApiAutomationEnvironment[]>([]);
@@ -176,7 +180,12 @@ export default function Page() {
   const [activeApiCaseEndpointId, setActiveApiCaseEndpointId] = useState("");
   const [selectedApiCaseEndpointIds, setSelectedApiCaseEndpointIds] = useState<string[]>([]);
   const [expandedApiCaseEndpointGroups, setExpandedApiCaseEndpointGroups] = useState<string[]>([]);
-  const [scripts] = useState<ApiAutomationScript[]>([]);
+  const [scripts, setScripts] = useState<ApiAutomationScript[]>([]);
+  const [selectedScriptIds, setSelectedScriptIds] = useState<string[]>([]);
+  const [activeScriptId, setActiveScriptId] = useState("");
+  const [scriptFiles, setScriptFiles] = useState<ApiAutomationScriptFile[]>([]);
+  const [activeScriptFileKey, setActiveScriptFileKey] = useState("");
+  const [scriptDetailTab, setScriptDetailTab] = useState<"cases" | "code" | "runs">("cases");
   const [run, setRun] = useState<ApiAutomationRun | null>(null);
   const [selectedEndpointAssetIds, setSelectedEndpointAssetIds] = useState<string[]>([]);
   const [activeEndpointId, setActiveEndpointId] = useState("");
@@ -270,6 +279,19 @@ export default function Page() {
     [environments, selectedEnvironmentId],
   );
 
+  const activeScript = useMemo(
+    () => scripts.find((script) => script.id === activeScriptId) ?? scripts[0] ?? null,
+    [activeScriptId, scripts],
+  );
+  const activeScriptCases = useMemo(
+    () => apiTestCases.filter((testCase) => testCase.endpoint_id === activeScript?.endpoint_id),
+    [activeScript, apiTestCases],
+  );
+  const activeScriptFile = useMemo(
+    () => scriptFiles.find((file) => file.key === activeScriptFileKey) ?? scriptFiles[0] ?? null,
+    [activeScriptFileKey, scriptFiles],
+  );
+
   const filteredEnvironments = useMemo(() => {
     const keyword = environmentSearchText.trim().toLowerCase();
     if (!keyword) {
@@ -349,10 +371,11 @@ export default function Page() {
   async function refresh() {
     setBusy(true);
     try {
-      const [endpointRows, environmentRows, apiCaseRows] = await Promise.all([
+      const [endpointRows, environmentRows, apiCaseRows, scriptRows] = await Promise.all([
         listApiAutomationEndpoints(projectId),
         listApiAutomationEnvironments(projectId),
         listApiAutomationTestCases(projectId),
+        listApiAutomationScripts(projectId),
       ]);
       setEndpoints(endpointRows);
       setSelectedEndpointAssetIds((current) =>
@@ -364,6 +387,11 @@ export default function Page() {
         current.filter((id) => apiCaseRows.some((testCase) => testCase.endpoint_id === id)),
       );
       setEnvironments(environmentRows);
+      setScripts(scriptRows);
+      setSelectedScriptIds((current) => current.filter((id) => scriptRows.some((script) => script.id === id)));
+      setActiveScriptId((current) =>
+        current && scriptRows.some((script) => script.id === current) ? current : (scriptRows[0]?.id ?? ""),
+      );
       setActiveEndpointId((current) =>
         current && endpointRows.some((endpoint) => endpoint.id === current) ? current : (endpointRows[0]?.id ?? ""),
       );
@@ -391,14 +419,17 @@ export default function Page() {
       listApiAutomationEndpoints(projectId),
       listApiAutomationEnvironments(projectId),
       listApiAutomationTestCases(projectId),
+      listApiAutomationScripts(projectId),
     ])
-      .then(([endpointRows, environmentRows, apiCaseRows]) => {
+      .then(([endpointRows, environmentRows, apiCaseRows, scriptRows]) => {
         if (cancelled) {
           return;
         }
         setEndpoints(endpointRows);
         setEnvironments(environmentRows);
         setApiTestCases(apiCaseRows);
+        setScripts(scriptRows);
+        setActiveScriptId(scriptRows[0]?.id ?? "");
         setSelectedApiCaseIds((current) => current.filter((id) => apiCaseRows.some((testCase) => testCase.id === id)));
         setSelectedApiCaseEndpointIds((current) =>
           current.filter((id) => apiCaseRows.some((testCase) => testCase.endpoint_id === id)),
@@ -437,6 +468,33 @@ export default function Page() {
       cancelled = true;
     };
   }, [projectId, selectedCaseSetId]);
+
+  useEffect(() => {
+    if (!activeScriptId) {
+      setScriptFiles([]);
+      setActiveScriptFileKey("");
+      return;
+    }
+    let cancelled = false;
+    getApiAutomationScriptFiles(projectId, activeScriptId)
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        setScriptFiles(result.files);
+        setActiveScriptFileKey((current) =>
+          current && result.files.some((file) => file.key === current) ? current : (result.files[0]?.key ?? ""),
+        );
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : "脚本代码加载失败");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeScriptId, projectId]);
 
   useEffect(() => {
     if (apiCaseEndpoints.length === 0) {
@@ -640,12 +698,20 @@ export default function Page() {
     }
   }
 
-  async function handleRun() {
+  async function handleRun(scriptIds: string[] = selectedScriptIds) {
+    if (scriptIds.length === 0) {
+      toast.error("请先选择要执行的接口脚本");
+      return;
+    }
+    if (!selectedEnvironment) {
+      toast.error("请先选择接口环境");
+      return;
+    }
     setBusy(true);
     try {
       const created = await createApiAutomationRun(projectId, {
-        script_ids: scripts.map((item) => item.id),
-        api_environment_id: selectedEnvironment?.id ?? null,
+        script_ids: scriptIds,
+        api_environment_id: selectedEnvironment.id,
       });
       setRun(created);
       setActiveTab("运行记录");
@@ -653,6 +719,34 @@ export default function Page() {
       notifyAiTaskStarted();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "执行失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleGenerateScripts() {
+    const endpointIds = selectedApiCaseEndpointIds;
+    if (endpointIds.length === 0) {
+      toast.error("请先在接口用例中选择接口");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const generated = await generateApiAutomationScripts(projectId, {
+        endpoint_ids: endpointIds,
+        api_environment_id: selectedEnvironment?.id ?? null,
+      });
+      const scriptRows = await listApiAutomationScripts(projectId);
+      setScripts(scriptRows);
+      setSelectedScriptIds(generated.scripts.map((script) => script.id));
+      setActiveScriptId(generated.scripts[0]?.id ?? scriptRows[0]?.id ?? "");
+      setActiveTab("测试脚本");
+      toast.success(
+        `脚本生成完成：新增 ${generated.summary.created}，更新 ${generated.summary.updated}，未变化 ${generated.summary.unchanged}`,
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "脚本生成失败");
     } finally {
       setBusy(false);
     }
@@ -673,6 +767,15 @@ export default function Page() {
     });
   }
 
+  function toggleEndpointAssetGroup(endpointIds: string[], checked: boolean) {
+    setSelectedEndpointAssetIds((current) => {
+      if (!checked) {
+        return current.filter((id) => !endpointIds.includes(id));
+      }
+      return [...new Set([...current, ...endpointIds])];
+    });
+  }
+
   function toggleApiCaseEndpoint(endpointId: string, checked: boolean) {
     setSelectedApiCaseEndpointIds((current) =>
       checked ? [...new Set([...current, endpointId])] : current.filter((id) => id !== endpointId),
@@ -685,6 +788,15 @@ export default function Page() {
         return current.filter((id) => !visibleApiCaseEndpointIds.includes(id));
       }
       return [...new Set([...current, ...visibleApiCaseEndpointIds])];
+    });
+  }
+
+  function toggleApiCaseEndpointGroupSelection(endpointIds: string[], checked: boolean) {
+    setSelectedApiCaseEndpointIds((current) => {
+      if (!checked) {
+        return current.filter((id) => !endpointIds.includes(id));
+      }
+      return [...new Set([...current, ...endpointIds])];
     });
   }
 
@@ -939,30 +1051,50 @@ export default function Page() {
               {Object.entries(groupedEndpoints).map(([group, rows]) => {
                 const hasActiveEndpoint = rows.some((endpoint) => endpoint.id === activeEndpoint?.id);
                 const isCollapsed = searchText.trim() ? false : !expandedEndpointGroups.includes(group);
+                const groupEndpointIds = rows.map((endpoint) => endpoint.id);
+                const selectedGroupEndpointCount = groupEndpointIds.filter((id) =>
+                  selectedEndpointAssetIds.includes(id),
+                ).length;
 
                 return (
                   <div className="mb-3" key={group}>
-                    <button
-                      aria-expanded={!isCollapsed}
-                      aria-label={`${group} 分组，${rows.length} 个接口，${isCollapsed ? "展开" : "折叠"}`}
+                    <div
                       className={cn(
                         "mb-1 flex w-full items-center gap-2 rounded-md border border-transparent bg-slate-100/70 px-2 py-1.5 text-left font-medium text-muted-foreground text-xs transition-colors hover:border-slate-200 hover:bg-slate-100 dark:bg-muted/25 dark:hover:border-border dark:hover:bg-muted/45",
                         hasActiveEndpoint &&
                           "border-sky-200 bg-sky-50/80 text-sky-800 dark:border-sky-500/35 dark:bg-sky-500/15 dark:text-sky-200",
                       )}
-                      onClick={() => toggleEndpointGroup(group)}
-                      type="button"
                     >
-                      {isCollapsed ? (
-                        <ChevronRight className="size-3.5 shrink-0" />
-                      ) : (
-                        <ChevronDown className="size-3.5 shrink-0" />
-                      )}
-                      <span className="min-w-0 flex-1 truncate">{group}</span>
-                      <span className="rounded-full bg-sky-100 px-2 py-0.5 font-semibold text-sky-700 tabular-nums dark:bg-sky-500/20 dark:text-sky-200">
-                        {rows.length}
-                      </span>
-                    </button>
+                      <Checkbox
+                        aria-label={`选择 ${group} 分组的全部接口`}
+                        checked={
+                          selectedGroupEndpointCount === groupEndpointIds.length
+                            ? true
+                            : selectedGroupEndpointCount > 0
+                              ? "indeterminate"
+                              : false
+                        }
+                        disabled={busy}
+                        onCheckedChange={(checked) => toggleEndpointAssetGroup(groupEndpointIds, Boolean(checked))}
+                      />
+                      <button
+                        aria-expanded={!isCollapsed}
+                        aria-label={`${group} 分组，${rows.length} 个接口，${isCollapsed ? "展开" : "折叠"}`}
+                        className="-my-1.5 -mr-2 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-r-md py-1.5 pr-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 active:bg-slate-200/60 dark:active:bg-muted/60"
+                        onClick={() => toggleEndpointGroup(group)}
+                        type="button"
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight className="size-3.5 shrink-0" />
+                        ) : (
+                          <ChevronDown className="size-3.5 shrink-0" />
+                        )}
+                        <span className="min-w-0 flex-1 truncate">{group}</span>
+                        <span className="rounded-full bg-sky-100 px-2 py-0.5 font-semibold text-sky-700 tabular-nums dark:bg-sky-500/20 dark:text-sky-200">
+                          {rows.length}
+                        </span>
+                      </button>
+                    </div>
                     {isCollapsed ? null : (
                       <div className="space-y-1">
                         {rows.map((endpoint) => (
@@ -1221,7 +1353,7 @@ export default function Page() {
                     </Button>
                     <Button
                       disabled={busy || selectedApiCaseEndpointIds.length === 0}
-                      onClick={() => setActiveTab("测试脚本")}
+                      onClick={handleGenerateScripts}
                       size="sm"
                     >
                       生成脚本
@@ -1238,30 +1370,52 @@ export default function Page() {
                   (count, endpoint) => count + (apiCaseCountByEndpointId[endpoint.id] ?? 0),
                   0,
                 );
+                const groupEndpointIds = rows.map((endpoint) => endpoint.id);
+                const selectedGroupEndpointCount = groupEndpointIds.filter((id) =>
+                  selectedApiCaseEndpointIds.includes(id),
+                ).length;
 
                 return (
                   <div className="mb-3" key={group}>
-                    <button
-                      aria-expanded={!isCollapsed}
-                      aria-label={`${group} 分组，${caseCount} 条用例，${isCollapsed ? "展开" : "折叠"}`}
+                    <div
                       className={cn(
                         "mb-1 flex w-full items-center gap-2 rounded-md border border-transparent bg-slate-100/70 px-2 py-1.5 text-left font-medium text-muted-foreground text-xs transition-colors hover:border-slate-200 hover:bg-slate-100 dark:bg-muted/25 dark:hover:border-border dark:hover:bg-muted/45",
                         hasActiveEndpoint &&
                           "border-sky-200 bg-sky-50/80 text-sky-800 dark:border-sky-500/35 dark:bg-sky-500/15 dark:text-sky-200",
                       )}
-                      onClick={() => toggleApiCaseEndpointGroup(group)}
-                      type="button"
                     >
-                      {isCollapsed ? (
-                        <ChevronRight className="size-3.5 shrink-0" />
-                      ) : (
-                        <ChevronDown className="size-3.5 shrink-0" />
-                      )}
-                      <span className="min-w-0 flex-1 truncate">{group}</span>
-                      <span className="rounded-full bg-sky-100 px-2 py-0.5 font-semibold text-sky-700 tabular-nums dark:bg-sky-500/20 dark:text-sky-200">
-                        {caseCount}
-                      </span>
-                    </button>
+                      <Checkbox
+                        aria-label={`选择 ${group} 分组的全部接口用例`}
+                        checked={
+                          selectedGroupEndpointCount === groupEndpointIds.length
+                            ? true
+                            : selectedGroupEndpointCount > 0
+                              ? "indeterminate"
+                              : false
+                        }
+                        disabled={busy}
+                        onCheckedChange={(checked) =>
+                          toggleApiCaseEndpointGroupSelection(groupEndpointIds, Boolean(checked))
+                        }
+                      />
+                      <button
+                        aria-expanded={!isCollapsed}
+                        aria-label={`${group} 分组，${caseCount} 条用例，${isCollapsed ? "展开" : "折叠"}`}
+                        className="-my-1.5 -mr-2 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-r-md py-1.5 pr-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 active:bg-slate-200/60 dark:active:bg-muted/60"
+                        onClick={() => toggleApiCaseEndpointGroup(group)}
+                        type="button"
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight className="size-3.5 shrink-0" />
+                        ) : (
+                          <ChevronDown className="size-3.5 shrink-0" />
+                        )}
+                        <span className="min-w-0 flex-1 truncate">{group}</span>
+                        <span className="rounded-full bg-sky-100 px-2 py-0.5 font-semibold text-sky-700 tabular-nums dark:bg-sky-500/20 dark:text-sky-200">
+                          {caseCount}
+                        </span>
+                      </button>
+                    </div>
                     {isCollapsed ? null : (
                       <div className="space-y-1">
                         {rows.map((endpoint) => (
@@ -1432,49 +1586,245 @@ export default function Page() {
       )}
 
       {activeTab === "测试脚本" && (
-        <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">脚本生成</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-2">
-                <div className="font-medium text-sm">执行环境</div>
-                <Select value={selectedEnvironment?.id ?? ""} onValueChange={setSelectedEnvironmentId}>
-                  <SelectTrigger className="h-9 w-full">
-                    <SelectValue placeholder="选择接口环境" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {environments.map((environment) => (
-                      <SelectItem key={environment.id} value={environment.id}>
-                        {environment.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="text-muted-foreground text-xs">
-                  {selectedEnvironment?.api_base_url ?? "请先在接口环境页签新建环境。"}
-                </div>
+        <div className="grid min-h-[38rem] overflow-hidden rounded-md border bg-background xl:grid-cols-[340px_minmax(0,1fr)_280px]">
+          <aside className="flex min-h-0 flex-col border-r bg-muted/15">
+            <div className="flex items-center justify-between gap-2 border-b px-3 py-3">
+              <div>
+                <div className="font-semibold text-sm">接口脚本</div>
+                <div className="text-muted-foreground text-xs">{scripts.length} 个接口</div>
               </div>
-              <Button disabled variant="outline">
-                生成脚本
+              <Button
+                disabled={busy || selectedApiCaseEndpointIds.length === 0}
+                onClick={handleGenerateScripts}
+                size="sm"
+                variant="outline"
+              >
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <Braces className="size-4" />}
+                生成
               </Button>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">成果物</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm">生成任务：{generationRun?.status ?? "-"}</p>
+            </div>
+            <div className="flex items-center gap-2 border-b px-3 py-2">
+              <Checkbox
+                aria-label="选择全部接口脚本"
+                checked={
+                  scripts.length > 0 && scripts.every((script) => selectedScriptIds.includes(script.id))
+                    ? true
+                    : scripts.some((script) => selectedScriptIds.includes(script.id))
+                      ? "indeterminate"
+                      : false
+                }
+                onCheckedChange={(checked) => setSelectedScriptIds(checked ? scripts.map((script) => script.id) : [])}
+              />
+              <span className="text-muted-foreground text-xs">已选择 {selectedScriptIds.length}</span>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-2">
               {scripts.map((script) => (
-                <div className="rounded-md border px-3 py-2 text-sm" key={script.id}>
-                  <div className="font-medium">{script.name}</div>
-                  <div className="truncate text-muted-foreground text-xs">{script.test_file_path}</div>
+                <div
+                  className={cn(
+                    "mb-1 flex items-start gap-2 rounded-md border border-transparent px-2 py-2",
+                    activeScript?.id === script.id && "border-border bg-background shadow-xs",
+                  )}
+                  key={script.id}
+                >
+                  <Checkbox
+                    aria-label={`选择 ${script.endpoint_summary || script.path || script.name}`}
+                    checked={selectedScriptIds.includes(script.id)}
+                    onCheckedChange={(checked) =>
+                      setSelectedScriptIds((current) =>
+                        checked ? [...new Set([...current, script.id])] : current.filter((id) => id !== script.id),
+                      )
+                    }
+                  />
+                  <button
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => setActiveScriptId(script.id)}
+                    type="button"
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <MethodBadge method={script.method || "API"} />
+                      <span className="truncate font-medium text-sm">
+                        {script.endpoint_summary || script.path || script.name}
+                      </span>
+                    </div>
+                    <div className="mt-1 truncate font-mono text-muted-foreground text-xs">
+                      {script.path || script.test_file_path}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 text-xs">
+                      <span className="text-muted-foreground">{script.case_count} 条用例</span>
+                      <span className={script.last_run_status === "passed" ? "text-emerald-600" : "text-muted-foreground"}>
+                        {script.last_run_status ? runStatusLabel(script.last_run_status) : "未执行"}
+                      </span>
+                    </div>
+                  </button>
+                  <Button
+                    aria-label={`执行 ${script.endpoint_summary || script.path || script.name}`}
+                    disabled={busy || !selectedEnvironment}
+                    onClick={() => handleRun([script.id])}
+                    size="icon"
+                    variant="ghost"
+                  >
+                    <Play className="size-4" />
+                  </Button>
                 </div>
               ))}
-            </CardContent>
-          </Card>
+              {scripts.length === 0 ? (
+                <div className="px-4 py-12 text-center text-muted-foreground text-sm">
+                  在接口用例中勾选接口后生成脚本。
+                </div>
+              ) : null}
+            </div>
+          </aside>
+
+          <section className="flex min-h-0 min-w-0 flex-col">
+            <div className="border-b px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate font-semibold text-sm">
+                    {activeScript?.endpoint_summary || activeScript?.path || "选择一个接口脚本"}
+                  </div>
+                  <div className="mt-1 truncate font-mono text-muted-foreground text-xs">
+                    {activeScript?.test_file_path ?? ""}
+                  </div>
+                </div>
+                {activeScript?.manual_modified ? <Badge variant="secondary">已手工修改</Badge> : null}
+              </div>
+              <div className="mt-3 flex gap-1">
+                {([
+                  ["cases", "测试用例"],
+                  ["code", "代码"],
+                  ["runs", "执行历史"],
+                ] as const).map(([value, label]) => (
+                  <Button
+                    key={value}
+                    onClick={() => setScriptDetailTab(value)}
+                    size="sm"
+                    variant={scriptDetailTab === value ? "secondary" : "ghost"}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-auto">
+              {scriptDetailTab === "cases" ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>用例名称</TableHead>
+                      <TableHead className="w-20">优先级</TableHead>
+                      <TableHead className="w-24">类型</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {activeScriptCases.map((testCase) => (
+                      <TableRow key={testCase.id}>
+                        <TableCell className="font-medium">{testCase.title}</TableCell>
+                        <TableCell>{testCase.priority}</TableCell>
+                        <TableCell>{testCase.coverage}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : null}
+
+              {scriptDetailTab === "code" ? (
+                <div className="grid min-h-full md:grid-cols-[190px_minmax(0,1fr)]">
+                  <div className="border-r p-2">
+                    {scriptFiles.map((file) => (
+                      <button
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left font-mono text-xs",
+                          activeScriptFile?.key === file.key ? "bg-muted font-semibold" : "hover:bg-muted/60",
+                        )}
+                        key={file.key}
+                        onClick={() => setActiveScriptFileKey(file.key)}
+                        type="button"
+                      >
+                        {file.kind === "test" ? <Braces className="size-4" /> : <FileJson className="size-4" />}
+                        <span className="truncate">{file.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <pre className="min-h-[30rem] overflow-auto bg-zinc-950 p-4 font-mono text-[13px] text-zinc-100 leading-6">
+                    <code>{activeScriptFile?.content ?? ""}</code>
+                  </pre>
+                </div>
+              ) : null}
+
+              {scriptDetailTab === "runs" ? (
+                <div className="p-5">
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div>
+                      <div className="text-muted-foreground text-xs">最近状态</div>
+                      <div className="mt-1 font-semibold text-sm">
+                        {activeScript?.last_run_status ? runStatusLabel(activeScript.last_run_status) : "未执行"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground text-xs">执行时间</div>
+                      <div className="mt-1 text-sm">{formatDateTime(activeScript?.last_run_at ?? null)}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground text-xs">用例数量</div>
+                      <div className="mt-1 text-sm">{activeScript?.case_count ?? 0}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          <aside className="border-l bg-muted/10 p-4">
+            <div className="font-semibold text-sm">执行设置</div>
+            <div className="mt-4 space-y-2">
+              <div className="text-muted-foreground text-xs">环境</div>
+              <Select value={selectedEnvironment?.id ?? ""} onValueChange={setSelectedEnvironmentId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="选择接口环境" />
+                </SelectTrigger>
+                <SelectContent>
+                  {environments.map((environment) => (
+                    <SelectItem key={environment.id} value={environment.id}>
+                      {environment.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="break-all text-muted-foreground text-xs">
+                {selectedEnvironment?.api_base_url ?? "尚未配置接口环境"}
+              </div>
+            </div>
+            <div className="mt-6 border-y py-4">
+              <div className="flex items-center justify-between text-sm">
+                <span>已选接口</span>
+                <span className="font-semibold tabular-nums">{selectedScriptIds.length}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-sm">
+                <span>测试用例</span>
+                <span className="font-semibold tabular-nums">
+                  {scripts
+                    .filter((script) => selectedScriptIds.includes(script.id))
+                    .reduce((total, script) => total + script.case_count, 0)}
+                </span>
+              </div>
+            </div>
+            <Button
+              className="mt-4 w-full"
+              disabled={busy || selectedScriptIds.length === 0 || !selectedEnvironment}
+              onClick={() => handleRun(selectedScriptIds)}
+            >
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+              执行已选
+            </Button>
+            {run ? (
+              <div className="mt-5 border-t pt-4 text-sm">
+                <div className="text-muted-foreground text-xs">当前任务</div>
+                <div className="mt-1 font-medium">{runStatusLabel(run.status)}</div>
+                <div className="mt-2 text-muted-foreground text-xs">{run.script_ids.length} 个接口脚本</div>
+              </div>
+            ) : null}
+          </aside>
         </div>
       )}
 
@@ -1502,7 +1852,10 @@ export default function Page() {
                 </SelectContent>
               </Select>
             </div>
-            <Button disabled={busy || scripts.length === 0 || !selectedEnvironment} onClick={handleRun}>
+            <Button
+              disabled={busy || selectedScriptIds.length === 0 || !selectedEnvironment}
+              onClick={() => handleRun(selectedScriptIds)}
+            >
               执行脚本
             </Button>
             <div className="rounded-md border px-3 py-2 text-sm">
@@ -2155,6 +2508,17 @@ function parseDebugBody(value: string): unknown {
   } catch {
     throw new Error("请求体必须是合法 JSON");
   }
+}
+
+function runStatusLabel(status: string) {
+  return ({
+    queued: "排队中",
+    running: "执行中",
+    passed: "通过",
+    failed: "失败",
+    cancelled: "已取消",
+    interrupted: "已中断",
+  } as Record<string, string>)[status] ?? status;
 }
 
 function endpointGroupName(endpoint: ApiAutomationEndpoint) {

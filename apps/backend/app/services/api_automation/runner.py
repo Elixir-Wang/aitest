@@ -22,6 +22,7 @@ def run_script_suite(
     run_dir: Path,
     environment: dict[str, Any],
     timeout: int,
+    test_paths: list[str] | None = None,
 ) -> dict[str, Any]:
     suite_path = suite_path.resolve()
     run_dir = run_dir.resolve()
@@ -42,8 +43,9 @@ def run_script_suite(
     stderr_parts = [sync.stderr]
 
     report_path = run_dir / "report.json"
+    pytest_targets = test_paths or ["tests"]
     pytest = subprocess.run(
-        ["uv", "run", "pytest", "tests", "--json-report", f"--json-report-file={report_path}"],
+        ["uv", "run", "pytest", *pytest_targets, "--json-report", f"--json-report-file={report_path}"],
         cwd=suite_path,
         text=True,
         capture_output=True,

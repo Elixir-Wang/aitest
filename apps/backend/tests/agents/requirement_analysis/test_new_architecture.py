@@ -224,7 +224,7 @@ def test_markdown_conversion():
     # 测试澄清问题 Markdown
     clarification_md = result.to_clarification_markdown()
     assert "# 待澄清问题" in clarification_md
-    assert "| 优先级 | 模块/对象 | 澄清问题 | 选项 A | 选项 B | 影响 |" in clarification_md
+    assert "| 优先级 | 模块/对象 | 澄清问题 | 选项 A | 选项 B | 测试影响 |" in clarification_md
     assert "| P0 | 登录 | 测试问题 | 选项 A | 选项 B | 测试影响 |" in clarification_md
 
 

@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import {
   AlertTriangle,
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import type { AgentPlanStatus } from "@/components/ui/agent-plan";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type {
   ExplorationMonitorEvent,
   ExplorationMonitorState,
@@ -43,6 +44,44 @@ const actionTypeLabels: Record<string, string> = {
   wait: "等待",
   event: "事件",
 };
+
+function ClampedStepDescription({ children }: { children: string }) {
+  const descriptionRef = useRef<HTMLSpanElement>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  useLayoutEffect(() => {
+    const description = descriptionRef.current;
+    if (!description) return;
+
+    const updateOverflow = () => setIsOverflowing(description.scrollHeight > description.clientHeight + 1);
+    updateOverflow();
+
+    const resizeObserver = new ResizeObserver(updateOverflow);
+    resizeObserver.observe(description);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  const content = (
+    <span
+      ref={descriptionRef}
+      className="line-clamp-2 min-w-0 break-words text-sm leading-6"
+      tabIndex={isOverflowing ? 0 : undefined}
+    >
+      {children}
+    </span>
+  );
+
+  if (!isOverflowing) return content;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{content}</TooltipTrigger>
+      <TooltipContent className="max-w-md whitespace-normal break-words leading-5" side="top" sideOffset={6}>
+        {children}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 const stepStatusIconByStatus: Partial<Record<AgentPlanStatus, ReactNode>> = {
   blocked: <AlertTriangle className="size-4 text-orange-600" />,
@@ -256,15 +295,17 @@ function ExplorationStepCard({ isLast, step }: { isLast: boolean; step: Explorat
       </span>
       <div className={`rounded-lg border px-3 py-3 transition-colors hover:border-primary/25 ${surfaceClass}`}>
         <div className="min-w-0 space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="font-medium font-mono text-sm">#{step.step_number}</span>
-            <span className="truncate text-sm">{step.description}</span>
+          <div className="flex min-w-0 items-start gap-2">
+            <span className="shrink-0 font-medium font-mono text-sm leading-6">#{step.step_number}</span>
+            <ClampedStepDescription>{step.description}</ClampedStepDescription>
           </div>
           {step.module_name ? <div className="text-muted-foreground text-xs">模块: {step.module_name}</div> : null}
           {isExpanded && step.target_description ? (
             <div className="text-muted-foreground text-xs">目标: {step.target_description}</div>
           ) : null}
-          {isExpanded && step.action_type ? (
+          {isExpanded && step.execution_strategy === "agent_plan" ? (
+            <div className="text-muted-foreground text-xs">类型: 计划项</div>
+          ) : isExpanded && step.action_type ? (
             <div className="text-muted-foreground text-xs">
               动作: {actionTypeLabels[step.action_type] || step.action_type}
             </div>

@@ -675,11 +675,11 @@ describe("browser session observation", () => {
 
       assert.equal(editor?.role, "textbox");
       assert.equal(editor?.action_type, "fill");
-      assert.match(editor?.action_locator || "", /data-ai-testing-action-ref/);
+      assert.match(editor?.element_id || "", /^obs-\d+\.el-\d+$/);
 
       const result = await session.command({
         type: "fill",
-        element_id: editor.action_locator,
+        element_id: editor.element_id,
         value: "你是一个友好的助手",
       });
       assert.equal(result.success, true, JSON.stringify(result));
@@ -691,7 +691,7 @@ describe("browser session observation", () => {
     }
   });
 
-  it("isolates snapshot actions to the active overlay", async () => {
+  it("keeps visible page and overlay actions while identifying the active overlay", async () => {
     const globalButtons = Array.from({ length: 90 }, (_, index) => `<button>全局操作 ${index}</button>`).join("");
     const html = `
       <!doctype html>
@@ -703,6 +703,7 @@ describe("browser session observation", () => {
           ${globalButtons}
           <div class="popover">
             <input placeholder="请输入智能体名称" />
+            <li onclick="document.title = 'agent-type'">自主规划 Agent</li>
             <button>创建</button>
           </div>
         </body>
@@ -715,7 +716,14 @@ describe("browser session observation", () => {
       assert.equal(observation.interaction_scope, "overlay");
       assert.equal(observation.elements.some((item) => item.name === "请输入智能体名称"), true);
       assert.equal(observation.elements.some((item) => item.name === "创建"), true);
-      assert.equal(observation.elements.some((item) => item.name.startsWith("全局操作")), false);
+      assert.equal(
+        observation.elements.some(
+          (item) => item.name === "自主规划 Agent" && item.overlay_id === observation.overlay_registry.active_overlay_id,
+        ),
+        true,
+      );
+      assert.equal(observation.elements.some((item) => item.name.startsWith("全局操作")), true);
+      assert.ok(observation.overlay_registry.active_overlay_id);
     } finally {
       await session.close();
     }
@@ -738,10 +746,18 @@ describe("browser session observation", () => {
     `;
     const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
     try {
-      await session.command({ type: "observe" });
+      const observation = await session.command({ type: "observe" });
+      const overlayButton = observation.elements.find(
+        (item) => item.name === "创建" && item.overlay_id === observation.overlay_registry.active_overlay_id,
+      );
+      assert.ok(overlayButton, JSON.stringify({
+        active_overlay_id: observation.overlay_registry.active_overlay_id,
+        matches: observation.elements.filter((item) => item.name === "创建"),
+        overlays: observation.overlay_registry.overlays,
+      }));
       const result = await session.command({
         type: "click",
-        element_id: "page.getByRole('button', { name: '创建' })",
+        element_id: overlayButton.element_id,
       });
 
       assert.equal(result.success, true, JSON.stringify(result));
@@ -767,7 +783,7 @@ describe("browser session observation", () => {
     const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
     try {
       const observation = await session.command({ type: "observe" });
-      const button = observation.elements.find((item) => item.role === "button" && item.name === "创建");
+      const button = observation.elements.filter((item) => item.role === "button" && item.name === "创建").at(-1);
 
       assert.equal(observation.overlay?.type, "popover");
       assert.equal(observation.overlay?.primary_selector?.verification?.unique, true);
@@ -778,7 +794,7 @@ describe("browser session observation", () => {
     }
   });
 
-  it("never falls back outside an active overlay", async () => {
+  it("executes an explicitly selected page element even when an overlay exists", async () => {
     const html = `
       <!doctype html>
       <html>
@@ -791,14 +807,15 @@ describe("browser session observation", () => {
     `;
     const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
     try {
-      await session.command({ type: "observe" });
+      const observation = await session.command({ type: "observe" });
+      const pageButton = observation.elements.find((item) => item.name === "页面操作");
       const result = await session.command({
         type: "click",
-        element_id: "page.getByRole('button', { name: '页面操作' })",
+        element_id: pageButton.element_id,
       });
 
-      assert.equal(result.success, false, JSON.stringify(result));
-      assert.equal(result.error_type, "not_visible");
+      assert.equal(result.success, true, JSON.stringify(result));
+      assert.equal(result.after_title, "page");
     } finally {
       await session.close();
     }
@@ -824,6 +841,89 @@ describe("browser session observation", () => {
 
       assert.equal(result.success, false, JSON.stringify(result));
       assert.equal(result.error_type, "locator_not_unique");
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("fills the topmost repeated input inside the active overlay", async () => {
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <style>
+            .popover { position: fixed; z-index: 100; inset: 100px; background: white; }
+            .stack { position: relative; width: 300px; height: 40px; }
+            .stack input { position: absolute; inset: 0; }
+          </style>
+        </head>
+        <body>
+          <div class="popover">
+            <div class="stack">
+              <input data-layer="1" placeholder="请输入智能体名称" />
+              <input data-layer="2" placeholder="请输入智能体名称" />
+              <input data-layer="3" placeholder="请输入智能体名称" />
+              <input data-layer="4" placeholder="请输入智能体名称" />
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      const before = await session.command({ type: "observe" });
+      const inputs = before.elements.filter((item) => item.name === "请输入智能体名称");
+      assert.equal(inputs.length, 4);
+      const result = await session.command({
+        type: "fill",
+        element_id: inputs.at(-1).element_id,
+        value: "哈哈",
+      });
+
+      assert.equal(result.success, true, JSON.stringify(result));
+      const observation = await session.command({ type: "scoped_query", role: "textbox" });
+      assert.equal(observation.scope_used, "[data-ai-testing-active-overlay]");
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("rejects an element id from an older observation", async () => {
+    const html = "<!doctype html><button>创建</button>";
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      const first = await session.command({ type: "observe" });
+      const oldElementId = first.elements.find((item) => item.name === "创建").element_id;
+      const second = await session.command({ type: "observe" });
+      assert.notEqual(first.observation_id, second.observation_id);
+
+      const result = await session.command({ type: "click", element_id: oldElementId });
+      assert.equal(result.success, false);
+      assert.equal(result.failure.error_type, "stale_element");
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("scopes queries to a detected overlay without standard role or class names", async () => {
+    const html = `
+      <!doctype html>
+      <html>
+        <body>
+          <div style="position: fixed; z-index: 999; inset: 100px; background: white">
+            <input placeholder="请输入智能体名称" />
+          </div>
+        </body>
+      </html>
+    `;
+    const session = await startSession(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    try {
+      const observed = await session.command({ type: "observe" });
+      assert.equal(observed.interaction_scope, "overlay");
+
+      const result = await session.command({ type: "scoped_query", role: "textbox" });
+      assert.equal(result.scope_used, "[data-ai-testing-active-overlay]");
+      assert.equal(result.match_count, 1);
     } finally {
       await session.close();
     }

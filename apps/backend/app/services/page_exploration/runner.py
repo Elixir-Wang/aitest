@@ -45,14 +45,16 @@ class ExplorationStalledError(Exception):
 class _ExplorationProgressGuard:
     """Stop agent loops that keep retrying the same todo on the same page state."""
 
-    def __init__(self, *, failure_limit: int = 3, stale_snapshot_limit: int = 6) -> None:
+    def __init__(self, *, failure_limit: int = 3, stale_snapshot_limit: int = 6, no_progress_limit: int = 8) -> None:
         self.failure_limit = failure_limit
         self.stale_snapshot_limit = stale_snapshot_limit
+        self.no_progress_limit = no_progress_limit
         self.current_todo = "no-active-todo"
         self.current_state_key: tuple[str, str, str] | None = None
         self.last_snapshot_key: tuple[str, str, str] | None = None
         self.consecutive_failures = 0
         self.consecutive_stale_snapshots = 0
+        self.no_progress_actions = 0
 
     def observe(self, readable_event: dict, snapshot_event: dict | None = None) -> None:
         event_type = _string(readable_event.get("type"))
@@ -63,25 +65,24 @@ class _ExplorationProgressGuard:
             self.consecutive_failures = 0
             self.consecutive_stale_snapshots = 0
             self.last_snapshot_key = None
+            self.no_progress_actions = 0
             return
 
         if snapshot_event:
             self._observe_snapshot(snapshot_event)
 
         if event_type == "agent_tool_failed":
+            self._observe_no_progress_action()
             self._observe_failure(payload)
             return
 
         if event_type == "agent_tool_completed" and _string(payload.get("tool_name")) != "playwright_snap_tool":
-            self.consecutive_failures = 0
+            self._observe_no_progress_action()
 
     def _observe_snapshot(self, snapshot_event: dict) -> None:
         output = self._snapshot_output(snapshot_event)
         url = _string(output.get("url"))
         signature = _string(output.get("state_signature"))
-        if not signature:
-            hint = output.get("state_observation_hint") if isinstance(output.get("state_observation_hint"), dict) else {}
-            signature = _string(hint.get("dom_signature"))
         if not url or not signature:
             return
 
@@ -93,6 +94,7 @@ class _ExplorationProgressGuard:
             self.consecutive_stale_snapshots = 1
             self.last_snapshot_key = key
             self.consecutive_failures = 0
+            self.no_progress_actions = 0
 
         if self.consecutive_stale_snapshots >= self.stale_snapshot_limit:
             raise ExplorationStalledError(
@@ -106,15 +108,25 @@ class _ExplorationProgressGuard:
         self.consecutive_failures += 1
         if self.consecutive_failures >= self.failure_limit:
             tool_name = _string(payload.get("tool_name")) or "tool"
-            locator = _string(payload.get("locator"))
+            element_id = _string(payload.get("element_id"))
             failure = payload.get("failure") if isinstance(payload.get("failure"), dict) else {}
             failure_type = _string(failure.get("error_type")) or _string(payload.get("error_summary")) or "unknown"
             details = f"{tool_name} 连续失败 {self.consecutive_failures} 次"
-            if locator:
-                details = f"{details}，locator={locator}"
+            if element_id:
+                details = f"{details}，element_id={element_id}"
             raise ExplorationStalledError(
                 "探索阻塞：同一 URL、同一页面状态和同一子目标下"
                 f"{details}，failure={failure_type}。"
+            )
+
+    def _observe_no_progress_action(self) -> None:
+        if self.current_state_key is None:
+            return
+        self.no_progress_actions += 1
+        if self.no_progress_actions >= self.no_progress_limit:
+            raise ExplorationStalledError(
+                "探索无进展：同一 URL、同一页面状态和同一子目标连续 "
+                f"{self.no_progress_actions} 个动作未产生状态变化。"
             )
 
     @staticmethod
@@ -467,9 +479,8 @@ def _initial_subgoal_hints(goal: str) -> list[str]:
             "记录成功提示、跳转或列表更新（完成判据：出现成功 Toast 或跳到详情/列表）。"
         ),
         (
-            "步骤 5 / 终点确认：到达目标终点后，记录核心元素的稳健定位器"
-            "（优先 getByRole / getByLabel / getByTestId，回退到 filter({hasText}) 链式），"
-            "并在 merge_page_artifact_tool 中沉淀为 state tree。"
+            "步骤 5 / 终点确认：到达目标终点后执行最终 snap，验证目标字段、提示或页面状态；"
+            "服务端会从快照确定性生成永久元素定位器与 state tree。"
         ),
     ]
 
@@ -745,4 +756,6 @@ def _agent_recursion_config(max_pages: int) -> dict:
         page_budget = int(max_pages or 0)
     except (TypeError, ValueError):
         page_budget = 0
-    return {"recursion_limit": max(100, page_budget * 8)}
+    # 一个浏览器动作通常跨越 model/tool/middleware/stream 多个图节点。
+    # 真正的循环由工具调用上限与 progress guard 熔断，此预算只避免正常流程被误杀。
+    return {"recursion_limit": max(400, page_budget * 80)}

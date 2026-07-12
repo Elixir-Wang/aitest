@@ -29,6 +29,7 @@ def test_snapshot_result_has_elements_field():
 def test_element_info_has_ancestor_chain_field():
     """ElementInfo 必须能接收 ancestor_chain 字段（popover/dialog/menu 等 DOM 上下文）。"""
     el = ElementInfo(
+        element_id="obs-1.el-1",
         role="button",
         role_source="accessibility_tree",
         name="确认",
@@ -49,6 +50,7 @@ def test_element_info_has_ancestor_chain_field():
 def test_element_info_ancestor_chain_default_to_empty_list():
     """ancestor_chain 缺省值必须是空 list（非 overlay 元素不写这个字段）。"""
     el = ElementInfo(
+        element_id="obs-1.el-1",
         role="button",
         role_source="accessibility_tree",
         name="发布",
@@ -62,6 +64,7 @@ def test_element_info_ancestor_chain_default_to_empty_list():
 def test_element_info_ancestor_chain_multiple_levels():
     """ancestor_chain 支持多层（popover > section > div）。"""
     el = ElementInfo(
+        element_id="obs-1.el-1",
         role="button",
         role_source="native",
         name="删除",

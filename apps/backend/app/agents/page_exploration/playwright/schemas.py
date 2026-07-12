@@ -7,11 +7,15 @@ from pydantic import BaseModel
 class ElementInfo(BaseModel):
     """Information about a single executable page element."""
 
+    element_id: str
     role: str
     action_locator: str = ""
     role_source: str = ""
     name: str
     text: str | None = None
+    value: str = ""
+    overlay_id: str | None = None
+    context: dict[str, Any] = {}
     action_type: str = ""
     primary_selector: dict[str, Any] | None = None
     fallback_selector: dict[str, Any] | None = None
@@ -36,10 +40,12 @@ class AccessibilityNodeInfo(BaseModel):
 class SnapshotResult(BaseModel):
     """Result from a browser page snapshot."""
 
+    observation_id: str = ""
     url: str
     title: str
     interaction_scope: str = "page"
     overlay: dict[str, Any] | None = None
+    overlay_registry: dict[str, Any] = {}
     state_context: dict[str, Any] = {}
     elements: list[ElementInfo]
     accessibility_tree: list[AccessibilityNodeInfo] = []
@@ -92,6 +98,7 @@ class ClickResult(BaseModel):
     verification_required: bool = True
     next_step_hint: str = ""
     risk: str = ""
+    element_key: str = ""
 
 
 class FillResult(BaseModel):
@@ -104,3 +111,4 @@ class FillResult(BaseModel):
     verification_required: bool = True
     next_step_hint: str = ""
     risk: str = ""
+    element_key: str = ""

@@ -44,23 +44,12 @@ def playwright_navigate_tool(url: str) -> dict:
 
 
 @tool
-def playwright_click_tool(locator: str) -> dict:
+def playwright_click_tool(element_id: str) -> dict:
     """
     Click an element on the current page.
 
-    locator 优先使用可复用的 Playwright Locator 字符串：
-
-       getByRole('button', { name: '创建智能体' })
-       getByRole('treeitem', { name: '自主规划 Agent' })
-       getByLabel('用户名')
-       getByText('提交订单', { exact: true })
-       getByPlaceholder('请输入手机号')
-       getByTestId('user-avatar')
-       getByRole('listitem').filter({ hasText: '自主规划' })
-           .getByRole('button', { name: '编辑' })  # 链式 filter
-       page.locator('[role="popover"]').filter({ hasText: '自主规划 Agent' })
-           .getByText('能够自主规划任务')  # 浮层/卡片容器内定位
-       page.locator('[data-testid="workspace-nav"]')  # 仅在以上定位器都不可用时兜底
+    element_id 必须来自最近一次 playwright_snap_tool 返回的 elements 列表。
+    禁止生成 CSS、XPath、Playwright locator、first/nth 或坐标。
 
     失败处理（必读）：
     - 工具返回 success=false 时，error_type 取值固定为以下之一：
@@ -74,7 +63,7 @@ def playwright_click_tool(locator: str) -> dict:
     - 不要用 .first() / .nth() 解决歧义；必须用容器、hasText 或 has 缩小到唯一元素。
 
     Args:
-        locator: Playwright Locator 字符串
+        element_id: 当前 observation 中的运行期元素 ID
 
     Returns:
         A dictionary containing:
@@ -85,14 +74,14 @@ def playwright_click_tool(locator: str) -> dict:
         - failure.recovered: 是否来自历史 runner 的降级执行结果
         - effective_locator: 真正命中的元素的 locator 字符串
     """
-    result = click_with_runtime_context(locator)
+    result = click_with_runtime_context(element_id)
     payload = {
         "success": result.success,
         "error": result.error,
-        "effective_locator": result.effective_locator,
         "verification_required": result.verification_required,
         "next_step_hint": result.next_step_hint,
         "risk": result.risk,
+        "element_key": result.element_key,
     }
     if result.failure is not None:
         payload["failure"] = result.failure.model_dump()
@@ -100,22 +89,16 @@ def playwright_click_tool(locator: str) -> dict:
 
 
 @tool
-def playwright_fill_tool(locator: str, value: str) -> dict:
+def playwright_fill_tool(element_id: str, value: str) -> dict:
     """
     Fill an input element with text.
 
-    locator 只支持可复用 Playwright Locator 字符串。
-    常用形式：
-
-    - getByLabel('用户名')
-    - getByPlaceholder('请输入手机号')
-    - getByRole('textbox', { name: 'Email' })
-    - getByTestId('search-input')
+    element_id 必须来自最近一次 playwright_snap_tool 返回的 elements 列表。
 
     失败结构化透传，与 click 工具一致。
 
     Args:
-        locator: Playwright Locator 字符串
+        element_id: 当前 observation 中的运行期元素 ID
         value: Text to fill into the element
 
     Returns:
@@ -124,14 +107,14 @@ def playwright_fill_tool(locator: str, value: str) -> dict:
         - error: Error message if fill failed
         - failure.error_type / failure.summary / failure.recovered
     """
-    result = fill_with_runtime_context(locator, value)
+    result = fill_with_runtime_context(element_id, value)
     payload = {
         "success": result.success,
         "error": result.error,
-        "effective_locator": result.effective_locator,
         "verification_required": result.verification_required,
         "next_step_hint": result.next_step_hint,
         "risk": result.risk,
+        "element_key": result.element_key,
     }
     if result.failure is not None:
         payload["failure"] = result.failure.model_dump()
@@ -141,17 +124,11 @@ def playwright_fill_tool(locator: str, value: str) -> dict:
 @tool
 def playwright_press_tool(key: str, locator: str = "") -> dict:
     """
-    Press a keyboard key on the current focused element or a specific locator.
-
-    Use this only when the UI naturally requires keyboard interaction, for example:
-    - press "Enter" after filling a search box or focused form field
-    - press "Escape" to close a transient popover before retrying
-    - press "Tab" only when focus movement is the explicit goal
+    Disabled for exploration. Keyboard actions cannot produce reusable element locators.
 
     Args:
-        key: Playwright key name, e.g. "Enter", "Escape", "Tab".
-        locator: Optional reusable Playwright Locator string. If omitted, presses
-            the key on the current focused element.
+        key: Rejected keyboard key.
+        locator: Ignored locator.
 
     Returns:
         A dictionary containing success/failure, effective_locator, and verification hints.

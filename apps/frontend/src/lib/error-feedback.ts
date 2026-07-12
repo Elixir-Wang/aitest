@@ -47,7 +47,6 @@ export function reportError(error: unknown, options: ErrorFeedbackOptions): Repo
 
   toast.error(title, {
     description: item.traceId ? `追踪 ID：${item.traceId}` : `${message}。错误会写入系统日志。`,
-    duration: Infinity,
     classNames: {
       title: "select-text",
       description: "select-text",

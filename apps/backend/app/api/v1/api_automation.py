@@ -192,7 +192,17 @@ def retry_failed_api_generation_items(
 
 @router.post("/api-automation/scripts/generate")
 def generate_api_scripts(project_id: str, payload: ApiScriptGenerateIn, actor=Depends(require_admin)) -> dict:
-    return service.generate_scripts_from_api_test_cases(project_id, payload.api_test_case_ids, actor)
+    return service.generate_project_scripts(project_id, payload.endpoint_ids, actor, force=payload.force)
+
+
+@router.get("/api-scripts")
+def list_api_scripts(project_id: str, actor=Depends(current_user)) -> list[dict]:
+    return service.list_project_scripts(project_id, actor)
+
+
+@router.get("/api-scripts/{script_id}/files")
+def get_api_script_files(project_id: str, script_id: str, actor=Depends(current_user)) -> dict:
+    return service.get_api_script_files(project_id, script_id, actor)
 
 
 @router.get("/api-scripts/{script_id}")

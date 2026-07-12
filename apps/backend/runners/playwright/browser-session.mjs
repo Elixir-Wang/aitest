@@ -3,7 +3,6 @@ import { chromium } from "playwright";
 import { parsePlaywrightLocatorString, isParseableLocatorString } from "./locator-parser.mjs";
 import {
   normalizeUrl,
-  stableElementId,
   verifyBestElementSelectors,
 } from "./page-facts.mjs";
 const [, , startUrl = "about:blank", channel = "", storageStatePath = ""] = process.argv;
@@ -23,6 +22,7 @@ page.setDefaultTimeout(navigationTimeout);
 page.setDefaultNavigationTimeout(navigationTimeout);
 
 let lastObservation = null;
+let observationSequence = 0;
 let shuttingDown = false;
 
 try {
@@ -133,6 +133,8 @@ async function gotoUrl(url) {
 }
 
 async function observePage() {
+  observationSequence += 1;
+  const observationId = `obs-${String(observationSequence).padStart(6, "0")}`;
   const facts = await collectDomFacts(page);
   const overlay = facts.overlay ? await verifiedOverlayDescriptor(facts.overlay) : null;
   const accessibilityTree = await collectAccessibilityTree(page);
@@ -143,14 +145,17 @@ async function observePage() {
     if (overlay?.primary_selector?.code) {
       selectors = await overlayScopedSelectors(overlay.primary_selector.code, selectors, fact);
     }
-    const id = stableElementId(fact, index + 1);
+    const id = `${observationId}.el-${String(index + 1).padStart(3, "0")}`;
     const element = {
       id,
+      element_id: id,
       action_locator: fact.action_locator || "",
       role: fact.role,
       role_source: fact.role_source || "",
       name: fact.name,
       text: fact.text,
+      value: fact.value || "",
+      overlay_id: fact.overlay_id || null,
       context: fact.context || {},
       action_type: fact.action_type,
       enabled: fact.enabled,
@@ -167,11 +172,13 @@ async function observePage() {
   }
   const textSummary = summarizeObservation(facts, elements);
   const observation = {
+    observation_id: observationId,
     url: page.url(),
     normalized_url: normalizeUrl(page.url()),
     title: facts.title || page.url(),
     interaction_scope: facts.interaction_scope || "page",
     overlay,
+    overlay_registry: facts.overlay_registry || { active_overlay_id: null, overlays: [] },
     state_signature: signatureFor({
       url: normalizeUrl(page.url()),
       title: facts.title,
@@ -321,6 +328,15 @@ async function collectAccessibilityFallback(browserPage) {
 async function clickElement(elementIdOrLocator) {
   const raw = String(elementIdOrLocator || "").trim();
 
+  const observed = resolveObservedElement(raw);
+  if (observed) {
+    const locator = parsePlaywrightLocatorString(page, observed.action_locator);
+    if (locator) return clickViaLiveLocator(locator, observed.action_locator);
+  }
+  if (raw.startsWith("obs-")) {
+    return staleElementResult("click", raw);
+  }
+
   if (isParseableLocatorString(raw)) {
     const liveLocator = parsePlaywrightLocatorString(page, raw);
     if (liveLocator) {
@@ -346,22 +362,19 @@ async function clickElement(elementIdOrLocator) {
 
 async function clickViaLiveLocator(liveLocator, rawExpr) {
   const before = await currentPageState();
-  const matchCount = await liveLocator.count().catch(() => 0);
-  if (matchCount > 1) {
-    const visibleMatches = await visibleLocators(liveLocator);
-    if (visibleMatches.length !== 1) {
-      return await buildActionResult({
-        success: false,
-        action: "click",
-        raw: rawExpr,
-        before,
-        failure: ambiguousLocatorFailure(rawExpr, matchCount),
-        effectiveLocator: null,
-      });
-    }
-    liveLocator = visibleMatches[0];
+  const resolved = await resolveActionLocator(rawExpr);
+  liveLocator = resolved.locator;
+  if (!liveLocator && resolved.matchCount > 1) {
+    return await buildActionResult({
+      success: false,
+      action: "click",
+      raw: rawExpr,
+      before,
+      failure: ambiguousLocatorFailure(rawExpr, resolved.matchCount),
+      effectiveLocator: null,
+    });
   }
-  const initialVisible = await firstVisibleLocator(liveLocator);
+  const initialVisible = liveLocator ? await firstVisibleLocator(liveLocator) : null;
   if (!initialVisible) {
     const failure = classifyActionError(new Error(`Locator did not resolve to a visible element: ${rawExpr}`), page);
     return await buildActionResult({
@@ -479,6 +492,15 @@ async function clickViaLiveLocator(liveLocator, rawExpr) {
 async function fillField(elementIdOrLocator, value) {
   const raw = String(elementIdOrLocator || "").trim();
 
+  const observed = resolveObservedElement(raw);
+  if (observed) {
+    const locator = parsePlaywrightLocatorString(page, observed.action_locator);
+    if (locator) return fillViaLiveLocator(locator, value, observed.action_locator);
+  }
+  if (raw.startsWith("obs-")) {
+    return staleElementResult("fill", raw);
+  }
+
   if (isParseableLocatorString(raw)) {
     const liveLocator = parsePlaywrightLocatorString(page, raw);
     if (liveLocator) {
@@ -503,22 +525,19 @@ async function fillField(elementIdOrLocator, value) {
 
 async function fillViaLiveLocator(liveLocator, value, rawExpr) {
   const before = await currentPageState();
-  const matchCount = await liveLocator.count().catch(() => 0);
-  if (matchCount > 1) {
-    const visibleMatches = await visibleLocators(liveLocator);
-    if (visibleMatches.length !== 1) {
-      return await buildActionResult({
-        success: false,
-        action: "fill",
-        raw: rawExpr,
-        before,
-        failure: ambiguousLocatorFailure(rawExpr, matchCount),
-        effectiveLocator: null,
-      });
-    }
-    liveLocator = visibleMatches[0];
+  const resolved = await resolveActionLocator(rawExpr);
+  liveLocator = resolved.locator;
+  if (!liveLocator && resolved.matchCount > 1) {
+    return await buildActionResult({
+      success: false,
+      action: "fill",
+      raw: rawExpr,
+      before,
+      failure: ambiguousLocatorFailure(rawExpr, resolved.matchCount),
+      effectiveLocator: null,
+    });
   }
-  const target = await firstVisibleLocator(liveLocator);
+  const target = liveLocator ? await firstVisibleLocator(liveLocator) : null;
   if (!target) {
     const failure = classifyActionError(new Error(`Locator did not resolve to a visible element: ${rawExpr}`), page);
     return await buildActionResult({
@@ -806,6 +825,7 @@ async function scopedQuery(command) {
   const role = String(command.role || "").trim();
   const limit = Math.min(Math.max(Number(command.limit || 30), 1), 80);
   const defaultScopes = [
+    "[data-ai-testing-active-overlay]",
     "[role='dialog']",
     "[role='popover']",
     "[role='alertdialog']",
@@ -956,67 +976,15 @@ async function scopedQuery(command) {
 }
 
 async function observeOverlays() {
-  return page.evaluate(() => {
-    const clean = (value, limit = 240) => String(value || "").trim().replace(/\s+/g, " ").slice(0, limit);
-    const visible = (el) => {
-      const style = window.getComputedStyle(el);
-      const rect = el.getBoundingClientRect();
-      return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
-    };
-    const labelOf = (el) => clean(
-      el.getAttribute("aria-label")
-      || el.getAttribute("title")
-      || el.querySelector("[role='heading'],h1,h2,h3,.title,[class*='title' i]")?.textContent
-      || el.textContent
-      || "",
-      120
-    );
-    const selectors = [
-      "[role='dialog']",
-      "[role='popover']",
-      "[role='alertdialog']",
-      "[role='menu']",
-      ".ant-popover",
-      ".ant-modal",
-      ".el-dialog",
-      "[class*='drawer' i]",
-    ];
-    const overlays = [];
-    for (const selector of selectors) {
-      for (const el of Array.from(document.querySelectorAll(selector))) {
-        if (!visible(el)) continue;
-        const rect = el.getBoundingClientRect();
-        const controls = Array.from(el.querySelectorAll("button,a,input,textarea,select,[role],[tabindex]"))
-          .filter(visible)
-          .slice(0, 40)
-          .map((control) => ({
-            role: control.getAttribute("role") || control.tagName.toLowerCase(),
-            name: labelOf(control),
-            text: clean(control.textContent, 120),
-            placeholder: clean(control.getAttribute("placeholder"), 120),
-          }));
-        overlays.push({
-          selector,
-          role: el.getAttribute("role") || el.tagName.toLowerCase(),
-          name: labelOf(el),
-          text: clean(el.textContent, 500),
-          bounds: {
-            x: Math.round(rect.x),
-            y: Math.round(rect.y),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
-          },
-          controls,
-        });
-      }
-    }
-    return {
-      url: location.href,
-      title: document.title,
-      overlay_count: overlays.length,
-      overlays,
-    };
-  });
+  const observation = lastObservation || await observePage();
+  const registry = observation.overlay_registry || { active_overlay_id: null, overlays: [] };
+  return {
+    url: observation.url,
+    title: observation.title,
+    active_overlay_id: registry.active_overlay_id,
+    overlay_count: registry.overlays.length,
+    overlays: registry.overlays,
+  };
 }
 
 async function takeScreenshot(path, fullPage = true) {
@@ -1077,6 +1045,71 @@ async function firstVisibleLocator(locator) {
   return visible[0] || null;
 }
 
+function resolveObservedElement(elementId) {
+  if (!lastObservation || !elementId) return null;
+  if (!String(elementId).startsWith(`${lastObservation.observation_id}.`)) return null;
+  return lastObservation.elements.find((element) => element.element_id === elementId) || null;
+}
+
+async function staleElementResult(action, elementId) {
+  const before = await currentPageState();
+  return buildActionResult({
+    success: false,
+    action,
+    raw: elementId,
+    before,
+    failure: {
+      error_type: "stale_element",
+      error: `Element does not belong to the current observation: ${elementId}`,
+      error_summary: "元素不属于当前 observation。请重新采集页面快照并选择新的 element_id。",
+    },
+    effectiveLocator: null,
+  });
+}
+
+async function resolveActionLocator(rawExpr, maxObservations = 3) {
+  let matchCount = 0;
+  for (let attempt = 0; attempt <= maxObservations; attempt += 1) {
+    const locator = parsePlaywrightLocatorString(page, rawExpr);
+    matchCount = locator ? await locator.count().catch(() => 0) : 0;
+    if (locator) {
+      const visible = await visibleLocators(locator);
+      const actionable = await topmostLocators(visible);
+      if (actionable.length === 1) {
+        return { locator: actionable[0], matchCount, observations: attempt };
+      }
+      if (visible.length === 1) {
+        return { locator: visible[0], matchCount, observations: attempt };
+      }
+    }
+    if (attempt < maxObservations) {
+      await page.waitForTimeout(attempt === 0 ? 250 : 500).catch(() => {});
+      await observePage().catch(() => null);
+    }
+  }
+  return { locator: null, matchCount, observations: maxObservations };
+}
+
+async function topmostLocators(locators) {
+  const topmost = [];
+  for (const locator of locators) {
+    const receivesInteraction = await locator.evaluate((node) => {
+      if (!(node instanceof Element)) return false;
+      const rect = node.getBoundingClientRect();
+      const points = [
+        [rect.left + rect.width / 2, rect.top + rect.height / 2],
+        [rect.left + Math.min(4, rect.width / 2), rect.top + Math.min(4, rect.height / 2)],
+      ];
+      return points.some(([x, y]) => {
+        const hit = document.elementFromPoint(x, y);
+        return Boolean(hit && (hit === node || node.contains(hit)));
+      });
+    }).catch(() => false);
+    if (receivesInteraction) topmost.push(locator);
+  }
+  return topmost;
+}
+
 async function visibleLocators(locator) {
   const count = await locator.count().catch(() => 0);
   if (count === 0) return [];
@@ -1088,15 +1121,7 @@ async function visibleLocators(locator) {
       visible.push(candidate);
     }
   }
-  const overlayMatches = [];
-  for (const candidate of visible) {
-    const inOverlay = await candidate.evaluate((node) => Boolean(
-      node instanceof Element && node.closest("[data-ai-testing-active-overlay]")
-    )).catch(() => false);
-    if (inOverlay) overlayMatches.push(candidate);
-  }
-  const activeOverlay = await page.locator("[data-ai-testing-active-overlay]").count().catch(() => 0);
-  return activeOverlay ? overlayMatches : visible;
+  return visible;
 }
 
 async function verifiedOverlayDescriptor(overlay) {
@@ -1480,13 +1505,22 @@ async function collectDomFacts(browserPage) {
         overlayCandidates.push(el);
       }
     }
-    const activeOverlay = overlayCandidates
-      .map((el) => ({
-        el,
-        zIndex: Number.parseInt(window.getComputedStyle(el).zIndex, 10) || 0,
-        area: el.getBoundingClientRect().width * el.getBoundingClientRect().height,
-      }))
-      .sort((left, right) => right.zIndex - left.zIndex || right.area - left.area)[0]?.el || null;
+    const overlayControlSelector = "button,a,input,textarea,select,li,[contenteditable='true'],[contenteditable='plaintext-only'],[role],[tabindex]";
+    const overlayEntries = overlayCandidates
+      .map((el, index) => {
+        const controls = Array.from(el.querySelectorAll(overlayControlSelector)).filter(visible);
+        const role = clean(el.getAttribute("role"), 40);
+        const zIndex = Number.parseInt(window.getComputedStyle(el).zIndex, 10) || 0;
+        const focused = Boolean(document.activeElement && el.contains(document.activeElement));
+        const semantic = ["dialog", "alertdialog", "menu"].includes(role)
+          || /popover|modal|drawer/i.test(String(el.getAttribute("class") || ""));
+        const score = (focused ? 1000 : 0) + (semantic ? 100 : 0) + controls.length * 10 + Math.min(zIndex, 9999) / 100;
+        return { el, id: `overlay-${String(index + 1).padStart(3, "0")}`, controls, focused, role, zIndex, score };
+      })
+      .filter((entry) => entry.controls.length > 0)
+      .sort((left, right) => right.score - left.score);
+    const activeOverlayEntry = overlayEntries[0] || null;
+    const activeOverlay = activeOverlayEntry?.el || null;
     const overlayTypeOf = (el) => {
       const role = clean(el?.getAttribute("role"), 40);
       const className = String(el?.getAttribute("class") || "");
@@ -1509,17 +1543,15 @@ async function collectDomFacts(browserPage) {
       el.removeAttribute(activeOverlayAttribute);
     }
     activeOverlay?.setAttribute(activeOverlayAttribute, "true");
-    const inActiveScope = (el) => !activeOverlay || activeOverlay === el || activeOverlay.contains(el);
     const pointerCandidateSelector = "div,span,li,article,section";
     for (const el of document.querySelectorAll(`[${actionRefAttribute}]`)) {
       el.removeAttribute(actionRefAttribute);
     }
-    const explicitCandidates = Array.from(document.querySelectorAll(interactiveSelector)).filter(inActiveScope);
+    const explicitCandidates = Array.from(document.querySelectorAll(interactiveSelector));
     const explicitSet = new Set(explicitCandidates);
     const pointerCandidates = Array.from(document.querySelectorAll(pointerCandidateSelector))
       .filter((el) => !explicitSet.has(el))
       .filter(visible)
-      .filter(inActiveScope)
       .filter((el) => hasClickableHint(el))
       .filter((el) => clean(el.innerText || el.textContent, 160))
       .slice(0, 40);
@@ -1545,7 +1577,13 @@ async function collectDomFacts(browserPage) {
     return chain;
   };
 
-  const elementFacts = [...explicitCandidates, ...pointerCandidates]
+  const activeOverlayControls = activeOverlayEntry?.controls || [];
+  const orderedCandidates = [
+    ...activeOverlayControls,
+    ...explicitCandidates,
+    ...pointerCandidates,
+  ].filter((el, index, candidates) => candidates.indexOf(el) === index);
+  const elementFacts = orderedCandidates
     .filter(visible)
     .map((el, index) => {
       const actionRef = `element-${index + 1}`;
@@ -1554,9 +1592,13 @@ async function collectDomFacts(browserPage) {
       const tagName = el.tagName.toLowerCase();
       const name = labelOf(el);
       const actionType = (["input", "textarea", "select"].includes(tagName) || el.isContentEditable) && !["button", "checkbox", "radio"].includes(role) ? "fill" : "click";
-      const nativeInteractive = ["a", "button", "input", "textarea", "select"].includes(tagName) || el.isContentEditable;
+      const overlayInteractive = Boolean(activeOverlay && activeOverlay.contains(el) && activeOverlayControls.includes(el));
+      const nativeInteractive = ["a", "button", "input", "textarea", "select"].includes(tagName) || el.isContentEditable || overlayInteractive;
       const clickHint = hasClickableHint(el);
       const ancestor_chain = ancestorChainOf(el);
+      const rect = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      const overlayEntry = overlayEntries.find((entry) => entry.el === el || entry.el.contains(el));
       return {
         index,
         action_locator: `page.locator('[${actionRefAttribute}="${actionRef}"]')`,
@@ -1566,12 +1608,15 @@ async function collectDomFacts(browserPage) {
         label: explicitLabelOf(el),
         testId: el.getAttribute("data-testid") || el.getAttribute("data-test-id") || el.getAttribute("data-test") || "",
         text: clean(el.innerText || el.textContent),
+        value: "value" in el ? clean(el.value, 500) : "",
+        overlay_id: overlayEntry?.id || null,
         css: cssSelectorOf(el),
         context: contextOf(el, name),
         action_type: actionType,
         href: el.href || "",
         enabled: !el.disabled && el.getAttribute("aria-disabled") !== "true",
         interactive_hint: nativeInteractive || clickHint,
+        receives_interaction: Boolean(hit && (hit === el || el.contains(hit))),
         visible: true,
         ancestor_chain: ancestor_chain,
       };
@@ -1611,7 +1656,32 @@ async function collectDomFacts(browserPage) {
     return {
       title: document.title || location.pathname || location.href,
       interaction_scope: activeOverlay ? "overlay" : "page",
+      overlay_registry: {
+        active_overlay_id: activeOverlayEntry?.id || null,
+        overlays: overlayEntries.map((entry) => {
+          const rect = entry.el.getBoundingClientRect();
+          return {
+            runtime_overlay_id: entry.id,
+            type: overlayTypeOf(entry.el),
+            role: entry.role,
+            name: labelOf(entry.el),
+            focused: entry.focused,
+            z_index: entry.zIndex,
+            score: Math.round(entry.score * 100) / 100,
+            bounds: {
+              x: Math.round(rect.x), y: Math.round(rect.y),
+              width: Math.round(rect.width), height: Math.round(rect.height),
+            },
+            controls: entry.controls.slice(0, 40).map((control) => ({
+              role: roleOf(control).role,
+              name: labelOf(control),
+              placeholder: clean(control.getAttribute("placeholder"), 120),
+            })),
+          };
+        }),
+      },
       overlay: activeOverlay ? {
+        runtime_overlay_id: activeOverlayEntry.id,
         type: overlayTypeOf(activeOverlay),
         role: clean(activeOverlay.getAttribute("role"), 40),
         name: labelOf(activeOverlay),

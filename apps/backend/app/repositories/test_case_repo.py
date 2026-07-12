@@ -44,7 +44,7 @@ def list_cases_by_set(db: Connection, test_case_set_id: str) -> list[Row]:
         SELECT *
         FROM test_cases
         WHERE test_case_set_id = ?
-        ORDER BY created_at ASC, id ASC
+        ORDER BY display_order ASC, id ASC
         """,
         (test_case_set_id,),
     ).fetchall()
@@ -269,9 +269,9 @@ def replace_cases(db: Connection, *, test_case_set_id: str, project_id: str, cas
         db.execute(
             """
             INSERT INTO test_cases
-              (id, test_case_set_id, project_id, title, module, priority, preconditions,
+              (id, test_case_set_id, project_id, title, module, priority, display_order, preconditions,
                steps_json, expected_result, source_requirement_refs, source_exploration_refs, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready_for_review')
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready_for_review')
             """,
             (
                 case["id"],
@@ -280,6 +280,7 @@ def replace_cases(db: Connection, *, test_case_set_id: str, project_id: str, cas
                 case["title"],
                 case["module"],
                 case["priority"],
+                case["display_order"],
                 case["preconditions"],
                 case["steps_json"],
                 case["expected_result"],
@@ -322,5 +323,4 @@ def latest_generation_run(db: Connection, test_case_set_id: str) -> Row | None:
         """,
         (test_case_set_id,),
     ).fetchone()
-
 

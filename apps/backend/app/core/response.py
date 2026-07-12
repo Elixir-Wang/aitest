@@ -8,9 +8,36 @@ from starlette.datastructures import MutableHeaders
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.core.logging import set_trace_id
+from app.core.logging import get_trace_id, set_trace_id
 
 _access_logger = logger.bind(channel="access")
+
+
+class ApiUnhandledExceptionMiddleware:
+    """Convert unexpected API failures before the response crosses CORS."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        try:
+            await self.app(scope, receive, send)
+        except Exception:
+            trace_id = get_trace_id()
+            logger.exception("Unhandled API exception")
+            response = JSONResponse(
+                status_code=500,
+                content={
+                    "code": "INTERNAL_ERROR",
+                    "message": "服务器内部错误。",
+                    "trace_id": trace_id,
+                },
+            )
+            await response(scope, receive, send)
 
 
 class ApiResponseMiddleware:

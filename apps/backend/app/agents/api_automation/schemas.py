@@ -7,26 +7,30 @@ ApiAssertionExpected = str | int | float | bool | None
 
 
 class ApiAssertion(BaseModel):
-    type: Literal["status_code", "jsonpath_equals", "jsonpath_exists"]
+    type: Literal[
+        "status_code",
+        "jsonpath_equals",
+        "jsonpath_exists",
+        "content_type",
+        "header_exists",
+        "header_equals",
+        "body_not_empty",
+        "body_sha256",
+    ]
     path: str = ""
     expected: ApiAssertionExpected = None
 
 
 class ApiGeneratedCase(BaseModel):
     title: str
+    test_description: str = ""
     priority: str = "P2"
     endpoint_id: str
-    tags: list[str] = Field(default_factory=list)
     coverage: Literal["positive", "negative", "boundary", "security", "scenario"] = "positive"
     source: Literal["ai_generated", "manual", "approved_test_case"] = "ai_generated"
-    preconditions: list[str] = Field(default_factory=list)
     request: dict[str, Any]
     test_data: dict[str, Any] = Field(default_factory=dict)
-    expected: dict[str, Any]
     assertions: list[ApiAssertion]
-    variables: dict[str, Any] = Field(default_factory=dict)
-    data_origin: dict[str, Any] = Field(default_factory=dict)
-    notes: str = ""
 
 
 class ApiAutomationGenerationInput(BaseModel):

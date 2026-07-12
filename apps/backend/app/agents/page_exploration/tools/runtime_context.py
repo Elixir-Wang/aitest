@@ -165,7 +165,7 @@ def _parse_action_result(
     }
 
 
-def click_with_runtime_context(locator: str) -> ClickResult | None:
+def click_with_runtime_context(element_id: str) -> ClickResult | None:
     """Click via the long-lived browser session.
 
     locator 优先使用可复用的 Playwright Locator 字符串：
@@ -189,8 +189,9 @@ def click_with_runtime_context(locator: str) -> ClickResult | None:
     session = _browser_session.get()
     if session is None:
         raise BrowserSessionError("Page exploration browser session is not bound.")
+    element_key = _current_element_key(element_id)
     try:
-        result = session.click(locator)
+        result = session.click(element_id)
     except BrowserSessionError as exc:
         # Node 端协议层崩溃 → action_failed
         return ClickResult(
@@ -201,19 +202,19 @@ def click_with_runtime_context(locator: str) -> ClickResult | None:
                 summary="浏览器会话协议错误。",
                 raw=str(exc),
             ),
-            effective_locator=locator,
+            effective_locator=element_id,
             next_step_hint="动作失败。请先 snap 观察当前页面状态，再更换定位器或处理遮挡/歧义。",
         )
 
     parsed = _parse_action_result(
         result,
-        raw_expr=locator,
-        default_error=f"Locator did not resolve to a visible element: {locator}",
+        raw_expr=element_id,
+        default_error=f"Element is not executable in the current observation: {element_id}",
     )
     if parsed["success"]:
         tracker = _state_tracker.get()
         if tracker is not None:
-            tracker["last_action"] = {"action": "click", "locator": parsed["effective_locator"]}
+            tracker["last_action"] = {"action": "click", "element_id": element_id}
         return ClickResult(
             success=True,
             failure=parsed.get("failure"),
@@ -221,6 +222,7 @@ def click_with_runtime_context(locator: str) -> ClickResult | None:
             verification_required=True,
             next_step_hint=ACTION_VERIFICATION_HINT,
             risk=_locator_risk(parsed["effective_locator"], parsed.get("failure")),
+            element_key=element_key,
         )
 
     failure: ActionFailure = parsed["failure"]
@@ -233,10 +235,11 @@ def click_with_runtime_context(locator: str) -> ClickResult | None:
         verification_required=False,
         next_step_hint="动作失败。不要重复尝试同一 locator；请 snap 后结合 failure.error_type 和 match_groups 重新定位。",
         risk=_locator_risk(parsed["effective_locator"], failure),
+        element_key=element_key,
     )
 
 
-def fill_with_runtime_context(locator: str, value: str) -> FillResult | None:
+def fill_with_runtime_context(element_id: str, value: str) -> FillResult | None:
     """Fill via the long-lived browser session. 只接受可复用 Playwright Locator 字符串。
 
     失败结构化透传，语义与 click_with_runtime_context 一致。
@@ -244,8 +247,9 @@ def fill_with_runtime_context(locator: str, value: str) -> FillResult | None:
     session = _browser_session.get()
     if session is None:
         raise BrowserSessionError("Page exploration browser session is not bound.")
+    element_key = _current_element_key(element_id)
     try:
-        result = session.fill(locator, value)
+        result = session.fill(element_id, value)
     except BrowserSessionError as exc:
         return FillResult(
             success=False,
@@ -255,14 +259,14 @@ def fill_with_runtime_context(locator: str, value: str) -> FillResult | None:
                 summary="浏览器会话协议错误。",
                 raw=str(exc),
             ),
-            effective_locator=locator,
+            effective_locator=element_id,
             next_step_hint="填充失败。请先 snap 观察当前页面状态，再更换定位器或处理遮挡/歧义。",
         )
 
     parsed = _parse_action_result(
         result,
-        raw_expr=locator,
-        default_error=f"Locator did not resolve to a visible element: {locator}",
+        raw_expr=element_id,
+        default_error=f"Element is not executable in the current observation: {element_id}",
     )
     if parsed["success"]:
         return FillResult(
@@ -272,6 +276,7 @@ def fill_with_runtime_context(locator: str, value: str) -> FillResult | None:
             verification_required=True,
             next_step_hint=ACTION_VERIFICATION_HINT,
             risk=_locator_risk(parsed["effective_locator"], parsed.get("failure")),
+            element_key=element_key,
         )
 
     failure: ActionFailure = parsed["failure"]
@@ -283,55 +288,34 @@ def fill_with_runtime_context(locator: str, value: str) -> FillResult | None:
         verification_required=False,
         next_step_hint="填充失败。不要重复尝试同一 locator；请 snap 后结合 failure.error_type 和 match_groups 重新定位。",
         risk=_locator_risk(parsed["effective_locator"], failure),
+        element_key=element_key,
     )
+
+
+def _current_element_key(element_id: str) -> str:
+    tracker = _state_tracker.get()
+    if tracker is None or not tracker.get("stack"):
+        return ""
+    state = tracker["stack"][-1]
+    return str(state.get("element_keys", {}).get(element_id) or "")
 
 
 def press_with_runtime_context(locator: str = "", key: str = "") -> dict:
-    """Press a key on a locator or the current focused element."""
-    session = _browser_session.get()
-    if session is None:
-        raise BrowserSessionError("Page exploration browser session is not bound.")
-    try:
-        result = session.press(locator, key)
-    except BrowserSessionError as exc:
-        return {
-            "success": False,
-            "error": str(exc),
-            "failure": {
-                "error_type": "action_failed",
-                "summary": "浏览器会话协议错误。",
-                "raw": str(exc),
-                "recovered": False,
-                "recovery_warning": "",
-            },
-            "effective_locator": locator or "activeElement",
-            "verification_required": False,
-            "next_step_hint": "按键失败。请先 snap 观察当前页面状态，再确认焦点元素或更换 locator。",
-        }
-
-    parsed = _parse_action_result(
-        result,
-        raw_expr=locator or "activeElement",
-        default_error=f"Press failed: {key}",
-    )
-    if parsed["success"]:
-        return {
-            "success": True,
-            "error": None,
-            "effective_locator": parsed["effective_locator"],
-            "verification_required": True,
-            "next_step_hint": ACTION_VERIFICATION_HINT,
-            "risk": _locator_risk(parsed["effective_locator"], parsed.get("failure")),
-        }
-    failure: ActionFailure = parsed["failure"]
+    """Reject keyboard actions because exploration must produce reusable element identity."""
     return {
         "success": False,
-        "error": failure.summary or failure.raw,
-        "failure": failure.model_dump(),
-        "effective_locator": parsed["effective_locator"],
+        "error": "探索阶段禁止使用键盘命令。",
+        "failure": {
+            "error_type": "keyboard_action_forbidden",
+            "summary": "Tab、Enter、Escape 等键盘命令无法生成稳定元素定位，禁止用于探索恢复或推进流程。",
+            "raw": f"key={key}, locator={locator}",
+            "recovered": False,
+            "recovery_warning": "",
+        },
+        "effective_locator": locator,
         "verification_required": False,
-        "next_step_hint": "按键失败。不要重复尝试同一 key/locator；请 snap 或 observe_overlays 后确认焦点和目标容器。",
-        "risk": _locator_risk(parsed["effective_locator"], failure),
+        "next_step_hint": "重新观察并选择唯一元素；无法定位时保存截图并标记 blocked。",
+        "risk": "forbidden_keyboard_action",
     }
 
 
@@ -371,19 +355,24 @@ def snapshot_with_runtime_context(url: str | None = None) -> SnapshotResult | No
     result = session.observe()
     state_context = _update_state_tracker(result)
     return SnapshotResult(
+        observation_id=str(result.get("observation_id") or ""),
         url=str(result.get("url") or url or ""),
         title=str(result.get("title") or ""),
         interaction_scope=str(result.get("interaction_scope") or "page"),
         overlay=result.get("overlay") if isinstance(result.get("overlay"), dict) else None,
+        overlay_registry=result.get("overlay_registry") if isinstance(result.get("overlay_registry"), dict) else {},
         state_context=state_context,
         page_text_summary=str(result.get("page_text_summary") or ""),
         elements=[
             ElementInfo(
+                element_id=str(element.get("element_id") or element.get("id") or ""),
                 action_locator=str(element.get("action_locator") or ""),
                 role=str(element.get("role") or ""),
                 role_source=str(element.get("role_source") or ""),
                 name=str(element.get("name") or ""),
                 text=element.get("text"),
+                value=str(element.get("value") or ""),
+                context=element.get("context") if isinstance(element.get("context"), dict) else {},
                 action_type=str(element.get("action_type") or ""),
                 primary_selector=element.get("primary_selector") if isinstance(element.get("primary_selector"), dict) else None,
                 fallback_selector=element.get("fallback_selector") if isinstance(element.get("fallback_selector"), dict) else None,
@@ -434,9 +423,9 @@ def _update_state_tracker(result: Mapping[str, Any]) -> dict[str, Any]:
         del stack[index + 1:]
         state = stack[index]
     else:
-        parent = stack[-1] if stack else {"state_id": f"{page_id}__root__001", "locator_keys": {}}
+        parent = stack[-1] if stack else {"state_id": f"{page_id}__root__001", "element_keys": {}}
         action = tracker.get("last_action") or {}
-        element_key = parent.get("locator_keys", {}).get(str(action.get("locator") or ""), "")
+        element_key = parent.get("element_keys", {}).get(str(action.get("element_id") or ""), "")
         digest = sha1(f"{parent['state_id']}|{identity}|{element_key}".encode()).hexdigest()[:8]
         state_type = str(overlay.get("type") or "dialog")
         state = {
@@ -454,16 +443,14 @@ def _update_state_tracker(result: Mapping[str, Any]) -> dict[str, Any]:
         }
         stack.append(state)
 
-    locator_keys: dict[str, str] = {}
+    element_keys: dict[str, str] = {}
     for element in result.get("elements", []):
         if not isinstance(element, Mapping):
             continue
         key = build_element_key({"role": element.get("role"), "name": element.get("name")})
-        for field in ("action_locator", "primary_selector", "fallback_selector"):
-            value = element.get(field)
-            locator = value.get("code") if isinstance(value, Mapping) else value
-            if locator:
-                locator_keys[str(locator)] = key
-    state["locator_keys"] = locator_keys
+        element_id = str(element.get("element_id") or element.get("id") or "")
+        if element_id:
+            element_keys[element_id] = key
+    state["element_keys"] = element_keys
     tracker["last_action"] = None
-    return {key: value for key, value in state.items() if key not in {"locator_keys", "overlay_identity"}}
+    return {key: value for key, value in state.items() if key not in {"element_keys", "overlay_identity"}}

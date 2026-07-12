@@ -70,3 +70,13 @@ class ExplorationRunDetailResponse(BaseModel):
     unsupported_reason: str
     modules: list[dict]
     timeline_events: list[dict] = Field(default_factory=list)
+
+
+class ReplayOperationRequest(BaseModel):
+    environment_id: str = Field(..., description="当前项目中任选的运行环境 ID")
+    operation_key: str = Field(..., min_length=1, description="项目级永久操作 key")
+    parameters: dict = Field(default_factory=dict, description="运行时参数")
+
+
+class SaveReplayOperationRequest(BaseModel):
+    operation: dict = Field(..., description="引用永久 element_key 的项目级操作")

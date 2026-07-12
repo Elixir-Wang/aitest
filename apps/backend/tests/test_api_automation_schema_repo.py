@@ -9,7 +9,7 @@ from app.core import db as db_core
 from app.core.db import connect
 from app.repositories import api_automation_repo
 from app.seed.init_db import init_db
-from app.schemas.api_automation import ApiAutomationGenerateIn, ApiTestCaseSetIn
+from app.schemas.api_automation import ApiAutomationGenerateIn, ApiTestCaseSetIn, ApiTestCaseSetOut
 from app.seed.seeds import _ensure_api_generation_batch_structure
 from app.services.api_automation import service
 
@@ -154,7 +154,6 @@ def test_existing_database_adds_generation_batch_structure_without_losing_cases(
             title="Legacy case",
             priority="P2",
             source="ai_generated",
-            tags=[],
             coverage="positive",
             preconditions=[],
             request={},
@@ -250,9 +249,9 @@ def test_existing_database_adds_generation_batch_structure_without_losing_cases(
           request_json, test_data_json, expected_json, assertions_json, variables_json,
           data_origin_json, data_file_path, notes, created_by, updated_by, created_at, updated_at
         )
-        SELECT
-          id, project_id, endpoint_id, source_test_case_id, generation_run_id,
-          title, priority, coverage, source, tags_json, preconditions_json,
+            SELECT
+              id, project_id, endpoint_id, source_test_case_id, generation_run_id,
+              title, priority, coverage, source, '[]', preconditions_json,
           request_json, test_data_json, expected_json, assertions_json, variables_json,
           data_origin_json, data_file_path, notes, created_by, updated_by, created_at, updated_at
         FROM api_test_cases;
@@ -288,6 +287,7 @@ def test_existing_database_adds_generation_batch_structure_without_losing_cases(
 
     assert tables == {"api_generation_items", "api_generation_item_attempts"}
     assert {"generation_item_id", "generation_attempt_id"} <= case_columns
+    assert "tags_json" not in case_columns
     assert case["id"] == "apitc-legacy"
     assert case["generation_run_id"] == "apigen-legacy"
     assert case_set["latest_generation_run_id"] == "apigen-legacy"
@@ -405,7 +405,6 @@ def test_generation_case_script_and_run_records(monkeypatch: pytest.MonkeyPatch,
             title="登录成功",
             priority="P1",
             source="ai_generated",
-            tags=["login"],
             coverage="positive",
             preconditions=["用户账号存在"],
             request={"method": "POST", "path": "/login"},
@@ -461,7 +460,13 @@ def test_generation_case_script_and_run_records(monkeypatch: pytest.MonkeyPatch,
 def test_update_api_test_case_set_changes_name_and_notes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project()
-    actor = {"id": "u-admin", "role": "admin", "nickname": "管理员", "username": "admin", "project_scope": "全部项目"}
+    actor = {
+        "id": "u-admin",
+        "role": "admin",
+        "nickname": "管理员",
+        "username": "admin",
+        "project_scope": "全部项目",
+    }
 
     created = service.create_api_test_case_set(
         "project-1",
@@ -480,3 +485,23 @@ def test_update_api_test_case_set_changes_name_and_notes(monkeypatch: pytest.Mon
     assert updated["name"] == "新接口集"
     assert updated["notes"] == "新备注"
     assert updated["updated_at"] >= created["updated_at"]
+
+
+def test_api_test_case_set_endpoint_count_matches_project_assets(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoints(["apiend-1", "apiend-2"])
+    actor = {"id": "u-admin", "role": "admin", "nickname": "管理员", "username": "admin", "project_scope": "全部项目"}
+
+    created = service.create_api_test_case_set(
+        "project-1",
+        ApiTestCaseSetIn(name="接口集", notes=""),
+        actor,
+    )
+    listed = service.list_api_test_case_sets("project-1", actor)
+
+    assert created["endpoint_count"] == 2
+    assert created["case_count"] == 0
+    assert listed[0]["endpoint_count"] == 2
+    assert ApiTestCaseSetOut.model_validate(listed[0]).model_dump()["endpoint_count"] == 2

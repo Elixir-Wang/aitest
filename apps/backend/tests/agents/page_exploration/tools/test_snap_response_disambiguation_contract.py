@@ -22,11 +22,13 @@ from app.agents.page_exploration.playwright.schemas import (
 def _observation_with_3_creates(*, ancestor_chain_for_second: list = None):
     """模拟 observation：3 个同名"创建"button，第 2 个带 ancestor_chain（表示在 popover 内）"""
     return {
+        "observation_id": "obs-000001",
         "url": "https://example.com/workspace",
         "title": "Workspace",
         "page_text_summary": "Test.",
         "elements": [
             {
+                "element_id": "obs-000001.el-001",
                 "role": "button",
                 "role_source": "native",
                 "name": "创建",
@@ -42,6 +44,7 @@ def _observation_with_3_creates(*, ancestor_chain_for_second: list = None):
                 "ancestor_chain": [],
             },
             {
+                "element_id": "obs-000001.el-002",
                 "role": "button",
                 "role_source": "native",
                 "name": "创建",
@@ -57,6 +60,7 @@ def _observation_with_3_creates(*, ancestor_chain_for_second: list = None):
                 "ancestor_chain": ancestor_chain_for_second or [],
             },
             {
+                "element_id": "obs-000001.el-003",
                 "role": "button",
                 "role_source": "native",
                 "name": "创建",
@@ -93,6 +97,7 @@ def patched_snapshot():
 
 def _to_snapshot_result(obs):
     return SnapshotResult(
+        observation_id=obs["observation_id"],
         url=obs["url"],
         title=obs["title"],
         elements=[_to_element_info(e) for e in obs["elements"]],
@@ -103,6 +108,7 @@ def _to_snapshot_result(obs):
 
 def _to_element_info(e):
     return ElementInfo(
+        element_id=e["element_id"],
         role=e["role"],
         role_source=e.get("role_source", ""),
         name=e["name"],
@@ -155,23 +161,19 @@ def test_snap_response_passes_ancestor_chain_from_element_info(patched_snapshot)
         assert not any(a.get("role") in overlay_roles for a in chain)
 
 
-# ---------- Step A 进阶: match_groups 让 LLM 看到全部同名候选 ----------
+# ---------- runtime element identity ----------
 
-def test_snap_response_includes_match_groups(patched_snapshot):
-    """snap 响应顶层必须有 match_groups：按 (name, role) 分组的所有候选。
-
-    让 LLM 一次性看到 3 个"创建"分别在哪（popover/列表/头部），而不是猜容器。
-    """
+def test_snap_response_exposes_runtime_ids_and_verified_locator_metadata(patched_snapshot):
     from app.agents.page_exploration.tools.extraction_tools import playwright_snap_tool
 
     result = playwright_snap_tool.func()
-    assert "match_groups" in result
-    match_groups = result["match_groups"]
-    # "创建" + "button" 组
-    target = next((g for g in match_groups if g["name"] == "创建" and g["role"] == "button"), None)
-    assert target is not None, f"缺少'创建'button 的 match_group: {match_groups}"
-    candidates = target["candidates"]
-    assert len(candidates) == 3
-    for cand in candidates:
-        assert "ancestor_chain" in cand
-        assert "primary_selector_code" in cand or "primary_selector" in cand
+    assert result["observation_id"] == "obs-000001"
+    assert [item["element_id"] for item in result["elements"]] == [
+        "obs-000001.el-001", "obs-000001.el-002", "obs-000001.el-003",
+    ]
+    assert "match_groups" not in result
+    assert all("primary_selector" in item for item in result["elements"])
+    assert all(
+        item["primary_selector"]["verification"]["checked"] is True
+        for item in result["elements"]
+    )

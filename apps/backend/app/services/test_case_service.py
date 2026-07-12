@@ -24,6 +24,8 @@ STATUS_LABELS = {
     "archived": "已归档",
 }
 
+PRIORITY_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+
 
 def list_project_test_case_sets(project_id: str, actor) -> list[dict]:
     with connect() as db:
@@ -259,13 +261,11 @@ def _read_final_requirement_content(version) -> str:
 
 
 def _complete_generation_run(run_context: dict, result: TestCaseGenerationResult) -> None:
-    cases = []
-    case_index = 1
+    generated_cases = []
     for module in result.modules:
         for test_case in module.test_cases:
-            cases.append(
+            generated_cases.append(
                 {
-                    "id": f"{run_context['test_case_set_id']}-tc-{case_index:03d}",
                     "title": test_case.title,
                     "module": test_case.module or module.module_name,
                     "priority": test_case.priority,
@@ -276,7 +276,25 @@ def _complete_generation_run(run_context: dict, result: TestCaseGenerationResult
                     "source_exploration_refs": "[]",
                 }
             )
-            case_index += 1
+
+    module_order: dict[str, int] = {}
+    for case in generated_cases:
+        module_name = case["module"].strip()
+        module_order.setdefault(module_name, len(module_order))
+    generated_cases.sort(
+        key=lambda case: (
+            module_order[case["module"].strip()],
+            PRIORITY_RANK.get(case["priority"].strip().upper(), len(PRIORITY_RANK)),
+        )
+    )
+    cases = [
+        {
+            **case,
+            "id": f"{run_context['test_case_set_id']}-tc-{index:03d}",
+            "display_order": index - 1,
+        }
+        for index, case in enumerate(generated_cases, start=1)
+    ]
 
     with connect() as db:
         test_case_repo.replace_cases(

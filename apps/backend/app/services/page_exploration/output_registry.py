@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from app.agents.page_exploration.utils.page_id import make_page_id
-from app.agents.page_exploration.utils.element_key import build_element_key, ensure_unique_within_state
+from app.agents.page_exploration.utils.element_key import build_element_key, slugify
 from app.core import settings
 from app.core.db import connect as default_connect
 from app.repositories import exploration_run_repo as default_exploration_run_repo
@@ -19,6 +19,8 @@ from app.services.page_exploration.report_writer import (
     _read_timeline_events_from_run_dir,
     _write_exploration_report,
 )
+from app.services.page_exploration.replay.models import ReplayOperation
+from app.services.page_exploration.replay.store import OperationsStore
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +94,14 @@ def _register_exploration_outputs(
         timeline_events=timeline_events,
         artifact_quality_warnings=_artifact_quality_warnings(page_artifacts),
     )
+    if completion_status != "failed":
+        _write_draft_operation(
+            project_id=project_id,
+            run_id=run_id,
+            start_url=start_url,
+            timeline_events=timeline_events,
+            page_artifacts=page_artifacts,
+        )
 
     with _connect() as db:
         _exploration_run_repo().update_artifact_root(db, run_id, str(run_dir))
@@ -259,6 +269,73 @@ def _write_yaml_file(path: Path, payload: dict) -> None:
     path.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
+def _write_draft_operation(
+    *,
+    project_id: str,
+    run_id: str,
+    start_url: str,
+    timeline_events: list[dict],
+    page_artifacts: list[tuple[Path, dict]],
+) -> None:
+    locator_keys: dict[str, str] = {}
+
+    def collect_elements(elements: list) -> None:
+        for element in elements:
+            if not isinstance(element, dict):
+                continue
+            element_key = _string(element.get("key")).strip()
+            if not element_key:
+                continue
+            for locator in element.get("locators") or []:
+                code = _string(locator.get("code")).strip().removeprefix("page.")
+                if code:
+                    locator_keys.setdefault(code, element_key)
+
+    def collect_states(states: list) -> None:
+        for state in states:
+            if not isinstance(state, dict):
+                continue
+            collect_elements(state.get("elements") or [])
+            collect_states(state.get("children") or [])
+
+    for _path, artifact in page_artifacts:
+        page = artifact.get("page") if isinstance(artifact.get("page"), dict) else {}
+        collect_elements(page.get("elements") or [])
+        collect_states(artifact.get("states") or [])
+
+    steps: list[dict] = []
+    parameters: dict[str, dict] = {}
+    for event in timeline_events:
+        if event.get("type") != "agent_tool_completed":
+            continue
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        tool_name = _string(payload.get("tool_name"))
+        if tool_name not in {"playwright_click_tool", "playwright_fill_tool"}:
+            continue
+        locator = _string(payload.get("locator")).strip().removeprefix("page.")
+        element_key = _string(payload.get("element_key")).strip() or locator_keys.get(locator)
+        if not element_key:
+            continue
+        action = tool_name.removeprefix("playwright_").removesuffix("_tool")
+        step: dict = {"action": action, "element_key": element_key}
+        if action == "fill":
+            parameter_name = f"value_{len(parameters) + 1}"
+            parameters[parameter_name] = {"type": "string", "required": True}
+            step["value_ref"] = parameter_name
+        steps.append(step)
+
+    if not steps:
+        return
+    operation = ReplayOperation.model_validate({
+        "key": f"exploration.{run_id}",
+        "status": "draft",
+        "page_path": urlparse(start_url).path or "/",
+        "parameters": parameters,
+        "steps": steps,
+    })
+    OperationsStore(_project_file_storage_root()).upsert(project_id, operation)
+
+
 def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, run_id: str) -> Path | None:
     """Persist a minimal page artifact whenever the browser snapshot tool succeeds."""
     if not project_id or not run_id or not isinstance(event, dict):
@@ -320,6 +397,7 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
         parent_state_id=_string(state_context.get("parent_state_id")),
     )
     artifact = {
+        "schema_version": "3.0",
         "page": {
             "id": page_id,
             "title": title,
@@ -395,19 +473,17 @@ def _upsert_snapshot_state(states: list[dict], observed: dict, *, parent_state_i
 
 
 def _snapshot_overlay_container(overlay: dict) -> dict:
-    container = {
-        "role": _string(overlay.get("role")),
-        "name": _string(overlay.get("name")),
-        "locators": [],
-    }
+    container = {"role": _string(overlay.get("role"))}
+    name = _string(overlay.get("name"))
+    if name:
+        container["name"] = name
+    locators: list[dict] = []
     for selector in (overlay.get("primary_selector"), overlay.get("fallback_selector")):
-        if not isinstance(selector, dict) or not selector.get("code"):
+        if not _is_verified_selector(selector):
             continue
-        container["locators"].append({
-            "kind": _string(selector.get("kind") or "contextual"),
-            "code": _string(selector.get("code")).removeprefix("page."),
-            "verification": selector.get("verification") or {},
-        })
+        locators.append({"code": _normalize_locator_code(selector["code"])})
+    if locators:
+        container["locators"] = locators
     return container
 
 
@@ -477,7 +553,6 @@ def _inline_save_page(
     page_id: str,
     page_data: dict,
     run_id: str,
-    url: str,
     normalized_path: str,
     env: str = "test",
 ) -> bool:
@@ -499,13 +574,12 @@ def _inline_save_page(
         "title": page_data.get("title", ""),
         "normalized_path": normalized_path,
     }
-    if url:
-        page_payload["url"] = url
     elements = page_data.get("elements")
     if isinstance(elements, list) and elements:
         page_payload["elements"] = elements
 
     full_page_data = {
+        "schema_version": "3.0",
         "page": page_payload,
         "states": page_data.get("states", []),
     }
@@ -635,7 +709,6 @@ def _save_project_page_artifact(
             },
         },
         run_id=run_id,
-        url=url,
         normalized_path=normalized_path,
     )
     base_dir = _project_file_storage_root() / project_id / "page_exploration"
@@ -727,13 +800,13 @@ def _best_container(ancestor_chain: list) -> tuple[str, str]:
 def _automation_context(element: dict, *, ordinal: int, sibling_count: int) -> dict:
     ancestor_chain = element.get("ancestor_chain") if isinstance(element.get("ancestor_chain"), list) else []
     container_role, container_name = _best_container(ancestor_chain)
-    context = {
-        "is_ambiguous": sibling_count > 1,
-        "sibling_count": sibling_count,
-        "ordinal": ordinal,
-        "container_role": container_role,
-        "container_name": container_name,
-    }
+    context: dict = {}
+    if sibling_count > 1:
+        context["ordinal"] = ordinal
+    if container_role:
+        context["role"] = container_role
+    if container_name:
+        context["name"] = container_name
     return context
 
 
@@ -747,205 +820,81 @@ def _element_group_counts(elements: list) -> dict[tuple[str, str], int]:
     return counts
 
 
-def _locator_candidates_with_unverified_placeholder(role: str, name: str, role_source: str) -> list[dict]:
-    return [
-        {
-            **candidate,
-            "verification": {"checked": False, "unique": None, "visible": None, "match_count": 0},
-        }
-        for candidate in _semantic_locator_candidates(role, name, role_source)
-    ]
+def _snapshot_elements_for_artifact(elements: list, _accessibility_tree: list) -> list[dict]:
+    """Project verified DOM elements into the compact automation artifact.
 
-
-def _snapshot_elements_for_artifact(elements: list, accessibility_tree: list) -> list[dict]:
-    """合并 DOM 采集元素与 accessibility_tree 可见节点，去重后写入 yaml。
-
-    背景：DOM 采集（collectDomFacts）只覆盖主页面 DOM，不含 popover / dropdown 浮层内容。
-    accessibility_tree（accessibility.snapshot({ interestingOnly: false })）包含浮层节点，
-    两者合并才能产出完整的 yaml elements 列表。
-
-    合并策略：
-    - DOM 元素（elements）完整保留，不去重（列表中多个同名按钮需要全部出现）
-    - accessibility_tree 节点只补充 DOM 中没有的（用 "ax-{role}:{name}" key 去重，
-      避免纯文本节点造成重复；去重粒度宽松，避免误吞同名不同行的元素）
-
-    复用契约（外部 Playwright 自动化测试依赖此契约）：
-    - 将 observePage 标定的 element.ancestor_chain 提炼为 compact context，不输出长祖先链
-    - 把 primary_selector / fallback_selector 携带的 verification 元数据
-      （{checked, unique, visible, match_count}）按 code 匹配到对应 locator 上，
-      让外部脚本读 yaml 即可知道这个 selector 是否 verified
+    Accessibility-only and unverified candidates remain in raw run events. They
+    are intentionally excluded because a permanent POM entry must be executable.
     """
     result: list[dict] = []
     counts = _element_group_counts(elements)
     ordinals: dict[tuple[str, str], int] = {}
-    seen_ax_keys: set[str] = set()
-    element_keys = ensure_unique_within_state(
-        build_element_key({
-            "role": _string(element.get("role") or "element"),
-            "name": _string(element.get("name") or element.get("text") or ""),
-        })
-        for element in elements if isinstance(element, dict)
-    )
-    # DOM 元素全部保留（不去重，保持列表完整性）
+    used_element_keys: dict[str, int] = {}
     for element in elements:
         if not isinstance(element, dict):
             continue
         name = _string(element.get("name") or element.get("text") or f"element-{len(result) + 1}")
         role = _string(element.get("role") or "element")
-        role_source = _string(element.get("role_source") or "")
         key = (role, name)
         ordinals[key] = ordinals.get(key, 0) + 1
-        seen_ax_keys.add(f"{role}:{name[:30]}")
-        action_type = _normalize_action_type(role, _string(element.get("action_type") or ""))
+        locators = _verified_locators(element)
+        if not locators:
+            continue
+        action = _normalize_action_type(role, _string(element.get("action_type") or ""))
+        context = _automation_context(
+            element,
+            ordinal=ordinals[key],
+            sibling_count=counts.get(key, 1),
+        )
+        base_key = build_element_key({"role": role, "name": name})
+        container_name = _string(context.get("name")).strip()
+        scoped_key = base_key
+        if counts.get(key, 1) > 1 and container_name:
+            container_slug = slugify(container_name) or container_name[:40]
+            scoped_key = f"{base_key}--in--{container_slug}"
+        occurrence = used_element_keys.get(scoped_key, 0) + 1
+        used_element_keys[scoped_key] = occurrence
+        element_key = scoped_key if occurrence == 1 else f"{scoped_key}-{occurrence}"
         artifact_element: dict = {
-            "id": _string(element.get("ref") or f"el-{len(result) + 1}"),
-            "key": next(element_keys),
-            "name": name,
+            "key": element_key,
             "role": role,
-            "text": element.get("text"),
-            "action_type": action_type,
-            "visible": bool(element.get("visible", True)),
-            "locators": _attach_verification_metadata(
-                _semantic_locator_candidates(role, name, role_source),
-                element,
-            ),
-            "context": _automation_context(
-                element,
-                ordinal=ordinals[key],
-                sibling_count=counts.get(key, 1),
-            ),
+            "name": name,
+            "action": action,
+            "locators": locators,
         }
+        if context:
+            artifact_element["context"] = context
         result.append(artifact_element)
-
-    # accessibility_tree 只补充 DOM 中没有的节点（用宽松 key 避免吞掉同名不同行元素）
-    _TEXT_ROLES = frozenset({"text", "img", "graphic"})
-    for node in accessibility_tree:
-        if not isinstance(node, dict):
-            continue
-        role = _string(node.get("role") or "")
-        name = _string(node.get("name") or "")
-        if not role or not name:
-            continue
-        if role in _TEXT_ROLES:
-            continue
-        # 宽松 key：role + name 前 30 字符，避免 "自主规划 Agent 能..." 和 "自主规划 Agent" 被误判为重复
-        key = f"{role}:{name[:30]}"
-        if key in seen_ax_keys:
-            continue
-        seen_ax_keys.add(key)
-        result.append({
-            "id": f"ax-{len(result) + 1}",
-            "name": name,
-            "role": role,
-            "text": node.get("name"),
-            "action_type": _normalize_action_type(role, ""),
-            "visible": True,
-            "locators": _locator_candidates_with_unverified_placeholder(role, name, "accessibility_tree"),
-            "context": {
-                "is_ambiguous": False,
-                "sibling_count": 1,
-                "ordinal": 1,
-                "container_role": "",
-                "container_name": "",
-            },
-        })
-
     return result
 
 
-def _attach_verification_metadata(
-    candidates: list[dict], observed_element: dict
-) -> list[dict]:
-    """把 observePage 验证过的 primary_selector / fallback_selector 的 verification
-    元数据按 code 精确匹配附加到对应 candidate，让 yaml 对外暴露 verified=true/false。
+def _is_verified_selector(selector: object) -> bool:
+    if not isinstance(selector, dict) or not selector.get("code"):
+        return False
+    verification = selector.get("verification")
+    return bool(
+        isinstance(verification, dict)
+        and verification.get("checked") is True
+        and verification.get("unique") is True
+        and verification.get("visible") is True
+    )
 
-    匹配规则：
-    - candidate.code == selector.code → 复制 selector.verification 到 candidate.verification
-    - 没匹配上的 candidate 保留空 verification 字段（schema 占位，让 schema 知道位置）
 
-    这样外部脚本能直接读 yaml 决定复不复制这个 selector：
-        locator = page.locator(element["locators"][0]["code"])
-        if element["locators"][0].get("verification", {}).get("unique") is True:
-            ...
-    """
-    selector_index: dict[str, dict] = {}
-    for key in ("primary_selector", "fallback_selector"):
-        sel = observed_element.get(key)
-        if isinstance(sel, dict) and sel.get("code"):
-            selector_index[_normalize_locator_code(sel["code"])] = sel
-
-    attached: list[dict] = []
-    for key in ("primary_selector", "fallback_selector"):
-        selector = observed_element.get(key)
-        if not isinstance(selector, dict) or not selector.get("code"):
+def _verified_locators(element: dict) -> list[dict]:
+    locators: list[dict] = []
+    for field in ("primary_selector", "fallback_selector"):
+        selector = element.get(field)
+        if not _is_verified_selector(selector):
             continue
-        verification = selector.get("verification") if isinstance(selector.get("verification"), dict) else {}
-        if not (verification.get("checked") and verification.get("unique") and verification.get("visible")):
-            continue
-        attached.append({
-            "kind": _string(selector.get("kind") or "contextual"),
-            "code": _normalize_locator_code(selector["code"]),
-            "priority": len(attached) + 1,
-            "verification": dict(verification),
-        })
-    for candidate in candidates:
-        code = _normalize_locator_code(candidate.get("code", ""))
-        if any(item.get("code") == code for item in attached):
-            continue
-        matched_selector = selector_index.get(code)
-        if matched_selector and isinstance(matched_selector.get("verification"), dict):
-            new_candidate = dict(candidate)
-            new_candidate["priority"] = len(attached) + 1
-            new_candidate["verification"] = dict(matched_selector["verification"])
-            attached.append(new_candidate)
-        else:
-            new_candidate = dict(candidate)
-            new_candidate["priority"] = len(attached) + 1
-            new_candidate["verification"] = {"checked": False, "unique": None, "visible": None, "match_count": 0}
-            attached.append(new_candidate)
-    return attached
+        code = _normalize_locator_code(selector["code"])
+        if code and all(item["code"] != code for item in locators):
+            locators.append({"code": code})
+    return locators
 
 
 def _normalize_locator_code(code: str) -> str:
     value = _string(code).strip()
     return value.removeprefix("page.")
-
-
-_REAL_ARIA_ROLES = frozenset({
-    "button", "link", "textbox", "combobox", "checkbox", "radio",
-    "tab", "menuitem", "option", "treeitem", "searchbox", "switch", "spinbutton",
-    "heading", "listitem", "row", "cell", "columnheader", "rowheader",
-    "gridcell", "dialog", "alertdialog",
-})
-
-
-def _semantic_locator_candidates(role: str, name: str, role_source: str = "") -> list[dict]:
-    """为元素生成稳定可用的 locator，写入 yaml 供后续探索使用。
-
-    规则：
-    - role 是真实 ARIA role 且非 inferred → 输出 getByRole
-    - 其他情况（inferred / clickable / div / span / 占位 element）一律不输出 getByRole，
-      只输出 getByText（popover / 卡片场景最稳的兜底）
-
-    注：本函数是纯生成器，不带 verification 元数据。verification 由
-    _attach_verification_metadata 在 _snapshot_elements_for_artifact 整合观察数据时附加。
-    """
-    if not name or not role or role == "element":
-        return []
-    escaped_name = name.replace("\\", "\\\\").replace("'", "\\'")
-    candidates: list[dict] = []
-    if role in _REAL_ARIA_ROLES and role_source != "inferred":
-        candidates.append({
-            "kind": "role",
-            "code": f"getByRole('{role}', {{ name: '{escaped_name}' }})",
-            "priority": 1,
-        })
-    candidates.append({
-        "kind": "text",
-        "code": f"getByText('{escaped_name}', {{ exact: true }})",
-        "priority": 2 if candidates else 1,
-    })
-    return candidates
 
 
 def _upsert_exploration_page(db, **kwargs) -> None:

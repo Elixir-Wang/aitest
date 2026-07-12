@@ -95,7 +95,7 @@ def test_execute_exploration_async_invokes_deep_agent_with_user_message(monkeypa
                     "  2. 步骤 2 / 第一步动作：执行目标描述的第一个动作（点击/输入/选择），完成后立即 snap 校验（完成判据：URL/弹窗/列表/详情页有可观察的预期变化）。\n"
                     "  3. 步骤 3 / 中间流程：按目标描述的顺序推进，每个动作都 snap 验证，失败时用 filter({ hasText }) / 父级容器链式定位缩小范围后再重试。\n"
                     "  4. 步骤 4 / 关键表单 / 提交：填写目标涉及的关键字段并提交，记录成功提示、跳转或列表更新（完成判据：出现成功 Toast 或跳到详情/列表）。\n"
-                    "  5. 步骤 5 / 终点确认：到达目标终点后，记录核心元素的稳健定位器（优先 getByRole / getByLabel / getByTestId，回退到 filter({hasText}) 链式），并在 merge_page_artifact_tool 中沉淀为 state tree。\n"
+                    "  5. 步骤 5 / 终点确认：到达目标终点后执行最终 snap，验证目标字段、提示或页面状态；服务端会从快照确定性生成永久元素定位器与 state tree。\n"
                     "最多探索 3 个页面。"
                 ),
             }
@@ -457,6 +457,11 @@ def test_invoke_agent_checkpoints_snapshot_as_page_artifact(monkeypatch, tmp_pat
                         "name": "创建智能体",
                         "text": "创建智能体",
                         "visible": True,
+                        "action_type": "click",
+                        "primary_selector": {
+                            "code": "getByRole('button', { name: '创建智能体' })",
+                            "verification": {"checked": True, "unique": True, "visible": True},
+                        },
                     }
                 ],
                 "accessibility_tree": [
@@ -528,7 +533,8 @@ def test_invoke_agent_checkpoints_snapshot_as_page_artifact(monkeypatch, tmp_pat
     data = yaml.safe_load(page_path.read_text(encoding="utf-8"))
     assert data["page"]["id"] == "page-workspace"
     assert data["page"]["normalized_path"] == "/workspace"
-    assert data["page"]["url"] == "https://example.test/workspace?tab=agents"
+    assert data["schema_version"] == "3.0"
+    assert "url" not in data["page"]
     assert data["states"][0]["elements"][0]["locators"][0]["code"] == "getByRole('button', { name: '创建智能体' })"
     assert "accessibility_tree" not in data["states"][0]
     assert "visible_text_blocks" not in data["states"][0]
@@ -1377,7 +1383,7 @@ def test_projection_write_todos_only_completed_updates_plan_without_transcript_d
             "step_number": 1,
             "description": "打开工作台",
             "status": "completed",
-            "action_type": "todo",
+            "action_type": "",
             "execution_strategy": "agent_plan",
         },
         {
@@ -1385,7 +1391,7 @@ def test_projection_write_todos_only_completed_updates_plan_without_transcript_d
             "step_number": 2,
             "description": "点击创建智能体",
             "status": "in_progress",
-            "action_type": "todo",
+            "action_type": "",
             "execution_strategy": "agent_plan",
         },
         {
@@ -1393,7 +1399,7 @@ def test_projection_write_todos_only_completed_updates_plan_without_transcript_d
             "step_number": 3,
             "description": "点击发送按钮发送对话并等待回复",
             "status": "pending",
-            "action_type": "todo",
+            "action_type": "",
             "execution_strategy": "agent_plan",
         },
     ]

@@ -10,7 +10,7 @@ from app.services.page_exploration.locking import FileLock, LockTimeout
 
 def test_acquire_and_release(tmp_path: Path):
     path = tmp_path / "page.yaml"
-    path.write_text("schema_version: 2.0\n")
+    path.write_text("schema_version: 3.0\n")
     lock = FileLock(path, timeout_seconds=1.0)
     with lock:
         assert path.exists()  # lock file 不会冲突路径
@@ -21,7 +21,7 @@ def test_acquire_and_release(tmp_path: Path):
 
 def test_concurrent_acquire_waits_then_times_out(tmp_path: Path):
     path = tmp_path / "page.yaml"
-    path.write_text("schema_version: 2.0\n")
+    path.write_text("schema_version: 3.0\n")
     a = FileLock(path, timeout_seconds=0.5)
     b = FileLock(path, timeout_seconds=0.2)
     with a:

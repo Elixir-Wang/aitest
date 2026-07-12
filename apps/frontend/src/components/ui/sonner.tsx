@@ -12,6 +12,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
       closeButton
+      duration={5000}
       swipeDirections={[]}
       icons={{
         success: (
@@ -40,7 +41,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }
       toastOptions={{
         classNames: {
-          toast: "cn-toast select-text rounded-xl border pr-12 shadow-md",
+          toast: "cn-toast select-text rounded-xl border pr-16 shadow-md",
           default: "bg-card border-border text-foreground",
           success: "bg-card border-green-600/50 text-foreground",
           info: "bg-card border-border text-foreground",
@@ -49,7 +50,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
           title: "select-text text-xs font-medium leading-none",
           description: "select-text text-xs text-muted-foreground",
           closeButton:
-            "!right-3 !left-auto !top-3 !translate-y-0 ![transform:none] size-7 rounded-md border border-transparent bg-muted/70 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+            "!right-3 !left-auto !top-1/2 !size-9 !-translate-y-1/2 ![transform:none] !rounded-md border border-transparent bg-muted/70 p-0 text-xs text-muted-foreground transition-colors after:content-['关闭'] hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 [&>svg]:hidden",
           actionButton:
             "border border-border bg-background text-foreground hover:bg-muted/10 dark:hover:bg-muted/20",
         },

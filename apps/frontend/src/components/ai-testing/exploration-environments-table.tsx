@@ -105,10 +105,10 @@ export function ExplorationEnvironmentsTable({
               </TableCell>
             </TableRow>
           ))}
-          {loading && rows.length === 0 ? <TableLoadingRow colSpan={5} label="环境列表加载中" /> : null}
+          {loading && rows.length === 0 ? <TableLoadingRow colSpan={6} label="环境列表加载中" /> : null}
           {!loading && rows.length === 0 ? (
             <TableRow>
-              <TableCell className="h-24 text-center text-muted-foreground" colSpan={5}>
+              <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
                 暂无环境。新增站点环境后，可用于后续页面探索任务。
               </TableCell>
             </TableRow>

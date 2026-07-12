@@ -1,11 +1,14 @@
 import secrets
+import sqlite3
+
+from loguru import logger
 
 from app.core.environment_auth_state import auth_state_summary, delete_auth_state
 from app.core.environment_credentials import delete_credentials, load_credentials, save_credentials
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.presentation.serializers import apply_environment_auth_display, serialize_exploration_environment
-from app.repositories import environment_repo
+from app.repositories import environment_repo, project_repo
 from app.schemas.environment import ExplorationEnvironmentCreateIn, ExplorationEnvironmentUpdateIn
 from app.services import auto_auth_service
 from app.services import operation_log_service
@@ -14,11 +17,10 @@ LOGIN_STRATEGIES = {"account_password", "skip_login"}
 CAPTCHA_STRATEGIES = {"none", "ai_letter", "manual"}
 
 
-def list_visible_environments(actor) -> list[dict]:
-    _ = actor
+def list_visible_environments(actor, project_id: str | None = None) -> list[dict]:
     with connect() as db:
-        rows = environment_repo.list_all(db)
-        return [serialize_exploration_environment(row, actor["role"]) for row in rows]
+        rows = environment_repo.list_visible(db, actor, project_id)
+        return [serialize_exploration_environment(row) for row in rows]
 
 
 def create_environment(payload: ExplorationEnvironmentCreateIn, actor) -> dict:
@@ -33,10 +35,14 @@ def create_environment(payload: ExplorationEnvironmentCreateIn, actor) -> dict:
 
     environment_id = f"env-{secrets.token_hex(8)}"
     with connect() as db:
+        project = project_repo.find_by_id(db, payload.project_id)
+        if not project or project["status"] == "archived":
+            raise api_error(400, "INVALID_PROJECT", "请选择有效项目。")
         try:
             environment_repo.create(
                 db,
                 environment_id=environment_id,
+                project_id=payload.project_id,
                 name=payload.name.strip(),
                 site_url=payload.site_url.strip(),
                 username=auth_config["username"],
@@ -46,10 +52,10 @@ def create_environment(payload: ExplorationEnvironmentCreateIn, actor) -> dict:
                 description=payload.description.strip(),
                 created_by=actor["id"],
             )
-        except Exception as exc:
+        except sqlite3.IntegrityError as exc:
             raise api_error(409, "ENVIRONMENT_CONFLICT", "环境名称已存在。") from exc
         row = environment_repo.find_by_id(db, environment_id)
-        result = serialize_exploration_environment(row, actor["role"])
+        result = serialize_exploration_environment(row)
     if auth_config["login_strategy"] == "account_password":
         save_credentials(
             environment_id,
@@ -58,7 +64,6 @@ def create_environment(payload: ExplorationEnvironmentCreateIn, actor) -> dict:
         )
         result["has_saved_credentials"] = True
     else:
-        delete_credentials(environment_id)
         result["has_saved_credentials"] = False
     operation_log_service.record_change(
         log_type="config",
@@ -67,7 +72,7 @@ def create_environment(payload: ExplorationEnvironmentCreateIn, actor) -> dict:
         object_type="exploration_environment",
         object_id=environment_id,
         object_name=result["name"],
-        project_id="",
+        project_id=result["project_id"],
         actor_id=actor["id"],
         actor_name=operation_log_service.actor_display_name(actor),
         source="web",
@@ -112,7 +117,9 @@ def update_environment(environment_id: str, payload: ExplorationEnvironmentUpdat
             updates["password"] = effective["password"]
         assignments, values = _build_update_assignments(updates)
         if "name" in updates:
-            duplicate = environment_repo.find_by_name(db, updates["name"].strip(), exclude_id=environment_id)
+            duplicate = environment_repo.find_by_name(
+                db, existing["project_id"], updates["name"].strip(), exclude_id=environment_id
+            )
             if duplicate:
                 raise api_error(409, "ENVIRONMENT_CONFLICT", "环境名称已存在。")
         should_clear_auth_state = _should_clear_auth_state(existing, updates)
@@ -120,14 +127,14 @@ def update_environment(environment_id: str, payload: ExplorationEnvironmentUpdat
             assignments.append("updated_at = CURRENT_TIMESTAMP")
             try:
                 environment_repo.update(db, environment_id, assignments, values)
-            except Exception as exc:
+            except sqlite3.IntegrityError as exc:
                 raise api_error(409, "ENVIRONMENT_CONFLICT", "环境名称已存在。") from exc
-        if should_clear_auth_state:
-            delete_auth_state(environment_id)
-            auto_auth_service.reset_auto_auth_status(environment_id)
         row = environment_repo.find_by_id(db, environment_id)
-        result = serialize_exploration_environment(row, actor["role"])
+        result = serialize_exploration_environment(row)
         before = _environment_snapshot(existing)
+    if should_clear_auth_state:
+        delete_auth_state(environment_id)
+        auto_auth_service.reset_auto_auth_status(environment_id)
     if result["login_strategy"] == "skip_login":
         delete_credentials(environment_id)
         result["has_saved_credentials"] = False
@@ -148,7 +155,7 @@ def update_environment(environment_id: str, payload: ExplorationEnvironmentUpdat
         object_type="exploration_environment",
         object_id=environment_id,
         object_name=result["name"],
-        project_id="",
+        project_id=result["project_id"],
         actor_id=actor["id"],
         actor_name=operation_log_service.actor_display_name(actor),
         source="web",
@@ -160,14 +167,12 @@ def update_environment(environment_id: str, payload: ExplorationEnvironmentUpdat
 
 
 def start_environment_auto_auth(environment_id: str, actor) -> dict:
-    _ = actor
     with connect() as db:
-        existing = environment_repo.find_by_id(db, environment_id)
-        if not existing:
+        row = environment_repo.find_by_id(db, environment_id)
+        if not row:
             raise api_error(404, "NOT_FOUND", "环境不存在。")
-        row = existing
 
-    result = serialize_exploration_environment(row, actor["role"])
+    result = serialize_exploration_environment(row)
     result["has_saved_credentials"] = load_credentials(environment_id) is not None
 
     if result["captcha_strategy"] != "ai_letter":
@@ -193,9 +198,11 @@ def delete_environment(environment_id: str, actor) -> dict:
         if not existing:
             raise api_error(404, "NOT_FOUND", "环境不存在。")
         snapshot = _environment_snapshot(existing)
-        environment_repo.delete(db, environment_id)
-        delete_auth_state(environment_id)
-        delete_credentials(environment_id)
+        try:
+            environment_repo.delete(db, environment_id)
+        except sqlite3.IntegrityError as exc:
+            raise api_error(409, "ENVIRONMENT_IN_USE", "环境已被探索任务引用，不能删除。") from exc
+    _cleanup_deleted_environment_files(environment_id)
     operation_log_service.record_change(
         log_type="config",
         module="environment",
@@ -203,7 +210,7 @@ def delete_environment(environment_id: str, actor) -> dict:
         object_type="exploration_environment",
         object_id=environment_id,
         object_name=snapshot["name"],
-        project_id="",
+        project_id=snapshot.get("project_id", ""),
         actor_id=actor["id"],
         actor_name=operation_log_service.actor_display_name(actor),
         source="web",
@@ -212,6 +219,13 @@ def delete_environment(environment_id: str, actor) -> dict:
         after={},
     )
     return {"success": True}
+
+
+def _cleanup_deleted_environment_files(environment_id: str) -> None:
+    try:
+        delete_auth_state(environment_id)
+    except OSError:
+        logger.exception("环境已删除，但登录态文件清理失败：{}", environment_id)
 
 
 def _finalize_environment_result(
@@ -315,19 +329,13 @@ def _normalize_auth_config(
 
 def _environment_snapshot(environment) -> dict:
     return {
+        "project_id": _environment_value(environment, "project_id", ""),
         "name": _environment_value(environment, "name", ""),
         "site_url": _environment_value(environment, "site_url", ""),
         "username": _environment_value(environment, "username", ""),
         "login_strategy": _environment_value(environment, "login_strategy", "skip_login"),
         "captcha_strategy": _environment_value(environment, "captcha_strategy", "none"),
         "reuse_auth_state": _environment_value(environment, "reuse_auth_state", False),
-        "has_saved_credentials": _environment_value(
-            environment,
-            "has_saved_credentials",
-            bool(_environment_value(environment, "password_encrypted", "")),
-        ),
-        "auth_state_status": _environment_value(environment, "auth_state_status", "none"),
-        "auth_state_expires_at": _environment_value(environment, "auth_state_expires_at", None),
         "description": _environment_value(environment, "description", ""),
     }
 

@@ -1,9 +1,10 @@
 from starlette.applications import Starlette
+from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from app.core.response import ApiResponseMiddleware
+from app.core.response import ApiResponseMiddleware, ApiUnhandledExceptionMiddleware
 
 
 async def json_endpoint(request):
@@ -19,6 +20,10 @@ async def stream_endpoint(request):
         yield "data: hello\n\n"
 
     return StreamingResponse(events(), media_type="text/event-stream")
+
+
+async def unhandled_error_endpoint(request):
+    raise RuntimeError("database is locked")
 
 
 def test_api_response_middleware_wraps_json_but_preserves_streams() -> None:
@@ -48,3 +53,25 @@ def test_api_response_middleware_wraps_json_but_preserves_streams() -> None:
     assert stream_response.text == "data: hello\n\n"
     assert "text/event-stream" in stream_response.headers["content-type"]
     assert stream_response.headers["x-trace-id"].startswith("trace_")
+
+
+def test_unhandled_api_error_preserves_cors_and_trace_id() -> None:
+    app = Starlette(routes=[Route("/api/v1/error", unhandled_error_endpoint)])
+    app.add_middleware(ApiUnhandledExceptionMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.add_middleware(ApiResponseMiddleware)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.get("/api/v1/error", headers={"Origin": "http://localhost:3000"})
+
+    assert response.status_code == 500
+    assert response.json()["code"] == "INTERNAL_ERROR"
+    assert response.json()["message"] == "服务器内部错误。"
+    assert response.json()["trace_id"].startswith("trace_")
+    assert response.headers["x-trace-id"] == response.json()["trace_id"]
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"

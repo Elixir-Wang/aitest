@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 import secrets
 import threading
 import time
@@ -16,7 +18,7 @@ from app.core.security import hash_secret
 from app.core import storage
 from app.core.db import connect
 from app.core.exceptions import api_error
-from app.repositories import api_automation_repo, project_repo
+from app.repositories import api_automation_repo, environment_repo, project_repo
 from app.repositories import test_case_repo
 from app.schemas.api_automation import (
     ApiAutomationGenerateIn,
@@ -32,6 +34,7 @@ from app.schemas.api_automation import (
 from app.services.api_automation.openapi_parser import OpenAPIParseError, parse_openapi_document
 from app.services.api_automation.runner import run_script_suite
 from app.services.api_automation.script_generator import generate_pytest_suite
+from app.services.api_automation.script_workspace import project_workspace_lock, relative_file_key
 
 
 MAX_OPENAPI_BYTES = 2 * 1024 * 1024
@@ -270,6 +273,7 @@ def create_api_environment(project_id: str, payload: ApiEnvironmentIn, actor) ->
     environment_id = f"apienv-{secrets.token_hex(8)}"
     with connect() as db:
         _require_visible_project(db, project_id, actor)
+        _validate_linked_ui_environment(db, project_id, payload.linked_ui_environment_id)
         try:
             api_automation_repo.create_api_environment(
                 db,
@@ -316,6 +320,7 @@ def update_api_environment(project_id: str, environment_id: str, payload: ApiEnv
         existing = api_automation_repo.find_api_environment(db, environment_id)
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "API_ENVIRONMENT_NOT_FOUND", "接口环境不存在。")
+        _validate_linked_ui_environment(db, project_id, payload.linked_ui_environment_id)
         _validate_account_password_config(payload, existing)
         auth_config = _merge_auth_config_for_update(existing, payload)
         _validate_auth_config(payload.auth_type, auth_config)
@@ -602,19 +607,19 @@ def _persist_generation_item_cases(db, run_id: str, item_id: str, attempt_id: st
             generation_item_id=item_id,
             generation_attempt_id=attempt_id,
             title=generated_case.title,
+            test_description=generated_case.test_description,
             priority=generated_case.priority,
             coverage=generated_case.coverage,
             source=generated_case.source,
-            tags=generated_case.tags,
-            preconditions=generated_case.preconditions,
+            preconditions=[],
             request=generated_case.request,
             test_data=generated_case.test_data,
-            expected=generated_case.expected,
+            expected={},
             assertions=[assertion.model_dump() for assertion in generated_case.assertions],
-            variables=generated_case.variables,
-            data_origin=generated_case.data_origin,
+            variables={},
+            data_origin={},
             data_file_path="",
-            notes=generated_case.notes,
+            notes="",
             created_by="system",
         )
     return len(result.cases)
@@ -657,53 +662,120 @@ def retry_failed_generation_items(project_id: str, run_id: str, actor) -> dict:
         return _serialize_generation_run(db, api_automation_repo.find_generation_run(db, run_id))
 
 
-def generate_scripts_from_api_test_cases(project_id: str, api_test_case_ids: list[str], actor) -> dict:
+def generate_project_scripts(project_id: str, endpoint_ids: list[str], actor, *, force: bool = False) -> dict:
     _require_admin(actor)
-    if not api_test_case_ids:
-        raise api_error(400, "API_TEST_CASE_REQUIRED", "请至少选择一条接口自动化用例。")
+    if not endpoint_ids:
+        raise api_error(400, "API_ENDPOINT_REQUIRED", "请至少选择一个接口。")
+    endpoint_ids = list(dict.fromkeys(endpoint_ids))
     with connect() as db:
         _require_visible_project(db, project_id, actor)
-        rows = []
-        for case_id in api_test_case_ids:
-            row = api_automation_repo.find_api_test_case(db, case_id)
-            if not row or row["project_id"] != project_id:
-                raise api_error(404, "API_TEST_CASE_NOT_FOUND", f"接口自动化用例不存在：{case_id}")
-            rows.append(row)
-        cases = [_serialize_api_test_case(row) for row in rows]
+        _require_endpoint_ids(db, project_id, endpoint_ids)
+        endpoint_rows = {endpoint_id: api_automation_repo.find_endpoint(db, endpoint_id) for endpoint_id in endpoint_ids}
+        case_rows_by_endpoint = {
+            endpoint_id: api_automation_repo.list_api_test_cases(db, project_id, endpoint_id=endpoint_id)
+            for endpoint_id in endpoint_ids
+        }
+        missing_cases = [endpoint_id for endpoint_id, rows in case_rows_by_endpoint.items() if not rows]
+        if missing_cases:
+            raise api_error(409, "API_ENDPOINT_CASES_REQUIRED", f"所选接口尚未生成用例：{', '.join(missing_cases)}")
+        existing_by_endpoint = {
+            endpoint_id: api_automation_repo.find_script_by_endpoint(db, project_id, endpoint_id)
+            for endpoint_id in endpoint_ids
+        }
 
-    suite_id = f"apisuite-{secrets.token_hex(8)}"
-    generated = generate_pytest_suite(
-        project_id=project_id,
-        suite_id=suite_id,
-        cases=cases,
-        output_root=storage.PROJECT_FILE_STORAGE_ROOT,
-    )
-    suite_path = storage.store_path(generated["suite_path"]) or str(generated["suite_path"])
-    test_file_path = storage.store_path(generated["test_file_path"]) or str(generated["test_file_path"])
-    data_file_path = storage.store_path(generated["data_file_path"]) or str(generated["data_file_path"])
+    cases_by_endpoint = {
+        endpoint_id: [_serialize_api_test_case(row) for row in rows]
+        for endpoint_id, rows in case_rows_by_endpoint.items()
+    }
+    source_hashes = {
+        endpoint_id: _script_source_hash(_serialize_endpoint(endpoint_rows[endpoint_id]), cases_by_endpoint[endpoint_id])
+        for endpoint_id in endpoint_ids
+    }
+    changed_endpoint_ids = [
+        endpoint_id
+        for endpoint_id in endpoint_ids
+        if force
+        or existing_by_endpoint[endpoint_id] is None
+        or existing_by_endpoint[endpoint_id]["source_hash"] != source_hashes[endpoint_id]
+    ]
+
+    suite_id = f"{project_id}-pytest-requests"
+    artifacts_by_endpoint = {}
+    if changed_endpoint_ids:
+        cases_to_generate = [case for endpoint_id in changed_endpoint_ids for case in cases_by_endpoint[endpoint_id]]
+        with project_workspace_lock(project_id):
+            generated = generate_pytest_suite(
+                project_id=project_id,
+                suite_id=suite_id,
+                cases=cases_to_generate,
+                output_root=storage.PROJECT_FILE_STORAGE_ROOT,
+            )
+        suite_path = storage.store_path(generated["suite_path"]) or str(generated["suite_path"])
+        artifacts_by_endpoint = {artifact["endpoint_id"]: artifact for artifact in generated["artifacts"]}
+    else:
+        suite_path = str(existing_by_endpoint[endpoint_ids[0]]["suite_path"])
 
     scripts = []
+    changes = {"created": 0, "updated": 0, "unchanged": 0}
     with connect() as db:
-        for row in rows:
-            script_id = api_automation_repo.create_script(
+        for endpoint_id in endpoint_ids:
+            existing = existing_by_endpoint[endpoint_id]
+            if endpoint_id not in artifacts_by_endpoint:
+                serialized = _serialize_script(existing)
+                serialized["change"] = "unchanged"
+                scripts.append(serialized)
+                changes["unchanged"] += 1
+                continue
+
+            artifact = artifacts_by_endpoint[endpoint_id]
+            case_row = case_rows_by_endpoint[endpoint_id][0]
+            script_id, change = api_automation_repo.upsert_script(
                 db,
                 script_id=f"apiscript-{secrets.token_hex(8)}",
                 project_id=project_id,
-                endpoint_id=row["endpoint_id"],
-                api_test_case_id=row["id"],
-                test_case_id=row["source_test_case_id"],
-                generation_run_id=row["generation_run_id"],
-                name=generated["script_name"],
+                endpoint_id=endpoint_id,
+                api_test_case_id=case_row["id"],
+                test_case_id=case_row["source_test_case_id"],
+                generation_run_id=case_row["generation_run_id"],
+                name=artifact["script_name"],
                 status="ready",
                 suite_path=suite_path,
-                test_file_path=test_file_path,
-                data_file_path=data_file_path,
-                notes="",
+                test_file_path=storage.store_path(artifact["test_file_path"]) or str(artifact["test_file_path"]),
+                data_file_path=storage.store_path(artifact["data_file_path"]) or str(artifact["data_file_path"]),
+                source_hash=source_hashes[endpoint_id],
+                case_count=len(case_rows_by_endpoint[endpoint_id]),
                 created_by=actor["id"],
             )
-            script = api_automation_repo.find_script(db, script_id)
-            scripts.append(_serialize_script(script))
-    return {"suite_id": suite_id, "scripts": scripts}
+            serialized = _serialize_script(api_automation_repo.find_script(db, script_id))
+            serialized["change"] = change
+            scripts.append(serialized)
+            changes[change] += 1
+    return {"suite_id": suite_id, "suite_path": suite_path, "summary": changes, "scripts": scripts}
+
+
+def list_project_scripts(project_id: str, actor) -> list[dict]:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        return [_serialize_script(row) for row in api_automation_repo.list_scripts(db, project_id)]
+
+
+def get_api_script_files(project_id: str, script_id: str, actor) -> dict:
+    script = get_api_script(project_id, script_id, actor)
+    suite_path = _resolve_generated_path(project_id, script["suite_path"])
+    files = []
+    for kind, stored_path in (("test", script["test_file_path"]), ("data", script["data_file_path"])):
+        path = _resolve_generated_path(project_id, stored_path)
+        path.resolve().relative_to(suite_path.resolve())
+        files.append(
+            {
+                "key": relative_file_key(suite_path, path),
+                "name": path.name,
+                "kind": kind,
+                "language": "python" if kind == "test" else "json",
+                "content": path.read_text(encoding="utf-8"),
+            }
+        )
+    return {"script_id": script_id, "files": files}
 
 
 def get_api_script(project_id: str, script_id: str, actor) -> dict:
@@ -732,7 +804,7 @@ def update_api_script(project_id: str, script_id: str, *, content: str, notes: s
         db.execute(
             """
             UPDATE api_test_scripts
-            SET notes = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+            SET notes = ?, manual_modified = 1, updated_by = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
             (notes, actor["id"], script_id),
@@ -775,13 +847,21 @@ def execute_api_run(run_id: str) -> dict:
         script_ids = api_automation_repo.loads_json(run["script_ids_json"], [])
         if not script_ids:
             raise api_error(400, "API_RUN_SCRIPT_REQUIRED", "运行记录缺少脚本。")
-        script = api_automation_repo.find_script(db, script_ids[0])
-        if not script:
+        scripts = [api_automation_repo.find_script(db, script_id) for script_id in script_ids]
+        if any(script is None for script in scripts):
             raise api_error(404, "API_SCRIPT_NOT_FOUND", "接口自动化脚本不存在。")
+        script = scripts[0]
         environment = _build_runtime_environment(db, run["api_environment_id"])
         api_automation_repo.update_api_run(db, run_id, status="running")
 
     suite_path = _resolve_generated_path(run["project_id"], script["suite_path"])
+    test_paths = []
+    for selected_script in scripts:
+        selected_suite_path = _resolve_generated_path(run["project_id"], selected_script["suite_path"])
+        if selected_suite_path != suite_path:
+            raise api_error(400, "API_RUN_SUITE_MISMATCH", "所选脚本不属于同一测试项目。")
+        test_path = _resolve_generated_path(run["project_id"], selected_script["test_file_path"])
+        test_paths.append(str(test_path.relative_to(suite_path)))
     run_dir = storage.PROJECT_FILE_STORAGE_ROOT / run["project_id"] / "api_automation" / "runs" / run_id
     result = run_script_suite(
         run_id=run_id,
@@ -790,6 +870,7 @@ def execute_api_run(run_id: str) -> dict:
         run_dir=run_dir,
         environment=environment,
         timeout=environment.get("timeout_seconds", 30),
+        test_paths=test_paths,
     )
     with connect() as db:
         api_automation_repo.update_api_run(
@@ -803,6 +884,7 @@ def execute_api_run(run_id: str) -> dict:
             error_message=result["error_message"],
             finished=True,
         )
+        api_automation_repo.update_scripts_last_run(db, script_ids, result["status"])
         updated = api_automation_repo.find_api_run(db, run_id)
         return _serialize_api_run(updated)
 
@@ -1101,6 +1183,7 @@ def _serialize_api_test_case_set(row: Row | None) -> dict:
         "name": row["name"],
         "notes": row["notes"],
         "status": row["status"],
+        "endpoint_count": row["endpoint_count"],
         "case_count": row["case_count"],
         "latest_generation_run_id": row["latest_generation_run_id"],
         "created_at": row["created_at"],
@@ -1114,17 +1197,14 @@ def _serialize_api_test_case(row: Row) -> dict:
         "project_id": row["project_id"],
         "endpoint_id": row["endpoint_id"],
         "title": row["title"],
+        "test_description": row["test_description"],
         "priority": row["priority"],
         "coverage": row["coverage"],
         "source": row["source"],
-        "tags": api_automation_repo.loads_json(row["tags_json"], []),
         "preconditions": api_automation_repo.loads_json(row["preconditions_json"], []),
         "request": api_automation_repo.loads_json(row["request_json"], {}),
         "test_data": api_automation_repo.loads_json(row["test_data_json"], {}),
-        "expected": api_automation_repo.loads_json(row["expected_json"], {}),
         "assertions": api_automation_repo.loads_json(row["assertions_json"], []),
-        "variables": api_automation_repo.loads_json(row["variables_json"], {}),
-        "data_origin": api_automation_repo.loads_json(row["data_origin_json"], {}),
         "notes": row["notes"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -1148,6 +1228,7 @@ def _serialize_source_test_case(row: Row) -> dict:
 def _serialize_script(row: Row | None) -> dict:
     if row is None:
         raise api_error(404, "API_SCRIPT_NOT_FOUND", "接口自动化脚本不存在。")
+    keys = set(row.keys())
     return {
         "id": row["id"],
         "project_id": row["project_id"],
@@ -1162,10 +1243,24 @@ def _serialize_script(row: Row | None) -> dict:
         "data_file_path": row["data_file_path"],
         "language": row["language"],
         "framework": row["framework"],
+        "source_hash": row["source_hash"] if "source_hash" in keys else "",
+        "case_count": row["case_count"] if "case_count" in keys else 0,
+        "manual_modified": bool(row["manual_modified"]) if "manual_modified" in keys else False,
+        "last_run_status": row["last_run_status"] if "last_run_status" in keys else "",
+        "last_run_at": row["last_run_at"] if "last_run_at" in keys else None,
+        "method": row["method"] if "method" in keys and row["method"] else "",
+        "path": row["path"] if "path" in keys and row["path"] else "",
+        "endpoint_summary": row["endpoint_summary"] if "endpoint_summary" in keys and row["endpoint_summary"] else "",
         "notes": row["notes"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
+
+
+def _script_source_hash(endpoint: dict, cases: list[dict]) -> str:
+    payload = {"generator_version": 1, "endpoint": endpoint, "cases": cases}
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _serialize_api_run(row: Row | None) -> dict:
@@ -1224,7 +1319,7 @@ def _resolve_generated_path(project_id: str, stored_path: str) -> Path:
     if path is None:
         raise api_error(404, "API_SCRIPT_FILE_NOT_FOUND", "脚本文件不存在。")
     resolved = path.resolve()
-    allowed_root = (storage.PROJECT_FILE_STORAGE_ROOT / project_id / "api_automation" / "generated").resolve()
+    allowed_root = (storage.PROJECT_FILE_STORAGE_ROOT / project_id / "api_automation").resolve()
     if allowed_root not in resolved.parents and resolved != allowed_root:
         raise api_error(400, "API_SCRIPT_PATH_INVALID", "脚本路径不在允许的接口自动化目录下。")
     if not resolved.exists():
@@ -1469,6 +1564,11 @@ def _require_visible_project(db, project_id: str, actor):
     if project["name"] == actor["project_scope"]:
         return project
     raise api_error(403, "PERMISSION_DENIED", "无权访问该项目。")
+
+
+def _validate_linked_ui_environment(db, project_id: str, environment_id: str | None) -> None:
+    if environment_id and not environment_repo.belongs_to_project(db, environment_id, project_id):
+        raise api_error(400, "UI_ENVIRONMENT_PROJECT_MISMATCH", "关联的探索环境不属于当前项目。")
 
 
 def _require_admin(actor) -> None:

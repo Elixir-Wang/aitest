@@ -1,0 +1,36 @@
+schema_version: '2.0'
+page:
+  id: page-agentStore
+  title: 百融百工
+  normalized_path: /agentStore
+  url: null
+  observed_url: https://www.cybotstar.cn/agentStore
+  first_observed_at: '2026-07-12T05:52:19.680728+00:00'
+  last_observed_at: '2026-07-12T05:52:19.680728+00:00'
+  observed_by_runs:
+  - run-cybotstar-001
+states:
+- id: page-agentStore__root__001
+  type: root
+  title: 百融百工 - 首页
+  triggered_by: null
+  depth: 1
+  last_observed_at: '2026-07-12T05:52:19.680728+00:00'
+  observed_by_runs:
+  - run-cybotstar-001
+  dom_signature: sha256:4f279defe9fdb44c0953af7aec308f9287f4da65f8a1e9750dfbe04d07102c85
+  elements:
+  - key: button-创建智能体
+    source:
+      kind: role
+      code: 'page.getByRole(''button'', { name: ''创建智能体'' })'
+      role: button
+      name: 创建智能体
+      label: ''
+      placeholder: ''
+      test_id: ''
+    inferred: false
+    last_seen_at: '2026-07-12T05:52:19.680728+00:00'
+    seen_count: 1
+    children: []
+  children: []

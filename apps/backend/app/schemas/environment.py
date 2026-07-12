@@ -3,6 +3,8 @@ from pydantic import BaseModel, Field
 
 class ExplorationEnvironmentOut(BaseModel):
     id: str
+    project_id: str
+    project_name: str
     name: str
     site_url: str
     username: str
@@ -13,15 +15,12 @@ class ExplorationEnvironmentOut(BaseModel):
     auth_state_status: str = "none"
     auth_state_expires_at: str | None = None
     auth_state_message: str = ""
-    auto_auth_status: str = "idle"
-    auto_auth_message: str = ""
     description: str
-    created_at: str
     updated_at: str
-    available_actions: list[str]
 
 
 class ExplorationEnvironmentCreateIn(BaseModel):
+    project_id: str = Field(min_length=1)
     name: str = Field(min_length=1)
     site_url: str = Field(min_length=1)
     username: str = ""

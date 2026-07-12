@@ -429,7 +429,7 @@ def _build_goal_action_mapping(timeline_events: list[dict]) -> list[dict]:
             tool_name = payload.get("tool_name", "")
             if not tool_name or "write_todos" in tool_name:
                 continue
-            if current_step_idx < len(step_stats):
+            if 0 <= current_step_idx < len(step_stats):
                 step_stats[current_step_idx]["attempts"] += 1
                 if event_type == "agent_tool_failed":
                     step_stats[current_step_idx]["failed_attempts"] += 1
@@ -1117,8 +1117,8 @@ def _write_exploration_report(
         # 按访问顺序排序（timeline 中的首次出现顺序）
         page_order = _page_visit_order(timeline_events)
 
-        for artifact in page_artifacts:
-            lines.extend(_render_page_section(artifact, db_pages, page_order))
+    for artifact in page_artifacts:
+        lines.extend(_render_page_section(artifact, db_pages, page_order))
     else:
         lines.append("_本次探索未产生页面产物。_")
     lines.append("")

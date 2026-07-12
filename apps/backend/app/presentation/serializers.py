@@ -24,8 +24,6 @@ def resolve_environment_auth_state_display(
             "auth_state_status": "none",
             "auth_state_expires_at": None,
             "auth_state_message": "",
-            "auto_auth_status": auto_auth_status,
-            "auto_auth_message": auto_auth_message,
         }
 
     if auto_auth_status in {"queued", "running"}:
@@ -33,8 +31,6 @@ def resolve_environment_auth_state_display(
             "auth_state_status": "logging_in",
             "auth_state_expires_at": None,
             "auth_state_message": auto_auth_message or "正在自动登录",
-            "auto_auth_status": auto_auth_status,
-            "auto_auth_message": auto_auth_message,
         }
 
     if auto_auth_status == "failed":
@@ -42,16 +38,12 @@ def resolve_environment_auth_state_display(
             "auth_state_status": "login_failed",
             "auth_state_expires_at": None,
             "auth_state_message": auto_auth_message or "自动登录失败",
-            "auto_auth_status": auto_auth_status,
-            "auto_auth_message": auto_auth_message,
         }
 
     return {
         "auth_state_status": file_state["status"],
         "auth_state_expires_at": file_state["expires_at"],
         "auth_state_message": "",
-        "auto_auth_status": auto_auth_status,
-        "auto_auth_message": auto_auth_message,
     }
 
 
@@ -80,10 +72,6 @@ def project_actions(role: str, has_assets: bool = False) -> list[str]:
     if not has_assets:
         actions.append("delete")
     return actions
-
-
-def environment_actions(role: str) -> list[str]:
-    return ["read", "create", "delete"] if role == "admin" else ["read"]
 
 
 def serialize_user(row: Row, actor_role: str | None = None) -> dict:
@@ -135,7 +123,7 @@ def serialize_project(row: Row, actor_role: str, has_assets: bool = False) -> di
     }
 
 
-def serialize_exploration_environment(row: Row, actor_role: str) -> dict:
+def serialize_exploration_environment(row: Row) -> dict:
     login_strategy, captcha_strategy, reuse_auth_state = _normalize_auth_config_values(
         _row_value(row, "login_strategy", "skip_login"),
         _row_value(row, "captcha_strategy", "none"),
@@ -153,6 +141,8 @@ def serialize_exploration_environment(row: Row, actor_role: str) -> dict:
     )
     return {
         "id": environment_id,
+        "project_id": row["project_id"],
+        "project_name": _row_value(row, "project_name", ""),
         "name": row["name"],
         "site_url": row["site_url"],
         "username": row["username"],
@@ -163,12 +153,8 @@ def serialize_exploration_environment(row: Row, actor_role: str) -> dict:
         "auth_state_status": auth_display["auth_state_status"],
         "auth_state_expires_at": auth_display["auth_state_expires_at"],
         "auth_state_message": auth_display["auth_state_message"],
-        "auto_auth_status": auth_display["auto_auth_status"],
-        "auto_auth_message": auth_display["auto_auth_message"],
         "description": row["description"],
-        "created_at": row["created_at"],
         "updated_at": row["updated_at"],
-        "available_actions": environment_actions(actor_role),
     }
 
 

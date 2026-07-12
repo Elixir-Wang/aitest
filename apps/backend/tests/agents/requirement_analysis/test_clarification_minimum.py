@@ -1,18 +1,17 @@
-"""回归测试：澄清问题数量约束（防御 deepseek-v4-flash 输出空 clarifications）
+"""回归测试：澄清问题非空约束与内容质量边界。
 
 背景：result.json 里出现 status=completed + clarifications=[] + "暂无待澄清问题"
-的产物。原因是 SKILL.md + schema 都没有"必须至少 N 条澄清"的硬约束，LLM
-（实际跑的是 deepseek-v4-flash）会按"原文都说明清楚了"自我判断，输出空数组。
+的产物。schema 继续强制至少一条，skill 同时要求问题可追溯、可裁决并能转化为用例，
+避免模型为了达到固定数量而生成无来源问题。
 
 本测试覆盖三层防御：
-1. Skill 中 SKILL.md 必须包含"至少 N 条"的明确数量指令
-2. references/clarification.md 必须包含"至少 N 条"的明确数量指令
-3. RequirementAnalysisResult.clarifications schema 必须有 min_length >= 1 约束
+1. Skill 明确 schema 至少一条，并禁止凑数
+2. clarification reference 强制来源和用例转化准入
+3. RequirementAnalysisResult.clarifications schema 保持 min_length >= 1
    （pydantic 解析时强制非空）
 
 按 TDD：先看到这些断言失败 → 再修复 SKILL.md / references / schemas。
 """
-import re
 from pathlib import Path
 
 import pytest
@@ -45,46 +44,26 @@ assert SKILL_DIR is not None, (
 SKILL_MD = SKILL_DIR / "SKILL.md"
 CLARIFICATION_MD = SKILL_DIR / "references" / "clarification.md"
 
-# 至少澄清问题数量门槛：所有正常需求文档都必须生成不少于这个数量的澄清问题
-MIN_CLARIFICATIONS = 3
-
-
-# ==================== 1. SKILL.md 必须包含数量约束 ====================
+# ==================== 1. SKILL.md 必须兼顾非空与质量 ====================
 
 def test_skill_md_requires_minimum_clarifications() -> None:
-    """SKILL.md 必须明确写出'至少 N 条澄清问题'的硬约束。"""
+    """SKILL.md 必须要求至少一条，但不得要求凑固定数量。"""
     assert SKILL_MD.exists(), f"SKILL.md 不存在: {SKILL_MD}"
     content = SKILL_MD.read_text(encoding="utf-8")
-    # 接受中英文常见写法
-    pattern = re.compile(
-        r"(至少|不少于|最少|≥\s*\d|>=?\s*\d|\bat\s+least\s+\d)",
-        re.IGNORECASE,
-    )
-    assert pattern.search(content), (
-        f"SKILL.md 必须包含'至少 N 条澄清问题'的数量硬约束，"
-        f"否则 LLM（deepseek-v4-flash）会输出空 clarifications。\n"
-        f"当前 SKILL.md 末尾:\n{content[-800:]}"
-    )
-    # 必须显式提到 MIN_CLARIFICATIONS 这个数值
-    assert str(MIN_CLARIFICATIONS) in content or str(MIN_CLARIFICATIONS - 1) in content, (
-        f"SKILL.md 必须显式提到具体数量（建议 {MIN_CLARIFICATIONS} 条），"
-        f"不能只写'若干'、'一些'。"
-    )
+    assert "至少输出 1 条" in content
+    assert "不得为了凑数量" in content
+    assert "至少生成 3 条" not in content
 
 
-# ==================== 2. references/clarification.md 必须包含数量约束 ====================
+# ==================== 2. clarification reference 必须包含质量准入 ====================
 
 def test_clarification_reference_requires_minimum_clarifications() -> None:
-    """references/clarification.md 也必须包含'至少 N 条'的数量指令。"""
+    """Reference 必须要求来源和用例转化，禁止机械凑数。"""
     assert CLARIFICATION_MD.exists(), f"clarification.md 不存在: {CLARIFICATION_MD}"
     content = CLARIFICATION_MD.read_text(encoding="utf-8")
-    pattern = re.compile(
-        r"(至少|不少于|最少|≥\s*\d|>=?\s*\d|\bat\s+least\s+\d)",
-        re.IGNORECASE,
-    )
-    assert pattern.search(content), (
-        f"references/clarification.md 必须包含'至少 N 条澄清问题'的数量硬约束。"
-    )
+    assert "原文事实 → 具体缺口/歧义/冲突" in content
+    assert "确认答案后至少能形成一个 Given/When/Then 用例" in content
+    assert "不得为了凑数量" in content
 
 
 # ==================== 3. schema 必须强制 clarifications 非空 ====================

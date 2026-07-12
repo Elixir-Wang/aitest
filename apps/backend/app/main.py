@@ -4,7 +4,7 @@ from loguru import logger
 
 from app.api.v1 import v1_router
 from app.core.logging import setup_logging
-from app.core.response import ApiResponseMiddleware
+from app.core.response import ApiResponseMiddleware, ApiUnhandledExceptionMiddleware
 from app.seed.init_db import init_db
 from app.services import task_service, test_case_service
 from app.services.api_automation import service as api_automation_service
@@ -17,6 +17,9 @@ setup_logging()
 
 app = FastAPI(title="AI Testing System API", version="0.1.0")
 
+# Added before CORS so unexpected endpoint failures are converted to responses
+# that still pass through the CORS middleware.
+app.add_middleware(ApiUnhandledExceptionMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,

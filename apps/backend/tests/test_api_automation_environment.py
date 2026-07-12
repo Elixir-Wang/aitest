@@ -207,3 +207,36 @@ def test_guest_cannot_create_api_environment(monkeypatch: pytest.MonkeyPatch, tm
         )
 
     assert exc_info.value.status_code == 403
+
+
+def test_api_environment_rejects_linked_ui_environment_from_another_project(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+    with connect() as db:
+        db.execute(
+            "INSERT INTO projects (id, name, description, status, created_by) "
+            "VALUES ('project-2', '其他项目', '', 'active', ?)",
+            (ACTOR["id"],),
+        )
+        db.execute(
+            "INSERT INTO project_environments "
+            "(id, project_id, name, site_url, created_by) "
+            "VALUES ('env-other', 'project-2', '其他项目环境', 'https://other.test', ?)",
+            (ACTOR["id"],),
+        )
+
+    with pytest.raises(HTTPException) as exc_info:
+        service.create_api_environment(
+            "project-1",
+            ApiEnvironmentIn(
+                name="测试环境",
+                api_base_url="https://api.example.test",
+                linked_ui_environment_id="env-other",
+            ),
+            ACTOR,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "UI_ENVIRONMENT_PROJECT_MISMATCH"

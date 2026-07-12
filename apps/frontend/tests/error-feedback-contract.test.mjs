@@ -13,8 +13,8 @@ test("error feedback uses a normal error toast without a detail action", () => {
   assert.doesNotMatch(errorFeedbackSource, /window\.location\.assign/);
 });
 
-test("error feedback toast stays selectable instead of adding a copy button", () => {
-  assert.match(errorFeedbackSource, /duration:\s*Infinity/);
+test("error feedback toast stays selectable and does not override the global duration", () => {
+  assert.doesNotMatch(errorFeedbackSource, /duration:\s*Infinity/);
   assert.doesNotMatch(errorFeedbackSource, /dismissible:\s*false/);
   assert.doesNotMatch(errorFeedbackSource, /cancel:\s*\{/);
   assert.doesNotMatch(errorFeedbackSource, /label:\s*"复制"/);
@@ -23,11 +23,12 @@ test("error feedback toast stays selectable instead of adding a copy button", ()
 
 test("global sonner toast uses variant card styling and disables swipe gestures", () => {
   assert.match(sonnerSource, /closeButton/);
+  assert.match(sonnerSource, /duration=\{5000\}/);
   assert.match(sonnerSource, /swipeDirections=\{\[\]\}/);
-  assert.match(sonnerSource, /toast:\s*"cn-toast select-text rounded-xl border pr-12 shadow-md"/);
+  assert.match(sonnerSource, /toast:\s*"cn-toast select-text rounded-xl border pr-16 shadow-md"/);
   assert.match(
     sonnerSource,
-    /closeButton:\s*"!right-3 !left-auto !top-3 !translate-y-0 !\[transform:none\] size-7 rounded-md/,
+    /closeButton:\s*"!right-3 !left-auto !top-1\/2 !size-9 !-translate-y-1\/2 !\[transform:none\] !rounded-md .*after:content-\['关闭'\].*\[&>svg\]:hidden/,
   );
   assert.match(sonnerSource, /default:\s*"bg-card border-border text-foreground"/);
   assert.match(sonnerSource, /success:\s*"bg-card border-green-600\/50 text-foreground"/);

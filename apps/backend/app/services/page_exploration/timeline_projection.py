@@ -17,7 +17,19 @@ def _string(value) -> str:
 
 def _coerce_tool_output_dict(output) -> dict:
     if isinstance(output, dict):
+        if isinstance(output.get("json"), dict):
+            return output["json"]
+        if "text" in output:
+            return _coerce_tool_output_dict(output.get("text"))
+        if "content" in output:
+            return _coerce_tool_output_dict(output.get("content"))
         return output
+    if isinstance(output, list):
+        for block in output:
+            parsed = _coerce_tool_output_dict(block)
+            if parsed and "raw" not in parsed:
+                return parsed
+        return {}
     if isinstance(output, str):
         try:
             parsed = json.loads(output)
@@ -235,6 +247,10 @@ def _projection_tool_event_to_timeline_event(
     }
     if input_data.get("locator"):
         payload["locator"] = _compact_event_payload(input_data.get("locator"))
+    if input_data.get("element_id"):
+        payload["element_id"] = _compact_event_payload(input_data.get("element_id"))
+    if output_data.get("element_key"):
+        payload["element_key"] = _compact_event_payload(output_data.get("element_key"))
     failure = output_data.get("failure")
     if isinstance(failure, dict):
         payload["failure"] = {
@@ -266,7 +282,7 @@ def _todo_plan_steps(todos) -> list[dict]:
                 "step_number": index,
                 "description": content,
                 "status": _compact_event_payload(todo.get("status")) or "pending",
-                "action_type": "todo",
+                "action_type": "",
                 "execution_strategy": "agent_plan",
             }
         )
@@ -386,8 +402,8 @@ def _readable_tool_display(tool_name: str, event_name: str, data: dict, status: 
             error,
         )
     if tool_name == "playwright_click_tool":
-        locator = _tool_field(input_data, "locator") or _compact_event_payload(data.get("input"))
-        target = _locator_label(locator) or "页面元素"
+        element_id = _tool_field(input_data, "element_id")
+        target = element_id or "页面元素"
         return _tool_display(
             "click",
             "点击元素",
@@ -395,14 +411,14 @@ def _readable_tool_display(tool_name: str, event_name: str, data: dict, status: 
             status,
             [
                 {"label": "目标", "value": target},
-                {"label": "定位器", "value": locator, "mono": True},
+                {"label": "元素 ID", "value": element_id, "mono": True},
                 {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
             ],
             error,
         )
     if tool_name == "playwright_fill_tool":
-        locator = _tool_field(input_data, "locator") or _compact_event_payload(data.get("input"))
-        target = _locator_label(locator) or "输入框"
+        element_id = _tool_field(input_data, "element_id")
+        target = element_id or "输入框"
         return _tool_display(
             "fill",
             "填写字段",
@@ -410,7 +426,7 @@ def _readable_tool_display(tool_name: str, event_name: str, data: dict, status: 
             status,
             [
                 {"label": "目标", "value": target},
-                {"label": "定位器", "value": locator, "mono": True},
+                {"label": "元素 ID", "value": element_id, "mono": True},
                 {"label": "结果", "value": _status_label(status), "tone": _status_tone(status)},
             ],
             error,

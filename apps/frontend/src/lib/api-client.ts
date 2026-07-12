@@ -132,6 +132,7 @@ export type ApiExplorationRun = {
   requirement_doc_id: string;
   requirement_doc_title: string;
   title: string;
+  test_description: string;
   status: string;
   exploration_mode: "goal" | "autonomous";
   scope: string;
@@ -672,17 +673,14 @@ export type ApiAutomationTestCase = {
   project_id: string;
   endpoint_id: string | null;
   title: string;
+  test_description: string;
   priority: string;
   coverage: string;
   source: string;
-  tags: string[];
   preconditions: string[];
   request: Record<string, unknown>;
   test_data: Record<string, unknown>;
-  expected: Record<string, unknown>;
   assertions: Record<string, unknown>[];
-  variables: Record<string, unknown>;
-  data_origin: Record<string, unknown>;
   notes: string;
   created_at: string;
   updated_at: string;
@@ -691,12 +689,29 @@ export type ApiAutomationTestCase = {
 export type ApiAutomationScript = {
   id: string;
   project_id: string;
+  endpoint_id: string | null;
   name: string;
   status: string;
   suite_path: string;
   test_file_path: string;
   data_file_path: string;
+  case_count: number;
+  manual_modified: boolean;
+  last_run_status: string;
+  last_run_at: string | null;
+  method: string;
+  path: string;
+  endpoint_summary: string;
+  change?: "created" | "updated" | "unchanged";
   content?: string;
+};
+
+export type ApiAutomationScriptFile = {
+  key: string;
+  name: string;
+  kind: "test" | "data";
+  language: "python" | "json";
+  content: string;
 };
 
 export type ApiAutomationRun = {
@@ -721,6 +736,7 @@ export type ApiAutomationCaseSet = {
   name: string;
   notes: string;
   status: string;
+  endpoint_count: number;
   case_count: number;
   latest_generation_run_id: string | null;
   created_at: string;
@@ -834,14 +850,29 @@ export function getApiAutomationGenerationRun(projectId: string, runId: string) 
 
 export function generateApiAutomationScripts(
   projectId: string,
-  payload: { api_test_case_ids: string[]; api_environment_id?: string | null },
+  payload: { endpoint_ids: string[]; force?: boolean; api_environment_id?: string | null },
 ) {
-  return apiRequest<{ suite_id: string; scripts: ApiAutomationScript[] }>(
+  return apiRequest<{
+    suite_id: string;
+    suite_path: string;
+    summary: { created: number; updated: number; unchanged: number };
+    scripts: ApiAutomationScript[];
+  }>(
     `/projects/${projectId}/api-automation/scripts/generate`,
     {
       method: "POST",
       body: JSON.stringify(payload),
     },
+  );
+}
+
+export function listApiAutomationScripts(projectId: string) {
+  return apiRequest<ApiAutomationScript[]>(`/projects/${projectId}/api-scripts`);
+}
+
+export function getApiAutomationScriptFiles(projectId: string, scriptId: string) {
+  return apiRequest<{ script_id: string; files: ApiAutomationScriptFile[] }>(
+    `/projects/${projectId}/api-scripts/${scriptId}/files`,
   );
 }
 

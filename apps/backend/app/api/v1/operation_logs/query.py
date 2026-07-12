@@ -52,11 +52,6 @@ def list_logs(
     )
 
 
-@router.get("/{log_id}")
-def get_log(log_id: str, actor=Depends(current_user)) -> dict:
-    return operation_log_service.get_log(log_id, actor)
-
-
 @router.get("/export")
 def export_logs(
     project_id: str | None = None,
@@ -98,3 +93,8 @@ def export_logs(
 @router.get("/filter-options")
 def list_filter_options(project_id: str | None = None, actor=Depends(current_user)) -> dict:
     return operation_log_service.list_filter_options(actor, project_id=project_id)
+
+
+@router.get("/{log_id}")
+def get_log(log_id: str, actor=Depends(current_user)) -> dict:
+    return operation_log_service.get_log(log_id, actor)

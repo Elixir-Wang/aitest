@@ -4,13 +4,56 @@ from app.core.security import hash_secret
 
 
 def seed_system_defaults(db: sqlite3.Connection) -> None:
+    _ensure_api_test_script_columns(db)
+    _migrate_project_environment_scope(db)
     _migrate_api_environment_auth_types(db)
+    _ensure_test_case_display_order(db)
     _ensure_api_test_case_structure_columns(db)
     _ensure_api_generation_batch_structure(db)
     _migrate_legacy_site_exploration_assignment(db)
     _seed_operation_log_retention_policy(db)
     _ensure_all_projects_conversation_scope(db)
-    _ensure_global_environments_project(db)
+
+
+def _ensure_test_case_display_order(db: sqlite3.Connection) -> None:
+    row = db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'test_cases'").fetchone()
+    if not row:
+        return
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(test_cases)").fetchall()}
+    if "display_order" not in columns:
+        db.execute("ALTER TABLE test_cases ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0")
+        rows = db.execute(
+            """
+            SELECT id, test_case_set_id, module, priority
+            FROM test_cases
+            ORDER BY test_case_set_id, created_at, id
+            """
+        ).fetchall()
+        cases_by_set: dict[str, list[sqlite3.Row]] = {}
+        for case in rows:
+            cases_by_set.setdefault(str(case["test_case_set_id"]), []).append(case)
+
+        priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+        for cases in cases_by_set.values():
+            module_order: dict[str, int] = {}
+            for case in cases:
+                module = str(case["module"] or "").strip()
+                module_order.setdefault(module, len(module_order))
+            ordered_cases = sorted(
+                enumerate(cases),
+                key=lambda item: (
+                    module_order[str(item[1]["module"] or "").strip()],
+                    priority_rank.get(str(item[1]["priority"] or "").strip().upper(), 4),
+                    item[0],
+                ),
+            )
+            db.executemany(
+                "UPDATE test_cases SET display_order = ? WHERE id = ?",
+                [(display_order, case["id"]) for display_order, (_, case) in enumerate(ordered_cases)],
+            )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_test_cases_set_display_order ON test_cases(test_case_set_id, display_order)"
+    )
 
 
 def seed_admin_user(db: sqlite3.Connection) -> None:
@@ -61,13 +104,14 @@ def _ensure_api_test_case_structure_columns(db: sqlite3.Connection) -> None:
         "coverage": "ALTER TABLE api_test_cases ADD COLUMN coverage TEXT NOT NULL DEFAULT 'positive'",
         "preconditions_json": "ALTER TABLE api_test_cases ADD COLUMN preconditions_json TEXT NOT NULL DEFAULT '[]'",
         "test_data_json": "ALTER TABLE api_test_cases ADD COLUMN test_data_json TEXT NOT NULL DEFAULT '{}'",
+        "test_description": "ALTER TABLE api_test_cases ADD COLUMN test_description TEXT NOT NULL DEFAULT ''",
     }
     for column, statement in missing_columns.items():
         if column not in columns:
             db.execute(statement)
     columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_test_cases)").fetchall()}
-    if "status" in columns:
-        _drop_api_test_case_status_column(db)
+    if "status" in columns or "tags_json" in columns:
+        _drop_deprecated_api_test_case_columns(db)
 
 
 def _ensure_api_generation_batch_structure(db: sqlite3.Connection) -> None:
@@ -185,7 +229,7 @@ def _ensure_api_generation_batch_structure(db: sqlite3.Connection) -> None:
         raise RuntimeError(f"Foreign key violations remain after API generation batch migration: {foreign_key_violations}")
 
 
-def _drop_api_test_case_status_column(db: sqlite3.Connection) -> None:
+def _drop_deprecated_api_test_case_columns(db: sqlite3.Connection) -> None:
     columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_test_cases)")}
     generation_item_id = "generation_item_id" if "generation_item_id" in columns else "NULL"
     generation_attempt_id = "generation_attempt_id" if "generation_attempt_id" in columns else "NULL"
@@ -201,10 +245,10 @@ def _drop_api_test_case_status_column(db: sqlite3.Connection) -> None:
           generation_item_id TEXT,
           generation_attempt_id TEXT,
           title TEXT NOT NULL,
+          test_description TEXT NOT NULL DEFAULT '',
           priority TEXT NOT NULL DEFAULT 'P2',
           coverage TEXT NOT NULL DEFAULT 'positive',
           source TEXT NOT NULL CHECK(source IN ('ai_generated', 'manual', 'approved_test_case')) DEFAULT 'ai_generated',
-          tags_json TEXT NOT NULL DEFAULT '[]',
           preconditions_json TEXT NOT NULL DEFAULT '[]',
           request_json TEXT NOT NULL DEFAULT '{}',
           test_data_json TEXT NOT NULL DEFAULT '{}',
@@ -232,14 +276,14 @@ def _drop_api_test_case_status_column(db: sqlite3.Connection) -> None:
         INSERT OR IGNORE INTO api_test_cases_new (
           id, project_id, endpoint_id, source_test_case_id, generation_run_id,
           generation_item_id, generation_attempt_id,
-          title, priority, coverage, source, tags_json, preconditions_json,
+          title, test_description, priority, coverage, source, preconditions_json,
           request_json, test_data_json, expected_json, assertions_json, variables_json,
           data_origin_json, data_file_path, notes, created_by, updated_by, created_at, updated_at
         )
         SELECT
           id, project_id, endpoint_id, source_test_case_id, generation_run_id,
           {generation_item_id}, {generation_attempt_id},
-          title, priority, coverage, source, tags_json, preconditions_json,
+          title, test_description, priority, coverage, source, preconditions_json,
           request_json, test_data_json, expected_json, assertions_json, variables_json,
           data_origin_json, data_file_path, notes, created_by, updated_by, created_at, updated_at
         FROM api_test_cases
@@ -338,13 +382,80 @@ def _ensure_all_projects_conversation_scope(db: sqlite3.Connection) -> None:
     )
 
 
-def _ensure_global_environments_project(db: sqlite3.Connection) -> None:
-    exists = db.execute("SELECT id FROM projects WHERE id = '__global_environments__'").fetchone()
-    if exists:
+def _migrate_project_environment_scope(db: sqlite3.Connection) -> None:
+    table = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'project_environments'"
+    ).fetchone()
+    if not table:
         return
+
+    legacy_project = db.execute("SELECT 1 FROM projects WHERE id = '__global_environments__'").fetchone()
+    if not legacy_project:
+        return
+
+    fallback_project = db.execute(
+        "SELECT id FROM projects WHERE name = '百工平台' AND status != 'archived'"
+    ).fetchone()
+    legacy_environments = db.execute(
+        "SELECT id, name FROM project_environments WHERE project_id = '__global_environments__'"
+    ).fetchall()
+    for environment in legacy_environments:
+        referenced_projects = db.execute(
+            "SELECT DISTINCT project_id FROM exploration_runs WHERE environment_id = ?",
+            (environment["id"],),
+        ).fetchall()
+        if len(referenced_projects) > 1:
+            raise RuntimeError(f"环境 {environment['name']} 被多个项目引用，无法迁移为单项目环境。")
+        target_project_id = referenced_projects[0]["project_id"] if referenced_projects else None
+        if not target_project_id:
+            if not fallback_project:
+                raise RuntimeError(f"环境 {environment['name']} 无历史任务，且未找到百工平台项目。")
+            target_project_id = fallback_project["id"]
+        db.execute(
+            "UPDATE project_environments SET project_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (target_project_id, environment["id"]),
+        )
+
+    db.execute("DELETE FROM projects WHERE id = '__global_environments__'")
+
+def _ensure_api_test_script_columns(db: sqlite3.Connection) -> None:
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_test_scripts)").fetchall()}
+    additions = {
+        "source_hash": "ALTER TABLE api_test_scripts ADD COLUMN source_hash TEXT NOT NULL DEFAULT ''",
+        "case_count": "ALTER TABLE api_test_scripts ADD COLUMN case_count INTEGER NOT NULL DEFAULT 0",
+        "manual_modified": "ALTER TABLE api_test_scripts ADD COLUMN manual_modified INTEGER NOT NULL DEFAULT 0",
+        "last_run_status": "ALTER TABLE api_test_scripts ADD COLUMN last_run_status TEXT NOT NULL DEFAULT ''",
+        "last_run_at": "ALTER TABLE api_test_scripts ADD COLUMN last_run_at TEXT",
+    }
+    for column, statement in additions.items():
+        if column not in columns:
+            db.execute(statement)
+
+    duplicate_groups = db.execute(
+        """
+        SELECT project_id, endpoint_id
+        FROM api_test_scripts
+        WHERE endpoint_id IS NOT NULL
+        GROUP BY project_id, endpoint_id
+        HAVING COUNT(*) > 1
+        """
+    ).fetchall()
+    for group in duplicate_groups:
+        rows = db.execute(
+            """
+            SELECT id FROM api_test_scripts
+            WHERE project_id = ? AND endpoint_id = ?
+            ORDER BY updated_at DESC, created_at DESC, id DESC
+            """,
+            (group["project_id"], group["endpoint_id"]),
+        ).fetchall()
+        for stale in rows[1:]:
+            db.execute("DELETE FROM api_test_scripts WHERE id = ?", (stale["id"],))
+
     db.execute(
         """
-        INSERT INTO projects (id, name, status, description, created_by)
-        VALUES ('__global_environments__', '全局探索环境', 'archived', '系统保留项目，用于存放与业务项目解耦的探索环境。', 'system')
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_api_scripts_project_endpoint
+        ON api_test_scripts(project_id, endpoint_id)
+        WHERE endpoint_id IS NOT NULL
         """
     )

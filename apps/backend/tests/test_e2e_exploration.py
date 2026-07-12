@@ -18,7 +18,7 @@ def test_run():
     
     result = page_exploration_service.create_exploration_run(
         actor=actor,
-        project_id="project-1",
+        project_id="project-75fec50973f2adf6",
         environment_id="env-c3bc1023763dbb16",
         title="E2E 测试：验证 ancestor_chain 修复",
         exploration_mode="goal",

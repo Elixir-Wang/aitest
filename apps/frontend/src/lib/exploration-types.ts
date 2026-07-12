@@ -6,6 +6,8 @@ export type ProjectScope = "all" | "project";
 
 export type ExplorationEnvironment = {
   id: string;
+  project_id: string;
+  project_name: string;
   name: string;
   site_url: string;
   username: string;
@@ -147,11 +149,9 @@ export type ExplorationPage = ExplorationRunDetail["modules"][number]["pages"][n
 
 export type ExplorationReport = {
   run_id: string;
-  version_no: number | null;
   title: string;
   markdown_content: string;
   change_summary: string;
-  created_at: string | null;
   artifact_schema_version: number;
   unsupported_artifact: boolean;
   unsupported_reason: string;

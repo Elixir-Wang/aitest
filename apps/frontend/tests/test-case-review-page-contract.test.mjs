@@ -9,6 +9,10 @@ const reviewPageSource = readFileSync(
 );
 const apiClientSource = readFileSync(new URL("../src/lib/api-client.ts", import.meta.url), "utf8");
 const pageShellSource = readFileSync(new URL("../src/components/ai-testing/page-shell.tsx", import.meta.url), "utf8");
+const mindMapSource = readFileSync(
+  new URL("../src/components/ai-testing/test-case-mind-map.tsx", import.meta.url),
+  "utf8",
+);
 
 test("test case set list exposes the dedicated review entry", () => {
   assert.match(listPageSource, /label: "查看"/);
@@ -130,6 +134,47 @@ test("review page aligns the list toolbar and detail header separators", () => {
   assert.match(reviewPageSource, /<div className="flex flex-col gap-3 border-b p-4">/);
   assert.match(reviewPageSource, /<div className="border-b p-4">/);
   assert.doesNotMatch(reviewPageSource, /min-h-\[124px\]/);
+});
+
+test("review page keeps the list and mind map switch in the summary actions", () => {
+  assert.match(reviewPageSource, /actions=\{/);
+  assert.match(reviewPageSource, /aria-label="评审视图"/);
+  assert.match(reviewPageSource, /setViewMode\("list"\)/);
+  assert.match(reviewPageSource, /setViewMode\("mindmap"\)/);
+  assert.doesNotMatch(reviewPageSource, /评审导航/);
+  assert.doesNotMatch(reviewPageSource, /返回列表/);
+});
+
+test("mind map exposes corner controls for navigation", () => {
+  assert.match(mindMapSource, /aria-label="脑图缩放工具"/);
+  assert.match(mindMapSource, /label="缩小"/);
+  assert.match(mindMapSource, /label="放大"/);
+  assert.match(mindMapSource, /label="适应画布"/);
+  assert.match(mindMapSource, /fullscreen \? "退出全屏" : "全屏查看"/);
+  assert.match(mindMapSource, /Math\.round\(scale \* 100\)/);
+});
+
+test("mind map uses trackpad gestures and only fits a live visible instance", () => {
+  assert.match(mindMapSource, /mousewheelAction: "move"/);
+  assert.doesNotMatch(mindMapSource, /mousewheelAction: "zoom"/);
+  assert.match(mindMapSource, /双指移动 · 捏合缩放 · 拖动画布/);
+  assert.match(mindMapSource, /if \(!active\) return;/);
+  assert.match(mindMapSource, /fit: false/);
+  assert.match(mindMapSource, /container\.isConnected/);
+  assert.match(mindMapSource, /container\.clientWidth > 0/);
+  assert.match(mindMapSource, /if \(initialRenderPending\) \{/);
+  assert.match(mindMapSource, /initialRenderPending = false;\s+mindMap\.resize\(\);\s+mindMap\.view\.fit\(\);/);
+  assert.match(mindMapSource, /cancelAnimationFrame\(frameId\)/);
+  assert.match(mindMapSource, /mindMap\?\.off\("node_tree_render_end", handleRenderEnd\)/);
+});
+
+test("mind map follows the workspace dark theme and colors top-level branches", () => {
+  assert.match(mindMapSource, /usePreferencesStore\(\(state\) => state\.themeMode === "dark"\)/);
+  assert.match(mindMapSource, /import\("simple-mind-map\/src\/plugins\/RainbowLines\.js"\)/);
+  assert.match(mindMapSource, /const registerPlugin = MindMap\.usePlugin/);
+  assert.match(mindMapSource, /registerPlugin\(RainbowLines\)/);
+  assert.match(mindMapSource, /rainbowLinesConfig:/);
+  assert.match(mindMapSource, /colorsList: isDark \? DARK_BRANCH_COLORS : LIGHT_BRANCH_COLORS/);
 });
 
 test("fill viewport pages keep browser scrolling inside the page", () => {

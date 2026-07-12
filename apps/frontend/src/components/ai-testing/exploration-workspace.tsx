@@ -149,7 +149,8 @@ export function ExplorationWorkspace({
       setEnvironmentLoading(true);
       setError("");
       try {
-        const data = await apiRequest<ExplorationEnvironment[]>("/environments");
+        const environmentsPath = projectId ? `/environments?project_id=${projectId}` : "/environments";
+        const data = await apiRequest<ExplorationEnvironment[]>(environmentsPath);
         if (!ignore) {
           setRows(data);
         }
@@ -169,7 +170,7 @@ export function ExplorationWorkspace({
     return () => {
       ignore = true;
     };
-  }, [setRows]);
+  }, [projectId, setRows]);
 
   const hasLoggingInEnvironment = useMemo(() => rows.some((item) => item.auth_state_status === "logging_in"), [rows]);
 
@@ -179,7 +180,7 @@ export function ExplorationWorkspace({
     }
 
     let ignore = false;
-    const environmentsPath = "/environments";
+    const environmentsPath = projectId ? `/environments?project_id=${projectId}` : "/environments";
 
     async function refreshEnvironmentAuthStates() {
       try {
@@ -211,7 +212,7 @@ export function ExplorationWorkspace({
       ignore = true;
       window.clearInterval(intervalId);
     };
-  }, [hasLoggingInEnvironment, setRows]);
+  }, [hasLoggingInEnvironment, projectId, setRows]);
 
   useEffect(() => {
     let ignore = false;
@@ -271,6 +272,7 @@ export function ExplorationWorkspace({
       rows.filter((item) =>
         [
           item.name,
+          item.project_name,
           item.site_url,
           item.username,
           loginStrategyLabels[item.login_strategy] ?? item.login_strategy,
@@ -370,6 +372,7 @@ export function ExplorationWorkspace({
   const hasReusableEnvironmentPassword =
     editingEnvironment?.login_strategy === "account_password" && editingEnvironment.has_saved_credentials;
   const canCreateEnvironment =
+    form.projectId.length > 0 &&
     form.name.trim().length > 0 &&
     form.siteUrl.trim().length > 0 &&
     (form.loginStrategy !== "account_password" ||
@@ -477,7 +480,7 @@ export function ExplorationWorkspace({
     setEditingEnvironment(null);
     setManualAuthSession(null);
     setManualAuthAction("");
-    setForm({ ...emptyEnvironmentForm });
+    setForm({ ...emptyEnvironmentForm, projectId: projectId ?? "" });
     setShowPassword(false);
     setDialogOpen(true);
   }
@@ -543,8 +546,8 @@ export function ExplorationWorkspace({
   }
 
   async function saveEnvironment() {
-    if (!form.name.trim() || !form.siteUrl.trim()) {
-      toast.error("请填写环境名称和站点地址");
+    if (!form.projectId || !form.name.trim() || !form.siteUrl.trim()) {
+      toast.error("请选择项目并填写环境名称和站点地址");
       return;
     }
 
@@ -602,6 +605,7 @@ export function ExplorationWorkspace({
         const created = await apiRequest<ExplorationEnvironment>("/environments", {
           method: "POST",
           body: JSON.stringify({
+            project_id: form.projectId,
             name: form.name,
             site_url: form.siteUrl,
             username: showLoginCredentials ? form.username : "",
@@ -1026,6 +1030,24 @@ export function ExplorationWorkspace({
                 required
                 value={form.name}
               />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="environment-project">所属项目 *</FieldLabel>
+              <Select
+                disabled={Boolean(editingEnvironment) || Boolean(projectId)}
+                id="environment-project"
+                placeholder="选择项目"
+                setValue={(value) => setForm((current) => ({ ...current, projectId: value }))}
+                value={form.projectId}
+              >
+                {projects
+                  .filter((project) => project.status !== "archived")
+                  .map((project) => (
+                    <SelectOption key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectOption>
+                  ))}
+              </Select>
             </Field>
             <Field className="sm:col-span-2">
               <FieldLabel htmlFor="environment-site-url">站点地址 *</FieldLabel>

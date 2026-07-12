@@ -1,30 +1,54 @@
 from sqlite3 import Connection, Row
 
-from app.core.environment_scope import GLOBAL_ENVIRONMENT_PROJECT_ID
-
-
-def list_all(db: Connection) -> list[Row]:
+def list_all(db: Connection, project_id: str | None = None) -> list[Row]:
+    where = "WHERE pe.project_id = ?" if project_id else ""
+    params = (project_id,) if project_id else ()
     return db.execute(
-        """
-        SELECT pe.*
+        f"""
+        SELECT pe.*, p.name AS project_name
         FROM project_environments pe
+        JOIN projects p ON p.id = pe.project_id
+        {where}
         ORDER BY pe.updated_at DESC, pe.created_at DESC
-        """
+        """,
+        params,
+    ).fetchall()
+
+
+def list_visible(db: Connection, actor, project_id: str | None = None) -> list[Row]:
+    if actor["role"] in {"admin", "guest"} or actor["project_scope"] == "全部项目":
+        return list_all(db, project_id)
+    params: list[object] = [actor["project_scope"]]
+    project_filter = ""
+    if project_id:
+        project_filter = "AND pe.project_id = ?"
+        params.append(project_id)
+    return db.execute(
+        f"""
+        SELECT pe.*, p.name AS project_name
+        FROM project_environments pe
+        JOIN projects p ON p.id = pe.project_id
+        WHERE p.name = ? AND p.status != 'archived'
+        {project_filter}
+        ORDER BY pe.updated_at DESC, pe.created_at DESC
+        """,
+        params,
     ).fetchall()
 
 
 def find_by_id(db: Connection, environment_id: str) -> Row | None:
     return db.execute(
         """
-        SELECT pe.*
+        SELECT pe.*, p.name AS project_name
         FROM project_environments pe
+        JOIN projects p ON p.id = pe.project_id
         WHERE pe.id = ?
         """,
         (environment_id,),
     ).fetchone()
 
 
-def find_by_name(db: Connection, name: str, exclude_id: str | None = None) -> Row | None:
+def find_by_name(db: Connection, project_id: str, name: str, exclude_id: str | None = None) -> Row | None:
     if exclude_id:
         return db.execute(
             """
@@ -32,7 +56,7 @@ def find_by_name(db: Connection, name: str, exclude_id: str | None = None) -> Ro
             FROM project_environments
             WHERE project_id = ? AND name = ? AND id != ?
             """,
-            (GLOBAL_ENVIRONMENT_PROJECT_ID, name, exclude_id),
+            (project_id, name, exclude_id),
         ).fetchone()
     return db.execute(
         """
@@ -40,7 +64,7 @@ def find_by_name(db: Connection, name: str, exclude_id: str | None = None) -> Ro
         FROM project_environments
         WHERE project_id = ? AND name = ?
         """,
-        (GLOBAL_ENVIRONMENT_PROJECT_ID, name),
+        (project_id, name),
     ).fetchone()
 
 
@@ -48,6 +72,7 @@ def create(
     db: Connection,
     *,
     environment_id: str,
+    project_id: str,
     name: str,
     site_url: str,
     username: str,
@@ -65,7 +90,7 @@ def create(
         """,
         (
             environment_id,
-            GLOBAL_ENVIRONMENT_PROJECT_ID,
+            project_id,
             name,
             site_url,
             username,
@@ -85,3 +110,10 @@ def delete(db: Connection, environment_id: str) -> None:
 def update(db: Connection, environment_id: str, assignments: list[str], values: list[object]) -> None:
     values.append(environment_id)
     db.execute(f"UPDATE project_environments SET {', '.join(assignments)} WHERE id = ?", values)
+
+
+def belongs_to_project(db: Connection, environment_id: str, project_id: str) -> bool:
+    return db.execute(
+        "SELECT 1 FROM project_environments WHERE id = ? AND project_id = ?",
+        (environment_id, project_id),
+    ).fetchone() is not None

@@ -102,6 +102,39 @@ def test_operation_log_filter_options_include_persisted_values(
     assert project_options["actions"] == ["auto_auth_login"]
 
 
+def test_global_operation_log_static_routes_are_not_captured_as_log_ids(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    operation_log_service.record_task_event(
+        module="environment",
+        action="auto_auth_login",
+        object_type="exploration_environment",
+        object_id="env-1",
+        object_name="测试环境",
+        actor_id="system",
+        actor_name="系统",
+        source="system",
+        summary="自动登录完成。",
+    )
+    from app.main import app
+
+    with TestClient(app) as client:
+        login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
+        token = login.json()["data"]["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        filter_response = client.get("/api/v1/operation-logs/filter-options", headers=headers)
+        export_response = client.get("/api/v1/operation-logs/export", headers=headers)
+
+    assert filter_response.status_code == 200
+    assert "environment" in filter_response.json()["data"]["modules"]
+    assert export_response.status_code == 200
+    assert export_response.headers["content-type"].startswith("text/csv")
+    assert "auto_auth_login" in export_response.text
+
+
 def test_operation_log_export_reuses_filters_and_masks_sensitive_values(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,

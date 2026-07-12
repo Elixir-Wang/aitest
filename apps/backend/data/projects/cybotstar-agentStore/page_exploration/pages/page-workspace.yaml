@@ -6,6 +6,48 @@ page:
   url: null
   observed_url: https://www.cybotstar.cn/workspace
   first_observed_at: '2026-07-06T07:35:24.549252+00:00'
-  last_observed_at: '2026-07-06T07:35:24.549252+00:00'
-  observed_by_runs: []
-states: []
+  last_observed_at: '2026-07-12T02:51:00.762033+00:00'
+  observed_by_runs:
+  - run-explore-001
+states:
+- id: page-workspace__root__001
+  type: root
+  title: 百融百工 - 工作台
+  triggered_by: null
+  depth: 1
+  last_observed_at: '2026-07-12T02:51:00.762033+00:00'
+  observed_by_runs:
+  - run-explore-001
+  dom_signature: sha256:452b31e370caa524490a9652a29e312caf606fed462f01d1f5c416b1515a419f
+  elements:
+  - key: button-创建智能体
+    source:
+      kind: role
+      code: 'page.getByRole(''button'', { name: ''创建智能体'' })'
+      role: button
+      name: 创建智能体
+    inferred: false
+    last_seen_at: '2026-07-12T02:51:00.762033+00:00'
+    seen_count: 1
+    children: []
+  - key: button-创建
+    source:
+      kind: role
+      code: 'page.getByRole(''button'', { name: ''创建'' })'
+      role: button
+      name: 创建
+    inferred: false
+    last_seen_at: '2026-07-12T02:51:00.762033+00:00'
+    seen_count: 1
+    children: []
+  - key: textbox-搜索智能体
+    source:
+      kind: role
+      code: 'page.getByRole(''textbox'', { name: ''搜索智能体'' })'
+      role: textbox
+      name: 搜索智能体
+    inferred: false
+    last_seen_at: '2026-07-12T02:51:00.762033+00:00'
+    seen_count: 1
+    children: []
+  children: []

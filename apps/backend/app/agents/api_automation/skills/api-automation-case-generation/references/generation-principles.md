@@ -6,4 +6,8 @@
 - OpenAPI 有 `example`、`examples`、`default`、`enum` 时可以据此构造可执行请求。
 - OpenAPI 只有 schema 没有业务可用值时，不编造数据，仍要生成用例并在备注中说明需要补充什么。
 - 对 GET/DELETE 优先使用 query/path 参数；对 POST/PUT/PATCH 优先使用 request body。
-- 对链路型场景，只在输入提供足够上下文时生成 scenario 覆盖。
+- 不生成多接口链路、稳定性专项、异步回调或流式协议专项。
+- 单字段约束逐字段完整覆盖，明确字段关系完整覆盖；无关系字段使用合法基线加单变量变化。
+- 优先级只用于排序，不得用于截断有效测试点。
+- 上传使用 `request.files`，下载使用二进制响应断言。
+每条用例必须生成 `test_description`，用一句话说明本用例验证的接口场景、输入条件和风险点；不要生成独立的 expected 字段，具体可执行预期统一写入 assertions。

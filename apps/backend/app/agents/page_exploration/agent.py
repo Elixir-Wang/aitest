@@ -20,11 +20,9 @@ from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
 from langchain.agents.middleware import ToolCallLimitMiddleware
 
+from app.agents.shared.invalid_tool_call_recovery import InvalidToolCallRecoveryMiddleware
 from app.agents.page_exploration.tools import get_local_tools
-from app.agents.page_exploration.tools.artifact_tools import make_artifact_tools
-from app.agents.page_exploration.tools.url_tools import make_check_explored_url_tool
 from app.agents.page_exploration.prompts.system_prompt import SYSTEM_PROMPT
-from app.core.settings import PROJECT_FILE_STORAGE_ROOT
 
 
 def page_exploration_agent(
@@ -39,7 +37,7 @@ def page_exploration_agent(
     架构：
     - 单一 Agent
     - 无结构化输出约束（自由探索）
-    - 自动加载 Skills（page_explorer, locator_best_practices）
+    - 自动加载 Skills（page-explorer, locator-best-practices）
     - deepagents 自动管理中间件（包括汇总和技能注入）
     - 硬截断：单次 run 内最多 max_actions 次工具调用
 
@@ -72,6 +70,7 @@ def page_exploration_agent(
 
     # 4. 硬截断：防止 LLM 陷入物理死循环
     middleware = [
+        InvalidToolCallRecoveryMiddleware(max_retries=2),
         ToolCallLimitMiddleware(
             thread_limit=max_actions,
             run_limit=max_actions,

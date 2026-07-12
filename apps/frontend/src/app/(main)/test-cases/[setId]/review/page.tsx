@@ -2,21 +2,9 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 
-import {
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  CircleX,
-  Download,
-  List,
-  Loader2,
-  Network,
-  Pencil,
-  Search,
-  X,
-} from "lucide-react";
+import { Check, ChevronRight, CircleX, Download, List, Loader2, Network, Pencil, Search, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
@@ -46,6 +34,7 @@ import {
   apiBlobRequest,
   apiRequest,
 } from "@/lib/api-client";
+import { testCasePriorityVisual } from "@/lib/test-case-priority";
 import { cn } from "@/lib/utils";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
@@ -78,11 +67,7 @@ const filterLabels: Record<ReviewFilter, string> = {
 const visibleReviewFilters: Exclude<ReviewFilter, "all">[] = ["ready_for_review", "approved", "rejected"];
 
 function priorityTone(priority: string) {
-  const normalized = priority.trim().toUpperCase();
-  if (normalized === "P0") return "border-red-200 bg-red-50 text-red-700";
-  if (normalized === "P1") return "border-amber-200 bg-amber-50 text-amber-700";
-  if (normalized === "P2") return "border-blue-200 bg-blue-50 text-blue-700";
-  return "border-slate-200 bg-slate-50 text-slate-700";
+  return testCasePriorityVisual(priority).tone;
 }
 
 function moduleSegments(moduleName: string) {
@@ -93,11 +78,11 @@ function moduleSegments(moduleName: string) {
 }
 
 function filterCountTone(item: ReviewFilter, current: ReviewFilter) {
-  if (item === current) return "bg-[#101828] text-white";
-  if (item === "rejected") return "bg-red-100 text-red-700";
-  if (item === "approved") return "bg-emerald-100 text-emerald-700";
-  if (item === "ready_for_review") return "bg-amber-100 text-amber-700";
-  return "bg-slate-100 text-slate-600";
+  if (item === current) return "bg-[#101828] text-white dark:bg-slate-100 dark:text-slate-900";
+  if (item === "rejected") return "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300";
+  if (item === "approved") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300";
+  if (item === "ready_for_review") return "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300";
+  return "bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300";
 }
 
 function getNextPendingCase(cases: ApiTestCase[], currentCaseId: string) {
@@ -108,7 +93,6 @@ function getNextPendingCase(cases: ApiTestCase[], currentCaseId: string) {
 
 export default function TestCaseReviewPage() {
   const params = useParams<{ setId: string }>();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { scope: projectScope, currentProjectId, hydrate, hasHydrated } = useProjectContextStore();
   const setId = params.setId;
@@ -315,10 +299,26 @@ export default function TestCaseReviewPage() {
       <ReviewSummaryStrip
         actions={
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            <Button onClick={() => router.push("/test-cases")} variant="outline">
-              <ChevronLeft className="size-4" />
-              返回列表
-            </Button>
+            <fieldset aria-label="评审视图" className="flex h-8 rounded-lg border bg-slate-50 p-0.5 dark:bg-muted/50">
+              <Button
+                className="h-full gap-1.5 px-3 text-sm"
+                onClick={() => setViewMode("list")}
+                size="sm"
+                variant={viewMode === "list" ? "secondary" : "ghost"}
+              >
+                <List className="size-4" />
+                列表
+              </Button>
+              <Button
+                className="h-full gap-1.5 px-3 text-sm"
+                onClick={() => setViewMode("mindmap")}
+                size="sm"
+                variant={viewMode === "mindmap" ? "secondary" : "ghost"}
+              >
+                <Network className="size-4" />
+                脑图
+              </Button>
+            </fieldset>
             <Button disabled={exporting || !testCaseSet || !projectId} onClick={exportTestCases} variant="outline">
               {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
               导出测试用例
@@ -328,7 +328,7 @@ export default function TestCaseReviewPage() {
         stats={stats}
       />
 
-      <ShellSection className="flex min-h-0 flex-1 bg-[#F7F8FA] p-0">
+      <ShellSection className="flex min-h-0 flex-1 bg-[#F7F8FA] p-0 dark:bg-background">
         {loading ? (
           <div className="flex h-80 items-center justify-center gap-2 text-muted-foreground text-sm">
             <Loader2 className="size-4 animate-spin" />
@@ -342,34 +342,11 @@ export default function TestCaseReviewPage() {
           <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-xl lg:grid-cols-[360px_minmax(0,1fr)]">
             <aside
               className={cn(
-                "min-h-0 flex-col border-b bg-white lg:border-r lg:border-b-0",
+                "min-h-0 flex-col border-b bg-white lg:border-r lg:border-b-0 dark:bg-card",
                 viewMode === "mindmap" ? "hidden" : "flex",
               )}
             >
               <div className="flex flex-col gap-3 border-b p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="font-medium text-muted-foreground text-xs uppercase tracking-[0.14em]">评审导航</div>
-                  <div className="flex rounded-lg border bg-slate-50 p-0.5">
-                    <Button
-                      className="h-7 gap-1.5 px-2.5 text-xs"
-                      onClick={() => setViewMode("list")}
-                      size="sm"
-                      variant={viewMode === "list" ? "secondary" : "ghost"}
-                    >
-                      <List className="size-3.5" />
-                      列表
-                    </Button>
-                    <Button
-                      className="h-7 gap-1.5 px-2.5 text-xs"
-                      onClick={() => setViewMode("mindmap")}
-                      size="sm"
-                      variant={viewMode === "mindmap" ? "secondary" : "ghost"}
-                    >
-                      <Network className="size-3.5" />
-                      脑图
-                    </Button>
-                  </div>
-                </div>
                 <div className="relative">
                   <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -401,8 +378,9 @@ export default function TestCaseReviewPage() {
                 {filteredCases.map((item) => (
                   <button
                     className={cn(
-                      "mb-2 w-full rounded-lg border border-slate-200/70 bg-white p-3 text-left transition hover:border-blue-200 hover:bg-blue-50/30 hover:shadow-sm",
-                      selectedCase?.id === item.id && "border-blue-300 bg-blue-50/70 shadow-sm ring-1 ring-blue-100",
+                      "mb-2 w-full rounded-lg border border-slate-200/70 bg-white p-3 text-left transition hover:border-blue-200 hover:bg-blue-50/30 hover:shadow-sm dark:border-border dark:bg-card dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10 dark:hover:shadow-none",
+                      selectedCase?.id === item.id &&
+                        "border-blue-300 bg-blue-50/70 shadow-sm ring-1 ring-blue-100 dark:border-blue-500/60 dark:bg-blue-500/15 dark:ring-blue-500/25",
                     )}
                     key={item.id}
                     onClick={() => setSelectedCaseId(item.id)}
@@ -415,13 +393,15 @@ export default function TestCaseReviewPage() {
                         </Badge>
                       ) : null}
                       <div className="min-w-0 flex-1">
-                        <div className="line-clamp-2 font-medium text-[#101828] text-sm">{item.title}</div>
+                        <div className="line-clamp-2 font-medium text-[#101828] text-sm dark:text-foreground">
+                          {item.title}
+                        </div>
                       </div>
                     </div>
                   </button>
                 ))}
                 {filteredCases.length === 0 ? (
-                  <div className="rounded-lg border border-dashed bg-white p-6 text-center text-muted-foreground text-sm">
+                  <div className="rounded-lg border border-dashed bg-white p-6 text-center text-muted-foreground text-sm dark:bg-card">
                     没有匹配的测试用例。
                   </div>
                 ) : null}
@@ -430,7 +410,7 @@ export default function TestCaseReviewPage() {
 
             <main
               className={cn(
-                "relative flex min-h-0 min-w-0 flex-col bg-white",
+                "relative flex min-h-0 min-w-0 flex-col bg-white dark:bg-card",
                 viewMode === "mindmap" && "lg:col-span-2",
               )}
             >
@@ -440,15 +420,6 @@ export default function TestCaseReviewPage() {
                   viewMode !== "mindmap" && "pointer-events-none invisible absolute inset-0",
                 )}
               >
-                <Button
-                  className="absolute top-4 right-4 z-20 bg-white/90 shadow-sm backdrop-blur"
-                  onClick={() => setViewMode("list")}
-                  size="sm"
-                  variant="outline"
-                >
-                  <List className="size-4" />
-                  返回列表
-                </Button>
                 <TestCaseMindMap
                   active={viewMode === "mindmap"}
                   cases={filteredCases}
@@ -468,7 +439,7 @@ export default function TestCaseReviewPage() {
                         <div className="min-w-0 space-y-1.5">
                           <ModulePath moduleName={selectedCase.module} />
                           <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <h2 className="min-w-0 max-w-full font-semibold text-[#101828] text-lg">
+                            <h2 className="min-w-0 max-w-full font-semibold text-[#101828] text-lg dark:text-foreground">
                               {selectedCase.title}
                             </h2>
                             {selectedCase.status === "rejected" ? (
@@ -535,7 +506,7 @@ export default function TestCaseReviewPage() {
           <DialogHeader className="items-center gap-4 text-center">
             <div
               aria-hidden="true"
-              className="flex size-12 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600 ring-1 ring-red-100"
+              className="flex size-12 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600 ring-1 ring-red-100 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-500/30"
             >
               <CircleX className="size-5" />
             </div>
@@ -600,7 +571,7 @@ function ReviewSummaryStrip({ actions, stats }: { actions: ReactNode; stats: Api
 
   return (
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-      <div className="grid min-w-0 flex-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm sm:grid-cols-3 lg:max-w-2xl">
+      <div className="grid min-w-0 flex-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm sm:h-8 sm:grid-cols-3 lg:max-w-2xl dark:border-border dark:bg-card dark:shadow-none">
         <ReviewSummaryModule accent="blue" label="采纳率" suffix="%" value={adoptionRate} />
         <ReviewSummaryModule accent="slate" label="评审进度" suffix="%" value={reviewProgress} />
         <ReviewSummaryModule accent="green" label="用例数量" value={stats.case_count} />
@@ -622,20 +593,23 @@ function ReviewSummaryModule({
   suffix?: string;
 }) {
   const accentClasses = {
-    blue: { dot: "bg-blue-500", label: "bg-blue-50 text-blue-700" },
-    slate: { dot: "bg-slate-500", label: "bg-slate-100 text-slate-700" },
-    green: { dot: "bg-emerald-500", label: "bg-emerald-50 text-emerald-700" },
+    blue: { dot: "bg-blue-500", label: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300" },
+    slate: { dot: "bg-slate-500", label: "bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300" },
+    green: {
+      dot: "bg-emerald-500",
+      label: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+    },
   };
   const tone = accentClasses[accent];
 
   return (
-    <div className="flex h-10 min-w-0 items-center justify-center gap-3 border-slate-100 border-t px-3 first:border-t-0 sm:border-t-0 sm:border-l sm:first:border-l-0">
+    <div className="flex h-8 min-w-0 items-center justify-center gap-3 border-slate-100 border-t px-3 first:border-t-0 sm:h-full sm:border-t-0 sm:border-l sm:first:border-l-0 dark:border-border">
       <div className={cn("flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5", tone.label)}>
         <span className={cn("h-1.5 w-1.5 rounded-full", tone.dot)} />
         <span className="font-medium text-xs">{label}</span>
       </div>
       <div className="flex min-w-0 items-baseline">
-        <span className="inline-flex items-baseline font-mono font-semibold text-[#101828] text-xs leading-none">
+        <span className="inline-flex items-baseline font-mono font-semibold text-[#101828] text-xs leading-none dark:text-foreground">
           <SlidingNumber value={value} />
           {suffix ? <span>{suffix}</span> : null}
         </span>
@@ -690,7 +664,7 @@ function ReviewActions({
       ) : null}
       {status !== "rejected" ? (
         <Button
-          className="border-red-200 text-red-700 hover:bg-red-50"
+          className="border-red-200 text-red-700 hover:bg-red-50 dark:border-red-500/40 dark:text-red-300 dark:hover:bg-red-500/15"
           disabled={disabled}
           onClick={onReject}
           variant="outline"
@@ -718,7 +692,7 @@ function InlineCaseEditor({
     <div className="space-y-4">
       <ReviewBlock title="前置条件">
         <Textarea
-          className="min-h-[72px] resize-y bg-white py-2 leading-5"
+          className="min-h-[72px] resize-y bg-white py-2 leading-5 dark:bg-input/30"
           onChange={(event) => onChange({ ...editState, preconditions: event.target.value })}
           value={editState.preconditions}
         />
@@ -763,9 +737,9 @@ function EditableStepTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-md border bg-white">
+    <div className="overflow-hidden rounded-md border bg-white dark:bg-card">
       <table className="w-full border-collapse text-left text-sm">
-        <thead className="bg-[#F7F8FA] text-[#475467]">
+        <thead className="bg-[#F7F8FA] text-[#475467] dark:bg-muted/40 dark:text-muted-foreground">
           <tr>
             <th className="w-16 border-b px-3 py-2 font-medium">序号</th>
             <th className="border-b px-3 py-2 font-medium">测试步骤</th>
@@ -776,17 +750,17 @@ function EditableStepTable({
         <tbody>
           {editState.steps.map((step, index) => (
             <tr className="border-b last:border-b-0" key={step.editKey}>
-              <td className="px-3 py-3 align-top font-mono text-[#667085]">{index + 1}</td>
+              <td className="px-3 py-3 align-top font-mono text-[#667085] dark:text-muted-foreground">{index + 1}</td>
               <td className="px-3 py-3 align-top">
                 <Textarea
-                  className="min-h-[52px] resize-y bg-white py-2 leading-5"
+                  className="min-h-[52px] resize-y bg-white py-2 leading-5 dark:bg-input/30"
                   onChange={(event) => updateStep(index, { action: event.target.value })}
                   value={step.action}
                 />
               </td>
               <td className="px-3 py-3 align-top">
                 <Textarea
-                  className="min-h-[52px] resize-y bg-white py-2 leading-5"
+                  className="min-h-[52px] resize-y bg-white py-2 leading-5 dark:bg-input/30"
                   onChange={(event) => updateStep(index, { expected_result: event.target.value })}
                   value={step.expected_result}
                 />
@@ -800,7 +774,7 @@ function EditableStepTable({
           ))}
         </tbody>
       </table>
-      <div className="border-t bg-[#F7F8FA] p-3">
+      <div className="border-t bg-[#F7F8FA] p-3 dark:bg-muted/40">
         <Button onClick={addStep} size="sm" variant="outline">
           新增步骤
         </Button>
@@ -825,7 +799,7 @@ function StepExpectationTable({ testCase }: { testCase: ApiTestCase }) {
   return (
     <div className="overflow-hidden rounded-md border">
       <table className="w-full border-collapse text-left text-sm">
-        <thead className="bg-[#F7F8FA] text-[#475467]">
+        <thead className="bg-[#F7F8FA] text-[#475467] dark:bg-muted/40 dark:text-muted-foreground">
           <tr>
             <th className="w-16 border-b px-3 py-2 font-medium">序号</th>
             <th className="border-b px-3 py-2 font-medium">测试步骤</th>
@@ -835,9 +809,9 @@ function StepExpectationTable({ testCase }: { testCase: ApiTestCase }) {
         <tbody>
           {keyedSteps.map(({ rowKey, step }, index) => (
             <tr className="border-b last:border-b-0" key={rowKey}>
-              <td className="px-3 py-3 align-top font-mono text-[#667085]">{index + 1}</td>
-              <td className="px-3 py-3 align-top text-[#101828]">{stepActionText(step) || "-"}</td>
-              <td className="px-3 py-3 align-top text-[#101828]">
+              <td className="px-3 py-3 align-top font-mono text-[#667085] dark:text-muted-foreground">{index + 1}</td>
+              <td className="px-3 py-3 align-top text-[#101828] dark:text-foreground">{stepActionText(step) || "-"}</td>
+              <td className="px-3 py-3 align-top text-[#101828] dark:text-foreground">
                 {step.expected_result || testCase.expected_result || "-"}
               </td>
             </tr>
@@ -872,19 +846,20 @@ function ModulePath({
   return (
     <div
       className={cn(
-        "flex min-w-0 items-center gap-1 text-[#667085]",
+        "flex min-w-0 items-center gap-1 text-[#667085] dark:text-muted-foreground",
         compact ? "overflow-hidden text-[11px]" : "flex-wrap text-xs",
         className,
       )}
     >
-      {compact ? null : <span className="font-medium text-[#98A2B3]">模块</span>}
+      {compact ? null : <span className="font-medium text-[#98A2B3] dark:text-muted-foreground">模块</span>}
       {keyedSegments.map(({ segment, path }, index) => (
         <span className="flex min-w-0 items-center gap-1" key={path}>
-          {index > 0 ? <ChevronRight className="size-3 shrink-0 text-slate-300" /> : null}
+          {index > 0 ? <ChevronRight className="size-3 shrink-0 text-slate-300 dark:text-slate-600" /> : null}
           <span
             className={cn(
               "min-w-0 truncate",
-              index === segments.length - 1 && (compact ? "text-[#475467]" : "font-medium text-[#344054]"),
+              index === segments.length - 1 &&
+                (compact ? "text-[#475467] dark:text-slate-300" : "font-medium text-[#344054] dark:text-foreground"),
             )}
           >
             {segment}
@@ -898,7 +873,7 @@ function ModulePath({
 function RejectedReasonButton({ feedback, onClick }: { feedback: string; onClick: () => void }) {
   return (
     <Button
-      className="h-7 max-w-[260px] justify-start gap-1.5 border-red-200 bg-red-50 px-2 text-red-700 text-xs hover:bg-red-100"
+      className="h-7 max-w-[260px] justify-start gap-1.5 border-red-200 bg-red-50 px-2 text-red-700 text-xs hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-300 dark:hover:bg-red-500/25"
       onClick={onClick}
       type="button"
       variant="outline"
@@ -911,9 +886,9 @@ function RejectedReasonButton({ feedback, onClick }: { feedback: string; onClick
 
 function ReviewBlock({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-lg border bg-white p-4">
-      <h3 className="mb-3 font-medium text-[#101828] text-sm">{title}</h3>
-      <div className="whitespace-pre-wrap text-[#101828] text-sm leading-6">{children}</div>
+    <section className="rounded-lg border bg-white p-4 dark:bg-card">
+      <h3 className="mb-3 font-medium text-[#101828] text-sm dark:text-foreground">{title}</h3>
+      <div className="whitespace-pre-wrap text-[#101828] text-sm leading-6 dark:text-foreground">{children}</div>
     </section>
   );
 }

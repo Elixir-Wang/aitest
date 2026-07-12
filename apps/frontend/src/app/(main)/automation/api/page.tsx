@@ -196,7 +196,7 @@ export default function Page() {
                         </Link>
                       </TableCell>
                       <TableCell className="max-w-80 truncate text-muted-foreground">{item.notes || "-"}</TableCell>
-                      <TableCell>{item.case_count}</TableCell>
+                      <TableCell>{item.endpoint_count}</TableCell>
                       <TableCell>{formatDateTime(item.updated_at)}</TableCell>
                       <TableCell>
                         <RowActions

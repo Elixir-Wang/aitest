@@ -1,112 +1,275 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { Eye, PlaySquare } from "lucide-react";
+import { Loader2, Play, RotateCcw, Square } from "lucide-react";
+import { toast } from "sonner";
 
-import {
-  ListToolbar,
-  MetricCard,
-  ModuleTabs,
-  PageShell,
-  RowActions,
-  ShellSection,
-  SoonPage,
-} from "@/components/ai-testing/page-shell";
-import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
-import { Checkbox } from "@/components/ui/checkbox";
+import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { Select, SelectOption } from "@/components/ui/animated-select-1";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { chineseCompletionTone, StatusBadge } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { type ApiProject, apiRequest } from "@/lib/api-client";
+import type { ExplorationEnvironment } from "@/lib/exploration-types";
 
-const automationJobs: Array<{ id: string; title: string; status: string; suite: string; updated: string }> = [];
+type Operation = {
+  key: string;
+  version: number;
+  status: string;
+  page_path: string;
+  parameters: Record<string, { type: string; required: boolean; default: unknown }>;
+  steps: Array<{ action: string; element_key: string }>;
+};
+
+type OperationsArtifact = { operations: Operation[] };
+type ReplayRun = {
+  id: string;
+  project_id: string;
+  environment_id: string;
+  operation_key: string;
+  status: string;
+  steps: Array<{ index: number; action: string; element_key: string; success: boolean }>;
+  error: string;
+};
 
 export default function Page() {
-  const { allSelected, deleteSelected, partiallySelected, rows, selectedCount, selectedIds, toggleAll, toggleOne } =
-    useLocalTableSelection(automationJobs);
-  const [activeTab, setActiveTab] = useState("自动化用例");
-  const [searchText, setSearchText] = useState("");
-  const filteredRows = rows.filter((item) =>
-    [item.title, item.status, item.suite, item.updated].some((value) =>
-      value.toLowerCase().includes(searchText.trim().toLowerCase()),
-    ),
-  );
+  const [projects, setProjects] = useState<ApiProject[]>([]);
+  const [projectId, setProjectId] = useState("");
+  const [environments, setEnvironments] = useState<ExplorationEnvironment[]>([]);
+  const [environmentId, setEnvironmentId] = useState("");
+  const [operations, setOperations] = useState<Operation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedOperation, setSelectedOperation] = useState<Operation | null>(null);
+  const [parameters, setParameters] = useState<Record<string, string>>({});
+  const [run, setRun] = useState<ReplayRun | null>(null);
+
+  useEffect(() => {
+    apiRequest<ApiProject[]>("/projects")
+      .then((items) => {
+        const active = items.filter((item) => item.status === "active");
+        setProjects(active);
+        setProjectId(active[0]?.id || "");
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : "项目加载失败"));
+  }, []);
+
+  useEffect(() => {
+    if (!projectId) return;
+    setLoading(true);
+    Promise.all([
+      apiRequest<ExplorationEnvironment[]>(`/environments?project_id=${projectId}`),
+      apiRequest<OperationsArtifact>(`/page-exploration/projects/${projectId}/operations`),
+    ])
+      .then(([environmentItems, artifact]) => {
+        setEnvironments(environmentItems);
+        setEnvironmentId(environmentItems[0]?.id || "");
+        setOperations(artifact.operations || []);
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : "自动化产物加载失败"))
+      .finally(() => setLoading(false));
+  }, [projectId]);
+
+  const pollRun = useCallback(async (project: string, runId: string) => {
+    const next = await apiRequest<ReplayRun>(`/page-exploration/projects/${project}/replay-runs/${runId}`);
+    setRun(next);
+    if (["pending", "running", "stopping"].includes(next.status)) {
+      window.setTimeout(() => void pollRun(project, runId), 1000);
+    }
+  }, []);
+
+  async function startRun() {
+    if (!selectedOperation || !environmentId) return;
+    try {
+      const created = await apiRequest<ReplayRun>(`/page-exploration/projects/${projectId}/replay`, {
+        method: "POST",
+        body: JSON.stringify({
+          environment_id: environmentId,
+          operation_key: selectedOperation.key,
+          parameters,
+        }),
+      });
+      setSelectedOperation(null);
+      setRun(created);
+      void pollRun(projectId, created.id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "执行启动失败");
+    }
+  }
+
+  async function runAction(action: "stop" | "retry") {
+    if (!run) return;
+    const next = await apiRequest<ReplayRun>(
+      `/page-exploration/projects/${run.project_id}/replay-runs/${run.id}/${action}`,
+      { method: "POST" },
+    );
+    setRun(next);
+    if (action === "retry") void pollRun(next.project_id, next.id);
+  }
 
   return (
     <PageShell
       breadcrumbs={[{ label: "测试资产" }, { label: "UI 自动化" }]}
-      description="查看全部项目的 UI 自动化任务、套件和执行状态。"
+      description="使用项目级探索产物，在当前项目任意环境中执行 Chrome 自动化。"
       projectScope="all"
       title="UI 自动化"
     >
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard helper="真实接口接入后展示" icon={PlaySquare} label="自动化任务" value="-" />
-        <MetricCard helper="真实接口接入后展示" icon={PlaySquare} label="执行套件" value="-" />
-        <MetricCard helper="真实接口接入后展示" icon={PlaySquare} label="待执行" value="-" />
-      </div>
-      <ModuleTabs activeTab={activeTab} onTabChange={setActiveTab} tabs={["自动化用例", "用例测试集"]} />
-      {activeTab === "自动化用例" ? (
-        <ShellSection>
-          <ListToolbar
-            createLabel="新建自动化"
-            onBatchDelete={deleteSelected}
-            onSearch={setSearchText}
-            placeholder="搜索任务、套件或状态"
-            selectedCount={selectedCount}
-            title="自动化任务列表"
-          />
-          <div className="overflow-hidden rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <Checkbox
-                      aria-label="选择全部自动化任务"
-                      checked={allSelected || (partiallySelected ? "indeterminate" : false)}
-                      onCheckedChange={(checked) => toggleAll(Boolean(checked))}
-                    />
-                  </TableHead>
-                  <TableHead>任务标题</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>套件</TableHead>
-                  <TableHead>更新时间</TableHead>
-                  <TableHead className="w-16">操作</TableHead>
+      <ShellSection>
+        <div className="flex flex-wrap items-end gap-4 border-b p-4">
+          <Field className="w-64">
+            <FieldLabel>项目</FieldLabel>
+            <Select placeholder="选择项目" setValue={setProjectId} value={projectId}>
+              {projects.map((project) => (
+                <SelectOption key={project.id} value={project.id}>
+                  {project.name}
+                </SelectOption>
+              ))}
+            </Select>
+          </Field>
+          <Field className="w-64">
+            <FieldLabel>运行环境</FieldLabel>
+            <Select placeholder="选择项目环境" setValue={setEnvironmentId} value={environmentId}>
+              {environments.map((environment) => (
+                <SelectOption key={environment.id} value={environment.id}>
+                  {environment.name}
+                </SelectOption>
+              ))}
+            </Select>
+          </Field>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>操作</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead>入口路径</TableHead>
+              <TableHead>步骤</TableHead>
+              <TableHead className="w-20">执行</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <TableRow>
+                <TableCell className="h-24 text-center" colSpan={5}>
+                  <Loader2 className="mx-auto size-5 animate-spin" />
+                </TableCell>
+              </TableRow>
+            ) : null}
+            {!loading &&
+              operations.map((operation) => (
+                <TableRow key={operation.key}>
+                  <TableCell className="font-medium">{operation.key}</TableCell>
+                  <TableCell>
+                    <StatusBadge tone={chineseCompletionTone(operation.status)}>{operation.status}</StatusBadge>
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{operation.page_path}</TableCell>
+                  <TableCell>{operation.steps.length}</TableCell>
+                  <TableCell>
+                    <Button
+                      aria-label={`执行 ${operation.key}`}
+                      disabled={!environmentId || ["degraded", "deprecated"].includes(operation.status)}
+                      onClick={() => {
+                        setSelectedOperation(operation);
+                        setParameters({});
+                      }}
+                      size="icon-sm"
+                    >
+                      <Play className="size-4" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredRows.map((item) => (
-                  <TableRow data-state={selectedIds.includes(item.id) ? "selected" : undefined} key={item.id}>
-                    <TableCell>
-                      <Checkbox
-                        aria-label={`选择 ${item.id}`}
-                        checked={selectedIds.includes(item.id)}
-                        onCheckedChange={(checked) => toggleOne(item.id, Boolean(checked))}
-                      />
-                    </TableCell>
-                    <TableCell>{item.title}</TableCell>
-                    <TableCell>
-                      <StatusBadge tone={chineseCompletionTone(item.status)}>{item.status}</StatusBadge>
-                    </TableCell>
-                    <TableCell>{item.suite}</TableCell>
-                    <TableCell>{item.updated}</TableCell>
-                    <TableCell>
-                      <RowActions actions={[{ label: "查看", href: ".", icon: Eye }]} label="打开操作菜单" />
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filteredRows.length === 0 ? (
-                  <TableRow>
-                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
-                      暂无自动化任务。创建任务后，可跟踪执行状态和产物。
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
+              ))}
+            {!loading && operations.length === 0 ? (
+              <TableRow>
+                <TableCell className="h-24 text-center text-muted-foreground" colSpan={5}>
+                  当前项目暂无可执行操作。
+                </TableCell>
+              </TableRow>
+            ) : null}
+          </TableBody>
+        </Table>
+      </ShellSection>
+      {run ? (
+        <ShellSection>
+          <div className="flex items-center justify-between border-b p-4">
+            <div>
+              <div className="font-medium">{run.operation_key}</div>
+              <div className="text-muted-foreground text-sm">{run.id}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <StatusBadge tone={chineseCompletionTone(run.status)}>{run.status}</StatusBadge>
+              {["pending", "running"].includes(run.status) ? (
+                <Button onClick={() => void runAction("stop")} size="icon-sm" variant="outline">
+                  <Square className="size-4" />
+                </Button>
+              ) : (
+                <Button onClick={() => void runAction("retry")} size="icon-sm" variant="outline">
+                  <RotateCcw className="size-4" />
+                </Button>
+              )}
+            </div>
           </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>#</TableHead>
+                <TableHead>动作</TableHead>
+                <TableHead>元素</TableHead>
+                <TableHead>结果</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {run.steps.map((step) => (
+                <TableRow key={step.index}>
+                  <TableCell>{step.index}</TableCell>
+                  <TableCell>{step.action}</TableCell>
+                  <TableCell className="font-mono text-xs">{step.element_key || "-"}</TableCell>
+                  <TableCell>{step.success ? "通过" : "失败"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </ShellSection>
-      ) : (
-        <SoonPage description="用例测试集将用于组合多条 UI 自动化用例并批量执行。" title="用例测试集暂未开放" />
-      )}
+      ) : null}
+      <Dialog
+        open={Boolean(selectedOperation)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedOperation(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>执行 {selectedOperation?.key}</DialogTitle>
+          </DialogHeader>
+          <FieldGroup>
+            {Object.entries(selectedOperation?.parameters || {}).map(([name, spec]) => (
+              <Field key={name}>
+                <FieldLabel htmlFor={`replay-${name}`}>
+                  {name}
+                  {spec.required ? " *" : ""}
+                </FieldLabel>
+                <Input
+                  id={`replay-${name}`}
+                  onChange={(event) => setParameters((current) => ({ ...current, [name]: event.target.value }))}
+                  value={parameters[name] || String(spec.default ?? "")}
+                />
+              </Field>
+            ))}
+          </FieldGroup>
+          <DialogFooter>
+            <Button onClick={() => setSelectedOperation(null)} variant="outline">
+              取消
+            </Button>
+            <Button disabled={!environmentId} onClick={() => void startRun()}>
+              <Play className="size-4" />
+              开始执行
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }

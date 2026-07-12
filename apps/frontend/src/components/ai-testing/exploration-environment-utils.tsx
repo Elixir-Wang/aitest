@@ -5,6 +5,7 @@ import { ApiRequestError, formatDateTime } from "@/lib/api-client";
 import type { ExplorationEnvironment } from "@/lib/exploration-types";
 
 export type EnvironmentForm = {
+  projectId: string;
   name: string;
   siteUrl: string;
   username: string;
@@ -25,6 +26,7 @@ export type ManualAuthSession = {
 };
 
 export const emptyEnvironmentForm: EnvironmentForm = {
+  projectId: "",
   name: "",
   siteUrl: "",
   username: "",
@@ -85,6 +87,7 @@ export function formatAuthStateExpiresAt(expiresAt: string | null | undefined) {
 
 export function formFromEnvironment(environment: ExplorationEnvironment): EnvironmentForm {
   return {
+    projectId: environment.project_id,
     name: environment.name,
     siteUrl: environment.site_url,
     username: environment.username,

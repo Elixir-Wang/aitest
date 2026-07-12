@@ -260,8 +260,10 @@ CREATE TABLE IF NOT EXISTS test_cases (
   test_case_set_id TEXT NOT NULL,
   project_id TEXT NOT NULL,
   title TEXT NOT NULL,
+  test_description TEXT NOT NULL DEFAULT '',
   module TEXT NOT NULL DEFAULT '',
   priority TEXT NOT NULL DEFAULT '',
+  display_order INTEGER NOT NULL DEFAULT 0,
   preconditions TEXT NOT NULL DEFAULT '',
   steps_json TEXT NOT NULL DEFAULT '[]',
   expected_result TEXT NOT NULL DEFAULT '',
@@ -276,6 +278,9 @@ CREATE TABLE IF NOT EXISTS test_cases (
   FOREIGN KEY(test_case_set_id) REFERENCES test_case_sets(id) ON DELETE CASCADE,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_test_cases_set_display_order
+  ON test_cases(test_case_set_id, display_order);
 
 CREATE TABLE IF NOT EXISTS project_environments (
   id TEXT PRIMARY KEY,
@@ -456,7 +461,6 @@ CREATE TABLE IF NOT EXISTS api_test_cases (
   priority TEXT NOT NULL DEFAULT 'P2',
   coverage TEXT NOT NULL DEFAULT 'positive',
   source TEXT NOT NULL CHECK(source IN ('ai_generated', 'manual', 'approved_test_case')) DEFAULT 'ai_generated',
-  tags_json TEXT NOT NULL DEFAULT '[]',
   preconditions_json TEXT NOT NULL DEFAULT '[]',
   request_json TEXT NOT NULL DEFAULT '{}',
   test_data_json TEXT NOT NULL DEFAULT '{}',
@@ -495,6 +499,11 @@ CREATE TABLE IF NOT EXISTS api_test_scripts (
   data_file_path TEXT NOT NULL DEFAULT '',
   language TEXT NOT NULL DEFAULT 'python',
   framework TEXT NOT NULL DEFAULT 'pytest_requests',
+  source_hash TEXT NOT NULL DEFAULT '',
+  case_count INTEGER NOT NULL DEFAULT 0,
+  manual_modified INTEGER NOT NULL DEFAULT 0,
+  last_run_status TEXT NOT NULL DEFAULT '',
+  last_run_at TEXT,
   notes TEXT NOT NULL DEFAULT '',
   created_by TEXT NOT NULL,
   updated_by TEXT NOT NULL DEFAULT '',

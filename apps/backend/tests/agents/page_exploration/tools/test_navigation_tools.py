@@ -6,7 +6,9 @@ from app.agents.page_exploration.tools.navigation_tools import (
     playwright_click_tool,
     playwright_fill_tool,
     playwright_navigate_tool,
+    playwright_press_tool,
 )
+from app.agents.page_exploration.tools import get_local_tools
 from app.agents.page_exploration.tools.runtime_context import browser_session_context
 from app.services.page_exploration.browser_session import BrowserSessionError
 
@@ -38,15 +40,15 @@ def test_click_and_fill_use_runtime_browser_session_for_snapshot_refs():
         patch("app.agents.page_exploration.tools.runtime_context.PlaywrightBrowserSession", lambda **kw: fake),
         browser_session_context(start_url="https://test.com", storage_state_path="/tmp/state.json"),
     ):
-        click_result = playwright_click_tool.invoke({"locator": "button-save"})
-        fill_result = playwright_fill_tool.invoke({"locator": "textbox-name", "value": "hello"})
+        click_result = playwright_click_tool.invoke({"element_id": "button-save"})
+        fill_result = playwright_fill_tool.invoke({"element_id": "textbox-name", "value": "hello"})
 
     assert click_result["success"] is True
-    assert click_result["effective_locator"] == "button-save"
+    assert "effective_locator" not in click_result
     assert click_result["verification_required"] is True
     assert "业务完成判据" in click_result["next_step_hint"]
     assert fill_result["success"] is True
-    assert fill_result["effective_locator"] == "textbox-name"
+    assert "effective_locator" not in fill_result
     assert fill_result["verification_required"] is True
     assert "业务完成判据" in fill_result["next_step_hint"]
     # 验证 locator 透传给 session
@@ -59,10 +61,19 @@ def test_navigation_tools_require_bound_runtime_browser_session():
         playwright_navigate_tool.invoke({"url": "https://test.com/page"})
 
     with pytest.raises(BrowserSessionError, match="browser session is not bound"):
-        playwright_click_tool.invoke({"locator": "button-save"})
+        playwright_click_tool.invoke({"element_id": "button-save"})
 
     with pytest.raises(BrowserSessionError, match="browser session is not bound"):
-        playwright_fill_tool.invoke({"locator": "textbox-name", "value": "hello"})
+        playwright_fill_tool.invoke({"element_id": "textbox-name", "value": "hello"})
+
+
+def test_keyboard_actions_are_not_available_to_exploration_agent():
+    tool_names = {tool.name for tool in get_local_tools()}
+    assert "playwright_press_tool" not in tool_names
+
+    result = playwright_press_tool.invoke({"key": "Tab"})
+    assert result["success"] is False
+    assert result["failure"]["error_type"] == "keyboard_action_forbidden"
 
 
 def test_click_failure_does_not_auto_observe_to_avoid_infinite_loop():
@@ -96,7 +107,7 @@ def test_click_failure_does_not_auto_observe_to_avoid_infinite_loop():
         patch("app.agents.page_exploration.tools.runtime_context.PlaywrightBrowserSession", lambda **kw: fake),
         browser_session_context(start_url="https://test.com", storage_state_path="/tmp/state.json"),
     ):
-        result = playwright_click_tool.invoke({"locator": "button-old"})
+        result = playwright_click_tool.invoke({"element_id": "button-old"})
 
     assert result["success"] is False
     assert "Unknown element id" in result["error"]
@@ -129,7 +140,7 @@ def test_click_accepts_playwright_role_locator_string():
         browser_session_context(start_url="https://test.com", storage_state_path="/tmp/state.json"),
     ):
         result = playwright_click_tool.invoke({
-            "locator": "getByRole('treeitem', { name: '自主规划 Agent' })"
+            "element_id": "getByRole('treeitem', { name: '自主规划 Agent' })"
         })
 
     assert result["success"] is True
@@ -171,7 +182,7 @@ def test_click_preserves_recovered_failure_warning_on_success():
         patch("app.agents.page_exploration.tools.runtime_context.PlaywrightBrowserSession", lambda **kw: fake),
         browser_session_context(start_url="https://test.com", storage_state_path="/tmp/state.json"),
     ):
-        result = playwright_click_tool.invoke({"locator": "getByRole('button', { name: '编辑' })"})
+        result = playwright_click_tool.invoke({"element_id": "getByRole('button', { name: '编辑' })"})
 
     assert result["success"] is True
     assert result["failure"]["recovered"] is True
@@ -205,7 +216,7 @@ def test_click_success_with_structural_css_reports_low_confidence_risk():
         browser_session_context(start_url="https://test.com", storage_state_path="/tmp/state.json"),
     ):
         result = playwright_click_tool.invoke({
-            "locator": "page.locator('body > div:nth-of-type(1) > button:nth-of-type(2)')",
+            "element_id": "page.locator('body > div:nth-of-type(1) > button:nth-of-type(2)')",
         })
 
     assert result["success"] is True
@@ -239,7 +250,7 @@ def test_fill_accepts_playwright_label_locator_string():
         browser_session_context(start_url="https://test.com", storage_state_path="/tmp/state.json"),
     ):
         result = playwright_fill_tool.invoke({
-            "locator": "getByLabel('用户名')",
+            "element_id": "getByLabel('用户名')",
             "value": "张三",
         })
 

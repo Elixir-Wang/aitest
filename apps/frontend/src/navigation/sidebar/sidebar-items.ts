@@ -1,5 +1,6 @@
 import {
   Bot,
+  BrainCircuit,
   ClipboardCheck,
   ClipboardList,
   DatabaseZap,
@@ -113,6 +114,14 @@ export const sidebarItems: NavGroup[] = [
         title: "性能测试",
         url: "/projects/:projectId/performance-tests",
         icon: Gauge,
+        comingSoon: true,
+        disabled: true,
+        projectScoped: true,
+      },
+      {
+        title: "模型评测",
+        url: "/projects/:projectId/model-evaluations",
+        icon: BrainCircuit,
         comingSoon: true,
         disabled: true,
         projectScoped: true,
