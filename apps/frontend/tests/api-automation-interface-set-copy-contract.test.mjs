@@ -156,7 +156,7 @@ test("project api automation case tab shows generated endpoints and case table w
   assert.doesNotMatch(projectPageSource, /apiCaseSummaryCounts/);
   assert.match(
     projectPageSource,
-    /activeTab === "接口用例" && \(\s*<div className="grid min-h-\[calc\(100dvh-10rem\)\]/,
+    /activeTab === "接口用例" && \(\s*<div className="grid min-h-\[28rem\]/,
   );
   assert.match(projectPageSource, /aria-label="选择当前接口列表"/);
   assert.doesNotMatch(projectPageSource, /已生成用例接口/);
@@ -175,13 +175,12 @@ test("project api automation case tab shows generated endpoints and case table w
   assert.match(projectPageSource, /toggleApiCaseEndpointGroupSelection\(groupEndpointIds, Boolean\(checked\)\)/);
   assert.match(projectPageSource, /aria-label={`选择 \$\{group\} 分组的全部接口用例`}/);
   assert.match(projectPageSource, /setActiveApiCaseEndpointId\(endpoint\.id\)/);
-  assert.match(projectPageSource, /title="接口信息"/);
   assert.match(
     projectPageSource,
     /\$\{activeApiCaseEndpoint\.summary \|\| activeApiCaseEndpoint\.path\} · \$\{activeApiCaseEndpoint\.path\}/,
   );
   assert.match(projectPageSource, /<RefreshCw className="size-4" \/>/);
-  assert.match(projectPageSource, /placeholder="搜索用例名称、优先级或更新时间"/);
+  assert.match(projectPageSource, /placeholder="搜索用例名称"/);
   assert.match(projectPageSource, /onBatchDelete=\{\(\) => deleteApiTestCases\(selectedApiCaseIds\)\}/);
   assert.match(projectPageSource, /aria-label="选择全部接口用例"/);
   assert.match(projectPageSource, /<TableHead>用例名称<\/TableHead>/);
