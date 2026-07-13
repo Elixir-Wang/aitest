@@ -1,0 +1,28 @@
+warning: `VIRTUAL_ENV=D:\project\test_project\apps\backend\.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+Using CPython 3.13.7 interpreter at: C:\Users\hongbao.wang\AppData\Local\Programs\Python\Python313\python.exe
+Creating virtual environment at: .venv
+Resolved 14 packages in 884ms
+Prepared 2 packages in 246ms
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 13 packages in 1.57s
+ + certifi==2026.6.17
+ + charset-normalizer==3.4.9
+ + colorama==0.4.6
+ + idna==3.18
+ + iniconfig==2.3.0
+ + packaging==26.2
+ + pluggy==1.6.0
+ + pygments==2.20.0
+ + pytest==9.1.1
+ + pytest-json-report==1.5.0
+ + pytest-metadata==3.1.1
+ + requests==2.34.2
+ + urllib3==2.7.0
+
+warning: `VIRTUAL_ENV=D:\project\test_project\apps\backend\.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+ImportError while loading conftest 'D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\api_automation\pytest_requests\conftest.py'.
+conftest.py:3: in <module>
+    from support.client import ApiClient
+E   ModuleNotFoundError: No module named 'support'

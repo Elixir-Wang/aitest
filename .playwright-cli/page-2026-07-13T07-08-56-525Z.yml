@@ -1,0 +1,408 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e168]:
+    - generic [ref=e171]:
+      - list [ref=e173]:
+        - listitem [ref=e174]:
+          - link "AI 测试系统" [ref=e175] [cursor=pointer]:
+            - /url: /dashboard
+            - generic [ref=e176]: AI 测试系统
+      - generic [ref=e177]:
+        - generic [ref=e178]:
+          - generic [ref=e179]: 工作台
+          - list [ref=e181]:
+            - listitem [ref=e182]:
+              - link "控制台" [ref=e183] [cursor=pointer]:
+                - /url: /dashboard
+                - img [ref=e184]
+                - generic [ref=e189]: 控制台
+            - listitem [ref=e190]:
+              - link "任务中心" [ref=e191] [cursor=pointer]:
+                - /url: /tasks
+                - img [ref=e192]
+                - generic [ref=e195]: 任务中心
+        - generic [ref=e196]:
+          - generic [ref=e197]: 项目工作区
+          - list [ref=e199]:
+            - listitem [ref=e200]:
+              - link "项目" [ref=e201] [cursor=pointer]:
+                - /url: /projects
+                - img [ref=e202]
+                - generic [ref=e204]: 项目
+            - listitem [ref=e205]:
+              - link "需求" [ref=e206] [cursor=pointer]:
+                - /url: /requirements
+                - img [ref=e207]
+                - generic [ref=e210]: 需求
+            - listitem [ref=e211]:
+              - link "探索" [ref=e212] [cursor=pointer]:
+                - /url: /exploration
+                - img [ref=e213]
+                - generic [ref=e218]: 探索
+            - listitem [ref=e219]:
+              - link "知识库" [ref=e220] [cursor=pointer]:
+                - /url: /knowledge
+                - img [ref=e221]
+                - generic [ref=e226]: 知识库
+        - generic [ref=e227]:
+          - generic [ref=e228]: 测试资产
+          - list [ref=e230]:
+            - listitem [ref=e231]:
+              - link "测试用例" [ref=e232] [cursor=pointer]:
+                - /url: /test-cases
+                - img [ref=e233]
+                - generic [ref=e237]: 测试用例
+            - listitem [ref=e238]:
+              - link "UI 自动化 Soon" [disabled]:
+                - /url: /automation/ui
+                - img
+                - generic: UI 自动化
+                - generic: Soon
+            - listitem [ref=e239]:
+              - link "接口自动化" [ref=e240] [cursor=pointer]:
+                - /url: /automation/api
+                - img [ref=e241]
+                - generic [ref=e244]: 接口自动化
+            - listitem [ref=e245]:
+              - link "性能测试 Soon" [disabled]:
+                - /url: /performance-tests
+                - img
+                - generic: 性能测试
+                - generic: Soon
+            - listitem [ref=e246]:
+              - link "模型评测 Soon" [disabled]:
+                - /url: /model-evaluations
+                - img
+                - generic: 模型评测
+                - generic: Soon
+            - listitem [ref=e247]:
+              - link "报告中心" [ref=e248] [cursor=pointer]:
+                - /url: /reports
+                - img [ref=e249]
+                - generic [ref=e252]: 报告中心
+        - generic [ref=e253]:
+          - generic [ref=e254]: 系统管理
+          - list [ref=e256]:
+            - listitem [ref=e257]:
+              - link "模型配置" [ref=e258] [cursor=pointer]:
+                - /url: /settings/models
+                - img [ref=e259]
+                - generic [ref=e262]: 模型配置
+            - listitem [ref=e263]:
+              - link "用户与权限" [ref=e264] [cursor=pointer]:
+                - /url: /settings/users
+                - img [ref=e265]
+                - generic [ref=e270]: 用户与权限
+            - listitem [ref=e271]:
+              - link "系统日志" [ref=e272] [cursor=pointer]:
+                - /url: /settings/logs
+                - img [ref=e273]
+                - generic [ref=e276]: 系统日志
+    - main [ref=e277]:
+      - generic [ref=e279]:
+        - generic [ref=e280]:
+          - button "Toggle Sidebar" [ref=e281]:
+            - img
+            - generic [ref=e282]: Toggle Sidebar
+          - navigation "页面路径" [ref=e283]:
+            - list [ref=e284]:
+              - listitem [ref=e285]:
+                - generic "测试资产" [ref=e286]
+              - listitem [ref=e287]:
+                - img [ref=e288]
+                - generic "接口自动化" [ref=e290]
+        - generic [ref=e291]:
+          - combobox "切换项目" [ref=e293]:
+            - img
+            - generic: 全部项目
+            - img
+          - button [ref=e294]:
+            - img
+          - 'button "Current mode: light. Click to toggle dark mode" [ref=e295]':
+            - img
+          - button "打开用户菜单" [ref=e296]:
+            - generic [ref=e298]: A
+      - generic [ref=e300]:
+        - generic [ref=e301]:
+          - tablist [ref=e303]:
+            - tab "接口资产" [selected] [ref=e304]
+            - tab "接口环境" [ref=e305]
+            - tab "接口用例" [ref=e306]
+            - tab "测试脚本" [ref=e307]
+            - tab "运行记录" [ref=e308]
+            - tab "场景编排" [ref=e309]
+          - generic [ref=e311]:
+            - generic [ref=e312]:
+              - img
+              - textbox "搜索 method、path、tag" [ref=e313]:
+                - /placeholder: 搜索
+            - button "导入" [ref=e314]:
+              - img
+              - text: 导入
+            - button "刷新" [ref=e315]:
+              - img
+              - text: 刷新
+        - generic [ref=e316]:
+          - complementary [ref=e317]:
+            - generic [ref=e319]:
+              - checkbox "选择当前接口列表" [ref=e320]
+              - generic [ref=e321]:
+                - button "删除" [disabled]:
+                  - img
+                  - text: 删除
+                - button "生成用例" [disabled]:
+                  - img
+                  - text: 生成用例
+            - generic [ref=e322]:
+              - generic [ref=e324]:
+                - checkbox "选择 智能体 / 智能体统计 分组的全部接口" [ref=e325]
+                - button "智能体 / 智能体统计 分组，1 个接口，展开" [ref=e326] [cursor=pointer]:
+                  - img [ref=e327]
+                  - generic [ref=e329]: 智能体 / 智能体统计
+                  - generic [ref=e330]: "1"
+              - generic [ref=e332]:
+                - checkbox "选择 智能体 / 基本能力 分组的全部接口" [ref=e333]
+                - button "智能体 / 基本能力 分组，8 个接口，展开" [ref=e334] [cursor=pointer]:
+                  - img [ref=e335]
+                  - generic [ref=e337]: 智能体 / 基本能力
+                  - generic [ref=e338]: "8"
+              - generic [ref=e340]:
+                - checkbox "选择 智能体 / 批量任务-数据集 分组的全部接口" [ref=e341]
+                - button "智能体 / 批量任务-数据集 分组，6 个接口，展开" [ref=e342] [cursor=pointer]:
+                  - img [ref=e343]
+                  - generic [ref=e345]: 智能体 / 批量任务-数据集
+                  - generic [ref=e346]: "6"
+              - generic [ref=e348]:
+                - checkbox "选择 智能体 / 批量任务 分组的全部接口" [ref=e349]
+                - button "智能体 / 批量任务 分组，5 个接口，展开" [ref=e350] [cursor=pointer]:
+                  - img [ref=e351]
+                  - generic [ref=e353]: 智能体 / 批量任务
+                  - generic [ref=e354]: "5"
+              - generic [ref=e356]:
+                - checkbox "选择 智能体 / 对话流 分组的全部接口" [ref=e357]
+                - button "智能体 / 对话流 分组，12 个接口，展开" [ref=e358] [cursor=pointer]:
+                  - img [ref=e359]
+                  - generic [ref=e361]: 智能体 / 对话流
+                  - generic [ref=e362]: "12"
+              - generic [ref=e364]:
+                - checkbox "选择 智能体 / 会话 分组的全部接口" [ref=e365]
+                - button "智能体 / 会话 分组，4 个接口，展开" [ref=e366] [cursor=pointer]:
+                  - img [ref=e367]
+                  - generic [ref=e369]: 智能体 / 会话
+                  - generic [ref=e370]: "4"
+              - generic [ref=e372]:
+                - checkbox "选择 文件系统 / 文件 分组的全部接口" [ref=e373]
+                - button "文件系统 / 文件 分组，10 个接口，展开" [ref=e374] [cursor=pointer]:
+                  - img [ref=e375]
+                  - generic [ref=e377]: 文件系统 / 文件
+                  - generic [ref=e378]: "10"
+              - generic [ref=e380]:
+                - checkbox "选择 文件系统 / 图片转换 分组的全部接口" [ref=e381]
+                - button "文件系统 / 图片转换 分组，5 个接口，展开" [ref=e382] [cursor=pointer]:
+                  - img [ref=e383]
+                  - generic [ref=e385]: 文件系统 / 图片转换
+                  - generic [ref=e386]: "5"
+              - generic [ref=e388]:
+                - checkbox "选择 Multi-Agent / 基本能力 分组的全部接口" [ref=e389]
+                - button "Multi-Agent / 基本能力 分组，1 个接口，展开" [ref=e390] [cursor=pointer]:
+                  - img [ref=e391]
+                  - generic [ref=e393]: Multi-Agent / 基本能力
+                  - generic [ref=e394]: "1"
+              - generic [ref=e396]:
+                - checkbox "选择 知识库 / 基本能力 分组的全部接口" [ref=e397]
+                - button "知识库 / 基本能力 分组，4 个接口，展开" [ref=e398] [cursor=pointer]:
+                  - img [ref=e399]
+                  - generic [ref=e401]: 知识库 / 基本能力
+                  - generic [ref=e402]: "4"
+              - generic [ref=e404]:
+                - checkbox "选择 知识库 / 图片 分组的全部接口" [ref=e405]
+                - button "知识库 / 图片 分组，1 个接口，展开" [ref=e406] [cursor=pointer]:
+                  - img [ref=e407]
+                  - generic [ref=e409]: 知识库 / 图片
+                  - generic [ref=e410]: "1"
+              - generic [ref=e412]:
+                - checkbox "选择 智能体 / 会话文件 分组的全部接口" [ref=e413]
+                - button "智能体 / 会话文件 分组，4 个接口，展开" [ref=e414] [cursor=pointer]:
+                  - img [ref=e415]
+                  - generic [ref=e417]: 智能体 / 会话文件
+                  - generic [ref=e418]: "4"
+              - generic [ref=e420]:
+                - checkbox "选择 知识库 / 文件 分组的全部接口" [ref=e421]
+                - button "知识库 / 文件 分组，4 个接口，展开" [ref=e422] [cursor=pointer]:
+                  - img [ref=e423]
+                  - generic [ref=e425]: 知识库 / 文件
+                  - generic [ref=e426]: "4"
+              - generic [ref=e428]:
+                - checkbox "选择 知识库 / 文件夹 分组的全部接口" [ref=e429]
+                - button "知识库 / 文件夹 分组，4 个接口，展开" [ref=e430] [cursor=pointer]:
+                  - img [ref=e431]
+                  - generic [ref=e433]: 知识库 / 文件夹
+                  - generic [ref=e434]: "4"
+              - generic [ref=e436]:
+                - checkbox "选择 知识库 / QA 分组的全部接口" [ref=e437]
+                - button "知识库 / QA 分组，5 个接口，展开" [ref=e438] [cursor=pointer]:
+                  - img [ref=e439]
+                  - generic [ref=e441]: 知识库 / QA
+                  - generic [ref=e442]: "5"
+              - generic [ref=e444]:
+                - checkbox "选择 知识库 / 文本 分组的全部接口" [ref=e445]
+                - button "知识库 / 文本 分组，3 个接口，展开" [ref=e446] [cursor=pointer]:
+                  - img [ref=e447]
+                  - generic [ref=e449]: 知识库 / 文本
+                  - generic [ref=e450]: "3"
+              - generic [ref=e452]:
+                - checkbox "选择 调度平台 / 任务 分组的全部接口" [ref=e453]
+                - button "调度平台 / 任务 分组，7 个接口，展开" [ref=e454] [cursor=pointer]:
+                  - img [ref=e455]
+                  - generic [ref=e457]: 调度平台 / 任务
+                  - generic [ref=e458]: "7"
+          - generic [ref=e460]:
+            - generic [ref=e462]:
+              - generic [ref=e463]:
+                - generic [ref=e465]: 智能体 / 智能体统计
+                - generic [ref=e466]:
+                  - heading "智能体数据分析" [level=2] [ref=e467]
+                  - paragraph [ref=e468]: 按日期范围查询智能体统计数据（用户数、问题数/回答数、反馈与各项占比）。
+              - generic [ref=e469]:
+                - generic [ref=e470]:
+                  - generic [ref=e471]: POST
+                  - generic [ref=e472]: https://www.cybotstar.cn/openapi/v1/agent/analysis/
+                - button "测试一下" [ref=e473]:
+                  - img
+                  - text: 测试一下
+            - generic [ref=e475]:
+              - generic [ref=e476]:
+                - heading "授权" [level=3] [ref=e478]
+                - generic [ref=e479]:
+                  - generic [ref=e480]:
+                    - generic "cybertron-robot-key" [ref=e481]
+                    - generic [ref=e482]: string
+                    - generic [ref=e483]: header
+                    - generic [ref=e484]: 必填
+                    - paragraph [ref=e486]: 鉴权 header
+                  - generic [ref=e487]:
+                    - generic "cybertron-robot-token" [ref=e488]
+                    - generic [ref=e489]: string
+                    - generic [ref=e490]: header
+                    - generic [ref=e491]: 必填
+                    - paragraph [ref=e493]: 鉴权 header
+                  - generic [ref=e494]:
+                    - generic "username" [ref=e495]
+                    - generic [ref=e496]: string
+                    - generic [ref=e497]: header
+                    - generic [ref=e498]: 必填
+                    - paragraph [ref=e500]: 鉴权 header
+              - generic [ref=e501]:
+                - generic [ref=e502]:
+                  - heading "请求体" [level=3] [ref=e503]
+                  - generic [ref=e504]: application/json
+                - generic [ref=e505]:
+                  - generic [ref=e506]:
+                    - generic "start_date" [ref=e507]
+                    - generic [ref=e508]: string
+                    - generic [ref=e509]: body
+                    - generic [ref=e510]: 必填
+                    - paragraph [ref=e512]: 统计开始日期（如 2026-02-01）
+                  - generic [ref=e513]:
+                    - generic "end_date" [ref=e514]
+                    - generic [ref=e515]: string
+                    - generic [ref=e516]: body
+                    - generic [ref=e517]: 必填
+                    - paragraph [ref=e519]: 统计结束日期（如 2026-02-05）
+              - generic [ref=e520]:
+                - heading "响应信息" [level=3] [ref=e522]
+                - generic [ref=e523]:
+                  - generic [ref=e524]:
+                    - generic [ref=e525]:
+                      - generic [ref=e526]: "200"
+                      - generic [ref=e527]: 智能体数据分析返回（用户数、问题数/回答数、反馈与各项占比）
+                      - generic [ref=e529]: application/json
+                    - generic [ref=e530]:
+                      - generic [ref=e531]:
+                        - generic "code" [ref=e532]
+                        - generic [ref=e533]: string
+                        - generic [ref=e534]: response
+                        - paragraph [ref=e536]: 返回码，"000000" 表示成功
+                      - generic [ref=e537]:
+                        - generic "message" [ref=e538]
+                        - generic [ref=e539]: string
+                        - generic [ref=e540]: response
+                        - paragraph [ref=e542]: 状态描述
+                      - generic [ref=e543]:
+                        - generic "data" [ref=e544]
+                        - generic [ref=e545]: object
+                        - generic [ref=e546]: response
+                        - paragraph [ref=e548]: 日期范围内的统计数据
+                      - generic [ref=e549]:
+                        - generic "user_cnt" [ref=e550]
+                        - generic [ref=e551]: number
+                        - generic [ref=e552]: response
+                        - paragraph [ref=e554]: 用户数
+                      - generic [ref=e555]:
+                        - generic "question_cnt" [ref=e556]
+                        - generic [ref=e557]: number
+                        - generic [ref=e558]: response
+                        - paragraph [ref=e560]: 问题数
+                      - generic [ref=e561]:
+                        - generic "answer_cnt" [ref=e562]
+                        - generic [ref=e563]: number
+                        - generic [ref=e564]: response
+                        - paragraph [ref=e566]: 回答数
+                      - generic [ref=e567]:
+                        - generic "useful_cnt" [ref=e568]
+                        - generic [ref=e569]: number
+                        - generic [ref=e570]: response
+                        - paragraph [ref=e572]: 有用反馈数（用户点“有用/点赞”的条数）
+                      - generic [ref=e573]:
+                        - generic "useless_cnt" [ref=e574]
+                        - generic [ref=e575]: number
+                        - generic [ref=e576]: response
+                        - paragraph [ref=e578]: 无用反馈数（用户点“无用/点踩”的条数）
+                      - generic [ref=e579]:
+                        - generic "user_per_question_cnt" [ref=e580]
+                        - generic [ref=e581]: number
+                        - generic [ref=e582]: response
+                        - paragraph [ref=e584]: 人均问题数
+                      - generic [ref=e585]:
+                        - generic "normal_answer_rate" [ref=e586]
+                        - generic [ref=e587]: number<float>
+                        - generic [ref=e588]: response
+                        - paragraph [ref=e590]: 正常回答率（%）：成功/正常回答数占回答数的比例
+                      - generic [ref=e591]:
+                        - generic "useful_rate" [ref=e592]
+                        - generic [ref=e593]: number<float>
+                        - generic [ref=e594]: response
+                        - paragraph [ref=e596]: 有用率（%）：有用反馈数占（有用+无用）的比例，仅看有点评的
+                      - generic [ref=e597]:
+                        - generic "useless_rate" [ref=e598]
+                        - generic [ref=e599]: number<float>
+                        - generic [ref=e600]: response
+                        - paragraph [ref=e602]: 无用率（%）：无用反馈数占（有用+无用）的比例，仅看有点评的
+                  - generic [ref=e603]:
+                    - generic [ref=e604]:
+                      - generic [ref=e605]: "404"
+                      - generic [ref=e606]: Not found
+                      - generic [ref=e608]: application/json
+                    - generic [ref=e609]:
+                      - generic [ref=e610]:
+                        - generic "code" [ref=e611]
+                        - generic [ref=e612]: string
+                        - generic [ref=e613]: response
+                        - generic [ref=e614]: 必填
+                        - paragraph [ref=e616]: 暂无说明
+                      - generic [ref=e617]:
+                        - generic "message" [ref=e618]
+                        - generic [ref=e619]: string
+                        - generic [ref=e620]: response
+                        - generic [ref=e621]: 必填
+                        - paragraph [ref=e623]: 暂无说明
+  - region "Notifications alt+T":
+    - list:
+      - listitem [ref=e624]:
+        - button "Close toast" [ref=e625] [cursor=pointer]: 关闭
+        - img [ref=e627]
+        - generic [ref=e630]:
+          - generic [ref=e631]: 登录成功
+          - generic [ref=e632]: 已以管理员身份进入 AI 测试系统。
+  - button "Open Next.js Dev Tools" [ref=e163] [cursor=pointer]:
+    - img [ref=e164]
+  - alert [ref=e167]

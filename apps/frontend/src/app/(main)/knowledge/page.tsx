@@ -58,6 +58,7 @@ import { KnowledgeChatInput } from "@/components/ui/knowledge-chat-input";
 import { Label } from "@/components/ui/label";
 import PulsatingDots from "@/components/ui/pulsating-loader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { createId } from "@/lib/create-id";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -661,11 +662,11 @@ export default function Page() {
     const isCurrentProjectQueryScope = () =>
       projectQueryRunIdRef.current === queryRunId && latestProjectQueryScopeRef.current === submittedQueryScopeKey;
     const userMessage: ProjectChatMessage = {
-      id: crypto.randomUUID(),
+      id: createId(),
       role: "user",
       body: trimmedQuestion,
     };
-    const assistantMessageId = crypto.randomUUID();
+    const assistantMessageId = createId();
     const assistantMessage: ProjectChatMessage = {
       id: assistantMessageId,
       role: "assistant",

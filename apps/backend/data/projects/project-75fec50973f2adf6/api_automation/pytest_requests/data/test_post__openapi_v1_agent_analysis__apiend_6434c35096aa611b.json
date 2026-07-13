@@ -1,0 +1,624 @@
+{
+  "cases": [
+    {
+      "id": "apitc-02f0e2d0db3aa80c",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - 必填字段 end_date 缺失",
+      "test_description": "请求体缺少必填字段 end_date，验证返回 4xx 错误",
+      "priority": "P1",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "start_date": "2026-02-01"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-115693a071c7f361",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - 鉴权 header cybertron-robot-key 缺失",
+      "test_description": "不传 cybertron-robot-key 鉴权 header，验证返回 4xx 错误",
+      "priority": "P0",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "start_date": "2026-02-01",
+          "end_date": "2026-02-05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-213662a9cc60340a",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - start_date 为 null",
+      "test_description": "start_date 传入 null，验证返回 4xx 错误",
+      "priority": "P2",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "start_date": null,
+          "end_date": "2026-02-05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-3abdb1c19fae1787",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - 鉴权 header username 缺失",
+      "test_description": "不传 username 鉴权 header，验证返回 4xx 错误",
+      "priority": "P0",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}"
+        },
+        "body": {
+          "start_date": "2026-02-01",
+          "end_date": "2026-02-05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-753089db6134865d",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - end_date 类型错误（布尔值）",
+      "test_description": "end_date 传入布尔值而非字符串，验证返回 4xx 错误",
+      "priority": "P2",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "start_date": "2026-02-01",
+          "end_date": true
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-790ccab14a122b70",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - start_date 为空字符串",
+      "test_description": "start_date 传入空字符串，验证返回 4xx 错误",
+      "priority": "P2",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "start_date": "",
+          "end_date": "2026-02-05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-80d330c80f4c8fb1",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - end_date 格式非法（非日期格式）",
+      "test_description": "end_date 传入非日期格式字符串，验证返回 4xx 错误",
+      "priority": "P2",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "start_date": "2026-02-01",
+          "end_date": "2026/02/05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-865013ffa3faf978",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - 请求体为空对象",
+      "test_description": "发送空对象 {} 作为请求体，缺少必填字段，验证返回 4xx 错误",
+      "priority": "P2",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {}
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-8b1069202493286d",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - start_date 类型错误（数字）",
+      "test_description": "start_date 传入数字而非字符串，验证返回 4xx 错误",
+      "priority": "P2",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "start_date": 20260201,
+          "end_date": "2026-02-05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-aa0fae9953f633f8",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - start_date 格式非法（非日期格式）",
+      "test_description": "start_date 传入非日期格式字符串，验证返回 4xx 错误",
+      "priority": "P2",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "start_date": "abc",
+          "end_date": "2026-02-05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-abaf201b42afc715",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - 最小合法请求（仅必填字段）",
+      "test_description": "仅传入必填字段 start_date 和 end_date，验证成功返回统计数据",
+      "priority": "P0",
+      "coverage": "positive",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "start_date": "2026-02-01",
+          "end_date": "2026-02-05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 200
+        },
+        {
+          "type": "jsonpath_exists",
+          "path": "$.code",
+          "expected": null
+        },
+        {
+          "type": "jsonpath_exists",
+          "path": "$.data.user_cnt",
+          "expected": null
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-b58ec95ca6e686d9",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - 完整合法请求（含所有可选字段）",
+      "test_description": "传入全部字段（当前接口无额外可选字段，验证最小请求即为完整请求）",
+      "priority": "P1",
+      "coverage": "positive",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "start_date": "2026-02-01",
+          "end_date": "2026-02-05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 200
+        },
+        {
+          "type": "jsonpath_exists",
+          "path": "$.code",
+          "expected": null
+        },
+        {
+          "type": "jsonpath_exists",
+          "path": "$.data",
+          "expected": null
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-c1d8c6b64a25b080",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - 请求体不发送（body 缺失）",
+      "test_description": "不发送请求体，验证返回 4xx 错误",
+      "priority": "P1",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-c87a5fb31f189b8a",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - end_date 为 null",
+      "test_description": "end_date 传入 null，验证返回 4xx 错误",
+      "priority": "P2",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "start_date": "2026-02-01",
+          "end_date": null
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-c95d2f0b069a0b29",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - 日期范围 start_date 大于 end_date",
+      "test_description": "start_date 晚于 end_date，验证返回 4xx 错误",
+      "priority": "P2",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "start_date": "2026-02-10",
+          "end_date": "2026-02-05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-cb878278fe5fac80",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - 鉴权 header cybertron-robot-token 缺失",
+      "test_description": "不传 cybertron-robot-token 鉴权 header，验证返回 4xx 错误",
+      "priority": "P0",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "start_date": "2026-02-01",
+          "end_date": "2026-02-05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-cebaf2cc9b7ce442",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - end_date 为空字符串",
+      "test_description": "end_date 传入空字符串，验证返回 4xx 错误",
+      "priority": "P2",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "start_date": "2026-02-01",
+          "end_date": ""
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    },
+    {
+      "id": "apitc-f13d684ae39c97e5",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - 必填字段 start_date 缺失",
+      "test_description": "请求体缺少必填字段 start_date，验证返回 4xx 错误",
+      "priority": "P1",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": "${CYBERTRON_ROBOT_KEY}",
+          "cybertron-robot-token": "${CYBERTRON_ROBOT_TOKEN}",
+          "username": "${CYBERTRON_USERNAME}"
+        },
+        "body": {
+          "end_date": "2026-02-05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 404
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-12 16:10:50",
+      "updated_at": "2026-07-12 16:10:50"
+    }
+  ]
+}

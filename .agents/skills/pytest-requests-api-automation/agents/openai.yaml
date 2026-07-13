@@ -1,4 +1,0 @@
-interface:
-  display_name: "Pytest Requests 接口自动化"
-  short_description: "按项目持续生成和维护 pytest + Requests 接口自动化代码"
-  default_prompt: "Use $pytest-requests-api-automation to design or implement incremental pytest + Requests API test generation."

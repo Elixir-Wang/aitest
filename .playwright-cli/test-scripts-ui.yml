@@ -1,0 +1,452 @@
+- generic [ref=e1]:
+  - generic [ref=e168]:
+    - generic [ref=e171]:
+      - list [ref=e173]:
+        - listitem [ref=e174]:
+          - link "AI 测试系统" [ref=e175] [cursor=pointer]:
+            - /url: /dashboard
+            - generic [ref=e176]: AI 测试系统
+      - generic [ref=e177]:
+        - generic [ref=e178]:
+          - generic [ref=e179]: 工作台
+          - list [ref=e181]:
+            - listitem [ref=e182]:
+              - link "控制台" [ref=e183] [cursor=pointer]:
+                - /url: /dashboard
+                - img [ref=e184]
+                - generic [ref=e189]: 控制台
+            - listitem [ref=e190]:
+              - link "任务中心" [ref=e191] [cursor=pointer]:
+                - /url: /tasks
+                - img [ref=e192]
+                - generic [ref=e195]: 任务中心
+        - generic [ref=e196]:
+          - generic [ref=e197]: 项目工作区
+          - list [ref=e199]:
+            - listitem [ref=e200]:
+              - link "项目" [ref=e201] [cursor=pointer]:
+                - /url: /projects
+                - img [ref=e202]
+                - generic [ref=e204]: 项目
+            - listitem [ref=e205]:
+              - link "需求" [ref=e206] [cursor=pointer]:
+                - /url: /requirements
+                - img [ref=e207]
+                - generic [ref=e210]: 需求
+            - listitem [ref=e211]:
+              - link "探索" [ref=e212] [cursor=pointer]:
+                - /url: /exploration
+                - img [ref=e213]
+                - generic [ref=e218]: 探索
+            - listitem [ref=e219]:
+              - link "知识库" [ref=e220] [cursor=pointer]:
+                - /url: /knowledge
+                - img [ref=e221]
+                - generic [ref=e226]: 知识库
+        - generic [ref=e227]:
+          - generic [ref=e228]: 测试资产
+          - list [ref=e230]:
+            - listitem [ref=e231]:
+              - link "测试用例" [ref=e232] [cursor=pointer]:
+                - /url: /test-cases
+                - img [ref=e233]
+                - generic [ref=e237]: 测试用例
+            - listitem [ref=e238]:
+              - link "UI 自动化 Soon" [disabled]:
+                - /url: /automation/ui
+                - img
+                - generic: UI 自动化
+                - generic: Soon
+            - listitem [ref=e239]:
+              - link "接口自动化" [ref=e240] [cursor=pointer]:
+                - /url: /automation/api
+                - img [ref=e241]
+                - generic [ref=e244]: 接口自动化
+            - listitem [ref=e245]:
+              - link "性能测试 Soon" [disabled]:
+                - /url: /performance-tests
+                - img
+                - generic: 性能测试
+                - generic: Soon
+            - listitem [ref=e246]:
+              - link "模型评测 Soon" [disabled]:
+                - /url: /model-evaluations
+                - img
+                - generic: 模型评测
+                - generic: Soon
+            - listitem [ref=e247]:
+              - link "报告中心" [ref=e248] [cursor=pointer]:
+                - /url: /reports
+                - img [ref=e249]
+                - generic [ref=e252]: 报告中心
+        - generic [ref=e253]:
+          - generic [ref=e254]: 系统管理
+          - list [ref=e256]:
+            - listitem [ref=e257]:
+              - link "模型配置" [ref=e258] [cursor=pointer]:
+                - /url: /settings/models
+                - img [ref=e259]
+                - generic [ref=e262]: 模型配置
+            - listitem [ref=e263]:
+              - link "用户与权限" [ref=e264] [cursor=pointer]:
+                - /url: /settings/users
+                - img [ref=e265]
+                - generic [ref=e270]: 用户与权限
+            - listitem [ref=e271]:
+              - link "系统日志" [ref=e272] [cursor=pointer]:
+                - /url: /settings/logs
+                - img [ref=e273]
+                - generic [ref=e276]: 系统日志
+    - main [ref=e277]:
+      - generic [ref=e279]:
+        - generic [ref=e280]:
+          - button "Toggle Sidebar" [ref=e281]:
+            - img
+            - generic [ref=e282]: Toggle Sidebar
+          - navigation "页面路径" [ref=e283]:
+            - list [ref=e284]:
+              - listitem [ref=e285]:
+                - generic "测试资产" [ref=e286]
+              - listitem [ref=e287]:
+                - img [ref=e288]
+                - generic "接口自动化" [ref=e290]
+        - generic [ref=e291]:
+          - combobox "切换项目" [ref=e293]:
+            - img
+            - generic: 全部项目
+            - img
+          - button [ref=e294]:
+            - img
+          - 'button "Current mode: light. Click to toggle dark mode" [ref=e295]':
+            - img
+          - button "打开用户菜单" [ref=e296]:
+            - generic [ref=e298]: A
+      - generic [ref=e300]:
+        - tablist [ref=e303]:
+          - tab "接口资产" [ref=e304]
+          - tab "接口环境" [ref=e305]
+          - tab "接口用例" [ref=e306]
+          - tab "测试脚本" [active] [selected] [ref=e307]
+          - tab "运行记录" [ref=e308]
+          - tab "场景编排" [ref=e309]
+        - generic [ref=e633]:
+          - complementary [ref=e634]:
+            - generic [ref=e635]:
+              - generic [ref=e636]:
+                - checkbox "选择全部接口脚本" [ref=e637]
+                - generic [ref=e638]:
+                  - generic [ref=e639]: 接口脚本
+                  - generic [ref=e640]: 1 个接口，已选择 0
+                - generic [ref=e641]:
+                  - button "删除" [disabled]:
+                    - img
+                    - text: 删除
+                  - button "执行" [disabled]:
+                    - img
+                    - text: 执行
+              - button "从接口用例生成脚本" [disabled]:
+                - img
+                - text: 从接口用例生成脚本
+            - generic [ref=e643]:
+              - checkbox "选择 智能体数据分析" [ref=e644]
+              - button "POST 智能体数据分析 /openapi/v1/agent/analysis/ 18 条用例 失败" [ref=e645]:
+                - generic [ref=e646]:
+                  - generic [ref=e647]: POST
+                  - generic [ref=e648]: 智能体数据分析
+                - generic [ref=e649]: /openapi/v1/agent/analysis/
+                - generic [ref=e650]:
+                  - generic [ref=e651]: 18 条用例
+                  - generic [ref=e652]: 失败
+              - button "执行 智能体数据分析" [ref=e653]:
+                - img
+              - button "删除 智能体数据分析" [ref=e654]:
+                - img
+          - generic [ref=e655]:
+            - generic [ref=e656]:
+              - generic [ref=e658]:
+                - generic [ref=e659]: 智能体数据分析
+                - generic [ref=e660]: project-75fec50973f2adf6/api_automation/pytest_requests/tests/test_post__openapi_v1_agent_analysis__apiend_6434c35096aa611b.py
+              - generic [ref=e661]:
+                - button "测试用例" [ref=e662]
+                - button "代码" [ref=e663]
+                - button "执行历史" [ref=e664]
+            - generic [ref=e666]:
+              - generic [ref=e667]:
+                - generic [ref=e668]:
+                  - heading "接口用例列表" [level=2] [ref=e669]
+                  - paragraph [ref=e670]: 智能体数据分析 · /openapi/v1/agent/analysis/
+                - generic [ref=e671]:
+                  - generic [ref=e673]:
+                    - img
+                    - textbox "搜索用例名称" [ref=e674]:
+                      - /placeholder: 搜索
+                  - button "刷新" [ref=e675]:
+                    - img
+                    - text: 刷新
+              - table [ref=e678]:
+                - rowgroup [ref=e679]:
+                  - row "选择全部脚本关联用例 用例名称 优先级 类型 更新时间 操作" [ref=e680]:
+                    - columnheader "选择全部脚本关联用例" [ref=e681]:
+                      - checkbox "选择全部脚本关联用例" [ref=e682]
+                    - columnheader "用例名称" [ref=e683]
+                    - columnheader "优先级" [ref=e684]
+                    - columnheader "类型" [ref=e685]
+                    - columnheader "更新时间" [ref=e686]
+                    - columnheader "操作" [ref=e687]
+                - rowgroup [ref=e688]:
+                  - row "选择 智能体数据分析 - 必填字段 end_date 缺失 智能体数据分析 - 必填字段 end_date 缺失 P1 负向 2026-07-13 00:10:50 打开 智能体数据分析 - 必填字段 end_date 缺失 操作菜单" [ref=e689]:
+                    - cell "选择 智能体数据分析 - 必填字段 end_date 缺失" [ref=e690]:
+                      - checkbox "选择 智能体数据分析 - 必填字段 end_date 缺失" [ref=e691]
+                    - cell "智能体数据分析 - 必填字段 end_date 缺失" [ref=e692]:
+                      - button "智能体数据分析 - 必填字段 end_date 缺失" [ref=e693]
+                    - cell "P1" [ref=e694]:
+                      - generic [ref=e695]: P1
+                    - cell "负向" [ref=e696]:
+                      - generic [ref=e697]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e698]
+                    - cell "打开 智能体数据分析 - 必填字段 end_date 缺失 操作菜单" [ref=e699]:
+                      - button "打开 智能体数据分析 - 必填字段 end_date 缺失 操作菜单" [ref=e700]:
+                        - img
+                  - row "选择 智能体数据分析 - 鉴权 header cybertron-robot-key 缺失 智能体数据分析 - 鉴权 header cybertron-robot-key 缺失 P0 负向 2026-07-13 00:10:50 打开 智能体数据分析 - 鉴权 header cybertron-robot-key 缺失 操作菜单" [ref=e701]:
+                    - cell "选择 智能体数据分析 - 鉴权 header cybertron-robot-key 缺失" [ref=e702]:
+                      - checkbox "选择 智能体数据分析 - 鉴权 header cybertron-robot-key 缺失" [ref=e703]
+                    - cell "智能体数据分析 - 鉴权 header cybertron-robot-key 缺失" [ref=e704]:
+                      - button "智能体数据分析 - 鉴权 header cybertron-robot-key 缺失" [ref=e705]
+                    - cell "P0" [ref=e706]:
+                      - generic [ref=e707]: P0
+                    - cell "负向" [ref=e708]:
+                      - generic [ref=e709]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e710]
+                    - cell "打开 智能体数据分析 - 鉴权 header cybertron-robot-key 缺失 操作菜单" [ref=e711]:
+                      - button "打开 智能体数据分析 - 鉴权 header cybertron-robot-key 缺失 操作菜单" [ref=e712]:
+                        - img
+                  - row "选择 智能体数据分析 - start_date 为 null 智能体数据分析 - start_date 为 null P2 负向 2026-07-13 00:10:50 打开 智能体数据分析 - start_date 为 null 操作菜单" [ref=e713]:
+                    - cell "选择 智能体数据分析 - start_date 为 null" [ref=e714]:
+                      - checkbox "选择 智能体数据分析 - start_date 为 null" [ref=e715]
+                    - cell "智能体数据分析 - start_date 为 null" [ref=e716]:
+                      - button "智能体数据分析 - start_date 为 null" [ref=e717]
+                    - cell "P2" [ref=e718]:
+                      - generic [ref=e719]: P2
+                    - cell "负向" [ref=e720]:
+                      - generic [ref=e721]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e722]
+                    - cell "打开 智能体数据分析 - start_date 为 null 操作菜单" [ref=e723]:
+                      - button "打开 智能体数据分析 - start_date 为 null 操作菜单" [ref=e724]:
+                        - img
+                  - row "选择 智能体数据分析 - 鉴权 header username 缺失 智能体数据分析 - 鉴权 header username 缺失 P0 负向 2026-07-13 00:10:50 打开 智能体数据分析 - 鉴权 header username 缺失 操作菜单" [ref=e725]:
+                    - cell "选择 智能体数据分析 - 鉴权 header username 缺失" [ref=e726]:
+                      - checkbox "选择 智能体数据分析 - 鉴权 header username 缺失" [ref=e727]
+                    - cell "智能体数据分析 - 鉴权 header username 缺失" [ref=e728]:
+                      - button "智能体数据分析 - 鉴权 header username 缺失" [ref=e729]
+                    - cell "P0" [ref=e730]:
+                      - generic [ref=e731]: P0
+                    - cell "负向" [ref=e732]:
+                      - generic [ref=e733]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e734]
+                    - cell "打开 智能体数据分析 - 鉴权 header username 缺失 操作菜单" [ref=e735]:
+                      - button "打开 智能体数据分析 - 鉴权 header username 缺失 操作菜单" [ref=e736]:
+                        - img
+                  - row "选择 智能体数据分析 - end_date 类型错误（布尔值） 智能体数据分析 - end_date 类型错误（布尔值） P2 负向 2026-07-13 00:10:50 打开 智能体数据分析 - end_date 类型错误（布尔值） 操作菜单" [ref=e737]:
+                    - cell "选择 智能体数据分析 - end_date 类型错误（布尔值）" [ref=e738]:
+                      - checkbox "选择 智能体数据分析 - end_date 类型错误（布尔值）" [ref=e739]
+                    - cell "智能体数据分析 - end_date 类型错误（布尔值）" [ref=e740]:
+                      - button "智能体数据分析 - end_date 类型错误（布尔值）" [ref=e741]
+                    - cell "P2" [ref=e742]:
+                      - generic [ref=e743]: P2
+                    - cell "负向" [ref=e744]:
+                      - generic [ref=e745]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e746]
+                    - cell "打开 智能体数据分析 - end_date 类型错误（布尔值） 操作菜单" [ref=e747]:
+                      - button "打开 智能体数据分析 - end_date 类型错误（布尔值） 操作菜单" [ref=e748]:
+                        - img
+                  - row "选择 智能体数据分析 - start_date 为空字符串 智能体数据分析 - start_date 为空字符串 P2 负向 2026-07-13 00:10:50 打开 智能体数据分析 - start_date 为空字符串 操作菜单" [ref=e749]:
+                    - cell "选择 智能体数据分析 - start_date 为空字符串" [ref=e750]:
+                      - checkbox "选择 智能体数据分析 - start_date 为空字符串" [ref=e751]
+                    - cell "智能体数据分析 - start_date 为空字符串" [ref=e752]:
+                      - button "智能体数据分析 - start_date 为空字符串" [ref=e753]
+                    - cell "P2" [ref=e754]:
+                      - generic [ref=e755]: P2
+                    - cell "负向" [ref=e756]:
+                      - generic [ref=e757]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e758]
+                    - cell "打开 智能体数据分析 - start_date 为空字符串 操作菜单" [ref=e759]:
+                      - button "打开 智能体数据分析 - start_date 为空字符串 操作菜单" [ref=e760]:
+                        - img
+                  - row "选择 智能体数据分析 - end_date 格式非法（非日期格式） 智能体数据分析 - end_date 格式非法（非日期格式） P2 负向 2026-07-13 00:10:50 打开 智能体数据分析 - end_date 格式非法（非日期格式） 操作菜单" [ref=e761]:
+                    - cell "选择 智能体数据分析 - end_date 格式非法（非日期格式）" [ref=e762]:
+                      - checkbox "选择 智能体数据分析 - end_date 格式非法（非日期格式）" [ref=e763]
+                    - cell "智能体数据分析 - end_date 格式非法（非日期格式）" [ref=e764]:
+                      - button "智能体数据分析 - end_date 格式非法（非日期格式）" [ref=e765]
+                    - cell "P2" [ref=e766]:
+                      - generic [ref=e767]: P2
+                    - cell "负向" [ref=e768]:
+                      - generic [ref=e769]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e770]
+                    - cell "打开 智能体数据分析 - end_date 格式非法（非日期格式） 操作菜单" [ref=e771]:
+                      - button "打开 智能体数据分析 - end_date 格式非法（非日期格式） 操作菜单" [ref=e772]:
+                        - img
+                  - row "选择 智能体数据分析 - 请求体为空对象 智能体数据分析 - 请求体为空对象 P2 负向 2026-07-13 00:10:50 打开 智能体数据分析 - 请求体为空对象 操作菜单" [ref=e773]:
+                    - cell "选择 智能体数据分析 - 请求体为空对象" [ref=e774]:
+                      - checkbox "选择 智能体数据分析 - 请求体为空对象" [ref=e775]
+                    - cell "智能体数据分析 - 请求体为空对象" [ref=e776]:
+                      - button "智能体数据分析 - 请求体为空对象" [ref=e777]
+                    - cell "P2" [ref=e778]:
+                      - generic [ref=e779]: P2
+                    - cell "负向" [ref=e780]:
+                      - generic [ref=e781]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e782]
+                    - cell "打开 智能体数据分析 - 请求体为空对象 操作菜单" [ref=e783]:
+                      - button "打开 智能体数据分析 - 请求体为空对象 操作菜单" [ref=e784]:
+                        - img
+                  - row "选择 智能体数据分析 - start_date 类型错误（数字） 智能体数据分析 - start_date 类型错误（数字） P2 负向 2026-07-13 00:10:50 打开 智能体数据分析 - start_date 类型错误（数字） 操作菜单" [ref=e785]:
+                    - cell "选择 智能体数据分析 - start_date 类型错误（数字）" [ref=e786]:
+                      - checkbox "选择 智能体数据分析 - start_date 类型错误（数字）" [ref=e787]
+                    - cell "智能体数据分析 - start_date 类型错误（数字）" [ref=e788]:
+                      - button "智能体数据分析 - start_date 类型错误（数字）" [ref=e789]
+                    - cell "P2" [ref=e790]:
+                      - generic [ref=e791]: P2
+                    - cell "负向" [ref=e792]:
+                      - generic [ref=e793]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e794]
+                    - cell "打开 智能体数据分析 - start_date 类型错误（数字） 操作菜单" [ref=e795]:
+                      - button "打开 智能体数据分析 - start_date 类型错误（数字） 操作菜单" [ref=e796]:
+                        - img
+                  - row "选择 智能体数据分析 - start_date 格式非法（非日期格式） 智能体数据分析 - start_date 格式非法（非日期格式） P2 负向 2026-07-13 00:10:50 打开 智能体数据分析 - start_date 格式非法（非日期格式） 操作菜单" [ref=e797]:
+                    - cell "选择 智能体数据分析 - start_date 格式非法（非日期格式）" [ref=e798]:
+                      - checkbox "选择 智能体数据分析 - start_date 格式非法（非日期格式）" [ref=e799]
+                    - cell "智能体数据分析 - start_date 格式非法（非日期格式）" [ref=e800]:
+                      - button "智能体数据分析 - start_date 格式非法（非日期格式）" [ref=e801]
+                    - cell "P2" [ref=e802]:
+                      - generic [ref=e803]: P2
+                    - cell "负向" [ref=e804]:
+                      - generic [ref=e805]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e806]
+                    - cell "打开 智能体数据分析 - start_date 格式非法（非日期格式） 操作菜单" [ref=e807]:
+                      - button "打开 智能体数据分析 - start_date 格式非法（非日期格式） 操作菜单" [ref=e808]:
+                        - img
+                  - row "选择 智能体数据分析 - 最小合法请求（仅必填字段） 智能体数据分析 - 最小合法请求（仅必填字段） P0 正向 2026-07-13 00:10:50 打开 智能体数据分析 - 最小合法请求（仅必填字段） 操作菜单" [ref=e809]:
+                    - cell "选择 智能体数据分析 - 最小合法请求（仅必填字段）" [ref=e810]:
+                      - checkbox "选择 智能体数据分析 - 最小合法请求（仅必填字段）" [ref=e811]
+                    - cell "智能体数据分析 - 最小合法请求（仅必填字段）" [ref=e812]:
+                      - button "智能体数据分析 - 最小合法请求（仅必填字段）" [ref=e813]
+                    - cell "P0" [ref=e814]:
+                      - generic [ref=e815]: P0
+                    - cell "正向" [ref=e816]:
+                      - generic [ref=e817]: 正向
+                    - cell "2026-07-13 00:10:50" [ref=e818]
+                    - cell "打开 智能体数据分析 - 最小合法请求（仅必填字段） 操作菜单" [ref=e819]:
+                      - button "打开 智能体数据分析 - 最小合法请求（仅必填字段） 操作菜单" [ref=e820]:
+                        - img
+                  - row "选择 智能体数据分析 - 完整合法请求（含所有可选字段） 智能体数据分析 - 完整合法请求（含所有可选字段） P1 正向 2026-07-13 00:10:50 打开 智能体数据分析 - 完整合法请求（含所有可选字段） 操作菜单" [ref=e821]:
+                    - cell "选择 智能体数据分析 - 完整合法请求（含所有可选字段）" [ref=e822]:
+                      - checkbox "选择 智能体数据分析 - 完整合法请求（含所有可选字段）" [ref=e823]
+                    - cell "智能体数据分析 - 完整合法请求（含所有可选字段）" [ref=e824]:
+                      - button "智能体数据分析 - 完整合法请求（含所有可选字段）" [ref=e825]
+                    - cell "P1" [ref=e826]:
+                      - generic [ref=e827]: P1
+                    - cell "正向" [ref=e828]:
+                      - generic [ref=e829]: 正向
+                    - cell "2026-07-13 00:10:50" [ref=e830]
+                    - cell "打开 智能体数据分析 - 完整合法请求（含所有可选字段） 操作菜单" [ref=e831]:
+                      - button "打开 智能体数据分析 - 完整合法请求（含所有可选字段） 操作菜单" [ref=e832]:
+                        - img
+                  - row "选择 智能体数据分析 - 请求体不发送（body 缺失） 智能体数据分析 - 请求体不发送（body 缺失） P1 负向 2026-07-13 00:10:50 打开 智能体数据分析 - 请求体不发送（body 缺失） 操作菜单" [ref=e833]:
+                    - cell "选择 智能体数据分析 - 请求体不发送（body 缺失）" [ref=e834]:
+                      - checkbox "选择 智能体数据分析 - 请求体不发送（body 缺失）" [ref=e835]
+                    - cell "智能体数据分析 - 请求体不发送（body 缺失）" [ref=e836]:
+                      - button "智能体数据分析 - 请求体不发送（body 缺失）" [ref=e837]
+                    - cell "P1" [ref=e838]:
+                      - generic [ref=e839]: P1
+                    - cell "负向" [ref=e840]:
+                      - generic [ref=e841]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e842]
+                    - cell "打开 智能体数据分析 - 请求体不发送（body 缺失） 操作菜单" [ref=e843]:
+                      - button "打开 智能体数据分析 - 请求体不发送（body 缺失） 操作菜单" [ref=e844]:
+                        - img
+                  - row "选择 智能体数据分析 - end_date 为 null 智能体数据分析 - end_date 为 null P2 负向 2026-07-13 00:10:50 打开 智能体数据分析 - end_date 为 null 操作菜单" [ref=e845]:
+                    - cell "选择 智能体数据分析 - end_date 为 null" [ref=e846]:
+                      - checkbox "选择 智能体数据分析 - end_date 为 null" [ref=e847]
+                    - cell "智能体数据分析 - end_date 为 null" [ref=e848]:
+                      - button "智能体数据分析 - end_date 为 null" [ref=e849]
+                    - cell "P2" [ref=e850]:
+                      - generic [ref=e851]: P2
+                    - cell "负向" [ref=e852]:
+                      - generic [ref=e853]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e854]
+                    - cell "打开 智能体数据分析 - end_date 为 null 操作菜单" [ref=e855]:
+                      - button "打开 智能体数据分析 - end_date 为 null 操作菜单" [ref=e856]:
+                        - img
+                  - row "选择 智能体数据分析 - 日期范围 start_date 大于 end_date 智能体数据分析 - 日期范围 start_date 大于 end_date P2 负向 2026-07-13 00:10:50 打开 智能体数据分析 - 日期范围 start_date 大于 end_date 操作菜单" [ref=e857]:
+                    - cell "选择 智能体数据分析 - 日期范围 start_date 大于 end_date" [ref=e858]:
+                      - checkbox "选择 智能体数据分析 - 日期范围 start_date 大于 end_date" [ref=e859]
+                    - cell "智能体数据分析 - 日期范围 start_date 大于 end_date" [ref=e860]:
+                      - button "智能体数据分析 - 日期范围 start_date 大于 end_date" [ref=e861]
+                    - cell "P2" [ref=e862]:
+                      - generic [ref=e863]: P2
+                    - cell "负向" [ref=e864]:
+                      - generic [ref=e865]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e866]
+                    - cell "打开 智能体数据分析 - 日期范围 start_date 大于 end_date 操作菜单" [ref=e867]:
+                      - button "打开 智能体数据分析 - 日期范围 start_date 大于 end_date 操作菜单" [ref=e868]:
+                        - img
+                  - row "选择 智能体数据分析 - 鉴权 header cybertron-robot-token 缺失 智能体数据分析 - 鉴权 header cybertron-robot-token 缺失 P0 负向 2026-07-13 00:10:50 打开 智能体数据分析 - 鉴权 header cybertron-robot-token 缺失 操作菜单" [ref=e869]:
+                    - cell "选择 智能体数据分析 - 鉴权 header cybertron-robot-token 缺失" [ref=e870]:
+                      - checkbox "选择 智能体数据分析 - 鉴权 header cybertron-robot-token 缺失" [ref=e871]
+                    - cell "智能体数据分析 - 鉴权 header cybertron-robot-token 缺失" [ref=e872]:
+                      - button "智能体数据分析 - 鉴权 header cybertron-robot-token 缺失" [ref=e873]
+                    - cell "P0" [ref=e874]:
+                      - generic [ref=e875]: P0
+                    - cell "负向" [ref=e876]:
+                      - generic [ref=e877]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e878]
+                    - cell "打开 智能体数据分析 - 鉴权 header cybertron-robot-token 缺失 操作菜单" [ref=e879]:
+                      - button "打开 智能体数据分析 - 鉴权 header cybertron-robot-token 缺失 操作菜单" [ref=e880]:
+                        - img
+                  - row "选择 智能体数据分析 - end_date 为空字符串 智能体数据分析 - end_date 为空字符串 P2 负向 2026-07-13 00:10:50 打开 智能体数据分析 - end_date 为空字符串 操作菜单" [ref=e881]:
+                    - cell "选择 智能体数据分析 - end_date 为空字符串" [ref=e882]:
+                      - checkbox "选择 智能体数据分析 - end_date 为空字符串" [ref=e883]
+                    - cell "智能体数据分析 - end_date 为空字符串" [ref=e884]:
+                      - button "智能体数据分析 - end_date 为空字符串" [ref=e885]
+                    - cell "P2" [ref=e886]:
+                      - generic [ref=e887]: P2
+                    - cell "负向" [ref=e888]:
+                      - generic [ref=e889]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e890]
+                    - cell "打开 智能体数据分析 - end_date 为空字符串 操作菜单" [ref=e891]:
+                      - button "打开 智能体数据分析 - end_date 为空字符串 操作菜单" [ref=e892]:
+                        - img
+                  - row "选择 智能体数据分析 - 必填字段 start_date 缺失 智能体数据分析 - 必填字段 start_date 缺失 P1 负向 2026-07-13 00:10:50 打开 智能体数据分析 - 必填字段 start_date 缺失 操作菜单" [ref=e893]:
+                    - cell "选择 智能体数据分析 - 必填字段 start_date 缺失" [ref=e894]:
+                      - checkbox "选择 智能体数据分析 - 必填字段 start_date 缺失" [ref=e895]
+                    - cell "智能体数据分析 - 必填字段 start_date 缺失" [ref=e896]:
+                      - button "智能体数据分析 - 必填字段 start_date 缺失" [ref=e897]
+                    - cell "P1" [ref=e898]:
+                      - generic [ref=e899]: P1
+                    - cell "负向" [ref=e900]:
+                      - generic [ref=e901]: 负向
+                    - cell "2026-07-13 00:10:50" [ref=e902]
+                    - cell "打开 智能体数据分析 - 必填字段 start_date 缺失 操作菜单" [ref=e903]:
+                      - button "打开 智能体数据分析 - 必填字段 start_date 缺失 操作菜单" [ref=e904]:
+                        - img
+          - complementary [ref=e905]:
+            - generic [ref=e906]: 执行设置
+            - generic [ref=e907]:
+              - generic [ref=e908]: 环境
+              - combobox [ref=e909]:
+                - generic: 塞伯坦-生产
+                - img
+              - generic [ref=e910]: https://www.cybotstar.cn/
+            - generic [ref=e911]:
+              - generic [ref=e912]:
+                - generic [ref=e913]: 已选接口
+                - generic [ref=e914]: "0"
+              - generic [ref=e915]:
+                - generic [ref=e916]: 测试用例
+                - generic [ref=e917]: "0"
+            - button "执行已选" [disabled]:
+              - img
+              - text: 执行已选
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e163] [cursor=pointer]:
+    - img [ref=e164]
+  - alert [ref=e167]

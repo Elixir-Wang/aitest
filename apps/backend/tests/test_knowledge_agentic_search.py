@@ -6,10 +6,8 @@ from app.agents.knowledge.schemas import KnowledgeQueryInput, KnowledgeQueryOutp
 def test_knowledge_agent_prompt_has_consolidated_source_rules():
     from app.agents.knowledge.agent import SYSTEM_PROMPT
 
-    assert "7. 如果未读取 /requirements/ 或 /company-knowledge/" in SYSTEM_PROMPT
-    assert "8. 如果读取了 /requirements/，必须在 used_requirement_versions 中返回实际使用过的需求版本 ID。" in SYSTEM_PROMPT
-    assert "9. 如果读取了 /company-knowledge/，必须在 used_company_knowledge_files 中返回实际使用过的公司知识库文件 ID。" in SYSTEM_PROMPT
-    assert "10. 参考来源写入 answer 正文末尾，不再单独返回结构化来源字段。" in SYSTEM_PROMPT
+    assert "7. 是否查询过知识库及实际来源由后端根据工具调用记录判断" in SYSTEM_PROMPT
+    assert "8. 参考来源直接写入回答正文末尾" in SYSTEM_PROMPT
     assert "回答必须使用 Markdown 格式，并在回答末尾追加" in SYSTEM_PROMPT
     assert "- [需求] 项目名 / 需求标题" in SYSTEM_PROMPT
     assert "- [知识库] 知识库名 / 文件标题" in SYSTEM_PROMPT
@@ -29,9 +27,7 @@ def test_knowledge_agent_prompt_has_consolidated_source_rules():
     assert "15. 不要把" not in SYSTEM_PROMPT
 
 
-def test_knowledge_agent_uses_tool_strategy_for_structured_output(monkeypatch) -> None:
-    from langchain.agents.structured_output import ToolStrategy
-
+def test_knowledge_agent_does_not_use_structured_output(monkeypatch) -> None:
     from app.agents.knowledge.agent import knowledge_agent
 
     captured = {}
@@ -46,9 +42,7 @@ def test_knowledge_agent_uses_tool_strategy_for_structured_output(monkeypatch) -
 
     assert agent == "agent"
     assert captured["model"] == "model"
-    assert isinstance(captured["response_format"], ToolStrategy)
-    assert captured["response_format"].schema is KnowledgeQueryOutput
-    assert captured["response_format"].handle_errors is True
+    assert "response_format" not in captured
 
 
 def test_knowledge_agent_service_runs_single_deepagent(monkeypatch):
@@ -283,7 +277,11 @@ def test_stream_knowledge_agent_filters_tool_messages_and_thinking_noise(monkeyp
             yield (
                 "values",
                 {
-                    "structured_response": KnowledgeQueryOutput(answer="结论来自知识库。", knowledge_queried=True),
+                    "messages": [
+                        {"type": "ai", "content": "", "tool_calls": [{"name": "read_file"}]},
+                        {"type": "tool", "content": "文档原文"},
+                        {"type": "ai", "content": "结论来自知识库。"},
+                    ],
                 },
             )
 
@@ -297,6 +295,8 @@ def test_stream_knowledge_agent_filters_tool_messages_and_thinking_noise(monkeyp
     assert captured["config"] == {"configurable": {"thread_id": "conversation-1"}}
     assert {"type": "thinking_delta", "delta": "先判断来源。"} in events
     assert {"type": "message_delta", "delta": "结论来自知识库。"} in events
+    assert events[-2]["output"].answer == "结论来自知识库。"
+    assert events[-2]["output"].knowledge_queried is True
     assert all("source_metadata" not in str(event) for event in events)
 
 

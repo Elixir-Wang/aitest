@@ -4,7 +4,13 @@
 # Editor / local workspace
 .idea/
 .vscode/
-.claude
+.agents/
+.claude/
+.codex/
+.codex-artifacts/
+.config/
+.cursor/
+.superpowers/
 *.swp
 *.swo
 
@@ -73,3 +79,4 @@ __pycache__/
 apps/backend/data/codex-*-probe-*/
 apps/backend/data/**/codex-work/
 apps/backend/data/**/.codex-home/
+apps/backend/data/projects/**/knowledge/agentic-search/

@@ -1,0 +1,100 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e5]:
+      - list [ref=e7]:
+        - listitem [ref=e8]:
+          - link "AI 测试系统" [ref=e9] [cursor=pointer]:
+            - /url: /dashboard
+            - generic [ref=e10]: AI 测试系统
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - generic [ref=e13]: 工作台
+          - list [ref=e15]:
+            - listitem [ref=e16]:
+              - link "控制台" [ref=e17] [cursor=pointer]:
+                - /url: /dashboard
+                - img [ref=e18]
+                - generic [ref=e23]: 控制台
+            - listitem [ref=e24]:
+              - link "任务中心" [ref=e25] [cursor=pointer]:
+                - /url: /tasks
+                - img [ref=e26]
+                - generic [ref=e29]: 任务中心
+        - generic [ref=e30]:
+          - generic [ref=e31]: 项目工作区
+          - list [ref=e33]:
+            - listitem [ref=e34]:
+              - link "项目" [ref=e35] [cursor=pointer]:
+                - /url: /projects
+                - img [ref=e36]
+                - generic [ref=e38]: 项目
+            - listitem [ref=e39]:
+              - link "需求" [ref=e40] [cursor=pointer]:
+                - /url: /requirements
+                - img [ref=e41]
+                - generic [ref=e44]: 需求
+            - listitem [ref=e45]:
+              - link "探索" [ref=e46] [cursor=pointer]:
+                - /url: /exploration
+                - img [ref=e47]
+                - generic [ref=e52]: 探索
+            - listitem [ref=e53]:
+              - link "知识库" [ref=e54] [cursor=pointer]:
+                - /url: /knowledge
+                - img [ref=e55]
+                - generic [ref=e60]: 知识库
+        - generic [ref=e61]:
+          - generic [ref=e62]: 测试资产
+          - list [ref=e64]:
+            - listitem [ref=e65]:
+              - link "测试用例" [ref=e66] [cursor=pointer]:
+                - /url: /test-cases
+                - img [ref=e67]
+                - generic [ref=e71]: 测试用例
+            - listitem [ref=e72]:
+              - link "UI 自动化 Soon" [disabled]:
+                - /url: /automation/ui
+                - img
+                - generic: UI 自动化
+                - generic: Soon
+            - listitem [ref=e73]:
+              - link "接口自动化" [ref=e74] [cursor=pointer]:
+                - /url: /automation/api
+                - img [ref=e75]
+                - generic [ref=e78]: 接口自动化
+            - listitem [ref=e79]:
+              - link "性能测试 Soon" [disabled]:
+                - /url: /performance-tests
+                - img
+                - generic: 性能测试
+                - generic: Soon
+            - listitem [ref=e80]:
+              - link "模型评测 Soon" [disabled]:
+                - /url: /model-evaluations
+                - img
+                - generic: 模型评测
+                - generic: Soon
+            - listitem [ref=e81]:
+              - link "报告中心" [ref=e82] [cursor=pointer]:
+                - /url: /reports
+                - img [ref=e83]
+                - generic [ref=e86]: 报告中心
+    - main [ref=e87]:
+      - generic [ref=e89]:
+        - button "Toggle Sidebar" [ref=e91]:
+          - img
+          - generic [ref=e92]: Toggle Sidebar
+        - generic [ref=e93]:
+          - generic [ref=e94]:
+            - combobox "切换项目" [ref=e95]:
+              - img
+              - img
+            - combobox [ref=e96]
+          - button [ref=e97]:
+            - img
+          - 'button "Current mode: light. Click to toggle dark mode" [ref=e98]':
+            - img
+      - generic [ref=e100]:
+        - status "Loading" [ref=e101]
+        - text: 正在检查登录状态
+  - region "Notifications alt+T"

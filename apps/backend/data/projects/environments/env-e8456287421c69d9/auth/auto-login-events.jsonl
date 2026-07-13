@@ -1,5 +1,2 @@
-{"recorded_at": "2026-07-08T03:27:51.195082+00:00", "kind": "session_started", "url": "about:blank"}
-{"recorded_at": "2026-07-08T03:27:51.196966+00:00", "kind": "login_plan_loaded", "path": "D:\\project\\test_project\\apps\\backend\\data\\projects\\environments\\env-e8456287421c69d9\\auth\\login-plan.json"}
-{"recorded_at": "2026-07-08T03:27:51.510447+00:00", "kind": "login_plan_invalid", "reason": "username_selector_not_editable"}
-{"recorded_at": "2026-07-08T03:28:17.109313+00:00", "kind": "login_page_observed", "url": "chrome-error://chromewebdata/", "page_image_path": "D:\\project\\test_project\\apps\\backend\\data\\projects\\environments\\env-e8456287421c69d9\\auth/login-page.png", "elements_path": "D:\\project\\test_project\\apps\\backend\\data\\projects\\environments\\env-e8456287421c69d9\\auth/login-elements.json", "element_count": 4}
-{"recorded_at": "2026-07-08T03:28:43.158660+00:00", "kind": "login_failed", "reason": "captcha_not_found", "attempt": 1, "debug_image_path": "D:\\project\\test_project\\apps\\backend\\data\\projects\\environments\\env-e8456287421c69d9\\auth/captcha-not-found-1.png"}
+{"recorded_at": "2026-07-13T06:00:59.848381+00:00", "kind": "session_started", "url": "about:blank"}
+{"recorded_at": "2026-07-13T06:01:00.022313+00:00", "kind": "login_failed", "reason": "login_page_unreachable", "url": "chrome-error://chromewebdata/"}

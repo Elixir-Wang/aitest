@@ -1,7 +1,0 @@
-# CI grep 门禁: 命中任一行即 FAIL
-# 用法: rg -n -f .config/grep-gate.txt apps/backend
-artifact_write_tool
-cache_write_tool
-cache_update_tool
-cache_index\.yaml
-update_cache_index

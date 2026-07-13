@@ -5,8 +5,9 @@ from pathlib import Path
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 
-from app.agents.shared.skill_middleware import SkillMiddleware
 from app.agents.requirement_analysis.schemas import RequirementAnalysisResult
+from app.agents.shared.invalid_tool_call_recovery import InvalidToolCallRecoveryMiddleware
+from app.agents.shared.skill_middleware import SkillMiddleware
 
 
 def requirement_analysis_agent(
@@ -39,7 +40,7 @@ def requirement_analysis_agent(
         model=model,
         tools=[],
         system_prompt=base_prompt,
-        middleware=[skill_middleware],
+        middleware=[skill_middleware, InvalidToolCallRecoveryMiddleware()],
         response_format=ToolStrategy(RequirementAnalysisResult),
     )
 

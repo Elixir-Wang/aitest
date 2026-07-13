@@ -46,7 +46,7 @@ from .serdes import (
 
 async def analyze_requirement_with_agent(run_id: str):
     """从数据库加载 run 输入并运行需求分析 Agent。返回 RequirementAnalysisResult。"""
-    return await run_requirement_analysis(load_run_input(run_id), run_id=run_id)
+    return await run_requirement_analysis(load_run_input(run_id))
 
 
 # === 阶段 1：编辑初步需求 ====================================================

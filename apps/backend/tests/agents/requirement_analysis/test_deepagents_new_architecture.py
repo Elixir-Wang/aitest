@@ -72,8 +72,9 @@ def test_requirement_analysis_agent_uses_deepagents_skills_middleware(monkeypatc
     assert calls["agent_kwargs"]["model"] == "model"
     assert calls["agent_kwargs"]["tools"] == []
     assert calls["agent_kwargs"]["system_prompt"] is None
-    assert len(calls["agent_kwargs"]["middleware"]) == 1
+    assert len(calls["agent_kwargs"]["middleware"]) == 2
     assert calls["agent_kwargs"]["middleware"][0].name == "SkillMiddleware"
+    assert calls["agent_kwargs"]["middleware"][1].name == "InvalidToolCallRecoveryMiddleware"
 
 
 @pytest.mark.anyio

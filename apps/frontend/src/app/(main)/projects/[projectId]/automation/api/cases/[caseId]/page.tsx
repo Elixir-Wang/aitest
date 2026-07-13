@@ -68,20 +68,14 @@ export default function ApiAutomationCaseDetailPage() {
         ) : testCase ? (
           <>
             <div className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0 space-y-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h1 className="mr-1 max-w-3xl break-words font-semibold text-2xl tracking-tight">{testCase.title}</h1>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge className={cn("border", apiCasePriorityTone(testCase.priority))} variant="outline">
                     {testCase.priority || "P2"}
                   </Badge>
                   <Badge variant="outline">{formatApiCaseCoverage(testCase.coverage)}</Badge>
-                  <Badge
-                    className="border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                    variant="outline"
-                  >
-                    {testCase.source === "ai_generated" ? "AI 生成" : "人工维护"}
-                  </Badge>
                 </div>
-                <h1 className="max-w-3xl break-words font-semibold text-2xl tracking-tight">{testCase.title}</h1>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Button asChild className="h-9" size="sm" variant="outline">

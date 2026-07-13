@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
@@ -17,6 +18,20 @@ setup_logging()
 
 app = FastAPI(title="AI Testing System API", version="0.1.0")
 
+# 默认仅允许本机前端；通过环境变量 CORS_ALLOW_ORIGINS 追加（如内网/演示环境），
+# 多个 origin 用英文逗号分隔，例如：
+#   CORS_ALLOW_ORIGINS="http://192.168.1.100:3000,http://10.0.0.5:3000"
+_default_cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://172.16.187.149:3000",
+]
+_extra_cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOW_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
 # Added before CORS so unexpected endpoint failures are converted to responses
 # that still pass through the CORS middleware.
 app.add_middleware(ApiUnhandledExceptionMiddleware)
@@ -25,7 +40,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_headers=["*"],
     allow_methods=["*"],
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[*_default_cors_origins, *_extra_cors_origins],
 )
 
 

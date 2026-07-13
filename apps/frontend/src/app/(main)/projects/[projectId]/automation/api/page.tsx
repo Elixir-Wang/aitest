@@ -62,13 +62,14 @@ import {
   debugApiAutomationEndpoint,
   deleteApiAutomationEndpoint,
   deleteApiAutomationEnvironment,
+  deleteApiAutomationScript,
   deleteApiAutomationTestCase,
   formatDateTime,
   generateApiAutomationScripts,
   generateApiAutomationTestCases,
-  getApiAutomationScriptFiles,
   getApiAutomationGenerationRun,
   getApiAutomationRun,
+  getApiAutomationScriptFiles,
   importOpenApiDocument,
   listApiAutomationCaseSets,
   listApiAutomationEndpoints,
@@ -186,6 +187,8 @@ export default function Page() {
   const [scriptFiles, setScriptFiles] = useState<ApiAutomationScriptFile[]>([]);
   const [activeScriptFileKey, setActiveScriptFileKey] = useState("");
   const [scriptDetailTab, setScriptDetailTab] = useState<"cases" | "code" | "runs">("cases");
+  const [scriptCaseSearchText, setScriptCaseSearchText] = useState("");
+  const [selectedScriptCaseIds, setSelectedScriptCaseIds] = useState<string[]>([]);
   const [run, setRun] = useState<ApiAutomationRun | null>(null);
   const [selectedEndpointAssetIds, setSelectedEndpointAssetIds] = useState<string[]>([]);
   const [activeEndpointId, setActiveEndpointId] = useState("");
@@ -266,7 +269,7 @@ export default function Page() {
       }
       const matchesSearch =
         !keyword ||
-        [testCase.title, testCase.priority, testCase.source, formatDateTime(testCase.updated_at)]
+        [testCase.title, testCase.priority, formatDateTime(testCase.updated_at)]
           .join(" ")
           .toLowerCase()
           .includes(keyword);
@@ -287,6 +290,25 @@ export default function Page() {
     () => apiTestCases.filter((testCase) => testCase.endpoint_id === activeScript?.endpoint_id),
     [activeScript, apiTestCases],
   );
+  const filteredActiveScriptCases = useMemo(() => {
+    const keyword = scriptCaseSearchText.trim().toLowerCase();
+    if (!keyword) {
+      return activeScriptCases;
+    }
+    return activeScriptCases.filter((testCase) =>
+      [testCase.title, testCase.priority, coverageLabel(testCase.coverage), formatDateTime(testCase.updated_at)]
+        .join(" ")
+        .toLowerCase()
+        .includes(keyword),
+    );
+  }, [activeScriptCases, scriptCaseSearchText]);
+  const selectedVisibleScriptCaseCount = filteredActiveScriptCases.filter((testCase) =>
+    selectedScriptCaseIds.includes(testCase.id),
+  ).length;
+  const allVisibleScriptCasesSelected =
+    filteredActiveScriptCases.length > 0 && selectedVisibleScriptCaseCount === filteredActiveScriptCases.length;
+  const partiallyVisibleScriptCasesSelected =
+    selectedVisibleScriptCaseCount > 0 && selectedVisibleScriptCaseCount < filteredActiveScriptCases.length;
   const activeScriptFile = useMemo(
     () => scriptFiles.find((file) => file.key === activeScriptFileKey) ?? scriptFiles[0] ?? null,
     [activeScriptFileKey, scriptFiles],
@@ -752,6 +774,30 @@ export default function Page() {
     }
   }
 
+  async function handleDeleteScripts(scriptIds: string[] = selectedScriptIds) {
+    const ids = [...new Set(scriptIds)];
+    if (ids.length === 0) {
+      toast.error("请先选择要删除的接口脚本");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await Promise.all(ids.map((scriptId) => deleteApiAutomationScript(projectId, scriptId)));
+      const scriptRows = await listApiAutomationScripts(projectId);
+      setScripts(scriptRows);
+      setSelectedScriptIds((current) => current.filter((id) => !ids.includes(id)));
+      setActiveScriptId((current) =>
+        current && scriptRows.some((script) => script.id === current) ? current : (scriptRows[0]?.id ?? ""),
+      );
+      toast.success(`已删除 ${ids.length} 个接口脚本`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "接口脚本删除失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function toggleEndpointAsset(endpointId: string, checked: boolean) {
     setSelectedEndpointAssetIds((current) =>
       checked ? [...new Set([...current, endpointId])] : current.filter((id) => id !== endpointId),
@@ -816,6 +862,22 @@ export default function Page() {
     });
   }
 
+  function toggleScriptCase(testCaseId: string, checked: boolean) {
+    setSelectedScriptCaseIds((current) =>
+      checked ? [...new Set([...current, testCaseId])] : current.filter((id) => id !== testCaseId),
+    );
+  }
+
+  function toggleAllScriptCases(checked: boolean) {
+    const visibleIds = filteredActiveScriptCases.map((testCase) => testCase.id);
+    setSelectedScriptCaseIds((current) => {
+      if (!checked) {
+        return current.filter((id) => !visibleIds.includes(id));
+      }
+      return [...new Set([...current, ...visibleIds])];
+    });
+  }
+
   async function deleteApiCaseEndpoints(endpointIds: string[]) {
     const ids = [...new Set(endpointIds)];
     if (ids.length === 0) {
@@ -838,6 +900,7 @@ export default function Page() {
       await Promise.all(ids.map((caseId) => deleteApiAutomationTestCase(projectId, caseId)));
       setApiTestCases((current) => current.filter((testCase) => !ids.includes(testCase.id)));
       setSelectedApiCaseIds((current) => current.filter((id) => !ids.includes(id)));
+      setSelectedScriptCaseIds((current) => current.filter((id) => !ids.includes(id)));
       toast.success(`已删除 ${ids.length} 个接口用例`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "接口用例删除失败");
@@ -1074,6 +1137,7 @@ export default function Page() {
                               ? "indeterminate"
                               : false
                         }
+                        className="after:inset-0"
                         disabled={busy}
                         onCheckedChange={(checked) => toggleEndpointAssetGroup(groupEndpointIds, Boolean(checked))}
                       />
@@ -1393,6 +1457,7 @@ export default function Page() {
                               ? "indeterminate"
                               : false
                         }
+                        className="after:inset-0"
                         disabled={busy}
                         onCheckedChange={(checked) =>
                           toggleApiCaseEndpointGroupSelection(groupEndpointIds, Boolean(checked))
@@ -1586,43 +1651,67 @@ export default function Page() {
       )}
 
       {activeTab === "测试脚本" && (
-        <div className="grid min-h-[38rem] overflow-hidden rounded-md border bg-background xl:grid-cols-[340px_minmax(0,1fr)_280px]">
-          <aside className="flex min-h-0 flex-col border-r bg-muted/15">
-            <div className="flex items-center justify-between gap-2 border-b px-3 py-3">
-              <div>
-                <div className="font-semibold text-sm">接口脚本</div>
-                <div className="text-muted-foreground text-xs">{scripts.length} 个接口</div>
+        <div className="grid min-h-[38rem] overflow-hidden rounded-xl border bg-background xl:grid-cols-[360px_minmax(0,1fr)_280px]">
+          <aside className="no-scrollbar flex min-h-0 flex-col overflow-y-auto overflow-x-hidden border-r bg-muted/20">
+            <div className="border-b p-3">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  aria-label="选择全部接口脚本"
+                  checked={
+                    scripts.length > 0 && scripts.every((script) => selectedScriptIds.includes(script.id))
+                      ? true
+                      : scripts.some((script) => selectedScriptIds.includes(script.id))
+                        ? "indeterminate"
+                        : false
+                  }
+                  disabled={busy || scripts.length === 0}
+                  onCheckedChange={(checked) => setSelectedScriptIds(checked ? scripts.map((script) => script.id) : [])}
+                />
+                <div className="min-w-0">
+                  <div className="font-semibold text-sm">接口脚本</div>
+                  <div className="text-muted-foreground text-xs">
+                    {scripts.length} 个接口，已选择 {selectedScriptIds.length}
+                  </div>
+                </div>
+                <div className="ml-auto flex items-center gap-2">
+                  <Button
+                    className="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100 hover:text-red-800"
+                    disabled={busy || selectedScriptIds.length === 0}
+                    onClick={() => handleDeleteScripts(selectedScriptIds)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <Trash2 className="size-4" />
+                    删除{selectedScriptIds.length > 0 ? ` (${selectedScriptIds.length})` : ""}
+                  </Button>
+                  <Button
+                    disabled={busy || selectedScriptIds.length === 0 || !selectedEnvironment}
+                    onClick={() => handleRun(selectedScriptIds)}
+                    size="sm"
+                  >
+                    {busy ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+                    执行
+                  </Button>
+                </div>
               </div>
               <Button
+                className="mt-3 w-full"
                 disabled={busy || selectedApiCaseEndpointIds.length === 0}
                 onClick={handleGenerateScripts}
                 size="sm"
                 variant="outline"
               >
                 {busy ? <Loader2 className="size-4 animate-spin" /> : <Braces className="size-4" />}
-                生成
+                从接口用例生成脚本
               </Button>
-            </div>
-            <div className="flex items-center gap-2 border-b px-3 py-2">
-              <Checkbox
-                aria-label="选择全部接口脚本"
-                checked={
-                  scripts.length > 0 && scripts.every((script) => selectedScriptIds.includes(script.id))
-                    ? true
-                    : scripts.some((script) => selectedScriptIds.includes(script.id))
-                      ? "indeterminate"
-                      : false
-                }
-                onCheckedChange={(checked) => setSelectedScriptIds(checked ? scripts.map((script) => script.id) : [])}
-              />
-              <span className="text-muted-foreground text-xs">已选择 {selectedScriptIds.length}</span>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-2">
               {scripts.map((script) => (
                 <div
                   className={cn(
-                    "mb-1 flex items-start gap-2 rounded-md border border-transparent px-2 py-2",
-                    activeScript?.id === script.id && "border-border bg-background shadow-xs",
+                    "mb-1 flex items-start gap-2 rounded-md border border-transparent px-2 py-2 transition-colors hover:border-slate-200 hover:bg-slate-100/70 dark:hover:border-border dark:hover:bg-muted/45",
+                    activeScript?.id === script.id &&
+                      "border-sky-200 bg-sky-50/80 shadow-xs dark:border-sky-500/35 dark:bg-sky-500/15",
                   )}
                   key={script.id}
                 >
@@ -1664,6 +1753,16 @@ export default function Page() {
                     variant="ghost"
                   >
                     <Play className="size-4" />
+                  </Button>
+                  <Button
+                    aria-label={`删除 ${script.endpoint_summary || script.path || script.name}`}
+                    className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                    disabled={busy}
+                    onClick={() => handleDeleteScripts([script.id])}
+                    size="icon"
+                    variant="ghost"
+                  >
+                    <Trash2 className="size-4" />
                   </Button>
                 </div>
               ))}
@@ -1708,24 +1807,104 @@ export default function Page() {
 
             <div className="min-h-0 flex-1 overflow-auto">
               {scriptDetailTab === "cases" ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>用例名称</TableHead>
-                      <TableHead className="w-20">优先级</TableHead>
-                      <TableHead className="w-24">类型</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {activeScriptCases.map((testCase) => (
-                      <TableRow key={testCase.id}>
-                        <TableCell className="font-medium">{testCase.title}</TableCell>
-                        <TableCell>{testCase.priority}</TableCell>
-                        <TableCell>{testCase.coverage}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <div className="flex min-h-full flex-col p-4">
+                  <ListToolbar
+                    actions={
+                      <Button disabled={busy} onClick={() => refresh()} variant="outline">
+                        {busy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                        刷新
+                      </Button>
+                    }
+                    description={activeScript ? `${activeScript.endpoint_summary || activeScript.path} · ${activeScript.path}` : ""}
+                    onBatchDelete={() => deleteApiTestCases(selectedScriptCaseIds)}
+                    onSearch={setScriptCaseSearchText}
+                    placeholder="搜索用例名称"
+                    selectedCount={selectedScriptCaseIds.length}
+                    title="接口用例列表"
+                  />
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-10">
+                            <Checkbox
+                              aria-label="选择全部脚本关联用例"
+                              checked={
+                                allVisibleScriptCasesSelected ||
+                                (partiallyVisibleScriptCasesSelected ? "indeterminate" : false)
+                              }
+                              disabled={busy || filteredActiveScriptCases.length === 0}
+                              onCheckedChange={(checked) => toggleAllScriptCases(Boolean(checked))}
+                            />
+                          </TableHead>
+                          <TableHead>用例名称</TableHead>
+                          <TableHead className="w-20">优先级</TableHead>
+                          <TableHead className="w-24">类型</TableHead>
+                          <TableHead className="w-44">更新时间</TableHead>
+                          <TableHead className="w-16">操作</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredActiveScriptCases.map((testCase) => (
+                          <TableRow
+                            data-state={selectedScriptCaseIds.includes(testCase.id) ? "selected" : undefined}
+                            key={testCase.id}
+                          >
+                            <TableCell>
+                              <Checkbox
+                                aria-label={`选择 ${testCase.title}`}
+                                checked={selectedScriptCaseIds.includes(testCase.id)}
+                                onCheckedChange={(checked) => toggleScriptCase(testCase.id, Boolean(checked))}
+                              />
+                            </TableCell>
+                            <TableCell className="max-w-80 font-medium">
+                              <button
+                                className="block max-w-full truncate text-left hover:underline"
+                                onClick={() => router.push(apiCaseDetailHref(projectId, testCase.id))}
+                                title={testCase.title}
+                                type="button"
+                              >
+                                {testCase.title}
+                              </button>
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={cn("border", apiCasePriorityTone(testCase.priority))} variant="outline">
+                                {testCase.priority || "P2"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <CoverageBadge coverage={testCase.coverage} />
+                            </TableCell>
+                            <TableCell>{formatDateTime(testCase.updated_at)}</TableCell>
+                            <TableCell>
+                              <RowActions
+                                actions={[
+                                  {
+                                    label: "查看详情",
+                                    icon: Eye,
+                                    onSelect: () => router.push(apiCaseDetailHref(projectId, testCase.id)),
+                                  },
+                                  {
+                                    label: "删除",
+                                    icon: Trash2,
+                                    destructive: true,
+                                    onSelect: () => deleteApiTestCases([testCase.id]),
+                                  },
+                                ]}
+                                label={`打开 ${testCase.title} 操作菜单`}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    {filteredActiveScriptCases.length === 0 ? (
+                      <div className="flex min-h-52 flex-1 items-center justify-center text-muted-foreground text-sm">
+                        {activeScriptCases.length === 0 ? "当前脚本暂无关联用例" : "没有匹配的接口用例"}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               ) : null}
 
               {scriptDetailTab === "code" ? (
@@ -2519,6 +2698,30 @@ function runStatusLabel(status: string) {
     cancelled: "已取消",
     interrupted: "已中断",
   } as Record<string, string>)[status] ?? status;
+}
+
+function coverageLabel(coverage: string) {
+  return ({
+    positive: "正向",
+    negative: "负向",
+  } as Record<string, string>)[coverage] ?? coverage;
+}
+
+function CoverageBadge({ coverage }: { coverage: string }) {
+  const isNegative = coverage === "negative";
+
+  return (
+    <Badge
+      className={cn(
+        isNegative
+          ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/35 dark:bg-rose-500/15 dark:text-rose-200"
+          : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200",
+      )}
+      variant="outline"
+    >
+      {coverageLabel(coverage)}
+    </Badge>
+  );
 }
 
 function endpointGroupName(endpoint: ApiAutomationEndpoint) {

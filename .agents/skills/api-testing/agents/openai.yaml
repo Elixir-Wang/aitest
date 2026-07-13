@@ -1,4 +1,0 @@
-interface:
-  display_name: "API Testing"
-  short_description: "Design risk-focused API test plans and cases"
-  default_prompt: "Use $api-testing to design an API test plan from the provided interface docs and project context."

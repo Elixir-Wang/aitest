@@ -1,19 +1,24 @@
 import asyncio
 import io
+from pathlib import Path
 
 import pytest
 from starlette.datastructures import Headers
 from starlette.datastructures import UploadFile
 
 
-def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Path:
     from app.core import db as core_db
+    from app.core import storage
     from app.seed.init_db import init_db
 
     data_dir = tmp_path / "data"
     data_dir.mkdir()
+    monkeypatch.setattr(core_db, "DATA_DIR", data_dir)
     monkeypatch.setattr(core_db, "DB_PATH", data_dir / "ai_testing.db")
+    monkeypatch.setattr(storage, "PROJECT_FILE_STORAGE_ROOT", data_dir / "projects")
     init_db()
+    return data_dir
 
 
 def _seed_project(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -135,7 +140,7 @@ def test_project_knowledge_query_collects_company_knowledge_by_default(monkeypat
     from app.services.knowledge import global_service, service
     from app.schemas.knowledge import KnowledgeQueryOutput
 
-    _use_temp_db(monkeypatch, tmp_path)
+    data_dir = _use_temp_db(monkeypatch, tmp_path)
     _seed_project(monkeypatch, tmp_path)
     base = global_service.create_base(name="测试规范", description="", actor={"id": "u-admin", "role": "admin"})
     uploaded = asyncio.run(
@@ -147,6 +152,9 @@ def test_project_knowledge_query_collects_company_knowledge_by_default(monkeypat
         )
     )
     company_file_id = uploaded["files"][0]["id"]
+    stored_file = global_service.get_vault_file(base["id"], company_file_id, {"id": "u-admin", "role": "admin"})
+    assert Path(stored_file["raw_path"]).is_relative_to(data_dir)
+    assert Path(stored_file["markdown_path"]).is_relative_to(data_dir)
     captured_sources: list[list[str]] = []
 
     async def fake_run_knowledge_agent(input_data, *, thread_id=None):

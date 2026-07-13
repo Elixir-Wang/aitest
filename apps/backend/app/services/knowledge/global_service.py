@@ -169,9 +169,13 @@ def delete_vault_file(base_id: str, file_id: str, actor) -> dict:
         if not row:
             raise api_error(404, "GLOBAL_KNOWLEDGE_FILE_NOT_FOUND", "文件不存在。")
         snapshot = dict(row)
+    _delete_file_paths(snapshot)
+    with connect() as db:
+        _require_base(db, base_id)
+        if not global_knowledge_repo.find_vault_file(db, base_id, file_id):
+            raise api_error(404, "GLOBAL_KNOWLEDGE_FILE_NOT_FOUND", "文件不存在。")
         global_knowledge_repo.delete_vault_file(db, file_id)
         global_knowledge_repo.touch_base(db, base_id)
-    _delete_file_paths(snapshot)
     return {"deleted": True, "id": file_id}
 
 
@@ -179,8 +183,12 @@ def delete_base(base_id: str, actor) -> dict:
     _require_admin(actor)
     with connect() as db:
         _require_base(db, base_id)
+    base_dir = global_knowledge_base_dir(base_id)
+    if base_dir.exists():
+        shutil.rmtree(base_dir)
+    with connect() as db:
+        _require_base(db, base_id)
         global_knowledge_repo.delete_base(db, base_id)
-    shutil.rmtree(global_knowledge_base_dir(base_id), ignore_errors=True)
     return {"deleted": True, "id": base_id}
 
 
@@ -194,15 +202,16 @@ def delete_folder(base_id: str, folder_id: str, actor) -> dict:
         if folder_id == base["root_folder_id"]:
             raise api_error(400, "GLOBAL_KNOWLEDGE_ROOT_FOLDER_DELETE_FORBIDDEN", "根文件夹不允许删除。")
         folder_ids = global_knowledge_repo.descendant_folder_ids(db, base_id, folder_id)
-        files = []
-        for descendant_id in folder_ids:
-            files.extend(global_knowledge_repo.list_files_by_folder(db, descendant_id))
+    for descendant_id in folder_ids:
+        folder_dir = global_knowledge_folder_dir(base_id, descendant_id)
+        if folder_dir.exists():
+            shutil.rmtree(folder_dir)
+    with connect() as db:
+        _require_base(db, base_id)
+        if not global_knowledge_repo.find_folder_in_base(db, base_id, folder_id):
+            raise api_error(404, "GLOBAL_KNOWLEDGE_FOLDER_NOT_FOUND", "目标文件夹不存在。")
         global_knowledge_repo.delete_folders(db, folder_ids)
         global_knowledge_repo.touch_base(db, base_id)
-    for file_row in files:
-        _delete_file_paths(dict(file_row))
-    for descendant_id in folder_ids:
-        shutil.rmtree(global_knowledge_folder_dir(base_id, descendant_id), ignore_errors=True)
     return {"deleted": True, "id": folder_id, "deleted_folder_ids": folder_ids}
 
 
@@ -223,19 +232,18 @@ async def _save_vault_file(base_id: str, folder_id: str, upload: UploadFile, ind
     folder_dir = global_knowledge_folder_dir(base_id, folder_id)
     raw_dir = folder_dir / "raw"
     markdown_dir = folder_dir / "markdown"
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    markdown_dir.mkdir(parents=True, exist_ok=True)
     raw_path = raw_dir / f"{file_id}-{safe_name}"
-    raw_path.write_bytes(raw_bytes)
-
     markdown_content = raw_bytes.decode("utf-8", errors="ignore")
     conversion_status = "success"
     conversion_summary = "文件已作为 Markdown 内容保存。"
-
     markdown_path = markdown_dir / f"{file_id}.md"
-    markdown_path.write_text(markdown_content, encoding="utf-8")
-    with connect() as db:
-        try:
+
+    try:
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        markdown_dir.mkdir(parents=True, exist_ok=True)
+        raw_path.write_bytes(raw_bytes)
+        markdown_path.write_text(markdown_content, encoding="utf-8")
+        with connect() as db:
             global_knowledge_repo.create_vault_file(
                 db,
                 file_id=file_id,
@@ -251,10 +259,11 @@ async def _save_vault_file(base_id: str, folder_id: str, upload: UploadFile, ind
                 conversion_status=conversion_status,
                 conversion_summary=conversion_summary,
             )
-        except Exception as exc:
-            if "UNIQUE" in str(exc):
-                raise api_error(422, "GLOBAL_KNOWLEDGE_FILE_NAME_EXISTS", "当前文件夹下已存在同名文件。") from exc
-            raise
+    except Exception as exc:
+        _cleanup_failed_vault_upload(base_id, raw_path, markdown_path)
+        if "UNIQUE" in str(exc):
+            raise api_error(422, "GLOBAL_KNOWLEDGE_FILE_NAME_EXISTS", "当前文件夹下已存在同名文件。") from exc
+        raise
     return {"id": file_id}
 
 
@@ -358,6 +367,32 @@ def _delete_file_paths(row: dict) -> None:
             continue
         if resolved.exists() and resolved.is_file():
             resolved.unlink()
+
+
+def _cleanup_failed_vault_upload(base_id: str, raw_path, markdown_path) -> None:
+    base_root = global_knowledge_base_dir(base_id).resolve()
+    for path in (raw_path, markdown_path):
+        resolved = path.resolve()
+        try:
+            resolved.relative_to(base_root)
+        except ValueError:
+            continue
+        if resolved.exists() and resolved.is_file():
+            resolved.unlink()
+
+    candidate_dirs = {
+        raw_path.parent,
+        markdown_path.parent,
+        raw_path.parent.parent,
+        raw_path.parent.parent.parent,
+        base_root,
+    }
+    for directory in sorted(candidate_dirs, key=lambda item: len(item.parts), reverse=True):
+        try:
+            directory.resolve().relative_to(base_root.parent)
+            directory.rmdir()
+        except (FileNotFoundError, OSError, ValueError):
+            continue
 
 
 def _base_available_actions(role: str) -> list[dict]:

@@ -5,6 +5,7 @@ import * as React from "react";
 import { Archive, ArrowUp, FileText, Square, X } from "lucide-react";
 
 import type { ApiModelProvider } from "@/lib/api-client";
+import { createId } from "@/lib/create-id";
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -89,7 +90,7 @@ export function KnowledgeChatInput({
       return;
     }
     event.preventDefault();
-    setPastedContents((current) => [...current, { id: crypto.randomUUID(), content: text }]);
+    setPastedContents((current) => [...current, { id: createId(), content: text }]);
     if (!value.trim()) {
       onValueChange("请结合粘贴内容查询项目知识库。");
     }
@@ -103,7 +104,7 @@ export function KnowledgeChatInput({
       return;
     }
     void textFile.text().then((content) => {
-      setPastedContents((current) => [...current, { id: crypto.randomUUID(), content }]);
+      setPastedContents((current) => [...current, { id: createId(), content }]);
       if (!value.trim()) {
         onValueChange(`请结合 ${textFile.name} 查询项目知识库。`);
       }

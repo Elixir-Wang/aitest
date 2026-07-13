@@ -1,0 +1,51 @@
+name: ai-testing
+
+networks:
+  ai-net:
+    name: ai-testing-net
+    driver: bridge
+
+volumes:
+  backend-data:
+    name: ai-testing-backend-data
+  backend-logs:
+    name: ai-testing-backend-logs
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ai-testing:latest
+    container_name: ai-testing
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-deepseek}
+      MODEL_NAME: ${MODEL_NAME:-deepseek-chat}
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-/api/v1}
+
+    volumes:
+      - backend-data:/app/data
+      - backend-logs:/app/logs
+
+    networks:
+      - ai-net
+
+    ports:
+      # THE ONLY port exposed to host — both frontend (3000) and backend (8000)
+      # are accessible here. In practice only :3000 is used in the browser.
+      - "${FRONTEND_PORT:-3000}:3000"
+      - "8000:8000"
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s

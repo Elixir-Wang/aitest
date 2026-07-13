@@ -676,7 +676,6 @@ export type ApiAutomationTestCase = {
   test_description: string;
   priority: string;
   coverage: string;
-  source: string;
   preconditions: string[];
   request: Record<string, unknown>;
   test_data: Record<string, unknown>;
@@ -874,6 +873,12 @@ export function getApiAutomationScriptFiles(projectId: string, scriptId: string)
   return apiRequest<{ script_id: string; files: ApiAutomationScriptFile[] }>(
     `/projects/${projectId}/api-scripts/${scriptId}/files`,
   );
+}
+
+export function deleteApiAutomationScript(projectId: string, scriptId: string) {
+  return apiRequest<void>(`/projects/${projectId}/api-scripts/${scriptId}`, {
+    method: "DELETE",
+  });
 }
 
 export function createApiAutomationRun(

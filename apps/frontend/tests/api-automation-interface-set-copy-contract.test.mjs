@@ -172,8 +172,16 @@ test("project api automation case tab shows generated endpoints and case table w
   assert.match(projectPageSource, /toggleApiCaseEndpoint\(endpoint\.id, Boolean\(checked\)\)/);
   assert.match(projectPageSource, /toggleEndpointAssetGroup\(groupEndpointIds, Boolean\(checked\)\)/);
   assert.match(projectPageSource, /aria-label={`选择 \$\{group\} 分组的全部接口`}/);
+  assert.match(
+    projectPageSource,
+    /aria-label={`选择 \$\{group\} 分组的全部接口`}\s+checked=\{[\s\S]*?className="after:inset-0"/,
+  );
   assert.match(projectPageSource, /toggleApiCaseEndpointGroupSelection\(groupEndpointIds, Boolean\(checked\)\)/);
   assert.match(projectPageSource, /aria-label={`选择 \$\{group\} 分组的全部接口用例`}/);
+  assert.match(
+    projectPageSource,
+    /aria-label={`选择 \$\{group\} 分组的全部接口用例`}\s+checked=\{[\s\S]*?className="after:inset-0"/,
+  );
   assert.match(projectPageSource, /setActiveApiCaseEndpointId\(endpoint\.id\)/);
   assert.match(
     projectPageSource,
@@ -242,7 +250,13 @@ test("project api automation uses selected environment for generate scripts and 
   assert.match(apiClientSource, /export function updateApiAutomationEnvironment/);
   assert.match(apiClientSource, /export function deleteApiAutomationEnvironment/);
   assert.match(apiClientSource, /export function deleteApiAutomationTestCase/);
+  assert.match(apiClientSource, /export function deleteApiAutomationScript/);
   assert.match(apiClientSource, /`\/projects\/\$\{projectId\}\/api-test-cases\/\$\{caseId\}`/);
+  assert.match(apiClientSource, /`\/projects\/\$\{projectId\}\/api-scripts\/\$\{scriptId\}`/);
+  assert.match(projectPageSource, /async function handleDeleteScripts\(scriptIds: string\[\] = selectedScriptIds\)/);
+  assert.match(projectPageSource, /onClick=\{\(\) => handleRun\(selectedScriptIds\)\}/);
+  assert.match(projectPageSource, /onClick=\{\(\) => handleDeleteScripts\(selectedScriptIds\)\}/);
+  assert.match(projectPageSource, /从接口用例生成脚本/);
 });
 
 test("project api automation case detail shows structured QA review sections", () => {
@@ -280,6 +294,28 @@ test("project api automation case detail shows structured QA review sections", (
   assert.doesNotMatch(caseDetailPageSource, /bg-white p-4/);
   assert.doesNotMatch(caseDetailPageSource, /text-\[#101828\]/);
   assert.match(projectPageSource, /searchParams\.get\("tab"\) === "cases" \? "接口用例" : tabs\[0\]/);
+});
+
+test("project api automation script case type uses Chinese badge labels", () => {
+  assert.match(projectPageSource, /<TableHead[^>]*>类型<\/TableHead>/);
+  assert.match(projectPageSource, /<CoverageBadge coverage=\{testCase\.coverage\} \/>/);
+  assert.match(projectPageSource, /function CoverageBadge\(\{ coverage \}: \{ coverage: string \}\)/);
+  assert.match(projectPageSource, /function coverageLabel\(coverage: string\)/);
+  assert.match(projectPageSource, /positive: "正向"/);
+  assert.match(projectPageSource, /negative: "负向"/);
+});
+
+test("project api automation script cases reuse the interface case list UI", () => {
+  assert.match(projectPageSource, /const \[scriptCaseSearchText, setScriptCaseSearchText\] = useState\(""\);/);
+  assert.match(projectPageSource, /const \[selectedScriptCaseIds, setSelectedScriptCaseIds\] = useState<string\[\]>\(\[\]\);/);
+  assert.match(projectPageSource, /title="接口用例列表"/);
+  assert.match(projectPageSource, /placeholder="搜索用例名称"/);
+  assert.match(projectPageSource, /onSearch=\{setScriptCaseSearchText\}/);
+  assert.match(projectPageSource, /selectedCount=\{selectedScriptCaseIds\.length\}/);
+  assert.match(projectPageSource, /<Checkbox[\s\S]*aria-label="选择全部脚本关联用例"/);
+  assert.match(projectPageSource, /apiCasePriorityTone\(testCase\.priority\)/);
+  assert.match(projectPageSource, /formatDateTime\(testCase\.updated_at\)/);
+  assert.match(projectPageSource, /<RowActions[\s\S]*label=\{`打开 \$\{testCase\.title\} 操作菜单`\}/);
 });
 
 test("project api automation generation and execution notify the top running task indicator", () => {

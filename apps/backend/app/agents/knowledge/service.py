@@ -134,7 +134,7 @@ def _agent_payload(input_data: KnowledgeQueryInput) -> dict[str, Any]:
                         "可搜索文件：",
                         "\n".join(f"- {path}" for path in sorted(files)) or "无。",
                         "",
-                        "说明：以上路径是 Deep Agents StateBackend 虚拟绝对路径，必须按清单原样使用；每个 Markdown 文件顶部都有 JSON 元数据注释，可用于判断 used_requirement_versions 和 used_company_knowledge_files。",
+                        "说明：以上路径是 Deep Agents StateBackend 虚拟绝对路径，必须按清单原样使用；每个 Markdown 文件顶部都有 JSON 元数据注释，可用于核对来源。",
                     ]
                 ),
             }
@@ -289,14 +289,15 @@ def _direct_answer_output_from_result(result: Any) -> KnowledgeQueryOutput | Non
     if not isinstance(result, dict):
         return None
     messages = result.get("messages")
-    if not isinstance(messages, list) or _messages_used_tools(messages):
+    if not isinstance(messages, list):
         return None
+    knowledge_queried = _messages_used_tools(messages)
     for message in reversed(messages):
         if not _is_ai_message(message):
             continue
         content = _message_content(message).strip()
         if content:
-            return KnowledgeQueryOutput(answer=content, knowledge_queried=False)
+            return KnowledgeQueryOutput(answer=content, knowledge_queried=knowledge_queried)
     return None
 
 

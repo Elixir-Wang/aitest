@@ -1,8 +1,5 @@
 from deepagents import create_deep_agent
 from deepagents.backends import StateBackend
-from langchain.agents.structured_output import ToolStrategy
-
-from app.agents.knowledge.schemas import KnowledgeQueryOutput
 
 
 SYSTEM_PROMPT = """
@@ -37,17 +34,15 @@ SYSTEM_PROMPT = """
 4. 回答项目事实时必须来自 /requirements/ 或 /company-knowledge/。
 5. 如果项目最终需求和公司知识库冲突，以项目最终需求为准。
 6. 不得基于常识编造项目事实；只有当用户询问项目事实/公司知识且已尝试查询仍没有依据时，才返回：知识库内未查询到相关结果，并说明还缺少什么信息。
-7. 如果未读取 /requirements/ 或 /company-knowledge/，used_requirement_versions、used_company_knowledge_files 必须为空。
-8. 如果读取了 /requirements/，必须在 used_requirement_versions 中返回实际使用过的需求版本 ID。
-9. 如果读取了 /company-knowledge/，必须在 used_company_knowledge_files 中返回实际使用过的公司知识库文件 ID。
-10. 参考来源写入 answer 正文末尾，不再单独返回结构化来源字段。
-11. 如果回答使用了需求或知识库内容，回答必须使用 Markdown 格式，并在回答末尾追加：
+7. 是否查询过知识库及实际来源由后端根据工具调用记录判断；不要输出结构化字段或 JSON。
+8. 参考来源直接写入回答正文末尾，不再单独返回结构化来源字段。
+9. 如果回答使用了需求或知识库内容，回答必须使用 Markdown 格式，并在回答末尾追加：
 参考来源：
 - [需求] 项目名 / 需求标题
 - [知识库] 知识库名 / 文件标题
-12. 参考来源只列实际支撑核心答案的文档，优先列 3 个以内，最多 5 个；只写标题，不写章节、原文摘录、正文片段。
-13. 如果知识库文件读取失败，必须说明无法读取，不得基于文件名、路径或常识补全业务事实或参考来源。
-14. 最终 answer 只能包含面向用户的答案，不得包含 <think>、思考过程、工具调用计划、检索过程描述、"Let me read"、"我需要查看" 这类中间过程描述。
+10. 参考来源只列实际支撑核心答案的文档，优先列 3 个以内，最多 5 个；只写标题，不写章节、原文摘录、正文片段。
+11. 如果知识库文件读取失败，必须说明无法读取，不得基于文件名、路径或常识补全业务事实或参考来源。
+12. 最终回答只能包含面向用户的答案，不得包含 <think>、思考过程、工具调用计划、检索过程描述、"Let me read"、"我需要查看" 这类中间过程描述。
 """.strip()
 
 
@@ -56,5 +51,4 @@ def knowledge_agent(model):
         model=model,
         system_prompt=SYSTEM_PROMPT,
         backend=StateBackend(),
-        response_format=ToolStrategy(KnowledgeQueryOutput),
     )

@@ -1,2 +1,4 @@
-{"recorded_at": "2026-07-11T09:56:59.324278+00:00", "kind": "session_started", "url": "about:blank"}
-{"recorded_at": "2026-07-11T09:56:59.498533+00:00", "kind": "login_failed", "reason": "login_page_unreachable", "url": "chrome-error://chromewebdata/"}
+{"recorded_at": "2026-07-13T06:01:04.923244+00:00", "kind": "session_started", "url": "about:blank"}
+{"recorded_at": "2026-07-13T06:01:05.437718+00:00", "kind": "login_plan_loaded", "path": "D:\\project\\test_project\\apps\\backend\\data\\projects\\environments\\env-e7b32ebe6e5c0854\\auth\\login-plan.json"}
+{"recorded_at": "2026-07-13T06:01:05.748441+00:00", "kind": "login_plan_invalid", "reason": "username_selector_not_editable"}
+{"recorded_at": "2026-07-13T06:02:02.093504+00:00", "kind": "login_page_observed", "url": "chrome-error://chromewebdata/", "page_image_path": "D:\\project\\test_project\\apps\\backend\\data\\projects\\environments\\env-e7b32ebe6e5c0854\\auth/login-page.png", "elements_path": "D:\\project\\test_project\\apps\\backend\\data\\projects\\environments\\env-e7b32ebe6e5c0854\\auth/login-elements.json", "element_count": 4}

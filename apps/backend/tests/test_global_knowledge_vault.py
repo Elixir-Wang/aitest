@@ -73,7 +73,7 @@ def test_company_knowledge_vault_lifecycle(monkeypatch: pytest.MonkeyPatch, tmp_
         global_service.upload_files_to_folder(
             base["id"],
             nested["id"],
-            [_upload("note.txt", b"hello")],
+            [_upload("note.md", b"hello")],
             actor=ACTOR,
         )
     )
@@ -141,6 +141,74 @@ def test_company_knowledge_base_delete_removes_entry_and_storage(monkeypatch: py
     assert not base_dir.exists()
 
 
+def test_company_knowledge_base_delete_keeps_database_entry_when_storage_delete_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    data_dir = _use_temp_db(monkeypatch, tmp_path)
+    base = global_service.create_base(name="删除失败库", description="", actor=ACTOR)
+    base_dir = data_dir / "global-knowledge" / "bases" / base["id"]
+    base_dir.mkdir(parents=True)
+
+    def fail_rmtree(*args, **kwargs) -> None:
+        raise OSError("storage is locked")
+
+    monkeypatch.setattr(global_service.shutil, "rmtree", fail_rmtree)
+
+    with pytest.raises(OSError, match="storage is locked"):
+        global_service.delete_base(base["id"], ACTOR)
+
+    assert global_service.list_bases(actor=ACTOR)["items"][0]["id"] == base["id"]
+    assert base_dir.exists()
+
+
+def test_company_knowledge_file_delete_keeps_database_entry_when_storage_delete_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    base = global_service.create_base(name="文件删除失败库", description="", actor=ACTOR)
+    uploaded = asyncio.run(
+        global_service.upload_files_to_folder(
+            base["id"],
+            base["root_folder_id"],
+            [_upload("locked.md", b"# Locked")],
+            actor=ACTOR,
+        )
+    )
+    file_id = uploaded["files"][0]["id"]
+
+    def fail_delete_file_paths(*args, **kwargs) -> None:
+        raise OSError("storage is locked")
+
+    monkeypatch.setattr(global_service, "_delete_file_paths", fail_delete_file_paths)
+
+    with pytest.raises(OSError, match="storage is locked"):
+        global_service.delete_vault_file(base["id"], file_id, ACTOR)
+
+    assert global_service.get_vault_file(base["id"], file_id, ACTOR)["id"] == file_id
+
+
+def test_company_knowledge_folder_delete_keeps_database_entry_when_storage_delete_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    base = global_service.create_base(name="目录删除失败库", description="", actor=ACTOR)
+    folder = global_service.create_folder(base["id"], parent_id=base["root_folder_id"], name="锁定目录", actor=ACTOR)
+
+    def fail_rmtree(*args, **kwargs) -> None:
+        raise OSError("storage is locked")
+
+    monkeypatch.setattr(global_service.shutil, "rmtree", fail_rmtree)
+
+    with pytest.raises(OSError, match="storage is locked"):
+        global_service.delete_folder(base["id"], folder["id"], ACTOR)
+
+    tree = global_service.get_base_tree(base["id"], ACTOR)
+    assert tree["root"]["children"][0]["id"] == folder["id"]
+
+
 def test_company_knowledge_base_update_changes_name_and_root_folder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     base = global_service.create_base(name="申请操作库", description="旧描述", actor=ACTOR)
@@ -152,3 +220,29 @@ def test_company_knowledge_base_update_changes_name_and_root_folder(monkeypatch:
     tree = global_service.get_base_tree(base["id"], ACTOR)
     assert tree["base"]["name"] == "申请操作库 v2"
     assert tree["root"]["name"] == "申请操作库 v2"
+
+
+def test_company_knowledge_upload_cleans_storage_when_database_write_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    data_dir = _use_temp_db(monkeypatch, tmp_path)
+    base = global_service.create_base(name="失败清理库", description="", actor=ACTOR)
+
+    def fail_create_vault_file(*args, **kwargs) -> None:
+        raise RuntimeError("database write failed")
+
+    monkeypatch.setattr(global_service.global_knowledge_repo, "create_vault_file", fail_create_vault_file)
+
+    with pytest.raises(RuntimeError, match="database write failed"):
+        asyncio.run(
+            global_service.upload_files_to_folder(
+                base["id"],
+                base["root_folder_id"],
+                [_upload("login.md", b"# Login Test\n\nCover success and failure.")],
+                actor=ACTOR,
+            )
+        )
+
+    base_dir = data_dir / "global-knowledge" / "bases" / base["id"]
+    assert not base_dir.exists()
