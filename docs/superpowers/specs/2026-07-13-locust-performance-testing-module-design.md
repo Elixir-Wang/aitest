@@ -1,7 +1,8 @@
 # Locust 性能测试模块设计 Spec
 
 **日期：** 2026-07-13  
-**状态：** 待评审  
+**最后更新：** 2026-07-14
+**状态：** 已确认，第一阶段实施中
 **适用项目：** AI 测试系统  
 **目标版本：** 性能测试第一期  
 
@@ -23,10 +24,10 @@
 
 1. 用户从当前项目的接口自动化资产中选择一个接口。
 2. 用户选择 API 环境并确认请求数据。
-3. 用户配置并发用户数、启动速率、运行时长、等待时间和请求超时。
-4. AI 根据最小化接口上下文生成完整 Locust 脚本。
-5. 系统对脚本执行输出契约、安全、语法、导入和可选冒烟校验。
-6. 用户预览、编辑并确认脚本。
+3. 用户配置并发用户数、启动速率、正式测量时长、等待时间和请求超时。
+4. AI 根据最小化接口上下文生成结构化 `LocustScriptPlan`，无 AI 时平台也可以生成默认 Plan。
+5. 平台使用受控模板确定性渲染完整 Locust 脚本，并执行结构、语法、导入和可选冒烟校验。
+6. 用户预览脚本，编辑请求、数据模板和成功规则后确认脚本版本。
 7. 后端在独立子进程中使用 Locust LocalRunner 执行压测。
 8. 项目原生页面实时展示 Locust 统计、图表、失败和异常。
 9. 系统保存完整运行快照、统计结果和下载产物。
@@ -71,6 +72,14 @@
 - 每次运行引用不可变的脚本版本。
 - 每次运行保存接口、环境、负载和目标快照。
 
+### 3.6 AI 不直接提供任意可执行代码
+
+- AI 输出结构化 `LocustScriptPlan`，不得输出任意导入、文件操作或进程操作。
+- 平台拥有并测试 Locust 脚本模板，后端根据 Plan 确定性渲染完整 `locustfile.py`。
+- 模型不可用时仍可根据接口定义和用户配置生成基础脚本。
+- 第一期代码预览只读；用户通过结构化表单编辑请求配置、数据模板和成功规则。
+- 后续如开放任意 Python 编辑，必须使用容器级隔离，不能只依赖 AST 黑名单。
+
 ## 4. 第一期范围
 
 ### 4.1 包含范围
@@ -82,8 +91,9 @@
 - 支持覆盖 Headers、Path、Query 和 Body 请求数据。
 - 基础负载参数可配置。
 - 可选性能目标。
-- AI 生成 Locust 脚本。
-- 用户预览、编辑和确认脚本。
+- AI 辅助生成结构化脚本计划。
+- 平台模板渲染完整 Locust 脚本。
+- 用户预览脚本，编辑结构化配置并确认脚本。
 - 脚本安全校验和版本管理。
 - Locust 风格实时统计页面。
 - CSV、JSON 和 HTML 结果产物。
@@ -146,7 +156,7 @@ flowchart LR
     Request[确认请求数据]
     Load[配置负载参数]
     Goal[配置可选性能目标]
-    Generate[AI 生成 Locust 脚本]
+    Generate[AI 生成结构化 Plan]
     Validate[自动校验]
     Review[用户预览或编辑]
     Confirm[用户确认]
@@ -190,7 +200,7 @@ flowchart LR
 - Method。
 - Path。
 - OpenAPI 参数定义。
-- 接口调试或自动化请求数据。
+- 用户明确指定的接口自动化测试用例请求数据，可选。
 - 公共 Headers。
 - API 环境 Base URL。
 - 认证配置引用。
@@ -203,15 +213,31 @@ flowchart LR
 - Request Body。
 - 请求超时。
 
+禁止自动使用“最近一次接口调试”作为数据源。创建任务时生成可见、可编辑的请求配置，用户确认后才可生成脚本。
+
 请求数据合并优先级：
 
 ```text
 性能任务覆盖值
     >
-接口自动化当前请求数据
+用户指定的接口自动化测试用例
     >
 OpenAPI 示例或默认值
+    >
+类型安全的占位值
 ```
+
+第一期支持以下受控变量模板，由平台运行时辅助函数解析：
+
+```text
+${uuid}
+${sequence}
+${timestamp}
+${random_int:1:10000}
+${user_index}
+```
+
+运行快照保存随机种子。AI 不得自行生成随机数据执行代码。
 
 ### 7.3 负载配置
 
@@ -221,12 +247,12 @@ OpenAPI 示例或默认值
 | --- | --- | --- |
 | users | 并发用户数 | 大于 0，受系统上限约束 |
 | spawn_rate | 每秒启动用户数 | 大于 0 |
-| duration_seconds | 运行时长 | 大于 0，受系统上限约束 |
-| wait_time_min_seconds | 最小请求等待时间 | 大于等于 0 |
+| measurement_duration_seconds | 达到目标用户数后的正式测量时长 | 大于 0，受系统上限约束 |
+| wait_time_min_seconds | 最小请求等待时间 | 大于等于 0.1 |
 | wait_time_max_seconds | 最大请求等待时间 | 不小于最小等待时间 |
 | request_timeout_seconds | 单请求超时 | 大于 0 |
 
-用户数、启动速率和运行时长由平台 Runner 控制，不允许生成脚本自行覆盖。
+第一期负载模型固定为闭合并发用户模型。Runner 先按 `spawn_rate` 达到目标用户数，再开始正式测量计时。爬升阶段可以展示实时图表，但不进入性能目标判定。用户数、启动速率和测量时长由平台 Runner 控制，不允许生成脚本自行覆盖。
 
 ### 7.4 性能目标
 
@@ -428,7 +454,7 @@ def execute_locust_run(run_id: str, runtime_config_path: Path) -> int:
 - 支持独立停止和超时终止。
 - 便于识别后端重启造成的中断任务。
 - 便于后续迁移到 master/worker 或远程 Runner。
-- 便于隔离 AI 生成脚本的运行权限。
+- 便于隔离平台渲染脚本的运行权限。
 
 第一期不启动 Locust 原生 Web UI。
 
@@ -486,15 +512,13 @@ class LocustScriptGenerationInput:
 self.host = os.environ["PERFORMANCE_BASE_URL"]
 ```
 
-认证类型可以传入：
+性能模块不创建第二套认证配置，只保存 `api_environment_id`。运行进入 `preparing` 时调用接口自动化现有环境解析器，统一解析 Base URL、公共 Header、Bearer、Cookie、静态 Header 和其他已支持的认证类型。
 
-```json
-{
-  "authentication_type": "bearer"
-}
-```
-
-但认证值只能由运行时注入。
+- 非敏感环境配置进入运行快照。
+- Secret 只写入临时运行文件并注入子进程。
+- 运行开始后的环境修改不影响当前运行。
+- 重新运行使用接口自动化环境中的最新认证配置。
+- 第一期认证流量不进入目标接口的 Locust 统计。
 
 ### 12.3 模型输出
 
@@ -502,16 +526,16 @@ self.host = os.environ["PERFORMANCE_BASE_URL"]
 
 ```python
 class LocustScriptGenerationResult:
-    code: str
+    plan: LocustScriptPlan
     assumptions: list[str]
     required_runtime_variables: list[str]
 ```
 
-- `code` 为完整 `locustfile.py`。
+- `plan` 为结构化脚本计划。
 - `assumptions` 展示 AI 对数据和接口行为的假设。
 - `required_runtime_variables` 只包含变量名，不包含变量值。
 
-第一期模型只生成单文件，不生成 Shell 命令、依赖安装命令或额外 Python 包。
+平台校验 Plan 后，使用版本化模板渲染完整单文件 `locustfile.py`。模型不生成 Shell 命令、依赖安装命令、导入语句或额外 Python 包。
 
 ### 12.4 允许的脚本能力
 
@@ -551,9 +575,9 @@ GET /api/users/10002
 - 不允许 Markdown 代码围栏。
 - 不允许依赖安装命令。
 
-### 13.2 AST 安全校验
+### 13.2 Plan 与模板安全校验
 
-禁止：
+Plan 禁止表达：
 
 ```text
 subprocess
@@ -570,7 +594,7 @@ pathlib.Path.unlink
 动态模块加载
 ```
 
-允许：
+平台模板允许使用：
 
 ```text
 os.environ
@@ -582,7 +606,7 @@ time
 locust
 ```
 
-`os` 只能读取允许的环境变量。
+`os` 只能读取允许的环境变量。AST 校验作为渲染后防御措施保留，但不作为任意 Python 的安全沙箱。
 
 ### 13.3 Locust 结构校验
 
@@ -610,7 +634,7 @@ python -m py_compile locustfile.py
 - 导入阶段不会发送请求。
 - 导入阶段不会访问文件、启动进程或进入死循环。
 
-### 13.5 冒烟校验
+### 13.5 分级冒烟校验
 
 默认参数：
 
@@ -621,14 +645,21 @@ python -m py_compile locustfile.py
 最多运行 10 秒
 ```
 
-冒烟校验验证：
+校验分为：
+
+1. Plan Schema 校验，必须通过。
+2. 生成代码编译和受限导入，必须通过。
+3. 无网络请求构造预检，必须通过。
+4. 真实冒烟请求，根据环境和接口风险执行。
+
+真实冒烟校验验证：
 
 - 脚本可以启动。
 - 请求可以构造。
 - Locust 可以产生统计。
 - 停止机制正常。
 
-对于创建、删除、支付、发送消息等有副作用的接口，必须由用户明确允许真实冒烟请求。未授权时只执行静态和导入校验。
+生产环境默认禁止真实冒烟。对于创建、删除、支付、发送消息等有副作用的接口，必须由用户明确允许真实冒烟请求。真实冒烟失败默认阻止确认；拥有确认权限的用户可以填写原因后跳过，脚本标记为“未通过真实冒烟”，并写入操作日志。前三层校验不得跳过。
 
 ## 14. 脚本预览、编辑和确认
 
@@ -639,7 +670,6 @@ generating
 validation_failed
 pending_confirmation
 confirmed
-running
 superseded
 ```
 
@@ -647,10 +677,10 @@ superseded
 
 ```mermaid
 flowchart LR
-    Generate[AI 生成]
+    Generate[AI 生成 Plan 并由平台渲染]
     Validate[自动校验]
     Pending[等待确认]
-    Edit[用户编辑]
+    Edit[用户编辑结构化配置]
     Confirm[用户确认]
     Run[正式运行]
 
@@ -667,19 +697,20 @@ flowchart LR
 
 - 校验通过后不能自动启动正式压测。
 - 用户必须预览并确认脚本。
-- 用户编辑脚本后创建新版本。
+- 用户编辑请求配置、数据模板或成功规则后创建新版本并重新渲染脚本。
 - 编辑后必须重新执行全部校验。
 - 已确认版本不可原地覆盖。
 - 每次运行引用固定脚本版本。
 
 ## 15. Locust 请求成功与失败
 
-第一期遵循 Locust 请求统计语义：
+第一期所有请求统一使用 `catch_response=True`，并遵循以下成功规则：
 
 - 网络异常记为失败。
-- HTTP 4xx 和 5xx 按 Locust 默认规则记为失败。
-- HTTP 2xx 和 3xx 默认记为成功。
-- 可以使用 `catch_response` 实现必要的最小响应判定。
+- 允许的 HTTP 状态码为必选规则，默认读取 OpenAPI 中声明的 2xx。
+- 3xx 默认不视为业务成功，用户明确配置时除外。
+- 可选配置 JSONPath 字段存在或等值判断，以支持 `code == 0` 等业务成功语义。
+- 未满足状态码或业务规则时调用 `response.failure()`。
 - 不直接把接口自动化中的全部 pytest 断言搬入压测脚本。
 
 复杂业务断言和接口编排属于后续场景压测范围。
@@ -698,9 +729,11 @@ description
 target_type
 endpoint_id
 api_environment_id
-request_override_json
+source_api_test_case_id
+request_config_json
 load_config_json
 performance_goal_json
+success_rules_json
 created_by
 created_at
 updated_at
@@ -708,7 +741,7 @@ updated_at
 
 ### 16.2 `performance_test_scripts`
 
-保存 AI 生成或用户编辑的脚本版本：
+保存 AI Plan 或用户结构化编辑后由平台渲染的脚本版本：
 
 ```text
 id
@@ -829,6 +862,7 @@ PERFORMANCE_BASE_URL
 PERFORMANCE_REQUEST_DATA_PATH
 PERFORMANCE_REQUEST_TIMEOUT
 PERFORMANCE_AUTH_DATA_PATH
+PERFORMANCE_RANDOM_SEED
 ```
 
 Secret 规则：
@@ -934,7 +968,7 @@ apps/backend/data/projects/{project_id}/performance_testing/runs/{run_id}/
 
 ```python
 class PerformanceGoalResult:
-    status: Literal["not_configured", "passed", "failed"]
+    status: Literal["not_configured", "not_evaluated", "passed", "failed"]
     checks: list[PerformanceGoalCheck]
 ```
 
@@ -962,7 +996,7 @@ class PerformanceGoalResult:
 }
 ```
 
-AI 不参与目标判定。
+AI 不参与目标判定。只有运行状态为 `completed`、正式测量窗口完整结束且请求数大于 0 时才执行目标判定；手动停止、运行失败、中断和零请求统一为 `not_evaluated`。平均 RPS、响应时间和百分位均只使用正式测量窗口数据。
 
 ## 22. AI 性能报告分析
 
@@ -1197,7 +1231,7 @@ POST   /projects/{project_id}/performance-test-runs/{run_id}/ai-analysis/regener
 
 展示：
 
-- 代码编辑器。
+- 只读代码查看器和结构化配置编辑器。
 - AI 假设。
 - 运行时变量。
 - 校验状态。
@@ -1278,7 +1312,7 @@ task_type = performance_test
 
 - 创建和修改性能测试。
 - 生成脚本。
-- 编辑和确认脚本。
+- 编辑结构化脚本配置和确认脚本版本。
 - 启动和停止任务。
 - 下载报告。
 - 生成或重新生成 AI 分析。
@@ -1313,8 +1347,10 @@ performance_analysis.generate
 - 仅允许压测已配置且已授权的环境。
 - 可配置生产环境禁用策略。
 - 有副作用接口必须显示风险提示。
+- 运行子进程使用低权限身份，并限制工作目录、CPU、内存、文件句柄和运行时长。
+- 运行进程只允许访问所选环境的网络目标，不继承模型和数据库 Secret。
 - 用户必须确认 AI 脚本后才能执行。
-- 用户编辑脚本必须重新校验。
+- 用户编辑结构化脚本配置后必须重新渲染并校验。
 - 运行目录必须限制访问权限。
 - 下载脚本和报告前必须校验项目权限。
 - 运行日志必须脱敏。
@@ -1396,7 +1432,7 @@ performance_analysis.generate
 ### 31.4 前端测试
 
 - 创建任务流程。
-- 脚本预览和编辑。
+- 脚本预览和结构化配置编辑。
 - 校验失败提示。
 - 用户确认脚本。
 - 实时统计更新和断线重连。
@@ -1414,11 +1450,11 @@ performance_analysis.generate
 
 ### 32.2 脚本生成
 
-- AI 可以生成完整可保存的 `locustfile.py`。
+- AI 可以生成结构化 Plan，平台可以渲染完整可保存的 `locustfile.py`。
 - 模型输入不包含真实 Secret 和无关业务字段。
 - 生成脚本通过安全、语法和结构校验后才可确认。
-- 用户可以查看和编辑脚本。
-- 用户编辑后必须重新校验。
+- 用户可以查看脚本并编辑请求、数据模板和成功规则。
+- 用户编辑结构化配置后必须重新渲染并校验。
 - 未确认脚本不能启动正式压测。
 
 ### 32.3 Locust 运行
@@ -1466,7 +1502,7 @@ performance_analysis.generate
 - 输入白名单。
 - 脚本版本管理。
 - AST、安全、导入和冒烟校验。
-- 脚本预览、编辑和确认页面。
+- 脚本预览、结构化配置编辑和确认页面。
 
 ### 阶段三：Locust 执行内核
 
@@ -1515,11 +1551,238 @@ performance_analysis.generate
 | 多接口 | 仅后续接口编排/场景压测支持 |
 | UI | 项目原生页面，逻辑和信息架构参考 Locust |
 | 负载模型 | 基础参数可配置，不支持多阶段 Shape |
-| 请求数据 | 复用接口自动化，允许任务覆盖 |
+| 认证 | 完全复用接口自动化环境，运行时解析并临时注入 Secret |
+| 请求数据 | 指定测试用例 > OpenAPI 示例/默认值 > 类型占位值，允许任务覆盖 |
 | 性能目标 | Locust 原生统计 + 可选平台目标 |
-| AI 脚本 | AI 生成完整 Locust 脚本 |
+| AI 脚本 | AI 生成结构化 Plan，平台模板渲染完整 Locust 脚本 |
 | 脚本执行 | 用户预览确认后才可执行 |
+| 代码编辑 | 第一期只编辑结构化配置，生成代码只读 |
+| 测量窗口 | 达到目标用户数后开始正式测量，目标只使用测量窗口数据 |
 | AI 报告 | 确定性事实提取 + AI 分析 |
 | Agent 结构 | `script_generation` 和 `report_analysis` 两个目录 |
 | 模型输入 | 严格字段白名单，不传无用字段和 Secret |
 
+## 36. 前后端可编码级设计
+
+### 36.1 第一期纵向交付切片
+
+按可以独立联调和验收的纵向切片交付，不按“先写完全部后端、再补前端”的方式拆分：
+
+1. 性能测试定义：请求预览、CRUD、列表和创建页面。
+2. 脚本版本：Plan、模板渲染、校验、确认和代码预览页面。
+3. 运行内核：运行快照、LocalRunner、停止、恢复和实时统计页面。
+4. 结果闭环：目标判定、产物下载、事实提取和 AI Analysis 页面。
+
+每个切片必须同时包含 Schema、Repository、Service、API、前端类型、页面状态、错误反馈和自动化测试。
+
+### 36.2 后端模块边界
+
+```text
+api/v1/performance_tests.py
+    只做认证依赖、参数解析和响应模型
+        ↓
+services/performance_testing/service.py
+    项目权限、接口/环境归属、请求预览和 CRUD 编排
+        ↓
+repositories/performance_test_repo.py
+    SQL 与 JSON 字段序列化
+        ↓
+SQLite performance_* tables
+```
+
+后续脚本和运行模块继续拆分为：
+
+```text
+plan_builder.py       OpenAPI/用例到默认 Plan
+script_renderer.py    受控模板渲染完整 locustfile.py
+validator.py          Plan、编译、导入和冒烟校验
+runner.py             子进程生命周期
+runtime.py            LocalRunner 子进程入口
+stats_collector.py    Locust 原生统计投影
+reporting.py          目标判定和事实提取
+```
+
+API 层不得直接访问 Repository。Runner 不得读取可变业务表，只读取 Service 创建的运行快照。
+
+### 36.3 请求配置预览契约
+
+创建页面不能在浏览器中解析 OpenAPI，必须调用后端预览接口：
+
+```text
+POST /projects/{project_id}/performance-tests/request-preview
+```
+
+请求：
+
+```json
+{
+  "endpoint_id": "apiend-1",
+  "source_api_test_case_id": "apitc-1"
+}
+```
+
+响应：
+
+```json
+{
+  "endpoint": {
+    "id": "apiend-1",
+    "method": "POST",
+    "path": "/api/orders/{order_id}",
+    "name": "查询订单"
+  },
+  "request_config": {
+    "path_parameters": {"order_id": "${sequence}"},
+    "query_parameters": {},
+    "headers": {},
+    "body": null,
+    "random_seed": null
+  },
+  "success_rules": [
+    {"kind": "status_code", "status_codes": [200]}
+  ],
+  "provenance": {
+    "path_parameters.order_id": "openapi_schema",
+    "success_rules": "openapi_response"
+  },
+  "warnings": []
+}
+```
+
+预览合并规则由后端唯一实现。创建接口必须重新校验引用和敏感 Header，不能信任浏览器回传的预览结果。
+
+### 36.4 OpenAPI 占位值规则
+
+参数取值优先级：参数 `example` > Schema `example` > Schema `default` > 类型占位值。
+
+类型占位值：
+
+| Schema | 占位值 |
+| --- | --- |
+| string + uuid | `${uuid}` |
+| string + date | `2026-01-01` |
+| string + date-time | `${timestamp}` |
+| 其他 string | `string` |
+| integer / number | `1` |
+| boolean | `true` |
+| array | `[]`，有 items 时生成一个元素 |
+| object | 按 properties 递归生成必填字段 |
+
+Body 优先读取 `application/json`，不存在时读取第一个声明的 Media Type。敏感 Header 不进入预览结果。
+
+### 36.5 性能测试定义 DTO
+
+`PerformanceTestCreateIn` 和 `PerformanceTestUpdateIn` 使用嵌套强类型对象：
+
+- `PerformanceRequestConfig`：Path、Query、非敏感 Header、Body、随机种子。
+- `PerformanceLoadConfig`：users、spawn rate、测量时长、wait time 和 timeout。
+- `PerformanceGoal`：失败率、平均响应时间、P95 和平均 RPS 目标。
+- `PerformanceSuccessRule`：状态码、JSONPath 存在、JSONPath 等值。
+
+列表响应同时返回 Endpoint/Environment 展示字段和最近运行摘要，避免前端逐行请求：
+
+```text
+latest_run_status
+latest_goal_status
+latest_run_at
+```
+
+### 36.6 前端路由与组件
+
+```text
+projects/[projectId]/performance-tests/page.tsx
+    任务列表、搜索、状态摘要和创建入口
+
+projects/[projectId]/performance-tests/new/page.tsx
+    接口/环境 → 请求数据 → 负载与目标 → 确认创建
+
+projects/[projectId]/performance-tests/[testId]/page.tsx
+    配置详情、脚本版本和运行历史
+
+projects/[projectId]/performance-tests/[testId]/scripts/[scriptId]/page.tsx
+    只读代码、结构化配置、校验和确认
+
+projects/[projectId]/performance-test-runs/[runId]/page.tsx
+    Overview、Statistics、Charts、Failures、Exceptions、Logs、Download、AI Analysis
+```
+
+共享组件放在：
+
+```text
+components/ai-testing/performance-testing/
+├── performance-test-list.tsx
+├── performance-test-form.tsx
+├── load-profile-rail.tsx
+├── request-config-editor.tsx
+├── success-rules-editor.tsx
+├── script-review.tsx
+└── run-workspace.tsx
+```
+
+页面文件只读取路由参数和组合组件，不承载数据转换规则。
+
+### 36.7 创建页面状态
+
+创建页面使用单一表单状态，避免多个步骤之间产生影子数据：
+
+```typescript
+type PerformanceTestDraft = {
+  name: string;
+  description: string;
+  endpointId: string;
+  environmentId: string;
+  sourceApiTestCaseId: string | null;
+  requestConfig: PerformanceRequestConfig;
+  loadConfig: PerformanceLoadConfig;
+  performanceGoal: PerformanceGoal;
+  successRules: PerformanceSuccessRule[];
+};
+```
+
+交互规则：
+
+- 修改接口时清空来源用例并重新请求 Preview。
+- 修改来源用例时重新请求 Preview，但不自动覆盖用户已经手动修改的字段；必须提示用户确认重置。
+- 环境只影响认证、Base URL 和默认 timeout，不把 Secret 放入前端状态。
+- 创建成功后跳转任务详情；创建失败保留所有用户输入。
+- 保存按钮在请求进行中禁用，重复点击不得产生重复任务。
+
+### 36.8 列表页面信息层级
+
+列表为高频操作页，不使用卡片瀑布流。使用一个汇总条和一张表：
+
+```text
+性能测试 / 总数 / 已配置目标 / 最近失败
+-------------------------------------------------------------
+名称 | 接口 | 环境 | 负载 | 最近运行 | 目标结果 | 更新时间 | 操作
+```
+
+空状态直接提供“新建性能测试”操作。状态颜色只表达语义：运行中为蓝色、通过为绿色、失败为红色、未运行和未配置为中性灰色。
+
+### 36.9 前端错误与权限
+
+- API 错误统一使用 `ApiRequestError`，展示后端 message 和 trace ID。
+- 401 沿用全局登录失效处理。
+- 403 禁用写操作并保留只读页面。
+- Endpoint 或 Environment 被删除后，任务显示“引用已失效”，禁止生成脚本和启动运行。
+- 删除已有运行记录的任务时展示后端 `PERFORMANCE_TEST_HAS_RUNS` 错误，不在前端伪造可删除状态。
+
+### 36.10 测试边界
+
+后端至少覆盖：
+
+- Preview 的 OpenAPI 示例、默认值和类型占位值。
+- 指定接口用例后的覆盖优先级。
+- 敏感 Header 过滤。
+- Endpoint、Environment、来源用例的项目隔离。
+- 列表最近运行摘要。
+- JSON 配置往返和状态约束。
+
+前端至少覆盖：
+
+- 路由和侧栏入口可访问。
+- 创建页复用接口自动化 Endpoint/Environment API。
+- 接口变化触发 Preview。
+- wait time、测量时长和目标输入映射正确。
+- 保存请求不包含 Secret。
+- 列表显示引用失效、未运行和目标状态。

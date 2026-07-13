@@ -270,9 +270,22 @@ class ApiScenarioIn(_StrippedModel):
 
 
 class ApiScenarioStepIn(_StrippedModel):
+    id: str | None = None
+    api_test_case_id: str | None = None
     endpoint_id: str | None = None
     step_order: int = Field(default=0, ge=0)
     name: str = ""
     request_overrides: dict[str, Any] = Field(default_factory=dict)
+    bindings: list[dict[str, Any]] = Field(default_factory=list)
     extractors: list[dict[str, Any]] = Field(default_factory=list)
     assertions: list[dict[str, Any]] = Field(default_factory=list)
+    on_failure: Literal["stop", "continue", "always_run"] = "stop"
+    enabled: bool = True
+
+
+class ApiScenarioStepsReplaceIn(_StrippedModel):
+    steps: list[ApiScenarioStepIn] = Field(default_factory=list, max_length=100)
+
+
+class ApiScenarioExecuteIn(_StrippedModel):
+    api_environment_id: str

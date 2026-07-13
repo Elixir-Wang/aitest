@@ -22,11 +22,12 @@ function readDomState(): Partial<PreferencesState> {
 
   const themeModeAttr = getSafeValue(root.getAttribute("data-theme-mode"), THEME_MODE_VALUES);
   const themeSchemeAttr = getSafeValue(root.getAttribute("data-theme-scheme"), THEME_SCHEME_VALUES);
+  const themeModeScheme = getSafeValue(themeModeAttr ?? null, THEME_SCHEME_VALUES);
   const resolvedMode = root.classList.contains("dark") ? "dark" : "light";
 
   return {
     themeMode: themeModeAttr ?? resolvedMode,
-    themeScheme: themeSchemeAttr ?? (themeModeAttr === "claude" ? "claude" : "light"),
+    themeScheme: themeSchemeAttr ?? themeModeScheme ?? "light",
     sidebarVariant: getSafeValue(root.getAttribute("data-sidebar-variant"), SIDEBAR_VARIANT_VALUES),
   };
 }

@@ -5,6 +5,8 @@ from app.core.security import hash_secret
 
 def seed_system_defaults(db: sqlite3.Connection) -> None:
     _ensure_api_test_script_columns(db)
+    _ensure_api_automation_run_columns(db)
+    _ensure_api_scenario_columns(db)
     _migrate_project_environment_scope(db)
     _migrate_api_environment_auth_types(db)
     _ensure_test_case_display_order(db)
@@ -13,6 +15,46 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _migrate_legacy_site_exploration_assignment(db)
     _seed_operation_log_retention_policy(db)
     _ensure_all_projects_conversation_scope(db)
+
+
+def _ensure_api_automation_run_columns(db: sqlite3.Connection) -> None:
+    row = db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_automation_runs'").fetchone()
+    if not row:
+        return
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_automation_runs)").fetchall()}
+    if "execution_snapshot_json" not in columns:
+        db.execute("ALTER TABLE api_automation_runs ADD COLUMN execution_snapshot_json TEXT NOT NULL DEFAULT '{}'")
+    if "target_type" not in columns:
+        db.execute("ALTER TABLE api_automation_runs ADD COLUMN target_type TEXT NOT NULL DEFAULT 'scripts'")
+    if "target_ids_json" not in columns:
+        db.execute("ALTER TABLE api_automation_runs ADD COLUMN target_ids_json TEXT NOT NULL DEFAULT '[]'")
+
+
+def _ensure_api_scenario_columns(db: sqlite3.Connection) -> None:
+    scenario = db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_scenarios'").fetchone()
+    if scenario:
+        columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_scenarios)").fetchall()}
+        additions = {
+            "revision": "ALTER TABLE api_scenarios ADD COLUMN revision INTEGER NOT NULL DEFAULT 0",
+            "published_snapshot_json": "ALTER TABLE api_scenarios ADD COLUMN published_snapshot_json TEXT NOT NULL DEFAULT '{}'",
+            "published_hash": "ALTER TABLE api_scenarios ADD COLUMN published_hash TEXT NOT NULL DEFAULT ''",
+        }
+        for column, statement in additions.items():
+            if column not in columns:
+                db.execute(statement)
+    steps = db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_scenario_steps'").fetchone()
+    if not steps:
+        return
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_scenario_steps)").fetchall()}
+    additions = {
+        "api_test_case_id": "ALTER TABLE api_scenario_steps ADD COLUMN api_test_case_id TEXT REFERENCES api_test_cases(id) ON DELETE SET NULL",
+        "bindings_json": "ALTER TABLE api_scenario_steps ADD COLUMN bindings_json TEXT NOT NULL DEFAULT '[]'",
+        "on_failure": "ALTER TABLE api_scenario_steps ADD COLUMN on_failure TEXT NOT NULL DEFAULT 'stop'",
+        "enabled": "ALTER TABLE api_scenario_steps ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",
+    }
+    for column, statement in additions.items():
+        if column not in columns:
+            db.execute(statement)
 
 
 def _ensure_test_case_display_order(db: sqlite3.Connection) -> None:

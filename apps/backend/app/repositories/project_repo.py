@@ -9,6 +9,7 @@ PROJECT_ASSET_TABLES = (
     "automation_cases",
     "automation_runs",
     "project_environments",
+    "performance_tests",
 )
 
 

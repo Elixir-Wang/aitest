@@ -2,14 +2,16 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
+from app.core import storage
 from app.core import settings
 from app.core import db as db_core
 from app.core.db import connect
 from app.repositories import api_automation_repo
 from app.seed.init_db import init_db
-from app.schemas.api_automation import ApiAutomationGenerateIn, ApiTestCaseSetIn, ApiTestCaseSetOut
+from app.schemas.api_automation import ApiAutomationGenerateIn, ApiRunCreateIn, ApiTestCaseSetIn, ApiTestCaseSetOut
 from app.seed.seeds import _ensure_api_generation_batch_structure
 from app.services.api_automation import service
 
@@ -442,11 +444,18 @@ def test_generation_case_script_and_run_records(monkeypatch: pytest.MonkeyPatch,
             script_ids=[script_id],
             command_summary="uv run pytest tests",
             created_by="u-admin",
+            execution_snapshot={
+                "environment": {"id": "api-env-1", "name": "测试环境", "api_base_url": "https://api.example.com"},
+                "scripts": [{"id": script_id, "name": "test_login", "case_count": 1}],
+                "script_count": 1,
+                "case_count": 1,
+            },
         )
 
         cases = api_automation_repo.list_api_test_cases(db, "project-1")
         script = api_automation_repo.find_script(db, script_id)
         run = api_automation_repo.find_api_run(db, run_id)
+        runs, total = api_automation_repo.list_api_runs(db, "project-1", page=1, page_size=20, keyword="test_login")
 
     assert cases[0]["id"] == case_id
     assert cases[0]["coverage"] == "positive"
@@ -455,6 +464,131 @@ def test_generation_case_script_and_run_records(monkeypatch: pytest.MonkeyPatch,
     assert api_automation_repo.loads_json(cases[0]["data_origin_json"], {})["body.username"] == "ai_generated"
     assert script["api_test_case_id"] == case_id
     assert api_automation_repo.loads_json(run["script_ids_json"], []) == [script_id]
+    assert api_automation_repo.loads_json(run["execution_snapshot_json"], {})["case_count"] == 1
+    assert total == 1
+    assert [item["id"] for item in runs] == [run_id]
+
+
+def test_api_run_snapshot_and_legacy_history_include_environment_and_endpoint_count(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoints(["apiend-1"])
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO api_test_environments (id, project_id, name, api_base_url, created_by)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            ("apienv-1", "project-1", "集成测试环境", "https://api.example.com", "u-admin"),
+        )
+        db.execute(
+            """
+            INSERT INTO api_test_scripts (
+              id, project_id, endpoint_id, name, status, suite_path, test_file_path, case_count, created_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "apiscript-1",
+                "project-1",
+                "apiend-1",
+                "test_items",
+                "ready",
+                "generated/apisuite-1",
+                "generated/apisuite-1/tests/test_items.py",
+                3,
+                "u-admin",
+            ),
+        )
+
+    actor = {
+        "id": "u-admin",
+        "role": "admin",
+        "nickname": "管理员",
+        "username": "admin",
+        "project_scope": "全部项目",
+    }
+    created = service.create_api_run(
+        "project-1",
+        ApiRunCreateIn(script_ids=["apiscript-1"], api_environment_id="apienv-1"),
+        actor,
+    )
+
+    assert created["execution_snapshot"]["environment"]["name"] == "集成测试环境"
+    assert created["execution_snapshot"]["endpoint_count"] == 1
+    assert created["execution_snapshot"]["scripts"][0]["endpoint_id"] == "apiend-1"
+
+    with connect() as db:
+        db.execute(
+            "UPDATE api_automation_runs SET execution_snapshot_json = '{}' WHERE id = ?",
+            (created["id"],),
+        )
+
+    legacy = service.list_api_runs("project-1", actor)["items"][0]
+    assert legacy["execution_snapshot"]["environment"]["name"] == "集成测试环境"
+    assert legacy["execution_snapshot"]["endpoint_count"] == 1
+    assert legacy["execution_snapshot"]["case_count"] == 3
+
+    with connect() as db:
+        db.execute("DELETE FROM api_test_scripts WHERE id = ?", ("apiscript-1",))
+
+    legacy_after_script_deleted = service.list_api_runs("project-1", actor)["items"][0]
+    assert legacy_after_script_deleted["execution_snapshot"]["endpoint_count"] == 1
+
+
+def test_delete_api_run_removes_record_and_artifacts_and_rejects_active_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    monkeypatch.setattr(storage, "PROJECT_FILE_STORAGE_ROOT", tmp_path / "projects")
+    _seed_project()
+    actor = {
+        "id": "u-admin",
+        "role": "admin",
+        "nickname": "管理员",
+        "username": "admin",
+        "project_scope": "全部项目",
+    }
+    with connect() as db:
+        api_automation_repo.create_api_run(
+            db,
+            run_id="apirun-finished",
+            task_id="api_automation_run:apirun-finished",
+            project_id="project-1",
+            api_environment_id=None,
+            script_ids=[],
+            command_summary="uv run pytest",
+            created_by="u-admin",
+            status="failed",
+        )
+        api_automation_repo.create_api_run(
+            db,
+            run_id="apirun-active",
+            task_id="api_automation_run:apirun-active",
+            project_id="project-1",
+            api_environment_id=None,
+            script_ids=[],
+            command_summary="uv run pytest",
+            created_by="u-admin",
+            status="running",
+        )
+
+    run_dir = tmp_path / "projects" / "project-1" / "api_automation" / "runs" / "apirun-finished"
+    run_dir.mkdir(parents=True)
+    (run_dir / "stdout.log").write_text("completed", encoding="utf-8")
+
+    service.delete_api_run("project-1", "apirun-finished", actor)
+
+    with connect() as db:
+        assert api_automation_repo.find_api_run(db, "apirun-finished") is None
+    assert not run_dir.exists()
+
+    with pytest.raises(HTTPException) as exc_info:
+        service.delete_api_run("project-1", "apirun-active", actor)
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "API_RUN_ACTIVE"
+    with connect() as db:
+        assert api_automation_repo.find_api_run(db, "apirun-active") is not None
 
 
 def test_update_api_test_case_set_changes_name_and_notes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

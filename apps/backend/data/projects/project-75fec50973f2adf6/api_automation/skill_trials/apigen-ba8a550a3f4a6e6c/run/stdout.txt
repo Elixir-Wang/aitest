@@ -1,0 +1,36 @@
+.F.                                                                      [100%]
+=================================== FAILURES ===================================
+_ test_api_case_execution[\u667a\u80fd\u4f53\u6570\u636e\u5206\u6790 - \u9274\u6743 header cybertron-robot-key \u4e3a\u7a7a] _
+
+api_client = <support.client.ApiClient object at 0x10a8c70e0>
+case_data = {'assertions': [{'expected': 200, 'path': '', 'type': 'status_code'}, {'expected': '000000', 'path': '$.code', 'type':..._equals'}], 'coverage': 'negative', 'created_at': '2026-07-13 23:35:38', 'endpoint_id': 'apiend-6434c35096aa611b', ...}
+
+    @pytest.mark.parametrize("case_data", CASES, ids=lambda case: case.get("title", "api-case"))
+    def test_api_case_execution(api_client, case_data):
+        response = api_client.request(case_data["request"], case_data.get("test_data", {}))
+>       assert_response_assertions(response, case_data["assertions"])
+
+endpoints/post_openapi_v1_agent_analysis_apiend_6434c35096aa611b/test_api.py:17: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 200, 'path': '', 'type': 'status_code'}, {'expected': '000000', 'path': '$.code', 'type': 'jsonpath_equals'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for assertion in assertions:
+            assertion_type = assertion.get("type")
+            if assertion_type == "status_code":
+                assert response.status_code == assertion.get("expected")
+            elif assertion_type == "jsonpath_exists":
+                body = response.json()
+                assert _read_path(body, assertion.get("path", "")) is not None
+            elif assertion_type == "jsonpath_equals":
+                body = response.json()
+>               assert _read_path(body, assertion.get("path", "")) == assertion.get("expected")
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+support/assertions.py:14: AssertionError
+=========================== short test summary info ============================
+FAILED endpoints/post_openapi_v1_agent_analysis_apiend_6434c35096aa611b/test_api.py::test_api_case_execution[\u667a\u80fd\u4f53\u6570\u636e\u5206\u6790 - \u9274\u6743 header cybertron-robot-key \u4e3a\u7a7a]
+1 failed, 2 passed in 0.56s

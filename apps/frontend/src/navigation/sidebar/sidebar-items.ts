@@ -114,8 +114,6 @@ export const sidebarItems: NavGroup[] = [
         title: "性能测试",
         url: "/projects/:projectId/performance-tests",
         icon: Gauge,
-        comingSoon: true,
-        disabled: true,
         projectScoped: true,
       },
       {

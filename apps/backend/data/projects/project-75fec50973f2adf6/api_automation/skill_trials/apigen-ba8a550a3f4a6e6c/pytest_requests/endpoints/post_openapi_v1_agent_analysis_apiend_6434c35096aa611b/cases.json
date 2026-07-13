@@ -1,0 +1,121 @@
+{
+  "cases": [
+    {
+      "id": "apitc-60e445b5738b3ed9",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - 完整合法请求（含全部可选字段，与最小请求相同）",
+      "test_description": "验证传入全部字段（当前接口无可选字段，与最小请求一致）时，接口返回成功响应，code 为 000000",
+      "priority": "P1",
+      "coverage": "positive",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {},
+        "body": {
+          "start_date": "2026-02-01",
+          "end_date": "2026-02-05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 200
+        },
+        {
+          "type": "jsonpath_equals",
+          "path": "$.code",
+          "expected": "000000"
+        },
+        {
+          "type": "jsonpath_exists",
+          "path": "$.data",
+          "expected": null
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-13 23:35:38",
+      "updated_at": "2026-07-13 23:35:38"
+    },
+    {
+      "id": "apitc-8bb7a14dac3849b7",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - 鉴权 header cybertron-robot-key 为空",
+      "test_description": "验证 cybertron-robot-key header 为空字符串时，接口返回非 200 错误响应",
+      "priority": "P1",
+      "coverage": "negative",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {
+          "cybertron-robot-key": ""
+        },
+        "body": {
+          "start_date": "2026-02-01",
+          "end_date": "2026-02-05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 200
+        },
+        {
+          "type": "jsonpath_equals",
+          "path": "$.code",
+          "expected": "000000"
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-13 23:35:38",
+      "updated_at": "2026-07-13 23:35:38"
+    },
+    {
+      "id": "apitc-e41db80619ff4b56",
+      "project_id": "project-75fec50973f2adf6",
+      "endpoint_id": "apiend-6434c35096aa611b",
+      "title": "智能体数据分析 - 最小合法请求（仅必填日期）",
+      "test_description": "验证仅传入必填字段 start_date 和 end_date 时，接口返回成功响应，code 为 000000",
+      "priority": "P0",
+      "coverage": "positive",
+      "preconditions": [],
+      "request": {
+        "method": "POST",
+        "path": "/openapi/v1/agent/analysis/",
+        "headers": {},
+        "body": {
+          "start_date": "2026-02-01",
+          "end_date": "2026-02-05"
+        }
+      },
+      "test_data": {},
+      "assertions": [
+        {
+          "type": "status_code",
+          "path": "",
+          "expected": 200
+        },
+        {
+          "type": "jsonpath_equals",
+          "path": "$.code",
+          "expected": "000000"
+        },
+        {
+          "type": "jsonpath_exists",
+          "path": "$.data",
+          "expected": null
+        }
+      ],
+      "notes": "",
+      "created_at": "2026-07-13 23:35:38",
+      "updated_at": "2026-07-13 23:35:38"
+    }
+  ]
+}

@@ -9,6 +9,7 @@ import { ProcessingState } from "@/components/ai-testing/table-loading-row";
 import { Button } from "@/components/ui/button";
 import { Button as PaginationButton } from "@/components/ui/button-1";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { OneClipboard } from "@/components/ui/one-clipboard";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
 import { StatusBadge, taskStatusTone } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -279,7 +280,10 @@ function TaskDetail({ task }: { task: ApiTaskItem }) {
   ];
 
   return (
-    <div className="grid gap-3 rounded-lg border p-4 text-sm">
+    <div className="relative grid gap-3 rounded-lg border p-4 pr-28 text-sm">
+      <div className="absolute top-4 right-4">
+        <OneClipboard text={serializeTaskDetailRows(rows)} />
+      </div>
       {rows.map(([label, value]) => (
         <div className="grid min-w-0 gap-1 md:grid-cols-[96px_minmax(0,1fr)] md:gap-4" key={label}>
           <span className="text-muted-foreground">{label}</span>
@@ -290,4 +294,8 @@ function TaskDetail({ task }: { task: ApiTaskItem }) {
       ))}
     </div>
   );
+}
+
+function serializeTaskDetailRows(rows: Array<[string, string]>) {
+  return rows.map(([label, value]) => `${label}：${value}`).join("\n");
 }

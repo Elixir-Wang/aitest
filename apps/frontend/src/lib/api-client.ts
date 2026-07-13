@@ -719,14 +719,155 @@ export type ApiAutomationRun = {
   api_environment_id: string | null;
   status: string;
   script_ids: string[];
+  target_type: "scripts" | "scenario";
+  target_ids: string[];
+  execution_snapshot: {
+    environment?: { id: string; name: string; api_base_url: string } | null;
+    scripts?: Array<{
+      id: string;
+      endpoint_id?: string | null;
+      name: string;
+      case_count: number;
+      method?: string;
+      path?: string;
+      endpoint_summary?: string;
+    }>;
+    script_count?: number;
+    endpoint_count?: number;
+    case_count?: number;
+    created_by_name?: string;
+  };
   command_summary: string;
   stdout_path: string;
   stderr_path: string;
   json_report_path: string;
   summary: Record<string, unknown>;
   error_message: string;
+  created_by_name: string;
   created_at: string;
   finished_at: string | null;
+};
+
+export type ApiAutomationScenarioStep = {
+  id: string;
+  scenario_id: string;
+  project_id: string;
+  endpoint_id: string | null;
+  api_test_case_id: string | null;
+  step_order: number;
+  name: string;
+  request_overrides: Record<string, unknown>;
+  bindings: Array<Record<string, unknown>>;
+  extractors: Array<Record<string, unknown>>;
+  assertions: Array<Record<string, unknown>>;
+  on_failure: "stop" | "continue" | "always_run";
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiAutomationScenario = {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string;
+  status: "draft" | "ready" | "archived";
+  variables: Record<string, unknown>;
+  revision: number;
+  published_hash: string;
+  steps: ApiAutomationScenarioStep[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiAutomationScenarioValidation = {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+};
+
+export type ApiAutomationRunList = {
+  items: ApiAutomationRun[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type PerformanceRequestConfig = {
+  path_parameters: Record<string, unknown>;
+  query_parameters: Record<string, unknown>;
+  headers: Record<string, unknown>;
+  body: unknown;
+  random_seed: number | null;
+};
+
+export type PerformanceLoadConfig = {
+  users: number;
+  spawn_rate: number;
+  measurement_duration_seconds: number;
+  wait_time_min_seconds: number;
+  wait_time_max_seconds: number;
+  request_timeout_seconds: number;
+};
+
+export type PerformanceGoal = {
+  max_fail_ratio?: number;
+  max_average_response_time_ms?: number;
+  max_p95_response_time_ms?: number;
+  min_average_rps?: number;
+};
+
+export type PerformanceSuccessRule = {
+  kind: "status_code" | "jsonpath_exists" | "jsonpath_equals";
+  status_codes?: number[];
+  json_path?: string;
+  expected?: unknown;
+};
+
+export type PerformanceTest = {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string;
+  target_type: "endpoint";
+  endpoint_id: string | null;
+  endpoint_name: string;
+  endpoint_method: string;
+  endpoint_path: string;
+  api_environment_id: string | null;
+  environment_name: string;
+  source_api_test_case_id: string | null;
+  request_config: PerformanceRequestConfig;
+  load_config: PerformanceLoadConfig;
+  performance_goal: PerformanceGoal;
+  success_rules: PerformanceSuccessRule[];
+  latest_run_status: string;
+  latest_goal_status: string;
+  latest_run_at: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PerformanceRequestPreview = {
+  endpoint: { id: string; method: string; path: string; name: string };
+  request_config: PerformanceRequestConfig;
+  success_rules: PerformanceSuccessRule[];
+  provenance: Record<string, string>;
+  warnings: string[];
+};
+
+export type PerformanceTestCreatePayload = {
+  name: string;
+  description: string;
+  target_type: "endpoint";
+  endpoint_id: string;
+  api_environment_id: string;
+  source_api_test_case_id: string | null;
+  request_config: PerformanceRequestConfig;
+  load_config: PerformanceLoadConfig;
+  performance_goal: PerformanceGoal;
+  success_rules: PerformanceSuccessRule[];
 };
 
 export type ApiAutomationCaseSet = {
@@ -744,6 +885,46 @@ export type ApiAutomationCaseSet = {
 
 export function listApiAutomationEndpoints(projectId: string) {
   return apiRequest<ApiAutomationEndpoint[]>(`/projects/${projectId}/api-endpoints`);
+}
+
+export function previewPerformanceRequest(
+  projectId: string,
+  payload: { endpoint_id: string; source_api_test_case_id?: string | null },
+) {
+  return apiRequest<PerformanceRequestPreview>(`/projects/${projectId}/performance-tests/request-preview`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listPerformanceTests(projectId: string) {
+  return apiRequest<PerformanceTest[]>(`/projects/${projectId}/performance-tests`);
+}
+
+export function getPerformanceTest(projectId: string, testId: string) {
+  return apiRequest<PerformanceTest>(`/projects/${projectId}/performance-tests/${testId}`);
+}
+
+export function createPerformanceTest(projectId: string, payload: PerformanceTestCreatePayload) {
+  return apiRequest<PerformanceTest>(`/projects/${projectId}/performance-tests`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updatePerformanceTest(
+  projectId: string,
+  testId: string,
+  payload: Partial<PerformanceTestCreatePayload>,
+) {
+  return apiRequest<PerformanceTest>(`/projects/${projectId}/performance-tests/${testId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deletePerformanceTest(projectId: string, testId: string) {
+  return apiRequest<void>(`/projects/${projectId}/performance-tests/${testId}`, { method: "DELETE" });
 }
 
 export function deleteApiAutomationEndpoint(projectId: string, endpointId: string) {
@@ -856,13 +1037,10 @@ export function generateApiAutomationScripts(
     suite_path: string;
     summary: { created: number; updated: number; unchanged: number };
     scripts: ApiAutomationScript[];
-  }>(
-    `/projects/${projectId}/api-automation/scripts/generate`,
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
-  );
+  }>(`/projects/${projectId}/api-automation/scripts/generate`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function listApiAutomationScripts(projectId: string) {
@@ -891,8 +1069,99 @@ export function createApiAutomationRun(
   });
 }
 
+export function listApiAutomationRuns(
+  projectId: string,
+  params?: { page?: number; page_size?: number; status?: string; environment_id?: string; keyword?: string },
+) {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set("page", String(params.page));
+  if (params?.page_size) searchParams.set("page_size", String(params.page_size));
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.environment_id) searchParams.set("environment_id", params.environment_id);
+  if (params?.keyword) searchParams.set("keyword", params.keyword);
+  const query = searchParams.toString();
+  return apiRequest<ApiAutomationRunList>(`/projects/${projectId}/api-runs${query ? `?${query}` : ""}`);
+}
+
 export function getApiAutomationRun(projectId: string, runId: string) {
   return apiRequest<ApiAutomationRun>(`/projects/${projectId}/api-runs/${runId}`);
+}
+
+export function deleteApiAutomationRun(projectId: string, runId: string) {
+  return apiRequest<void>(`/projects/${projectId}/api-runs/${runId}`, {
+    method: "DELETE",
+  });
+}
+
+export function getApiAutomationRunLogs(projectId: string, runId: string) {
+  return apiRequest<{ stdout: string; stderr: string }>(`/projects/${projectId}/api-runs/${runId}/logs`);
+}
+
+export function getApiAutomationRunReport(projectId: string, runId: string) {
+  return apiRequest<Record<string, unknown>>(`/projects/${projectId}/api-runs/${runId}/report`);
+}
+
+export function listApiAutomationScenarios(projectId: string) {
+  return apiRequest<ApiAutomationScenario[]>(`/projects/${projectId}/api-scenarios`);
+}
+
+export function getApiAutomationScenario(projectId: string, scenarioId: string) {
+  return apiRequest<ApiAutomationScenario>(`/projects/${projectId}/api-scenarios/${scenarioId}`);
+}
+
+export function createApiAutomationScenario(
+  projectId: string,
+  payload: { name: string; description?: string; variables?: Record<string, unknown> },
+) {
+  return apiRequest<ApiAutomationScenario>(`/projects/${projectId}/api-scenarios`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateApiAutomationScenario(
+  projectId: string,
+  scenarioId: string,
+  payload: { name: string; description?: string; variables?: Record<string, unknown> },
+) {
+  return apiRequest<ApiAutomationScenario>(`/projects/${projectId}/api-scenarios/${scenarioId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteApiAutomationScenario(projectId: string, scenarioId: string) {
+  return apiRequest<void>(`/projects/${projectId}/api-scenarios/${scenarioId}`, { method: "DELETE" });
+}
+
+export function replaceApiAutomationScenarioSteps(
+  projectId: string,
+  scenarioId: string,
+  steps: Array<Partial<ApiAutomationScenarioStep>>,
+) {
+  return apiRequest<ApiAutomationScenario>(`/projects/${projectId}/api-scenarios/${scenarioId}/steps`, {
+    method: "PUT",
+    body: JSON.stringify({ steps }),
+  });
+}
+
+export function validateApiAutomationScenario(projectId: string, scenarioId: string) {
+  return apiRequest<ApiAutomationScenarioValidation>(`/projects/${projectId}/api-scenarios/${scenarioId}/validate`, {
+    method: "POST",
+  });
+}
+
+export function publishApiAutomationScenario(projectId: string, scenarioId: string) {
+  return apiRequest<ApiAutomationScenario>(`/projects/${projectId}/api-scenarios/${scenarioId}/publish`, {
+    method: "POST",
+  });
+}
+
+export function executeApiAutomationScenario(projectId: string, scenarioId: string, apiEnvironmentId: string) {
+  return apiRequest<ApiAutomationRun>(`/projects/${projectId}/api-scenarios/${scenarioId}/execute`, {
+    method: "POST",
+    body: JSON.stringify({ api_environment_id: apiEnvironmentId }),
+  });
 }
 
 export function roleToLabel(role: ApiRole) {

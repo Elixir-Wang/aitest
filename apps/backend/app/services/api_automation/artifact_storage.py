@@ -2,7 +2,7 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 
-from app.agents.api_automation.pytest_requests.renderer import slugify
+from app.agents.api_automation.pytest_requests.renderer import render_scenario_files, slugify
 from app.agents.api_automation.pytest_requests.schemas import PytestRequestsGenerationResult
 from app.core import storage
 
@@ -17,6 +17,28 @@ def project_suite_path(project_id: str) -> Path:
 
 def endpoint_file_key(*, endpoint_id: str, method: str, path: str) -> str:
     return slugify(f"{method}_{path}_{endpoint_id}")
+
+
+def scenario_file_key(*, scenario_id: str, name: str) -> str:
+    return slugify(f"{name}_{scenario_id}")
+
+
+def materialize_scenario_snapshot(project_id: str, snapshot: dict) -> dict:
+    suite_path = project_suite_path(project_id)
+    scenario_key = scenario_file_key(scenario_id=snapshot["id"], name=snapshot["name"])
+    files = render_scenario_files(scenario_key, snapshot)
+    written = {}
+    for file_key, content in files.items():
+        target = resolve_suite_file(suite_path, file_key)
+        write_atomic(target, content)
+        written[file_key] = target
+    scenario_dir = f"scenarios/{scenario_key}"
+    return {
+        "suite_path": suite_path,
+        "test_file_path": written[f"{scenario_dir}/test_scenario.py"],
+        "data_file_path": written[f"{scenario_dir}/scenario.json"],
+        "scenario_key": scenario_key,
+    }
 
 
 def write_atomic(path: Path, content: str) -> None:

@@ -771,15 +771,18 @@ def create_api_run(
     script_ids: list[str],
     command_summary: str,
     created_by: str,
+    execution_snapshot: dict[str, Any] | None = None,
+    target_type: str = "scripts",
+    target_ids: list[str] | None = None,
     status: str = "queued",
 ) -> str:
     db.execute(
         """
         INSERT INTO api_automation_runs (
           id, project_id, api_environment_id, task_id, status,
-          script_ids_json, command_summary, created_by
+          script_ids_json, target_type, target_ids_json, execution_snapshot_json, command_summary, created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run_id,
@@ -788,6 +791,9 @@ def create_api_run(
             task_id,
             status,
             dumps_json(script_ids),
+            target_type,
+            dumps_json(target_ids or []),
+            dumps_json(execution_snapshot or {}),
             command_summary,
             created_by,
         ),
@@ -796,7 +802,60 @@ def create_api_run(
 
 
 def find_api_run(db: Connection, run_id: str) -> Row | None:
-    return db.execute("SELECT * FROM api_automation_runs WHERE id = ?", (run_id,)).fetchone()
+    return db.execute(
+        """
+        SELECT runs.*, users.nickname AS created_by_nickname, users.username AS created_by_username
+        FROM api_automation_runs AS runs
+        LEFT JOIN users ON users.id = runs.created_by
+        WHERE runs.id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+
+
+def list_api_runs(
+    db: Connection,
+    project_id: str,
+    *,
+    page: int,
+    page_size: int,
+    status: str = "",
+    environment_id: str = "",
+    keyword: str = "",
+) -> tuple[list[Row], int]:
+    conditions = ["runs.project_id = ?"]
+    params: list[Any] = [project_id]
+    if status:
+        conditions.append("runs.status = ?")
+        params.append(status)
+    if environment_id:
+        conditions.append("runs.api_environment_id = ?")
+        params.append(environment_id)
+    if keyword:
+        conditions.append("(runs.id LIKE ? OR runs.execution_snapshot_json LIKE ?)")
+        pattern = f"%{keyword}%"
+        params.extend([pattern, pattern])
+    where_clause = " AND ".join(conditions)
+    total = int(
+        db.execute(f"SELECT COUNT(*) FROM api_automation_runs AS runs WHERE {where_clause}", params).fetchone()[0]
+    )
+    offset = (page - 1) * page_size
+    rows = db.execute(
+        f"""
+        SELECT runs.*, users.nickname AS created_by_nickname, users.username AS created_by_username
+        FROM api_automation_runs AS runs
+        LEFT JOIN users ON users.id = runs.created_by
+        WHERE {where_clause}
+        ORDER BY runs.created_at DESC, runs.id DESC
+        LIMIT ? OFFSET ?
+        """,
+        (*params, page_size, offset),
+    ).fetchall()
+    return rows, total
+
+
+def delete_api_run(db: Connection, run_id: str) -> None:
+    db.execute("DELETE FROM api_automation_runs WHERE id = ?", (run_id,))
 
 
 def update_api_run(

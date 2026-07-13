@@ -14,7 +14,7 @@ SENSITIVE_RE = re.compile(
 )
 
 
-def collect_script_suite(*, suite_path: Path, timeout: int) -> dict[str, Any]:
+def collect_script_suite(*, suite_path: Path, timeout: int, test_paths: list[str] | None = None) -> dict[str, Any]:
     suite_path = suite_path.resolve()
     process_env = dict(os.environ)
     sync = subprocess.run(
@@ -33,7 +33,7 @@ def collect_script_suite(*, suite_path: Path, timeout: int) -> dict[str, Any]:
             "stderr": _redact(sync.stderr),
         }
     collected = subprocess.run(
-        ["uv", "run", "pytest", "--collect-only", "endpoints"],
+        ["uv", "run", "pytest", "--collect-only", *(test_paths or ["endpoints"])],
         cwd=suite_path,
         text=True,
         capture_output=True,
