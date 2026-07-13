@@ -4,8 +4,8 @@ from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
 
-from app.agents.api_automation.agent import api_automation_generation_agent
-from app.agents.api_automation.schemas import ApiAutomationGenerationInput, ApiAutomationGenerationResult
+from app.agents.api_automation.case_generation.agent import api_automation_generation_agent
+from app.agents.api_automation.case_generation.schemas import ApiAutomationGenerationInput, ApiAutomationGenerationResult
 from app.agents.model_selection import build_agent_model, resolve_model_selection, thinking_disabled_extra_body
 from app.core.logging import agent_logger
 

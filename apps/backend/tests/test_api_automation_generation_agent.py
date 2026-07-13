@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from app.agents.model_selection import ModelSelection
-from app.agents.api_automation.schemas import ApiAutomationGenerationResult, ApiGeneratedCase
+from app.agents.api_automation.case_generation.schemas import ApiAutomationGenerationResult, ApiGeneratedCase
 from app.core import db as db_core
 from app.core import settings, storage
 from app.core.db import connect
@@ -326,6 +326,7 @@ def test_get_api_test_case_returns_structured_case(monkeypatch: pytest.MonkeyPat
     assert detail["coverage"] == "positive"
     assert detail["preconditions"] == ["用户账号存在"]
     assert detail["test_data"]["username"]["value"] == "demo"
+    assert "source" not in detail
     assert "tags" not in detail
     assert "data_origin" not in detail
 
@@ -542,7 +543,7 @@ def test_recovery_preserves_completed_generation_items(monkeypatch: pytest.Monke
 def test_api_automation_agent_uses_skill_middleware_and_response_format(monkeypatch: pytest.MonkeyPatch) -> None:
     from langchain.agents.structured_output import ToolStrategy
 
-    from app.agents.api_automation import agent as agent_module
+    from app.agents.api_automation.case_generation import agent as agent_module
 
     captured = {}
 
@@ -573,7 +574,7 @@ async def test_api_automation_agent_recovers_from_invalid_structured_tool_call()
     from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
     from typing_extensions import override
 
-    from app.agents.api_automation.agent import api_automation_generation_agent
+    from app.agents.api_automation.case_generation.agent import api_automation_generation_agent
 
     class RecordingFakeModel(FakeMessagesListChatModel):
         requests: list[list[BaseMessage]] = []
@@ -648,7 +649,7 @@ def test_api_automation_generation_result_schema_uses_typed_assertions() -> None
 
 @pytest.mark.anyio
 async def test_generate_api_test_cases_calls_agent_with_skill_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.agents.api_automation import service as agent_service
+    from app.agents.api_automation.case_generation import service as agent_service
 
     expected = ApiAutomationGenerationResult(
         summary="生成 1 条接口自动化用例。",
@@ -713,9 +714,9 @@ async def test_generate_api_test_cases_calls_agent_with_skill_prompt(monkeypatch
 
 
 def test_api_automation_case_generation_skill_defines_coverage_dimensions() -> None:
-    skill_text = Path("app/agents/api_automation/skills/api-automation-case-generation/SKILL.md").read_text(
-        encoding="utf-8"
-    )
+    skill_text = Path(
+        "app/agents/api_automation/case_generation/skills/api-automation-case-generation/SKILL.md"
+    ).read_text(encoding="utf-8")
 
     assert "测试点全集" in skill_text
     assert "强制工作流" in skill_text

@@ -72,3 +72,33 @@ def test_runner_cleans_stale_outputs_writes_env_and_parses_report(monkeypatch, t
     assert json.loads((run_dir / "runtime" / "env.json").read_text(encoding="utf-8"))["auth"] == {"bearer_saved": True}
     assert "secret-token" not in (run_dir / "stdout.txt").read_text(encoding="utf-8")
     assert result["summary"]["passed"] == 1
+
+
+def test_collect_script_suite_uses_uv_and_returns_redacted_failure(monkeypatch, tmp_path: Path) -> None:
+    suite_path = tmp_path / "suite"
+    suite_path.mkdir()
+    calls = []
+
+    def fake_run(command, cwd, text, capture_output, timeout, env):
+        calls.append((command, cwd, timeout, env))
+        if command == ["uv", "sync"]:
+            return SimpleNamespace(returncode=0, stdout="sync ok", stderr="")
+        return SimpleNamespace(
+            returncode=4,
+            stdout="",
+            stderr="Authorization: Bearer secret-token\nModuleNotFoundError: support",
+        )
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    result = runner.collect_script_suite(suite_path=suite_path, timeout=30)
+
+    assert calls[0][0] == ["uv", "sync"]
+    assert calls[1][0] == ["uv", "run", "pytest", "--collect-only", "endpoints"]
+    assert all(call[1] == suite_path.resolve() for call in calls)
+    assert result == {
+        "ok": False,
+        "exitcode": 4,
+        "stdout": "",
+        "stderr": "Authorization: Bearer ***\nModuleNotFoundError: support",
+    }

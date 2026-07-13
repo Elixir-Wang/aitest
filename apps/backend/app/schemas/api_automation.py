@@ -206,7 +206,6 @@ class ApiTestCaseOut(BaseModel):
     test_description: str
     priority: str
     coverage: str
-    source: str
     preconditions: list[str]
     request: dict[str, Any]
     test_data: dict[str, Any]

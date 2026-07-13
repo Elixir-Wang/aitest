@@ -1,67 +1,43 @@
 import json
 import re
-from pathlib import Path
-from typing import Any
 
-from app.services.api_automation.script_workspace import write_atomic
+from app.agents.api_automation.pytest_requests.schemas import GeneratedCodeFile, PytestRequestsGenerationInput
 
 
-def generate_pytest_suite(*, project_id: str, suite_id: str, cases: list[dict[str, Any]], output_root: Path) -> dict:
-    """Create or update the single pytest + Requests suite owned by a project."""
-    suite_path = output_root / project_id / "api_automation" / "pytest_requests"
-    tests_dir = suite_path / "tests"
-    data_dir = suite_path / "data"
-    support_dir = suite_path / "support"
-    tests_dir.mkdir(parents=True, exist_ok=True)
-    data_dir.mkdir(parents=True, exist_ok=True)
-    support_dir.mkdir(parents=True, exist_ok=True)
-
-    write_atomic(suite_path / "pyproject.toml", _pyproject())
-    write_atomic(suite_path / "pytest.ini", _pytest_ini())
-    write_atomic(suite_path / "conftest.py", _conftest())
-    write_atomic(support_dir / "__init__.py", "")
-    write_atomic(support_dir / "client.py", _client_py())
-    write_atomic(support_dir / "auth.py", _auth_py())
-    write_atomic(support_dir / "assertions.py", _assertions_py())
-    write_atomic(suite_path / "README.md", _readme())
-
-    cases_by_endpoint: dict[str, list[dict[str, Any]]] = {}
-    for case in cases:
-        endpoint_id = str(case.get("endpoint_id") or "unassigned")
-        cases_by_endpoint.setdefault(endpoint_id, []).append(case)
-
-    artifacts = []
-    for endpoint_id, endpoint_cases in cases_by_endpoint.items():
-        request = endpoint_cases[0].get("request") or {}
-        endpoint_slug = slugify(f'{request.get("method", "api")}_{request.get("path", endpoint_id)}_{endpoint_id}')
-        test_file = tests_dir / f"test_{endpoint_slug}.py"
-        data_file = data_dir / f"test_{endpoint_slug}.json"
-        write_atomic(data_file, json.dumps({"cases": endpoint_cases}, ensure_ascii=False, indent=2))
-        write_atomic(test_file, _test_py(data_file.name))
-        artifacts.append(
-            {
-                "endpoint_id": None if endpoint_id == "unassigned" else endpoint_id,
-                "test_file_path": test_file,
-                "data_file_path": data_file,
-                "script_name": f"test_{endpoint_slug}",
-            }
-        )
-
-    first = artifacts[0] if artifacts else {
-        "test_file_path": tests_dir / "test_generated.py",
-        "data_file_path": data_dir / "test_generated.json",
-        "script_name": "test_generated",
-    }
-
-    return {
-        "suite_path": suite_path,
-        **first,
-        "artifacts": artifacts,
-    }
+def render_pytest_requests_files(input_data: PytestRequestsGenerationInput) -> list[GeneratedCodeFile]:
+    endpoint = input_data.endpoint
+    endpoint_key = slugify(f"{endpoint.method}_{endpoint.path}_{endpoint.id}")
+    endpoint_dir = f"endpoints/{endpoint_key}"
+    data_key = f"{endpoint_dir}/cases.json"
+    test_key = f"{endpoint_dir}/test_api.py"
+    files = [
+        GeneratedCodeFile(key="pyproject.toml", kind="config", language="toml", content=_pyproject()),
+        GeneratedCodeFile(key="pytest.ini", kind="config", language="ini", content=_pytest_ini()),
+        GeneratedCodeFile(key="conftest.py", kind="config", language="python", content=_conftest()),
+        GeneratedCodeFile(key="support/__init__.py", kind="support", language="python", content=""),
+        GeneratedCodeFile(key="support/client.py", kind="support", language="python", content=_client_py()),
+        GeneratedCodeFile(key="support/auth.py", kind="support", language="python", content=_auth_py()),
+        GeneratedCodeFile(key="support/assertions.py", kind="support", language="python", content=_assertions_py()),
+        GeneratedCodeFile(key="README.md", kind="documentation", language="markdown", content=_readme()),
+        GeneratedCodeFile(
+            key=data_key,
+            kind="data",
+            language="json",
+            content=json.dumps({"cases": input_data.cases}, ensure_ascii=False, indent=2),
+        ),
+        GeneratedCodeFile(
+            key=test_key,
+            kind="test",
+            language="python",
+            content=_test_py(),
+        ),
+    ]
+    return files
 
 
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9_]+", "_", value.strip().lower()).strip("_")
+    slug = re.sub(r"_+", "_", slug)
     return slug or "generated"
 
 
@@ -77,7 +53,9 @@ dependencies = ["pytest", "requests", "pytest-json-report"]
 def _pytest_ini() -> str:
     return """[pytest]
 addopts = --import-mode=importlib
-testpaths = tests
+pythonpath = .
+testpaths = endpoints
+python_files = test_*.py
 """
 
 
@@ -263,8 +241,8 @@ def _read_path(data, path: str):
 '''
 
 
-def _test_py(data_filename: str) -> str:
-    return f'''import json
+def _test_py() -> str:
+    return '''import json
 from pathlib import Path
 
 import pytest
@@ -273,13 +251,13 @@ from support.assertions import assert_response_assertions
 
 
 CASES = json.loads(
-    (Path(__file__).parents[1] / "data" / "{data_filename}").read_text(encoding="utf-8")
+    Path(__file__).with_name("cases.json").read_text(encoding="utf-8")
 )["cases"]
 
 
 @pytest.mark.parametrize("case_data", CASES, ids=lambda case: case.get("title", "api-case"))
 def test_api_case_execution(api_client, case_data):
-    response = api_client.request(case_data["request"], case_data.get("test_data", {{}}))
+    response = api_client.request(case_data["request"], case_data.get("test_data", {}))
     assert_response_assertions(response, case_data["assertions"])
 '''
 

@@ -220,6 +220,11 @@ def update_api_script(
     return service.update_api_script(project_id, script_id, content=payload.content, notes=payload.notes, actor=actor)
 
 
+@router.delete("/api-scripts/{script_id}", status_code=204)
+def delete_api_script(project_id: str, script_id: str, actor=Depends(require_admin)) -> None:
+    service.delete_api_script(project_id, script_id, actor)
+
+
 @router.post("/api-runs")
 def create_api_run(
     project_id: str,

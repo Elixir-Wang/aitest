@@ -25,23 +25,27 @@ Use this shape unless the repository already defines a compatible equivalent:
 ```text
 <project>/api_automation/pytest_requests/
 ├── pyproject.toml
+├── uv.lock
 ├── pytest.ini
 ├── conftest.py
+├── README.md
 ├── support/
 │   ├── client.py
 │   ├── auth.py
 │   └── assertions.py
-├── data/test_<endpoint-key>.json
-└── tests/test_<endpoint-key>.py
+└── endpoints/
+    └── <endpoint-key>/
+        ├── test_api.py
+        └── cases.json
 ```
 
-Keep shared transport, auth, and assertion behavior in `support/`. Keep business cases as data. Parameterize each case so pytest reports failures independently; never loop over every project case inside every endpoint test.
+Keep shared transport, auth, and assertion behavior in `support/`. Keep each endpoint's test code and business cases together in its endpoint directory. `test_api.py` must read the adjacent `cases.json`. Parameterize each case so pytest reports failures independently; never loop over every project case inside every endpoint test.
 
 ## Update rules
 
 - Derive the endpoint file key from stable endpoint identity plus a readable method/path slug.
 - Write files atomically.
-- Replace only the selected endpoint's module and data file.
+- Replace only the selected endpoint's `test_api.py` and `cases.json`.
 - Preserve files for unselected endpoints.
 - Return the exact artifacts updated in the current request.
 - Avoid duplicate script records for individual cases when the executable unit is an endpoint module.

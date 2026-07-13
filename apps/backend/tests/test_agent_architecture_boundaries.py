@@ -30,7 +30,7 @@ def test_api_does_not_call_generic_agent_runtime() -> None:
 
 def test_agent_packages_have_definition_entrypoint() -> None:
     agent_root = BACKEND_APP / "agents"
-    ignored = {"__pycache__", "requirement_analysis", "shared", "site_exploration", "skills"}
+    ignored = {"__pycache__", "api_automation", "requirement_analysis", "shared", "site_exploration", "skills"}
     missing: list[str] = []
     for package in sorted(path for path in agent_root.iterdir() if path.is_dir()):
         if package.name.startswith("_") or package.name in ignored:
@@ -52,3 +52,21 @@ def test_legacy_agent_service_facade_removed() -> None:
     agents_api = (BACKEND_APP / "api" / "v1" / "agents.py").read_text(encoding="utf-8")
     assert "agent_service" not in agents_api
     assert '@router.post("/{agent_id}/run"' not in agents_api
+
+
+def test_api_automation_uses_explicit_child_capabilities() -> None:
+    package = BACKEND_APP / "agents" / "api_automation"
+
+    assert not (package / "agent.py").exists()
+    assert not (package / "schemas.py").exists()
+    assert not (package / "service.py").exists()
+    for capability in ("case_generation", "pytest_requests"):
+        assert (package / capability / "agent.py").exists()
+        assert (package / capability / "schemas.py").exists()
+        assert (package / capability / "service.py").exists()
+
+    pytest_source = "\n".join(
+        path.read_text(encoding="utf-8") for path in _python_files(package / "pytest_requests")
+    )
+    assert "PROJECT_FILE_STORAGE_ROOT" not in pytest_source
+    assert "api_automation_repo" not in pytest_source

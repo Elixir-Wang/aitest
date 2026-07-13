@@ -674,6 +674,10 @@ def list_scripts(db: Connection, project_id: str) -> list[Row]:
     ).fetchall()
 
 
+def delete_script(db: Connection, script_id: str) -> None:
+    db.execute("DELETE FROM api_test_scripts WHERE id = ?", (script_id,))
+
+
 def upsert_script(
     db: Connection,
     *,

@@ -3,7 +3,7 @@ from pathlib import Path
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 
-from app.agents.api_automation import ApiAutomationGenerationResult
+from app.agents.api_automation.case_generation.schemas import ApiAutomationGenerationResult
 from app.agents.shared.invalid_tool_call_recovery import InvalidToolCallRecoveryMiddleware
 from app.agents.shared.skill_middleware import SkillMiddleware
 

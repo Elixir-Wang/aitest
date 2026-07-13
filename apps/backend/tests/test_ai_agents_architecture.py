@@ -35,6 +35,7 @@ def test_business_agent_packages_have_agent_entrypoint() -> None:
     missing: list[str] = []
     for package in sorted(path for path in NEW_AGENTS_ROOT.iterdir() if path.is_dir()):
         if package.name.startswith("_") or package.name in {
+            "api_automation",
             "requirement_analysis",
             "shared",
             "site_exploration",

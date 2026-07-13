@@ -11,8 +11,10 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 
-from app.agents.api_automation import service as api_generation_agent_service
-from app.agents.api_automation.schemas import ApiAutomationGenerationInput
+from app.agents.api_automation.case_generation import service as api_generation_agent_service
+from app.agents.api_automation.case_generation.schemas import ApiAutomationGenerationInput
+from app.agents.api_automation.pytest_requests.schemas import PytestRequestsGenerationInput
+from app.agents.api_automation.pytest_requests.service import generate_pytest_requests_code
 from app.core.environment_credentials import decrypt_api_environment_secret, encrypt_api_environment_secret
 from app.core.security import hash_secret
 from app.core import storage
@@ -32,9 +34,14 @@ from app.schemas.api_automation import (
     ApiTestCaseSetIn,
 )
 from app.services.api_automation.openapi_parser import OpenAPIParseError, parse_openapi_document
-from app.services.api_automation.runner import run_script_suite
-from app.services.api_automation.script_generator import generate_pytest_suite
-from app.services.api_automation.script_workspace import project_workspace_lock, relative_file_key
+from app.services.api_automation.runner import collect_script_suite, run_script_suite
+from app.services.api_automation.artifact_storage import (
+    materialize_generation_result,
+    project_workspace_lock,
+    relative_file_key,
+    restore_endpoint_artifacts,
+    snapshot_endpoint_artifacts,
+)
 
 
 MAX_OPENAPI_BYTES = 2 * 1024 * 1024
@@ -702,16 +709,44 @@ def generate_project_scripts(project_id: str, endpoint_ids: list[str], actor, *,
     suite_id = f"{project_id}-pytest-requests"
     artifacts_by_endpoint = {}
     if changed_endpoint_ids:
-        cases_to_generate = [case for endpoint_id in changed_endpoint_ids for case in cases_by_endpoint[endpoint_id]]
         with project_workspace_lock(project_id):
-            generated = generate_pytest_suite(
-                project_id=project_id,
-                suite_id=suite_id,
-                cases=cases_to_generate,
-                output_root=storage.PROJECT_FILE_STORAGE_ROOT,
-            )
-        suite_path = storage.store_path(generated["suite_path"]) or str(generated["suite_path"])
-        artifacts_by_endpoint = {artifact["endpoint_id"]: artifact for artifact in generated["artifacts"]}
+            snapshots = []
+            for endpoint_id in changed_endpoint_ids:
+                endpoint = _serialize_endpoint(endpoint_rows[endpoint_id])
+                generated = generate_pytest_requests_code(
+                    PytestRequestsGenerationInput(
+                        endpoint={
+                            "id": endpoint_id,
+                            "method": endpoint["method"],
+                            "path": endpoint["path"],
+                            "summary": endpoint["summary"],
+                        },
+                        cases=cases_by_endpoint[endpoint_id],
+                    )
+                )
+                snapshots.append(snapshot_endpoint_artifacts(project_id, generated))
+                artifacts_by_endpoint[endpoint_id] = materialize_generation_result(project_id, generated)
+            generated_suite_path = artifacts_by_endpoint[changed_endpoint_ids[0]]["suite_path"]
+            try:
+                collection = collect_script_suite(suite_path=generated_suite_path, timeout=120)
+            except Exception as exc:
+                for snapshot in reversed(snapshots):
+                    restore_endpoint_artifacts(snapshot)
+                raise api_error(
+                    422,
+                    "API_SCRIPT_COLLECTION_FAILED",
+                    f"生成的 pytest 项目无法收集：{str(exc)[:2000]}",
+                ) from exc
+            if not collection["ok"]:
+                for snapshot in reversed(snapshots):
+                    restore_endpoint_artifacts(snapshot)
+                error_output = (collection["stderr"] or collection["stdout"] or "pytest 收集失败。").strip()
+                raise api_error(
+                    422,
+                    "API_SCRIPT_COLLECTION_FAILED",
+                    f"生成的 pytest 项目无法收集：{error_output[:2000]}",
+                )
+        suite_path = storage.store_path(generated_suite_path) or str(generated_suite_path)
     else:
         suite_path = str(existing_by_endpoint[endpoint_ids[0]]["suite_path"])
 
@@ -813,6 +848,33 @@ def update_api_script(project_id: str, script_id: str, *, content: str, notes: s
         result = _serialize_script(updated)
     result["content"] = content
     return result
+
+
+def delete_api_script(project_id: str, script_id: str, actor) -> None:
+    _require_admin(actor)
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = api_automation_repo.find_script(db, script_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "API_SCRIPT_NOT_FOUND", "接口自动化脚本不存在。")
+        script = _serialize_script(row)
+        api_automation_repo.delete_script(db, script_id)
+
+    suite_path = _resolve_generated_path(project_id, script["suite_path"]).resolve()
+    deleted_parents = []
+    for stored_path in (script["test_file_path"], script["data_file_path"]):
+        if not stored_path:
+            continue
+        path = _resolve_generated_path(project_id, stored_path).resolve()
+        path.relative_to(suite_path)
+        deleted_parents.append(path.parent)
+        if path.exists() and path.is_file():
+            path.unlink()
+    if len(deleted_parents) == 2 and deleted_parents[0] == deleted_parents[1]:
+        endpoint_dir = deleted_parents[0]
+        endpoints_root = (suite_path / "endpoints").resolve()
+        if endpoint_dir.parent == endpoints_root and endpoint_dir.exists() and not any(endpoint_dir.iterdir()):
+            endpoint_dir.rmdir()
 
 
 def create_api_run(project_id: str, payload: ApiRunCreateIn, actor) -> dict:
@@ -1200,7 +1262,6 @@ def _serialize_api_test_case(row: Row) -> dict:
         "test_description": row["test_description"],
         "priority": row["priority"],
         "coverage": row["coverage"],
-        "source": row["source"],
         "preconditions": api_automation_repo.loads_json(row["preconditions_json"], []),
         "request": api_automation_repo.loads_json(row["request_json"], {}),
         "test_data": api_automation_repo.loads_json(row["test_data_json"], {}),
