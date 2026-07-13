@@ -498,7 +498,10 @@ async def _execute_exploration_async(
 ) -> None:
     """异步执行探索"""
     from app.agents.page_exploration.agent import page_exploration_agent
-    from app.agents.page_exploration.tools.runtime_context import browser_session_context
+    from app.agents.page_exploration.tools.runtime_context import (
+        browser_session_context,
+        exploration_runtime_context,
+    )
 
     _ensure_exploration_not_stopping(run_id)
 
@@ -540,7 +543,14 @@ async def _execute_exploration_async(
             }
         ]
     }
-    with browser_session_context(start_url=start_url, storage_state_path=storage_state_path):
+    with (
+        exploration_runtime_context(
+            project_id=project_id,
+            run_id=run_id,
+            storage_root=_project_file_storage_root(),
+        ),
+        browser_session_context(start_url=start_url, storage_state_path=storage_state_path),
+    ):
         await _service_attr("_invoke_agent_with_realtime_events", _invoke_agent_with_realtime_events)(
             agent,
             payload,

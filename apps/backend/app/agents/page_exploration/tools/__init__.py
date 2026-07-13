@@ -20,21 +20,15 @@ from app.agents.page_exploration.tools.extraction_tools import (
     playwright_snap_tool,
 )
 
-from app.agents.page_exploration.tools.state_tools import update_explored_url_tool
-
 from app.agents.page_exploration.tools.url_tools import (
     make_check_explored_url_tool,
     check_explored_url,
 )
 
-# Lazy reference – artifacts need base_dir resolved at import time.
-# agent.py already imports PROJECT_FILE_STORAGE_ROOT, so we import it here too.
-from app.core.settings import PROJECT_FILE_STORAGE_ROOT
-
 
 # ==================== 工具分类 ====================
 
-check_explored_url_tool = make_check_explored_url_tool(PROJECT_FILE_STORAGE_ROOT)
+check_explored_url_tool = make_check_explored_url_tool()
 
 NAVIGATION_TOOLS = [
     playwright_navigate_tool,
@@ -50,7 +44,6 @@ EXTRACTION_TOOLS = [
 
 STATE_TOOLS = [
     check_explored_url_tool,
-    update_explored_url_tool,
 ]
 
 # 所有页面探索工具
@@ -89,7 +82,6 @@ __all__ = [
     "playwright_screenshot_tool",
     # 状态工具
     "check_explored_url_tool",
-    "update_explored_url_tool",
     # URL 工具（工厂函数 + 核心函数）
     "make_check_explored_url_tool",
     "check_explored_url",

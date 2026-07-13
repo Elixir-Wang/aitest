@@ -214,7 +214,7 @@ sub-goal 不要求时**永远不要**点击：
 如果 sub-goal 真的需要"删除测试数据"等危险操作，必须：
 - 显式在 todo content 中写"测试数据"标识
 - 用带时间戳/UUID 的脏数据
-- 完成后用 update_explored_url_tool 记录
+- 完成后执行 snap，由服务端确定性记录页面状态
 
 ---
 
@@ -225,7 +225,7 @@ sub-goal 不要求时**永远不要**点击：
 ```
 1. 读当前 sub-goal content（含完成判据）
 2. snap 当前页（如果 URL 变化或 > 30s 没 snap）
-3. check_explored_url_tool 检查目标 URL 是否已探索（读 subgoals.pending）
+3. check_explored_url_tool 仅传 normalized_path，检查目标 URL 是否已探索（读 subgoals.pending）
 4. 选最稳的定位器（详见 locator_best_practices）
 5. click / fill / navigate
 6. snap 验证（看完成判据是否满足）

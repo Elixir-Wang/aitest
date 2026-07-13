@@ -364,8 +364,8 @@ def _readable_tool_display(tool_name: str, event_name: str, data: dict, status: 
     output_data = data.get("output") if isinstance(data.get("output"), dict) else {}
     error = _compact_event_payload(data.get("error")) or _compact_event_payload(output_data.get("error"))
 
-    # 过滤掉辅助性工具：read_file（内部配置读取）、update_explored_url_tool（URL记录）
-    if tool_name in {"read_file", "update_explored_url_tool"}:
+    # 过滤掉内部配置读取工具。
+    if tool_name == "read_file":
         return None
 
     if tool_name == "write_todos":

@@ -1,6 +1,7 @@
 """Runtime browser context for page exploration tools."""
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from hashlib import sha1
 from pathlib import Path
 from typing import Iterator, Any, Mapping
@@ -25,6 +26,47 @@ _browser_session: ContextVar[PlaywrightBrowserSession | None] = ContextVar(
     default=None,
 )
 _state_tracker: ContextVar[dict[str, Any] | None] = ContextVar("page_exploration_state_tracker", default=None)
+_exploration_runtime: ContextVar["ExplorationRuntime | None"] = ContextVar(
+    "page_exploration_runtime",
+    default=None,
+)
+
+
+class PageExplorationRuntimeError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class ExplorationRuntime:
+    project_id: str
+    run_id: str
+    storage_root: Path
+
+
+@contextmanager
+def exploration_runtime_context(
+    *,
+    project_id: str,
+    run_id: str,
+    storage_root: Path | str,
+) -> Iterator[None]:
+    runtime = ExplorationRuntime(
+        project_id=str(project_id),
+        run_id=str(run_id),
+        storage_root=Path(storage_root).resolve(),
+    )
+    token = _exploration_runtime.set(runtime)
+    try:
+        yield
+    finally:
+        _exploration_runtime.reset(token)
+
+
+def require_exploration_runtime() -> ExplorationRuntime:
+    runtime = _exploration_runtime.get()
+    if runtime is None:
+        raise PageExplorationRuntimeError("Page exploration runtime is not bound.")
+    return runtime
 
 
 ACTION_VERIFICATION_HINT = (

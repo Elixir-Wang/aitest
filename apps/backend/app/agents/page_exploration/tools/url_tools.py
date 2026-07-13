@@ -46,7 +46,7 @@ def check_explored_url(
                 continue
             page = obj.get("page") or {}
             if (
-                obj.get("schema_version") == "2.0"
+                obj.get("schema_version") in {"2.0", "3.0"}
                 and page.get("normalized_path") == normalized_path
             ):
                 result["explored"] = True
@@ -63,12 +63,14 @@ def check_explored_url(
     return result
 
 
-def make_check_explored_url_tool(base_dir: Path):
-    """包装成 LangChain StructuredTool, 注入 base_dir."""
+def make_check_explored_url_tool():
+    """包装成 LangChain StructuredTool，运行身份由服务端上下文注入。"""
     from langchain_core.tools import tool
 
+    from app.agents.page_exploration.tools.runtime_context import require_exploration_runtime
+
     @tool("check_explored_url_tool")
-    def _impl(normalized_path: str, project_id: str) -> dict:
+    def _impl(normalized_path: str) -> dict:
         """Check whether a normalized URL path has been explored.
 
         Returns:
@@ -76,7 +78,12 @@ def make_check_explored_url_tool(base_dir: Path):
           - has_state_tree: bool
           - subgoals: {total, completed, pending}  # 来自 service 落盘的 subgoals.yaml
         """
-        return check_explored_url(normalized_path=normalized_path, project_id=project_id, base_dir=base_dir)
+        runtime = require_exploration_runtime()
+        return check_explored_url(
+            normalized_path=normalized_path,
+            project_id=runtime.project_id,
+            base_dir=runtime.storage_root,
+        )
     return _impl
 
 

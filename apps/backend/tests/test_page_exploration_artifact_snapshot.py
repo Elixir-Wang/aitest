@@ -16,8 +16,11 @@ def test_execute_exploration_async_invokes_deep_agent_with_user_message(monkeypa
 
     class FakeAgent:
         async def astream(self, payload, **kwargs):
+            from app.agents.page_exploration.tools.runtime_context import require_exploration_runtime
+
             captured["payload"] = payload
             captured["kwargs"] = kwargs
+            captured["runtime"] = require_exploration_runtime()
             yield ("values", {"messages": []})
 
     def fake_page_exploration_agent(model, tools=None, skill_names=None, max_actions=80):
@@ -71,6 +74,9 @@ def test_execute_exploration_async_invokes_deep_agent_with_user_message(monkeypa
 
     assert captured["agent_args"][0] == "fake-model"
     assert captured["agent_args"][3] == max(40, min(int(3) * 6, 200))  # max_actions 计算正确
+    assert captured["runtime"].project_id == "project-1"
+    assert captured["runtime"].run_id == "run-1"
+    assert captured["runtime"].storage_root == page_exploration_service.settings.PROJECT_FILE_STORAGE_ROOT.resolve()
     assert captured["payload"] == {
         "messages": [
             {
