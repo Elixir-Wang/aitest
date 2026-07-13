@@ -652,9 +652,39 @@ export default function Page() {
       const created = await executeApiAutomationScenario(projectId, activeScenario.id, selectedEnvironmentId);
       setRun(created);
       setRuns((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setRunTotal((current) => current + 1);
+      setActiveTab("运行记录");
+      void openRunDetail(created);
       toast.success("场景运行已提交");
+      notifyAiTaskStarted();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "场景运行失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRerun(run: ApiAutomationRun) {
+    if (run.target_type !== "scenario") {
+      await handleRun(run.script_ids, run.api_environment_id ?? "");
+      return;
+    }
+    const scenarioId = run.target_ids[0];
+    if (!scenarioId || !run.api_environment_id) {
+      toast.error("原场景或运行环境已不可用");
+      return;
+    }
+    setBusy(true);
+    try {
+      const created = await executeApiAutomationScenario(projectId, scenarioId, run.api_environment_id);
+      setRun(created);
+      setRuns((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setRunTotal((current) => current + 1);
+      void openRunDetail(created);
+      toast.success("场景运行已重新提交");
+      notifyAiTaskStarted();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "场景重新执行失败");
     } finally {
       setBusy(false);
     }
@@ -2507,7 +2537,11 @@ export default function Page() {
                         </button>
                       </TableCell>
                       <TableCell>{item.execution_snapshot.environment?.name ?? "已删除环境"}</TableCell>
-                      <TableCell className="tabular-nums">{item.execution_snapshot.endpoint_count ?? 0} 个</TableCell>
+                      <TableCell className="tabular-nums">
+                        {item.target_type === "scenario"
+                          ? (item.execution_snapshot.scenario?.name ?? "场景")
+                          : `${item.execution_snapshot.endpoint_count ?? 0} 个`}
+                      </TableCell>
                       <TableCell>
                         <Badge className={runStatusTone(item.status)} variant="outline">
                           {API_RUN_ACTIVE_STATUSES.has(item.status) ? (
@@ -2906,34 +2940,44 @@ export default function Page() {
                 <RunDetailValue label="命令" mono value={run.command_summary || "-"} />
               </div>
 
-              <div>
-                <div className="mb-2 font-semibold text-sm">执行脚本</div>
-                <div className="overflow-hidden rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>接口信息</TableHead>
-                        <TableHead>脚本</TableHead>
-                        <TableHead className="text-right">用例数</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(run.execution_snapshot.scripts ?? []).map((script) => (
-                        <TableRow key={script.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              {script.method ? <MethodBadge method={script.method} /> : null}
-                              <span className="max-w-80 truncate">{script.endpoint_summary || script.path || "-"}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="font-mono text-xs">{script.name}</TableCell>
-                          <TableCell className="text-right tabular-nums">{script.case_count}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+              {run.target_type === "scenario" ? (
+                <div className="grid gap-3 rounded-md border p-4 sm:grid-cols-3">
+                  <RunDetailValue label="场景" value={run.execution_snapshot.scenario?.name ?? "已删除场景"} />
+                  <RunDetailValue label="发布版本" value={`v${run.execution_snapshot.scenario?.revision ?? "-"}`} />
+                  <RunDetailValue label="步骤数" value={`${run.execution_snapshot.scenario?.step_count ?? 0} 个`} />
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <div className="mb-2 font-semibold text-sm">执行脚本</div>
+                  <div className="overflow-hidden rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>接口信息</TableHead>
+                          <TableHead>脚本</TableHead>
+                          <TableHead className="text-right">用例数</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(run.execution_snapshot.scripts ?? []).map((script) => (
+                          <TableRow key={script.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {script.method ? <MethodBadge method={script.method} /> : null}
+                                <span className="max-w-80 truncate">
+                                  {script.endpoint_summary || script.path || "-"}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">{script.name}</TableCell>
+                            <TableCell className="text-right tabular-nums">{script.case_count}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
 
               {run.error_message ? (
                 <div>
@@ -2972,10 +3016,7 @@ export default function Page() {
             </div>
           ) : null}
           <DialogFooter className="mx-0 mb-0 px-6 py-4">
-            <Button
-              disabled={isRunRerunDisabled(run, busy)}
-              onClick={() => (run ? handleRun(run.script_ids, run.api_environment_id ?? "") : undefined)}
-            >
+            <Button disabled={isRunRerunDisabled(run, busy)} onClick={() => (run ? handleRerun(run) : undefined)}>
               <RefreshCw className="size-4" />
               按原配置重新执行
             </Button>
@@ -3628,6 +3669,8 @@ function RunDetailValue({ label, value, mono = false }: { label: string; value: 
 
 function isRunRerunDisabled(run: ApiAutomationRun | null, busy: boolean) {
   if (busy || !run?.api_environment_id) return true;
+  if (run.target_type === "scenario" && run.target_ids.length === 0) return true;
+  if (run.target_type !== "scenario" && run.script_ids.length === 0) return true;
   return API_RUN_ACTIVE_STATUSES.has(run.status);
 }
 

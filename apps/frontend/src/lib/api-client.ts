@@ -723,6 +723,7 @@ export type ApiAutomationRun = {
   target_ids: string[];
   execution_snapshot: {
     environment?: { id: string; name: string; api_base_url: string } | null;
+    scenario?: { id: string; name: string; revision: number; step_count: number; published_hash: string };
     scripts?: Array<{
       id: string;
       endpoint_id?: string | null;
@@ -736,6 +737,9 @@ export type ApiAutomationRun = {
     endpoint_count?: number;
     case_count?: number;
     created_by_name?: string;
+    suite_path?: string;
+    test_file_path?: string;
+    data_file_path?: string;
   };
   command_summary: string;
   stdout_path: string;

@@ -1039,14 +1039,21 @@ def create_api_scenario_run(project_id: str, scenario_id: str, api_environment_i
         if not environment or environment["project_id"] != project_id:
             raise api_error(404, "API_ENVIRONMENT_NOT_FOUND", "接口环境不存在。")
         snapshot = api_automation_repo.loads_json(scenario["published_snapshot_json"], {})
+        serialized_snapshot = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        snapshot_hash = hashlib.sha256(serialized_snapshot.encode("utf-8")).hexdigest()
+        if snapshot_hash != scenario["published_hash"]:
+            raise api_error(409, "API_SCENARIO_SNAPSHOT_INVALID", "场景发布快照校验失败，请重新发布。")
     with project_workspace_lock(project_id):
         artifacts = materialize_scenario_snapshot(project_id, snapshot)
         relative_test_path = str(artifacts["test_file_path"].relative_to(artifacts["suite_path"]))
-        collection = collect_script_suite(
-            suite_path=artifacts["suite_path"],
-            timeout=120,
-            test_paths=[relative_test_path],
-        )
+        try:
+            collection = collect_script_suite(
+                suite_path=artifacts["suite_path"],
+                timeout=120,
+                test_paths=[relative_test_path],
+            )
+        except Exception as exc:
+            raise api_error(422, "API_SCENARIO_COLLECTION_FAILED", f"场景脚本无法收集：{str(exc)[:2000]}") from exc
         if not collection["ok"]:
             error_output = (collection["stderr"] or collection["stdout"] or "pytest 收集失败。").strip()
             raise api_error(422, "API_SCENARIO_COLLECTION_FAILED", f"场景脚本无法收集：{error_output[:2000]}")

@@ -244,6 +244,24 @@ def test_published_scenario_creates_collectable_run_artifact(monkeypatch: pytest
     assert suite_path and (suite_path / "support" / "scenario.py").exists()
     assert collection_calls[0]["test_paths"] == [str(test_file.relative_to(suite_path))]
 
+    monkeypatch.setattr(
+        service,
+        "run_script_suite",
+        lambda **kwargs: {
+            "status": "passed",
+            "summary": {"total": 1, "passed": 1, "failed": 0},
+            "error_message": "",
+            "stdout_path": str(tmp_path / "stdout.txt"),
+            "stderr_path": str(tmp_path / "stderr.txt"),
+            "json_report_path": str(tmp_path / "report.json"),
+            "exitcode": 0,
+        },
+    )
+    completed = service.execute_api_run(run["id"])
+
+    assert completed["status"] == "passed"
+    assert completed["summary"]["passed"] == 1
+
 
 def test_task_service_includes_api_automation_tasks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
