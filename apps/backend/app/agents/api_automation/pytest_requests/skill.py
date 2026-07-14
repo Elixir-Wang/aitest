@@ -19,7 +19,7 @@ def _generate(input_data: PytestRequestsGenerationInput) -> PytestRequestsGenera
     endpoint = input_data.endpoint
     module = endpoint.module or _infer_module(endpoint.path)
     feature = endpoint.feature or _infer_feature(endpoint.path)
-    endpoint_key = _slugify(f"{module}_{feature}")
+    endpoint_key = _slugify(f"{module}_{feature}_{endpoint.id}")
     files = render_pytest_requests_files(input_data)
     return PytestRequestsGenerationResult(
         endpoint_id=endpoint.id,

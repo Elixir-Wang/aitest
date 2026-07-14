@@ -312,11 +312,11 @@ def _generate_api_files(module: str, feature: str, endpoint) -> list[GeneratedCo
         _file(
             f"api/module_{module}.py",
             "python",
-            f'"""API 模块 - {module}"""\nfrom api.client import ApiClient, get_client\n\n\n'
+            f'"""API 模块 - {module}"""\nfrom api.client import ApiClient\n\n\n'
             f"class {module_class}:\n"
             f"    def __init__(self, client: ApiClient = None):\n"
             "        self._client = client\n\n"
-            "    @property\n    def api(self):\n        return self._client or get_client()\n\n"
+            "    @property\n    def api(self):\n        return self._client or ApiClient()\n\n"
             f'    def {method.lower()}_{feature}(self, request_data=None, test_data=None, **kwargs):\n'
             f'        """{endpoint.summary or f"{method} {path}"}"""\n'
             f"        return self.api.request(\n"
