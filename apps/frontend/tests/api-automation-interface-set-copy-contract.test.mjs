@@ -227,10 +227,16 @@ test("project api automation generates project scripts from selected interfaces"
   assert.match(projectPageSource, /generateApiAutomationScripts\(projectId/);
   assert.match(projectPageSource, /endpoint_ids: endpointIds/);
   assert.match(projectPageSource, /listApiAutomationScripts\(projectId\)/);
-  assert.match(projectPageSource, /getApiAutomationScriptFiles\(projectId, activeScriptId\)/);
   assert.match(projectPageSource, /handleRun\(runTargetScriptIds\)/);
-  assert.match(projectPageSource, /const \[scriptCodeOpen, setScriptCodeOpen\] = useState\(false\);/);
-  assert.match(projectPageSource, /<Dialog open=\{scriptCodeOpen\} onOpenChange=\{setScriptCodeOpen\}>/);
+  assert.match(projectPageSource, /删除[\s\S]*执行脚本/);
+  assert.doesNotMatch(projectPageSource, /getApiAutomationScriptFiles/);
+  assert.doesNotMatch(projectPageSource, /scriptCodeOpen/);
+  assert.doesNotMatch(projectPageSource, /查看代码/);
+  assert.doesNotMatch(projectPageSource, /selectedEnvironment \? "修改环境配置" : "新建接口环境"/);
+  assert.doesNotMatch(projectPageSource, /前置检查 \{scriptReadinessChecks/);
+  assert.doesNotMatch(projectPageSource, /runTargetCaseCount/);
+  assert.doesNotMatch(apiClientSource, /ApiAutomationScriptFile/);
+  assert.doesNotMatch(apiClientSource, /getApiAutomationScriptFiles/);
 });
 
 test("project api automation refreshes case list when generation run completes", () => {
@@ -318,6 +324,9 @@ test("project api automation case detail shows structured QA review sections", (
   assert.match(caseDetailPageSource, /title="请求信息"/);
   assert.match(caseDetailPageSource, /<ReviewBlock title="测试数据">/);
   assert.match(caseDetailPageSource, /测试描述/);
+  assert.match(caseDetailPageSource, /testCase\.notes\.trim\(\)/);
+  assert.match(caseDetailPageSource, /生成说明/);
+  assert.match(caseDetailPageSource, /\{testCase\.notes\}/);
   assert.match(caseDetailPageSource, /<ReviewBlock icon=\{<Code2 className="size-4" \/>\} title="请求信息">/);
   assert.match(caseDetailPageSource, /<ReviewBlock icon=\{<ShieldAlert className="size-4" \/>\} title="验证规则">/);
   assert.match(caseDetailPageSource, /renderApiCaseRequest/);
@@ -336,7 +345,9 @@ test("project api automation case detail shows structured QA review sections", (
   assert.match(caseDetailPageSource, /dark:border-emerald-900\/70 dark:bg-emerald-950\/30/);
   assert.doesNotMatch(caseDetailPageSource, /bg-white p-4/);
   assert.doesNotMatch(caseDetailPageSource, /text-\[#101828\]/);
-  assert.match(projectPageSource, /searchParams\.get\("tab"\) === "cases" \? "接口用例" : tabs\[0\]/);
+  assert.match(projectPageSource, /function tabFromSearchParam\(value: string \| null\)/);
+  assert.match(projectPageSource, /if \(value === "cases"\) return "接口用例";/);
+  assert.match(projectPageSource, /useState\(\(\) => tabFromSearchParam\(searchParams\.get\("tab"\)\)\)/);
 });
 
 test("project api automation script workspace summarizes real environment configuration", () => {
@@ -344,7 +355,7 @@ test("project api automation script workspace summarizes real environment config
   assert.match(projectPageSource, /selectedEnvironment\.timeout_seconds/);
   assert.match(projectPageSource, /Object\.keys\(selectedEnvironment\.variables\)\.length/);
   assert.match(projectPageSource, /Object\.keys\(selectedEnvironment\.default_headers\)\.length/);
-  assert.match(projectPageSource, /openEditEnvironmentDialog\(selectedEnvironment\)/);
+  assert.doesNotMatch(projectPageSource, /selectedEnvironment \? "修改环境配置" : "新建接口环境"/);
 });
 
 test("project api automation script workspace summarizes preconditions without repeating cases", () => {

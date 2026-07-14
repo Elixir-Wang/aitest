@@ -30,7 +30,7 @@ type BreadcrumbInput = string | BreadcrumbItem;
 export type PageBreadcrumb = BreadcrumbInput;
 type RowAction = {
   label: string;
-  icon: LucideIcon;
+  icon?: LucideIcon;
   href?: string;
   destructive?: boolean;
   disabled?: boolean;
@@ -273,25 +273,32 @@ export function RowActions({ label, actions }: { label: string; actions: RowActi
         {actions.map((action, index) => (
           <div key={`${action.label}-${action.href ?? "action"}`}>
             {action.destructive && index > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuItem
-              className="gap-2 whitespace-nowrap pr-3"
-              asChild={Boolean(action.href)}
-              disabled={action.disabled}
-              onClick={action.onSelect}
-              variant={action.destructive ? "destructive" : undefined}
-            >
-              {action.href ? (
-                <Link href={action.href}>
-                  <action.icon className="size-4" />
+            {action.href ? (
+              <DropdownMenuItem asChild>
+                <Link
+                  className={cn(
+                    "gap-2 whitespace-nowrap pr-3",
+                    action.destructive && "text-destructive focus:text-destructive",
+                  )}
+                  href={action.href}
+                >
+                  {action.icon && <action.icon className="size-4" />}
                   {action.label}
                 </Link>
-              ) : (
-                <>
-                  <action.icon className="size-4" />
-                  {action.label}
-                </>
-              )}
-            </DropdownMenuItem>
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                className={cn(
+                  "gap-2 whitespace-nowrap pr-3",
+                  action.destructive && "text-destructive focus:text-destructive",
+                )}
+                disabled={action.disabled}
+                onClick={action.onSelect}
+              >
+                {action.icon && <action.icon className="size-4" />}
+                {action.label}
+              </DropdownMenuItem>
+            )}
           </div>
         ))}
       </DropdownMenuContent>

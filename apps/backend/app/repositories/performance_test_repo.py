@@ -26,9 +26,10 @@ def create_performance_test(
     target_type: str,
     endpoint_id: str,
     api_environment_id: str,
-    source_api_test_case_id: str | None,
     request_config: dict[str, Any],
     load_config: dict[str, Any],
+    data_config: dict[str, Any],
+    circuit_breaker: dict[str, Any],
     performance_goal: dict[str, Any],
     success_rules: list[dict[str, Any]],
     created_by: str,
@@ -37,10 +38,11 @@ def create_performance_test(
         """
         INSERT INTO performance_tests (
           id, project_id, name, description, target_type, endpoint_id,
-          api_environment_id, source_api_test_case_id, request_config_json,
-          load_config_json, performance_goal_json, success_rules_json, created_by
+          api_environment_id, request_config_json,
+          load_config_json, data_config_json, circuit_breaker_json,
+          performance_goal_json, success_rules_json, created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             test_id,
@@ -50,9 +52,10 @@ def create_performance_test(
             target_type,
             endpoint_id,
             api_environment_id,
-            source_api_test_case_id,
             _dumps(request_config),
             _dumps(load_config),
+            _dumps(data_config),
+            _dumps(circuit_breaker),
             _dumps(performance_goal),
             _dumps(success_rules),
             created_by,
@@ -69,21 +72,9 @@ def list_performance_tests(db: Connection, project_id: str) -> list[Row]:
           COALESCE(api_endpoints.method, '') AS endpoint_method,
           COALESCE(api_endpoints.path, '') AS endpoint_path,
           COALESCE(api_test_environments.name, '') AS environment_name,
-          COALESCE((
-            SELECT status FROM performance_test_runs
-            WHERE performance_test_id = performance_tests.id
-            ORDER BY created_at DESC, id DESC LIMIT 1
-          ), '') AS latest_run_status,
-          COALESCE((
-            SELECT goal_result_json FROM performance_test_runs
-            WHERE performance_test_id = performance_tests.id
-            ORDER BY created_at DESC, id DESC LIMIT 1
-          ), '{}') AS latest_goal_result_json,
-          (
-            SELECT created_at FROM performance_test_runs
-            WHERE performance_test_id = performance_tests.id
-            ORDER BY created_at DESC, id DESC LIMIT 1
-          ) AS latest_run_at
+          '' AS latest_run_status,
+          '{}' AS latest_goal_result_json,
+          NULL AS latest_run_at
         FROM performance_tests
         LEFT JOIN api_endpoints ON api_endpoints.id = performance_tests.endpoint_id
         LEFT JOIN api_test_environments ON api_test_environments.id = performance_tests.api_environment_id
@@ -103,21 +94,9 @@ def find_performance_test(db: Connection, test_id: str) -> Row | None:
           COALESCE(api_endpoints.method, '') AS endpoint_method,
           COALESCE(api_endpoints.path, '') AS endpoint_path,
           COALESCE(api_test_environments.name, '') AS environment_name,
-          COALESCE((
-            SELECT status FROM performance_test_runs
-            WHERE performance_test_id = performance_tests.id
-            ORDER BY created_at DESC, id DESC LIMIT 1
-          ), '') AS latest_run_status,
-          COALESCE((
-            SELECT goal_result_json FROM performance_test_runs
-            WHERE performance_test_id = performance_tests.id
-            ORDER BY created_at DESC, id DESC LIMIT 1
-          ), '{}') AS latest_goal_result_json,
-          (
-            SELECT created_at FROM performance_test_runs
-            WHERE performance_test_id = performance_tests.id
-            ORDER BY created_at DESC, id DESC LIMIT 1
-          ) AS latest_run_at
+          '' AS latest_run_status,
+          '{}' AS latest_goal_result_json,
+          NULL AS latest_run_at
         FROM performance_tests
         LEFT JOIN api_endpoints ON api_endpoints.id = performance_tests.endpoint_id
         LEFT JOIN api_test_environments ON api_test_environments.id = performance_tests.api_environment_id
@@ -133,6 +112,8 @@ def update_performance_test(db: Connection, test_id: str, fields: dict[str, Any]
     json_columns = {
         "request_config": "request_config_json",
         "load_config": "load_config_json",
+        "data_config": "data_config_json",
+        "circuit_breaker": "circuit_breaker_json",
         "performance_goal": "performance_goal_json",
         "success_rules": "success_rules_json",
     }
@@ -150,13 +131,6 @@ def delete_performance_test(db: Connection, test_id: str) -> None:
     db.execute("DELETE FROM performance_tests WHERE id = ?", (test_id,))
 
 
-def has_runs(db: Connection, test_id: str) -> bool:
-    return db.execute(
-        "SELECT 1 FROM performance_test_runs WHERE performance_test_id = ? LIMIT 1",
-        (test_id,),
-    ).fetchone() is not None
-
-
 def serialize_performance_test(row: Row) -> dict[str, Any]:
     latest_goal_result = _loads(row["latest_goal_result_json"], {})
     return {
@@ -171,9 +145,10 @@ def serialize_performance_test(row: Row) -> dict[str, Any]:
         "endpoint_path": row["endpoint_path"],
         "api_environment_id": row["api_environment_id"],
         "environment_name": row["environment_name"],
-        "source_api_test_case_id": row["source_api_test_case_id"],
         "request_config": _loads(row["request_config_json"], {}),
         "load_config": _loads(row["load_config_json"], {}),
+        "data_config": _loads(row["data_config_json"], {}),
+        "circuit_breaker": _loads(row["circuit_breaker_json"], {}),
         "performance_goal": _loads(row["performance_goal_json"], {}),
         "success_rules": _loads(row["success_rules_json"], []),
         "latest_run_status": row["latest_run_status"],

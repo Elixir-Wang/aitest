@@ -24,11 +24,21 @@ class ApiUnhandledExceptionMiddleware:
             await self.app(scope, receive, send)
             return
 
+        response_started = False
+
+        async def send_wrapper(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
         try:
-            await self.app(scope, receive, send)
+            await self.app(scope, receive, send_wrapper)
         except Exception:
             trace_id = get_trace_id()
             logger.exception("Unhandled API exception")
+            if response_started:
+                raise
             response = JSONResponse(
                 status_code=500,
                 content={
@@ -126,7 +136,8 @@ class _ResponseState:
 
 
 def _should_passthrough(*, method: str, path: str, content_type: str) -> bool:
-    return method == "OPTIONS" or not path.startswith("/api/v1") or "text/event-stream" in content_type
+    is_locust_ui = "/performance-test-runs/" in path and "/locust-ui" in path
+    return method == "OPTIONS" or not path.startswith("/api/v1") or "text/event-stream" in content_type or is_locust_ui
 
 
 async def _send_wrapped_response(
@@ -154,10 +165,11 @@ async def _send_wrapped_response(
 
     headers = _response_headers_without_content_length(state.start)
     body = bytes(state.body)
+    has_no_body = method == "HEAD" or state.status < 200 or state.status in {204, 304}
 
-    if state.status >= 400 or "application/json" not in state.content_type:
+    if has_no_body or state.status >= 400 or "application/json" not in state.content_type:
         response = Response(
-            content=body,
+            content=b"" if has_no_body else body,
             status_code=state.status,
             headers=headers,
             media_type=None,

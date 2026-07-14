@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Check, Copy } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 
@@ -12,16 +13,52 @@ type OneClipboardProps = {
   copiedLabel?: string;
 };
 
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (!text) return false;
+
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to textarea method
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+
+  try {
+    const success = document.execCommand("copy");
+    return success;
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 export function OneClipboard({ text, label = "复制", copiedLabel = "已复制" }: OneClipboardProps) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(text);
+    if (!text) {
+      toast.error("复制内容为空");
+      return;
+    }
+
+    const success = await copyToClipboard(text);
+    if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setCopied(false);
+    } else {
+      toast.error("复制失败，请手动复制");
     }
   }
 

@@ -12,6 +12,15 @@ def assert_response_assertions(response, assertions: list[dict]) -> None:
         elif assertion_type == "jsonpath_equals":
             body = response.json()
             assert _read_path(body, assertion.get("path", "")) == assertion.get("expected")
+        elif assertion_type == "jsonpath_type":
+            body = response.json()
+            actual = _read_path(body, assertion.get("path", ""))
+            assert _json_type(actual) == assertion.get("expected")
+        elif assertion_type == "response_time_max":
+            elapsed_ms = response.elapsed.total_seconds() * 1000
+            assert elapsed_ms <= float(assertion.get("expected", 0))
+        elif assertion_type == "schema_basic":
+            _assert_basic_schema(response.json(), assertion.get("expected") or assertion.get("schema") or {})
         elif assertion_type == "content_type":
             expected = str(assertion.get("expected") or "").lower()
             actual = response.headers.get("Content-Type", "").lower()
@@ -30,6 +39,37 @@ def assert_response_assertions(response, assertions: list[dict]) -> None:
 
 
 assert_json_assertions = assert_response_assertions
+
+
+def _json_type(value) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return type(value).__name__
+
+
+def _assert_basic_schema(value, schema: dict, path: str = "$") -> None:
+    expected_type = schema.get("type")
+    if expected_type:
+        assert _json_type(value) == expected_type, f"{path} expected {expected_type}, got {_json_type(value)}"
+    if isinstance(value, dict):
+        for name in schema.get("required", []):
+            assert name in value, f"{path} missing required property: {name}"
+        for name, child_schema in schema.get("properties", {}).items():
+            if name in value:
+                _assert_basic_schema(value[name], child_schema, f"{path}.{name}")
+    if isinstance(value, list) and isinstance(schema.get("items"), dict):
+        for index, item in enumerate(value):
+            _assert_basic_schema(item, schema["items"], f"{path}[{index}]")
 
 
 def _read_path(data, path: str):

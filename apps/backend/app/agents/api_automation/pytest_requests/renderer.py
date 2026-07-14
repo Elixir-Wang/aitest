@@ -1,39 +1,9 @@
-import json
 import re
 
-from app.agents.api_automation.pytest_requests.schemas import GeneratedCodeFile, PytestRequestsGenerationInput
-
-
-def render_pytest_requests_files(input_data: PytestRequestsGenerationInput) -> list[GeneratedCodeFile]:
-    endpoint = input_data.endpoint
-    endpoint_key = slugify(f"{endpoint.method}_{endpoint.path}_{endpoint.id}")
-    endpoint_dir = f"endpoints/{endpoint_key}"
-    data_key = f"{endpoint_dir}/cases.json"
-    test_key = f"{endpoint_dir}/test_api.py"
-    files = [
-        GeneratedCodeFile(key="pyproject.toml", kind="config", language="toml", content=_pyproject()),
-        GeneratedCodeFile(key="pytest.ini", kind="config", language="ini", content=_pytest_ini()),
-        GeneratedCodeFile(key="conftest.py", kind="config", language="python", content=_conftest()),
-        GeneratedCodeFile(key="support/__init__.py", kind="support", language="python", content=""),
-        GeneratedCodeFile(key="support/client.py", kind="support", language="python", content=_client_py()),
-        GeneratedCodeFile(key="support/auth.py", kind="support", language="python", content=_auth_py()),
-        GeneratedCodeFile(key="support/assertions.py", kind="support", language="python", content=_assertions_py()),
-        GeneratedCodeFile(key="support/scenario.py", kind="support", language="python", content=_scenario_py()),
-        GeneratedCodeFile(key="README.md", kind="documentation", language="markdown", content=_readme()),
-        GeneratedCodeFile(
-            key=data_key,
-            kind="data",
-            language="json",
-            content=json.dumps({"cases": input_data.cases}, ensure_ascii=False, indent=2),
-        ),
-        GeneratedCodeFile(
-            key=test_key,
-            kind="test",
-            language="python",
-            content=_test_py(),
-        ),
-    ]
-    return files
+from app.agents.api_automation.pytest_requests.schemas import (
+    GeneratedCodeFile,
+    PytestRequestsGenerationInput,
+)
 
 
 def slugify(value: str) -> str:
@@ -42,374 +12,351 @@ def slugify(value: str) -> str:
     return slug or "generated"
 
 
-def _pyproject() -> str:
-    return """[project]
-name = "generated-api-automation-suite"
-version = "0.1.0"
-requires-python = ">=3.12"
-dependencies = ["pytest", "requests", "pytest-json-report"]
-"""
+def render_pytest_requests_files(input_data: PytestRequestsGenerationInput) -> list[GeneratedCodeFile]:
+    endpoint = input_data.endpoint
+    module = endpoint.module or _infer_module(endpoint.path)
+    feature = endpoint.feature or _infer_feature(endpoint.path)
+
+    files: list[GeneratedCodeFile] = []
+    if input_data.is_first_time:
+        files.extend(_generate_base_files())
+    else:
+        files.extend(_generate_repeat_files())
+    files.extend(_generate_api_files(module, feature, endpoint))
+    files.extend(_generate_testcase_files(module, feature, endpoint, input_data.cases))
+    return files
 
 
-def _pytest_ini() -> str:
-    return """[pytest]
-addopts = --import-mode=importlib
-pythonpath = .
-testpaths = endpoints scenarios
-python_files = test_*.py
-"""
+def _infer_module(path: str) -> str:
+    parts = path.strip("/").split("/")
+    return parts[0].lower() if parts and parts[0] else "common"
 
 
-def _conftest() -> str:
-    return '''import pytest
-
-from support.client import ApiClient
-
-
-@pytest.fixture(scope="session")
-def api_client():
-    return ApiClient.from_environment()
+def _infer_feature(path: str) -> str:
+    parts = path.strip("/").split("/")
+    return parts[1].lower() if len(parts) > 1 else "default"
 
 
-'''
+def _file(key: str, language: str, content: str, kind: str = "") -> GeneratedCodeFile:
+    return GeneratedCodeFile(key=key, language=language, content=content, kind=kind)
 
 
-def _client_py() -> str:
-    return '''import os
-import re
-from pathlib import Path
-from urllib.parse import quote
-
-import requests
-
-from support.auth import build_auth_headers
-
-
-class ApiClient:
-    def __init__(self, base_url: str, timeout: int = 30):
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-        self.session = requests.Session()
-        self.session.headers.update(build_auth_headers())
-
-    @classmethod
-    def from_environment(cls):
-        base_url = os.environ.get("API_BASE_URL", "")
-        if not base_url:
-            raise RuntimeError("API_BASE_URL is required.")
-        timeout = int(os.environ.get("API_TIMEOUT_SECONDS", "30"))
-        return cls(base_url=base_url, timeout=timeout)
-
-    def request(self, request_data: dict, test_data: dict | None = None):
-        method = request_data.get("method", "GET")
-        path = _expand_path(request_data.get("path", ""), test_data or {})
-        url = f"{self.base_url}{path}"
-        query = _expand_environment(request_data.get("query") or {})
-        headers = _expand_environment(request_data.get("headers") or {})
-        body = _expand_environment(request_data.get("body")) if "body" in request_data else None
-        files, handles = _build_files(request_data.get("files") or {})
-        try:
-            return self.session.request(
-                method,
-                url,
-                params=query or None,
-                data=body if files else None,
-                json=None if files else body,
-                files=files or None,
-                headers=headers or None,
-                timeout=self.timeout,
-            )
-        finally:
-            for handle in handles:
-                handle.close()
-
-
-_ENV_PATTERN = re.compile(r"\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
-_PATH_PATTERN = re.compile(r"\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
-
-
-def _expand_path(path: str, test_data: dict) -> str:
-    values = {
-        key: value.get("value") if isinstance(value, dict) and "value" in value else value
-        for key, value in test_data.items()
-    }
-    expanded = _expand_environment(path)
-    return _PATH_PATTERN.sub(
-        lambda match: quote(str(_expand_environment(values.get(match.group(1), match.group(0)))), safe=""),
-        expanded,
+def client_py() -> str:
+    return (
+        '"""API 客户端 - 支持 multipart、path 模板与环境变量扩展"""\n'
+        "from __future__ import annotations\n\n"
+        "import os\nimport re\nfrom pathlib import Path\nfrom urllib.parse import quote\n\nimport requests\n\n\n"
+        "_ENV_PATTERN = re.compile(r\"\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}\")\n"
+        "_PATH_PATTERN = re.compile(r\"\\{([A-Za-z_][A-Za-z0-9_]*)\\}\")\n\n\n"
+        "def _expand_environment(value):\n"
+        "    if isinstance(value, dict):\n"
+        "        return {key: _expand_environment(item) for key, item in value.items()}\n"
+        "    if isinstance(value, list):\n"
+        "        return [_expand_environment(item) for item in value]\n"
+        "    if not isinstance(value, str):\n"
+        "        return value\n"
+        "    full_match = _ENV_PATTERN.fullmatch(value)\n"
+        "    if full_match:\n"
+        "        return os.environ.get(full_match.group(1), \"\")\n"
+        "    return _ENV_PATTERN.sub(lambda match: os.environ.get(match.group(1), \"\"), value)\n\n\n"
+        "def _expand_path(path: str, test_data: dict | None) -> str:\n"
+        "    values = {\n"
+        "        key: item.get(\"value\") if isinstance(item, dict) and \"value\" in item else item\n"
+        "        for key, item in (test_data or {}).items()\n"
+        "    }\n"
+        "    expanded = _expand_environment(path)\n"
+        "    return _PATH_PATTERN.sub(\n"
+        "        lambda match: quote(str(_expand_environment(values.get(match.group(1), match.group(0)))), safe=\"\"),\n"
+        "        expanded,\n"
+        "    )\n\n\n"
+        "def _build_files(file_specs: dict):\n"
+        "    files: list = []\n"
+        "    handles: list = []\n"
+        "    try:\n"
+        "        for field_name, raw_specs in file_specs.items():\n"
+        "            specs = raw_specs if isinstance(raw_specs, list) else [raw_specs]\n"
+        "            for raw_spec in specs:\n"
+        "                spec = raw_spec if isinstance(raw_spec, dict) else {\"path\": raw_spec}\n"
+        "                file_path = Path(_expand_environment(spec.get(\"path\", \"\"))).expanduser()\n"
+        "                if not str(file_path) or not file_path.is_file():\n"
+        "                    raise RuntimeError(f\"Upload file does not exist for field {field_name}: {file_path}\")\n"
+        "                handle = file_path.open(\"rb\")\n"
+        "                handles.append(handle)\n"
+        "                filename = _expand_environment(spec.get(\"filename\")) or file_path.name\n"
+        "                content_type = _expand_environment(spec.get(\"content_type\")) or \"application/octet-stream\"\n"
+        "                files.append((field_name, (filename, handle, content_type)))\n"
+        "        return files, handles\n"
+        "    except Exception:\n"
+        "        for handle in handles:\n"
+        "            handle.close()\n"
+        "        raise\n\n\n"
+        "class ApiClient:\n"
+        "    def __init__(self, base_url: str = \"\", timeout: int = 30):\n"
+        "        self.base_url = base_url.rstrip(\"/\")\n"
+        "        self.timeout = timeout\n"
+        "        self.session = requests.Session()\n"
+        "        bearer = os.environ.get(\"API_AUTH_BEARER\", \"\")\n"
+        "        if bearer:\n"
+        "            self.session.headers[\"Authorization\"] = f\"Bearer {bearer}\"\n\n"
+        "    def request(self, request_data: dict, test_data: dict | None = None):\n"
+        "        method = request_data.get(\"method\", \"GET\")\n"
+        "        path = _expand_path(request_data.get(\"path\", \"\"), test_data or {})\n"
+        "        url = f\"{self.base_url}{path}\"\n"
+        "        query = _expand_environment(request_data.get(\"query\") or {})\n"
+        "        headers = _expand_environment(request_data.get(\"headers\") or {})\n"
+        "        body = _expand_environment(request_data.get(\"body\")) if \"body\" in request_data else None\n"
+        "        files, handles = _build_files(request_data.get(\"files\") or {})\n"
+        "        try:\n"
+        "            return self.session.request(\n"
+        "                method,\n"
+        "                url,\n"
+        "                params=query or None,\n"
+        "                data=body if files else None,\n"
+        "                json=None if files else body,\n"
+        "                files=files or None,\n"
+        "                headers=headers or None,\n"
+        "                timeout=self.timeout,\n"
+        "            )\n"
+        "        finally:\n"
+        "            for handle in handles:\n"
+        "                handle.close()\n"
     )
 
 
-def _expand_environment(value):
-    if isinstance(value, dict):
-        return {key: _expand_environment(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_expand_environment(item) for item in value]
-    if not isinstance(value, str):
-        return value
-    full_match = _ENV_PATTERN.fullmatch(value)
-    if full_match:
-        return os.environ.get(full_match.group(1), "")
-    return _ENV_PATTERN.sub(lambda match: os.environ.get(match.group(1), ""), value)
+def assertions_py() -> str:
+    return (
+        '"""断言工具 - 支持 status_code、jsonpath、jsonpath_type、schema、response_time、body_sha256 等"""\n'
+        "from __future__ import annotations\n\n"
+        "import hashlib\nimport json\nimport re\n\n"
+        "_JSONPATH_PATTERN = re.compile(r\"\\$\\.[^.]+(?:\\.[^.]+)*\")\n\n\n"
+        "def get_nested(data, path: str):\n"
+        "    for key in path.split(\".\"):\n"
+        "        if isinstance(data, dict):\n"
+        "            data = data.get(key)\n"
+        "        else:\n"
+        "            return None\n"
+        "    return data\n\n\n"
+        "def _resolve_jsonpath(response, jsonpath: str):\n"
+        "    body = response.json() if hasattr(response, \"json\") and callable(response.json) else response.json()\n"
+        "    match = _JSONPATH_PATTERN.fullmatch(jsonpath)\n"
+        "    if not match:\n"
+        "        return None\n"
+        "    cursor = body\n"
+        "    for key in [segment for segment in match.group(0)[2:].split(\".\") if segment]:\n"
+        "        if isinstance(cursor, dict):\n"
+        "            cursor = cursor.get(key)\n"
+        "        else:\n"
+        "            return None\n"
+        "    return cursor\n\n\n"
+        "def _validate_jsonpath_type(value, expected: str) -> bool:\n"
+        "    mapping = {\n"
+        "        \"string\": str,\n"
+        "        \"number\": (int, float),\n"
+        "        \"integer\": int,\n"
+        "        \"boolean\": bool,\n"
+        "        \"array\": list,\n"
+        "        \"object\": dict,\n"
+        "        \"null\": type(None),\n"
+        "    }\n"
+        "    target = mapping.get(expected)\n"
+        "    if target is None:\n"
+        "        return False\n"
+        "    return isinstance(value, target)\n\n\n"
+        "def _validate_schema(value, schema: dict) -> bool:\n"
+        "    expected_type = schema.get(\"type\")\n"
+        "    type_map = {\"object\": dict, \"array\": list, \"string\": str, \"number\": (int, float), \"integer\": int, \"boolean\": bool}\n"
+        "    if expected_type and not isinstance(value, type_map.get(expected_type, object)):\n"
+        "        return False\n"
+        "    if expected_type == \"object\":\n"
+        "        for required in schema.get(\"required\", []):\n"
+        "            if required not in value:\n"
+        "                return False\n"
+        "        for key, sub_schema in (schema.get(\"properties\") or {}).items():\n"
+        "            if key in value and not _validate_schema(value[key], sub_schema):\n"
+        "                return False\n"
+        "    elif expected_type == \"array\":\n"
+        "        item_schema = schema.get(\"items\")\n"
+        "        if item_schema:\n"
+        "            for item in value:\n"
+        "                if not _validate_schema(item, item_schema):\n"
+        "                    return False\n"
+        "    return True\n\n\n"
+        "def assert_response_assertions(response, assertions: list) -> None:\n"
+        "    for assertion in assertions:\n"
+        "        atype = assertion.get(\"type\")\n"
+        "        if atype == \"status_code\":\n"
+        "            assert response.status_code == assertion[\"expected\"]\n"
+        "        elif atype == \"content_type\":\n"
+        "            assert assertion[\"expected\"] in response.headers.get(\"Content-Type\", \"\")\n"
+        "        elif atype == \"header_exists\":\n"
+        "            assert assertion[\"path\"] in response.headers\n"
+        "        elif atype == \"body_not_empty\":\n"
+        "            assert bool(response.content)\n"
+        "        elif atype == \"body_sha256\":\n"
+        "            assert hashlib.sha256(response.content).hexdigest() == assertion[\"expected\"]\n"
+        "        elif atype == \"jsonpath\":\n"
+        "            value = _resolve_jsonpath(response, assertion[\"path\"])\n"
+        "            assert value == assertion[\"expected\"]\n"
+        "        elif atype == \"jsonpath_type\":\n"
+        "            value = _resolve_jsonpath(response, assertion[\"path\"])\n"
+        "            assert _validate_jsonpath_type(value, assertion[\"expected\"]) is True\n"
+        "        elif atype == \"response_time_max\":\n"
+        "            assert response.elapsed.total_seconds() * 1000 <= assertion[\"expected\"]\n"
+        "        elif atype == \"schema_basic\":\n"
+        "            body = response.json()\n"
+        "            assert _validate_schema(body, assertion[\"expected\"]) is True\n"
+        "        elif atype == \"body\":\n"
+        "            body = response.json()\n"
+        "            for key, expected in assertion.get(\"expected\", {}).items():\n"
+        "                assert get_nested(body, key) == expected\n"
+    )
 
 
-def _build_files(file_specs: dict):
-    files = []
-    handles = []
-    try:
-        for field_name, raw_specs in file_specs.items():
-            specs = raw_specs if isinstance(raw_specs, list) else [raw_specs]
-            for raw_spec in specs:
-                spec = raw_spec if isinstance(raw_spec, dict) else {"path": raw_spec}
-                file_path = Path(_expand_environment(spec.get("path", ""))).expanduser()
-                if not str(file_path) or not file_path.is_file():
-                    raise RuntimeError(f"Upload file does not exist for field {field_name}: {file_path}")
-                handle = file_path.open("rb")
-                handles.append(handle)
-                filename = _expand_environment(spec.get("filename")) or file_path.name
-                content_type = _expand_environment(spec.get("content_type")) or "application/octet-stream"
-                files.append((field_name, (filename, handle, content_type)))
-        return files, handles
-    except Exception:
-        for handle in handles:
-            handle.close()
-        raise
-'''
+def _generate_repeat_files() -> list[GeneratedCodeFile]:
+    """每次 generate 都重新生成的"项目级"固定文件，避免重复写各 endpoint 独有目录下的 __init__.py。"""
+    return [
+        _file("api/__init__.py", "python", ""),
+        _file("api/client.py", "python", client_py()),
+        _file("utils/assertions.py", "python", assertions_py()),
+    ]
 
 
-def _auth_py() -> str:
-    return '''import os
+def _generate_base_files() -> list[GeneratedCodeFile]:
+    return [
+        _file(
+            "pytest.ini",
+            "ini",
+            "[pytest]\ntestpaths = testcases\npython_files = test_*.py\naddopts = -v --tb=short --import-mode=importlib\npythonpath = .\n",
+        ),
+        _file(
+            "pyproject.toml",
+            "toml",
+            '[project]\nname = "pytest-requests-project"\nversion = "0.1.0"\nrequires-python = ">=3.12"\n'
+            'dependencies = ["pytest>=8.0.0", "requests>=2.31.0", "pyyaml>=6.0.0"]\n',
+        ),
+        _file("requirements.txt", "text", "pytest>=8.0.0\nrequests>=2.31.0\npyyaml>=6.0.0\n"),
+        _file(
+            "conftest.py",
+            "python",
+            '"""根级 fixture"""\nimport os\nimport pytest\nfrom api.client import ApiClient\n\n\n'
+            '@pytest.fixture(scope="session")\ndef api_client():\n'
+            '    base_url = os.environ.get("API_BASE_URL", "")\n'
+            '    if not base_url:\n'
+            '        pytest.skip("API_BASE_URL not configured")\n'
+            '    return ApiClient(base_url=base_url)\n',
+        ),
+        _file("utils/__init__.py", "python", ""),
+        _file(
+            "utils/data_loader.py",
+            "python",
+            '"""数据加载工具"""\nimport yaml\nfrom pathlib import Path\n\n\n'
+            "def load_yaml(test_file: str, filename: str):\n"
+            '    path = Path(test_file).parent / filename\n'
+            '    with open(path, "r", encoding="utf-8") as f:\n'
+            "        return yaml.safe_load(f)\n\n\n"
+            "def load_cases(test_file: str, filename: str):\n"
+            "    return load_yaml(test_file, filename).get(\"cases\", [])\n",
+        ),
+        _file(
+            "utils/assert_utils.py",
+            "python",
+            '"""断言工具。"""\nfrom utils.assertions import assert_response_assertions\n\n\n'
+            "def assert_response(response, assertions):\n"
+            "    if isinstance(assertions, dict):\n"
+            "        legacy = []\n"
+            "        if \"status_code\" in assertions:\n"
+            "            legacy.append({\"type\": \"status_code\", \"expected\": assertions[\"status_code\"]})\n"
+            "        for key, value in (assertions.get(\"body\") or {}).items():\n"
+            "            legacy.append({\"type\": \"body\", \"path\": key, \"expected\": value})\n"
+            "        if \"body_not_empty\" in assertions:\n"
+            "            legacy.append({\"type\": \"body_not_empty\"})\n"
+            "        return assert_response_assertions(response, legacy)\n"
+            "    assert_response_assertions(response, assertions or [])\n",
+        ),
+        _file("utils/assertions.py", "python", assertions_py()),
+        _file(
+            "config/__init__.py",
+            "python",
+            "",
+        ),
+        _file(
+            "config/settings.py",
+            "python",
+            '"""环境配置"""\nimport os\n\nAPI_BASE_URL = os.environ.get("API_BASE_URL", "")\n'
+            'API_TIMEOUT = int(os.environ.get("API_TIMEOUT", "30"))\n'
+            'API_AUTH_BEARER = os.environ.get("API_AUTH_BEARER", "")\n',
+        ),
+        _file("data/__init__.py", "python", ""),
+        _file(
+            "data/constants.py",
+            "python",
+            '"""公共常量"""\nclass HttpStatus:\n    OK = 200\n    CREATED = 201\n    BAD_REQUEST = 400\n    UNAUTHORIZED = 401\n    NOT_FOUND = 404\n    INTERNAL_ERROR = 500\n',
+        ),
+        _file(
+            "data/common_users.yaml",
+            "yaml",
+            '# 公共测试用户\nusers:\n  test_user:\n    username: "test_user"\n    password: "Test@123456"\n'
+            '  admin:\n    username: "admin"\n    password: "Admin@123456"\n',
+        ),
+        _file("fixtures/__init__.py", "python", ""),
+    ]
 
 
-def build_auth_headers() -> dict:
-    headers = {}
-    bearer = os.environ.get("API_AUTH_BEARER", "")
-    if bearer:
-        headers["Authorization"] = f"Bearer {bearer}"
-    for key, value in os.environ.items():
-        if key.startswith("API_HEADER_") and value:
-            header_name = key.removeprefix("API_HEADER_").replace("_", "-")
-            headers[header_name] = value
-    return headers
-'''
+def _generate_api_files(module: str, feature: str, endpoint) -> list[GeneratedCodeFile]:
+    method = endpoint.method.upper()
+    path = endpoint.path
+    module_class = f"{module.title().replace('_', '')}API"
+    return [
+        _file("api/__init__.py", "python", ""),
+        _file("api/client.py", "python", client_py()),
+        _file(
+            f"api/module_{module}.py",
+            "python",
+            f'"""API 模块 - {module}"""\nfrom api.client import ApiClient, get_client\n\n\n'
+            f"class {module_class}:\n"
+            f"    def __init__(self, client: ApiClient = None):\n"
+            "        self._client = client\n\n"
+            "    @property\n    def api(self):\n        return self._client or get_client()\n\n"
+            f'    def {method.lower()}_{feature}(self, request_data=None, test_data=None, **kwargs):\n'
+            f'        """{endpoint.summary or f"{method} {path}"}"""\n'
+            f"        return self.api.request(\n"
+            f"            {{\"method\": \"{method}\", \"path\": \"{path}\", **(request_data or {{}}), **kwargs}},\n"
+            "            test_data,\n"
+            "        )\n",
+        ),
+    ]
 
 
-def _assertions_py() -> str:
-    return '''import hashlib
+def _generate_testcase_files(module: str, feature: str, endpoint, cases: list) -> list[GeneratedCodeFile]:
+    module_class = f"{module.title().replace('_', '')}API"
+    test_file_key = f"testcases/{module}/{feature}/test_{feature}.py"
+    data_file_key = f"testcases/{module}/{feature}/test_{feature}.yaml"
+    return [
+        _file("testcases/__init__.py", "python", "", kind="init"),
+        _file("testcases/conftest.py", "python", "", kind="init"),
+        _file(f"testcases/{module}/__init__.py", "python", "", kind="init"),
+        _file(f"testcases/{module}/{feature}/__init__.py", "python", "", kind="init"),
+        _file(
+            test_file_key,
+            "python",
+            f'"""测试用例 - {module}/{feature}"""\nimport pytest\n'
+            f"from api.module_{module} import {module_class}\n"
+            f"from utils.data_loader import load_cases\n"
+            f"from utils.assert_utils import assert_response\n\n\n"
+            f'TEST_CASES = load_cases(__file__, "test_{feature}.yaml")\n\n\n'
+            f"@pytest.mark.parametrize(\"case\", TEST_CASES)\n"
+            f"def test_{feature}(case):\n"
+            f"    api = {module_class}()\n"
+            f"    request_data = case.get(\"request\", {{}})\n"
+            f"    test_data = case.get(\"test_data\") or {{}}\n"
+            f"    response = api.{endpoint.method.lower()}_{feature}(request_data=request_data, test_data=test_data)\n"
+            f"    assert_response(response, case.get(\"assertions\", []))\n",
+            kind="test",
+        ),
+        _file(data_file_key, "yaml", _cases_to_yaml(cases), kind="data"),
+    ]
 
 
-def assert_response_assertions(response, assertions: list[dict]) -> None:
-    for assertion in assertions:
-        assertion_type = assertion.get("type")
-        if assertion_type == "status_code":
-            assert response.status_code == assertion.get("expected")
-        elif assertion_type == "jsonpath_exists":
-            body = response.json()
-            assert _read_path(body, assertion.get("path", "")) is not None
-        elif assertion_type == "jsonpath_equals":
-            body = response.json()
-            assert _read_path(body, assertion.get("path", "")) == assertion.get("expected")
-        elif assertion_type == "content_type":
-            expected = str(assertion.get("expected") or "").lower()
-            actual = response.headers.get("Content-Type", "").lower()
-            assert expected in actual
-        elif assertion_type == "header_exists":
-            assert assertion.get("path", "") in response.headers
-        elif assertion_type == "header_equals":
-            assert response.headers.get(assertion.get("path", "")) == assertion.get("expected")
-        elif assertion_type == "body_not_empty":
-            assert bool(response.content) is bool(assertion.get("expected", True))
-        elif assertion_type == "body_sha256":
-            actual = hashlib.sha256(response.content).hexdigest()
-            assert actual == assertion.get("expected")
-        else:
-            raise AssertionError(f"Unsupported assertion type: {assertion_type}")
-
-
-assert_json_assertions = assert_response_assertions
-
-
-def _read_path(data, path: str):
-    if not path or path == "$":
-        return data
-    current = data
-    for part in path.removeprefix("$.").split("."):
-        if isinstance(current, dict):
-            current = current.get(part)
-        else:
-            return None
-    return current
-'''
-
-
-def _test_py() -> str:
-    return '''import json
-from pathlib import Path
-
-import pytest
-
-from support.assertions import assert_response_assertions
-
-
-CASES = json.loads(
-    Path(__file__).with_name("cases.json").read_text(encoding="utf-8")
-)["cases"]
-
-
-@pytest.mark.parametrize("case_data", CASES, ids=lambda case: case.get("title", "api-case"))
-def test_api_case_execution(api_client, case_data):
-    response = api_client.request(case_data["request"], case_data.get("test_data", {}))
-    assert_response_assertions(response, case_data["assertions"])
-'''
-
-
-def render_scenario_files(scenario_key: str, snapshot: dict) -> dict[str, str]:
-    scenario_dir = f"scenarios/{scenario_key}"
-    return {
-        "pyproject.toml": _pyproject(),
-        "pytest.ini": _pytest_ini(),
-        "conftest.py": _conftest(),
-        "support/__init__.py": "",
-        "support/client.py": _client_py(),
-        "support/auth.py": _auth_py(),
-        "support/assertions.py": _assertions_py(),
-        "support/scenario.py": _scenario_py(),
-        f"{scenario_dir}/scenario.json": json.dumps(snapshot, ensure_ascii=False, indent=2),
-        f"{scenario_dir}/test_scenario.py": _scenario_test_py(),
-    }
-
-
-def _scenario_test_py() -> str:
-    return '''import json
-from pathlib import Path
-
-from support.scenario import run_scenario
-
-
-SCENARIO = json.loads(
-    Path(__file__).with_name("scenario.json").read_text(encoding="utf-8")
-)
-
-
-def test_api_scenario(api_client):
-    run_scenario(api_client, SCENARIO)
-'''
-
-
-def _scenario_py() -> str:
-    return '''import copy
-import os
-
-from support.assertions import assert_response_assertions
-
-
-def run_scenario(api_client, scenario: dict) -> None:
-    outputs = {}
-    failures = []
-    stopped = False
-    for step in scenario.get("steps", []):
-        policy = step.get("on_failure", "stop")
-        if stopped and policy != "always_run":
-            continue
-        try:
-            case = step["case"]
-            state = {
-                "request": _deep_merge(copy.deepcopy(case.get("request", {})), step.get("request_overrides", {})),
-                "test_data": copy.deepcopy(case.get("test_data", {})),
-            }
-            for binding in step.get("bindings", []):
-                _set_pointer(state, binding.get("target", ""), _resolve_source(binding.get("source", {}), scenario, outputs))
-            response = api_client.request(state["request"], state["test_data"])
-            assertions = step.get("assertions") or case.get("assertions", [])
-            assert_response_assertions(response, assertions)
-            outputs[step["id"]] = _extract_outputs(response, step.get("extractors", []))
-        except Exception as exc:
-            failures.append(f"{step.get('name') or step.get('id')}: {exc}")
-            if policy == "stop":
-                stopped = True
-    if failures:
-        raise AssertionError("Scenario failed:\\n" + "\\n".join(failures))
-
-
-def _resolve_source(source: dict, scenario: dict, outputs: dict):
-    source_type = source.get("type")
-    if source_type == "literal":
-        return source.get("value")
-    if source_type == "environment":
-        name = str(source.get("name") or "")
-        value = os.environ.get(f"API_VAR_{name.upper()}")
-        if value is None:
-            raise RuntimeError(f"Required environment variable is missing: {name}")
-        return value
-    if source_type == "scenario":
-        name = str(source.get("name") or "")
-        if name not in scenario.get("variables", {}):
-            raise RuntimeError(f"Required scenario variable is missing: {name}")
-        return scenario["variables"][name]
-    if source_type == "step_output":
-        step_id = str(source.get("step_id") or "")
-        variable = str(source.get("variable") or "")
-        try:
-            return outputs[step_id][variable]
-        except KeyError as exc:
-            raise RuntimeError(f"Step output is unavailable: {step_id}.{variable}") from exc
-    raise RuntimeError(f"Unsupported binding source: {source_type}")
-
-
-def _set_pointer(document: dict, pointer: str, value) -> None:
-    parts = [part.replace("~1", "/").replace("~0", "~") for part in pointer.strip("/").split("/") if part]
-    if not parts:
-        raise RuntimeError("Binding target is required.")
-    current = document
-    for part in parts[:-1]:
-        child = current.get(part)
-        if not isinstance(child, dict):
-            child = {}
-            current[part] = child
-        current = child
-    current[parts[-1]] = value
-
-
-def _extract_outputs(response, extractors: list[dict]) -> dict:
-    values = {}
-    for extractor in extractors:
-        source = extractor.get("source", "response.body")
-        if source == "response.status":
-            value = response.status_code
-        elif source == "response.header":
-            value = response.headers.get(extractor.get("expression", ""))
-        else:
-            value = _read_path(response.json(), extractor.get("expression") or extractor.get("path", ""))
-        if value is None and extractor.get("required", True):
-            raise AssertionError(f"Required extraction failed: {extractor.get('name')}")
-        values[extractor.get("name", "")] = value
-    return values
-
-
-def _read_path(data, path: str):
-    if not path or path == "$":
-        return data
-    current = data
-    for part in path.removeprefix("$.").split("."):
-        if isinstance(current, dict):
-            current = current.get(part)
-        else:
-            return None
-    return current
-
-
-def _deep_merge(base: dict, overrides: dict) -> dict:
-    for key, value in overrides.items():
-        if isinstance(value, dict) and isinstance(base.get(key), dict):
-            base[key] = _deep_merge(base[key], value)
-        else:
-            base[key] = copy.deepcopy(value)
-    return base
-'''
-
-
-def _readme() -> str:
-    return """# Generated API Automation Suite
-
-This suite is generated by the AI Testing System. Runtime environment values are injected by the backend runner.
-"""
+def _cases_to_yaml(cases: list) -> str:
+    import yaml
+    return yaml.dump({"cases": cases}, allow_unicode=True, default_flow_style=False)

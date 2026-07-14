@@ -13,6 +13,8 @@ from langchain.agents.middleware.types import (
 )
 from langchain_core.messages import SystemMessage
 
+from app.agents.shared.skill_runtime import SkillDefinition
+
 
 class SkillMiddleware(AgentMiddleware[AgentState[ResponseT], ContextT, ResponseT]):
     """Dynamically load SKILL.md and references into the system prompt."""
@@ -27,6 +29,7 @@ class SkillMiddleware(AgentMiddleware[AgentState[ResponseT], ContextT, ResponseT
         self.skill_path = skill_path
         self.load_references = load_references
         self.references_to_load = references_to_load
+        self.definition = SkillDefinition.load(skill_path)
 
     @property
     def name(self) -> str:
@@ -65,36 +68,12 @@ class SkillMiddleware(AgentMiddleware[AgentState[ResponseT], ContextT, ResponseT
         return skill_content
 
     def _load_skill_md(self) -> str:
-        skill_file = self.skill_path / "SKILL.md"
-
-        if not skill_file.exists():
-            raise FileNotFoundError(f"SKILL.md not found at {skill_file}")
-
-        content = skill_file.read_text(encoding="utf-8")
-
-        if content.startswith("---"):
-            parts = content.split("---", 2)
-            if len(parts) >= 3:
-                content = parts[2].strip()
-
-        return content
+        return self.definition.instructions
 
     def _load_references(self) -> str:
-        references_dir = self.skill_path / "references"
-
-        if not references_dir.exists():
-            return ""
-
-        if self.references_to_load:
-            files_to_load = [references_dir / name for name in self.references_to_load]
-        else:
-            files_to_load = sorted(references_dir.glob("*.md"))
-
         contents = []
-        for file_path in files_to_load:
-            if file_path.exists():
-                content = file_path.read_text(encoding="utf-8")
-                contents.append(f"## 📄 {file_path.stem}\n\n{content}")
+        for reference in self.definition.select_references(self.references_to_load):
+            contents.append(f"## 📄 {reference.path.stem}\n\n{reference.content}")
 
         return "\n\n---\n\n".join(contents)
 

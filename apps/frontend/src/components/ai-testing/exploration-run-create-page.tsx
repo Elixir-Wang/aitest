@@ -462,24 +462,6 @@ export function ExplorationRunCreatePage({
 
   return (
     <PageShell
-      actions={
-        <>
-          <Button onClick={() => router.push(backHref)} variant="outline">
-            <ArrowLeft className="size-4" />
-            返回
-          </Button>
-          <Button disabled={!canSubmit || submitting} onClick={saveExplorationRun} type="button">
-            {submitting ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : isEditing ? (
-              <Save className="size-4" />
-            ) : (
-              <Play className="size-4" />
-            )}
-            {isEditing ? "保存" : "创建任务"}
-          </Button>
-        </>
-      }
       breadcrumbs={breadcrumbs}
       description={
         isEditing
@@ -498,9 +480,27 @@ export function ExplorationRunCreatePage({
             </div>
           ) : (
             <FieldGroup className="grid gap-x-5 gap-y-4 p-5 md:grid-cols-2">
-              <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
-                <FileText className="size-4 text-muted-foreground" />
-                <h3 className="font-semibold text-base">基础信息</h3>
+              <div className="flex items-center justify-between gap-2 border-b pb-2 md:col-span-2">
+                <div className="flex items-center gap-2">
+                  <FileText className="size-4 text-muted-foreground" />
+                  <h3 className="font-semibold text-base">基础信息</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button onClick={() => router.push(backHref)} variant="outline">
+                    <ArrowLeft className="size-4" />
+                    返回
+                  </Button>
+                  <Button disabled={!canSubmit || submitting} onClick={saveExplorationRun} type="button">
+                    {submitting ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : isEditing ? (
+                      <Save className="size-4" />
+                    ) : (
+                      <Play className="size-4" />
+                    )}
+                    {isEditing ? "保存" : "创建任务"}
+                  </Button>
+                </div>
               </div>
               <Field>
                 <FieldLabel htmlFor="exploration-title">任务名称 *</FieldLabel>

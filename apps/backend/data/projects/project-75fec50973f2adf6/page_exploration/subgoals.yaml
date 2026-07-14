@@ -1,19 +1,17 @@
-run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+run_id: exp_axA4DPEDwxEUxofdEj886Q
 project_id: project-75fec50973f2adf6
-updated_at: '2026-07-12T23:24:16.850849+00:00'
+updated_at: '2026-07-14T11:44:52.395754+00:00'
 items:
 - id: ''
-  content: 步骤1：点击左侧边栏「工作台」进入工作台界面。完成判据：URL 变化到工作台页面，能看到工作台内容区域。
+  content: 打开工作台界面（https://www.cybotstar.cn/agentStore），用 snap 完成基线快照。完成判据：snapshot
+    中能看到页面标题/内容，URL 符合预期。
   status: completed
 - id: ''
-  content: 步骤2：在工作台页面点击「创建智能体」按钮，进入创建流程。完成判据：出现创建智能体的弹窗/页面，包含智能体类型选择。
+  content: 点击创建按钮（创建智能体），进入创建 Agent 流程。完成判据：出现创建对话框/弹窗或跳转到创建表单页面。
   status: completed
 - id: ''
-  content: 步骤3：选择「自主规划Agent」类型，输入智能体名称「哈哈」，点击创建。完成判据：智能体创建成功，进入编辑页面。
+  content: 选择自主规划 Agent 类型，完成选择。完成判据：自主规划 Agent 被选中（高亮/勾选/进入对应配置页）。
   status: completed
 - id: ''
-  content: 步骤4：在角色设定输入框中输入「你是一个友好的助手」。完成判据：输入框内容已写入。
-  status: completed
-- id: ''
-  content: 步骤5：点击「发布」按钮，输入版本号和发布日志，再次点击发布。完成判据：发布成功提示出现。
+  content: 到达终点后执行最终 snap，验证目标状态。完成判据：页面显示自主规划 Agent 的配置界面或创建表单。
   status: completed

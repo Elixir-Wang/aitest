@@ -60,13 +60,19 @@ def test_api_automation_uses_explicit_child_capabilities() -> None:
     assert not (package / "agent.py").exists()
     assert not (package / "schemas.py").exists()
     assert not (package / "service.py").exists()
-    for capability in ("case_generation", "pytest_requests"):
-        assert (package / capability / "agent.py").exists()
-        assert (package / capability / "schemas.py").exists()
-        assert (package / capability / "service.py").exists()
+    assert (package / "case_generation" / "agent.py").exists()
+    assert (package / "case_generation" / "schemas.py").exists()
+    assert (package / "case_generation" / "service.py").exists()
+
+    pytest_package = package / "pytest_requests"
+    assert (pytest_package / "skill.py").exists()
+    assert (pytest_package / "generator.py").exists()
+    assert (pytest_package / "schemas.py").exists()
+    assert not (pytest_package / "agent.py").exists()
+    assert not (pytest_package / "service.py").exists()
 
     pytest_source = "\n".join(
-        path.read_text(encoding="utf-8") for path in _python_files(package / "pytest_requests")
+        path.read_text(encoding="utf-8") for path in _python_files(pytest_package)
     )
     assert "PROJECT_FILE_STORAGE_ROOT" not in pytest_source
     assert "api_automation_repo" not in pytest_source

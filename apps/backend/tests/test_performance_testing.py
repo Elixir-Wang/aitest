@@ -9,7 +9,10 @@ from app.core import settings
 from app.core.db import connect
 from app.repositories import api_automation_repo
 from app.schemas.performance_test import (
+    PerformanceCircuitBreaker,
+    PerformanceDataConfig,
     PerformanceLoadConfig,
+    PerformanceLoadStage,
     PerformanceRequestPreviewIn,
     PerformanceTestCreateIn,
     PerformanceTestUpdateIn,
@@ -50,15 +53,33 @@ def _seed_project_assets(project_id: str = "project-1") -> None:
             parameters=[
                 {"name": "item_id", "in": "path", "required": True, "schema": {"type": "string", "format": "uuid"}},
                 {"name": "page", "in": "query", "schema": {"type": "integer", "default": 1}},
+                {"name": "limit", "in": "query", "required": True, "schema": {"type": "integer", "minimum": 5}},
                 {"name": "Authorization", "in": "header", "required": True, "schema": {"type": "string"}},
+                {
+                    "name": "cybertron-robot-key",
+                    "in": "header",
+                    "required": True,
+                    "schema": {"type": "string", "example": "robot-key-example"},
+                },
+                {
+                    "name": "cybertron-robot-token",
+                    "in": "header",
+                    "required": True,
+                    "schema": {"type": "string", "enum": ["robot-token-example"]},
+                },
             ],
             request_body={
                 "content": {
                     "application/json": {
                         "schema": {
                             "type": "object",
-                            "required": ["name"],
-                            "properties": {"name": {"type": "string"}, "optional": {"type": "string"}},
+                            "required": ["name", "count", "tags"],
+                            "properties": {
+                                "name": {"type": "string", "example": "mock-name"},
+                                "count": {"type": "integer", "minimum": 2},
+                                "tags": {"type": "array", "items": {"type": "string", "enum": ["smoke"]}},
+                                "optional": {"type": "string"},
+                            },
                         }
                     }
                 }
@@ -117,6 +138,83 @@ def test_load_config_rejects_zero_or_reversed_wait_time() -> None:
         PerformanceLoadConfig(wait_time_min_seconds=2, wait_time_max_seconds=1)
 
 
+def test_load_config_supports_fixed_and_ascending_stage_modes() -> None:
+    fixed = PerformanceLoadConfig(mode="fixed")
+    gradient = PerformanceLoadConfig(
+        mode="gradient",
+        stages=[
+            PerformanceLoadStage(name="阶段 1", target_users=10, spawn_rate=2, hold_seconds=60, order=0),
+            PerformanceLoadStage(name="阶段 2", target_users=50, spawn_rate=5, hold_seconds=120, order=1),
+        ],
+    )
+
+    assert fixed.stages == []
+    assert [stage.target_users for stage in gradient.stages] == [10, 50]
+
+
+def test_load_config_rejects_descending_gradient_but_allows_spike_recovery() -> None:
+    with pytest.raises(ValidationError):
+        PerformanceLoadConfig(
+            mode="gradient",
+            stages=[
+                {"name": "高位", "target_users": 100, "spawn_rate": 10, "hold_seconds": 60, "order": 0},
+                {"name": "回落", "target_users": 20, "spawn_rate": 10, "hold_seconds": 60, "order": 1},
+            ],
+        )
+
+    spike = PerformanceLoadConfig(
+        mode="spike",
+        stages=[
+            {"name": "正常", "target_users": 20, "spawn_rate": 5, "hold_seconds": 60, "order": 0},
+            {"name": "峰值", "target_users": 200, "spawn_rate": 100, "hold_seconds": 30, "order": 1},
+            {"name": "恢复", "target_users": 20, "spawn_rate": 100, "hold_seconds": 60, "order": 2},
+        ],
+    )
+
+    assert spike.stages[-1].target_users == 20
+
+
+def test_performance_data_and_circuit_breaker_contracts() -> None:
+    data = PerformanceDataConfig(
+        source="json",
+        selection_strategy="random",
+        json_rows=[{"user_id": 1}, {"user_id": 2}],
+    )
+    breaker = PerformanceCircuitBreaker(
+        enabled=True,
+        window_seconds=10,
+        max_fail_ratio=0.5,
+        consecutive_windows=3,
+    )
+
+    assert data.selection_strategy == "random"
+    assert len(data.json_rows) == 2
+    assert breaker.max_fail_ratio == 0.5
+
+
+def test_csv_data_is_persisted_with_the_performance_test(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_assets()
+
+    created = service.create_performance_test(
+        "project-1",
+        _payload(
+            name="CSV 参数化性能测试",
+            data_config={
+                "source": "csv",
+                "selection_strategy": "sequential_loop",
+                "csv_file_name": "users.csv",
+                "json_rows": [{"user_id": "1", "name": "Alice"}, {"user_id": "2", "name": "Bob"}],
+            },
+        ),
+        ADMIN,
+    )
+
+    stored_path = settings.PROJECT_FILE_STORAGE_ROOT / created["data_config"]["csv_file_path"]
+    assert stored_path.is_file()
+    assert "Alice" in stored_path.read_text(encoding="utf-8-sig")
+
+
 def test_create_and_update_performance_test(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_assets()
@@ -138,31 +236,11 @@ def test_create_and_update_performance_test(monkeypatch: pytest.MonkeyPatch, tmp
 
     assert updated["name"] == "查询条目基线"
     assert updated["performance_goal"] == {"max_p95_response_time_ms": 500.0}
-    with connect() as db:
-        db.execute(
-            """
-            INSERT INTO performance_test_scripts (
-              id, performance_test_id, project_id, version, generation_source,
-              template_version, input_hash, code, validation_status
-            ) VALUES ('perfscript-1', ?, 'project-1', 1, 'default_plan', 'v1', 'hash', 'code', 'confirmed')
-            """,
-            (created["id"],),
-        )
-        db.execute(
-            """
-            INSERT INTO performance_test_runs (
-              id, performance_test_id, script_id, project_id, task_id, status,
-              started_by, goal_result_json
-            ) VALUES ('perfrun-1', ?, 'perfscript-1', 'project-1', 'performance_test_run:perfrun-1',
-                      'completed', 'u-admin', '{"status":"passed"}')
-            """,
-            (created["id"],),
-        )
     listed = service.list_performance_tests("project-1", ADMIN)[0]
     assert listed["id"] == created["id"]
-    assert listed["latest_run_status"] == "completed"
-    assert listed["latest_goal_status"] == "passed"
-    assert listed["latest_run_at"] is not None
+    assert listed["latest_run_status"] == ""
+    assert listed["latest_goal_status"] == ""
+    assert listed["latest_run_at"] is None
 
 
 def test_default_success_codes_come_from_openapi(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -182,46 +260,60 @@ def test_default_success_codes_come_from_openapi(monkeypatch: pytest.MonkeyPatch
     assert created["success_rules"] == [{"kind": "status_code", "status_codes": [200, 201]}]
 
 
-def test_request_preview_merges_openapi_and_source_case(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_performance_contract_rejects_removed_source_case_field() -> None:
+    with pytest.raises(ValidationError):
+        PerformanceTestCreateIn.model_validate(
+            {
+                "name": "来源字段已删除",
+                "endpoint_id": "endpoint-1",
+                "api_environment_id": "environment-1",
+                "source_api_test_case_id": "case-1",
+            }
+        )
+
+    with pytest.raises(ValidationError):
+        PerformanceRequestPreviewIn.model_validate(
+            {"endpoint_id": "endpoint-1", "source_api_test_case_id": "case-1"}
+        )
+
+
+def test_performance_table_does_not_store_source_case(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+
+    with connect() as db:
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(performance_tests)").fetchall()}
+
+    assert "source_api_test_case_id" not in columns
+
+
+def test_request_preview_uses_schema_mock_and_shows_cybertron_headers(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_assets()
-    with connect() as db:
-        api_automation_repo.create_api_test_case(
-            db,
-            case_id="case-1",
-            project_id="project-1",
-            endpoint_id="endpoint-project-1",
-            source_test_case_id=None,
-            generation_run_id=None,
-            title="指定数据",
-            priority="P1",
-            coverage="positive",
-            source="manual",
-            preconditions=[],
-            request={"query": {"page": 3}, "headers": {"X-Trace": "case"}, "body": {"name": "case-name"}},
-            test_data={"item_id": {"value": "${sequence}"}},
-            expected={"status_code": 201},
-            assertions=[{"type": "status_code", "expected": 201}],
-            variables={},
-            data_origin={},
-            data_file_path="",
-            notes="",
-            created_by="u-admin",
-        )
 
     preview = service.preview_performance_request(
         "project-1",
-        PerformanceRequestPreviewIn(endpoint_id="endpoint-project-1", source_api_test_case_id="case-1"),
+        PerformanceRequestPreviewIn(endpoint_id="endpoint-project-1"),
         ADMIN,
     )
 
-    assert preview["request_config"]["path_parameters"] == {"item_id": "${sequence}"}
-    assert preview["request_config"]["query_parameters"] == {"page": 3}
-    assert preview["request_config"]["headers"] == {"X-Trace": "case"}
-    assert preview["request_config"]["body"] == {"name": "case-name"}
-    assert preview["success_rules"] == [{"kind": "status_code", "status_codes": [201]}]
-    assert preview["provenance"]["body"] == "api_test_case"
+    assert preview["request_config"]["path_parameters"] == {"item_id": "${uuid}"}
+    assert preview["request_config"]["query_parameters"] == {"page": 1, "limit": 5}
+    assert preview["request_config"]["headers"] == {
+        "cybertron-robot-key": "robot-key-example",
+        "cybertron-robot-token": "robot-token-example",
+    }
+    assert preview["request_config"]["body"] == {
+        "name": "mock-name",
+        "count": 2,
+        "tags": ["smoke"],
+    }
+    assert preview["success_rules"] == [{"kind": "status_code", "status_codes": [200, 201]}]
+    assert preview["provenance"]["body"] == "openapi_schema"
     assert any("Authorization" in warning for warning in preview["warnings"])
+    assert all("cybertron-robot" not in warning for warning in preview["warnings"])
 
 
 def test_create_rejects_cross_project_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

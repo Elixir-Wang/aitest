@@ -23,7 +23,7 @@ export default function Page() {
       projectScope="project"
       title="新建性能测试"
     >
-      <PerformanceTestForm projectId={params.projectId} />
+      <PerformanceTestForm initialProjectId={params.projectId} />
     </PageShell>
   );
 }

@@ -13,9 +13,7 @@ export default function Page() {
   return (
     <PageShell
       breadcrumbs={[
-        { label: "项目工作区" },
-        { label: "项目", href: "/projects" },
-        { label: projectName, href: `/projects/${params.projectId}` },
+        { label: "项目工作区", href: "/projects" },
         { label: "性能测试" },
       ]}
       description="配置单接口负载、查看 Locust 运行和性能目标结果。"

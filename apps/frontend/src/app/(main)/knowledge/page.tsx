@@ -58,7 +58,6 @@ import { KnowledgeChatInput } from "@/components/ui/knowledge-chat-input";
 import { Label } from "@/components/ui/label";
 import PulsatingDots from "@/components/ui/pulsating-loader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { createId } from "@/lib/create-id";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -81,6 +80,7 @@ import {
   apiRequest,
   formatDateTime,
 } from "@/lib/api-client";
+import { createId } from "@/lib/create-id.mjs";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
 function ProjectKnowledgeIcon({ className }: { className?: string }) {

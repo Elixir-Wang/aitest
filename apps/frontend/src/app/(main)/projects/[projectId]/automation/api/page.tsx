@@ -14,7 +14,6 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardPaste,
-  Code2,
   Eye,
   FileJson,
   Globe,
@@ -33,6 +32,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ApiScenarioList } from "@/components/ai-testing/api-automation/api-scenario-list";
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Select as AnimatedSelect, SelectOption } from "@/components/ui/animated-select-1";
@@ -63,7 +63,6 @@ import {
   type ApiAutomationScenario,
   type ApiAutomationScenarioStep,
   type ApiAutomationScript,
-  type ApiAutomationScriptFile,
   type ApiAutomationTestCase,
   createApiAutomationEnvironment,
   createApiAutomationRun,
@@ -84,13 +83,11 @@ import {
   getApiAutomationRunLogs,
   getApiAutomationRunReport,
   getApiAutomationScenario,
-  getApiAutomationScriptFiles,
   importOpenApiDocument,
   listApiAutomationCaseSets,
   listApiAutomationEndpoints,
   listApiAutomationEnvironments,
   listApiAutomationRuns,
-  listApiAutomationScenarios,
   listApiAutomationScripts,
   listApiAutomationTestCases,
   publishApiAutomationScenario,
@@ -99,9 +96,17 @@ import {
   updateApiAutomationScenario,
   validateApiAutomationScenario,
 } from "@/lib/api-client";
+import { createId } from "@/lib/create-id.mjs";
 import { cn } from "@/lib/utils";
 
 const tabs = ["接口资产", "接口环境", "接口用例", "测试脚本", "运行记录", "场景编排"];
+
+function tabFromSearchParam(value: string | null) {
+  if (value === "cases") return "接口用例";
+  if (value === "runs") return "运行记录";
+  if (value === "scenarios") return "场景编排";
+  return tabs[0];
+}
 const API_GENERATION_ACTIVE_STATUSES = new Set(["queued", "running"]);
 const API_RUN_ACTIVE_STATUSES = new Set(["queued", "running"]);
 const importModes = [
@@ -191,7 +196,7 @@ export default function Page() {
   const projectId = params.projectId;
   const selectedCaseSetId = searchParams.get("set");
   const selectedRunId = searchParams.get("run");
-  const [activeTab, setActiveTab] = useState(() => (searchParams.get("tab") === "cases" ? "接口用例" : tabs[0]));
+  const [activeTab, setActiveTab] = useState(() => tabFromSearchParam(searchParams.get("tab")));
   const [selectedCaseSet, setSelectedCaseSet] = useState<ApiAutomationCaseSet | null>(null);
   const [endpoints, setEndpoints] = useState<ApiAutomationEndpoint[]>([]);
   const [environments, setEnvironments] = useState<ApiAutomationEnvironment[]>([]);
@@ -207,9 +212,6 @@ export default function Page() {
   const [scripts, setScripts] = useState<ApiAutomationScript[]>([]);
   const [selectedScriptIds, setSelectedScriptIds] = useState<string[]>([]);
   const [activeScriptId, setActiveScriptId] = useState("");
-  const [scriptFiles, setScriptFiles] = useState<ApiAutomationScriptFile[]>([]);
-  const [activeScriptFileKey, setActiveScriptFileKey] = useState("");
-  const [scriptCodeOpen, setScriptCodeOpen] = useState(false);
   const [run, setRun] = useState<ApiAutomationRun | null>(null);
   const [runs, setRuns] = useState<ApiAutomationRun[]>([]);
   const [runTotal, setRunTotal] = useState(0);
@@ -342,10 +344,6 @@ export default function Page() {
     ],
     [activeScriptCases],
   );
-  const activeScriptFile = useMemo(
-    () => scriptFiles.find((file) => file.key === activeScriptFileKey) ?? scriptFiles[0] ?? null,
-    [activeScriptFileKey, scriptFiles],
-  );
   const activeScenarioStep = useMemo(
     () => scenarioSteps.find((step) => step.id === activeScenarioStepId) ?? scenarioSteps[0] ?? null,
     [activeScenarioStepId, scenarioSteps],
@@ -354,18 +352,11 @@ export default function Page() {
     () => (selectedScriptIds.length > 0 ? selectedScriptIds : activeScript ? [activeScript.id] : []),
     [activeScript, selectedScriptIds],
   );
-  const runTargetCaseCount = useMemo(
-    () =>
-      scripts
-        .filter((script) => runTargetScriptIds.includes(script.id))
-        .reduce((total, script) => total + script.case_count, 0),
-    [runTargetScriptIds, scripts],
-  );
   const scriptReadinessChecks = [
     { label: "已选择运行环境", ready: Boolean(selectedEnvironment) },
     { label: "API Base URL 已配置", ready: Boolean(selectedEnvironment?.api_base_url.trim()) },
     { label: "身份凭证配置可用", ready: Boolean(selectedEnvironment) },
-    { label: "脚本文件已生成", ready: scriptFiles.length > 0 },
+    { label: "脚本文件已生成", ready: Boolean(activeScript?.test_file_path.trim()) },
   ];
   const readyToRun = Boolean(activeScript) && scriptReadinessChecks.every((item) => item.ready);
 
@@ -710,13 +701,14 @@ export default function Page() {
   function addScenarioStep(caseId: string) {
     const testCase = apiTestCases.find((item) => item.id === caseId);
     if (!testCase || !activeScenario) return;
-    const id = `apistep-${crypto.randomUUID()}`;
+    const id = `apistep-${createId()}`;
     setScenarioSteps((current) => [
       ...current,
       {
         id,
         scenario_id: activeScenario.id,
         project_id: projectId,
+        step_type: "api_request",
         endpoint_id: testCase.endpoint_id,
         api_test_case_id: testCase.id,
         step_order: current.length,
@@ -725,6 +717,7 @@ export default function Page() {
         bindings: [],
         extractors: [],
         assertions: [],
+        control_config: {},
         on_failure: "stop",
         enabled: true,
         created_at: "",
@@ -764,12 +757,11 @@ export default function Page() {
   async function refresh() {
     setBusy(true);
     try {
-      const [endpointRows, environmentRows, apiCaseRows, scriptRows, scenarioRows] = await Promise.all([
+      const [endpointRows, environmentRows, apiCaseRows, scriptRows] = await Promise.all([
         listApiAutomationEndpoints(projectId),
         listApiAutomationEnvironments(projectId),
         listApiAutomationTestCases(projectId),
         listApiAutomationScripts(projectId),
-        listApiAutomationScenarios(projectId),
       ]);
       setEndpoints(endpointRows);
       setSelectedEndpointAssetIds((current) =>
@@ -782,10 +774,6 @@ export default function Page() {
       );
       setEnvironments(environmentRows);
       setScripts(scriptRows);
-      setScenarios(scenarioRows);
-      setActiveScenarioId((current) =>
-        current && scenarioRows.some((scenario) => scenario.id === current) ? current : (scenarioRows[0]?.id ?? ""),
-      );
       setSelectedScriptIds((current) => current.filter((id) => scriptRows.some((script) => script.id === id)));
       setActiveScriptId((current) =>
         current && scriptRows.some((script) => script.id === current) ? current : (scriptRows[0]?.id ?? ""),
@@ -819,9 +807,8 @@ export default function Page() {
       listApiAutomationEnvironments(projectId),
       listApiAutomationTestCases(projectId),
       listApiAutomationScripts(projectId),
-      listApiAutomationScenarios(projectId),
     ])
-      .then(([endpointRows, environmentRows, apiCaseRows, scriptRows, scenarioRows]) => {
+      .then(([endpointRows, environmentRows, apiCaseRows, scriptRows]) => {
         if (cancelled) {
           return;
         }
@@ -829,8 +816,6 @@ export default function Page() {
         setEnvironments(environmentRows);
         setApiTestCases(apiCaseRows);
         setScripts(scriptRows);
-        setScenarios(scenarioRows);
-        setActiveScenarioId(scenarioRows[0]?.id ?? "");
         setActiveScriptId(scriptRows[0]?.id ?? "");
         setSelectedApiCaseIds((current) => current.filter((id) => apiCaseRows.some((testCase) => testCase.id === id)));
         setSelectedApiCaseEndpointIds((current) =>
@@ -909,33 +894,6 @@ export default function Page() {
       cancelled = true;
     };
   }, [projectId, selectedCaseSetId]);
-
-  useEffect(() => {
-    if (!activeScriptId) {
-      setScriptFiles([]);
-      setActiveScriptFileKey("");
-      return;
-    }
-    let cancelled = false;
-    getApiAutomationScriptFiles(projectId, activeScriptId)
-      .then((result) => {
-        if (cancelled) {
-          return;
-        }
-        setScriptFiles(result.files);
-        setActiveScriptFileKey((current) =>
-          current && result.files.some((file) => file.key === current) ? current : (result.files[0]?.key ?? ""),
-        );
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : "脚本代码加载失败");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeScriptId, projectId]);
 
   useEffect(() => {
     if (apiCaseEndpoints.length === 0) {
@@ -2113,6 +2071,14 @@ export default function Page() {
                     <Trash2 className="size-4" />
                     删除{selectedScriptIds.length > 0 ? ` (${selectedScriptIds.length})` : ""}
                   </Button>
+                  <Button
+                    disabled={busy || !readyToRun || runTargetScriptIds.length === 0}
+                    onClick={() => handleRun(runTargetScriptIds)}
+                    size="sm"
+                  >
+                    {busy ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+                    {runTargetScriptIds.length > 1 ? `执行 ${runTargetScriptIds.length} 个脚本` : "执行脚本"}
+                  </Button>
                 </div>
               </div>
             </div>
@@ -2189,18 +2155,7 @@ export default function Page() {
                     </div>
                   ) : null}
                 </div>
-                <div className="flex items-center gap-2">
-                  {activeScript?.manual_modified ? <Badge variant="secondary">已手工修改</Badge> : null}
-                  <Button
-                    disabled={!activeScript || scriptFiles.length === 0}
-                    onClick={() => setScriptCodeOpen(true)}
-                    size="sm"
-                    variant="outline"
-                  >
-                    <Code2 className="size-4" />
-                    查看代码
-                  </Button>
-                </div>
+                {activeScript?.manual_modified ? <Badge variant="secondary">已手工修改</Badge> : null}
               </div>
             </div>
 
@@ -2273,19 +2228,6 @@ export default function Page() {
                           </div>
                         </div>
                       </div>
-
-                      <Button
-                        onClick={() =>
-                          selectedEnvironment
-                            ? openEditEnvironmentDialog(selectedEnvironment)
-                            : openCreateEnvironmentDialog()
-                        }
-                        size="sm"
-                        variant="outline"
-                      >
-                        <Pencil className="size-4" />
-                        {selectedEnvironment ? "修改环境配置" : "新建接口环境"}
-                      </Button>
                     </div>
 
                     <div className="mt-7 border-t pt-5">
@@ -2376,25 +2318,6 @@ export default function Page() {
                   从左侧选择一个脚本以配置运行环境。
                 </div>
               )}
-            </div>
-
-            <div className="flex flex-col gap-3 border-t bg-muted/20 px-5 py-3 sm:flex-row sm:items-center">
-              <div className="min-w-0 flex-1 text-sm">
-                <div className="font-medium">
-                  {selectedEnvironment?.name || "未选择环境"} · {runTargetScriptIds.length} 个脚本 ·{" "}
-                  {runTargetCaseCount} 个关联用例
-                </div>
-                <div className="mt-0.5 text-muted-foreground text-xs">
-                  前置检查 {scriptReadinessChecks.filter((item) => item.ready).length}/{scriptReadinessChecks.length}
-                </div>
-              </div>
-              <Button
-                disabled={busy || !readyToRun || runTargetScriptIds.length === 0}
-                onClick={() => handleRun(runTargetScriptIds)}
-              >
-                {busy ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-                {runTargetScriptIds.length > 1 ? `执行 ${runTargetScriptIds.length} 个脚本` : "执行脚本"}
-              </Button>
             </div>
           </section>
         </div>
@@ -2598,7 +2521,9 @@ export default function Page() {
         </section>
       )}
 
-      {activeTab === "场景编排" && (
+      {activeTab === "场景编排" && <ApiScenarioList projectId={projectId} />}
+
+      {activeTab === "场景编排" && activeScenarioId === "__legacy_disabled__" && (
         <section className="overflow-hidden rounded-md border bg-background">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -2875,41 +2800,6 @@ export default function Page() {
           </div>
         </section>
       )}
-
-      <Dialog open={scriptCodeOpen} onOpenChange={setScriptCodeOpen}>
-        <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-5xl">
-          <DialogHeader className="border-b px-6 py-5 pr-14">
-            <DialogTitle className="flex items-center gap-2">
-              <Code2 className="size-4" />
-              脚本代码
-            </DialogTitle>
-            <DialogDescription className="truncate font-mono">
-              {activeScript?.test_file_path || "选择一个脚本查看代码"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid min-h-0 md:grid-cols-[210px_minmax(0,1fr)]">
-            <div className="overflow-y-auto border-r bg-muted/20 p-2">
-              {scriptFiles.map((file) => (
-                <button
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left font-mono text-xs",
-                    activeScriptFile?.key === file.key ? "bg-background font-semibold shadow-xs" : "hover:bg-muted/70",
-                  )}
-                  key={file.key}
-                  onClick={() => setActiveScriptFileKey(file.key)}
-                  type="button"
-                >
-                  {file.kind === "test" ? <Braces className="size-4" /> : <FileJson className="size-4" />}
-                  <span className="truncate">{file.name}</span>
-                </button>
-              ))}
-            </div>
-            <pre className="min-h-[32rem] overflow-auto bg-zinc-950 p-5 font-mono text-[13px] text-zinc-100 leading-6">
-              <code>{activeScriptFile?.content ?? ""}</code>
-            </pre>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={runDetailOpen} onOpenChange={(open) => (open ? setRunDetailOpen(true) : closeRunDetail())}>
         <DialogContent className="max-h-[calc(100vh-2rem)] overflow-hidden p-0 sm:max-w-4xl">

@@ -4,6 +4,8 @@ from app.core.security import hash_secret
 
 
 def seed_system_defaults(db: sqlite3.Connection) -> None:
+    _drop_legacy_performance_run_tables(db)
+    _ensure_performance_test_columns(db)
     _ensure_api_test_script_columns(db)
     _ensure_api_automation_run_columns(db)
     _ensure_api_scenario_columns(db)
@@ -12,9 +14,29 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _ensure_test_case_display_order(db)
     _ensure_api_test_case_structure_columns(db)
     _ensure_api_generation_batch_structure(db)
+    _backfill_legacy_api_scenario_endpoints(db)
     _migrate_legacy_site_exploration_assignment(db)
     _seed_operation_log_retention_policy(db)
     _ensure_all_projects_conversation_scope(db)
+
+
+def _drop_legacy_performance_run_tables(db: sqlite3.Connection) -> None:
+    db.execute("DROP TABLE IF EXISTS performance_analysis_runs")
+    db.execute("DROP TABLE IF EXISTS performance_test_runs")
+
+
+def _ensure_performance_test_columns(db: sqlite3.Connection) -> None:
+    row = db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'performance_tests'").fetchone()
+    if not row:
+        return
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(performance_tests)").fetchall()}
+    additions = {
+        "data_config_json": "ALTER TABLE performance_tests ADD COLUMN data_config_json TEXT NOT NULL DEFAULT '{}'",
+        "circuit_breaker_json": "ALTER TABLE performance_tests ADD COLUMN circuit_breaker_json TEXT NOT NULL DEFAULT '{}'",
+    }
+    for column, statement in additions.items():
+        if column not in columns:
+            db.execute(statement)
 
 
 def _ensure_api_automation_run_columns(db: sqlite3.Connection) -> None:
@@ -28,6 +50,8 @@ def _ensure_api_automation_run_columns(db: sqlite3.Connection) -> None:
         db.execute("ALTER TABLE api_automation_runs ADD COLUMN target_type TEXT NOT NULL DEFAULT 'scripts'")
     if "target_ids_json" not in columns:
         db.execute("ALTER TABLE api_automation_runs ADD COLUMN target_ids_json TEXT NOT NULL DEFAULT '[]'")
+    if "scenario_result_path" not in columns:
+        db.execute("ALTER TABLE api_automation_runs ADD COLUMN scenario_result_path TEXT NOT NULL DEFAULT ''")
 
 
 def _ensure_api_scenario_columns(db: sqlite3.Connection) -> None:
@@ -47,14 +71,37 @@ def _ensure_api_scenario_columns(db: sqlite3.Connection) -> None:
         return
     columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_scenario_steps)").fetchall()}
     additions = {
+        "step_type": "ALTER TABLE api_scenario_steps ADD COLUMN step_type TEXT NOT NULL DEFAULT 'api_request'",
         "api_test_case_id": "ALTER TABLE api_scenario_steps ADD COLUMN api_test_case_id TEXT REFERENCES api_test_cases(id) ON DELETE SET NULL",
         "bindings_json": "ALTER TABLE api_scenario_steps ADD COLUMN bindings_json TEXT NOT NULL DEFAULT '[]'",
+        "control_config_json": "ALTER TABLE api_scenario_steps ADD COLUMN control_config_json TEXT NOT NULL DEFAULT '{}'",
         "on_failure": "ALTER TABLE api_scenario_steps ADD COLUMN on_failure TEXT NOT NULL DEFAULT 'stop'",
         "enabled": "ALTER TABLE api_scenario_steps ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",
     }
     for column, statement in additions.items():
         if column not in columns:
             db.execute(statement)
+
+
+def _backfill_legacy_api_scenario_endpoints(db: sqlite3.Connection) -> None:
+    steps = db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_scenario_steps'").fetchone()
+    cases = db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_test_cases'").fetchone()
+    if not steps or not cases:
+        return
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_scenario_steps)").fetchall()}
+    if not {"endpoint_id", "api_test_case_id"} <= columns:
+        return
+    db.execute(
+        """
+        UPDATE api_scenario_steps
+        SET endpoint_id = (
+          SELECT endpoint_id
+          FROM api_test_cases
+          WHERE api_test_cases.id = api_scenario_steps.api_test_case_id
+        )
+        WHERE endpoint_id IS NULL AND api_test_case_id IS NOT NULL
+        """
+    )
 
 
 def _ensure_test_case_display_order(db: sqlite3.Connection) -> None:

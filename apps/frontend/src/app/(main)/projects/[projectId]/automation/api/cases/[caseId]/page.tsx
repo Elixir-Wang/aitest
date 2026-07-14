@@ -106,6 +106,17 @@ export default function ApiAutomationCaseDetailPage() {
                 {testCase.test_description || "未补充测试描述"}
               </p>
             </div>
+            {testCase.notes.trim() ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5 dark:border-amber-900/70 dark:bg-amber-950/30">
+                <div className="mb-2 flex items-center gap-2 font-medium text-amber-950 text-sm dark:text-amber-100">
+                  <ShieldAlert className="size-4 text-amber-700 dark:text-amber-400" />
+                  生成说明
+                </div>
+                <p className="max-w-4xl whitespace-pre-wrap text-amber-950 text-sm leading-6 dark:text-amber-100">
+                  {testCase.notes}
+                </p>
+              </div>
+            ) : null}
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
               <ReviewBlock icon={<Code2 className="size-4" />} title="请求信息">
                 {renderApiCaseRequest(testCase.request)}

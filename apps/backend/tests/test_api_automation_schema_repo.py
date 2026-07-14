@@ -67,6 +67,18 @@ def test_generation_request_limits_endpoint_ids_to_100() -> None:
         ApiAutomationGenerateIn(endpoint_ids=[f"apiend-{index}" for index in range(101)])
 
 
+def test_scenario_step_schema_contains_type_and_control_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+
+    with connect() as db:
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(api_scenario_steps)").fetchall()}
+
+    assert {"step_type", "control_config_json"} <= columns
+
+
 def test_generation_items_and_attempts_are_persisted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_endpoints(["apiend-1", "apiend-2"])

@@ -674,6 +674,13 @@ def list_scripts(db: Connection, project_id: str) -> list[Row]:
     ).fetchall()
 
 
+def count_scripts(db: Connection, project_id: str) -> int:
+    return db.execute(
+        "SELECT COUNT(*) AS total FROM api_test_scripts WHERE project_id = ?",
+        (project_id,),
+    ).fetchone()["total"]
+
+
 def delete_script(db: Connection, script_id: str) -> None:
     db.execute("DELETE FROM api_test_scripts WHERE id = ?", (script_id,))
 
@@ -866,6 +873,7 @@ def update_api_run(
     stdout_path: str = "",
     stderr_path: str = "",
     json_report_path: str = "",
+    scenario_result_path: str = "",
     summary: dict[str, Any] | None = None,
     error_message: str = "",
     finished: bool = False,
@@ -877,6 +885,7 @@ def update_api_run(
             stdout_path = COALESCE(NULLIF(?, ''), stdout_path),
             stderr_path = COALESCE(NULLIF(?, ''), stderr_path),
             json_report_path = COALESCE(NULLIF(?, ''), json_report_path),
+            scenario_result_path = COALESCE(NULLIF(?, ''), scenario_result_path),
             summary_json = COALESCE(?, summary_json),
             error_message = ?,
             updated_at = CURRENT_TIMESTAMP
@@ -888,6 +897,7 @@ def update_api_run(
             stdout_path,
             stderr_path,
             json_report_path,
+            scenario_result_path,
             dumps_json(summary) if summary is not None else None,
             error_message,
             run_id,

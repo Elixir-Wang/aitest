@@ -1,6 +1,9 @@
+import asyncio
+
+import pytest
 from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse, StreamingResponse
+from starlette.responses import HTMLResponse, JSONResponse, StreamingResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
@@ -22,6 +25,14 @@ async def stream_endpoint(request):
     return StreamingResponse(events(), media_type="text/event-stream")
 
 
+async def locust_ui_endpoint(request):
+    return HTMLResponse("<html><title>Locust</title></html>")
+
+
+async def locust_ui_json_endpoint(request):
+    return JSONResponse({"stats": []})
+
+
 async def unhandled_error_endpoint(request):
     raise RuntimeError("database is locked")
 
@@ -32,6 +43,8 @@ def test_api_response_middleware_wraps_json_but_preserves_streams() -> None:
             Route("/api/v1/json", json_endpoint),
             Route("/api/v1/error", error_endpoint),
             Route("/api/v1/stream", stream_endpoint),
+            Route("/api/v1/projects/p/performance-test-runs/r/locust-ui/", locust_ui_endpoint),
+            Route("/api/v1/projects/p/performance-test-runs/r/locust-ui/stats/requests", locust_ui_json_endpoint),
         ]
     )
     app.add_middleware(ApiResponseMiddleware)
@@ -54,6 +67,45 @@ def test_api_response_middleware_wraps_json_but_preserves_streams() -> None:
     assert "text/event-stream" in stream_response.headers["content-type"]
     assert stream_response.headers["x-trace-id"].startswith("trace_")
 
+    locust_response = client.get("/api/v1/projects/p/performance-test-runs/r/locust-ui/")
+    assert locust_response.status_code == 200
+    assert locust_response.text == "<html><title>Locust</title></html>"
+    locust_json_response = client.get("/api/v1/projects/p/performance-test-runs/r/locust-ui/stats/requests")
+    assert locust_json_response.json() == {"stats": []}
+
+
+def test_api_response_middleware_preserves_empty_204_body() -> None:
+    messages = []
+
+    async def app(scope, receive, send):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 204,
+                "headers": [(b"content-type", b"application/json")],
+            }
+        )
+        await send({"type": "http.response.body", "body": b""})
+
+    async def run() -> None:
+        middleware = ApiResponseMiddleware(app)
+
+        async def receive():
+            return {"type": "http.request"}
+
+        async def send(message):
+            messages.append(message)
+
+        await middleware(
+            {"type": "http", "method": "DELETE", "path": "/api/v1/resource", "query_string": b""},
+            receive,
+            send,
+        )
+
+    asyncio.run(run())
+
+    assert messages[-1]["body"] == b""
+
 
 def test_unhandled_api_error_preserves_cors_and_trace_id() -> None:
     app = Starlette(routes=[Route("/api/v1/error", unhandled_error_endpoint)])
@@ -75,3 +127,31 @@ def test_unhandled_api_error_preserves_cors_and_trace_id() -> None:
     assert response.json()["trace_id"].startswith("trace_")
     assert response.headers["x-trace-id"] == response.json()["trace_id"]
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_unhandled_error_does_not_start_second_response() -> None:
+    messages = []
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        raise RuntimeError("stream failed")
+
+    async def run() -> None:
+        middleware = ApiUnhandledExceptionMiddleware(app)
+
+        async def receive():
+            return {"type": "http.request"}
+
+        async def send(message):
+            messages.append(message)
+
+        await middleware(
+            {"type": "http", "method": "GET", "path": "/api/v1/stream", "query_string": b""},
+            receive,
+            send,
+        )
+
+    with pytest.raises(RuntimeError, match="stream failed"):
+        asyncio.run(run())
+
+    assert [message["type"] for message in messages] == ["http.response.start"]

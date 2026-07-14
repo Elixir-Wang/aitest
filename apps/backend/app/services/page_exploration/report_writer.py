@@ -325,68 +325,6 @@ def _render_exploration_path_flowchart(steps: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _render_mermaid_gantt(timeline_events: list[dict], run_start: str) -> str:
-    """将 timeline 事件渲染为 Mermaid gantt 时间线图。"""
-    if not timeline_events:
-        return ""
-
-    try:
-        from datetime import datetime as dt
-        start = dt.fromisoformat(run_start.replace("Z", "+00:00")) if run_start else dt.now(timezone.utc)
-    except Exception:
-        start = dt.now(timezone.utc)
-
-    lines = ["```mermaid", "gantt", "    title 探索执行时间线", "    dateFormat X", "    axisFormat %H:%M:%S", ""]
-
-    tool_events: list[dict] = []
-    for event in timeline_events:
-        if not isinstance(event, dict):
-            continue
-        event_type = event.get("type", "")
-        if event_type not in ("agent_tool_started", "agent_tool_completed", "agent_tool_failed"):
-            continue
-        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-        tool_name = payload.get("tool_name", "unknown")
-        occurred_at = event.get("occurred_at", "")
-        try:
-            ts = dt.fromisoformat(occurred_at.replace("Z", "+00:00"))
-            seconds = int((ts - start).total_seconds())
-        except Exception:
-            seconds = 0
-        tool_events.append({
-            "type": event_type,
-            "tool": tool_name,
-            "seconds": seconds,
-            "locator": payload.get("locator", ""),
-        })
-
-    if not tool_events:
-        lines.append("    section 工具调用")
-        lines.append("    (无记录)")
-        lines.append("```")
-        return "\n".join(lines)
-
-    lines.append("    section 工具调用")
-    last_tool: str | None = None
-    for ev in tool_events:
-        tool_short = ev["tool"].replace("playwright_", "pw.")
-        label = tool_short
-        if ev["type"] == "agent_tool_started":
-            last_tool = f"{tool_short}_{ev['seconds']}"
-            lines.append(f"    {ev['seconds']}: done, {last_tool}, 0s")
-        elif ev["type"] == "agent_tool_completed" and last_tool:
-            duration = max(ev["seconds"] - int(last_tool.split("_")[-1]), 1)
-            lines.append(f"    : {duration}s")
-            last_tool = None
-        elif ev["type"] == "agent_tool_failed" and last_tool:
-            duration = max(ev["seconds"] - int(last_tool.split("_")[-1]), 1)
-            lines.append(f"    : crit, {duration}s, 失败")
-            last_tool = None
-
-    lines.append("```")
-    return "\n".join(lines)
-
-
 def _build_goal_action_mapping(timeline_events: list[dict]) -> list[dict]:
     """将子目标（todo）与实际工具调用关联，返回 [{goal, status, attempts, tools}]。
 
@@ -953,38 +891,6 @@ def _error_type_label(err_type: str) -> str:
     }.get(err_type, f"❓ {err_type}")
 
 
-def _build_tool_timing_map(timeline_events: list[dict], run_start: str) -> dict[str, float]:
-    """构建 tool step_id -> 相对时间（秒）的映射。"""
-    timing: dict[str, float] = {}
-    if not run_start:
-        return timing
-    try:
-        from datetime import datetime as dt
-
-        start = dt.fromisoformat(run_start.replace("Z", "+00:00"))
-        for event in timeline_events:
-            if not isinstance(event, dict):
-                continue
-            occurred_at = event.get("occurred_at", "")
-            if not occurred_at:
-                continue
-            try:
-                t = dt.fromisoformat(occurred_at.replace("Z", "+00:00"))
-                elapsed = (t - start).total_seconds()
-                event_type = event.get("type", "")
-                if event_type in ("agent_tool_started", "agent_tool_completed", "agent_tool_failed"):
-                    payload = event.get("payload", {})
-                    if isinstance(payload, dict):
-                        step_id = payload.get("step_id", "")
-                        if step_id and step_id not in timing:
-                            timing[step_id] = elapsed
-            except Exception:
-                pass
-    except Exception:
-        pass
-    return timing
-
-
 def _write_exploration_report(
     *,
     run_dir: Path,
@@ -1004,7 +910,6 @@ def _write_exploration_report(
     2. 目标达成（Goal Progress）——目标探索模式下的子目标进度
     3. 页面图谱（Page Atlas）——URL 拓扑 + 可交互元素索引
     4. 失败诊断（Failure Diagnostics）——按页面分组的失败动作分析
-    5. 执行时间线（Execution Timeline）——Mermaid Gantt
     """
     report_path = run_dir / "report.md"
     timeline_events = timeline_events or []
@@ -1022,9 +927,6 @@ def _write_exploration_report(
     stats = _compute_exploration_stats(timeline_events, failed_actions, start_url)
     stats["total_pages"] = len(page_artifacts)
     run_start = stats["run_start"]
-
-    # ── 工具调用时间（用于 gantt） ────────────────────────────────────────
-    tool_timings = _build_tool_timing_map(timeline_events, run_start)
 
     # ── 报告主体 ──────────────────────────────────────────────────────────
     lines: list[str] = []
@@ -1186,17 +1088,6 @@ def _write_exploration_report(
         lines.extend(["---", "", "## 产物质量提示", ""])
         for warning in artifact_quality_warnings:
             lines.append(f"- ⚠️ {warning}")
-        lines.append("")
-
-    # ══════════════════════════════════════════════════════════════════════
-    # 5. 执行时间线（Mermaid Gantt）
-    # ══════════════════════════════════════════════════════════════════════
-    mermaid_gantt = _render_mermaid_gantt(timeline_events, run_start)
-    if mermaid_gantt:
-        lines.extend(["---", "", "## 执行时间线", ""])
-        lines.append("_工具调用顺序与结果（红色 = 失败）：_")
-        lines.append("")
-        lines.append(mermaid_gantt)
         lines.append("")
 
     lines.append("")

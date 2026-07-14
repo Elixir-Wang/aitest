@@ -14,8 +14,14 @@ import requests
 
 from app.agents.api_automation.case_generation import service as api_generation_agent_service
 from app.agents.api_automation.case_generation.schemas import ApiAutomationGenerationInput
-from app.agents.api_automation.pytest_requests.schemas import PytestRequestsGenerationInput
-from app.agents.api_automation.pytest_requests.service import generate_pytest_requests_code
+from app.agents.api_automation.pytest_requests.schemas import (
+    PytestRequestsEndpoint,
+    PytestRequestsGenerationInput,
+)
+from app.agents.api_automation.pytest_requests.generator import (
+    generate_pytest_requests_code,
+    pytest_requests_skill_fingerprint,
+)
 from app.core.environment_credentials import decrypt_api_environment_secret, encrypt_api_environment_secret
 from app.core.security import hash_secret
 from app.core import storage
@@ -23,6 +29,7 @@ from app.core.db import connect
 from app.core.exceptions import api_error
 from app.repositories import api_automation_repo, environment_repo, project_repo
 from app.repositories import test_case_repo
+from app.services import operation_log_service
 from app.schemas.api_automation import (
     ApiAutomationGenerateIn,
     ApiEndpointDebugIn,
@@ -40,11 +47,16 @@ from app.services.api_automation.runner import collect_script_suite, run_script_
 from app.services.api_automation.artifact_storage import (
     materialize_scenario_snapshot,
     materialize_generation_result,
+    project_suite_path,
     project_workspace_lock,
     relative_file_key,
     restore_endpoint_artifacts,
     snapshot_endpoint_artifacts,
 )
+
+
+def artifacts_dir_for(project_id: str):
+    return project_suite_path(project_id)
 
 
 MAX_OPENAPI_BYTES = 2 * 1024 * 1024
@@ -121,7 +133,22 @@ def import_openapi_text(
         document = api_automation_repo.find_document(db, document_id)
         if document is None:
             raise api_error(500, "OPENAPI_IMPORT_FAILED", "接口文档保存失败。")
-        return _serialize_document(document)
+        result = _serialize_document(document)
+        operation_log_service.record_change(
+            log_type="audit",
+            module="api_automation",
+            action="import",
+            object_type="api_document",
+            object_id=document_id,
+            object_name=result["name"],
+            project_id=project_id,
+            actor_id=actor["id"],
+            actor_name=operation_log_service.actor_display_name(actor),
+            source="web",
+            summary=f"导入 OpenAPI 文档：{result['name']}，包含 {result['endpoint_count']} 个接口。",
+            after={"name": result["name"], "endpoint_count": result["endpoint_count"], "version": result["version"]},
+        )
+        return result
 
 
 def list_project_endpoints(
@@ -172,7 +199,22 @@ def create_project_endpoint(project_id: str, payload: ApiEndpointIn, actor) -> d
         row = api_automation_repo.find_endpoint(db, endpoint_id)
         if not row:
             raise api_error(500, "API_ENDPOINT_CREATE_FAILED", "接口保存失败。")
-        return _serialize_endpoint(row)
+        result = _serialize_endpoint(row)
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="create",
+        object_type="api_endpoint",
+        object_id=endpoint_id,
+        object_name=payload.summary or payload.path,
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"创建接口：{payload.method} {payload.path}",
+        after={"method": payload.method, "path": payload.path, "summary": payload.summary},
+    )
+    return result
 
 
 def update_project_endpoint(project_id: str, endpoint_id: str, payload: ApiEndpointUpdateIn, actor) -> dict:
@@ -206,7 +248,23 @@ def update_project_endpoint(project_id: str, endpoint_id: str, payload: ApiEndpo
         row = api_automation_repo.find_endpoint(db, saved_id)
         if not row:
             raise api_error(500, "API_ENDPOINT_UPDATE_FAILED", "接口保存失败。")
-        return _serialize_endpoint(row)
+        result = _serialize_endpoint(row)
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="update",
+        object_type="api_endpoint",
+        object_id=endpoint_id,
+        object_name=endpoint_data.get("summary") or endpoint_data.get("path"),
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"更新接口：{endpoint_data.get('method')} {endpoint_data.get('path')}",
+        before={"method": existing["method"], "path": existing["path"], "summary": existing["summary"]},
+        after={"method": endpoint_data["method"], "path": endpoint_data["path"], "summary": endpoint_data["summary"]},
+    )
+    return result
 
 
 def delete_project_endpoint(project_id: str, endpoint_id: str, actor) -> None:
@@ -216,7 +274,22 @@ def delete_project_endpoint(project_id: str, endpoint_id: str, actor) -> None:
         existing = api_automation_repo.find_endpoint(db, endpoint_id)
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "API_ENDPOINT_NOT_FOUND", "接口不存在。")
+        existing_data = _serialize_endpoint(existing)
         api_automation_repo.delete_endpoint(db, endpoint_id)
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="delete",
+        object_type="api_endpoint",
+        object_id=endpoint_id,
+        object_name=existing_data.get("summary") or existing_data.get("path"),
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"删除接口：{existing_data.get('method')} {existing_data.get('path')}",
+        before={"method": existing_data.get("method"), "path": existing_data.get("path"), "summary": existing_data.get("summary")},
+    )
 
 
 def debug_project_endpoint(project_id: str, endpoint_id: str, payload: ApiEndpointDebugIn, actor) -> dict:
@@ -312,7 +385,22 @@ def create_api_environment(project_id: str, payload: ApiEnvironmentIn, actor) ->
         row = api_automation_repo.find_api_environment(db, environment_id)
         if not row:
             raise api_error(500, "API_ENVIRONMENT_CREATE_FAILED", "接口环境保存失败。")
-        return _serialize_api_environment(row)
+        result = _serialize_api_environment(row)
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="create",
+        object_type="api_environment",
+        object_id=environment_id,
+        object_name=payload.name,
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"创建接口环境：{payload.name}",
+        after={"name": payload.name, "api_base_url": payload.api_base_url},
+    )
+    return result
 
 
 def list_api_environments(project_id: str, actor) -> list[dict]:
@@ -330,6 +418,7 @@ def update_api_environment(project_id: str, environment_id: str, payload: ApiEnv
         existing = api_automation_repo.find_api_environment(db, environment_id)
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "API_ENVIRONMENT_NOT_FOUND", "接口环境不存在。")
+        existing_data = _serialize_api_environment(existing)
         _validate_linked_ui_environment(db, project_id, payload.linked_ui_environment_id)
         _validate_account_password_config(payload, existing)
         auth_config = _merge_auth_config_for_update(existing, payload)
@@ -359,7 +448,23 @@ def update_api_environment(project_id: str, environment_id: str, payload: ApiEnv
         row = api_automation_repo.find_api_environment(db, environment_id)
         if not row:
             raise api_error(500, "API_ENVIRONMENT_UPDATE_FAILED", "接口环境保存失败。")
-        return _serialize_api_environment(row)
+        result = _serialize_api_environment(row)
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="update",
+        object_type="api_environment",
+        object_id=environment_id,
+        object_name=payload.name,
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"更新接口环境：{payload.name}",
+        before={"name": existing_data.get("name"), "api_base_url": existing_data.get("api_base_url")},
+        after={"name": payload.name, "api_base_url": payload.api_base_url},
+    )
+    return result
 
 
 def delete_api_environment(project_id: str, environment_id: str, actor) -> None:
@@ -369,7 +474,22 @@ def delete_api_environment(project_id: str, environment_id: str, actor) -> None:
         existing = api_automation_repo.find_api_environment(db, environment_id)
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "API_ENVIRONMENT_NOT_FOUND", "接口环境不存在。")
+        existing_data = _serialize_api_environment(existing)
         api_automation_repo.delete_api_environment(db, environment_id)
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="delete",
+        object_type="api_environment",
+        object_id=environment_id,
+        object_name=existing_data.get("name"),
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"删除接口环境：{existing_data.get('name')}",
+        before={"name": existing_data.get("name"), "api_base_url": existing_data.get("api_base_url")},
+    )
 
 
 def create_generation_run(project_id: str, payload: ApiAutomationGenerateIn, actor) -> dict:
@@ -437,7 +557,22 @@ def delete_api_test_case(project_id: str, case_id: str, actor) -> None:
         row = api_automation_repo.find_api_test_case(db, case_id)
         if not row or row["project_id"] != project_id:
             raise api_error(404, "API_TEST_CASE_NOT_FOUND", "接口自动化用例不存在。")
+        existing_data = _serialize_api_test_case(row)
         api_automation_repo.delete_api_test_case(db, case_id)
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="delete",
+        object_type="api_test_case",
+        object_id=case_id,
+        object_name=existing_data.get("title") or "未命名用例",
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"删除接口自动化用例：{existing_data.get('title') or '未命名用例'}",
+        before={"title": existing_data.get("title"), "endpoint_id": existing_data.get("endpoint_id")},
+    )
 
 
 def create_api_test_case_set(project_id: str, payload: ApiTestCaseSetIn, actor) -> dict:
@@ -454,7 +589,22 @@ def create_api_test_case_set(project_id: str, payload: ApiTestCaseSetIn, actor) 
             created_by=actor["id"],
         )
         row = api_automation_repo.find_api_test_case_set(db, set_id)
-        return _serialize_api_test_case_set(row)
+        result = _serialize_api_test_case_set(row)
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="create",
+        object_type="api_test_case_set",
+        object_id=set_id,
+        object_name=payload.name,
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"创建接口用例集：{payload.name}",
+        after={"name": payload.name},
+    )
+    return result
 
 
 def list_api_test_case_sets(project_id: str, actor) -> list[dict]:
@@ -470,9 +620,26 @@ def update_api_test_case_set(project_id: str, set_id: str, payload: ApiTestCaseS
         existing = api_automation_repo.find_api_test_case_set(db, set_id)
         if not existing or existing["project_id"] != project_id:
             raise api_error(404, "API_TEST_CASE_SET_NOT_FOUND", "接口集不存在。")
+        existing_data = _serialize_api_test_case_set(existing)
         api_automation_repo.update_api_test_case_set(db, set_id, name=payload.name, notes=payload.notes)
         row = api_automation_repo.find_api_test_case_set(db, set_id)
-        return _serialize_api_test_case_set(row)
+        result = _serialize_api_test_case_set(row)
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="update",
+        object_type="api_test_case_set",
+        object_id=set_id,
+        object_name=payload.name,
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"更新接口用例集：{payload.name}",
+        before={"name": existing_data.get("name"), "notes": existing_data.get("notes")},
+        after={"name": payload.name, "notes": payload.notes},
+    )
+    return result
 
 
 def execute_generation_run(run_id: str) -> dict:
@@ -629,7 +796,7 @@ def _persist_generation_item_cases(db, run_id: str, item_id: str, attempt_id: st
             variables={},
             data_origin={},
             data_file_path="",
-            notes="",
+            notes=generated_case.generation_notes,
             created_by="system",
         )
     return len(result.cases)
@@ -714,24 +881,32 @@ def generate_project_scripts(project_id: str, endpoint_ids: list[str], actor, *,
     if changed_endpoint_ids:
         with project_workspace_lock(project_id):
             snapshots = []
+            first_time = not (artifacts_dir_for(project_id) / "pytest.ini").exists()
             for endpoint_id in changed_endpoint_ids:
                 endpoint = _serialize_endpoint(endpoint_rows[endpoint_id])
+                input_endpoint = PytestRequestsEndpoint(
+                    id=endpoint_id,
+                    method=endpoint["method"],
+                    path=endpoint["path"],
+                    summary=endpoint["summary"],
+                )
                 generated = generate_pytest_requests_code(
                     PytestRequestsGenerationInput(
-                        endpoint={
-                            "id": endpoint_id,
-                            "method": endpoint["method"],
-                            "path": endpoint["path"],
-                            "summary": endpoint["summary"],
-                        },
+                        endpoint=input_endpoint,
                         cases=cases_by_endpoint[endpoint_id],
+                        is_first_time=first_time,
                     )
                 )
+                first_time = False
                 snapshots.append(snapshot_endpoint_artifacts(project_id, generated))
                 artifacts_by_endpoint[endpoint_id] = materialize_generation_result(project_id, generated)
             generated_suite_path = artifacts_by_endpoint[changed_endpoint_ids[0]]["suite_path"]
+            test_paths = [
+                relative_file_key(generated_suite_path, artifacts_by_endpoint[endpoint_id]["test_file_path"])
+                for endpoint_id in changed_endpoint_ids
+            ]
             try:
-                collection = collect_script_suite(suite_path=generated_suite_path, timeout=120)
+                collection = collect_script_suite(suite_path=generated_suite_path, timeout=120, test_paths=test_paths)
             except Exception as exc:
                 for snapshot in reversed(snapshots):
                     restore_endpoint_artifacts(snapshot)
@@ -797,25 +972,6 @@ def list_project_scripts(project_id: str, actor) -> list[dict]:
         return [_serialize_script(row) for row in api_automation_repo.list_scripts(db, project_id)]
 
 
-def get_api_script_files(project_id: str, script_id: str, actor) -> dict:
-    script = get_api_script(project_id, script_id, actor)
-    suite_path = _resolve_generated_path(project_id, script["suite_path"])
-    files = []
-    for kind, stored_path in (("test", script["test_file_path"]), ("data", script["data_file_path"])):
-        path = _resolve_generated_path(project_id, stored_path)
-        path.resolve().relative_to(suite_path.resolve())
-        files.append(
-            {
-                "key": relative_file_key(suite_path, path),
-                "name": path.name,
-                "kind": kind,
-                "language": "python" if kind == "test" else "json",
-                "content": path.read_text(encoding="utf-8"),
-            }
-        )
-    return {"script_id": script_id, "files": files}
-
-
 def get_api_script(project_id: str, script_id: str, actor) -> dict:
     with connect() as db:
         _require_visible_project(db, project_id, actor)
@@ -835,8 +991,8 @@ def update_api_script(project_id: str, script_id: str, *, content: str, notes: s
         row = api_automation_repo.find_script(db, script_id)
         if not row or row["project_id"] != project_id:
             raise api_error(404, "API_SCRIPT_NOT_FOUND", "接口自动化脚本不存在。")
-        script = _serialize_script(row)
-    path = _resolve_generated_path(project_id, script["test_file_path"])
+        existing_data = _serialize_script(row)
+    path = _resolve_generated_path(project_id, existing_data["test_file_path"])
     path.write_text(content, encoding="utf-8")
     with connect() as db:
         db.execute(
@@ -850,6 +1006,21 @@ def update_api_script(project_id: str, script_id: str, *, content: str, notes: s
         updated = api_automation_repo.find_script(db, script_id)
         result = _serialize_script(updated)
     result["content"] = content
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="update",
+        object_type="api_script",
+        object_id=script_id,
+        object_name=existing_data.get("name"),
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"更新接口自动化脚本：{existing_data.get('name')}",
+        before={"notes": existing_data.get("notes")},
+        after={"notes": notes},
+    )
     return result
 
 
@@ -860,24 +1031,49 @@ def delete_api_script(project_id: str, script_id: str, actor) -> None:
         row = api_automation_repo.find_script(db, script_id)
         if not row or row["project_id"] != project_id:
             raise api_error(404, "API_SCRIPT_NOT_FOUND", "接口自动化脚本不存在。")
-        script = _serialize_script(row)
+        existing_data = _serialize_script(row)
         api_automation_repo.delete_script(db, script_id)
 
-    suite_path = _resolve_generated_path(project_id, script["suite_path"]).resolve()
-    deleted_parents = []
-    for stored_path in (script["test_file_path"], script["data_file_path"]):
+    suite_path = _resolve_generated_path(project_id, existing_data["suite_path"]).resolve()
+    testcases_root = (suite_path / "testcases").resolve()
+    feature_dirs: set[Path] = set()
+    for stored_path in (existing_data["test_file_path"], existing_data["data_file_path"]):
         if not stored_path:
             continue
         path = _resolve_generated_path(project_id, stored_path).resolve()
         path.relative_to(suite_path)
-        deleted_parents.append(path.parent)
+        feature_dirs.add(path.parent)
         if path.exists() and path.is_file():
             path.unlink()
-    if len(deleted_parents) == 2 and deleted_parents[0] == deleted_parents[1]:
-        endpoint_dir = deleted_parents[0]
-        endpoints_root = (suite_path / "endpoints").resolve()
-        if endpoint_dir.parent == endpoints_root and endpoint_dir.exists() and not any(endpoint_dir.iterdir()):
-            endpoint_dir.rmdir()
+    for feature_dir in feature_dirs:
+        feature_dir.rmdir() if False else None  # noqa: E701
+        if feature_dir.exists() and feature_dir.is_relative_to(testcases_root):
+            for child in sorted(feature_dir.rglob("*"), key=lambda p: len(p.as_posix()), reverse=True):
+                if child.is_file():
+                    child.unlink()
+            if feature_dir.exists() and not any(feature_dir.iterdir()):
+                feature_dir.rmdir()
+            cursor = feature_dir.parent
+            while cursor != testcases_root and cursor.is_relative_to(testcases_root) and cursor.exists() and not any(cursor.iterdir()):
+                cursor.rmdir()
+                cursor = cursor.parent
+                if cursor == testcases_root:
+                    break
+
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="delete",
+        object_type="api_script",
+        object_id=script_id,
+        object_name=existing_data.get("name"),
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"删除接口自动化脚本：{existing_data.get('name')}",
+        before={"name": existing_data.get("name")},
+    )
 
 
 def create_api_run(project_id: str, payload: ApiRunCreateIn, actor) -> dict:
@@ -1018,6 +1214,7 @@ def execute_api_run(run_id: str) -> dict:
             stdout_path=storage.store_path(result["stdout_path"]) or result["stdout_path"],
             stderr_path=storage.store_path(result["stderr_path"]) or result["stderr_path"],
             json_report_path=storage.store_path(result["json_report_path"]) or result["json_report_path"],
+            scenario_result_path=storage.store_path(result.get("scenario_result_path", "")) or result.get("scenario_result_path", ""),
             summary=result["summary"],
             error_message=result["error_message"],
             finished=True,
@@ -1027,22 +1224,36 @@ def execute_api_run(run_id: str) -> dict:
         return _serialize_api_run(updated, db)
 
 
-def create_api_scenario_run(project_id: str, scenario_id: str, api_environment_id: str, actor) -> dict:
+def create_api_scenario_run(
+    project_id: str,
+    scenario_id: str,
+    api_environment_id: str,
+    actor,
+    *,
+    source: str = "published",
+) -> dict:
     _require_admin(actor)
     run_id = f"apirun-{secrets.token_hex(8)}"
     with connect() as db:
         _require_visible_project(db, project_id, actor)
         scenario = _require_scenario(db, project_id, scenario_id)
-        if scenario["status"] != "ready":
-            raise api_error(409, "API_SCENARIO_NOT_READY", "请先校验并发布场景。")
         environment = api_automation_repo.find_api_environment(db, api_environment_id)
         if not environment or environment["project_id"] != project_id:
             raise api_error(404, "API_ENVIRONMENT_NOT_FOUND", "接口环境不存在。")
-        snapshot = api_automation_repo.loads_json(scenario["published_snapshot_json"], {})
-        serialized_snapshot = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        snapshot_hash = hashlib.sha256(serialized_snapshot.encode("utf-8")).hexdigest()
-        if snapshot_hash != scenario["published_hash"]:
-            raise api_error(409, "API_SCENARIO_SNAPSHOT_INVALID", "场景发布快照校验失败，请重新发布。")
+        if source == "draft":
+            steps = [_serialize_scenario_step(row) for row in _list_scenario_step_rows(db, scenario_id)]
+            validation = _validate_scenario_definition(db, scenario, steps)
+            if not validation["valid"]:
+                raise api_error(409, "API_SCENARIO_INVALID", "；".join(validation["errors"]))
+            snapshot = _build_scenario_snapshot(db, scenario, steps)
+        else:
+            if scenario["status"] != "ready":
+                raise api_error(409, "API_SCENARIO_NOT_READY", "请先校验并发布场景。")
+            snapshot = api_automation_repo.loads_json(scenario["published_snapshot_json"], {})
+            serialized_snapshot = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            snapshot_hash = hashlib.sha256(serialized_snapshot.encode("utf-8")).hexdigest()
+            if snapshot_hash != scenario["published_hash"]:
+                raise api_error(409, "API_SCENARIO_SNAPSHOT_INVALID", "场景发布快照校验失败，请重新发布。")
     with project_workspace_lock(project_id):
         artifacts = materialize_scenario_snapshot(project_id, snapshot)
         relative_test_path = str(artifacts["test_file_path"].relative_to(artifacts["suite_path"]))
@@ -1065,6 +1276,7 @@ def create_api_scenario_run(project_id: str, scenario_id: str, api_environment_i
             "revision": snapshot.get("revision", scenario["revision"]),
             "step_count": len(snapshot.get("steps", [])),
             "published_hash": scenario["published_hash"],
+            "source": source,
         },
         "environment": {
             "id": environment["id"],
@@ -1136,6 +1348,16 @@ def get_api_run_report(project_id: str, run_id: str, actor) -> dict:
     return api_automation_repo.loads_json(path.read_text(encoding="utf-8"), {})
 
 
+def get_api_scenario_run_result(project_id: str, run_id: str, actor) -> dict:
+    run = get_api_run(project_id, run_id, actor)
+    if run["target_type"] != "scenario":
+        raise api_error(409, "API_RUN_NOT_SCENARIO", "当前运行记录不是接口场景运行。")
+    path = storage.resolve_stored_path(run["scenario_result_path"])
+    if path is None or not path.exists():
+        raise api_error(404, "API_SCENARIO_RUN_RESULT_NOT_FOUND", "接口场景步骤结果不存在。")
+    return api_automation_repo.loads_json(path.read_text(encoding="utf-8"), {})
+
+
 def create_api_scenario(project_id: str, payload: ApiScenarioIn, actor) -> dict:
     _require_admin(actor)
     scenario_id = f"apiscn-{secrets.token_hex(8)}"
@@ -1156,7 +1378,22 @@ def create_api_scenario(project_id: str, payload: ApiScenarioIn, actor) -> dict:
             ),
         )
         row = db.execute("SELECT * FROM api_scenarios WHERE id = ?", (scenario_id,)).fetchone()
-        return _serialize_scenario(row, [])
+        result = _serialize_scenario(row, [])
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="create",
+        object_type="api_scenario",
+        object_id=scenario_id,
+        object_name=payload.name,
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"创建接口场景：{payload.name}",
+        after={"name": payload.name, "description": payload.description},
+    )
+    return result
 
 
 def update_api_scenario(project_id: str, scenario_id: str, payload: ApiScenarioIn, actor) -> dict:
@@ -1164,6 +1401,7 @@ def update_api_scenario(project_id: str, scenario_id: str, payload: ApiScenarioI
     with connect() as db:
         _require_visible_project(db, project_id, actor)
         scenario = _require_scenario(db, project_id, scenario_id)
+        existing_data = _serialize_scenario(scenario, [])
         db.execute(
             """
             UPDATE api_scenarios
@@ -1174,15 +1412,46 @@ def update_api_scenario(project_id: str, scenario_id: str, payload: ApiScenarioI
             (payload.name, payload.description, api_automation_repo.dumps_json(payload.variables), actor["id"], scenario_id),
         )
         steps = _list_scenario_step_rows(db, scenario_id)
-        return _serialize_scenario(db.execute("SELECT * FROM api_scenarios WHERE id = ?", (scenario_id,)).fetchone(), [_serialize_scenario_step(step) for step in steps])
+        result = _serialize_scenario(db.execute("SELECT * FROM api_scenarios WHERE id = ?", (scenario_id,)).fetchone(), [_serialize_scenario_step(step) for step in steps])
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="update",
+        object_type="api_scenario",
+        object_id=scenario_id,
+        object_name=payload.name,
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"更新接口场景：{payload.name}",
+        before={"name": existing_data.get("name"), "description": existing_data.get("description")},
+        after={"name": payload.name, "description": payload.description},
+    )
+    return result
 
 
 def delete_api_scenario(project_id: str, scenario_id: str, actor) -> None:
     _require_admin(actor)
     with connect() as db:
         _require_visible_project(db, project_id, actor)
-        _require_scenario(db, project_id, scenario_id)
+        scenario = _require_scenario(db, project_id, scenario_id)
+        existing_data = _serialize_scenario(scenario, [])
         db.execute("DELETE FROM api_scenarios WHERE id = ?", (scenario_id,))
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="delete",
+        object_type="api_scenario",
+        object_id=scenario_id,
+        object_name=existing_data.get("name"),
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"删除接口场景：{existing_data.get('name')}",
+        before={"name": existing_data.get("name"), "description": existing_data.get("description")},
+    )
 
 
 def list_api_scenarios(project_id: str, actor) -> list[dict]:
@@ -1205,7 +1474,8 @@ def get_api_scenario(project_id: str, scenario_id: str, actor) -> dict:
             "SELECT * FROM api_scenario_steps WHERE scenario_id = ? ORDER BY step_order ASC, created_at ASC",
             (scenario_id,),
         ).fetchall()
-        return _serialize_scenario(row, [_serialize_scenario_step(step) for step in steps])
+        serialized_steps = [_serialize_scenario_step(step) for step in steps]
+        return _serialize_scenario(row, serialized_steps, asset_changes=_list_scenario_asset_changes(db, row, serialized_steps))
 
 
 def replace_api_scenario_steps(
@@ -1246,7 +1516,22 @@ def create_api_scenario_step(project_id: str, scenario_id: str, payload: ApiScen
         _insert_scenario_step(db, scenario_id, project_id, prepared)
         db.execute("UPDATE api_scenarios SET status = 'draft', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (scenario_id,))
         row = db.execute("SELECT * FROM api_scenario_steps WHERE id = ?", (step_id,)).fetchone()
-        return _serialize_scenario_step(row)
+        result = _serialize_scenario_step(row)
+    operation_log_service.record_change(
+        log_type="audit",
+        module="api_automation",
+        action="create",
+        object_type="api_scenario_step",
+        object_id=step_id,
+        object_name=f"步骤 {payload.step_order}",
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"在场景 {scenario['name']} 中添加步骤：{payload.step_order}",
+        after={"scenario_id": scenario_id, "step_order": payload.step_order},
+    )
+    return result
 
 
 def validate_api_scenario(project_id: str, scenario_id: str, actor) -> dict:
@@ -1257,7 +1542,7 @@ def validate_api_scenario(project_id: str, scenario_id: str, actor) -> dict:
         return _validate_scenario_definition(db, scenario, steps)
 
 
-def publish_api_scenario(project_id: str, scenario_id: str, actor) -> dict:
+def publish_api_scenario(project_id: str, scenario_id: str, actor, *, confirm_asset_changes: bool = False) -> dict:
     _require_admin(actor)
     with connect() as db:
         _require_visible_project(db, project_id, actor)
@@ -1266,6 +1551,9 @@ def publish_api_scenario(project_id: str, scenario_id: str, actor) -> dict:
         validation = _validate_scenario_definition(db, scenario, steps)
         if not validation["valid"]:
             raise api_error(409, "API_SCENARIO_INVALID", "；".join(validation["errors"]))
+        asset_changes = _list_scenario_asset_changes(db, scenario, steps)
+        if asset_changes and not confirm_asset_changes:
+            raise api_error(409, "API_SCENARIO_ASSET_CHANGES_UNCONFIRMED", "接口资产已变化，请确认差异后重新发布。")
         snapshot = _build_scenario_snapshot(db, scenario, steps)
         serialized = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         published_hash = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
@@ -1279,7 +1567,107 @@ def publish_api_scenario(project_id: str, scenario_id: str, actor) -> dict:
             (serialized, published_hash, actor["id"], scenario_id),
         )
         updated = db.execute("SELECT * FROM api_scenarios WHERE id = ?", (scenario_id,)).fetchone()
+        db.execute(
+            """
+            INSERT INTO api_scenario_revisions (
+              id, scenario_id, project_id, revision, snapshot_json, published_hash, created_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"apiscenrev-{secrets.token_hex(8)}",
+                scenario_id,
+                project_id,
+                updated["revision"],
+                serialized,
+                published_hash,
+                actor["id"],
+            ),
+        )
         return _serialize_scenario(updated, steps)
+
+
+def list_api_scenario_revisions(project_id: str, scenario_id: str, actor) -> list[dict]:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        _require_scenario(db, project_id, scenario_id)
+        rows = db.execute(
+            """
+            SELECT revision, snapshot_json, published_hash, created_by, created_at
+            FROM api_scenario_revisions
+            WHERE scenario_id = ? AND project_id = ?
+            ORDER BY revision DESC
+            """,
+            (scenario_id, project_id),
+        ).fetchall()
+        return [
+            {
+                "revision": row["revision"],
+                "published_hash": row["published_hash"],
+                "created_by": row["created_by"],
+                "created_at": row["created_at"],
+                "step_count": len(api_automation_repo.loads_json(row["snapshot_json"], {}).get("steps", [])),
+            }
+            for row in rows
+        ]
+
+
+def restore_api_scenario_revision(project_id: str, scenario_id: str, revision: int, actor) -> dict:
+    _require_admin(actor)
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        _require_scenario(db, project_id, scenario_id)
+        row = db.execute(
+            """
+            SELECT snapshot_json
+            FROM api_scenario_revisions
+            WHERE scenario_id = ? AND project_id = ? AND revision = ?
+            """,
+            (scenario_id, project_id, revision),
+        ).fetchone()
+        if not row:
+            raise api_error(404, "API_SCENARIO_REVISION_NOT_FOUND", "接口场景版本不存在。")
+        snapshot = api_automation_repo.loads_json(row["snapshot_json"], {})
+        db.execute(
+            """
+            UPDATE api_scenarios
+            SET name = ?, description = ?, variables_json = ?, status = 'draft',
+                updated_by = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                snapshot.get("name", ""),
+                snapshot.get("description", ""),
+                api_automation_repo.dumps_json(snapshot.get("variables", {})),
+                actor["id"],
+                scenario_id,
+            ),
+        )
+        db.execute("DELETE FROM api_scenario_steps WHERE scenario_id = ?", (scenario_id,))
+        for index, step in enumerate(snapshot.get("steps", [])):
+            _insert_scenario_step(
+                db,
+                scenario_id,
+                project_id,
+                {
+                    "id": step.get("id") or f"apistep-{secrets.token_hex(8)}",
+                    "step_type": step.get("step_type", "api_request"),
+                    "endpoint_id": step.get("endpoint_id"),
+                    "api_test_case_id": step.get("api_test_case_id"),
+                    "step_order": index,
+                    "name": step.get("name", ""),
+                    "request_overrides": step.get("request_overrides", {}),
+                    "bindings": step.get("bindings", []),
+                    "extractors": step.get("extractors", []),
+                    "assertions": step.get("assertions", []),
+                    "control_config": step.get("control_config", {}),
+                    "on_failure": step.get("on_failure", "stop"),
+                    "enabled": bool(step.get("enabled", True)),
+                },
+            )
+        scenario = db.execute("SELECT * FROM api_scenarios WHERE id = ?", (scenario_id,)).fetchone()
+        steps = [_serialize_scenario_step(step) for step in _list_scenario_step_rows(db, scenario_id)]
+        return _serialize_scenario(scenario, steps)
 
 
 def recover_interrupted_api_automation_tasks() -> None:
@@ -1543,7 +1931,12 @@ def _serialize_script(row: Row | None) -> dict:
 
 
 def _script_source_hash(endpoint: dict, cases: list[dict]) -> str:
-    payload = {"generator_version": 1, "endpoint": endpoint, "cases": cases}
+    payload = {
+        "generator_version": 1,
+        "skill_fingerprint": pytest_requests_skill_fingerprint(),
+        "endpoint": endpoint,
+        "cases": cases,
+    }
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -1605,6 +1998,7 @@ def _serialize_api_run(row: Row | None, db=None) -> dict:
         "stdout_path": row["stdout_path"],
         "stderr_path": row["stderr_path"],
         "json_report_path": row["json_report_path"],
+        "scenario_result_path": row["scenario_result_path"] if "scenario_result_path" in keys else "",
         "summary": api_automation_repo.loads_json(row["summary_json"], {}),
         "error_message": row["error_message"],
         "created_by_name": created_by_name or row["created_by"],
@@ -1613,7 +2007,7 @@ def _serialize_api_run(row: Row | None, db=None) -> dict:
     }
 
 
-def _serialize_scenario(row: Row, steps: list[dict]) -> dict:
+def _serialize_scenario(row: Row, steps: list[dict], *, asset_changes: list[dict] | None = None) -> dict:
     return {
         "id": row["id"],
         "project_id": row["project_id"],
@@ -1623,6 +2017,7 @@ def _serialize_scenario(row: Row, steps: list[dict]) -> dict:
         "variables": api_automation_repo.loads_json(row["variables_json"], {}),
         "revision": row["revision"],
         "published_hash": row["published_hash"],
+        "asset_changes": asset_changes or [],
         "steps": steps,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -1634,6 +2029,7 @@ def _serialize_scenario_step(row: Row) -> dict:
         "id": row["id"],
         "scenario_id": row["scenario_id"],
         "project_id": row["project_id"],
+        "step_type": row["step_type"] or "api_request",
         "endpoint_id": row["endpoint_id"],
         "api_test_case_id": row["api_test_case_id"],
         "step_order": row["step_order"],
@@ -1642,6 +2038,7 @@ def _serialize_scenario_step(row: Row) -> dict:
         "bindings": api_automation_repo.loads_json(row["bindings_json"], []),
         "extractors": api_automation_repo.loads_json(row["extractors_json"], []),
         "assertions": api_automation_repo.loads_json(row["assertions_json"], []),
+        "control_config": api_automation_repo.loads_json(row["control_config_json"], {}),
         "on_failure": row["on_failure"],
         "enabled": bool(row["enabled"]),
         "created_at": row["created_at"],
@@ -1666,25 +2063,32 @@ def _list_scenario_step_rows(db, scenario_id: str) -> list[Row]:
 def _prepare_scenario_step(db, project_id: str, payload: ApiScenarioStepIn, step_order: int, *, step_id: str = "") -> dict:
     case = None
     endpoint_id = payload.endpoint_id
+    endpoint = None
     if payload.api_test_case_id:
         case = api_automation_repo.find_api_test_case(db, payload.api_test_case_id)
         if not case or case["project_id"] != project_id:
             raise api_error(400, "API_TEST_CASE_INVALID", "接口用例不存在或不属于当前项目。")
         endpoint_id = str(case["endpoint_id"] or "") or endpoint_id
-    if endpoint_id:
+    if payload.step_type in {"api_request", "poll"}:
+        if not endpoint_id:
+            raise api_error(400, "API_ENDPOINT_INVALID", "接口不存在或不属于当前项目。")
         endpoint = api_automation_repo.find_endpoint(db, endpoint_id)
         if not endpoint or endpoint["project_id"] != project_id:
             raise api_error(400, "API_ENDPOINT_INVALID", "接口不存在或不属于当前项目。")
+    elif endpoint_id:
+        raise api_error(400, "API_SCENARIO_STEP_ENDPOINT_FORBIDDEN", "当前步骤类型不能绑定接口资产。")
     return {
         "id": step_id or payload.id or f"apistep-{secrets.token_hex(8)}",
+        "step_type": payload.step_type,
         "api_test_case_id": payload.api_test_case_id,
         "endpoint_id": endpoint_id,
         "step_order": step_order,
-        "name": payload.name or (str(case["title"]) if case else ""),
+        "name": payload.name or (str(endpoint["summary"]) if endpoint else str(case["title"]) if case else payload.step_type),
         "request_overrides": payload.request_overrides,
         "bindings": payload.bindings,
         "extractors": payload.extractors,
         "assertions": payload.assertions,
+        "control_config": payload.control_config,
         "on_failure": payload.on_failure,
         "enabled": payload.enabled,
     }
@@ -1694,16 +2098,18 @@ def _insert_scenario_step(db, scenario_id: str, project_id: str, step: dict) -> 
     db.execute(
         """
         INSERT INTO api_scenario_steps (
-          id, scenario_id, project_id, endpoint_id, api_test_case_id, step_order, name,
-          request_overrides_json, bindings_json, extractors_json, assertions_json, on_failure, enabled
+          id, scenario_id, project_id, step_type, endpoint_id, api_test_case_id, step_order, name,
+          request_overrides_json, bindings_json, extractors_json, assertions_json, control_config_json,
+          on_failure, enabled
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            step["id"], scenario_id, project_id, step["endpoint_id"], step["api_test_case_id"],
+            step["id"], scenario_id, project_id, step["step_type"], step["endpoint_id"], step["api_test_case_id"],
             step["step_order"], step["name"], api_automation_repo.dumps_json(step["request_overrides"]),
             api_automation_repo.dumps_json(step["bindings"]), api_automation_repo.dumps_json(step["extractors"]),
-            api_automation_repo.dumps_json(step["assertions"]), step["on_failure"], int(step["enabled"]),
+            api_automation_repo.dumps_json(step["assertions"]), api_automation_repo.dumps_json(step["control_config"]),
+            step["on_failure"], int(step["enabled"]),
         ),
     )
 
@@ -1718,10 +2124,42 @@ def _validate_scenario_definition(db, scenario: Row, steps: list[dict]) -> dict:
     known_ids = {step["id"] for step in enabled_steps}
     for index, step in enumerate(enabled_steps, start=1):
         prefix = f"步骤 {index}（{step['name'] or step['id']}）"
+        step_type = step.get("step_type", "api_request")
+        config = step.get("control_config") or {}
         case_id = step.get("api_test_case_id")
         case = api_automation_repo.find_api_test_case(db, case_id) if case_id else None
-        if not case or case["project_id"] != scenario["project_id"]:
-            errors.append(f"{prefix}必须选择当前项目的接口用例。")
+        endpoint_id = step.get("endpoint_id")
+        endpoint = api_automation_repo.find_endpoint(db, endpoint_id) if endpoint_id else None
+        if step_type in {"api_request", "poll"} and (
+            not endpoint or endpoint["project_id"] != scenario["project_id"]
+        ):
+            errors.append(f"{prefix}必须选择当前项目的接口资产。")
+        if step_type == "wait":
+            duration_ms = config.get("duration_ms")
+            if not isinstance(duration_ms, (int, float)) or not 0 <= duration_ms <= 300000:
+                errors.append(f"{prefix}的等待时长必须在 0 到 300000 毫秒之间。")
+        elif step_type == "poll":
+            interval_ms = config.get("interval_ms")
+            timeout_ms = config.get("timeout_ms")
+            if not isinstance(interval_ms, (int, float)) or interval_ms <= 0:
+                errors.append(f"{prefix}的轮询间隔必须大于 0。")
+            if not isinstance(timeout_ms, (int, float)) or timeout_ms <= 0:
+                errors.append(f"{prefix}的轮询超时必须大于 0。")
+            if not step["assertions"]:
+                errors.append(f"{prefix}至少需要一个结束断言。")
+        elif step_type == "condition":
+            source = config.get("source") if isinstance(config.get("source"), dict) else {}
+            _validate_scenario_source(source, prior_outputs, known_ids, prefix, errors)
+            if config.get("operator") not in {
+                "equals", "not_equals", "contains", "not_contains", "truthy", "falsy", "gt", "gte", "lt", "lte"
+            }:
+                errors.append(f"{prefix}存在不支持的条件操作符。")
+        elif step_type == "assign":
+            name = str(config.get("name") or "").strip()
+            source = config.get("source") if isinstance(config.get("source"), dict) else {}
+            if not name:
+                errors.append(f"{prefix}必须填写变量名。")
+            _validate_scenario_source(source, prior_outputs, known_ids, prefix, errors)
         extractor_names: set[str] = set()
         for extractor in step["extractors"]:
             name = str(extractor.get("name") or "").strip()
@@ -1737,20 +2175,34 @@ def _validate_scenario_definition(db, scenario: Row, steps: list[dict]) -> dict:
             source_type = source.get("type")
             if not target.startswith(("/request/", "/test_data/")):
                 errors.append(f"{prefix}的绑定目标必须位于 /request 或 /test_data。")
-            if source_type == "step_output":
-                source_step_id = str(source.get("step_id") or "")
-                variable = str(source.get("variable") or "")
-                if source_step_id not in prior_outputs:
-                    suffix = "只能引用前序步骤。" if source_step_id in known_ids else "引用的步骤不存在。"
-                    errors.append(f"{prefix}的变量绑定{suffix}")
-                elif variable not in prior_outputs[source_step_id]:
-                    errors.append(f"{prefix}引用了前序步骤未提取的变量 {variable}。")
-            elif source_type not in {"environment", "scenario", "literal"}:
-                errors.append(f"{prefix}存在不支持的变量来源 {source_type or '空'}。")
+            _validate_scenario_source(source, prior_outputs, known_ids, prefix, errors)
+        if step_type == "assign" and str(config.get("name") or "").strip():
+            extractor_names.add(str(config["name"]).strip())
         prior_outputs[step["id"]] = extractor_names
-        if not step["assertions"] and case and not api_automation_repo.loads_json(case["assertions_json"], []):
+        legacy_assertions = api_automation_repo.loads_json(case["assertions_json"], []) if case else []
+        if step_type == "api_request" and not step["assertions"] and not legacy_assertions:
             warnings.append(f"{prefix}没有断言。")
     return {"valid": not errors, "errors": errors, "warnings": warnings}
+
+
+def _validate_scenario_source(
+    source: dict,
+    prior_outputs: dict[str, set[str]],
+    known_ids: set[str],
+    prefix: str,
+    errors: list[str],
+) -> None:
+    source_type = source.get("type")
+    if source_type == "step_output":
+        source_step_id = str(source.get("step_id") or "")
+        variable = str(source.get("variable") or "")
+        if source_step_id not in prior_outputs:
+            suffix = "只能引用前序步骤。" if source_step_id in known_ids else "引用的步骤不存在。"
+            errors.append(f"{prefix}的变量来源{suffix}")
+        elif variable not in prior_outputs[source_step_id]:
+            errors.append(f"{prefix}引用了前序步骤未输出的变量 {variable}。")
+    elif source_type not in {"environment", "scenario", "literal"}:
+        errors.append(f"{prefix}存在不支持的变量来源 {source_type or '空'}。")
 
 
 def _build_scenario_snapshot(db, scenario: Row, steps: list[dict]) -> dict:
@@ -1758,19 +2210,12 @@ def _build_scenario_snapshot(db, scenario: Row, steps: list[dict]) -> dict:
     for step in steps:
         if not step["enabled"]:
             continue
-        case = api_automation_repo.find_api_test_case(db, step["api_test_case_id"])
-        if not case:
-            continue
+        endpoint = api_automation_repo.find_endpoint(db, step["endpoint_id"]) if step.get("endpoint_id") else None
+        endpoint_snapshot = _serialize_endpoint_snapshot(endpoint) if endpoint else None
         snapshot_steps.append(
             {
                 **step,
-                "case": {
-                    "id": case["id"],
-                    "title": case["title"],
-                    "request": api_automation_repo.loads_json(case["request_json"], {}),
-                    "test_data": api_automation_repo.loads_json(case["test_data_json"], {}),
-                    "assertions": api_automation_repo.loads_json(case["assertions_json"], []),
-                },
+                "endpoint": endpoint_snapshot,
             }
         )
     return {
@@ -1782,6 +2227,56 @@ def _build_scenario_snapshot(db, scenario: Row, steps: list[dict]) -> dict:
         "revision": int(scenario["revision"]) + 1,
         "steps": snapshot_steps,
     }
+
+
+def _serialize_endpoint_snapshot(endpoint: Row) -> dict:
+    return {
+        "id": endpoint["id"],
+        "method": endpoint["method"],
+        "path": endpoint["path"],
+        "summary": endpoint["summary"],
+        "parameters": api_automation_repo.loads_json(endpoint["parameters_json"], []),
+        "request_body": api_automation_repo.loads_json(endpoint["request_body_json"], {}),
+        "responses": api_automation_repo.loads_json(endpoint["responses_json"], {}),
+        "auth": api_automation_repo.loads_json(endpoint["auth_json"], {}),
+    }
+
+
+def _list_scenario_asset_changes(db, scenario: Row, steps: list[dict]) -> list[dict]:
+    published = api_automation_repo.loads_json(scenario["published_snapshot_json"], {})
+    published_steps = {str(step.get("id") or ""): step for step in published.get("steps", [])}
+    if not published_steps:
+        return []
+    changes = []
+    compared_fields = ("method", "path", "summary", "parameters", "request_body", "responses", "auth")
+    for step in steps:
+        baseline = published_steps.get(step["id"])
+        if not baseline or not step.get("endpoint_id"):
+            continue
+        endpoint = api_automation_repo.find_endpoint(db, step["endpoint_id"])
+        if not endpoint:
+            changes.append(
+                {
+                    "step_id": step["id"],
+                    "endpoint_id": step["endpoint_id"],
+                    "change_type": "missing",
+                    "fields": [],
+                }
+            )
+            continue
+        current = _serialize_endpoint_snapshot(endpoint)
+        previous = baseline.get("endpoint") or {}
+        fields = [field for field in compared_fields if current.get(field) != previous.get(field)]
+        if fields:
+            changes.append(
+                {
+                    "step_id": step["id"],
+                    "endpoint_id": step["endpoint_id"],
+                    "change_type": "modified",
+                    "fields": fields,
+                }
+            )
+    return changes
 
 
 def _resolve_generated_path(project_id: str, stored_path: str) -> Path:

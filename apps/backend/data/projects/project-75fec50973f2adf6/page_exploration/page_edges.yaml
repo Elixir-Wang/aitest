@@ -1,0 +1,9 @@
+edges:
+- id: edge-acf9036795a5170b
+  run_id: exp_Am3HGwQW4awyEobW17YWEw
+  from_page_id: page-introduce
+  to_page_id: page-login
+  action: click
+  from_url: /introduce
+  to_url: /login
+  observed_at: '2026-07-14T07:51:35.884823+00:00'

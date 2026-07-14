@@ -5,7 +5,7 @@ import * as React from "react";
 import { Archive, ArrowUp, FileText, Square, X } from "lucide-react";
 
 import type { ApiModelProvider } from "@/lib/api-client";
-import { createId } from "@/lib/create-id";
+import { createId } from "@/lib/create-id.mjs";
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 

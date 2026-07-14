@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Eye, ListTodo } from "lucide-react";
 
@@ -13,6 +13,7 @@ import { OneClipboard } from "@/components/ui/one-clipboard";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
 import { StatusBadge, taskStatusTone } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { type ApiTaskItem, type ApiTaskList, apiRequest, formatDateTime } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectContextStore } from "@/stores/project-context-store";
@@ -24,6 +25,40 @@ function TaskStatusBadge({ task }: { task: ApiTaskItem }) {
     <StatusBadge tone={taskStatusTone(task.status_group, task.status)}>
       {isRunning || task.status === "processing" ? <ProcessingState label={task.status_label} /> : task.status_label}
     </StatusBadge>
+  );
+}
+
+function OverflowTooltipText({ value }: { value: string }) {
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  useLayoutEffect(() => {
+    const node = textRef.current;
+    if (!node) return;
+
+    const updateOverflowState = () => setIsOverflowing(node.scrollWidth > node.clientWidth + 1);
+    updateOverflowState();
+
+    const resizeObserver = new ResizeObserver(updateOverflowState);
+    resizeObserver.observe(node);
+    return () => resizeObserver.disconnect();
+  }, [value]);
+
+  const content = (
+    <span ref={textRef} className="block min-w-0 truncate" tabIndex={isOverflowing ? 0 : undefined}>
+      {value}
+    </span>
+  );
+
+  if (!value || !isOverflowing) return content;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{content}</TooltipTrigger>
+      <TooltipContent className="max-w-md whitespace-normal break-words leading-5" side="top" sideOffset={6}>
+        {value}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -138,21 +173,23 @@ export default function Page() {
           title="任务列表"
         />
         <div className="overflow-hidden rounded-lg border">
-          <Table>
+          <Table className="min-w-[980px] table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead>任务名称</TableHead>
-                <TableHead>任务种类</TableHead>
-                <TableHead>项目</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>更新时间</TableHead>
-                <TableHead className="w-16">操作</TableHead>
+                <TableHead className="w-[34%]">任务名称</TableHead>
+                <TableHead className="w-[14%]">任务种类</TableHead>
+                <TableHead className="w-[12%]">项目</TableHead>
+                <TableHead className="w-[14%]">状态</TableHead>
+                <TableHead className="w-[20%]">更新时间</TableHead>
+                <TableHead className="w-[6%]">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {tasks.map((task) => (
                 <TableRow key={task.id}>
-                  <TableCell className="font-medium">{task.title}</TableCell>
+                  <TableCell className="overflow-hidden font-medium">
+                    <OverflowTooltipText value={task.title} />
+                  </TableCell>
                   <TableCell>{task.module_label}</TableCell>
                   <TableCell>{task.project_name}</TableCell>
                   <TableCell>

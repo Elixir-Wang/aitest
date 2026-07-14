@@ -80,6 +80,7 @@ API_AUTOMATION_RUN_STATUS = {
     "interrupted": (COMPLETED_GROUP, "已中断"),
 }
 
+
 STATUS_META_BY_SOURCE_TYPE = {
     "exploration_run": EXPLORATION_STATUS,
     "requirement_file": REQUIREMENT_FILE_STATUS,

@@ -4,11 +4,13 @@ from app.dependencies.auth import current_user, require_admin
 from app.schemas.performance_test import (
     PerformanceRequestPreviewIn,
     PerformanceRequestPreviewOut,
+    PerformanceScriptConfigurationIn,
+    PerformanceScriptOut,
     PerformanceTestCreateIn,
     PerformanceTestOut,
     PerformanceTestUpdateIn,
 )
-from app.services.performance_testing import service
+from app.services.performance_testing import script_service, service
 
 
 router = APIRouter(prefix="/projects/{project_id}/performance-tests", tags=["performance-tests"])
@@ -37,6 +39,42 @@ def list_performance_tests(project_id: str, actor=Depends(current_user)) -> list
     return service.list_performance_tests(project_id, actor)
 
 
+@router.post("/{test_id}/scripts/generate", response_model=PerformanceScriptOut)
+def generate_performance_script(project_id: str, test_id: str, actor=Depends(require_admin)) -> dict:
+    return script_service.generate_script(project_id, test_id, actor)
+
+
+@router.get("/{test_id}/scripts", response_model=list[PerformanceScriptOut])
+def list_performance_scripts(project_id: str, test_id: str, actor=Depends(current_user)) -> list[dict]:
+    return script_service.list_scripts(project_id, test_id, actor)
+
+
+@router.get("/{test_id}/scripts/{script_id}", response_model=PerformanceScriptOut)
+def get_performance_script(project_id: str, test_id: str, script_id: str, actor=Depends(current_user)) -> dict:
+    return script_service.get_script(project_id, test_id, script_id, actor)
+
+
+@router.patch("/{test_id}/scripts/{script_id}/configuration", response_model=PerformanceScriptOut)
+def update_performance_script_configuration(
+    project_id: str,
+    test_id: str,
+    script_id: str,
+    payload: PerformanceScriptConfigurationIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return script_service.update_script_configuration(project_id, test_id, script_id, payload, actor)
+
+
+@router.post("/{test_id}/scripts/{script_id}/confirm", response_model=PerformanceScriptOut)
+def confirm_performance_script(
+    project_id: str,
+    test_id: str,
+    script_id: str,
+    actor=Depends(require_admin),
+) -> dict:
+    return script_service.confirm_script(project_id, test_id, script_id, actor)
+
+
 @router.get("/{test_id}", response_model=PerformanceTestOut)
 def get_performance_test(project_id: str, test_id: str, actor=Depends(current_user)) -> dict:
     return service.get_performance_test(project_id, test_id, actor)
@@ -53,5 +91,5 @@ def update_performance_test(
 
 
 @router.delete("/{test_id}", status_code=204)
-def delete_performance_test(project_id: str, test_id: str, actor=Depends(require_admin)) -> None:
+def delete_performance_test(project_id: str, test_id: str, actor=Depends(current_user)) -> None:
     service.delete_performance_test(project_id, test_id, actor)

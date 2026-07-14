@@ -41,7 +41,7 @@ def _seed_case(
     endpoint_id: str = "apiend-1",
     case_id: str = "apitc-1",
     method: str = "POST",
-    path: str = "/login",
+    path: str = "/api/login",
     title: str = "登录成功",
 ) -> None:
     with connect() as db:
@@ -91,6 +91,18 @@ def _seed_case(
         )
 
 
+def test_script_source_hash_changes_when_generation_skill_changes(monkeypatch: pytest.MonkeyPatch) -> None:
+    endpoint = {"id": "apiend-1", "method": "POST", "path": "/login", "summary": "登录"}
+    cases = [{"id": "apitc-1", "request": {"method": "POST", "path": "/login"}}]
+
+    monkeypatch.setattr(service, "pytest_requests_skill_fingerprint", lambda: "skill-a", raising=False)
+    first = service._script_source_hash(endpoint, cases)
+    monkeypatch.setattr(service, "pytest_requests_skill_fingerprint", lambda: "skill-b", raising=False)
+    second = service._script_source_hash(endpoint, cases)
+
+    assert first != second
+
+
 def test_generate_scripts_creates_pytest_project_without_hardcoded_environment(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -107,28 +119,34 @@ def test_generate_scripts_creates_pytest_project_without_hardcoded_environment(
 
     assert (suite_path / "pytest.ini").exists()
     assert (suite_path / "pyproject.toml").exists()
-    assert (suite_path / "support" / "client.py").exists()
+    assert (suite_path / "api" / "client.py").exists()
+    assert (suite_path / "utils" / "assertions.py").exists()
+    assert (suite_path / "conftest.py").exists()
     assert test_file.exists()
     assert data_file.exists()
-    assert test_file.name == "test_api.py"
-    assert data_file.name == "cases.json"
+    assert test_file.name == "test_login.py"
+    assert data_file.name == "test_login.yaml"
     assert test_file.parent == data_file.parent
-    assert test_file.parent.parent.name == "endpoints"
-    assert script["name"] == "post_login_apiend_1"
-    assert "API_BASE_URL" in (suite_path / "support" / "client.py").read_text(encoding="utf-8")
+    assert test_file.parent.parent.parent.name == "testcases"
+    assert test_file.parent.parent.name == "api"
+    assert test_file.parent.name == "login"
+    assert script["name"] == "api_login_apiend_1"
+    assert "API_AUTH_BEARER" in (suite_path / "api" / "client.py").read_text(encoding="utf-8")
     test_content = test_file.read_text(encoding="utf-8")
     assert "https://api.example" not in test_content
     assert "plain-token" not in test_content
 
     repeated = service.generate_project_scripts("project-1", ["apiend-1"], ACTOR)
     listed = service.list_project_scripts("project-1", ACTOR)
-    files = service.get_api_script_files("project-1", script["id"], ACTOR)
 
     assert repeated["summary"] == {"created": 0, "updated": 0, "unchanged": 1}
     assert len(listed) == 1
     assert listed[0]["endpoint_id"] == "apiend-1"
     assert listed[0]["case_count"] == 1
-    assert {item["kind"] for item in files["files"]} == {"test", "data"}
+
+
+def test_script_file_preview_service_is_not_exposed() -> None:
+    assert not hasattr(service, "get_api_script_files")
 
 
 def test_delete_script_removes_record_and_generated_files(
@@ -143,20 +161,20 @@ def test_delete_script_removes_record_and_generated_files(
     suite_path = Path(storage.resolve_stored_path(script["suite_path"]))
     test_file = Path(storage.resolve_stored_path(script["test_file_path"]))
     data_file = Path(storage.resolve_stored_path(script["data_file_path"]))
-    endpoint_dir = test_file.parent
-    unrelated_endpoint_dir = suite_path / "endpoints" / "get_users_apiend_2"
-    unrelated_endpoint_dir.mkdir(parents=True)
-    (unrelated_endpoint_dir / "test_api.py").write_text("def test_other(): pass\n", encoding="utf-8")
+    feature_dir = test_file.parent
+    unrelated_feature_dir = suite_path / "testcases" / "api" / "users" / "list"
+    unrelated_feature_dir.mkdir(parents=True)
+    (unrelated_feature_dir / "test_list.py").write_text("def test_other(): pass\n", encoding="utf-8")
 
     service.delete_api_script("project-1", script["id"], ACTOR)
 
     assert service.list_project_scripts("project-1", ACTOR) == []
     assert not test_file.exists()
     assert not data_file.exists()
-    assert not endpoint_dir.exists()
-    assert unrelated_endpoint_dir.exists()
+    assert not feature_dir.exists()
+    assert unrelated_feature_dir.exists()
     assert suite_path.exists()
-    assert (suite_path / "support" / "client.py").exists()
+    assert (suite_path / "api" / "client.py").exists()
 
 
 def test_generation_collection_failure_rolls_back_selected_endpoint_only(
@@ -169,7 +187,7 @@ def test_generation_collection_failure_rolls_back_selected_endpoint_only(
         endpoint_id="apiend-2",
         case_id="apitc-2",
         method="GET",
-        path="/users",
+        path="/api/users/list",
         title="用户列表",
     )
     existing = service.generate_project_scripts("project-1", ["apiend-2"], ACTOR)["scripts"][0]
@@ -192,15 +210,16 @@ def test_generation_collection_failure_rolls_back_selected_endpoint_only(
     assert exc_info.value.detail["code"] == "API_SCRIPT_COLLECTION_FAILED"
     assert "ModuleNotFoundError: support" in exc_info.value.detail["message"]
     assert [script["endpoint_id"] for script in service.list_project_scripts("project-1", ACTOR)] == ["apiend-2"]
-    failed_endpoint_dir = (
+    failed_feature_dir = (
         storage.PROJECT_FILE_STORAGE_ROOT
         / "project-1"
         / "api_automation"
         / "pytest_requests"
-        / "endpoints"
-        / "post_login_apiend_1"
+        / "testcases"
+        / "api"
+        / "login"
     )
-    assert not failed_endpoint_dir.exists()
+    assert not failed_feature_dir.exists()
     assert existing_test_file.exists()
     assert existing_data_file.exists()
 
@@ -248,15 +267,16 @@ def test_generation_collection_exception_rolls_back_new_endpoint(
 
     assert exc_info.value.detail["code"] == "API_SCRIPT_COLLECTION_FAILED"
     assert service.list_project_scripts("project-1", ACTOR) == []
-    endpoint_dir = (
+    feature_dir = (
         storage.PROJECT_FILE_STORAGE_ROOT
         / "project-1"
         / "api_automation"
         / "pytest_requests"
-        / "endpoints"
-        / "post_login_apiend_1"
+        / "testcases"
+        / "api"
+        / "login"
     )
-    assert not endpoint_dir.exists()
+    assert not feature_dir.exists()
 
 
 def test_generated_client_sends_multipart_upload_from_environment(
@@ -287,7 +307,7 @@ def test_generated_client_sends_multipart_upload_from_environment(
 
     monkeypatch.setattr(requests, "Session", FakeSession)
     namespace = {}
-    exec(renderer._client_py(), namespace)
+    exec(renderer.client_py(), namespace)
     client = namespace["ApiClient"]("https://api.example")
 
     client.request(
@@ -332,7 +352,7 @@ def test_generated_client_expands_path_parameters_from_case_test_data(monkeypatc
 
     monkeypatch.setattr(requests, "Session", FakeSession)
     namespace = {}
-    exec(renderer._client_py(), namespace)
+    exec(renderer.client_py(), namespace)
 
     namespace["ApiClient"]("https://api.example").request(
         {"method": "GET", "path": "/profiles/{profile_id}"},
@@ -344,7 +364,7 @@ def test_generated_client_expands_path_parameters_from_case_test_data(monkeypatc
 
 def test_generated_assertions_validate_download_response() -> None:
     namespace = {}
-    exec(renderer._assertions_py(), namespace)
+    exec(renderer.assertions_py(), namespace)
     response = SimpleNamespace(
         status_code=200,
         headers={
@@ -364,6 +384,40 @@ def test_generated_assertions_validate_download_response() -> None:
             {
                 "type": "body_sha256",
                 "expected": "9534888cc67113243c47c085e1389a8e429e0238e6ed6b15eab9342573e53d28",
+            },
+        ],
+    )
+
+
+def test_generated_assertions_validate_json_type_response_time_and_basic_schema() -> None:
+    namespace = {}
+    exec(renderer.assertions_py(), namespace)
+    response = SimpleNamespace(
+        status_code=200,
+        headers={"Content-Type": "application/json"},
+        content=b'{"data":{"id":"order-1","items":[]}}',
+        elapsed=SimpleNamespace(total_seconds=lambda: 0.12),
+        json=lambda: {"data": {"id": "order-1", "items": []}},
+    )
+
+    namespace["assert_response_assertions"](
+        response,
+        [
+            {"type": "jsonpath_type", "path": "$.data.id", "expected": "string"},
+            {"type": "response_time_max", "expected": 200},
+            {
+                "type": "schema_basic",
+                "expected": {
+                    "type": "object",
+                    "required": ["data"],
+                    "properties": {
+                        "data": {
+                            "type": "object",
+                            "required": ["id", "items"],
+                            "properties": {"id": {"type": "string"}, "items": {"type": "array"}},
+                        }
+                    },
+                },
             },
         ],
     )

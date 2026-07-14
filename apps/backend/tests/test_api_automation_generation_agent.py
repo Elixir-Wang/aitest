@@ -210,6 +210,11 @@ def test_execute_generation_run_saves_generated_cases(monkeypatch: pytest.Monkey
                     priority="P2",
                     endpoint_id="apiend-1",
                     coverage="negative",
+                    generation_notes=(
+                        "Mock 数据：删除必填字段 password。\n"
+                        "缺失信息：接口文档未声明对应的 HTTP 状态码和业务错误码。\n"
+                        "预期推断：暂按文档中的错误响应生成断言，执行失败后请结合实际响应调整。"
+                    ),
                     preconditions=["用户账号存在", "缺少 password 测试数据"],
                     request={"method": "POST", "path": "/login", "body": {"username": "demo"}},
                     test_data={
@@ -254,6 +259,8 @@ def test_execute_generation_run_saves_generated_cases(monkeypatch: pytest.Monkey
     assert manual_case["coverage"] == "negative"
     assert manual_case["preconditions"] == []
     assert manual_case["test_data"]["password"]["source"] == "manual_input"
+    assert manual_case["notes"].startswith("Mock 数据：删除必填字段 password。")
+    assert "缺失信息" in manual_case["notes"]
     assert "data_origin" not in manual_case
     assert api_automation_repo.loads_json(run["result_summary_json"], {})["test_case_count"] == 2
 
@@ -741,3 +748,8 @@ def test_api_automation_case_generation_skill_defines_coverage_dimensions() -> N
     assert "不生成 `scenario`" in skill_text
     assert '"files"' in skill_text
     assert "body_not_empty" in skill_text
+    assert "缺少明确状态码、业务错误码或错误消息时，不得跳过用例" in skill_text
+    assert "正确 Mock 数据" in skill_text
+    assert "错误 Mock 数据" in skill_text
+    assert "generation_notes" in skill_text
+    assert "用例仍然可以直接执行" in skill_text

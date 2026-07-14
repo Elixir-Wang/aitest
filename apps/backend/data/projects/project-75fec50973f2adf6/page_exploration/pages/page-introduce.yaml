@@ -1,0 +1,558 @@
+schema_version: '3.0'
+page:
+  id: page-introduce
+  title: 百融百工
+  normalized_path: /introduce
+states:
+- id: page-introduce__root__001
+  type: root
+  title: 百融百工
+  url: https://www.cybotstar.cn/introduce
+  elements:
+  - key: clickable-首字响应耗时 <0.6s(均值)
+    role: clickable
+    name: 首字响应耗时 <0.6s(均值)
+    action: click
+    locators:
+    - code: locator('body > div > div > div:nth-of-type(2) > div > div:nth-of-type(2)
+        > div:nth-of-type(2) > div:nth-of-type(1)')
+    context:
+      role: div
+      name: 首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0
+        1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . % (均值)
+  - key: clickable-首字响应耗时
+    role: clickable
+    name: 首字响应耗时
+    action: click
+    locators:
+    - code: 'getByText(''首字响应耗时'', { exact: true })'
+    - code: locator('body > div > div > div:nth-of-type(2) > div > div:nth-of-type(2)
+        > div:nth-of-type(2) > div:nth-of-type(1) > span')
+    context:
+      role: div
+      name: 首字响应耗时 <0.6s(均值)
+  - key: clickable-回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5
+      6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . % (均值)
+    role: clickable
+    name: 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9
+      . 0 1 2 3 4 5 6 7 8 9 . % (均值)
+    action: click
+    locators:
+    - code: locator('body > div > div > div:nth-of-type(2) > div > div:nth-of-type(2)
+        > div:nth-of-type(2) > div:nth-of-type(2)')
+    context:
+      role: div
+      name: 首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0
+        1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . % (均值)
+  - key: clickable-回复准确率
+    role: clickable
+    name: 回复准确率
+    action: click
+    locators:
+    - code: 'getByText(''回复准确率'', { exact: true })'
+    - code: locator('body > div > div > div:nth-of-type(2) > div > div:nth-of-type(2)
+        > div:nth-of-type(2) > div:nth-of-type(2) > span')
+    context:
+      role: div
+      name: 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8
+        9 . 0 1 2 3 4 5 6 7 8 9 . % (均值)
+  - key: clickable-产品客服 通过我们独有的结构化知识检索技术，成功解决了复杂知识库带来的挑战，实现了对C端用户提问的精准应答，另外还降低了人力客服成本，提高了服务效率。
+      95%以上 平均回复准确率 多轮对话 实时数据查询支持 网站客服 我们的图文提取分段技术可以精准捕捉网页中的图文信息，实现了网页型知识的准确提取和切分，极大提升了用户获
+    role: clickable
+    name: 产品客服 通过我们独有的结构化知识检索技术，成功解决了复杂知识库带来的挑战，实现了对C端用户提问的精准应答，另外还降低了人力客服成本，提高了服务效率。
+      95%以上 平均回复准确率 多轮对话 实时数据查询支持 网站客服 我们的图文提取分段技术可以精准捕捉网页中的图文信息，实现了网页型知识的准确提取和切分，极大提升了用户获
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(4) > div:nth-of-type(1) > div > div > div:nth-of-type(2)
+        > div:nth-of-type(2)')
+    context:
+      role: div
+      name: 文字对话场景 智能语音场景 虚拟人场景 产品客服 通过我们独有的结构化知识检索技术，成功解决了复杂知识库带来的挑战，实现了对C端用户提问的精准应答，另外还降低了人力客服成本，提高了服务效率。
+        95%以上 平均回复准确率 多轮对话 实时数据查
+  - key: button-立即体验
+    role: button
+    name: 立即体验
+    action: click
+    locators:
+    - code: 'getByRole(''button'', { name: ''立即体验'' })'
+    - code: locator('button:nth-of-type(1)')
+    context:
+      role: div
+      name: 立即体验我要咨询
+  - key: button-我要咨询
+    role: button
+    name: 我要咨询
+    action: click
+    locators:
+    - code: 'getByRole(''button'', { name: ''我要咨询'' })'
+    - code: locator('button:nth-of-type(2)')
+    context:
+      role: div
+      name: 立即体验我要咨询
+  - key: link-京公网安备11010502055440号
+    role: link
+    name: 京公网安备11010502055440号
+    action: click
+    locators:
+    - code: 'getByRole(''link'', { name: ''京公网安备11010502055440号'' })'
+    - code: locator('a')
+    context:
+      role: li
+      name: 京公网安备11010502055440号
+  - key: clickable-产品手册 立即体验 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 立即体验我要咨询 卓越的响应速度，精准的回答效果
+      首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3
+      4 5 6 7 8 9 . --in--ai-0-6s-0-1-2-3-4-5-6-7-8-9-0-1
+    role: clickable
+    name: '产品手册 立即体验 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 立即体验我要咨询 卓越的响应速度，精准的回答效果 首字响应耗时
+      <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6
+      7 8 9 . '
+    action: click
+    locators:
+    - code: locator('#app')
+    context:
+      ordinal: 1
+      role: body
+      name: '产品手册 立即体验 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 立即体验我要咨询 卓越的响应速度，精准的回答效果
+        首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 '
+  - key: clickable-产品手册 立即体验 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 立即体验我要咨询 卓越的响应速度，精准的回答效果
+      首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3
+      4 5 6 7 8 9 . --in--ai-0-6s-0-1-2-3-4-5-6-7-8-9-0-1-2
+    role: clickable
+    name: '产品手册 立即体验 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 立即体验我要咨询 卓越的响应速度，精准的回答效果 首字响应耗时
+      <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6
+      7 8 9 . '
+    action: click
+    locators:
+    - code: locator('body > div > div')
+    context:
+      ordinal: 2
+      role: div
+      name: '产品手册 立即体验 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 立即体验我要咨询 卓越的响应速度，精准的回答效果
+        首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 '
+  - key: clickable-产品手册 立即体验 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 立即体验我要咨询
+    role: clickable
+    name: 产品手册 立即体验 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 立即体验我要咨询
+    action: click
+    locators:
+    - code: 'getByText(''产品手册 立即体验 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 立即体验我要咨询'', {
+        exact: true })'
+    - code: locator('body > div > div > div:nth-of-type(1)')
+    context:
+      role: div
+      name: '产品手册 立即体验 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 立即体验我要咨询 卓越的响应速度，精准的回答效果
+        首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 '
+  - key: clickable-产品手册 立即体验--in--ai
+    role: clickable
+    name: 产品手册 立即体验
+    action: click
+    locators:
+    - code: 'getByText(''产品手册 立即体验'', { exact: true })'
+    - code: locator('body > div > div > div:nth-of-type(1) > div:nth-of-type(3)')
+    context:
+      ordinal: 1
+      role: div
+      name: 产品手册 立即体验 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 立即体验我要咨询
+  - key: clickable-产品手册 立即体验--in--产品手册 立即体验
+    role: clickable
+    name: 产品手册 立即体验
+    action: click
+    locators:
+    - code: 'getByText(''产品手册 立即体验'', { exact: true })'
+    - code: locator('body > div > div > div:nth-of-type(1) > div:nth-of-type(3) >
+        div')
+    context:
+      ordinal: 2
+      role: div
+      name: 产品手册 立即体验
+  - key: clickable-产品手册 立即体验--in--产品手册 立即体验-2
+    role: clickable
+    name: 产品手册 立即体验
+    action: click
+    locators:
+    - code: 'getByText(''产品手册 立即体验'', { exact: true })'
+    - code: locator('body > div > div > div:nth-of-type(1) > div:nth-of-type(3) >
+        div > div')
+    context:
+      ordinal: 3
+      role: div
+      name: 产品手册 立即体验
+  - key: clickable-产品手册
+    role: clickable
+    name: 产品手册
+    action: click
+    locators:
+    - code: 'getByText(''产品手册'', { exact: true })'
+    - code: locator('body > div > div > div:nth-of-type(1) > div:nth-of-type(3) >
+        div > div > div:nth-of-type(1)')
+    context:
+      role: div
+      name: 产品手册 立即体验
+  - key: clickable-立即体验--in--产品手册 立即体验
+    role: clickable
+    name: 立即体验
+    action: click
+    locators:
+    - code: locator('body > div > div > div:nth-of-type(1) > div:nth-of-type(3) >
+        div > div > div:nth-of-type(2)')
+    context:
+      ordinal: 1
+      role: div
+      name: 产品手册 立即体验
+  - key: clickable-立即体验我要咨询
+    role: clickable
+    name: 立即体验我要咨询
+    action: click
+    locators:
+    - code: 'getByText(''立即体验我要咨询'', { exact: true })'
+    - code: locator('body > div > div > div:nth-of-type(1) > div:nth-of-type(5)')
+    context:
+      role: div
+      name: 产品手册 立即体验 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 立即体验我要咨询
+  - key: clickable-立即体验--in--立即体验我要咨询
+    role: clickable
+    name: 立即体验
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(5) > span:nth-of-type(1)')
+    context:
+      ordinal: 2
+      role: div
+      name: 立即体验我要咨询
+  - key: clickable-我要咨询
+    role: clickable
+    name: 我要咨询
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(5) > span:nth-of-type(2)')
+    context:
+      role: div
+      name: 立即体验我要咨询
+  - key: clickable-卓越的响应速度，精准的回答效果 首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 .
+      0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . % (均值)
+    role: clickable
+    name: 卓越的响应速度，精准的回答效果 首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4
+      5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . % (均值)
+    action: click
+    locators:
+    - code: locator('body > div > div > div:nth-of-type(2)')
+    context:
+      role: div
+      name: '产品手册 立即体验 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户 立即体验我要咨询 卓越的响应速度，精准的回答效果
+        首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 '
+  - key: clickable-首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7
+      8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . % (均值)--in--0-6s-0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7
+    role: clickable
+    name: 首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1
+      2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . % (均值)
+    action: click
+    locators:
+    - code: locator('body > div > div > div:nth-of-type(2) > div')
+    context:
+      ordinal: 1
+      role: div
+      name: 卓越的响应速度，精准的回答效果 首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3
+        4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6
+  - key: clickable-首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7
+      8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . % (均值)--in--0-6s-0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-2
+    role: clickable
+    name: 首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1
+      2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . % (均值)
+    action: click
+    locators:
+    - code: locator('body > div > div > div:nth-of-type(2) > div > div:nth-of-type(2)')
+    context:
+      ordinal: 2
+      role: div
+      name: 首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0
+        1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . % (均值)
+  - key: clickable-首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7
+      8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . % (均值)--in--0-6s-0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-3
+    role: clickable
+    name: 首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1
+      2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . % (均值)
+    action: click
+    locators:
+    - code: locator('body > div > div > div:nth-of-type(2) > div > div:nth-of-type(2)
+        > div:nth-of-type(2)')
+    context:
+      ordinal: 3
+      role: div
+      name: 首字响应耗时 <0.6s(均值) 回复准确率 > 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0
+        1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . % (均值)
+  - key: clickable-0-6s
+    role: clickable
+    name: <0.6s
+    action: click
+    locators:
+    - code: 'getByText(''<0.6s'', { exact: true })'
+    - code: locator('div:nth-of-type(1) > h1 > span:nth-of-type(1)')
+    context:
+      role: h1
+      name: <0.6s(均值)
+  - key: clickable-(均值)
+    role: clickable
+    name: (均值)
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(1) > h1 > span:nth-of-type(2)')
+    context:
+      role: h1
+      name: <0.6s(均值)
+  - key: clickable-
+    role: clickable
+    name: '>'
+    action: click
+    locators:
+    - code: 'getByText(''>'', { exact: true })'
+    - code: locator('div:nth-of-type(2) > h1 > span:nth-of-type(1)')
+    context:
+      role: h1
+      name: '> 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0
+        1 2 3 4 5 6 7 8 9 . % (均值)'
+  - key: clickable-0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9---in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9-
+    role: clickable
+    name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2
+      3 4 5 6 7 8 9 .
+    action: click
+    locators:
+    - code: locator('h1 > div')
+    context:
+      ordinal: 1
+      role: h1
+      name: '> 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0
+        1 2 3 4 5 6 7 8 9 . % (均值)'
+  - key: clickable-0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9---in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9--2
+    role: clickable
+    name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2
+      3 4 5 6 7 8 9 .
+    action: click
+    locators:
+    - code: locator('h1 > div > div')
+    context:
+      ordinal: 2
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1
+        2 3 4 5 6 7 8 9 .
+  - key: clickable-0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9---in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9--3
+    role: clickable
+    name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2
+      3 4 5 6 7 8 9 .
+    action: click
+    locators:
+    - code: locator('h1 > div > div > div')
+    context:
+      ordinal: 3
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1
+        2 3 4 5 6 7 8 9 .
+  - key: clickable-0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9--in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9-
+    role: clickable
+    name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+    action: click
+    locators:
+    - code: locator('h1 > div > div > div > ul > li:nth-of-type(1)')
+    context:
+      ordinal: 1
+      role: ul
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 . 0 1
+        2 3 4 5 6 7 8 9 .
+  - key: clickable-0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9--in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9
+    role: clickable
+    name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div')
+    context:
+      ordinal: 2
+      role: li
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9--in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9-2
+    role: clickable
+    name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div')
+    context:
+      ordinal: 3
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-0--in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9
+    role: clickable
+    name: '0'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(1)')
+    context:
+      ordinal: 1
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-1--in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9
+    role: clickable
+    name: '1'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(2)')
+    context:
+      ordinal: 1
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-2--in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9
+    role: clickable
+    name: '2'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(3)')
+    context:
+      ordinal: 1
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-3--in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9
+    role: clickable
+    name: '3'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(4)')
+    context:
+      ordinal: 1
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-4--in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9
+    role: clickable
+    name: '4'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(5)')
+    context:
+      ordinal: 1
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-5
+    role: clickable
+    name: '5'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(6)')
+    context:
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-6
+    role: clickable
+    name: '6'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(7)')
+    context:
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-7
+    role: clickable
+    name: '7'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(8)')
+    context:
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-8
+    role: clickable
+    name: '8'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(9)')
+    context:
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-9
+    role: clickable
+    name: '9'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(10)')
+    context:
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable--2
+    role: clickable
+    name: .
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(11)')
+    context:
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-0--in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9-2
+    role: clickable
+    name: '0'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(12)')
+    context:
+      ordinal: 2
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-1--in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9-2
+    role: clickable
+    name: '1'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(13)')
+    context:
+      ordinal: 2
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-2--in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9-2
+    role: clickable
+    name: '2'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(14)')
+    context:
+      ordinal: 2
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-3--in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9-2
+    role: clickable
+    name: '3'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(15)')
+    context:
+      ordinal: 2
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  - key: clickable-4--in--0-1-2-3-4-5-6-7-8-9-0-1-2-3-4-5-6-7-8-9-2
+    role: clickable
+    name: '4'
+    action: click
+    locators:
+    - code: locator('li:nth-of-type(1) > div > div > span:nth-of-type(16)')
+    context:
+      ordinal: 2
+      role: div
+      name: 0 1 2 3 4 5 6 7 8 9 . 0 1 2 3 4 5 6 7 8 9 .
+  assertion_texts:
+  - 百融百工
+  - 产品手册
+  - 立即体验
+  - 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
+  - 立即体验我要咨询
+  - 卓越的响应速度，精准的回答效果
+  - 首字响应耗时
+  - <0.6s(均值)
+  - 回复准确率
+  - '>'
+  - '0'
+  - '1'
+  - '2'
+  - '3'
+  - '4'
+  - '5'
+  - '6'
+  - '7'
+  - '8'
+  - '9'
+  - .
+  - '%'
+  - (均值)
+  - 全面的平台功能，轻松应对多样化业务挑战
+  children: []

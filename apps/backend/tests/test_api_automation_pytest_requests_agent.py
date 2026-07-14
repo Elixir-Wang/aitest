@@ -1,7 +1,8 @@
 from pathlib import Path
 
+from app.agents.api_automation.pytest_requests.generator import generate_pytest_requests_code
 from app.agents.api_automation.pytest_requests.schemas import PytestRequestsGenerationInput
-from app.agents.api_automation.pytest_requests.service import generate_pytest_requests_code
+from app.agents.api_automation.pytest_requests.skill import PYTEST_REQUESTS_CODE_GENERATION_SKILL
 
 
 def _input(cases: list[dict] | None = None) -> PytestRequestsGenerationInput:
@@ -14,6 +15,20 @@ def _input(cases: list[dict] | None = None) -> PytestRequestsGenerationInput:
         },
         cases=cases or [],
     )
+
+
+def test_generation_uses_runtime_loaded_skill_definition() -> None:
+    skill = PYTEST_REQUESTS_CODE_GENERATION_SKILL
+
+    assert skill.name == "pytest-requests-code-generation"
+    assert skill.definition.description.startswith("将单个接口")
+    assert {reference.name for reference in skill.definition.references} == {
+        "assertion-mapping.md",
+        "generation-rules.md",
+        "project-structure.md",
+        "request-mapping.md",
+    }
+    assert len(skill.fingerprint) == 64
 
 
 def test_generation_returns_logical_files_without_project_context() -> None:

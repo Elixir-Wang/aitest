@@ -1,19 +1,18 @@
-from app.agents.api_automation.pytest_requests.agent import pytest_requests_generation_agent
 from app.agents.api_automation.pytest_requests.schemas import (
     GeneratedCodeFile,
     PytestRequestsEndpoint,
-    PytestRequestsFrameworkConfig,
     PytestRequestsGenerationInput,
     PytestRequestsGenerationResult,
 )
-from app.agents.api_automation.pytest_requests.service import generate_pytest_requests_code
+from app.agents.api_automation.pytest_requests.skill import PYTEST_REQUESTS_CODE_GENERATION_SKILL
+
+generate_pytest_requests_code = PYTEST_REQUESTS_CODE_GENERATION_SKILL.invoke
 
 __all__ = [
     "GeneratedCodeFile",
     "PytestRequestsEndpoint",
-    "PytestRequestsFrameworkConfig",
     "PytestRequestsGenerationInput",
     "PytestRequestsGenerationResult",
+    "PYTEST_REQUESTS_CODE_GENERATION_SKILL",
     "generate_pytest_requests_code",
-    "pytest_requests_generation_agent",
 ]

@@ -2,7 +2,7 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 
-from app.agents.api_automation.pytest_requests.renderer import render_scenario_files, slugify
+from app.agents.api_automation.pytest_requests.renderer import render_pytest_requests_files, slugify
 from app.agents.api_automation.pytest_requests.schemas import PytestRequestsGenerationResult
 from app.core import storage
 
@@ -70,7 +70,7 @@ def snapshot_endpoint_artifacts(project_id: str, result: PytestRequestsGeneratio
     suite_path = project_suite_path(project_id)
     files = {}
     for generated_file in result.files:
-        if generated_file.kind not in {"test", "data"}:
+        if generated_file.kind not in {"test", "data", "init"}:
             continue
         target = resolve_suite_file(suite_path, generated_file.key)
         files[target] = target.read_text(encoding="utf-8") if target.exists() else None
@@ -79,6 +79,7 @@ def snapshot_endpoint_artifacts(project_id: str, result: PytestRequestsGeneratio
 
 def restore_endpoint_artifacts(snapshot: dict) -> None:
     suite_path = Path(snapshot["suite_path"]).resolve()
+    testcases_root = (suite_path / "testcases").resolve()
     parents = set()
     for raw_path, content in snapshot["files"].items():
         path = Path(raw_path).resolve()
@@ -89,9 +90,12 @@ def restore_endpoint_artifacts(snapshot: dict) -> None:
                 path.unlink()
         else:
             write_atomic(path, content)
-    endpoints_root = (suite_path / "endpoints").resolve()
-    for parent in parents:
-        if parent.parent == endpoints_root and parent.exists() and not any(parent.iterdir()):
+    for parent in sorted(parents, key=lambda p: len(p.as_posix()), reverse=True):
+        try:
+            parent.relative_to(testcases_root)
+        except ValueError:
+            continue
+        if parent.exists() and not any(parent.iterdir()):
             parent.rmdir()
 
 

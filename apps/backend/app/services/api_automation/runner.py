@@ -33,7 +33,7 @@ def collect_script_suite(*, suite_path: Path, timeout: int, test_paths: list[str
             "stderr": _redact(sync.stderr),
         }
     collected = subprocess.run(
-        ["uv", "run", "pytest", "--collect-only", *(test_paths or ["endpoints"])],
+        ["uv", "run", "pytest", "--collect-only", *(test_paths or ["testcases"])],
         cwd=suite_path,
         text=True,
         capture_output=True,
@@ -64,6 +64,8 @@ def run_script_suite(
     _clear_previous_outputs(run_dir)
     _write_runtime_env(run_dir, environment)
     process_env = _build_process_env(environment)
+    scenario_result_path = run_dir / "scenario-result.json"
+    process_env["API_SCENARIO_RESULT_PATH"] = str(scenario_result_path)
 
     sync = subprocess.run(
         ["uv", "sync"],
@@ -99,6 +101,7 @@ def run_script_suite(
             "stdout_path": str(run_dir / "stdout.txt"),
             "stderr_path": str(run_dir / "stderr.txt"),
             "json_report_path": "",
+            "scenario_result_path": str(scenario_result_path) if scenario_result_path.exists() else "",
             "exitcode": pytest.returncode,
         }
 
@@ -110,12 +113,13 @@ def run_script_suite(
         "stdout_path": str(run_dir / "stdout.txt"),
         "stderr_path": str(run_dir / "stderr.txt"),
         "json_report_path": str(report_path),
+        "scenario_result_path": str(scenario_result_path) if scenario_result_path.exists() else "",
         "exitcode": pytest.returncode,
     }
 
 
 def _clear_previous_outputs(run_dir: Path) -> None:
-    for filename in ("report.json", "stdout.txt", "stderr.txt"):
+    for filename in ("report.json", "scenario-result.json", "stdout.txt", "stderr.txt"):
         path = run_dir / filename
         if path.exists():
             path.unlink()

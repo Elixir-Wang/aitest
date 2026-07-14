@@ -1,6 +1,6 @@
-from typing import Any, Literal
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class PytestRequestsEndpoint(BaseModel):
@@ -8,23 +8,21 @@ class PytestRequestsEndpoint(BaseModel):
     method: str
     path: str
     summary: str = ""
-
-
-class PytestRequestsFrameworkConfig(BaseModel):
-    python_version: str = ">=3.12"
+    module: str = ""
+    feature: str = ""
 
 
 class PytestRequestsGenerationInput(BaseModel):
     endpoint: PytestRequestsEndpoint
-    cases: list[dict[str, Any]] = Field(default_factory=list)
-    framework_config: PytestRequestsFrameworkConfig = Field(default_factory=PytestRequestsFrameworkConfig)
+    cases: list[dict[str, Any]] = []
+    is_first_time: bool = False
 
 
 class GeneratedCodeFile(BaseModel):
     key: str
-    kind: Literal["test", "data", "support", "config", "documentation"]
-    language: Literal["python", "json", "toml", "ini", "markdown"]
+    language: str
     content: str
+    kind: str = ""  # "test", "data", or "" for support files
 
 
 class PytestRequestsGenerationResult(BaseModel):
@@ -32,4 +30,3 @@ class PytestRequestsGenerationResult(BaseModel):
     endpoint_key: str
     files: list[GeneratedCodeFile]
     case_count: int
-    warnings: list[str] = Field(default_factory=list)

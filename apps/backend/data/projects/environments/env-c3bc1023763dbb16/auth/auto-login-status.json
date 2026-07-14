@@ -1,6 +1,6 @@
 {
-  "status": "failed",
-  "message": "自动登录执行异常，请稍后重试。",
-  "updated_at": "2026-07-13T06:06:05.946101+00:00",
-  "last_error_code": "AUTO_LOGIN_EXCEPTION"
+  "status": "succeeded",
+  "message": "登录态已自动保存。",
+  "updated_at": "2026-07-14T07:56:12.861261+00:00",
+  "last_error_code": ""
 }

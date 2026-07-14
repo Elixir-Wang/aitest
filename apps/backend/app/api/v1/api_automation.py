@@ -15,6 +15,7 @@ from app.schemas.api_automation import (
     ApiRunCreateIn,
     ApiScenarioExecuteIn,
     ApiScenarioIn,
+    ApiScenarioPublishIn,
     ApiScenarioStepIn,
     ApiScenarioStepsReplaceIn,
     ApiScriptGenerateIn,
@@ -202,11 +203,6 @@ def list_api_scripts(project_id: str, actor=Depends(current_user)) -> list[dict]
     return service.list_project_scripts(project_id, actor)
 
 
-@router.get("/api-scripts/{script_id}/files")
-def get_api_script_files(project_id: str, script_id: str, actor=Depends(current_user)) -> dict:
-    return service.get_api_script_files(project_id, script_id, actor)
-
-
 @router.get("/api-scripts/{script_id}")
 def get_api_script(project_id: str, script_id: str, actor=Depends(current_user)) -> dict:
     return service.get_api_script(project_id, script_id, actor)
@@ -280,6 +276,11 @@ def get_api_run_report(project_id: str, run_id: str, actor=Depends(current_user)
     return service.get_api_run_report(project_id, run_id, actor)
 
 
+@router.get("/api-runs/{run_id}/scenario-result")
+def get_api_scenario_run_result(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
+    return service.get_api_scenario_run_result(project_id, run_id, actor)
+
+
 @router.get("/api-scenarios")
 def list_api_scenarios(project_id: str, actor=Depends(current_user)) -> list[dict]:
     return service.list_api_scenarios(project_id, actor)
@@ -326,8 +327,37 @@ def validate_api_scenario(project_id: str, scenario_id: str, actor=Depends(curre
 
 
 @router.post("/api-scenarios/{scenario_id}/publish")
-def publish_api_scenario(project_id: str, scenario_id: str, actor=Depends(require_admin)) -> dict:
-    return service.publish_api_scenario(project_id, scenario_id, actor)
+def publish_api_scenario(
+    project_id: str,
+    scenario_id: str,
+    payload: ApiScenarioPublishIn | None = None,
+    actor=Depends(require_admin),
+) -> dict:
+    return service.publish_api_scenario(
+        project_id,
+        scenario_id,
+        actor,
+        confirm_asset_changes=payload.confirm_asset_changes if payload else False,
+    )
+
+
+@router.get("/api-scenarios/{scenario_id}/revisions")
+def list_api_scenario_revisions(
+    project_id: str,
+    scenario_id: str,
+    actor=Depends(current_user),
+) -> list[dict]:
+    return service.list_api_scenario_revisions(project_id, scenario_id, actor)
+
+
+@router.post("/api-scenarios/{scenario_id}/revisions/{revision}/restore")
+def restore_api_scenario_revision(
+    project_id: str,
+    scenario_id: str,
+    revision: int,
+    actor=Depends(require_admin),
+) -> dict:
+    return service.restore_api_scenario_revision(project_id, scenario_id, revision, actor)
 
 
 @router.post("/api-scenarios/{scenario_id}/execute")
@@ -338,7 +368,13 @@ def execute_api_scenario(
     background_tasks: BackgroundTasks,
     actor=Depends(require_admin),
 ) -> dict:
-    created = service.create_api_scenario_run(project_id, scenario_id, payload.api_environment_id, actor)
+    created = service.create_api_scenario_run(
+        project_id,
+        scenario_id,
+        payload.api_environment_id,
+        actor,
+        source=payload.source,
+    )
     background_tasks.add_task(service.execute_api_run, created["id"])
     return created
 

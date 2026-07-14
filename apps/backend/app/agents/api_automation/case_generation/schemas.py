@@ -31,6 +31,7 @@ class ApiGeneratedCase(BaseModel):
     request: dict[str, Any]
     test_data: dict[str, Any] = Field(default_factory=dict)
     assertions: list[ApiAssertion]
+    generation_notes: str = ""
 
 
 class ApiAutomationGenerationInput(BaseModel):

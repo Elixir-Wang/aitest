@@ -6,7 +6,7 @@ def test_skill_middleware_loads_skill_and_references(tmp_path):
     references_dir = skill_dir / "references"
     references_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
-        "---\nname: demo\n---\n\n# Demo Skill\n\nUse the skill.",
+        "---\nname: demo\ndescription: Demo description\n---\n\n# Demo Skill\n\nUse the skill.",
         encoding="utf-8",
     )
     (references_dir / "b.md").write_text("second reference", encoding="utf-8")
@@ -19,3 +19,5 @@ def test_skill_middleware_loads_skill_and_references(tmp_path):
     assert middleware._load_references() == (
         "## 📄 a\n\nfirst reference\n\n---\n\n## 📄 b\n\nsecond reference"
     )
+    assert middleware.definition.name == "demo"
+    assert middleware.definition.description == "Demo description"

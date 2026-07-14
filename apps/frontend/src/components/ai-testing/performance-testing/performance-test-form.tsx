@@ -1,66 +1,79 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
-import { AlertTriangle, ArrowLeft, Check, Gauge, LoaderCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, FileText, Gauge, LoaderCircle, Settings, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import { ShellSection } from "@/components/ai-testing/page-shell";
+import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   type ApiAutomationEndpoint,
   type ApiAutomationEnvironment,
-  type ApiAutomationTestCase,
+  type ApiProject,
   ApiRequestError,
+  apiRequest,
   createPerformanceTest,
+  generatePerformanceScript,
   listApiAutomationEndpoints,
   listApiAutomationEnvironments,
-  listApiAutomationTestCases,
+  type PerformanceCircuitBreaker,
+  type PerformanceDataConfig,
+  type PerformanceLoadConfig,
+  type PerformanceLoadStage,
   type PerformanceRequestPreview,
   previewPerformanceRequest,
 } from "@/lib/api-client";
 
-import { LoadProfileRail } from "./load-profile-rail";
+import { LoadStageEditor } from "./load-stage-editor";
+import { PerformanceDataEditor } from "./performance-data-editor";
 
 type NumericDraft = {
-  users: string;
-  spawnRate: string;
-  measurementSeconds: string;
   waitMin: string;
   waitMax: string;
   timeout: string;
   maxFailPercent: string;
   maxAverageMs: string;
-  maxP95Ms: string;
-  minRps: string;
 };
 
 const initialNumbers: NumericDraft = {
-  users: "10",
-  spawnRate: "1",
-  measurementSeconds: "60",
   waitMin: "1",
   waitMax: "3",
   timeout: "30",
-  maxFailPercent: "",
-  maxAverageMs: "",
-  maxP95Ms: "",
-  minRps: "",
+  maxFailPercent: "0",
+  maxAverageMs: "3000",
 };
 
-export function PerformanceTestForm({ projectId }: { projectId: string }) {
+const initialDataConfig: PerformanceDataConfig = {
+  source: "fixed",
+  selection_strategy: "sequential_loop",
+  json_rows: [],
+  csv_file_name: "",
+  csv_file_path: "",
+};
+
+const initialCircuitBreaker: PerformanceCircuitBreaker = {
+  enabled: false,
+  window_seconds: 10,
+  max_fail_ratio: 0.5,
+  consecutive_windows: 3,
+};
+
+export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectId?: string }) {
   const router = useRouter();
   const previewSequence = useRef(0);
+  const [projects, setProjects] = useState<ApiProject[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
   const [endpoints, setEndpoints] = useState<ApiAutomationEndpoint[]>([]);
   const [environments, setEnvironments] = useState<ApiAutomationEnvironment[]>([]);
-  const [testCases, setTestCases] = useState<ApiAutomationTestCase[]>([]);
   const [endpointId, setEndpointId] = useState("");
   const [environmentId, setEnvironmentId] = useState("");
-  const [sourceCaseId, setSourceCaseId] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [pathJson, setPathJson] = useState("{}");
@@ -68,6 +81,10 @@ export function PerformanceTestForm({ projectId }: { projectId: string }) {
   const [headersJson, setHeadersJson] = useState("{}");
   const [bodyJson, setBodyJson] = useState("null");
   const [successCodes, setSuccessCodes] = useState("200");
+  const [mode, setMode] = useState<PerformanceLoadConfig["mode"]>("fixed");
+  const [stages, setStages] = useState<PerformanceLoadStage[]>([]);
+  const [dataConfig, setDataConfig] = useState<PerformanceDataConfig>(initialDataConfig);
+  const [circuitBreaker, setCircuitBreaker] = useState<PerformanceCircuitBreaker>(initialCircuitBreaker);
   const [numbers, setNumbers] = useState<NumericDraft>(initialNumbers);
   const [preview, setPreview] = useState<PerformanceRequestPreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
@@ -75,19 +92,37 @@ export function PerformanceTestForm({ projectId }: { projectId: string }) {
   const [requestTouched, setRequestTouched] = useState(false);
 
   useEffect(() => {
+    apiRequest<ApiProject[]>("/projects")
+      .then((rows) => {
+        const active = rows.filter((project) => project.status === "active");
+        setProjects(active);
+        if (initialProjectId && active.some((project) => project.id === initialProjectId)) {
+          setSelectedProjectId(initialProjectId);
+        }
+      })
+      .catch((error) => toast.error(apiErrorMessage(error, "项目加载失败")));
+  }, [initialProjectId]);
+
+  useEffect(() => {
+    setEndpoints([]);
+    setEnvironments([]);
+    setEndpointId("");
+    setEnvironmentId("");
+    setPreview(null);
+    setRequestTouched(false);
+    setPathJson("{}");
+    setQueryJson("{}");
+    setHeadersJson("{}");
+    setBodyJson("null");
+    setDataConfig(initialDataConfig);
+    if (!selectedProjectId) return;
     let ignore = false;
-    Promise.all([
-      listApiAutomationEndpoints(projectId),
-      listApiAutomationEnvironments(projectId),
-      listApiAutomationTestCases(projectId),
-    ])
-      .then(([endpointRows, environmentRows, caseRows]) => {
+    Promise.all([listApiAutomationEndpoints(selectedProjectId), listApiAutomationEnvironments(selectedProjectId)])
+      .then(([endpointRows, environmentRows]) => {
         if (ignore) return;
         setEndpoints(endpointRows);
         setEnvironments(environmentRows);
-        setTestCases(caseRows);
-        const firstEndpoint = endpointRows[0]?.id ?? "";
-        setEndpointId(firstEndpoint);
+        setEndpointId(endpointRows[0]?.id ?? "");
         setEnvironmentId(environmentRows[0]?.id ?? "");
         if (environmentRows[0]) {
           setNumbers((current) => ({ ...current, timeout: String(environmentRows[0].timeout_seconds) }));
@@ -97,15 +132,15 @@ export function PerformanceTestForm({ projectId }: { projectId: string }) {
     return () => {
       ignore = true;
     };
-  }, [projectId]);
+  }, [selectedProjectId]);
 
   useEffect(() => {
-    if (!endpointId) return;
+    if (!selectedProjectId || !endpointId) return;
     const sequence = ++previewSequence.current;
     setPreviewing(true);
-    previewPerformanceRequest(projectId, {
+    previewPerformanceRequest(selectedProjectId, {
       endpoint_id: endpointId,
-      source_api_test_case_id: sourceCaseId || null,
+      api_environment_id: environmentId || undefined,
     })
       .then((result) => {
         if (sequence !== previewSequence.current) return;
@@ -125,33 +160,16 @@ export function PerformanceTestForm({ projectId }: { projectId: string }) {
       .finally(() => {
         if (sequence === previewSequence.current) setPreviewing(false);
       });
-  }, [endpointId, projectId, sourceCaseId]);
+  }, [endpointId, environmentId, selectedProjectId]);
 
-  const endpointCases = useMemo(
-    () => testCases.filter((item) => item.endpoint_id === endpointId),
-    [endpointId, testCases],
-  );
-
-  const selectedEndpoint = endpoints.find((item) => item.id === endpointId) ?? null;
-  const users = numberValue(numbers.users, 1);
-  const spawnRate = numberValue(numbers.spawnRate, 1);
-  const measurementSeconds = numberValue(numbers.measurementSeconds, 1);
+  function changeMode(nextMode: PerformanceLoadConfig["mode"]) {
+    setMode(nextMode);
+    setStages(defaultStages(nextMode));
+  }
 
   function changeEndpoint(nextEndpointId: string) {
+    if (requestTouched && !window.confirm("切换接口会重置当前请求配置，继续？")) return;
     setEndpointId(nextEndpointId);
-    setSourceCaseId("");
-    setPreview(null);
-  }
-
-  function changeSourceCase(nextSourceCaseId: string) {
-    if (requestTouched && !window.confirm("切换来源用例会重置当前请求配置，继续？")) return;
-    setSourceCaseId(nextSourceCaseId);
-  }
-
-  function changeEnvironment(nextEnvironmentId: string) {
-    setEnvironmentId(nextEnvironmentId);
-    const environment = environments.find((item) => item.id === nextEnvironmentId);
-    if (environment) setNumbers((current) => ({ ...current, timeout: String(environment.timeout_seconds) }));
   }
 
   function updateNumber(field: keyof NumericDraft, value: string) {
@@ -159,54 +177,55 @@ export function PerformanceTestForm({ projectId }: { projectId: string }) {
   }
 
   async function submit() {
-    if (!name.trim() || !endpointId || !environmentId) {
-      toast.error("请填写名称并选择接口和环境");
+    if (!selectedProjectId || !name.trim() || !endpointId || !environmentId) {
+      toast.error("请选择项目、环境和接口，并填写测试名称");
       return;
     }
+    if (mode !== "fixed" && stages.length === 0) {
+      toast.error("当前测试模式至少需要一个负载阶段");
+      return;
+    }
+    setSaving(true);
     try {
-      const pathParameters = parseObject(pathJson, "Path 参数");
-      const queryParameters = parseObject(queryJson, "Query 参数");
-      const headers = parseObject(headersJson, "Headers");
-      const body = parseJson(bodyJson, "Request Body");
-      const waitMin = positiveNumber(numbers.waitMin, "最小等待时间", 0.1);
-      const waitMax = positiveNumber(numbers.waitMax, "最大等待时间", 0.1);
-      if (waitMax < waitMin) throw new Error("最大等待时间不能小于最小等待时间");
-      const codes = successCodes
-        .split(",")
-        .map((value) => Number(value.trim()))
-        .filter(Number.isInteger);
-      if (codes.length === 0 || codes.some((code) => code < 100 || code > 599)) {
-        throw new Error("成功状态码格式不正确");
-      }
-
-      setSaving(true);
-      const created = await createPerformanceTest(projectId, {
+      const created = await createPerformanceTest(selectedProjectId, {
         name: name.trim(),
         description: description.trim(),
         target_type: "endpoint",
         endpoint_id: endpointId,
         api_environment_id: environmentId,
-        source_api_test_case_id: sourceCaseId || null,
         request_config: {
-          path_parameters: pathParameters,
-          query_parameters: queryParameters,
-          headers,
-          body,
+          path_parameters: parseObject(pathJson, "Path 参数"),
+          query_parameters: parseObject(queryJson, "Query 参数"),
+          headers: parseObject(headersJson, "Headers"),
+          body: parseJson(bodyJson, "Request Body"),
           random_seed: null,
         },
         load_config: {
-          users: positiveInteger(numbers.users, "并发用户数"),
-          spawn_rate: positiveNumber(numbers.spawnRate, "启动速率"),
-          measurement_duration_seconds: positiveInteger(numbers.measurementSeconds, "正式测量时长"),
-          wait_time_min_seconds: waitMin,
-          wait_time_max_seconds: waitMax,
+          mode,
+          users: 10,
+          spawn_rate: 1,
+          measurement_duration_seconds: 60,
+          wait_time_min_seconds: positiveNumber(numbers.waitMin, "最小等待时间"),
+          wait_time_max_seconds: positiveNumber(numbers.waitMax, "最大等待时间"),
           request_timeout_seconds: positiveNumber(numbers.timeout, "请求超时"),
+          stages: mode === "fixed" ? [] : stages,
         },
+        data_config: dataConfig,
+        circuit_breaker: circuitBreaker,
         performance_goal: compactGoal(numbers),
-        success_rules: [{ kind: "status_code", status_codes: codes }],
+        success_rules: [
+          {
+            kind: "status_code",
+            status_codes: successCodes
+              .split(",")
+              .map((value) => Number(value.trim()))
+              .filter((value) => Number.isInteger(value)),
+          },
+        ],
       });
-      toast.success("性能测试已创建");
-      router.push(`/projects/${projectId}/performance-tests/${created.id}`);
+      const script = await generatePerformanceScript(selectedProjectId, created.id);
+      toast.success("性能测试已创建，Locust 脚本已生成");
+      router.push(`/projects/${selectedProjectId}/performance-tests/${created.id}/scripts/${script.id}`);
     } catch (error) {
       toast.error(apiErrorMessage(error, "性能测试创建失败"));
     } finally {
@@ -215,253 +234,401 @@ export function PerformanceTestForm({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
-      <aside className="lg:sticky lg:top-20 lg:self-start">
-        <ol className="border-l text-sm">
-          {["目标接口", "请求数据", "负载模型", "性能目标"].map((label, index) => (
-            <li className="flex items-center gap-2 border-b py-3 pl-3" key={label}>
-              <span className="flex size-5 items-center justify-center rounded-full bg-muted font-medium text-[11px]">
-                {index + 1}
-              </span>
-              {label}
-            </li>
-          ))}
-        </ol>
-        <Button className="mt-4 w-full" onClick={() => void submit()} disabled={saving || previewing}>
-          {saving ? <LoaderCircle className="animate-spin" /> : <Check />}
-          创建性能测试
-        </Button>
-        <Button className="mt-2 w-full" onClick={() => router.back()} variant="ghost">
-          <ArrowLeft />
-          返回
-        </Button>
-      </aside>
-
-      <div className="min-w-0 divide-y border-y">
-        <FormSection description="任务定义和接口自动化资产引用。" title="目标接口">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="任务名称">
-              <Input maxLength={120} onChange={(event) => setName(event.target.value)} value={name} />
-            </Field>
-            <Field label="接口">
-              <NativeSelect onChange={(event) => changeEndpoint(event.target.value)} value={endpointId}>
-                <option value="">选择接口</option>
-                {endpoints.map((endpoint) => (
-                  <option key={endpoint.id} value={endpoint.id}>
-                    {endpoint.method} {endpoint.path} {endpoint.summary ? `· ${endpoint.summary}` : ""}
-                  </option>
-                ))}
-              </NativeSelect>
-            </Field>
-            <Field label="接口环境">
-              <NativeSelect onChange={(event) => changeEnvironment(event.target.value)} value={environmentId}>
-                <option value="">选择环境</option>
-                {environments.map((environment) => (
-                  <option key={environment.id} value={environment.id}>
-                    {environment.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            </Field>
-            <Field label="请求数据来源">
-              <NativeSelect onChange={(event) => changeSourceCase(event.target.value)} value={sourceCaseId}>
-                <option value="">OpenAPI 示例或默认值</option>
-                {endpointCases.map((testCase) => (
-                  <option key={testCase.id} value={testCase.id}>
-                    {testCase.title}
-                  </option>
-                ))}
-              </NativeSelect>
-            </Field>
-            <Field className="md:col-span-2" label="说明">
-              <Textarea onChange={(event) => setDescription(event.target.value)} rows={3} value={description} />
-            </Field>
-          </div>
-          {selectedEndpoint ? (
-            <div className="mt-4 flex items-center gap-2 border-sky-500 border-l-2 bg-sky-50 px-3 py-2 text-xs dark:bg-sky-950/30">
-              <Gauge className="size-4" />
-              <strong>{selectedEndpoint.method}</strong>
-              <code className="truncate">{selectedEndpoint.path}</code>
+    <div className="w-full">
+      <ShellSection className="overflow-hidden p-0">
+        <FieldGroup className="grid gap-x-5 gap-y-4 p-5 md:grid-cols-2">
+          {/* 头部：基础信息 + 操作按钮 */}
+          <div className="flex items-center justify-between gap-2 border-b pb-2 md:col-span-2">
+            <div className="flex items-center gap-2">
+              <FileText className="size-4 text-muted-foreground" />
+              <h3 className="font-semibold text-base">基础信息</h3>
             </div>
-          ) : null}
-        </FormSection>
+            <div className="flex items-center gap-2">
+              <Button onClick={() => router.back()} variant="outline">
+                <ArrowLeft className="size-4" />
+                返回
+              </Button>
+              <Button disabled={saving || previewing} onClick={() => void submit()}>
+                {saving ? <LoaderCircle className="animate-spin" /> : <Check />}
+                保存并生成 Locust 脚本
+              </Button>
+            </div>
+          </div>
 
-        <FormSection description="敏感 Header 由所选接口环境注入。" title="请求数据">
-          {previewing ? <p className="mb-3 text-muted-foreground text-xs">正在生成请求预览</p> : null}
+          <Field>
+            <FieldLabel htmlFor="test-name">测试名称 *</FieldLabel>
+            <Input
+              id="test-name"
+              maxLength={120}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="接口性能测试"
+              value={name}
+            />
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="test-project">项目 *</FieldLabel>
+            <Select
+              id="test-project"
+              placeholder="选择项目"
+              setValue={(value) => setSelectedProjectId(value)}
+              value={selectedProjectId}
+            >
+              <SelectOption value="">选择项目</SelectOption>
+              {projects.map((project) => (
+                <SelectOption key={project.id} value={project.id}>
+                  {project.name}
+                </SelectOption>
+              ))}
+            </Select>
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="test-environment">环境 *</FieldLabel>
+            <Select
+              id="test-environment"
+              placeholder="选择环境"
+              setValue={(value) => setEnvironmentId(value)}
+              value={environmentId}
+            >
+              <SelectOption value="">选择环境</SelectOption>
+              {environments.map((environment) => (
+                <SelectOption key={environment.id} value={environment.id}>
+                  {environment.name}
+                </SelectOption>
+              ))}
+            </Select>
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="test-endpoint">接口 *</FieldLabel>
+            <Select
+              id="test-endpoint"
+              placeholder="选择接口"
+              setValue={(value) => changeEndpoint(value)}
+              value={endpointId}
+            >
+              <SelectOption value="">选择接口</SelectOption>
+              {endpoints.map((endpoint) => (
+                <SelectOption key={endpoint.id} value={endpoint.id}>
+                  {`${endpoint.method} ${endpoint.path}${endpoint.summary ? ` · ${endpoint.summary}` : ""}`}
+                </SelectOption>
+              ))}
+            </Select>
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="test-mode">测试模式</FieldLabel>
+            <Select
+              id="test-mode"
+              placeholder="选择测试模式"
+              setValue={(value) => changeMode(value as PerformanceLoadConfig["mode"])}
+              value={mode}
+            >
+              <SelectOption value="fixed">固定负载</SelectOption>
+              <SelectOption value="gradient">手动梯度</SelectOption>
+              <SelectOption value="stress">压力测试</SelectOption>
+              <SelectOption value="spike">峰值测试</SelectOption>
+              <SelectOption value="endurance">耐久测试</SelectOption>
+            </Select>
+          </Field>
+
+          <Field className="md:col-span-2">
+            <FieldLabel htmlFor="test-description">说明</FieldLabel>
+            <Textarea
+              id="test-description"
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="补充说明本次性能测试的目标和场景"
+              rows={2}
+              value={description}
+            />
+          </Field>
+
+          {/* 请求配置区块 */}
+          <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
+            <Settings className="size-4 text-muted-foreground" />
+            <h3 className="font-semibold text-base">请求配置</h3>
+          </div>
+
+          {previewing ? (
+            <p className="text-muted-foreground text-xs md:col-span-2">正在生成请求预览</p>
+          ) : null}
           {preview?.warnings.map((warning) => (
             <div
-              className="mb-2 flex items-start gap-2 bg-amber-50 px-3 py-2 text-amber-800 text-xs dark:bg-amber-950/30 dark:text-amber-200"
+              className="mb-2 flex items-start gap-2 bg-amber-50 px-3 py-2 text-amber-800 text-xs md:col-span-2"
               key={warning}
             >
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
               {warning}
             </div>
           ))}
-          <div className="grid gap-4 xl:grid-cols-2">
-            <JsonField label="Path 参数" onChange={setPathJson} setTouched={setRequestTouched} value={pathJson} />
-            <JsonField label="Query 参数" onChange={setQueryJson} setTouched={setRequestTouched} value={queryJson} />
-            <JsonField label="Headers" onChange={setHeadersJson} setTouched={setRequestTouched} value={headersJson} />
-            <JsonField label="Request Body" onChange={setBodyJson} setTouched={setRequestTouched} value={bodyJson} />
-          </div>
-          <Field className="mt-4 max-w-sm" label="成功状态码">
-            <Input onChange={(event) => setSuccessCodes(event.target.value)} value={successCodes} />
-          </Field>
-        </FormSection>
 
-        <FormSection description="闭合并发用户模型，达到目标用户数后开始计时。" title="负载模型">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <NumberField label="并发用户数" onChange={(value) => updateNumber("users", value)} value={numbers.users} />
-            <NumberField
-              label="每秒启动用户"
-              onChange={(value) => updateNumber("spawnRate", value)}
-              value={numbers.spawnRate}
+          {hasEntries(preview?.request_config.path_parameters) ? (
+            <Field className="md:col-span-2">
+              <FieldLabel htmlFor="test-path-params">Path 参数</FieldLabel>
+              <Textarea
+                id="test-path-params"
+                className="min-h-20 resize-y font-mono text-xs"
+                onChange={(event) => {
+                  setPathJson(event.target.value);
+                  setRequestTouched(true);
+                }}
+                spellCheck={false}
+                value={pathJson}
+              />
+            </Field>
+          ) : null}
+
+          {hasEntries(preview?.request_config.query_parameters) ? (
+            <Field className="md:col-span-2">
+              <FieldLabel htmlFor="test-query-params">Query 参数</FieldLabel>
+              <Textarea
+                id="test-query-params"
+                className="min-h-20 resize-y font-mono text-xs"
+                onChange={(event) => {
+                  setQueryJson(event.target.value);
+                  setRequestTouched(true);
+                }}
+                spellCheck={false}
+                value={queryJson}
+              />
+            </Field>
+          ) : null}
+
+          {hasEntries(preview?.request_config.headers) ? (
+            <Field className="md:col-span-2">
+              <FieldLabel htmlFor="test-headers">Headers</FieldLabel>
+              <Textarea
+                id="test-headers"
+                className="min-h-20 resize-y font-mono text-xs"
+                onChange={(event) => {
+                  setHeadersJson(event.target.value);
+                  setRequestTouched(true);
+                }}
+                spellCheck={false}
+                value={headersJson}
+              />
+            </Field>
+          ) : null}
+
+          {hasBody(preview?.request_config.body) ? (
+            <Field className="md:col-span-2">
+              <FieldLabel htmlFor="test-body">Request Body</FieldLabel>
+              <Textarea
+                id="test-body"
+                className="min-h-20 resize-y font-mono text-xs"
+                onChange={(event) => {
+                  setBodyJson(event.target.value);
+                  setRequestTouched(true);
+                }}
+                spellCheck={false}
+                value={bodyJson}
+              />
+            </Field>
+          ) : null}
+
+          <Field>
+            <FieldLabel htmlFor="test-success-codes">成功状态码</FieldLabel>
+            <Input
+              id="test-success-codes"
+              onChange={(event) => setSuccessCodes(event.target.value)}
+              placeholder="200, 201"
+              value={successCodes}
             />
-            <NumberField
-              label="正式测量时长（秒）"
-              onChange={(value) => updateNumber("measurementSeconds", value)}
-              value={numbers.measurementSeconds}
-            />
-            <NumberField
-              label="最小等待时间（秒）"
-              min="0.1"
-              onChange={(value) => updateNumber("waitMin", value)}
-              step="0.1"
+          </Field>
+
+          {/* 测试数据区块 */}
+          <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
+            <FileText className="size-4 text-muted-foreground" />
+            <h3 className="font-semibold text-base">测试数据</h3>
+          </div>
+
+          <Field className="md:col-span-2">
+            <PerformanceDataEditor onChange={setDataConfig} value={dataConfig} />
+          </Field>
+
+          {/* 负载配置区块 */}
+          <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
+            <Gauge className="size-4 text-muted-foreground" />
+            <h3 className="font-semibold text-base">负载配置</h3>
+          </div>
+
+          <Field>
+            <FieldLabel htmlFor="test-wait-min">最小等待时间（秒）</FieldLabel>
+            <Input
+              id="test-wait-min"
+              min={0.1}
+              onChange={(event) => updateNumber("waitMin", event.target.value)}
+              step={1}
+              type="number"
               value={numbers.waitMin}
             />
-            <NumberField
-              label="最大等待时间（秒）"
-              min="0.1"
-              onChange={(value) => updateNumber("waitMax", value)}
-              step="0.1"
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="test-wait-max">最大等待时间（秒）</FieldLabel>
+            <Input
+              id="test-wait-max"
+              min={0.1}
+              onChange={(event) => updateNumber("waitMax", event.target.value)}
+              step={1}
+              type="number"
               value={numbers.waitMax}
             />
-            <NumberField
-              label="请求超时（秒）"
-              onChange={(value) => updateNumber("timeout", value)}
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="test-timeout">请求超时（秒）</FieldLabel>
+            <Input
+              id="test-timeout"
+              min={0.1}
+              onChange={(event) => updateNumber("timeout", event.target.value)}
+              step={1}
+              type="number"
               value={numbers.timeout}
             />
-          </div>
-          <LoadProfileRail measurementSeconds={measurementSeconds} spawnRate={spawnRate} users={users} />
-        </FormSection>
+          </Field>
 
-        <FormSection description="留空表示只展示 Locust 原始结果。" title="性能目标">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <NumberField
-              label="最大失败率（%）"
-              min="0"
-              onChange={(value) => updateNumber("maxFailPercent", value)}
-              step="0.1"
+          <Field className="md:col-span-2">
+            <LoadStageEditor mode={mode} onChange={setStages} stages={stages} />
+          </Field>
+
+          {/* 性能目标区块 */}
+          <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
+            <Sparkles className="size-4 text-muted-foreground" />
+            <h3 className="font-semibold text-base">性能目标</h3>
+          </div>
+
+          <Field>
+            <FieldLabel htmlFor="test-max-fail-percent">最大失败率（%）</FieldLabel>
+            <Input
+              id="test-max-fail-percent"
+              min={0}
+              onChange={(event) => updateNumber("maxFailPercent", event.target.value)}
+              step={0.1}
+              type="number"
               value={numbers.maxFailPercent}
             />
-            <NumberField
-              label="最大平均响应（ms）"
-              onChange={(value) => updateNumber("maxAverageMs", value)}
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="test-max-avg-ms">最大平均响应（ms）</FieldLabel>
+            <Input
+              id="test-max-avg-ms"
+              min={0}
+              onChange={(event) => updateNumber("maxAverageMs", event.target.value)}
+              type="number"
               value={numbers.maxAverageMs}
             />
-            <NumberField
-              label="最大 P95（ms）"
-              onChange={(value) => updateNumber("maxP95Ms", value)}
-              value={numbers.maxP95Ms}
-            />
-            <NumberField
-              label="最低平均 RPS"
-              onChange={(value) => updateNumber("minRps", value)}
-              step="0.1"
-              value={numbers.minRps}
-            />
+          </Field>
+
+
+          {/* 安全熔断区块 */}
+          <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
+            <Settings className="size-4 text-muted-foreground" />
+            <h3 className="font-semibold text-base">安全熔断</h3>
           </div>
-        </FormSection>
-      </div>
+
+          <Field className="md:col-span-2">
+            <label className="flex items-center gap-2">
+              <input
+                checked={circuitBreaker.enabled}
+                onChange={(event) =>
+                  setCircuitBreaker((current) => ({ ...current, enabled: event.target.checked }))
+                }
+                type="checkbox"
+              />
+              <span className="text-sm">启用失败率安全熔断</span>
+            </label>
+          </Field>
+
+          {circuitBreaker.enabled ? (
+            <>
+              <Field>
+                <FieldLabel htmlFor="test-cb-window">检测窗口（秒）</FieldLabel>
+                <Input
+                  id="test-cb-window"
+                  min={1}
+                  onChange={(event) =>
+                    setCircuitBreaker((current) => ({ ...current, window_seconds: Number(event.target.value) }))
+                  }
+                  type="number"
+                  value={circuitBreaker.window_seconds}
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="test-cb-max-fail">最大失败率（%）</FieldLabel>
+                <Input
+                  id="test-cb-max-fail"
+                  min={0}
+                  onChange={(event) =>
+                    setCircuitBreaker((current) => ({
+                      ...current,
+                      max_fail_ratio: Number(event.target.value) / 100,
+                    }))
+                  }
+                  step={0.1}
+                  type="number"
+                  value={circuitBreaker.max_fail_ratio * 100}
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="test-cb-consecutive">连续超标次数</FieldLabel>
+                <Input
+                  id="test-cb-consecutive"
+                  min={1}
+                  onChange={(event) =>
+                    setCircuitBreaker((current) => ({
+                      ...current,
+                      consecutive_windows: Number(event.target.value),
+                    }))
+                  }
+                  type="number"
+                  value={circuitBreaker.consecutive_windows}
+                />
+              </Field>
+            </>
+          ) : null}
+        </FieldGroup>
+      </ShellSection>
     </div>
   );
 }
 
-function FormSection({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="px-1 py-6 sm:px-4">
-      <div className="mb-4">
-        <h2 className="font-semibold text-sm">{title}</h2>
-        <p className="text-muted-foreground text-xs">{description}</p>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Field({ label, className = "", children }: { label: string; className?: string; children: React.ReactNode }) {
-  return (
-    <div className={className}>
-      <Label className="mb-2">{label}</Label>
-      {children}
-    </div>
-  );
-}
-
-function JsonField({
-  label,
-  value,
-  onChange,
-  setTouched,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  setTouched: (value: boolean) => void;
-}) {
-  return (
-    <Field label={label}>
-      <Textarea
-        className="min-h-28 resize-y font-mono text-xs"
-        onChange={(event) => {
-          onChange(event.target.value);
-          setTouched(true);
-        }}
-        spellCheck={false}
-        value={value}
-      />
-    </Field>
-  );
-}
-
-function NumberField({
-  label,
-  value,
-  onChange,
-  min = "0",
-  step = "1",
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  min?: string;
-  step?: string;
-}) {
-  return (
-    <Field label={label}>
-      <Input min={min} onChange={(event) => onChange(event.target.value)} step={step} type="number" value={value} />
-    </Field>
-  );
-}
-
-function NativeSelect(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select
-      className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-      {...props}
-    />
-  );
+function defaultStages(mode: PerformanceLoadConfig["mode"]): PerformanceLoadStage[] {
+  if (mode === "fixed") return [];
+  if (mode === "spike") {
+    return [
+      { name: "正常负载", target_users: 20, spawn_rate: 5, hold_seconds: 180, order: 0 },
+      { name: "突发峰值", target_users: 200, spawn_rate: 100, hold_seconds: 60, order: 1 },
+      { name: "恢复负载", target_users: 20, spawn_rate: 100, hold_seconds: 180, order: 2 },
+    ];
+  }
+  if (mode === "endurance") {
+    return [{ name: "耐久阶段", target_users: 100, spawn_rate: 10, hold_seconds: 3600, order: 0 }];
+  }
+  return [
+    { name: "阶段 1", target_users: 10, spawn_rate: 2, hold_seconds: 60, order: 0 },
+    { name: "阶段 2", target_users: 50, spawn_rate: 5, hold_seconds: 180, order: 1 },
+    { name: "阶段 3", target_users: 100, spawn_rate: 10, hold_seconds: 300, order: 2 },
+  ];
 }
 
 function formatJson(value: unknown) {
   return JSON.stringify(value, null, 2);
+}
+
+function hasEntries(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length > 0;
+}
+
+function hasBody(value: unknown) {
+  if (value === null || value === undefined || value === "") return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return true;
 }
 
 function parseJson(value: string, label: string): unknown {
@@ -478,30 +645,17 @@ function parseObject(value: string, label: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
-function positiveInteger(value: string, label: string) {
+function positiveNumber(value: string, label: string) {
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`${label} 必须是正整数`);
+  if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`${label} 必须大于 0`);
   return parsed;
-}
-
-function positiveNumber(value: string, label: string, min = Number.EPSILON) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < min) throw new Error(`${label} 必须大于等于 ${min}`);
-  return parsed;
-}
-
-function numberValue(value: string, fallback: number) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function compactGoal(numbers: NumericDraft) {
   const goal: Record<string, number> = {};
-  if (numbers.maxFailPercent) goal.max_fail_ratio = positiveNumber(numbers.maxFailPercent, "最大失败率", 0) / 100;
+  if (numbers.maxFailPercent) goal.max_fail_ratio = Number(numbers.maxFailPercent) / 100;
   if (numbers.maxAverageMs)
     goal.max_average_response_time_ms = positiveNumber(numbers.maxAverageMs, "最大平均响应时间");
-  if (numbers.maxP95Ms) goal.max_p95_response_time_ms = positiveNumber(numbers.maxP95Ms, "最大 P95");
-  if (numbers.minRps) goal.min_average_rps = positiveNumber(numbers.minRps, "最低平均 RPS");
   return goal;
 }
 

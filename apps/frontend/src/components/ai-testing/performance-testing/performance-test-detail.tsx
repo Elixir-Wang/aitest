@@ -2,22 +2,38 @@
 
 import { useEffect, useState } from "react";
 
+import { useRouter } from "next/navigation";
+
 import { AlertTriangle, Gauge } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
-import { ApiRequestError, getPerformanceTest, type PerformanceTest } from "@/lib/api-client";
+import { Button } from "@/components/ui/button";
+import {
+  ApiRequestError,
+  generatePerformanceScript,
+  getPerformanceTest,
+  listPerformanceScripts,
+  type PerformanceScript,
+  type PerformanceTest,
+} from "@/lib/api-client";
 
 import { LoadProfileRail } from "./load-profile-rail";
 
 export function PerformanceTestDetail({ projectId, testId }: { projectId: string; testId: string }) {
+  const router = useRouter();
   const [item, setItem] = useState<PerformanceTest | null>(null);
+  const [scripts, setScripts] = useState<PerformanceScript[]>([]);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     let ignore = false;
-    getPerformanceTest(projectId, testId)
-      .then((result) => {
-        if (!ignore) setItem(result);
+    Promise.all([getPerformanceTest(projectId, testId), listPerformanceScripts(projectId, testId)])
+      .then(([result, scriptItems]) => {
+        if (!ignore) {
+          setItem(result);
+          setScripts(scriptItems);
+        }
       })
       .catch((error) => toast.error(apiErrorMessage(error)));
     return () => {
@@ -30,6 +46,19 @@ export function PerformanceTestDetail({ projectId, testId }: { projectId: string
   }
 
   const referenceInvalid = !item.endpoint_id || !item.api_environment_id;
+
+  async function generateScript() {
+    setGenerating(true);
+    try {
+      const script = await generatePerformanceScript(projectId, testId);
+      router.push(`/projects/${projectId}/performance-tests/${testId}/scripts/${script.id}`);
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   return (
     <div className="divide-y border-y">
       <section className="grid gap-4 py-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -48,6 +77,16 @@ export function PerformanceTestDetail({ projectId, testId }: { projectId: string
           接口或环境引用已失效，不能生成脚本或启动运行。
         </div>
       ) : null}
+
+      <section className="flex items-center justify-between gap-4 py-4">
+        <div>
+          <p className="font-medium text-sm">Locust 脚本</p>
+          <p className="text-muted-foreground text-xs">生成受控脚本后需完成校验和人工确认。</p>
+        </div>
+        <Button disabled={referenceInvalid || generating} onClick={generateScript}>
+          {generating ? "正在生成" : "生成脚本"}
+        </Button>
+      </section>
 
       <section className="grid gap-6 py-6 lg:grid-cols-2">
         <div>
@@ -91,7 +130,38 @@ export function PerformanceTestDetail({ projectId, testId }: { projectId: string
           {JSON.stringify(item.request_config, null, 2)}
         </pre>
       </section>
+
+      <section className="py-6">
+        <SectionTitle title="脚本版本" />
+        {scripts.length ? (
+          <div className="divide-y border-y">
+            {scripts.map((script) => (
+              <button
+                className="block w-full px-1 py-3 text-left text-sm hover:bg-muted/40"
+                key={script.id}
+                onClick={() => router.push(`/projects/${projectId}/performance-tests/${testId}/scripts/${script.id}`)}
+                type="button"
+              >
+                v{script.version} · {script.validation_status}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-muted-foreground text-sm">尚未生成脚本</p>
+        )}
+      </section>
     </div>
+  );
+}
+
+function SectionTitle({ icon: Icon, title }: { icon?: typeof Gauge; title: string }) {
+  return Icon ? (
+    <div className="mb-3 flex items-center gap-2 font-semibold text-sm">
+      <Icon className="size-4" />
+      {title}
+    </div>
+  ) : (
+    <h2 className="mb-3 font-semibold text-sm">{title}</h2>
   );
 }
 
@@ -99,32 +169,23 @@ function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div className="px-1">
       <p className="text-muted-foreground text-xs">{label}</p>
-      <p className="mt-1 truncate font-medium text-sm" title={value}>
-        {value}
-      </p>
+      <p className="mt-1 font-medium text-sm">{value}</p>
     </div>
   );
 }
 
 function Definition({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="border-slate-300 border-l-2 px-2 py-1 dark:border-slate-700">
       <dt className="text-muted-foreground text-xs">{label}</dt>
-      <dd className="mt-1">{value}</dd>
+      <dd className="font-medium text-sm">{value}</dd>
     </div>
   );
 }
 
-function SectionTitle({ title, icon: Icon }: { title: string; icon?: typeof Gauge }) {
-  return (
-    <h2 className="mb-3 flex items-center gap-2 font-semibold text-sm">
-      {Icon ? <Icon className="size-4" /> : null}
-      {title}
-    </h2>
-  );
-}
-
 function apiErrorMessage(error: unknown) {
-  if (error instanceof ApiRequestError) return error.traceId ? `${error.message}（${error.traceId}）` : error.message;
-  return "性能测试加载失败";
+  if (error instanceof ApiRequestError) {
+    return error.traceId ? `${error.message}（${error.traceId}）` : error.message;
+  }
+  return "性能测试操作失败";
 }

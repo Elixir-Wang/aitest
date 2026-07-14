@@ -1278,6 +1278,9 @@ def test_write_exploration_report_includes_goal_failures_and_quality_warnings(tm
     assert "定位器匹配到多个元素" in content
     assert "产物质量提示" in content
     assert "没有采集到可操作元素" in content
+    assert "## 执行时间线" not in content
+    assert "工具调用顺序与结果" not in content
+    assert "\ngantt\n" not in content
 
 
 def test_exploration_completion_status_is_failed_for_step_errors(tmp_path: Path) -> None:

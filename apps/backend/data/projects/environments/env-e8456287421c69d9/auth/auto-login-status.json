@@ -1,6 +1,6 @@
 {
   "status": "failed",
   "message": "登录页访问失败，可能是连接超时或站点不可达，请检查网络、代理或白名单配置。",
-  "updated_at": "2026-07-13T06:01:00.024607+00:00",
+  "updated_at": "2026-07-14T07:56:20.919966+00:00",
   "last_error_code": "LOGIN_PAGE_UNREACHABLE"
 }

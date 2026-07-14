@@ -1,6 +1,6 @@
 {
   "status": "failed",
-  "message": "自动登录任务已中断，请重新登录。",
-  "updated_at": "2026-07-13T11:44:10.439625+00:00",
-  "last_error_code": "AUTO_AUTH_STALE"
+  "message": "登录页访问失败，可能是连接超时或站点不可达，请检查网络、代理或白名单配置。",
+  "updated_at": "2026-07-14T07:56:20.908498+00:00",
+  "last_error_code": "LOGIN_PAGE_UNREACHABLE"
 }

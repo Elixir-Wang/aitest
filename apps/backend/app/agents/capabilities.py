@@ -44,6 +44,16 @@ AI_CAPABILITIES: tuple[AiCapability, ...] = (
         name="站点探索",
         description="负责自动化探索 Web 应用，包括页面分析、元素识别、登录表单分析和验证码识别等多模态任务。",
     ),
+    AiCapability(
+        id="performance_script_generation",
+        name="性能测试脚本计划生成",
+        description="根据脱敏后的单接口配置生成受控 LocustScriptPlan。",
+    ),
+    AiCapability(
+        id="performance_report_analysis",
+        name="性能测试报告分析",
+        description="根据脱敏后的 Locust 统计事实生成性能问题、证据和优化建议。",
+    ),
 )
 
 

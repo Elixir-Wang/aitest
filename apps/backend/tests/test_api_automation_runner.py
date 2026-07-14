@@ -45,6 +45,7 @@ def test_runner_cleans_stale_outputs_writes_env_and_parses_report(monkeypatch, t
                 json.dumps({"summary": {"total": 1, "passed": 1, "failed": 0}, "duration": 0.2, "exitcode": 0, "tests": []}),
                 encoding="utf-8",
             )
+            Path(env["API_SCENARIO_RESULT_PATH"]).write_text('{"status":"passed","steps":[]}', encoding="utf-8")
             return SimpleNamespace(returncode=0, stdout="Authorization: Bearer secret-token", stderr="")
         return SimpleNamespace(returncode=0, stdout="sync ok", stderr="")
 
@@ -69,9 +70,11 @@ def test_runner_cleans_stale_outputs_writes_env_and_parses_report(monkeypatch, t
     assert calls[1][0][:3] == ["uv", "run", "pytest"]
     assert calls[1][2]["API_BASE_URL"] == "https://api.example.test"
     assert calls[1][2]["API_AUTH_BEARER"] == "secret-token"
+    assert calls[1][2]["API_SCENARIO_RESULT_PATH"] == str(run_dir / "scenario-result.json")
     assert json.loads((run_dir / "runtime" / "env.json").read_text(encoding="utf-8"))["auth"] == {"bearer_saved": True}
     assert "secret-token" not in (run_dir / "stdout.txt").read_text(encoding="utf-8")
     assert result["summary"]["passed"] == 1
+    assert result["scenario_result_path"] == str(run_dir / "scenario-result.json")
 
 
 def test_collect_script_suite_uses_uv_and_returns_redacted_failure(monkeypatch, tmp_path: Path) -> None:
@@ -94,7 +97,7 @@ def test_collect_script_suite_uses_uv_and_returns_redacted_failure(monkeypatch, 
     result = runner.collect_script_suite(suite_path=suite_path, timeout=30)
 
     assert calls[0][0] == ["uv", "sync"]
-    assert calls[1][0] == ["uv", "run", "pytest", "--collect-only", "endpoints"]
+    assert calls[1][0] == ["uv", "run", "pytest", "--collect-only", "testcases"]
     assert all(call[1] == suite_path.resolve() for call in calls)
     assert result == {
         "ok": False,
@@ -102,3 +105,32 @@ def test_collect_script_suite_uses_uv_and_returns_redacted_failure(monkeypatch, 
         "stdout": "",
         "stderr": "Authorization: Bearer ***\nModuleNotFoundError: support",
     }
+
+
+def test_collect_script_suite_uses_provided_test_paths(monkeypatch, tmp_path: Path) -> None:
+    suite_path = tmp_path / "suite"
+    suite_path.mkdir()
+    calls = []
+
+    def fake_run(command, cwd, text, capture_output, timeout, env):
+        calls.append((command, cwd))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    result = runner.collect_script_suite(
+        suite_path=suite_path,
+        timeout=30,
+        test_paths=["testcases/v1/agent/test_agent.py"],
+    )
+
+    assert calls[1][0] == [
+        "uv",
+        "run",
+        "pytest",
+        "--collect-only",
+        "testcases/v1/agent/test_agent.py",
+    ]
+    assert all(call[1] == suite_path.resolve() for call in calls)
+    assert result["ok"] is True
+    assert result["exitcode"] == 0
