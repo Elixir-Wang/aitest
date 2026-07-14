@@ -12,6 +12,10 @@ const listPageSource = readFileSync(
   new URL("../src/app/(main)/projects/[projectId]/performance-tests/page.tsx", import.meta.url),
   "utf8",
 );
+const allListPageSource = readFileSync(
+  new URL("../src/app/(main)/performance-tests/page.tsx", import.meta.url),
+  "utf8",
+);
 
 test("performance testing sidebar entry is enabled and project scoped", () => {
   assert.match(
@@ -39,4 +43,9 @@ test("performance create form reuses endpoint and environment assets without sec
 
 test("performance list route renders the project-scoped list component", () => {
   assert.match(listPageSource, /<PerformanceTestList projectId=\{params\.projectId\} \/>/);
+});
+
+test("global performance route renders the cross-project task list", () => {
+  assert.match(allListPageSource, /projectScope="all"/);
+  assert.match(allListPageSource, /<AllPerformanceTestList \/>/);
 });
