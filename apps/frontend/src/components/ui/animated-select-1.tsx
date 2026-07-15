@@ -14,7 +14,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
-import { CaretDown } from "@phosphor-icons/react";
+import { ChevronDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -203,7 +203,7 @@ export function Select({
           {displayText && <div className="absolute inset-0 flex items-center justify-start">{displayText}</div>}
         </div>
 
-        <CaretDown className={cn("shrink-0 transition-transform duration-200", isOpened && "rotate-180")} />
+        <ChevronDown className={cn("shrink-0 transition-transform duration-200", isOpened && "rotate-180")} />
       </button>
 
       {dropdownMenu}

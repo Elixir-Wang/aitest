@@ -38,7 +38,7 @@ def create_performance_run(
             script_code=context["script_code"],
             runtime_payload=context["runtime_environment"],
         )
-    return {"run_id": session.run_id, "locust_ui_path": session.base_path}
+    return {"id": session.run_id, "locust_ui_path": session.base_path}
 
 
 @run_router.post("/{run_id}/locust-ui-session")

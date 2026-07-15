@@ -11,7 +11,10 @@ from app.core import settings
 def allocate_loopback_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", 0))
-        return int(listener.getsockname()[1])
+        port = int(listener.getsockname()[1])
+        if port == 8000:
+            return allocate_loopback_port()
+        return port
 
 
 def launch_locust_web_process(run_dir: Path, *, port: int, base_path: str) -> int:

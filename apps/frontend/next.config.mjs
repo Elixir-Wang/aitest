@@ -2,7 +2,9 @@ const API_TARGET = process.env.API_TARGET || "http://backend:8000";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactCompiler: true,
+  // React Compiler is heavy during dev (full Babel pass per .tsx). Keep it off
+  // by default; opt-in via `ENABLE_REACT_COMPILER=1 npm run build` for CI.
+  reactCompiler: process.env.ENABLE_REACT_COMPILER === "1",
   compiler: {
     removeConsole: process.env.NODE_ENV === "production",
   },

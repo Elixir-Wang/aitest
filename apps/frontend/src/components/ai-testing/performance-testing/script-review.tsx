@@ -44,18 +44,6 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
   if (!script) return <div className="border-y py-16 text-center text-muted-foreground text-sm">正在加载脚本</div>;
   const editable =
     script.validation_status === "pending_confirmation" || script.validation_status === "validation_failed";
-  const envHeaders = (script.runtime_preview?.env_headers ?? {}) as Record<string, string>;
-  const envHeadersHint = Object.keys(envHeaders).length ? (
-    <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs">
-      <p className="font-medium">环境自动注入的请求头</p>
-      <p className="mt-1 text-muted-foreground">
-        实际压测时由 <code>runtime.json</code> 注入，与上方 Headers 合并后由 plan 覆盖：
-      </p>
-      <pre className="mt-1 overflow-x-auto rounded bg-background/60 p-2 font-mono text-[11px]">
-        {JSON.stringify(envHeaders, null, 2)}
-      </pre>
-    </div>
-  ) : null;
 
   async function saveConfiguration() {
     setSaving(true);
@@ -144,7 +132,6 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
             <p className="mt-1 text-muted-foreground text-xs">只允许调整请求数据和成功规则，生成代码保持只读。</p>
           </div>
           <JsonField disabled={!editable} label="Headers" onChange={setHeaders} value={headers} />
-          {envHeadersHint}
           <JsonField disabled={!editable} label="Body" onChange={setBody} value={body} />
           <JsonField disabled={!editable} label="成功规则" onChange={setSuccessRules} rows={8} value={successRules} />
           {editable ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   ApiRequestError,
-  generatePerformanceScript,
+  createLocustUiSession,
+  createPerformanceRun,
   getPerformanceTest,
   listPerformanceScripts,
   type PerformanceScript,
@@ -24,18 +25,29 @@ export function PerformanceTestDetail({ projectId, testId }: { projectId: string
   const router = useRouter();
   const [item, setItem] = useState<PerformanceTest | null>(null);
   const [scripts, setScripts] = useState<PerformanceScript[]>([]);
-  const [generating, setGenerating] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const autoStarted = useRef(false);
 
   useEffect(() => {
     let ignore = false;
+    setLoading(true);
     Promise.all([getPerformanceTest(projectId, testId), listPerformanceScripts(projectId, testId)])
       .then(([result, scriptItems]) => {
-        if (!ignore) {
-          setItem(result);
-          setScripts(scriptItems);
+        if (ignore) return;
+        setItem(result);
+        setScripts(scriptItems);
+
+        // Auto-launch if there's a confirmed script
+        const confirmedScript = scriptItems.find((s) => s.validation_status === "confirmed");
+        if (confirmedScript && !autoStarted.current) {
+          autoStarted.current = true;
+          launchLocust(confirmedScript);
         }
       })
-      .catch((error) => toast.error(apiErrorMessage(error)));
+      .catch((error) => toast.error(apiErrorMessage(error)))
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
     return () => {
       ignore = true;
     };
@@ -47,15 +59,16 @@ export function PerformanceTestDetail({ projectId, testId }: { projectId: string
 
   const referenceInvalid = !item.endpoint_id || !item.api_environment_id;
 
-  async function generateScript() {
-    setGenerating(true);
+  async function launchLocust(script: PerformanceScript) {
+    setLoading(true);
     try {
-      const script = await generatePerformanceScript(projectId, testId);
-      router.push(`/projects/${projectId}/performance-tests/${testId}/scripts/${script.id}`);
+      const run = await createPerformanceRun(projectId, testId, script.id);
+      const session = await createLocustUiSession(projectId, run.id);
+      window.open(session.url, "_blank");
     } catch (error) {
       toast.error(apiErrorMessage(error));
     } finally {
-      setGenerating(false);
+      setLoading(false);
     }
   }
 
@@ -81,10 +94,20 @@ export function PerformanceTestDetail({ projectId, testId }: { projectId: string
       <section className="flex items-center justify-between gap-4 py-4">
         <div>
           <p className="font-medium text-sm">Locust 脚本</p>
-          <p className="text-muted-foreground text-xs">生成受控脚本后需完成校验和人工确认。</p>
+          <p className="text-muted-foreground text-xs">脚本已通过验证，可直接启动 Locust。</p>
         </div>
-        <Button disabled={referenceInvalid || generating} onClick={generateScript}>
-          {generating ? "正在生成" : "生成脚本"}
+        <Button
+          disabled={referenceInvalid || loading}
+          onClick={() => {
+            const confirmedScript = scripts.find((s) => s.validation_status === "confirmed");
+            if (confirmedScript) {
+              launchLocust(confirmedScript);
+            } else {
+              toast.error("没有已确认的脚本，请先生成并确认脚本");
+            }
+          }}
+        >
+          {loading ? "启动中" : "启动 Locust"}
         </Button>
       </section>
 

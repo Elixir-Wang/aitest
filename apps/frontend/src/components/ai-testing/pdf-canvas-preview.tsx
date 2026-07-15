@@ -1,0 +1,218 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
+import { Loader2, Minus, Plus, RotateCw } from "lucide-react";
+import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy, type RenderTask } from "pdfjs-dist";
+import "pdfjs-dist/web/pdf_viewer.css";
+
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+
+GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
+
+type Props = { objectUrl: string };
+
+export function PdfCanvasPreview({ objectUrl }: Props) {
+  const pagesRef = useRef<HTMLDivElement | null>(null);
+  const renderTasksRef = useRef<RenderTask[]>([]);
+  const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
+  const [pageCount, setPageCount] = useState(0);
+  const [scale, setScale] = useState(1);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const pagesElement = pagesRef.current;
+    if (!pagesElement) {
+      return;
+    }
+
+    const updateContainerWidth = () => {
+      setContainerWidth(Math.max(0, pagesElement.clientWidth));
+    };
+    updateContainerWidth();
+
+    const observer = new ResizeObserver(updateContainerWidth);
+    observer.observe(pagesElement);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    setPdf(null);
+    setPageCount(0);
+    pagesRef.current?.replaceChildren();
+
+    const task = getDocument(objectUrl);
+    task.promise
+      .then((document) => {
+        if (cancelled) {
+          void document.destroy();
+          return;
+        }
+        setPdf(document);
+        setPageCount(document.numPages);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError("PDF 预览加载失败");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      task.destroy();
+    };
+  }, [objectUrl]);
+
+  useEffect(() => {
+    const pagesElement = pagesRef.current;
+    if (!pdf || !pagesElement || !containerWidth) {
+      return;
+    }
+
+    let cancelled = false;
+    renderTasksRef.current.forEach((task) => {
+      task.cancel();
+    });
+    renderTasksRef.current = [];
+    pagesElement.replaceChildren();
+    setLoading(true);
+    setError("");
+
+    const renderPages = async () => {
+      const availableWidth = Math.max(320, containerWidth - 8);
+
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        if (cancelled) {
+          return;
+        }
+
+        const page = await pdf.getPage(pageNumber);
+        if (cancelled) {
+          return;
+        }
+
+        const baseViewport = page.getViewport({ scale: 1 });
+        const fitScale = availableWidth / baseViewport.width;
+        const displayScale = Math.max(0.1, fitScale * scale);
+        const viewport = page.getViewport({
+          scale: displayScale * window.devicePixelRatio,
+        });
+        const displayViewport = page.getViewport({ scale: displayScale });
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        if (!context) {
+          throw new Error("当前浏览器不支持 PDF 画布预览");
+        }
+
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        canvas.style.width = `${displayViewport.width}px`;
+        canvas.style.height = `${displayViewport.height}px`;
+        canvas.className = "block bg-white shadow-sm ring-1 ring-border";
+        context.setTransform(1, 0, 0, 1, 0, 0);
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        pagesElement.appendChild(canvas);
+
+        const renderTask = page.render({
+          canvasContext: context,
+          viewport,
+        });
+        renderTasksRef.current.push(renderTask);
+        try {
+          await renderTask.promise;
+        } catch (error_) {
+          if (error_ instanceof Error && error_.name === "RenderingCancelledException") {
+            return;
+          }
+          throw error_;
+        }
+      }
+      if (!cancelled) {
+        setLoading(false);
+      }
+    };
+
+    void renderPages().catch(() => {
+      if (!cancelled) {
+        setError("PDF 页面渲染失败");
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      renderTasksRef.current.forEach((task) => {
+        task.cancel();
+      });
+      renderTasksRef.current = [];
+    };
+  }, [containerWidth, pdf, scale]);
+
+  return (
+    <div className="overflow-hidden rounded-lg border bg-background">
+      <div className="flex flex-wrap items-center justify-end gap-3 border-b bg-muted/20 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="w-20 text-center text-sm tabular-nums">{pageCount || "-"} 页</div>
+          <Button
+            disabled={scale <= 0.7 || loading}
+            onClick={() => setScale((current) => Math.max(0.7, Number((current - 0.1).toFixed(1))))}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <Minus className="size-4" />
+          </Button>
+          <div className="w-24 px-1">
+            <Slider
+              disabled={loading}
+              max={1.8}
+              min={0.7}
+              onValueChange={([value]) => setScale(Number(value.toFixed(1)))}
+              step={0.1}
+              value={[scale]}
+            />
+          </div>
+          <Button
+            disabled={scale >= 1.8 || loading}
+            onClick={() => setScale((current) => Math.min(1.8, Number((current + 0.1).toFixed(1))))}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <Plus className="size-4" />
+          </Button>
+          <div className="w-20 text-right text-muted-foreground text-xs tabular-nums">
+            适宽 {Math.round(scale * 100)}%
+          </div>
+          <Button disabled={loading} onClick={() => setScale(1)} size="icon" type="button" variant="ghost">
+            <RotateCw className="size-4" />
+          </Button>
+        </div>
+      </div>
+      <div className="relative min-h-[680px] overflow-auto bg-muted/30 px-2 py-4 sm:px-4">
+        {loading ? (
+          <div className="absolute inset-x-0 top-6 z-10 mx-auto flex w-fit items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm shadow-sm">
+            <Loader2 className="size-4 animate-spin" />
+            加载中
+          </div>
+        ) : null}
+        {error ? (
+          <div className="flex min-h-[620px] items-center justify-center text-muted-foreground text-sm">{error}</div>
+        ) : (
+          <div ref={pagesRef} className="flex min-h-[620px] flex-col items-center gap-4" />
+        )}
+      </div>
+    </div>
+  );
+}

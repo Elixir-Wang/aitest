@@ -89,27 +89,37 @@ def start_session(
 ) -> LocustSession:
     run_id = f"perfrun-{secrets.token_hex(8)}"
     run_dir = _run_dir(project_id, run_id)
-    run_dir.mkdir(parents=True, exist_ok=False)
-    (run_dir / "runtime.json").write_text(
-        json.dumps({"run_id": run_id, "environment": runtime_payload}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    (run_dir / "generated_locustfile.py").write_text(script_code, encoding="utf-8")
-    (run_dir / "locustfile.py").write_text(_runtime_locustfile_source(), encoding="utf-8")
 
-    port = allocate_loopback_port()
-    base_path = f"/api/v1/projects/{project_id}/performance-test-runs/{run_id}/locust-ui"
-    process_id = launch_locust_web_process(run_dir, port=port, base_path=base_path)
-    snapshot = {
-        "run_id": run_id,
-        "project_id": project_id,
-        "test_id": test_id,
-        "script_id": script_id,
-    }
-    (run_dir / "snapshot.json").write_text(
-        json.dumps(snapshot, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    # 清理可能存在的残留目录，确保干净启动
+    if run_dir.exists():
+        shutil.rmtree(run_dir, ignore_errors=True)
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        (run_dir / "runtime.json").write_text(
+            json.dumps({"run_id": run_id, "environment": runtime_payload}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        (run_dir / "generated_locustfile.py").write_text(script_code, encoding="utf-8")
+        (run_dir / "locustfile.py").write_text(_runtime_locustfile_source(), encoding="utf-8")
+
+        port = allocate_loopback_port()
+        base_path = f"/api/v1/projects/{project_id}/performance-test-runs/{run_id}/locust-ui"
+        process_id = launch_locust_web_process(run_dir, port=port, base_path=base_path)
+        snapshot = {
+            "run_id": run_id,
+            "project_id": project_id,
+            "test_id": test_id,
+            "script_id": script_id,
+        }
+        (run_dir / "snapshot.json").write_text(
+            json.dumps(snapshot, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        # 启动失败时清理残留文件
+        shutil.rmtree(run_dir, ignore_errors=True)
+        raise api_error(500, "LOCUST_SESSION_START_FAILED", f"Locust 会话启动失败: {exc}") from exc
 
     session = LocustSession(
         run_id=run_id,

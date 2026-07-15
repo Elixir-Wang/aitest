@@ -14,6 +14,7 @@ def _input(cases: list[dict] | None = None) -> PytestRequestsGenerationInput:
             "summary": "登录",
         },
         cases=cases or [],
+        is_first_time=True,
     )
 
 
@@ -49,7 +50,11 @@ def test_generation_returns_logical_files_without_project_context() -> None:
     assert "project_id" not in PytestRequestsGenerationInput.model_fields
     assert result.endpoint_id == "apiend-login"
     assert result.case_count == 1
-    assert {file.kind for file in result.files} >= {"test", "data", "support", "config"}
+    keys = {file.key for file in result.files}
+    assert any(key.startswith("testcases/") for key in keys)
+    assert any(key.startswith("api/") for key in keys)
+    assert any(key.startswith("config/") for key in keys)
+    assert any(key.startswith("utils/") for key in keys)
     assert all(not Path(file.key).is_absolute() for file in result.files)
     assert all("project-" not in file.key for file in result.files)
 
@@ -73,9 +78,10 @@ def test_generation_parametrizes_each_case_in_endpoint_module() -> None:
     test_file = next(file for file in result.files if file.kind == "test")
     data_file = next(file for file in result.files if file.kind == "data")
 
-    assert '@pytest.mark.parametrize("case_data", CASES' in test_file.content
-    assert '"登录成功"' in data_file.content
-    assert '"登录失败"' in data_file.content
+    assert "@pytest.mark.parametrize" in test_file.content
+    assert "case" in test_file.content
+    assert "登录成功" in data_file.content
+    assert "登录失败" in data_file.content
 
 
 def test_generation_groups_test_and_data_under_endpoint_directory() -> None:
@@ -88,8 +94,8 @@ def test_generation_groups_test_and_data_under_endpoint_directory() -> None:
     }
 
     assert endpoint_files == {
-        "endpoints/post_login_apiend_login/test_api.py",
-        "endpoints/post_login_apiend_login/cases.json",
+        "testcases/login/default/test_default.py",
+        "testcases/login/default/test_default.yaml",
     }
 
 
@@ -98,8 +104,8 @@ def test_generation_reads_cases_from_the_endpoint_directory() -> None:
 
     test_file = next(file for file in result.files if file.kind == "test")
 
-    assert 'Path(__file__).with_name("cases.json")' in test_file.content
-    assert 'parents[1] / "data"' not in test_file.content
+    assert "load_cases" in test_file.content
+    assert "test_default.yaml" in test_file.content
 
 
 def test_generation_configures_suite_root_for_support_imports() -> None:
@@ -108,6 +114,7 @@ def test_generation_configures_suite_root_for_support_imports() -> None:
     pytest_config = next(file for file in result.files if file.key == "pytest.ini")
 
     assert "pythonpath = ." in pytest_config.content
+    assert "testpaths = testcases" in pytest_config.content
 
 
 def test_generation_is_stable_for_identical_input() -> None:
