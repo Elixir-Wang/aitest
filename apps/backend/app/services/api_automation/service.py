@@ -5,23 +5,30 @@ import secrets
 import shutil
 import threading
 import time
+from dataclasses import asdict
 from pathlib import Path
 from sqlite3 import Row
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import requests
+import yaml
 
 from app.agents.api_automation.case_generation import service as api_generation_agent_service
 from app.agents.api_automation.case_generation.schemas import ApiAutomationGenerationInput
-from app.agents.api_automation.pytest_requests.schemas import (
-    PytestRequestsEndpoint,
-    PytestRequestsGenerationInput,
+from app.agents.api_automation.case_generation.planner import plan_api_test_points
+from app.agents.api_automation.case_generation.validation import validate_generated_cases
+from app.agents.api_automation.pytest_requests.agent import (
+    generate_pytest_requests_endpoints,
+    initialize_pytest_requests_suite,
 )
-from app.agents.api_automation.pytest_requests.generator import (
-    generate_pytest_requests_code,
-    pytest_requests_skill_fingerprint,
+from app.agents.api_automation.pytest_requests.suite import (
+    endpoint_artifact_paths,
+    ensure_suite_root,
+    suite_is_initialized,
+    suite_missing_files,
 )
+from app.agents.api_automation.pytest_requests.skill import pytest_requests_skill_fingerprint
 from app.core.environment_credentials import decrypt_api_environment_secret, encrypt_api_environment_secret
 from app.core.security import hash_secret
 from app.core import storage
@@ -44,19 +51,35 @@ from app.schemas.api_automation import (
 )
 from app.services.api_automation.openapi_parser import OpenAPIParseError, parse_openapi_document
 from app.services.api_automation.runner import collect_script_suite, run_script_suite
+from app.services.api_automation.oracle import find_case_observation, infer_assertions, load_observations
+from app.agents.model_selection import build_agent_model, resolve_model_selection, thinking_disabled_extra_body
 from app.services.api_automation.artifact_storage import (
     materialize_scenario_snapshot,
-    materialize_generation_result,
     project_suite_path,
     project_workspace_lock,
-    relative_file_key,
-    restore_endpoint_artifacts,
-    snapshot_endpoint_artifacts,
 )
 
 
 def artifacts_dir_for(project_id: str):
     return project_suite_path(project_id)
+
+
+def _ensure_pytest_suite_initialized(suite_path: Path) -> Path:
+    suite_path = ensure_suite_root(suite_path)
+    if suite_is_initialized(suite_path):
+        return suite_path
+
+    selection = resolve_model_selection("api_test_generation")
+    model = build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
+    asyncio.run(initialize_pytest_requests_suite(model=model, suite_path=suite_path))
+    missing_files = suite_missing_files(suite_path)
+    if missing_files:
+        raise api_error(
+            422,
+            "API_SCRIPT_SUITE_INITIALIZATION_FAILED",
+            f"pytest 项目基础结构初始化失败，缺少文件：{', '.join(missing_files)}",
+        )
+    return suite_path
 
 
 MAX_OPENAPI_BYTES = 2 * 1024 * 1024
@@ -575,6 +598,212 @@ def delete_api_test_case(project_id: str, case_id: str, actor) -> None:
     )
 
 
+def create_oracle_proposal(project_id: str, case_id: str, run_id: str, actor) -> dict:
+    _require_admin(actor)
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        case = api_automation_repo.find_api_test_case(db, case_id)
+        run = api_automation_repo.find_api_run(db, run_id)
+        if not case or case["project_id"] != project_id:
+            raise api_error(404, "API_TEST_CASE_NOT_FOUND", "接口自动化用例不存在。")
+        if not run or run["project_id"] != project_id:
+            raise api_error(404, "API_RUN_NOT_FOUND", "接口自动化运行记录不存在。")
+        observation_path = storage.resolve_stored_path(run["observation_result_path"])
+        if observation_path is None:
+            raise api_error(409, "API_OBSERVATION_NOT_FOUND", "运行记录没有观察执行证据。")
+        existing = api_automation_repo.find_oracle_proposal_by_run_case(db, run_id, case_id)
+        if existing:
+            return _serialize_oracle_proposal(existing)
+        try:
+            observation = find_case_observation(observation_path, case_id)
+            proposal = _create_oracle_proposal_from_observation(
+                db,
+                case=case,
+                run=run,
+                observation=observation,
+                created_by=actor["id"],
+            )
+        except ValueError as exc:
+            raise api_error(409, "API_ORACLE_INFERENCE_UNAVAILABLE", str(exc)) from exc
+        return _serialize_oracle_proposal(proposal)
+
+
+def create_oracle_proposals_for_run(run_id: str) -> dict[str, Any]:
+    result: dict[str, Any] = {"created": 0, "skipped": 0, "errors": []}
+    with connect() as db:
+        run = api_automation_repo.find_api_run(db, run_id)
+        if not run:
+            raise api_error(404, "API_RUN_NOT_FOUND", "接口自动化运行记录不存在。")
+        observation_path = storage.resolve_stored_path(run["observation_result_path"])
+        if observation_path is None:
+            return result
+        try:
+            observations = load_observations(observation_path)
+        except ValueError as exc:
+            result["errors"].append(str(exc))
+            return result
+        for observation in observations:
+            case_id = str(observation.get("case_id") or "").strip()
+            if not case_id:
+                result["errors"].append("观察证据缺少 case_id。")
+                continue
+            case = api_automation_repo.find_api_test_case(db, case_id)
+            if not case or case["project_id"] != run["project_id"]:
+                result["errors"].append(f"观察证据关联用例不存在：{case_id}")
+                continue
+            if case["oracle_status"] not in {"inferred", "needs_confirmation"}:
+                result["skipped"] += 1
+                continue
+            if api_automation_repo.find_oracle_proposal_by_run_case(db, run_id, case_id):
+                result["skipped"] += 1
+                continue
+            try:
+                _create_oracle_proposal_from_observation(
+                    db,
+                    case=case,
+                    run=run,
+                    observation=observation,
+                    created_by="system",
+                )
+            except ValueError as exc:
+                result["errors"].append(f"{case_id}: {exc}")
+                continue
+            result["created"] += 1
+    return result
+
+
+def _create_oracle_proposal_from_observation(
+    db,
+    *,
+    case: Row,
+    run: Row,
+    observation: dict[str, Any],
+    created_by: str,
+) -> Row:
+    assertions = infer_assertions(observation)
+    current_snapshot = _oracle_case_snapshot(case)
+    proposed_snapshot = {
+        **current_snapshot,
+        "oracle_status": "confirmed",
+        "assertions": assertions,
+    }
+    proposal_id = f"apioracle-{secrets.token_hex(8)}"
+    api_automation_repo.create_oracle_proposal(
+        db,
+        proposal_id=proposal_id,
+        project_id=run["project_id"],
+        endpoint_id=case["endpoint_id"],
+        case_id=case["id"],
+        run_id=run["id"],
+        test_point_key=case["test_point_key"],
+        current_snapshot=current_snapshot,
+        proposed_snapshot=proposed_snapshot,
+        reasoning="根据真实观察响应推断 HTTP 状态码和稳定业务码，需人工审批后生效。",
+        confidence=0.9 if len(assertions) > 1 else 0.75,
+        created_by=created_by,
+    )
+    return api_automation_repo.find_oracle_proposal(db, proposal_id)
+
+
+def list_oracle_proposals(project_id: str, actor, *, status: str = "") -> list[dict]:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        return [
+            _serialize_oracle_proposal(row)
+            for row in api_automation_repo.list_oracle_proposals(db, project_id, status=status)
+        ]
+
+
+def approve_oracle_proposal(
+    project_id: str,
+    proposal_id: str,
+    *,
+    scope: str,
+    review_comment: str,
+    assertions: list[dict[str, Any]] | None,
+    actor,
+) -> dict:
+    _require_admin(actor)
+    if scope not in {"case_only", "case_and_endpoint_asset"}:
+        raise api_error(422, "API_ORACLE_SCOPE_INVALID", "审批范围不正确。")
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        proposal = api_automation_repo.find_oracle_proposal(db, proposal_id)
+        if not proposal or proposal["project_id"] != project_id:
+            raise api_error(404, "API_ORACLE_PROPOSAL_NOT_FOUND", "Oracle 建议不存在。")
+        if proposal["status"] != "pending":
+            raise api_error(409, "API_ORACLE_PROPOSAL_REVIEWED", "Oracle 建议已完成审批。")
+        case = api_automation_repo.find_api_test_case(db, proposal["case_id"])
+        if not case:
+            raise api_error(404, "API_TEST_CASE_NOT_FOUND", "接口自动化用例不存在。")
+        proposed_snapshot = api_automation_repo.loads_json(proposal["proposed_snapshot_json"], {})
+        approved_assertions = assertions if assertions is not None else proposed_snapshot.get("assertions", [])
+        if not approved_assertions:
+            raise api_error(422, "API_ORACLE_ASSERTIONS_REQUIRED", "审批通过时必须提供有效断言。")
+        versions = api_automation_repo.list_api_test_case_versions(db, case["id"])
+        version = max((int(row["version"]) for row in versions), default=0) + 1
+        approved_snapshot = {
+            **_oracle_case_snapshot(case),
+            "oracle_status": "confirmed",
+            "assertions": approved_assertions,
+        }
+        api_automation_repo.create_api_test_case_version(
+            db,
+            version_id=f"apitcv-{secrets.token_hex(8)}",
+            case_id=case["id"],
+            version=version,
+            snapshot=approved_snapshot,
+            change_source="oracle_approval",
+            created_by=actor["id"],
+        )
+        api_automation_repo.update_api_test_case(
+            db,
+            case["id"],
+            assertions=approved_assertions,
+            oracle_status="confirmed",
+            updated_by=actor["id"],
+        )
+        if scope == "case_and_endpoint_asset":
+            api_automation_repo.upsert_endpoint_oracle_fact(
+                db,
+                fact_id=f"apifact-{secrets.token_hex(8)}",
+                endpoint_id=proposal["endpoint_id"],
+                test_point_key=proposal["test_point_key"],
+                assertions=approved_assertions,
+                evidence_run_ids=[proposal["run_id"]],
+                approved_by=actor["id"],
+            )
+        api_automation_repo.review_oracle_proposal(
+            db,
+            proposal_id,
+            status="approved",
+            review_scope=scope,
+            review_comment=review_comment,
+            reviewed_by=actor["id"],
+        )
+        return _serialize_oracle_proposal(api_automation_repo.find_oracle_proposal(db, proposal_id))
+
+
+def reject_oracle_proposal(project_id: str, proposal_id: str, *, review_comment: str, actor) -> dict:
+    _require_admin(actor)
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        proposal = api_automation_repo.find_oracle_proposal(db, proposal_id)
+        if not proposal or proposal["project_id"] != project_id:
+            raise api_error(404, "API_ORACLE_PROPOSAL_NOT_FOUND", "Oracle 建议不存在。")
+        if proposal["status"] != "pending":
+            raise api_error(409, "API_ORACLE_PROPOSAL_REVIEWED", "Oracle 建议已完成审批。")
+        api_automation_repo.review_oracle_proposal(
+            db,
+            proposal_id,
+            status="rejected",
+            review_scope="",
+            review_comment=review_comment,
+            reviewed_by=actor["id"],
+        )
+        return _serialize_oracle_proposal(api_automation_repo.find_oracle_proposal(db, proposal_id))
+
+
 def create_api_test_case_set(project_id: str, payload: ApiTestCaseSetIn, actor) -> dict:
     _require_admin(actor)
     set_id = f"apicaseset-{secrets.token_hex(8)}"
@@ -710,7 +939,14 @@ async def _execute_generation_item(run_id: str, item_id: str) -> None:
 
     try:
         with connect() as db:
-            generated_case_count = _persist_generation_item_cases(db, run_id, item_id, attempt_id, result)
+            generated_case_count = _persist_generation_item_cases(
+                db,
+                run_id,
+                item_id,
+                attempt_id,
+                result,
+                planned_test_points=input_data.planned_test_points,
+            )
             api_automation_repo.finish_generation_item_attempt(
                 db,
                 item_id,
@@ -747,6 +983,24 @@ def _build_generation_item_input(db, run_id: str, item_id: str) -> ApiAutomation
         environment = api_automation_repo.find_api_environment(db, run["api_environment_id"])
         if environment:
             environment_summary = _serialize_api_environment(environment)
+    planned_test_points = [
+        asdict(point)
+        for point in plan_api_test_points(_serialize_endpoint(endpoint))
+    ]
+    oracle_facts = {
+        fact["test_point_key"]: fact
+        for fact in api_automation_repo.list_endpoint_oracle_facts(db, endpoint["id"])
+    }
+    for planned_point in planned_test_points:
+        fact = oracle_facts.get(planned_point["key"])
+        if not fact:
+            continue
+        planned_point["oracle_status"] = "confirmed"
+        planned_point["assertions"] = api_automation_repo.loads_json(fact["assertions_json"], [])
+        planned_point["oracle_fact"] = {
+            "approved_by": fact["approved_by"],
+            "evidence_run_ids": api_automation_repo.loads_json(fact["evidence_run_ids_json"], []),
+        }
     return ApiAutomationGenerationInput(
         project_id=run["project_id"],
         endpoints=[_serialize_endpoint(endpoint)],
@@ -756,23 +1010,24 @@ def _build_generation_item_input(db, run_id: str, item_id: str) -> ApiAutomation
         include_security_cases=bool(
             api_automation_repo.loads_json(run["options_json"], {}).get("include_security_cases")
         ),
+        planned_test_points=planned_test_points,
     )
 
 
-def _persist_generation_item_cases(db, run_id: str, item_id: str, attempt_id: str, result) -> int:
+def _persist_generation_item_cases(
+    db,
+    run_id: str,
+    item_id: str,
+    attempt_id: str,
+    result,
+    *,
+    planned_test_points: list[dict[str, Any]],
+) -> int:
     item = api_automation_repo.find_generation_item(db, item_id)
     endpoint = api_automation_repo.find_endpoint(db, item["endpoint_id"]) if item else None
     if not item or not endpoint:
         raise ValueError("接口自动化生成子任务关联接口不存在。")
-    for generated_case in result.cases:
-        request_method = str(generated_case.request.get("method") or "").upper()
-        request_path = str(generated_case.request.get("path") or "")
-        if (
-            generated_case.endpoint_id != endpoint["id"]
-            or request_method != str(endpoint["method"]).upper()
-            or request_path != endpoint["path"]
-        ):
-            raise ValueError("生成用例与接口定义不一致。")
+    validate_generated_cases(_serialize_endpoint(endpoint), planned_test_points, result.cases)
     for generated_case in result.cases:
         api_automation_repo.create_api_test_case(
             db,
@@ -783,6 +1038,8 @@ def _persist_generation_item_cases(db, run_id: str, item_id: str, attempt_id: st
             generation_run_id=run_id,
             generation_item_id=item_id,
             generation_attempt_id=attempt_id,
+            test_point_key=generated_case.test_point_key,
+            oracle_status=generated_case.oracle_status,
             title=generated_case.title,
             test_description=generated_case.test_description,
             priority=generated_case.priority,
@@ -805,6 +1062,202 @@ def _persist_generation_item_cases(db, run_id: str, item_id: str, attempt_id: st
 def _generation_error_message(exc: Exception) -> str:
     message = str(exc)
     return "模型输出超出长度限制" if "finish_reason" in message and "length" in message else message
+
+
+def _prepare_endpoint_generation(suite_path: Path, endpoints: list[dict]) -> tuple[list[dict], dict[str, dict]]:
+    suite_path = suite_path.resolve()
+    endpoint_payload = []
+    artifacts_by_endpoint = {}
+    claimed_directories = {}
+    for endpoint in endpoints:
+        endpoint_dir, test_file_key, data_file_key = endpoint_artifact_paths(endpoint)
+        endpoint_id = endpoint["id"]
+        conflicting_endpoint_id = claimed_directories.get(endpoint_dir)
+        if conflicting_endpoint_id and conflicting_endpoint_id != endpoint_id:
+            raise api_error(
+                409,
+                "API_SCRIPT_ARTIFACT_PATH_CONFLICT",
+                f"接口 {conflicting_endpoint_id} 与 {endpoint_id} 生成目录冲突：{endpoint_dir}",
+            )
+        claimed_directories[endpoint_dir] = endpoint_id
+        artifacts = {
+            "directory": endpoint_dir,
+            "test_file": test_file_key,
+            "data_file": data_file_key,
+        }
+        payload_endpoint = dict(endpoint)
+        payload_endpoint["artifacts"] = artifacts
+        endpoint_payload.append(payload_endpoint)
+        normalized_path = str(endpoint.get("normalized_path") or endpoint.get("path") or "/")
+        artifacts_by_endpoint[endpoint_id] = {
+            "endpoint_id": endpoint_id,
+            "suite_path": suite_path,
+            "test_file_key": test_file_key,
+            "data_file_key": data_file_key,
+            "test_file_path": suite_path / test_file_key,
+            "data_file_path": suite_path / data_file_key,
+            "script_name": f"{str(endpoint.get('method', '')).upper()} {normalized_path}",
+        }
+    return endpoint_payload, artifacts_by_endpoint
+
+
+def _validate_generated_endpoint_artifacts(suite_path: Path, artifacts_by_endpoint: dict[str, dict]) -> None:
+    suite_path = suite_path.resolve()
+    for endpoint_id, artifact in artifacts_by_endpoint.items():
+        for file_type in ("test", "data"):
+            file_key = artifact[f"{file_type}_file_key"]
+            file_path = Path(artifact[f"{file_type}_file_path"]).resolve()
+            expected_path = (suite_path / file_key).resolve()
+            try:
+                file_path.relative_to(suite_path)
+                expected_path.relative_to(suite_path)
+            except ValueError as exc:
+                raise api_error(
+                    422,
+                    "API_SCRIPT_ARTIFACT_PATH_INVALID",
+                    f"接口 {endpoint_id} 的生成文件路径不在 pytest 项目内：{file_key}",
+                ) from exc
+            if file_path != expected_path:
+                raise api_error(
+                    422,
+                    "API_SCRIPT_ARTIFACT_PATH_INVALID",
+                    f"接口 {endpoint_id} 的生成文件路径与后端指定路径不一致：{file_key}",
+                )
+            if not file_path.is_file():
+                raise api_error(
+                    422,
+                    "API_SCRIPT_ARTIFACT_MISSING",
+                    f"接口 {endpoint_id} 缺少生成文件：{file_key}",
+                )
+        data_file_path = Path(artifact["data_file_path"])
+        try:
+            cases = yaml.safe_load(data_file_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, yaml.YAMLError) as exc:
+            raise api_error(
+                422,
+                "API_SCRIPT_ARTIFACT_DATA_INVALID",
+                f"接口 {endpoint_id} 的生成数据文件无法解析：{artifact['data_file_key']}",
+            ) from exc
+        if not isinstance(cases, list) or not cases:
+            raise api_error(
+                422,
+                "API_SCRIPT_ARTIFACT_DATA_INVALID",
+                f"接口 {endpoint_id} 的生成数据文件必须是非空用例列表：{artifact['data_file_key']}",
+            )
+        if not all(isinstance(case, dict) and case.get("endpoint_id") == endpoint_id for case in cases):
+            raise api_error(
+                422,
+                "API_SCRIPT_ARTIFACT_ENDPOINT_MISMATCH",
+                f"接口 {endpoint_id} 的生成数据包含其他接口用例：{artifact['data_file_key']}",
+            )
+        expected_case_ids = set(artifact.get("expected_case_ids") or [])
+        generated_case_ids = {str(case.get("id")) for case in cases if case.get("id")}
+        if expected_case_ids and generated_case_ids != expected_case_ids:
+            raise api_error(
+                422,
+                "API_SCRIPT_ARTIFACT_CASE_MISMATCH",
+                f"接口 {endpoint_id} 的生成用例集合与已选用例不一致：{artifact['data_file_key']}",
+            )
+
+
+def _script_artifacts_are_current(existing, suite_path: Path, endpoint: dict) -> bool:
+    if existing is None:
+        return False
+    _, test_file_key, data_file_key = endpoint_artifact_paths(endpoint)
+    expected_test_path = (suite_path.resolve() / test_file_key).resolve()
+    expected_data_path = (suite_path.resolve() / data_file_key).resolve()
+    stored_test_path = storage.resolve_stored_path(existing["test_file_path"])
+    stored_data_path = storage.resolve_stored_path(existing["data_file_path"])
+    if stored_test_path is None or stored_data_path is None:
+        return False
+    resolved_test_path = stored_test_path.resolve()
+    resolved_data_path = stored_data_path.resolve()
+    return (
+        resolved_test_path == expected_test_path
+        and resolved_data_path == expected_data_path
+        and resolved_test_path.is_file()
+        and resolved_data_path.is_file()
+    )
+
+
+def _collect_generated_suite(suite_path: Path, artifacts_by_endpoint: dict[str, dict]) -> None:
+    suite_path = suite_path.resolve()
+    changed_test_paths = [artifact["test_file_key"] for artifact in artifacts_by_endpoint.values()]
+    _collect_suite_or_raise(suite_path, changed_test_paths)
+    _collect_suite_or_raise(suite_path, None)
+
+
+def _collect_suite_or_raise(suite_path: Path, test_paths: list[str] | None) -> None:
+    try:
+        collection = collect_script_suite(suite_path=suite_path.resolve(), timeout=120, test_paths=test_paths)
+    except Exception as exc:
+        raise api_error(
+            422,
+            "API_SCRIPT_COLLECTION_FAILED",
+            f"生成的 pytest 项目无法收集：{str(exc)[:2000]}",
+        ) from exc
+    if not collection["ok"]:
+        error_output = (collection["stderr"] or collection["stdout"] or "pytest 收集失败。").strip()
+        raise api_error(
+            422,
+            "API_SCRIPT_COLLECTION_FAILED",
+            f"生成的 pytest 项目无法收集：{error_output[:2000]}",
+        )
+
+
+def _find_legacy_endpoint_artifacts(suite_path: Path, endpoint_id: str, canonical_artifact: dict) -> list[Path]:
+    testcases_path = (suite_path.resolve() / "testcases").resolve()
+    canonical_data_path = Path(canonical_artifact["data_file_path"]).resolve()
+    canonical_test_path = Path(canonical_artifact["test_file_path"]).resolve()
+    legacy_paths = []
+    if not testcases_path.is_dir():
+        return legacy_paths
+    for pattern in ("*.yaml", "*.yml"):
+        for data_path in sorted(testcases_path.rglob(pattern)):
+            resolved_data_path = data_path.resolve()
+            if resolved_data_path == canonical_data_path:
+                continue
+            try:
+                cases = yaml.safe_load(data_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, yaml.YAMLError):
+                continue
+            if not isinstance(cases, list) or not cases:
+                continue
+            if not all(isinstance(case, dict) and case.get("endpoint_id") == endpoint_id for case in cases):
+                continue
+            test_path = data_path.with_suffix(".py").resolve()
+            if test_path == canonical_test_path or not test_path.is_file():
+                continue
+            legacy_paths.extend([test_path, resolved_data_path])
+    return legacy_paths
+
+
+def _remove_legacy_endpoint_artifacts(paths: list[Path]) -> list[tuple[Path, bytes]]:
+    backups = []
+    for path in paths:
+        resolved_path = path.resolve()
+        if not resolved_path.is_file():
+            continue
+        backups.append((resolved_path, resolved_path.read_bytes()))
+        resolved_path.unlink()
+    return backups
+
+
+def _restore_removed_endpoint_artifacts(backups: list[tuple[Path, bytes]]) -> None:
+    for path, content in backups:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+
+
+def _cleanup_legacy_endpoint_artifacts(suite_path: Path, legacy_paths: list[Path]) -> None:
+    removed_artifacts = _remove_legacy_endpoint_artifacts(list(dict.fromkeys(legacy_paths)))
+    if not removed_artifacts:
+        return
+    try:
+        _collect_suite_or_raise(suite_path, None)
+    except Exception:
+        _restore_removed_endpoint_artifacts(removed_artifacts)
+        raise
 
 
 def get_generation_run(project_id: str, run_id: str, actor) -> dict:
@@ -864,66 +1317,74 @@ def generate_project_scripts(project_id: str, endpoint_ids: list[str], actor, *,
         endpoint_id: [_serialize_api_test_case(row) for row in rows]
         for endpoint_id, rows in case_rows_by_endpoint.items()
     }
-    source_hashes = {
-        endpoint_id: _script_source_hash(_serialize_endpoint(endpoint_rows[endpoint_id]), cases_by_endpoint[endpoint_id])
+    serialized_endpoints = {
+        endpoint_id: _serialize_endpoint(endpoint_rows[endpoint_id])
         for endpoint_id in endpoint_ids
     }
+    source_hashes = {
+        endpoint_id: _script_source_hash(serialized_endpoints[endpoint_id], cases_by_endpoint[endpoint_id])
+        for endpoint_id in endpoint_ids
+    }
+    project_suite_path = artifacts_dir_for(project_id)
     changed_endpoint_ids = [
         endpoint_id
         for endpoint_id in endpoint_ids
         if force
         or existing_by_endpoint[endpoint_id] is None
         or existing_by_endpoint[endpoint_id]["source_hash"] != source_hashes[endpoint_id]
+        or not _script_artifacts_are_current(
+            existing_by_endpoint[endpoint_id],
+            project_suite_path,
+            serialized_endpoints[endpoint_id],
+        )
     ]
 
     suite_id = f"{project_id}-pytest-requests"
     artifacts_by_endpoint = {}
     if changed_endpoint_ids:
         with project_workspace_lock(project_id):
-            snapshots = []
-            first_time = not (artifacts_dir_for(project_id) / "pytest.ini").exists()
+            generated_suite_path = _ensure_pytest_suite_initialized(artifacts_dir_for(project_id))
+            endpoint_payload, artifacts_by_endpoint = _prepare_endpoint_generation(
+                generated_suite_path,
+                [serialized_endpoints[endpoint_id] for endpoint_id in changed_endpoint_ids],
+            )
             for endpoint_id in changed_endpoint_ids:
-                endpoint = _serialize_endpoint(endpoint_rows[endpoint_id])
-                input_endpoint = PytestRequestsEndpoint(
-                    id=endpoint_id,
-                    method=endpoint["method"],
-                    path=endpoint["path"],
-                    summary=endpoint["summary"],
-                )
-                generated = generate_pytest_requests_code(
-                    PytestRequestsGenerationInput(
-                        endpoint=input_endpoint,
-                        cases=cases_by_endpoint[endpoint_id],
-                        is_first_time=first_time,
+                artifacts_by_endpoint[endpoint_id]["expected_case_ids"] = [
+                    case["id"] for case in cases_by_endpoint[endpoint_id]
+                ]
+            selection = resolve_model_selection("api_test_generation")
+            model = build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
+            try:
+                asyncio.run(
+                    generate_pytest_requests_endpoints(
+                        model=model,
+                        suite_path=generated_suite_path,
+                        endpoints=endpoint_payload,
+                        cases_by_endpoint={
+                            endpoint_id: cases_by_endpoint[endpoint_id]
+                            for endpoint_id in changed_endpoint_ids
+                        },
                     )
                 )
-                first_time = False
-                snapshots.append(snapshot_endpoint_artifacts(project_id, generated))
-                artifacts_by_endpoint[endpoint_id] = materialize_generation_result(project_id, generated)
-            generated_suite_path = artifacts_by_endpoint[changed_endpoint_ids[0]]["suite_path"]
-            test_paths = [
-                relative_file_key(generated_suite_path, artifacts_by_endpoint[endpoint_id]["test_file_path"])
-                for endpoint_id in changed_endpoint_ids
-            ]
-            try:
-                collection = collect_script_suite(suite_path=generated_suite_path, timeout=120, test_paths=test_paths)
             except Exception as exc:
-                for snapshot in reversed(snapshots):
-                    restore_endpoint_artifacts(snapshot)
                 raise api_error(
                     422,
-                    "API_SCRIPT_COLLECTION_FAILED",
-                    f"生成的 pytest 项目无法收集：{str(exc)[:2000]}",
+                    "API_SCRIPT_GENERATION_FAILED",
+                    f"DeepAgents 生成 pytest 项目失败：{str(exc)[:2000]}",
                 ) from exc
-            if not collection["ok"]:
-                for snapshot in reversed(snapshots):
-                    restore_endpoint_artifacts(snapshot)
-                error_output = (collection["stderr"] or collection["stdout"] or "pytest 收集失败。").strip()
-                raise api_error(
-                    422,
-                    "API_SCRIPT_COLLECTION_FAILED",
-                    f"生成的 pytest 项目无法收集：{error_output[:2000]}",
+
+            _validate_generated_endpoint_artifacts(generated_suite_path, artifacts_by_endpoint)
+            _collect_generated_suite(generated_suite_path, artifacts_by_endpoint)
+            legacy_paths = [
+                path
+                for endpoint_id in changed_endpoint_ids
+                for path in _find_legacy_endpoint_artifacts(
+                    generated_suite_path,
+                    endpoint_id,
+                    artifacts_by_endpoint[endpoint_id],
                 )
+            ]
+            _cleanup_legacy_endpoint_artifacts(generated_suite_path, legacy_paths)
         suite_path = storage.store_path(generated_suite_path) or str(generated_suite_path)
     else:
         suite_path = str(existing_by_endpoint[endpoint_ids[0]]["suite_path"])
@@ -964,6 +1425,120 @@ def generate_project_scripts(project_id: str, endpoint_ids: list[str], actor, *,
             scripts.append(serialized)
             changes[change] += 1
     return {"suite_id": suite_id, "suite_path": suite_path, "summary": changes, "scripts": scripts}
+
+
+def create_script_generation_run(
+    project_id: str,
+    endpoint_ids: list[str],
+    actor,
+    *,
+    force: bool = False,
+    api_environment_id: str | None = None,
+) -> dict:
+    _require_admin(actor)
+    endpoint_ids = list(dict.fromkeys(endpoint_ids))
+    if not endpoint_ids:
+        raise api_error(400, "API_ENDPOINT_REQUIRED", "请至少选择一个接口。")
+    run_id = f"apiscriptgen-{secrets.token_hex(8)}"
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        _require_endpoint_ids(db, project_id, endpoint_ids)
+        if api_environment_id:
+            environment = api_automation_repo.find_api_environment(db, api_environment_id)
+            if not environment or environment["project_id"] != project_id:
+                raise api_error(404, "API_ENVIRONMENT_NOT_FOUND", "接口环境不存在。")
+        api_automation_repo.create_script_generation_run(
+            db,
+            run_id=run_id,
+            project_id=project_id,
+            task_id=f"api_script_generation:{run_id}",
+            endpoint_ids=endpoint_ids,
+            api_environment_id=api_environment_id,
+            force=force,
+            created_by=actor["id"],
+        )
+        return _serialize_script_generation_run(db, api_automation_repo.find_script_generation_run(db, run_id))
+
+
+def get_script_generation_run(project_id: str, run_id: str, actor) -> dict:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = api_automation_repo.find_script_generation_run(db, run_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "API_SCRIPT_GENERATION_RUN_NOT_FOUND", "接口脚本生成任务不存在。")
+        return _serialize_script_generation_run(db, row)
+
+
+def execute_script_generation_run(run_id: str) -> None:
+    with connect() as db:
+        row = api_automation_repo.find_script_generation_run(db, run_id)
+        if not row or row["status"] not in {"queued", "running"}:
+            return
+        api_automation_repo.update_script_generation_run(db, run_id, status="running", started_at=_current_timestamp_sql_value())
+        row = api_automation_repo.find_script_generation_run(db, run_id)
+    try:
+        result = generate_project_scripts(
+            row["project_id"],
+            api_automation_repo.loads_json(row["endpoint_ids_json"], []),
+            {"id": row["created_by"], "role": "admin", "project_scope": "全部项目"},
+            force=bool(row["force"]),
+        )
+        changed_files = [
+            path
+            for script in result["scripts"]
+            if script.get("change") in {"created", "updated"}
+            for path in (script.get("test_file_path"), script.get("data_file_path"))
+            if path
+        ]
+        with connect() as db:
+            api_automation_repo.update_script_generation_run(
+                db,
+                run_id,
+                status="completed",
+                suite_path=result["suite_path"],
+                changed_files=changed_files,
+                result_summary=result["summary"],
+                error_message="",
+                finished_at=_current_timestamp_sql_value(),
+            )
+    except Exception as exc:
+        with connect() as db:
+            api_automation_repo.update_script_generation_run(
+                db,
+                run_id,
+                status="failed",
+                error_message=str(exc)[:4000],
+                finished_at=_current_timestamp_sql_value(),
+            )
+
+
+def _serialize_script_generation_run(db, row: Row | None) -> dict:
+    if row is None:
+        return {}
+    return {
+        "id": row["id"],
+        "project_id": row["project_id"],
+        "task_id": row["task_id"],
+        "status": row["status"],
+        "endpoint_ids": api_automation_repo.loads_json(row["endpoint_ids_json"], []),
+        "api_environment_id": row["api_environment_id"],
+        "force": bool(row["force"]),
+        "suite_path": row["suite_path"],
+        "changed_files": api_automation_repo.loads_json(row["changed_files_json"], []),
+        "summary": api_automation_repo.loads_json(row["result_summary_json"], {}),
+        "error_message": row["error_message"],
+        "created_by": row["created_by"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "started_at": row["started_at"],
+        "finished_at": row["finished_at"],
+    }
+
+
+def _current_timestamp_sql_value() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def list_project_scripts(project_id: str, actor) -> list[dict]:
@@ -1206,6 +1781,7 @@ def execute_api_run(run_id: str) -> dict:
         timeout=environment.get("timeout_seconds", 30),
         test_paths=test_paths,
     )
+    result_summary = dict(result["summary"])
     with connect() as db:
         api_automation_repo.update_api_run(
             db,
@@ -1215,11 +1791,27 @@ def execute_api_run(run_id: str) -> dict:
             stderr_path=storage.store_path(result["stderr_path"]) or result["stderr_path"],
             json_report_path=storage.store_path(result["json_report_path"]) or result["json_report_path"],
             scenario_result_path=storage.store_path(result.get("scenario_result_path", "")) or result.get("scenario_result_path", ""),
-            summary=result["summary"],
+            observation_result_path=storage.store_path(result.get("observation_result_path", ""))
+            or result.get("observation_result_path", ""),
+            summary=result_summary,
             error_message=result["error_message"],
             finished=True,
         )
         api_automation_repo.update_scripts_last_run(db, script_ids, result["status"])
+    if result.get("observation_result_path"):
+        try:
+            proposal_summary = create_oracle_proposals_for_run(run_id)
+        except Exception as exc:
+            proposal_summary = {"created": 0, "skipped": 0, "errors": [str(exc)[:1000]]}
+        result_summary["oracle_proposals"] = proposal_summary
+    with connect() as db:
+        api_automation_repo.update_api_run(
+            db,
+            run_id,
+            status=result["status"],
+            summary=result_summary,
+            error_message=result["error_message"],
+        )
         updated = api_automation_repo.find_api_run(db, run_id)
         return _serialize_api_run(updated, db)
 
@@ -1719,6 +2311,16 @@ def recover_interrupted_api_automation_tasks() -> None:
             WHERE status IN ('queued', 'running')
             """
         )
+        db.execute(
+            """
+            UPDATE api_script_generation_runs
+            SET status = 'interrupted',
+                error_message = '服务已重启，接口 pytest 脚本生成任务已中断，请重新生成。',
+                updated_at = CURRENT_TIMESTAMP,
+                finished_at = CURRENT_TIMESTAMP
+            WHERE status IN ('queued', 'running')
+            """
+        )
 
 
 def _store_openapi_document(project_id: str, document_id: str, raw_content: str, source_type: str) -> str:
@@ -1871,6 +2473,8 @@ def _serialize_api_test_case(row: Row) -> dict:
         "project_id": row["project_id"],
         "endpoint_id": row["endpoint_id"],
         "title": row["title"],
+        "test_point_key": row["test_point_key"] if "test_point_key" in row.keys() else "",
+        "oracle_status": row["oracle_status"] if "oracle_status" in row.keys() else "confirmed",
         "test_description": row["test_description"],
         "priority": row["priority"],
         "coverage": row["coverage"],
@@ -1881,6 +2485,41 @@ def _serialize_api_test_case(row: Row) -> dict:
         "notes": row["notes"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+    }
+
+
+def _oracle_case_snapshot(row: Row) -> dict:
+    return {
+        "case_id": row["id"],
+        "endpoint_id": row["endpoint_id"],
+        "test_point_key": row["test_point_key"],
+        "title": row["title"],
+        "oracle_status": row["oracle_status"],
+        "request": api_automation_repo.loads_json(row["request_json"], {}),
+        "assertions": api_automation_repo.loads_json(row["assertions_json"], []),
+    }
+
+
+def _serialize_oracle_proposal(row: Row | None) -> dict:
+    if row is None:
+        raise api_error(404, "API_ORACLE_PROPOSAL_NOT_FOUND", "Oracle 建议不存在。")
+    return {
+        "id": row["id"],
+        "project_id": row["project_id"],
+        "endpoint_id": row["endpoint_id"],
+        "case_id": row["case_id"],
+        "run_id": row["run_id"],
+        "test_point_key": row["test_point_key"],
+        "status": row["status"],
+        "current_snapshot": api_automation_repo.loads_json(row["current_snapshot_json"], {}),
+        "proposed_snapshot": api_automation_repo.loads_json(row["proposed_snapshot_json"], {}),
+        "reasoning": row["reasoning"],
+        "confidence": row["confidence"],
+        "review_scope": row["review_scope"],
+        "review_comment": row["review_comment"],
+        "reviewed_by": row["reviewed_by"],
+        "reviewed_at": row["reviewed_at"],
+        "created_at": row["created_at"],
     }
 
 
@@ -1999,6 +2638,7 @@ def _serialize_api_run(row: Row | None, db=None) -> dict:
         "stderr_path": row["stderr_path"],
         "json_report_path": row["json_report_path"],
         "scenario_result_path": row["scenario_result_path"] if "scenario_result_path" in keys else "",
+        "observation_result_path": row["observation_result_path"] if "observation_result_path" in keys else "",
         "summary": api_automation_repo.loads_json(row["summary_json"], {}),
         "error_message": row["error_message"],
         "created_by_name": created_by_name or row["created_by"],

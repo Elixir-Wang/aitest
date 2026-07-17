@@ -8,6 +8,7 @@ import { ClipboardCheck, Loader2, Play, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
@@ -297,7 +298,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={[{ label: "测试资产" }, { label: "测试用例" }]}
+      breadcrumbs={moduleBreadcrumbs("testCases")}
       description="查看测试用例集、生成状态和用例数量。"
       projectScope={projectScope}
       title="测试用例"

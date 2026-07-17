@@ -6,6 +6,7 @@ import { Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
@@ -207,7 +208,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={[{ label: "系统管理" }, { label: "用户与权限" }]}
+      breadcrumbs={moduleBreadcrumbs("users")}
       description="管理管理员、测试工程师、访客账号和项目分配。"
       projectScope="none"
       title="用户与权限"

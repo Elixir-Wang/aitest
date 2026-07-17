@@ -1,21 +1,29 @@
+import asyncio
+import json
 from contextlib import contextmanager
-from urllib.parse import urlsplit
+from pathlib import Path
 
-import httpx
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends
+from fastapi.responses import FileResponse, StreamingResponse
 
-from app.dependencies.auth import current_user, get_token
+from app.core import settings
+from app.core.db import connect
+from app.dependencies.auth import current_user
 from app.repositories import api_automation_repo, performance_script_repo, project_repo
-from app.services.performance_testing.locust_session import (
-    LocustSession,
-    build_proxy_target,
-    require_session,
-    start_session,
-)
+from app.services.performance_testing import headless_worker, run_repo
 
 
 test_router = APIRouter(prefix="/projects/{project_id}/performance-tests/{test_id}", tags=["performance-tests"])
 run_router = APIRouter(prefix="/projects/{project_id}/performance-test-runs", tags=["performance-test-runs"])
+REPORT_FILES = {
+    "result.html",
+    "result_stats.csv",
+    "result_stats_history.csv",
+    "result_failures.csv",
+    "stdout.log",
+    "stderr.log",
+}
+TERMINAL_STATUSES = {"completed", "stopped", "failed", "cancelled"}
 
 
 @test_router.post("/runs")
@@ -28,68 +36,160 @@ def create_performance_run(
     script_id = str(payload.get("script_id") or "")
     if not script_id:
         from app.core.exceptions import api_error
-
         raise api_error(400, "PERFORMANCE_RUN_INVALID", "必须提供 script_id。")
     with _script_lookup(project_id, test_id, script_id, actor) as context:
-        session: LocustSession = start_session(
-            project_id,
-            test_id,
-            script_id,
+        run_id = headless_worker.start_headless_run(
+            project_id=project_id,
+            test_id=test_id,
+            script_id=script_id,
             script_code=context["script_code"],
             runtime_payload=context["runtime_environment"],
+            load_config=context["load_config"],
+            created_by=str(actor["id"]),
         )
-    return {"id": session.run_id, "locust_ui_path": session.base_path}
+    return {"id": run_id, "status": "starting"}
 
 
-@run_router.post("/{run_id}/locust-ui-session")
-def create_locust_ui_session(
+@run_router.get("/{run_id}")
+def get_performance_run(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
+    return _run_payload(_require_run(project_id, run_id, actor))
+
+
+@run_router.get("/{run_id}/stats")
+def get_performance_run_stats(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
+    _require_run(project_id, run_id, actor)
+    with connect() as db:
+        run = run_repo.get_run(db, run_id)
+        return {
+            "run": _run_payload(run),
+            "stats": [dict(row) for row in run_repo.list_stats(db, run_id)],
+            "failures": [dict(row) for row in run_repo.list_failures(db, run_id)],
+            "exceptions": [dict(row) for row in run_repo.list_exceptions(db, run_id)],
+            "events": [dict(row) for row in run_repo.list_events(db, run_id)],
+        }
+
+
+@run_router.post("/{run_id}/stop")
+def stop_performance_run(project_id: str, run_id: str, actor=Depends(current_user)) -> dict[str, str | bool]:
+    _require_run(project_id, run_id, actor)
+    return {"id": run_id, "accepted": headless_worker.stop_headless_run(run_id)}
+
+
+@run_router.get("/{run_id}/reports")
+def list_performance_run_reports(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
+    _require_run(project_id, run_id, actor)
+    directory = _run_report_directory(project_id, run_id)
+    reports = []
+    if directory.exists():
+        reports = [
+            {"name": item.name, "size": item.stat().st_size}
+            for item in sorted(directory.iterdir())
+            if item.is_file() and item.name in REPORT_FILES
+        ]
+    return {"run_id": run_id, "reports": reports}
+
+
+@run_router.get("/{run_id}/reports/{filename}")
+def download_performance_run_report(
     project_id: str,
     run_id: str,
-    request: Request,
-    response: Response,
-    token: str = Depends(get_token),
+    filename: str,
     actor=Depends(current_user),
-) -> dict[str, str]:
-    _ensure_project_visible(project_id, actor)
-    session = require_session(project_id, run_id)
-    response.set_cookie(
-        "locust_ui_session",
-        token,
-        max_age=3600,
-        httponly=True,
-        samesite="lax",
-        path=session.base_path,
+):
+    _require_run(project_id, run_id, actor)
+    if Path(filename).name != filename or filename not in REPORT_FILES:
+        from app.core.exceptions import api_error
+        raise api_error(400, "PERFORMANCE_REPORT_INVALID", "不支持的报告文件。")
+    directory = _run_report_directory(project_id, run_id)
+    report = (directory / filename).resolve()
+    if directory not in report.parents or not report.is_file():
+        from app.core.exceptions import api_error
+        raise api_error(404, "PERFORMANCE_REPORT_NOT_FOUND", "报告文件不存在。")
+    return FileResponse(report, filename=filename)
+
+
+def format_run_sse_event(event: str, payload: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False, separators=(",", ":"))}\n\n"
+
+
+@run_router.get("/{run_id}/stream")
+async def stream_performance_run(project_id: str, run_id: str, actor=Depends(current_user)):
+    _require_run(project_id, run_id, actor)
+
+    async def events():
+        last_run_signature = None
+        last_stat_id = ""
+        last_event_id = ""
+        while True:
+            with connect() as db:
+                run = run_repo.get_run(db, run_id)
+                if run is None:
+                    return
+                stats = run_repo.list_stats(db, run_id)
+                failures = run_repo.list_failures(db, run_id)
+                exceptions = run_repo.list_exceptions(db, run_id)
+                run_events = run_repo.list_events(db, run_id)
+            run_signature = (run["status"], run["updated_at"], run["error_code"], run["error_message"])
+            if run_signature != last_run_signature:
+                last_run_signature = run_signature
+                yield format_run_sse_event("run", _run_payload(run))
+            if stats and stats[-1]["id"] != last_stat_id:
+                last_stat_id = stats[-1]["id"]
+                yield format_run_sse_event(
+                    "stats",
+                    {
+                        "run": _run_payload(run),
+                        "latest": dict(stats[-1]),
+                        "failures": [dict(row) for row in failures],
+                        "exceptions": [dict(row) for row in exceptions],
+                    },
+                )
+            if run_events and run_events[-1]["id"] != last_event_id:
+                last_event_id = run_events[-1]["id"]
+                yield format_run_sse_event("log", dict(run_events[-1]))
+            if run["status"] in TERMINAL_STATUSES:
+                yield format_run_sse_event("done", {"status": run["status"]})
+                return
+            await asyncio.sleep(1)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-    return {"url": f"{str(request.base_url).rstrip('/')}{session.base_path}"}
 
 
-@run_router.api_route(
-    "/{run_id}/locust-ui",
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-)
-async def proxy_locust_ui_root(
-    project_id: str,
-    run_id: str,
-    request: Request,
-    actor=Depends(current_user),
-) -> Response:
+def _require_run(project_id: str, run_id: str, actor):
     _ensure_project_visible(project_id, actor)
-    return await _proxy_locust_ui(project_id, run_id, "", request)
+    with connect() as db:
+        run = run_repo.get_run(db, run_id)
+        if not run or run["project_id"] != project_id:
+            from app.core.exceptions import api_error
+            raise api_error(404, "PERFORMANCE_RUN_NOT_FOUND", "性能测试运行不存在。")
+        return run
 
 
-@run_router.api_route(
-    "/{run_id}/locust-ui/{path:path}",
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-)
-async def proxy_locust_ui_path(
-    project_id: str,
-    run_id: str,
-    path: str,
-    request: Request,
-    actor=Depends(current_user),
-) -> Response:
-    _ensure_project_visible(project_id, actor)
-    return await _proxy_locust_ui(project_id, run_id, path, request)
+def _run_report_directory(project_id: str, run_id: str) -> Path:
+    return (settings.PROJECT_FILE_STORAGE_ROOT / project_id / "performance_testing" / "runs" / run_id).resolve()
+
+
+def _run_payload(row) -> dict:
+    return {
+        "id": row["id"],
+        "project_id": row["project_id"],
+        "performance_test_id": row["performance_test_id"],
+        "script_id": row["script_id"],
+        "status": row["status"],
+        "load_config": api_automation_repo.loads_json(row["load_config_json"], {}),
+        "latest_summary": api_automation_repo.loads_json(row["latest_summary_json"], {}),
+        "error_code": row["error_code"],
+        "error_message": row["error_message"],
+        "trace_id": row["trace_id"],
+        "created_at": row["created_at"],
+        "started_at": row["started_at"],
+        "finished_at": row["finished_at"],
+        "updated_at": row["updated_at"],
+    }
 
 
 @contextmanager
@@ -123,6 +223,7 @@ def _script_lookup(project_id: str, test_id: str, script_id: str, actor):
         yield {
             "script_code": script_row["code"],
             "runtime_environment": _build_runtime_environment(environment),
+            "load_config": api_automation_repo.loads_json(test_row["load_config_json"], {}),
         }
 
 
@@ -185,44 +286,3 @@ def _build_runtime_environment(row) -> dict:
     }
 
 
-async def _proxy_locust_ui(project_id: str, run_id: str, path: str, request: Request) -> Response:
-    session = require_session(project_id, run_id)
-    target = build_proxy_target(session, path)
-    if request.url.query:
-        target = f"{target}?{request.url.query}"
-    headers = _proxy_request_headers(request.headers)
-    try:
-        async with httpx.AsyncClient(follow_redirects=False, timeout=30) as client:
-            proxied = await client.request(
-                request.method,
-                target,
-                headers=headers,
-                content=await request.body(),
-            )
-    except httpx.HTTPError as exc:
-        from app.core.exceptions import api_error
-
-        raise api_error(502, "LOCUST_UI_UNAVAILABLE", "Locust UI 暂时不可用。") from exc
-    response_headers = {
-        key: value
-        for key, value in proxied.headers.items()
-        if key.lower() not in {"content-length", "content-encoding", "transfer-encoding", "connection"}
-    }
-    if "location" in response_headers:
-        response_headers["location"] = _rewrite_locust_location(response_headers["location"])
-    return Response(content=proxied.content, status_code=proxied.status_code, headers=response_headers)
-
-
-def _rewrite_locust_location(location: str) -> str:
-    parsed = urlsplit(location)
-    if parsed.hostname not in {"127.0.0.1", "localhost"}:
-        return location
-    return f"{parsed.path}{'?' + parsed.query if parsed.query else ''}"
-
-
-def _proxy_request_headers(headers) -> dict[str, str]:
-    return {
-        key: value
-        for key, value in headers.items()
-        if key.lower() not in {"host", "content-length", "connection", "upgrade", "cookie", "authorization"}
-    }

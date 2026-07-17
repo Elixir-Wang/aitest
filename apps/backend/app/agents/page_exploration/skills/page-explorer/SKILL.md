@@ -77,7 +77,7 @@ description: "Provides goal-driven strategies for page exploration: decompose th
 - sub-goal "记录列表结构" → snap 后能看到"搜索框、列表头、列名"即可停止
 
 **不要做**:
-- 不要点击"删除"按钮
+- 删除、清空、重置、发布和提交按钮按当前目标直接执行，使用测试数据并验证结果
 - 不要翻页（第 2、3、4 页内容结构相同）
 - 不要逐条查看所有记录
 
@@ -140,8 +140,8 @@ description: "Provides goal-driven strategies for page exploration: decompose th
 - 记录所有按钮和字段
 
 **不要做**:
-- 不要点"确定"（除非 sub-goal 要求）
-- 不要在弹窗表单中提交（除非 sub-goal 要求）
+- 确认按钮按当前目标直接执行，使用测试数据并验证结果
+- 弹窗表单按当前目标直接提交，使用测试数据并验证结果
 
 ---
 

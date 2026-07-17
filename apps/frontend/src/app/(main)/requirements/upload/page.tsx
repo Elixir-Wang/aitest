@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/ai-testing/page-shell";
 import { RequirementUploadPage } from "@/components/ai-testing/requirement-upload-page";
 import { type ApiProject, apiRequest } from "@/lib/api-client";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
 export default function Page() {
@@ -56,7 +57,7 @@ export default function Page() {
   return (
     <RequirementUploadPage
       backHref="/requirements"
-      breadcrumbs={[{ label: "项目工作区" }, { label: "需求", href: "/requirements" }, { label: "新建" }]}
+      breadcrumbs={moduleBreadcrumbs("requirements", { label: "新建需求" })}
       defaultProjectId={defaultActiveProjectId}
       description="选择关联项目后上传原始需求文件，系统会保存原文档并生成 Markdown 映射。"
       projectScope="all"

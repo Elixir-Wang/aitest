@@ -286,7 +286,8 @@ def test_existing_database_adds_generation_batch_structure_without_losing_cases(
         }
         case_columns = {row["name"] for row in db.execute("PRAGMA table_info(api_test_cases)")}
         case = db.execute(
-            "SELECT id, generation_run_id FROM api_test_cases WHERE id = 'apitc-legacy'"
+            "SELECT id, generation_run_id, test_point_key, oracle_status "
+            "FROM api_test_cases WHERE id = 'apitc-legacy'"
         ).fetchone()
         case_set = db.execute(
             "SELECT latest_generation_run_id FROM api_test_case_sets WHERE id = 'apiset-legacy'"
@@ -300,10 +301,12 @@ def test_existing_database_adds_generation_batch_structure_without_losing_cases(
         ).fetchone()["sql"]
 
     assert tables == {"api_generation_items", "api_generation_item_attempts"}
-    assert {"generation_item_id", "generation_attempt_id"} <= case_columns
+    assert {"generation_item_id", "generation_attempt_id", "test_point_key", "oracle_status"} <= case_columns
     assert "tags_json" not in case_columns
     assert case["id"] == "apitc-legacy"
     assert case["generation_run_id"] == "apigen-legacy"
+    assert case["test_point_key"] == "legacy.apitc-legacy"
+    assert case["oracle_status"] == "confirmed"
     assert case_set["latest_generation_run_id"] == "apigen-legacy"
     assert script["generation_run_id"] == "apigen-legacy"
     assert foreign_key_violations == []
@@ -479,6 +482,22 @@ def test_generation_case_script_and_run_records(monkeypatch: pytest.MonkeyPatch,
     assert api_automation_repo.loads_json(run["execution_snapshot_json"], {})["case_count"] == 1
     assert total == 1
     assert [item["id"] for item in runs] == [run_id]
+
+
+def test_api_run_schema_supports_observed_status_and_observation_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+
+    with connect() as db:
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(api_automation_runs)")}
+        table_sql = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'api_automation_runs'"
+        ).fetchone()["sql"]
+
+    assert "observation_result_path" in columns
+    assert "observed" in table_sql
 
 
 def test_api_run_snapshot_and_legacy_history_include_environment_and_endpoint_count(

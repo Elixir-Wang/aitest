@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 
 import { ExplorationWorkspace } from "@/components/ai-testing/exploration-workspace";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
 export default function Page() {
@@ -17,7 +18,7 @@ export default function Page() {
 
   return (
     <ExplorationWorkspace
-      breadcrumbs={[{ label: "项目工作区" }, { label: "探索" }]}
+      breadcrumbs={moduleBreadcrumbs("exploration")}
       description="查看全部项目的探索任务、页面事实和冲突项。"
       projectId={scopedProjectId ?? undefined}
       projectScope={scope}

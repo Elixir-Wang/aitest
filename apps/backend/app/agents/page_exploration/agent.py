@@ -22,6 +22,7 @@ from langchain.agents.middleware import ToolCallLimitMiddleware
 
 from app.agents.shared.invalid_tool_call_recovery import InvalidToolCallRecoveryMiddleware
 from app.agents.page_exploration.tools import get_local_tools
+from app.agents.page_exploration.prompts.autonomous_system_prompt import AUTONOMOUS_SYSTEM_PROMPT
 from app.agents.page_exploration.prompts.system_prompt import SYSTEM_PROMPT
 
 
@@ -30,6 +31,7 @@ def page_exploration_agent(
     tools=None,
     skill_names=None,
     max_actions: int = 80,
+    exploration_mode: str = "goal",
 ):
     """
     创建页面探索智能体
@@ -64,7 +66,15 @@ def page_exploration_agent(
         all_tools.extend(tools)
 
     # 3. 处理技能名称
-    skills = ["app/agents/page_exploration/skills/"]
+    if exploration_mode not in {"goal", "autonomous"}:
+        raise ValueError(f"不支持的页面探索模式: {exploration_mode}")
+
+    skills = [
+        "app/agents/page_exploration/skills/page-explorer/"
+        if exploration_mode == "goal"
+        else "app/agents/page_exploration/skills/autonomous-explorer/",
+        "app/agents/page_exploration/skills/locator-best-practices/",
+    ]
     if skill_names:
         skills.extend(skill_names)
 
@@ -81,7 +91,7 @@ def page_exploration_agent(
     return create_deep_agent(
         model=model,
         tools=all_tools,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=SYSTEM_PROMPT if exploration_mode == "goal" else AUTONOMOUS_SYSTEM_PROMPT,
         backend=backend,
         skills=skills,  # 自动发现子技能
         middleware=middleware,

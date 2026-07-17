@@ -1,9 +1,8 @@
 import threading
+import re
 from contextlib import contextmanager
 from pathlib import Path
 
-from app.agents.api_automation.pytest_requests.renderer import render_pytest_requests_files, slugify
-from app.agents.api_automation.pytest_requests.schemas import PytestRequestsGenerationResult
 from app.core import storage
 
 
@@ -15,12 +14,8 @@ def project_suite_path(project_id: str) -> Path:
     return storage.PROJECT_FILE_STORAGE_ROOT / project_id / "api_automation" / "pytest_requests"
 
 
-def endpoint_file_key(*, endpoint_id: str, method: str, path: str) -> str:
-    return slugify(f"{method}_{path}_{endpoint_id}")
-
-
 def scenario_file_key(*, scenario_id: str, name: str) -> str:
-    return slugify(f"{name}_{scenario_id}")
+    return _slugify(f"{name}_{scenario_id}")
 
 
 def materialize_scenario_snapshot(project_id: str, snapshot: dict) -> dict:
@@ -48,57 +43,6 @@ def write_atomic(path: Path, content: str) -> None:
     temporary_path.replace(path)
 
 
-def materialize_generation_result(project_id: str, result: PytestRequestsGenerationResult) -> dict:
-    suite_path = project_suite_path(project_id)
-    written = {}
-    for generated_file in result.files:
-        target = resolve_suite_file(suite_path, generated_file.key)
-        write_atomic(target, generated_file.content)
-        written[generated_file.key] = target
-    test_key = next(file.key for file in result.files if file.kind == "test")
-    data_key = next(file.key for file in result.files if file.kind == "data")
-    return {
-        "endpoint_id": result.endpoint_id,
-        "suite_path": suite_path,
-        "test_file_path": written[test_key],
-        "data_file_path": written[data_key],
-        "script_name": result.endpoint_key,
-    }
-
-
-def snapshot_endpoint_artifacts(project_id: str, result: PytestRequestsGenerationResult) -> dict:
-    suite_path = project_suite_path(project_id)
-    files = {}
-    for generated_file in result.files:
-        if generated_file.kind not in {"test", "data", "init"}:
-            continue
-        target = resolve_suite_file(suite_path, generated_file.key)
-        files[target] = target.read_text(encoding="utf-8") if target.exists() else None
-    return {"suite_path": suite_path, "files": files}
-
-
-def restore_endpoint_artifacts(snapshot: dict) -> None:
-    suite_path = Path(snapshot["suite_path"]).resolve()
-    testcases_root = (suite_path / "testcases").resolve()
-    parents = set()
-    for raw_path, content in snapshot["files"].items():
-        path = Path(raw_path).resolve()
-        path.relative_to(suite_path)
-        parents.add(path.parent)
-        if content is None:
-            if path.exists() and path.is_file():
-                path.unlink()
-        else:
-            write_atomic(path, content)
-    for parent in sorted(parents, key=lambda p: len(p.as_posix()), reverse=True):
-        try:
-            parent.relative_to(testcases_root)
-        except ValueError:
-            continue
-        if parent.exists() and not any(parent.iterdir()):
-            parent.rmdir()
-
-
 @contextmanager
 def project_workspace_lock(project_id: str):
     with _project_locks_guard:
@@ -107,11 +51,12 @@ def project_workspace_lock(project_id: str):
         yield
 
 
-def relative_file_key(suite_path: Path, file_path: Path) -> str:
-    return file_path.resolve().relative_to(suite_path.resolve()).as_posix()
-
-
 def resolve_suite_file(suite_path: Path, file_key: str) -> Path:
     candidate = (suite_path / file_key).resolve()
     candidate.relative_to(suite_path.resolve())
     return candidate
+
+
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9_]+", "_", value.strip().lower()).strip("_")
+    return re.sub(r"_+", "_", slug) or "generated"

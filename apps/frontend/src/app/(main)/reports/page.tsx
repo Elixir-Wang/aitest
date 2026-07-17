@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Activity, ClipboardList, Eye, FileClock } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { ProcessingState } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,7 +27,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={[{ label: "测试资产" }, { label: "报告中心" }]}
+      breadcrumbs={moduleBreadcrumbs("reports")}
       description="按全局或项目范围查看运行记录、Allure 报告、失败诊断和内部 Bug 记录。"
       projectScope="all"
       tabs={["运行记录", "Allure 报告", "失败诊断", "内部 Bug 记录"]}

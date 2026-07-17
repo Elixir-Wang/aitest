@@ -9,6 +9,7 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 
 import { OperationLogDetailContent } from "@/components/ai-testing/operation-logs/operation-log-detail-content";
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import {
   type ApiOperationLogDetail,
@@ -50,7 +51,7 @@ export default function Page() {
           </Link>
         </Button>
       }
-      breadcrumbs={[{ label: "系统管理" }, { label: "系统日志", href: "/settings/logs" }, { label: "日志详情" }]}
+      breadcrumbs={moduleBreadcrumbs("systemLogs", { label: "日志详情" })}
       description="查看单条系统日志的上下文、追踪 ID 和脱敏后的错误摘要。"
       projectScope="none"
       title="日志详情"

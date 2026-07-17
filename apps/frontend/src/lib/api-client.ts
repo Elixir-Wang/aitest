@@ -1003,7 +1003,49 @@ export type PerformanceScript = {
 
 export type PerformanceRun = {
   id: string;
-  locust_ui_path: string;
+  project_id: string;
+  performance_test_id: string;
+  script_id: string;
+  status: string;
+  load_config: Record<string, unknown>;
+  latest_summary: Record<string, unknown>;
+  error_code: string;
+  error_message: string;
+  trace_id: string;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  updated_at: string;
+};
+
+export type ApiScriptGenerationRun = {
+  id: string;
+  project_id: string;
+  task_id: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted";
+  endpoint_ids: string[];
+  api_environment_id: string | null;
+  force: boolean;
+  suite_path: string;
+  changed_files: string[];
+  summary: { created?: number; updated?: number; unchanged?: number };
+  error_message: string;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
+export type PerformanceRunReport = { name: string; size: number };
+
+export type PerformanceRunReports = { run_id: string; reports: PerformanceRunReport[] };
+
+export type PerformanceRunStats = {
+  run: PerformanceRun;
+  stats: Array<Record<string, unknown>>;
+  failures: Array<Record<string, unknown>>;
+  exceptions: Array<Record<string, unknown>>;
+  events: Array<Record<string, unknown>>;
 };
 
 export type ApiAutomationCaseSet = {
@@ -1101,14 +1143,63 @@ export function confirmPerformanceScript(projectId: string, testId: string, scri
 }
 
 export function createPerformanceRun(projectId: string, testId: string, scriptId: string) {
-  return apiRequest<PerformanceRun>(`/projects/${projectId}/performance-tests/${testId}/runs`, {
+  return apiRequest<{ id: string; status: string }>(`/projects/${projectId}/performance-tests/${testId}/runs`, {
     method: "POST",
     body: JSON.stringify({ script_id: scriptId }),
   });
 }
 
-export function createLocustUiSession(projectId: string, runId: string) {
-  return apiRequest<{ url: string }>(`/projects/${projectId}/performance-test-runs/${runId}/locust-ui-session`, {
+export function getPerformanceRun(projectId: string, runId: string) {
+  return apiRequest<PerformanceRun>(`/projects/${projectId}/performance-test-runs/${runId}`);
+}
+
+export function getPerformanceRunStats(projectId: string, runId: string) {
+  return apiRequest<PerformanceRunStats>(`/projects/${projectId}/performance-test-runs/${runId}/stats`);
+}
+
+export function listPerformanceRunReports(projectId: string, runId: string) {
+  return apiRequest<PerformanceRunReports>(`/projects/${projectId}/performance-test-runs/${runId}/reports`);
+}
+
+export function performanceRunReportUrl(projectId: string, runId: string, filename: string) {
+  return `${API_BASE_URL}/projects/${projectId}/performance-test-runs/${runId}/reports/${encodeURIComponent(filename)}`;
+}
+
+export async function streamPerformanceRun(
+  projectId: string,
+  runId: string,
+  signal: AbortSignal,
+  onEvent: (event: string, payload: Record<string, unknown>) => void,
+) {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/performance-test-runs/${runId}/stream`, {
+    credentials: "include",
+    headers: { ...Object.fromEntries(apiAuthHeaders()), Accept: "text/event-stream" },
+    signal,
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throwApiError(response, payload);
+  }
+  if (!response.body) return;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    buffer += decoder.decode(chunk.value, { stream: true });
+    const messages = buffer.split("\n\n");
+    buffer = messages.pop() ?? "";
+    for (const message of messages) {
+      const event = message.match(/^event: (.+)$/m)?.[1];
+      const data = message.match(/^data: (.+)$/m)?.[1];
+      if (event && data) onEvent(event, JSON.parse(data) as Record<string, unknown>);
+    }
+  }
+}
+
+export function stopPerformanceRun(projectId: string, runId: string) {
+  return apiRequest<{ id: string; accepted: boolean }>(`/projects/${projectId}/performance-test-runs/${runId}/stop`, {
     method: "POST",
   });
 }
@@ -1218,15 +1309,14 @@ export function generateApiAutomationScripts(
   projectId: string,
   payload: { endpoint_ids: string[]; force?: boolean; api_environment_id?: string | null },
 ) {
-  return apiRequest<{
-    suite_id: string;
-    suite_path: string;
-    summary: { created: number; updated: number; unchanged: number };
-    scripts: ApiAutomationScript[];
-  }>(`/projects/${projectId}/api-automation/scripts/generate`, {
+  return apiRequest<ApiScriptGenerationRun>(`/projects/${projectId}/api-automation/scripts/generate`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function getApiScriptGenerationRun(projectId: string, runId: string) {
+  return apiRequest<ApiScriptGenerationRun>(`/projects/${projectId}/api-automation/scripts/generation-runs/${runId}`);
 }
 
 export function listApiAutomationScripts(projectId: string) {

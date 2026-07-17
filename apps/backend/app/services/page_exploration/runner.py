@@ -502,10 +502,22 @@ async def _execute_exploration_async(
         browser_session_context,
         exploration_runtime_context,
     )
+    from app.services.page_exploration.artifact_merge_service import (
+        capture_page_baseline,
+        merge_goal_run_artifacts,
+    )
+    from app.services.page_exploration.coverage_evaluator import evaluate_autonomous_coverage
 
     _ensure_exploration_not_stopping(run_id)
 
-    agent = page_exploration_agent(model, max_actions=max(40, min(int(max_pages or 80) * 6, 200)))
+    if exploration_mode == "goal":
+        capture_page_baseline(_project_file_storage_root(), project_id, run_id)
+
+    agent = page_exploration_agent(
+        model,
+        max_actions=max(40, min(int(max_pages or 80) * 6, 200)),
+        exploration_mode=exploration_mode,
+    )
     _event_bus().publish(
         run_id,
         "planning_completed",
@@ -560,6 +572,13 @@ async def _execute_exploration_async(
         )
     _ensure_exploration_not_stopping(run_id)
 
+    result_status = "completed"
+    coverage_summary = None
+    if exploration_mode == "autonomous":
+        coverage_summary = evaluate_autonomous_coverage(_project_file_storage_root(), project_id, run_id)
+        if not coverage_summary["complete"]:
+            result_status = "partial"
+
     artifact_summary = _register_exploration_outputs(
         project_id=project_id,
         run_id=run_id,
@@ -567,8 +586,15 @@ async def _execute_exploration_async(
         scope=scope,
         exploration_mode=exploration_mode,
         max_pages=max_pages,
+        result_status=result_status,
         goal=goal,
     )
+    if coverage_summary and coverage_summary["pending"]:
+        artifact_summary = f"自主探索部分完成：发现 {coverage_summary['discovered']} 个元素，仍有 {coverage_summary['pending']} 个元素未执行。"
+    if exploration_mode == "goal":
+        merge_summary = merge_goal_run_artifacts(_project_file_storage_root(), project_id, run_id)
+        if merge_summary["status"] == "conflict":
+            artifact_summary = f"目标探索产物已生成，但存在 {merge_summary['conflict_count']} 个合并冲突。"
     _ensure_exploration_not_stopping(run_id)
     run_dir = _project_file_storage_root() / project_id / "page_exploration" / "runs" / run_id
     completion_status = _exploration_completion_status(_read_timeline_events_from_run_dir(run_dir))

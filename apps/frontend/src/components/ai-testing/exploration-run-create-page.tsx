@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, CircleHelp, FileText, Gauge, Loader2, Play, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
-import { type PageBreadcrumb, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -25,6 +25,7 @@ import type {
   ExplorationRunDetail,
   ProjectScope,
 } from "@/lib/exploration-types";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
 type RequirementDocument = {
   id: string;
@@ -53,7 +54,6 @@ type ExplorationForm = {
 };
 
 type ExplorationRunCreatePageProps = {
-  breadcrumbs: PageBreadcrumb[];
   mode?: "create" | "edit";
   projectId?: string;
   projectName?: string;
@@ -109,7 +109,6 @@ function resizeTextarea(textarea: HTMLTextAreaElement | null) {
 }
 
 export function ExplorationRunCreatePage({
-  breadcrumbs,
   mode = "create",
   projectId,
   projectName = "",
@@ -125,6 +124,7 @@ export function ExplorationRunCreatePage({
   const [environmentLoading, setEnvironmentLoading] = useState(true);
   const [requirementLoading, setRequirementLoading] = useState(false);
   const [runLoading, setRunLoading] = useState(isEditing);
+  const [loadedRunTitle, setLoadedRunTitle] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [goalOptimizeLoading, setGoalOptimizeLoading] = useState(false);
   const scopeRef = useRef<HTMLTextAreaElement | null>(null);
@@ -163,6 +163,7 @@ export function ExplorationRunCreatePage({
           return;
         }
         const run = detail.run;
+        setLoadedRunTitle(run.title);
         setForm({
           title: run.title,
           projectId: run.project_id,
@@ -367,6 +368,21 @@ export function ExplorationRunCreatePage({
       : projectId
         ? `/projects/${projectId}`
         : "/exploration";
+  const pageBreadcrumbs =
+    isEditing && runId
+      ? moduleBreadcrumbs(
+          "exploration",
+          ...(loadedRunTitle
+            ? [
+                {
+                  label: loadedRunTitle,
+                  href: `/projects/${projectId ?? selectedProjectId}/exploration/${runId}`,
+                },
+              ]
+            : []),
+          { label: "编辑探索任务" },
+        )
+      : moduleBreadcrumbs("exploration", { label: "新建探索任务" });
 
   const requestGoalOptimization = useCallback(async () => {
     if (!selectedProjectId) {
@@ -462,7 +478,7 @@ export function ExplorationRunCreatePage({
 
   return (
     <PageShell
-      breadcrumbs={breadcrumbs}
+      breadcrumbs={pageBreadcrumbs}
       description={
         isEditing
           ? "调整页面探索任务的目标、范围、环境和执行边界。"

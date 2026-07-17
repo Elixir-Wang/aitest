@@ -10,7 +10,6 @@ import { toast } from "sonner";
 import { ExplorationTaskInfoPanel } from "@/components/ai-testing/exploration-task-info-panel";
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
-import { useProjectName } from "@/components/ai-testing/use-project-name";
 import type { AgentPlanStatus } from "@/components/ui/agent-plan";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,6 +37,7 @@ import type {
   ReadableExecutionDisplayKind,
   ReadableExecutionField,
 } from "@/lib/exploration-types";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
 const logTypeLabels: Record<string, string> = {
   run_started: "探索开始",
@@ -1000,7 +1000,6 @@ function hasExplorationStarted(run: ExplorationRun): boolean {
 export default function Page() {
   const params = useParams<{ projectId: string; runId: string }>();
   const router = useRouter();
-  const projectName = useProjectName(params.projectId);
   const [run, setRun] = useState<ExplorationRun | null>(null);
   const [detail, setDetail] = useState<ExplorationRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1217,12 +1216,7 @@ export default function Page() {
   const templateLabel = run?.exploration_mode === "goal" ? "目标探索模板" : "自主探索";
   return (
     <PageShell
-      breadcrumbs={[
-        { label: "项目", href: "/projects" },
-        { label: projectName, href: `/projects/${params.projectId}` },
-        { label: "探索", href: "/exploration" },
-        ...(run ? [{ label: run.title }] : []),
-      ]}
+      breadcrumbs={run ? moduleBreadcrumbs("exploration", { label: run.title }) : moduleBreadcrumbs("exploration")}
       tabActions={
         <>
           <Button onClick={() => router.push("/exploration")} size="sm" variant="outline">

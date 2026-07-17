@@ -8,6 +8,7 @@ import { ClipboardCheck, Loader2, Pencil, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
@@ -139,7 +140,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={[{ label: "测试资产" }, { label: "接口自动化" }]}
+      breadcrumbs={moduleBreadcrumbs("apiAutomation")}
       description="查看接口集、备注和接口数量。"
       title="接口自动化"
     >

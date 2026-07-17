@@ -6,22 +6,26 @@ operations:
   version: 1
   status: draft
   page_path: /agentStore
-  parameters:
-    value_1:
-      type: string
-      required: true
-      default: null
+  parameters: {}
   steps:
-  - action: fill
-    element_key: textbox-请输入邮箱/手机号
+  - action: click
+    element_key: clickable-工作台
     path: ''
     value: ''
-    value_ref: value_1
+    value_ref: ''
     key: ''
     milliseconds: 500
     expected: []
   - action: click
-    element_key: button-立即体验
+    element_key: clickable-资源库
+    path: ''
+    value: ''
+    value_ref: ''
+    key: ''
+    milliseconds: 500
+    expected: []
+  - action: click
+    element_key: clickable-效果评测
     path: ''
     value: ''
     value_ref: ''

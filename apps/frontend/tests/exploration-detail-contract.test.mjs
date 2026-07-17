@@ -51,7 +51,7 @@ test("agent todo steps are labeled as plan items instead of browser actions", ()
 });
 
 test("exploration detail breadcrumb uses the loaded run title without fallback", () => {
-  assert.match(pageSource, /\.\.\.\(run \? \[\{ label: run\.title \}\] : \[\]\)/);
+  assert.match(pageSource, /moduleBreadcrumbs\("exploration", \{ label: run\.title \}\)/);
   assert.doesNotMatch(pageSource, /\{ label: run\?\.title \?\? "探索任务" \}/);
 });
 

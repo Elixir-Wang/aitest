@@ -1,17 +1,34 @@
-run_id: exp_axA4DPEDwxEUxofdEj886Q
+run_id: exp_Am3HGwQW4awyEobW17YWEw
 project_id: project-75fec50973f2adf6
-updated_at: '2026-07-14T11:44:52.395754+00:00'
+updated_at: '2026-07-17T11:44:54.762856+00:00'
 items:
 - id: ''
-  content: 打开工作台界面（https://www.cybotstar.cn/agentStore），用 snap 完成基线快照。完成判据：snapshot
-    中能看到页面标题/内容，URL 符合预期。
+  content: 导航到工作台页面并建立初始快照
   status: completed
 - id: ''
-  content: 点击创建按钮（创建智能体），进入创建 Agent 流程。完成判据：出现创建对话框/弹窗或跳转到创建表单页面。
+  content: 盘点工作台页面所有可交互元素
   status: completed
 - id: ''
-  content: 选择自主规划 Agent 类型，完成选择。完成判据：自主规划 Agent 被选中（高亮/勾选/进入对应配置页）。
+  content: 执行：创建按钮 - 打开创建智能体弹窗/流程
   status: completed
 - id: ''
-  content: 到达终点后执行最终 snap，验证目标状态。完成判据：页面显示自主规划 Agent 的配置界面或创建表单。
+  content: 执行：搜索框 - 测试搜索功能
+  status: completed
+- id: ''
+  content: 执行：类型筛选下拉框
+  status: completed
+- id: ''
+  content: 执行：智能体卡片操作 - 分析/使用/对话历史
+  status: completed
+- id: ''
+  content: 执行：分析页面 - 数据统计/用户洞察切换
+  status: completed
+- id: ''
+  content: 执行：分析页面 - 时间选择器
+  status: completed
+- id: ''
+  content: 返回工作台继续执行其他元素
+  status: completed
+- id: ''
+  content: 生成最终报告
   status: completed

@@ -68,6 +68,34 @@ def _validate_schema(value, schema: dict) -> bool:
     return True
 
 
+def _json_type(value) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return type(value).__name__
+
+
+def _read_path(data, path: str):
+    if not path or path == "$":
+        return data
+    current = data
+    for part in path.removeprefix("$.").split("."):
+        if isinstance(current, dict):
+            current = current.get(part)
+        else:
+            return None
+    return current
+
+
 def assert_response_assertions(response, assertions: list) -> None:
     for assertion in assertions:
         atype = assertion.get("type")
@@ -77,13 +105,21 @@ def assert_response_assertions(response, assertions: list) -> None:
             assert assertion["expected"] in response.headers.get("Content-Type", "")
         elif atype == "header_exists":
             assert assertion["path"] in response.headers
+        elif atype == "header_equals":
+            assert response.headers.get(assertion.get("path", "")) == assertion.get("expected")
         elif atype == "body_not_empty":
-            assert bool(response.content)
+            assert bool(response.content) is bool(assertion.get("expected", True))
         elif atype == "body_sha256":
             assert hashlib.sha256(response.content).hexdigest() == assertion["expected"]
         elif atype == "jsonpath":
             value = _resolve_jsonpath(response, assertion["path"])
             assert value == assertion["expected"]
+        elif atype == "jsonpath_equals":
+            value = _read_path(response.json(), assertion.get("path", ""))
+            assert value == assertion.get("expected")
+        elif atype == "jsonpath_exists":
+            value = _read_path(response.json(), assertion.get("path", ""))
+            assert value is not None
         elif atype == "jsonpath_type":
             value = _resolve_jsonpath(response, assertion["path"])
             assert _validate_jsonpath_type(value, assertion["expected"]) is True
@@ -96,3 +132,5 @@ def assert_response_assertions(response, assertions: list) -> None:
             body = response.json()
             for key, expected in assertion.get("expected", {}).items():
                 assert get_nested(body, key) == expected
+        else:
+            raise AssertionError(f"Unsupported assertion type: {atype}")

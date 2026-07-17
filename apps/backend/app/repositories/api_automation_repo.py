@@ -505,17 +505,19 @@ def create_api_test_case(
     test_description: str = "",
     generation_item_id: str | None = None,
     generation_attempt_id: str | None = None,
+    test_point_key: str = "",
+    oracle_status: str = "confirmed",
 ) -> str:
     db.execute(
         """
         INSERT INTO api_test_cases (
           id, project_id, endpoint_id, source_test_case_id, generation_run_id,
           generation_item_id, generation_attempt_id,
-          title, test_description, priority, coverage, source, preconditions_json,
+          title, test_point_key, oracle_status, test_description, priority, coverage, source, preconditions_json,
           request_json, test_data_json, expected_json, assertions_json, variables_json, data_origin_json,
           data_file_path, notes, created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             case_id,
@@ -526,6 +528,8 @@ def create_api_test_case(
             generation_item_id,
             generation_attempt_id,
             title,
+            test_point_key,
+            oracle_status,
             test_description,
             priority,
             coverage or "positive",
@@ -603,6 +607,154 @@ def update_api_test_case(db: Connection, case_id: str, **fields: Any) -> None:
         """,
         tuple(values),
     )
+
+
+def create_api_test_case_version(
+    db: Connection,
+    *,
+    version_id: str,
+    case_id: str,
+    version: int,
+    snapshot: dict[str, Any],
+    change_source: str,
+    created_by: str,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO api_test_case_versions (
+          id, case_id, version, snapshot_json, change_source, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (version_id, case_id, version, dumps_json(snapshot), change_source, created_by),
+    )
+
+
+def list_api_test_case_versions(db: Connection, case_id: str) -> list[Row]:
+    return db.execute(
+        "SELECT * FROM api_test_case_versions WHERE case_id = ? ORDER BY version",
+        (case_id,),
+    ).fetchall()
+
+
+def create_oracle_proposal(
+    db: Connection,
+    *,
+    proposal_id: str,
+    project_id: str,
+    endpoint_id: str,
+    case_id: str,
+    run_id: str,
+    test_point_key: str,
+    current_snapshot: dict[str, Any],
+    proposed_snapshot: dict[str, Any],
+    reasoning: str,
+    confidence: float,
+    created_by: str,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO api_oracle_proposals (
+          id, project_id, endpoint_id, case_id, run_id, test_point_key,
+          current_snapshot_json, proposed_snapshot_json, reasoning, confidence, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            proposal_id,
+            project_id,
+            endpoint_id,
+            case_id,
+            run_id,
+            test_point_key,
+            dumps_json(current_snapshot),
+            dumps_json(proposed_snapshot),
+            reasoning,
+            confidence,
+            created_by,
+        ),
+    )
+
+
+def find_oracle_proposal(db: Connection, proposal_id: str) -> Row | None:
+    return db.execute("SELECT * FROM api_oracle_proposals WHERE id = ?", (proposal_id,)).fetchone()
+
+
+def find_oracle_proposal_by_run_case(db: Connection, run_id: str, case_id: str) -> Row | None:
+    return db.execute(
+        "SELECT * FROM api_oracle_proposals WHERE run_id = ? AND case_id = ?",
+        (run_id, case_id),
+    ).fetchone()
+
+
+def list_oracle_proposals(db: Connection, project_id: str, *, status: str = "") -> list[Row]:
+    if status:
+        return db.execute(
+            "SELECT * FROM api_oracle_proposals WHERE project_id = ? AND status = ? ORDER BY created_at DESC",
+            (project_id, status),
+        ).fetchall()
+    return db.execute(
+        "SELECT * FROM api_oracle_proposals WHERE project_id = ? ORDER BY created_at DESC",
+        (project_id,),
+    ).fetchall()
+
+
+def review_oracle_proposal(
+    db: Connection,
+    proposal_id: str,
+    *,
+    status: str,
+    review_scope: str,
+    review_comment: str,
+    reviewed_by: str,
+) -> None:
+    db.execute(
+        """
+        UPDATE api_oracle_proposals
+        SET status = ?, review_scope = ?, review_comment = ?, reviewed_by = ?,
+            reviewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (status, review_scope, review_comment, reviewed_by, proposal_id),
+    )
+
+
+def upsert_endpoint_oracle_fact(
+    db: Connection,
+    *,
+    fact_id: str,
+    endpoint_id: str,
+    test_point_key: str,
+    assertions: list[dict[str, Any]],
+    evidence_run_ids: list[str],
+    approved_by: str,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO api_endpoint_oracle_facts (
+          id, endpoint_id, test_point_key, assertions_json, evidence_run_ids_json, approved_by
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(endpoint_id, test_point_key) DO UPDATE SET
+          assertions_json = excluded.assertions_json,
+          evidence_run_ids_json = excluded.evidence_run_ids_json,
+          approved_by = excluded.approved_by,
+          approved_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            fact_id,
+            endpoint_id,
+            test_point_key,
+            dumps_json(assertions),
+            dumps_json(evidence_run_ids),
+            approved_by,
+        ),
+    )
+
+
+def list_endpoint_oracle_facts(db: Connection, endpoint_id: str) -> list[Row]:
+    return db.execute(
+        "SELECT * FROM api_endpoint_oracle_facts WHERE endpoint_id = ? ORDER BY created_at",
+        (endpoint_id,),
+    ).fetchall()
 
 
 def create_script(
@@ -874,6 +1026,7 @@ def update_api_run(
     stderr_path: str = "",
     json_report_path: str = "",
     scenario_result_path: str = "",
+    observation_result_path: str = "",
     summary: dict[str, Any] | None = None,
     error_message: str = "",
     finished: bool = False,
@@ -886,6 +1039,7 @@ def update_api_run(
             stderr_path = COALESCE(NULLIF(?, ''), stderr_path),
             json_report_path = COALESCE(NULLIF(?, ''), json_report_path),
             scenario_result_path = COALESCE(NULLIF(?, ''), scenario_result_path),
+            observation_result_path = COALESCE(NULLIF(?, ''), observation_result_path),
             summary_json = COALESCE(?, summary_json),
             error_message = ?,
             updated_at = CURRENT_TIMESTAMP
@@ -898,6 +1052,7 @@ def update_api_run(
             stderr_path,
             json_report_path,
             scenario_result_path,
+            observation_result_path,
             dumps_json(summary) if summary is not None else None,
             error_message,
             run_id,
@@ -1009,3 +1164,44 @@ def update_api_environment(db: Connection, environment_id: str, **fields: Any) -
 
 def delete_api_environment(db: Connection, environment_id: str) -> None:
     db.execute("DELETE FROM api_test_environments WHERE id = ?", (environment_id,))
+
+
+def create_script_generation_run(
+    db: Connection,
+    *,
+    run_id: str,
+    project_id: str,
+    task_id: str,
+    endpoint_ids: list[str],
+    api_environment_id: str | None,
+    force: bool,
+    created_by: str,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO api_script_generation_runs (
+          id, project_id, task_id, status, endpoint_ids_json,
+          api_environment_id, force, created_by
+        ) VALUES (?, ?, ?, 'queued', ?, ?, ?, ?)
+        """,
+        (run_id, project_id, task_id, dumps_json(endpoint_ids), api_environment_id, 1 if force else 0, created_by),
+    )
+
+
+def find_script_generation_run(db: Connection, run_id: str) -> Row | None:
+    return db.execute("SELECT * FROM api_script_generation_runs WHERE id = ?", (run_id,)).fetchone()
+
+
+def update_script_generation_run(db: Connection, run_id: str, **fields: Any) -> None:
+    if not fields:
+        return
+    json_fields = {"endpoint_ids": "endpoint_ids_json", "changed_files": "changed_files_json", "result_summary": "result_summary_json"}
+    assignments = []
+    values = []
+    for key, value in fields.items():
+        column = json_fields.get(key, key)
+        assignments.append(f"{column} = ?")
+        values.append(dumps_json(value) if key in json_fields else value)
+    assignments.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(run_id)
+    db.execute(f"UPDATE api_script_generation_runs SET {', '.join(assignments)} WHERE id = ?", tuple(values))

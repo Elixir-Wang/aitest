@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { FolderCog, ShieldCheck, SlidersHorizontal } from "lucide-react";
 
 import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { apiRequest, type ApiProject } from "@/lib/api-client";
 import { useProjectContextStore } from "@/stores/project-context-store";
@@ -48,12 +49,11 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={[
-        { label: "项目工作区" },
-        { label: "项目", href: "/projects" },
+      breadcrumbs={moduleBreadcrumbs(
+        "projects",
         { label: projectName, href: `/projects/${projectId}` },
         { label: "项目设置" },
-      ]}
+      )}
       description="维护项目基础信息、成员权限、环境配置和测试资产策略。"
       primaryAction="保存设置"
       projectScope="project"

@@ -115,8 +115,9 @@ def test_execute_generation_run_limits_concurrency_and_keeps_partial_success(
                 ApiGeneratedCase(
                     title=f"{endpoint_id} success",
                     endpoint_id=endpoint_id,
+                    test_point_key="success.minimum_valid",
+                    oracle_status="confirmed",
                     request={"method": endpoint["method"], "path": endpoint["path"]},
-                    expected={"status_code": 200},
                     assertions=[{"type": "status_code", "expected": 200}],
                 )
             ],
@@ -154,15 +155,17 @@ def test_generation_item_validation_is_atomic(monkeypatch: pytest.MonkeyPatch, t
                 ApiGeneratedCase(
                     title="valid",
                     endpoint_id="apiend-1",
+                    test_point_key="success.minimum_valid",
+                    oracle_status="confirmed",
                     request={"method": "POST", "path": "/login"},
-                    expected={"status_code": 200},
                     assertions=[{"type": "status_code", "expected": 200}],
                 ),
                 ApiGeneratedCase(
                     title="invalid",
                     endpoint_id="apiend-other",
+                    test_point_key="unexpected.point",
+                    oracle_status="confirmed",
                     request={"method": "POST", "path": "/login"},
-                    expected={"status_code": 200},
                     assertions=[{"type": "status_code", "expected": 200}],
                 ),
             ],
@@ -189,45 +192,20 @@ def test_execute_generation_run_saves_generated_cases(monkeypatch: pytest.Monkey
 
     async def fake_generate_api_test_cases(input_data):
         return ApiAutomationGenerationResult(
-            summary="生成 2 条",
+            summary="生成 1 条",
             cases=[
                 ApiGeneratedCase(
                     title="登录成功",
                     priority="P1",
                     endpoint_id="apiend-1",
-                    preconditions=["用户账号存在"],
+                    test_point_key="success.minimum_valid",
+                    oracle_status="confirmed",
                     request={"method": "POST", "path": "/login", "body": {"username": "demo", "password": "demo"}},
                     test_data={
                         "username": {"value": "demo", "source": "openapi_example", "required": True},
                         "password": {"value": "demo", "source": "openapi_example", "required": True},
                     },
-                    expected={"status_code": 200},
                     assertions=[{"type": "status_code", "expected": 200}],
-                    data_origin={"request.body": "openapi_example", "assertions": "openapi"},
-                ),
-                ApiGeneratedCase(
-                    title="登录缺少密码",
-                    priority="P2",
-                    endpoint_id="apiend-1",
-                    coverage="negative",
-                    generation_notes=(
-                        "Mock 数据：删除必填字段 password。\n"
-                        "缺失信息：接口文档未声明对应的 HTTP 状态码和业务错误码。\n"
-                        "预期推断：暂按文档中的错误响应生成断言，执行失败后请结合实际响应调整。"
-                    ),
-                    preconditions=["用户账号存在", "缺少 password 测试数据"],
-                    request={"method": "POST", "path": "/login", "body": {"username": "demo"}},
-                    test_data={
-                        "password": {
-                            "value": "${password}",
-                            "source": "manual_input",
-                            "required": True,
-                            "note": "缺少密码样例",
-                        }
-                    },
-                    expected={"status_code": 400},
-                    assertions=[{"type": "status_code", "expected": 400}],
-                    data_origin={"test_data.password": "manual_input"},
                 ),
             ],
         )
@@ -247,22 +225,15 @@ def test_execute_generation_run_saves_generated_cases(monkeypatch: pytest.Monkey
 
     assert result["status"] == "completed"
     assert run["status"] == "completed"
-    assert len(cases) == 2
+    assert len(cases) == 1
     serialized_cases = service.list_api_test_cases("project-1", ACTOR)
-    success_case = next(case for case in serialized_cases if case["title"] == "登录成功")
-    manual_case = next(case for case in serialized_cases if case["title"] == "登录缺少密码")
+    success_case = serialized_cases[0]
     assert success_case["coverage"] == "positive"
     assert success_case["preconditions"] == []
     assert success_case["test_data"]["username"]["source"] == "openapi_example"
     assert "data_origin" not in success_case
     assert "status" not in success_case
-    assert manual_case["coverage"] == "negative"
-    assert manual_case["preconditions"] == []
-    assert manual_case["test_data"]["password"]["source"] == "manual_input"
-    assert manual_case["notes"].startswith("Mock 数据：删除必填字段 password。")
-    assert "缺失信息" in manual_case["notes"]
-    assert "data_origin" not in manual_case
-    assert api_automation_repo.loads_json(run["result_summary_json"], {})["test_case_count"] == 2
+    assert api_automation_repo.loads_json(run["result_summary_json"], {})["test_case_count"] == 1
 
 
 def test_delete_api_test_case_removes_generated_case(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -404,6 +375,39 @@ def test_execute_generation_run_passes_source_test_cases_to_agent(
 
     assert captured["source_test_cases"][0]["id"] == "tc-001"
     assert captured["source_test_cases"][0]["steps"][0]["action"] == "调用登录接口"
+
+
+def test_generation_input_applies_approved_endpoint_oracle_fact(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint()
+    created = service.create_generation_run(
+        "project-1",
+        ApiAutomationGenerateIn(endpoint_ids=["apiend-1"], generate_code=False),
+        ACTOR,
+    )
+    with connect() as db:
+        item = api_automation_repo.list_generation_items(db, created["id"])[0]
+        api_automation_repo.upsert_endpoint_oracle_fact(
+            db,
+            fact_id="apifact-1",
+            endpoint_id="apiend-1",
+            test_point_key="success.minimum_valid",
+            assertions=[{"type": "status_code", "path": "", "expected": 201}],
+            evidence_run_ids=["apirun-1"],
+            approved_by=ACTOR["id"],
+        )
+        input_data = service._build_generation_item_input(db, created["id"], item["id"])
+
+    planned_point = next(point for point in input_data.planned_test_points if point["key"] == "success.minimum_valid")
+    assert planned_point["oracle_status"] == "confirmed"
+    assert planned_point["assertions"] == [{"type": "status_code", "path": "", "expected": 201}]
+    assert planned_point["oracle_fact"] == {
+        "approved_by": ACTOR["id"],
+        "evidence_run_ids": ["apirun-1"],
+    }
 
 
 def test_generation_run_serializes_items_and_retries_only_failures(
@@ -665,8 +669,9 @@ async def test_generate_api_test_cases_calls_agent_with_skill_prompt(monkeypatch
                 title="登录成功",
                 priority="P1",
                 endpoint_id="apiend-1",
+                test_point_key="success.minimum_valid",
+                oracle_status="confirmed",
                 request={"method": "POST", "path": "/login", "body": {"username": "demo", "password": "demo"}},
-                expected={"status_code": 200},
                 assertions=[{"type": "status_code", "expected": 200}],
             )
         ],

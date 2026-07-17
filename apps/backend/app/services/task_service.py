@@ -16,6 +16,7 @@ RUNNING_INDICATOR_SOURCE_TYPES = {
     "requirement_finalization_run",
     "test_case_generation_run",
     "api_automation_generation_run",
+    "api_script_generation_run",
     "api_automation_run",
 }
 
@@ -80,6 +81,15 @@ API_AUTOMATION_RUN_STATUS = {
     "interrupted": (COMPLETED_GROUP, "已中断"),
 }
 
+API_SCRIPT_GENERATION_STATUS = {
+    "queued": (RUNNING_GROUP, "排队中"),
+    "running": (RUNNING_GROUP, "生成中"),
+    "completed": (COMPLETED_GROUP, "生成完成"),
+    "failed": (FAILED_GROUP, "生成失败"),
+    "cancelled": (COMPLETED_GROUP, "已取消"),
+    "interrupted": (COMPLETED_GROUP, "已中断"),
+}
+
 
 STATUS_META_BY_SOURCE_TYPE = {
     "exploration_run": EXPLORATION_STATUS,
@@ -88,6 +98,7 @@ STATUS_META_BY_SOURCE_TYPE = {
     "requirement_finalization_run": REQUIREMENT_FINALIZATION_STATUS,
     "test_case_generation_run": TEST_CASE_GENERATION_STATUS,
     "api_automation_generation_run": API_AUTOMATION_GENERATION_STATUS,
+    "api_script_generation_run": API_SCRIPT_GENERATION_STATUS,
     "api_automation_run": API_AUTOMATION_RUN_STATUS,
 }
 
@@ -150,6 +161,7 @@ def get_task_by_source_for_event(*, source_type: str, source_id: str) -> dict | 
             *_requirement_finalization_tasks(db, project_names),
             *_test_case_generation_tasks(db, project_names),
             *_api_automation_generation_tasks(db, project_names),
+            *_api_script_generation_tasks(db, project_names),
             *_api_automation_run_tasks(db, project_names),
         ]:
             if task["source_type"] == source_type and task["source_id"] == source_id:
@@ -272,6 +284,7 @@ def _collect_visible_tasks(actor) -> list[dict]:
             *_requirement_finalization_tasks(db, project_names),
             *_test_case_generation_tasks(db, project_names),
             *_api_automation_generation_tasks(db, project_names),
+            *_api_script_generation_tasks(db, project_names),
             *_api_automation_run_tasks(db, project_names),
         ]
 
@@ -514,6 +527,38 @@ def _api_automation_run_tasks(db, project_names: dict[str, str]) -> list[dict]:
             created_at=row["created_at"],
             updated_at=row["updated_at"] or row["created_at"],
             detail_url=f"/projects/{row['project_id']}/automation/api?run={row['id']}",
+        )
+        for row in rows
+    ]
+
+
+def _api_script_generation_tasks(db, project_names: dict[str, str]) -> list[dict]:
+    if not project_names or not _table_exists(db, "api_script_generation_runs"):
+        return []
+    rows = db.execute(
+        """
+        SELECT id, project_id, task_id, status, error_message, created_at, updated_at
+        FROM api_script_generation_runs
+        WHERE project_id IN ({})
+        """.format(_placeholders(project_names)),
+        tuple(project_names),
+    ).fetchall()
+    return [
+        _task(
+            task_id=row["task_id"],
+            source_type="api_script_generation_run",
+            source_id=row["id"],
+            project_id=row["project_id"],
+            project_name=project_names[row["project_id"]],
+            module="api_automation",
+            module_label="接口自动化",
+            title="接口 pytest 脚本生成",
+            status=row["status"],
+            status_meta=API_SCRIPT_GENERATION_STATUS,
+            summary=row["error_message"] or "",
+            created_at=row["created_at"],
+            updated_at=row["updated_at"] or row["created_at"],
+            detail_url=f"/projects/{row['project_id']}/automation/api?scriptGenerationRun={row['id']}",
         )
         for row in rows
     ]

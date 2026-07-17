@@ -6,6 +6,7 @@ import { AlertTriangle, ClipboardCheck, FolderKanban, Gauge, PlaySquare, type Lu
 
 import { AssetTrendChart } from "@/app/(main)/dashboard/_components/asset-trend-chart";
 import { MetricCard, PageShell } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -69,7 +70,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={[{ label: "工作台", href: "/dashboard" }, { label: "控制台" }]}
+      breadcrumbs={moduleBreadcrumbs("dashboard")}
       description="跨项目查看测试资产规模、采纳情况和自动化建设进度。"
       projectScope="all"
       title="控制台"

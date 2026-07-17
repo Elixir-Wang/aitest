@@ -92,3 +92,14 @@ class ApiClient:
         finally:
             for handle in handles:
                 handle.close()
+
+    def post(self, path: str, **kwargs) -> object:
+        """便捷 POST 方法"""
+        return self.request({"method": "POST", "path": path, **kwargs})
+
+
+def get_client() -> ApiClient:
+    """获取默认 ApiClient 实例（从环境变量读取配置）"""
+    base_url = os.environ.get("API_BASE_URL", "")
+    timeout = int(os.environ.get("API_TIMEOUT_SECONDS", "30"))
+    return ApiClient(base_url=base_url, timeout=timeout)

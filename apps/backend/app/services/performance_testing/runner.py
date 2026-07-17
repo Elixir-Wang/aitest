@@ -1,9 +1,11 @@
 import os
-import signal
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
+
+import psutil
 
 from app.core import settings
 
@@ -15,6 +17,21 @@ def allocate_loopback_port() -> int:
         if port == 8000:
             return allocate_loopback_port()
         return port
+
+
+def _is_port_open(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.2)
+        return probe.connect_ex(("127.0.0.1", port)) == 0
+
+
+def wait_for_loopback_port(port: int, *, timeout: float = 10.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _is_port_open(port):
+            return
+        time.sleep(0.1)
+    raise RuntimeError(f"Locust 端口 {port} 在 {timeout:g} 秒内未就绪。")
 
 
 def launch_locust_web_process(run_dir: Path, *, port: int, base_path: str) -> int:
@@ -45,4 +62,15 @@ def launch_locust_web_process(run_dir: Path, *, port: int, base_path: str) -> in
 
 
 def terminate_process(process_id: int) -> None:
-    os.kill(process_id, signal.SIGTERM)
+    try:
+        process = psutil.Process(process_id)
+    except psutil.NoSuchProcess:
+        return
+
+    processes = [*reversed(process.children(recursive=True)), process]
+    for item in processes:
+        try:
+            item.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    psutil.wait_procs(processes, timeout=5)

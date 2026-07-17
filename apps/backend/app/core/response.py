@@ -136,8 +136,7 @@ class _ResponseState:
 
 
 def _should_passthrough(*, method: str, path: str, content_type: str) -> bool:
-    is_locust_ui = "/performance-test-runs/" in path and "/locust-ui" in path
-    return method == "OPTIONS" or not path.startswith("/api/v1") or "text/event-stream" in content_type or is_locust_ui
+    return method == "OPTIONS" or not path.startswith("/api/v1") or "text/event-stream" in content_type
 
 
 async def _send_wrapped_response(

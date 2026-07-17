@@ -77,6 +77,50 @@ def test_runner_cleans_stale_outputs_writes_env_and_parses_report(monkeypatch, t
     assert result["scenario_result_path"] == str(run_dir / "scenario-result.json")
 
 
+def test_runner_returns_observed_when_observation_evidence_exists(monkeypatch, tmp_path: Path) -> None:
+    suite_path = tmp_path / "suite"
+    run_dir = tmp_path / "run"
+    suite_path.mkdir()
+
+    def fake_run(command, cwd, text, capture_output, timeout, env):
+        if command[:2] == ["uv", "run"]:
+            report_file = next(part.split("=", 1)[1] for part in command if part.startswith("--json-report-file="))
+            Path(report_file).write_text(
+                json.dumps({"summary": {"total": 1, "passed": 1, "failed": 0}, "duration": 0.1, "tests": []}),
+                encoding="utf-8",
+            )
+            Path(env["API_OBSERVATION_RESULT_PATH"]).write_text(
+                json.dumps(
+                    {
+                        "observations": [
+                            {
+                                "case_id": "apitc-1",
+                                "status_code": 400,
+                                "response_body": {"code": "INVALID_ARGUMENT"},
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    result = runner.run_script_suite(
+        run_id="apirun-1",
+        project_id="project-1",
+        suite_path=suite_path,
+        run_dir=run_dir,
+        environment={"api_base_url": "https://api.example.test"},
+        timeout=30,
+    )
+
+    assert result["status"] == "observed"
+    assert result["summary"]["observed"] == 1
+    assert result["observation_result_path"] == str(run_dir / "observations.json")
+
+
 def test_collect_script_suite_uses_uv_and_returns_redacted_failure(monkeypatch, tmp_path: Path) -> None:
     suite_path = tmp_path / "suite"
     suite_path.mkdir()
@@ -134,3 +178,23 @@ def test_collect_script_suite_uses_provided_test_paths(monkeypatch, tmp_path: Pa
     assert all(call[1] == suite_path.resolve() for call in calls)
     assert result["ok"] is True
     assert result["exitcode"] == 0
+
+
+def test_suite_processes_do_not_inherit_backend_virtual_env(monkeypatch, tmp_path: Path) -> None:
+    suite_path = tmp_path / "suite"
+    suite_path.mkdir()
+    captured_envs = []
+
+    monkeypatch.setenv("VIRTUAL_ENV", "D:/project/test_project/apps/backend/.venv")
+
+    def fake_run(command, cwd, text, capture_output, timeout, env):
+        captured_envs.append(env)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    result = runner.collect_script_suite(suite_path=suite_path, timeout=30)
+
+    assert result["ok"] is True
+    assert captured_envs
+    assert all("VIRTUAL_ENV" not in env for env in captured_envs)

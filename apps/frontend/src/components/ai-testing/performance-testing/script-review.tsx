@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { useRouter } from "next/navigation";
+
 import { CheckCircle2, FileCode2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
@@ -11,7 +13,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   ApiRequestError,
   confirmPerformanceScript,
-  createLocustUiSession,
   createPerformanceRun,
   getPerformanceScript,
   type PerformanceScript,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/api-client";
 
 export function ScriptReview({ projectId, testId, scriptId }: { projectId: string; testId: string; scriptId: string }) {
+  const router = useRouter();
   const [script, setScript] = useState<PerformanceScript | null>(null);
   const [headers, setHeaders] = useState("{}");
   const [body, setBody] = useState("null");
@@ -31,12 +33,12 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
         setScript(result);
         const preview = result.runtime_preview;
         const planRequest = (result.plan.request ?? {}) as { headers?: unknown; body?: unknown };
-        const headers = preview?.request?.headers ?? planRequest.headers ?? {};
-        const body = preview?.request?.body ?? planRequest.body ?? null;
-        const successRules = preview?.success_rules ?? result.plan.success_rules ?? [];
-        setHeaders(JSON.stringify(headers, null, 2));
-        setBody(JSON.stringify(body, null, 2));
-        setSuccessRules(JSON.stringify(successRules, null, 2));
+        const requestHeaders = preview?.request?.headers ?? planRequest.headers ?? {};
+        const requestBody = preview?.request?.body ?? planRequest.body ?? null;
+        const rules = preview?.success_rules ?? result.plan.success_rules ?? [];
+        setHeaders(JSON.stringify(requestHeaders, null, 2));
+        setBody(JSON.stringify(requestBody, null, 2));
+        setSuccessRules(JSON.stringify(rules, null, 2));
       })
       .catch((error) => toast.error(apiErrorMessage(error)));
   }, [projectId, scriptId, testId]);
@@ -83,9 +85,7 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
     setSaving(true);
     try {
       const run = await createPerformanceRun(projectId, testId, scriptId);
-      const session = await createLocustUiSession(projectId, run.id);
-      const opened = window.open(session.url, "_blank", "noopener,noreferrer");
-      if (!opened) window.location.assign(session.url);
+      router.push(`/projects/${projectId}/performance-tests/${testId}/runs/${run.id}`);
     } catch (error) {
       toast.error(apiErrorMessage(error));
     } finally {

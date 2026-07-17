@@ -34,6 +34,7 @@ import {
 
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1156,7 +1157,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={[{ label: "项目工作区" }, { label: "知识库" }]}
+      breadcrumbs={moduleBreadcrumbs("knowledge")}
       description="查看项目知识库与公司知识库的知识块、来源材料和版本记录。"
       fillViewport
       projectScope="all"

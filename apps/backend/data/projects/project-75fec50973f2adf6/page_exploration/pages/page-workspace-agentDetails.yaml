@@ -1,0 +1,568 @@
+schema_version: '3.0'
+page:
+  id: page-workspace-agentDetails
+  title: 百融百工
+  normalized_path: /workspace/agentDetails
+states:
+- id: page-workspace-agentDetails__root__001
+  type: root
+  title: 百融百工
+  url: https://www.cybotstar.cn/workspace/agentDetails?id=19313&pk_id=19860&agent_type=1&source=web&sessionId=01OyIidXFyBX7WKO34bPE
+  elements:
+  - key: clickable-去配置--in--哈哈 去配置
+    role: clickable
+    name: 去配置
+    action: click
+    locators:
+    - code: 'getByText(''去配置'', { exact: true })'
+    - code: locator('div > div > div:nth-of-type(1) > div > div:nth-of-type(2) > div
+        > div:nth-of-type(3)')
+    context:
+      ordinal: 1
+      role: div
+      name: 哈哈 去配置
+  - key: button-去配置
+    role: button
+    name: 去配置
+    action: click
+    locators:
+    - code: 'getByRole(''button'', { name: ''去配置'' })'
+    - code: locator('div:nth-of-type(3) > button')
+    context:
+      role: div
+      name: 去配置
+  - key: clickable-哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15--in--0-s-0-s-0-s-39-tokens-07-15
+    role: clickable
+    name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15
+    action: click
+    locators:
+    - code: locator('#chat-0')
+    context:
+      ordinal: 1
+      role: div
+      name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15
+  - key: clickable-哈哈--in--0-s-0-s-0-s-39-tokens-07-15
+    role: clickable
+    name: 哈哈
+    action: click
+    locators:
+    - code: locator('section > div:nth-of-type(1)')
+    context:
+      ordinal: 1
+      role: section
+      name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15
+  - key: textbox-请输入问题，按Shift+Enter换行
+    role: textbox
+    name: 请输入问题，按Shift+Enter换行
+    action: fill
+    locators:
+    - code: 'getByRole(''textbox'', { name: ''请输入问题，按Shift+Enter换行'' })'
+    - code: locator('div:nth-of-type(1) > div > textarea')
+  - key: clickable-哈哈 hongbao.wang1 发布于2026-07-13 07:24:11--in--hongbao-wang1-2026-07-13-07-24-11-agent-
+    role: clickable
+    name: 哈哈 hongbao.wang1 发布于2026-07-13 07:24:11
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div:nth-of-type(2) >
+        div:nth-of-type(2) > div:nth-of-type(1)')
+    context:
+      ordinal: 1
+      role: div
+      name: 哈哈 hongbao.wang1 发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2
+  - key: clickable-hongbao.wang1 发布于2026-07-13 07:24:11
+    role: clickable
+    name: hongbao.wang1 发布于2026-07-13 07:24:11
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(2)
+        > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)')
+    context:
+      role: div
+      name: 哈哈 hongbao.wang1 发布于2026-07-13 07:24:11
+  - key: clickable-hongbao-wang1--in--hongbao-wang1-2026-07-13-07-24-11
+    role: clickable
+    name: hongbao.wang1
+    action: click
+    locators:
+    - code: 'getByText(''hongbao.wang1'', { exact: true })'
+    - code: locator('div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(2)
+        > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1)')
+    context:
+      ordinal: 1
+      role: div
+      name: hongbao.wang1 发布于2026-07-13 07:24:11
+  - key: clickable-发布于2026-07-13 07:24:11--in--hongbao-wang1-2026-07-13-07-24-11
+    role: clickable
+    name: 发布于2026-07-13 07:24:11
+    action: click
+    locators:
+    - code: 'getByText(''发布于2026-07-13 07:24:11'', { exact: true })'
+    - code: locator('div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(2)
+        > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2)')
+    context:
+      ordinal: 1
+      role: div
+      name: hongbao.wang1 发布于2026-07-13 07:24:11
+  - key: clickable-哈哈 去配置 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈
+      hongbao.wang1 发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2--in--0-s-0-s-0-s-39-tokens-07-15-ai-hongbao-w
+    role: clickable
+    name: 哈哈 去配置 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈 hongbao.wang1
+      发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2
+    action: click
+    locators:
+    - code: locator('#app')
+    context:
+      ordinal: 1
+      role: body
+      name: 哈哈 去配置 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈 hongbao.wang1
+        发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本
+  - key: clickable-哈哈 去配置 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈
+      hongbao.wang1 发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2--in--0-s-0-s-0-s-39-tokens-07-15-ai-hongbao-w-2
+    role: clickable
+    name: 哈哈 去配置 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈 hongbao.wang1
+      发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div')
+    context:
+      ordinal: 2
+      role: div
+      name: 哈哈 去配置 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈 hongbao.wang1
+        发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本
+  - key: clickable-哈哈 去配置 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈
+      hongbao.wang1 发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2--in--0-s-0-s-0-s-39-tokens-07-15-ai-hongbao-w-3
+    role: clickable
+    name: 哈哈 去配置 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈 hongbao.wang1
+      发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div')
+    context:
+      ordinal: 3
+      role: div
+      name: 哈哈 去配置 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈 hongbao.wang1
+        发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本
+  - key: clickable-哈哈 去配置--in--0-s-0-s-0-s-39-tokens-07-15-ai-hongbao-w
+    role: clickable
+    name: 哈哈 去配置
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div:nth-of-type(1)')
+    context:
+      ordinal: 1
+      role: div
+      name: 哈哈 去配置 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈 hongbao.wang1
+        发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本
+  - key: clickable-哈哈 去配置--in--哈哈 去配置
+    role: clickable
+    name: 哈哈 去配置
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div:nth-of-type(1) >
+        div')
+    context:
+      ordinal: 2
+      role: div
+      name: 哈哈 去配置
+  - key: clickable-哈哈 去配置--in--哈哈 去配置-2
+    role: clickable
+    name: 哈哈 去配置
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div:nth-of-type(1) >
+        div > div:nth-of-type(2)')
+    context:
+      ordinal: 3
+      role: div
+      name: 哈哈 去配置
+  - key: clickable-哈哈 去配置--in--哈哈 去配置-3
+    role: clickable
+    name: 哈哈 去配置
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div:nth-of-type(1) >
+        div > div:nth-of-type(2) > div')
+    context:
+      ordinal: 4
+      role: div
+      name: 哈哈 去配置
+  - key: clickable-哈哈--in--哈哈 去配置
+    role: clickable
+    name: 哈哈
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div:nth-of-type(1) >
+        div > div:nth-of-type(2) > div > div:nth-of-type(1)')
+    context:
+      ordinal: 2
+      role: div
+      name: 哈哈 去配置
+  - key: clickable-哈哈--in--哈哈
+    role: clickable
+    name: 哈哈
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div:nth-of-type(1) >
+        div > div:nth-of-type(2) > div > div:nth-of-type(1) > span')
+    context:
+      ordinal: 3
+      role: div
+      name: 哈哈
+  - key: clickable-去配置--in--去配置
+    role: clickable
+    name: 去配置
+    action: click
+    locators:
+    - code: 'getByText(''去配置'', { exact: true })'
+    - code: locator('div:nth-of-type(3) > button > span')
+    context:
+      ordinal: 2
+      role: button
+      name: 去配置
+  - key: clickable-哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈 hongbao.wang1
+      发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2
+    role: clickable
+    name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈 hongbao.wang1 发布于2026-07-13
+      07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div:nth-of-type(2)')
+    context:
+      role: div
+      name: 哈哈 去配置 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈 hongbao.wang1
+        发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本
+  - key: clickable-哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成--in--0-s-0-s-0-s-39-tokens-07-15-ai-hongbao-w
+    role: clickable
+    name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div:nth-of-type(2) >
+        div:nth-of-type(1)')
+    context:
+      ordinal: 1
+      role: div
+      name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈 hongbao.wang1
+        发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2
+  - key: clickable-哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成--in--0-s-0-s-0-s-39-tokens-07-15-ai
+    role: clickable
+    name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div:nth-of-type(2) >
+        div:nth-of-type(1) > div')
+    context:
+      ordinal: 2
+      role: div
+      name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成
+  - key: clickable-哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15--in--0-s-0-s-0-s-39-tokens-07-15-ai
+    role: clickable
+    name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div:nth-of-type(2) >
+        div:nth-of-type(1) > div > div:nth-of-type(1)')
+    context:
+      ordinal: 2
+      role: div
+      name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成
+  - key: clickable-哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15--in--0-s-0-s-0-s-39-tokens-07-15-2
+    role: clickable
+    name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div:nth-of-type(2) >
+        div:nth-of-type(1) > div > div:nth-of-type(1) > div')
+    context:
+      ordinal: 3
+      role: div
+      name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15
+  - key: clickable-哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15--in--0-s-0-s-0-s-39-tokens-07-15-3
+    role: clickable
+    name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15
+    action: click
+    locators:
+    - code: locator('#chatContainer')
+    context:
+      ordinal: 4
+      role: div
+      name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15
+  - key: clickable-哈哈--in--哈哈-2
+    role: clickable
+    name: 哈哈
+    action: click
+    locators:
+    - code: locator('section > div:nth-of-type(1) > div:nth-of-type(2)')
+    context:
+      ordinal: 4
+      role: div
+      name: 哈哈
+  - key: clickable-您好，请问有什么可以帮您？--in--0-s-0-s-0-s-39-tokens-07-15
+    role: clickable
+    name: 您好，请问有什么可以帮您？
+    action: click
+    locators:
+    - code: 'getByText(''您好，请问有什么可以帮您？'', { exact: true })'
+    - code: locator('#chat-msg-item-0')
+    context:
+      ordinal: 1
+      role: section
+      name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15
+  - key: clickable-您好，请问有什么可以帮您？--in--您好，请问有什么可以帮您？
+    role: clickable
+    name: 您好，请问有什么可以帮您？
+    action: click
+    locators:
+    - code: 'getByText(''您好，请问有什么可以帮您？'', { exact: true })'
+    - code: locator('#chat-30122620')
+    context:
+      ordinal: 2
+      role: div
+      name: 您好，请问有什么可以帮您？
+  - key: clickable-您好，请问有什么可以帮您？--in--您好，请问有什么可以帮您？-2
+    role: clickable
+    name: 您好，请问有什么可以帮您？
+    action: click
+    locators:
+    - code: 'getByText(''您好，请问有什么可以帮您？'', { exact: true })'
+    - code: locator('section > div:nth-of-type(2) > div > div')
+    context:
+      ordinal: 3
+      role: div
+      name: 您好，请问有什么可以帮您？
+  - key: clickable-您好，请问有什么可以帮您？--in--您好，请问有什么可以帮您？-3
+    role: clickable
+    name: 您好，请问有什么可以帮您？
+    action: click
+    locators:
+    - code: 'getByText(''您好，请问有什么可以帮您？'', { exact: true })'
+    - code: locator('section > div:nth-of-type(2) > div > div > div')
+    context:
+      ordinal: 4
+      role: div
+      name: 您好，请问有什么可以帮您？
+  - key: clickable-0-s-0-s-0-s-39-tokens--in--0-s-0-s-0-s-39-tokens-07-15
+    role: clickable
+    name: 0 s 0 s 0 s 39 Tokens
+    action: click
+    locators:
+    - code: locator('section > div:nth-of-type(3)')
+    context:
+      ordinal: 1
+      role: section
+      name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15
+  - key: clickable-0-s-0-s-0-s-39-tokens--in--0-s-0-s-0-s-39-tokens
+    role: clickable
+    name: 0 s 0 s 0 s 39 Tokens
+    action: click
+    locators:
+    - code: locator('section > div:nth-of-type(3) > div')
+    context:
+      ordinal: 2
+      role: div
+      name: 0 s 0 s 0 s 39 Tokens
+  - key: clickable-0-s-0-s-0-s-39-tokens--in--0-s-0-s-0-s-39-tokens-2
+    role: clickable
+    name: 0 s 0 s 0 s 39 Tokens
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(9)')
+    context:
+      ordinal: 3
+      role: div
+      name: 0 s 0 s 0 s 39 Tokens
+  - key: clickable-0-s--in--0-s-0-s-0-s-39-tokens
+    role: clickable
+    name: 0 s
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(9) > span:nth-of-type(1)')
+    context:
+      ordinal: 1
+      role: div
+      name: 0 s 0 s 0 s 39 Tokens
+  - key: clickable-s--in--0-s
+    role: clickable
+    name: s
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(9) > span:nth-of-type(1) > span')
+    context:
+      ordinal: 1
+      role: span
+      name: 0 s
+  - key: clickable-0-s--in--0-s-0-s-0-s-39-tokens-2
+    role: clickable
+    name: 0 s
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(9) > span:nth-of-type(2)')
+    context:
+      ordinal: 2
+      role: div
+      name: 0 s 0 s 0 s 39 Tokens
+  - key: clickable-s--in--0-s-2
+    role: clickable
+    name: s
+    action: click
+    locators:
+    - code: locator('span:nth-of-type(2) > span')
+    context:
+      ordinal: 2
+      role: span
+      name: 0 s
+  - key: clickable-0-s--in--0-s-0-s-0-s-39-tokens-3
+    role: clickable
+    name: 0 s
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(9) > span:nth-of-type(3)')
+    context:
+      ordinal: 3
+      role: div
+      name: 0 s 0 s 0 s 39 Tokens
+  - key: clickable-s--in--0-s-3
+    role: clickable
+    name: s
+    action: click
+    locators:
+    - code: locator('span:nth-of-type(3) > span')
+    context:
+      ordinal: 3
+      role: span
+      name: 0 s
+  - key: clickable-39-tokens
+    role: clickable
+    name: 39 Tokens
+    action: click
+    locators:
+    - code: 'getByText(''39 Tokens'', { exact: true })'
+    - code: locator('span:nth-of-type(4)')
+    context:
+      role: div
+      name: 0 s 0 s 0 s 39 Tokens
+  - key: clickable-07-15--in--0-s-0-s-0-s-39-tokens-07-15
+    role: clickable
+    name: 07/15
+    action: click
+    locators:
+    - code: 'getByText(''07/15'', { exact: true })'
+    - code: locator('section > div:nth-of-type(4)')
+    context:
+      ordinal: 1
+      role: section
+      name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15
+  - key: clickable-07-15--in--07-15
+    role: clickable
+    name: 07/15
+    action: click
+    locators:
+    - code: 'getByText(''07/15'', { exact: true })'
+    - code: locator('div:nth-of-type(4) > span')
+    context:
+      ordinal: 2
+      role: div
+      name: 07/15
+  - key: clickable-内容由AI生成
+    role: clickable
+    name: 内容由AI生成
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(2) > div:nth-of-type(1) > div > div:nth-of-type(4)')
+    context:
+      role: div
+      name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成
+  - key: clickable-哈哈 hongbao.wang1 发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2
+    role: clickable
+    name: 哈哈 hongbao.wang1 发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div:nth-of-type(2) >
+        div:nth-of-type(2)')
+    context:
+      role: div
+      name: 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈 hongbao.wang1
+        发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2
+  - key: clickable-哈哈 hongbao.wang1 发布于2026-07-13 07:24:11--in--hongbao-wang1-2026-07-13-07-24-11
+    role: clickable
+    name: 哈哈 hongbao.wang1 发布于2026-07-13 07:24:11
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(2)
+        > div:nth-of-type(1) > div:nth-of-type(2)')
+    context:
+      ordinal: 2
+      role: div
+      name: 哈哈 hongbao.wang1 发布于2026-07-13 07:24:11
+  - key: clickable-哈哈--in--hongbao-wang1-2026-07-13-07-24-11
+    role: clickable
+    name: 哈哈
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(2)
+        > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)')
+    context:
+      ordinal: 5
+      role: div
+      name: 哈哈 hongbao.wang1 发布于2026-07-13 07:24:11
+  - key: clickable-hongbao-wang1--in--hongbao-wang1
+    role: clickable
+    name: hongbao.wang1
+    action: click
+    locators:
+    - code: 'getByText(''hongbao.wang1'', { exact: true })'
+    - code: locator('div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)
+        > div:nth-of-type(2) > div:nth-of-type(1) > span')
+    context:
+      ordinal: 2
+      role: div
+      name: hongbao.wang1
+  - key: clickable-发布于2026-07-13 07:24:11--in--2026-07-13-07-24-11
+    role: clickable
+    name: 发布于2026-07-13 07:24:11
+    action: click
+    locators:
+    - code: 'getByText(''发布于2026-07-13 07:24:11'', { exact: true })'
+    - code: locator('div:nth-of-type(2) > span')
+    context:
+      ordinal: 2
+      role: div
+      name: 发布于2026-07-13 07:24:11
+  - key: clickable-简介：
+    role: clickable
+    name: 简介：
+    action: click
+    locators:
+    - code: 'getByText(''简介：'', { exact: true })'
+    - code: locator('div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(2)
+        > div:nth-of-type(3)')
+    context:
+      role: div
+      name: 哈哈 hongbao.wang1 发布于2026-07-13 07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2
+  assertion_texts:
+  - 百融百工
+  - 哈哈
+  - 去配置
+  - 您好，请问有什么可以帮您？
+  - 0 s
+  - 39 Tokens
+  - 07/15
+  - 内容由AI生成
+  - hongbao.wang1
+  - 发布于2026-07-13 07:24:11
+  - 简介：
+  - 类型：
+  - 自主规划Agent
+  - 版本：
+  - 1.0.2
+  - s
+  - 请输入问题，按Shift+Enter换行
+  - 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15
+  - 哈哈 hongbao.wang1 发布于2026-07-13 07:24:11
+  - hongbao.wang1 发布于2026-07-13 07:24:11
+  - 哈哈 去配置 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈 hongbao.wang1 发布于2026-07-13
+    07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2
+  - 哈哈 去配置
+  - 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成 哈哈 hongbao.wang1 发布于2026-07-13
+    07:24:11 简介： 类型： 自主规划Agent 版本： 1.0.2
+  - 哈哈 您好，请问有什么可以帮您？ 0 s 0 s 0 s 39 Tokens 07/15 内容由AI生成
+  children: []

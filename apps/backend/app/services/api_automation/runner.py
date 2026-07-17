@@ -17,6 +17,7 @@ SENSITIVE_RE = re.compile(
 def collect_script_suite(*, suite_path: Path, timeout: int, test_paths: list[str] | None = None) -> dict[str, Any]:
     suite_path = suite_path.resolve()
     process_env = dict(os.environ)
+    process_env.pop("VIRTUAL_ENV", None)
     sync = subprocess.run(
         ["uv", "sync"],
         cwd=suite_path,
@@ -65,7 +66,9 @@ def run_script_suite(
     _write_runtime_env(run_dir, environment)
     process_env = _build_process_env(environment)
     scenario_result_path = run_dir / "scenario-result.json"
+    observation_result_path = run_dir / "observations.json"
     process_env["API_SCENARIO_RESULT_PATH"] = str(scenario_result_path)
+    process_env["API_OBSERVATION_RESULT_PATH"] = str(observation_result_path)
 
     sync = subprocess.run(
         ["uv", "sync"],
@@ -102,30 +105,49 @@ def run_script_suite(
             "stderr_path": str(run_dir / "stderr.txt"),
             "json_report_path": "",
             "scenario_result_path": str(scenario_result_path) if scenario_result_path.exists() else "",
+            "observation_result_path": str(observation_result_path) if observation_result_path.exists() else "",
             "exitcode": pytest.returncode,
         }
 
     summary = parse_pytest_json_report(report_path)
+    observations = _read_observations(observation_result_path)
+    if observations:
+        summary["observed"] = len(observations)
+    status = "failed"
+    if pytest.returncode == 0 and summary.get("failed", 0) == 0:
+        status = "observed" if observations else "passed"
     return {
-        "status": "passed" if pytest.returncode == 0 and summary.get("failed", 0) == 0 else "failed",
+        "status": status,
         "summary": summary,
         "error_message": "" if pytest.returncode == 0 else "pytest 执行失败。",
         "stdout_path": str(run_dir / "stdout.txt"),
         "stderr_path": str(run_dir / "stderr.txt"),
         "json_report_path": str(report_path),
         "scenario_result_path": str(scenario_result_path) if scenario_result_path.exists() else "",
+        "observation_result_path": str(observation_result_path) if observation_result_path.exists() else "",
         "exitcode": pytest.returncode,
     }
 
 
 def _clear_previous_outputs(run_dir: Path) -> None:
-    for filename in ("report.json", "scenario-result.json", "stdout.txt", "stderr.txt"):
+    for filename in ("report.json", "scenario-result.json", "observations.json", "stdout.txt", "stderr.txt"):
         path = run_dir / filename
         if path.exists():
             path.unlink()
     runtime_dir = run_dir / "runtime"
     if runtime_dir.exists():
         shutil.rmtree(runtime_dir)
+
+
+def _read_observations(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    observations = payload.get("observations", []) if isinstance(payload, dict) else []
+    return [item for item in observations if isinstance(item, dict)]
 
 
 def _write_runtime_env(run_dir: Path, environment: dict[str, Any]) -> None:
@@ -143,6 +165,7 @@ def _write_runtime_env(run_dir: Path, environment: dict[str, Any]) -> None:
 
 def _build_process_env(environment: dict[str, Any]) -> dict[str, str]:
     env = dict(os.environ)
+    env.pop("VIRTUAL_ENV", None)
     env["API_BASE_URL"] = str(environment.get("api_base_url", ""))
     env["API_TIMEOUT_SECONDS"] = str(environment.get("timeout_seconds", 30))
     auth = environment.get("auth", {})

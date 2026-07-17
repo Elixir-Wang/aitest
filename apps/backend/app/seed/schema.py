@@ -395,6 +395,30 @@ CREATE TABLE IF NOT EXISTS api_generation_runs (
 CREATE INDEX IF NOT EXISTS idx_api_generation_runs_project_created
   ON api_generation_runs(project_id, created_at);
 
+CREATE TABLE IF NOT EXISTS api_script_generation_runs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  task_id TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted')),
+  endpoint_ids_json TEXT NOT NULL DEFAULT '[]',
+  api_environment_id TEXT,
+  force INTEGER NOT NULL DEFAULT 0,
+  suite_path TEXT NOT NULL DEFAULT '',
+  changed_files_json TEXT NOT NULL DEFAULT '[]',
+  result_summary_json TEXT NOT NULL DEFAULT '{}',
+  error_message TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  started_at TEXT,
+  finished_at TEXT,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_script_generation_runs_project_created
+  ON api_script_generation_runs(project_id, created_at);
+
 CREATE TABLE IF NOT EXISTS api_generation_items (
   id TEXT PRIMARY KEY,
   generation_run_id TEXT NOT NULL,
@@ -458,6 +482,8 @@ CREATE TABLE IF NOT EXISTS api_test_cases (
   generation_item_id TEXT,
   generation_attempt_id TEXT,
   title TEXT NOT NULL,
+  test_point_key TEXT NOT NULL DEFAULT '',
+  oracle_status TEXT NOT NULL DEFAULT 'confirmed' CHECK(oracle_status IN ('confirmed', 'inferred', 'needs_confirmation')),
   priority TEXT NOT NULL DEFAULT 'P2',
   coverage TEXT NOT NULL DEFAULT 'positive',
   source TEXT NOT NULL CHECK(source IN ('ai_generated', 'manual', 'approved_test_case')) DEFAULT 'ai_generated',
@@ -484,6 +510,35 @@ CREATE TABLE IF NOT EXISTS api_test_cases (
 
 CREATE INDEX IF NOT EXISTS idx_api_test_cases_project_endpoint
   ON api_test_cases(project_id, endpoint_id);
+
+CREATE TABLE IF NOT EXISTS api_test_case_versions (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  snapshot_json TEXT NOT NULL DEFAULT '{}',
+  change_source TEXT NOT NULL DEFAULT 'oracle_approval',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(case_id) REFERENCES api_test_cases(id) ON DELETE CASCADE,
+  UNIQUE(case_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_test_case_versions_case
+  ON api_test_case_versions(case_id, version);
+
+CREATE TABLE IF NOT EXISTS api_endpoint_oracle_facts (
+  id TEXT PRIMARY KEY,
+  endpoint_id TEXT NOT NULL,
+  test_point_key TEXT NOT NULL,
+  assertions_json TEXT NOT NULL DEFAULT '[]',
+  evidence_run_ids_json TEXT NOT NULL DEFAULT '[]',
+  approved_by TEXT NOT NULL,
+  approved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE CASCADE,
+  UNIQUE(endpoint_id, test_point_key)
+);
 
 CREATE TABLE IF NOT EXISTS api_test_scripts (
   id TEXT PRIMARY KEY,
@@ -524,7 +579,7 @@ CREATE TABLE IF NOT EXISTS api_automation_runs (
   project_id TEXT NOT NULL,
   api_environment_id TEXT,
   task_id TEXT NOT NULL UNIQUE,
-  status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'passed', 'failed', 'cancelled', 'interrupted')),
+  status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'passed', 'observed', 'failed', 'cancelled', 'interrupted')),
   script_ids_json TEXT NOT NULL DEFAULT '[]',
   target_type TEXT NOT NULL DEFAULT 'scripts',
   target_ids_json TEXT NOT NULL DEFAULT '[]',
@@ -534,6 +589,7 @@ CREATE TABLE IF NOT EXISTS api_automation_runs (
   stderr_path TEXT NOT NULL DEFAULT '',
   json_report_path TEXT NOT NULL DEFAULT '',
   scenario_result_path TEXT NOT NULL DEFAULT '',
+  observation_result_path TEXT NOT NULL DEFAULT '',
   summary_json TEXT NOT NULL DEFAULT '{}',
   error_message TEXT NOT NULL DEFAULT '',
   created_by TEXT NOT NULL,
@@ -546,6 +602,37 @@ CREATE TABLE IF NOT EXISTS api_automation_runs (
 
 CREATE INDEX IF NOT EXISTS idx_api_runs_project_created
   ON api_automation_runs(project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS api_oracle_proposals (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  endpoint_id TEXT NOT NULL,
+  case_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  test_point_key TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected', 'superseded')) DEFAULT 'pending',
+  current_snapshot_json TEXT NOT NULL DEFAULT '{}',
+  proposed_snapshot_json TEXT NOT NULL DEFAULT '{}',
+  reasoning TEXT NOT NULL DEFAULT '',
+  confidence REAL NOT NULL DEFAULT 0,
+  review_scope TEXT NOT NULL DEFAULT '',
+  review_comment TEXT NOT NULL DEFAULT '',
+  reviewed_by TEXT,
+  reviewed_at TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE CASCADE,
+  FOREIGN KEY(case_id) REFERENCES api_test_cases(id) ON DELETE CASCADE,
+  FOREIGN KEY(run_id) REFERENCES api_automation_runs(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_oracle_proposals_project_status
+  ON api_oracle_proposals(project_id, status, created_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_api_oracle_proposals_run_case
+  ON api_oracle_proposals(run_id, case_id);
 
 CREATE TABLE IF NOT EXISTS performance_tests (
   id TEXT PRIMARY KEY,
@@ -599,6 +686,94 @@ CREATE TABLE IF NOT EXISTS performance_test_scripts (
 
 CREATE INDEX IF NOT EXISTS idx_performance_test_scripts_test_version
   ON performance_test_scripts(performance_test_id, version);
+
+CREATE TABLE IF NOT EXISTS performance_test_runs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  performance_test_id TEXT NOT NULL,
+  script_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('created', 'starting', 'running', 'stopping', 'completed', 'stopped', 'failed', 'cancelled')),
+  worker_id TEXT NOT NULL DEFAULT '',
+  load_config_json TEXT NOT NULL DEFAULT '{}',
+  runtime_config_json TEXT NOT NULL DEFAULT '{}',
+  latest_summary_json TEXT NOT NULL DEFAULT '{}',
+  error_code TEXT NOT NULL DEFAULT '',
+  error_message TEXT NOT NULL DEFAULT '',
+  trace_id TEXT NOT NULL DEFAULT '',
+  report_directory TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  started_at TEXT,
+  finished_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(performance_test_id) REFERENCES performance_tests(id) ON DELETE CASCADE,
+  FOREIGN KEY(script_id) REFERENCES performance_test_scripts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_performance_test_runs_project_created
+  ON performance_test_runs(project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS performance_test_run_stats (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  sampled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  user_count INTEGER NOT NULL DEFAULT 0,
+  request_count INTEGER NOT NULL DEFAULT 0,
+  failure_count INTEGER NOT NULL DEFAULT 0,
+  requests_per_second REAL NOT NULL DEFAULT 0,
+  failure_rate REAL NOT NULL DEFAULT 0,
+  average_response_time_ms REAL NOT NULL DEFAULT 0,
+  p50_response_time_ms REAL NOT NULL DEFAULT 0,
+  p95_response_time_ms REAL NOT NULL DEFAULT 0,
+  p99_response_time_ms REAL NOT NULL DEFAULT 0,
+  stats_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY(run_id) REFERENCES performance_test_runs(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_performance_test_run_stats_run_sampled
+  ON performance_test_run_stats(run_id, sampled_at);
+
+CREATE TABLE IF NOT EXISTS performance_test_run_failures (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  request_name TEXT NOT NULL,
+  method TEXT NOT NULL DEFAULT '',
+  reason TEXT NOT NULL,
+  count INTEGER NOT NULL DEFAULT 1,
+  last_occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  sample_status_code INTEGER,
+  sample_response_excerpt TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY(run_id) REFERENCES performance_test_runs(id) ON DELETE CASCADE,
+  UNIQUE(run_id, request_name, method, reason)
+);
+
+CREATE TABLE IF NOT EXISTS performance_test_run_exceptions (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  request_name TEXT NOT NULL DEFAULT '',
+  exception_type TEXT NOT NULL,
+  message TEXT NOT NULL,
+  count INTEGER NOT NULL DEFAULT 1,
+  last_occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(run_id) REFERENCES performance_test_runs(id) ON DELETE CASCADE,
+  UNIQUE(run_id, request_name, exception_type, message)
+);
+
+CREATE TABLE IF NOT EXISTS performance_test_run_events (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  level TEXT NOT NULL DEFAULT 'info',
+  message TEXT NOT NULL DEFAULT '',
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  trace_id TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(run_id) REFERENCES performance_test_runs(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_performance_test_run_events_run_created
+  ON performance_test_run_events(run_id, created_at);
 
 CREATE TABLE IF NOT EXISTS api_scenarios (
   id TEXT PRIMARY KEY,

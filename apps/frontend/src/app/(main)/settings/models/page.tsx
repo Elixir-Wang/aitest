@@ -6,6 +6,7 @@ import { Eye, EyeOff, Pencil, TestTube, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -189,7 +190,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={[{ label: "系统管理" }, { label: "模型配置" }]}
+      breadcrumbs={moduleBreadcrumbs("models")}
       description="管理模型提供商、模型、Base URL 和密钥配置。"
       projectScope="none"
       activeTab="模型管理"

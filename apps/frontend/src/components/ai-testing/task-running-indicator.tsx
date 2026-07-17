@@ -18,6 +18,7 @@ const RUNNING_INDICATOR_SOURCE_TYPES = new Set([
   "requirement_finalization_run",
   "test_case_generation_run",
   "api_automation_generation_run",
+  "api_script_generation_run",
   "api_automation_run",
 ]);
 const RUNNING_TASK_POLL_INTERVAL_MS = 2_000;

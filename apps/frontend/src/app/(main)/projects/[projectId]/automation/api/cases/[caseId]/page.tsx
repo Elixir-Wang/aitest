@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { type ApiAutomationTestCase, getApiAutomationTestCase } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
 export default function ApiAutomationCaseDetailPage() {
   const params = useParams<{ projectId: string; caseId: string }>();
@@ -51,11 +52,7 @@ export default function ApiAutomationCaseDetailPage() {
 
   return (
     <PageShell
-      breadcrumbs={[
-        { label: "项目" },
-        { label: "接口自动化", href: `/projects/${projectId}/automation/api` },
-        { label: "接口用例详情" },
-      ]}
+      breadcrumbs={moduleBreadcrumbs("apiAutomation", { label: testCase?.title || "接口用例详情" })}
       description="接口自动化用例详情"
       title="接口用例详情"
     >

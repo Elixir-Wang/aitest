@@ -47,6 +47,10 @@ const scriptPageSource = readFileSync(
   ),
   "utf8",
 );
+const runDetailSource = readFileSync(
+  new URL("../src/components/ai-testing/performance-testing/performance-run-detail.tsx", import.meta.url),
+  "utf8",
+);
 const detailSource = readFileSync(
   new URL("../src/components/ai-testing/performance-testing/performance-test-detail.tsx", import.meta.url),
   "utf8",
@@ -124,33 +128,36 @@ test("performance script API and review route support generation, edits, and con
   assert.match(apiClientSource, /export function updatePerformanceScriptConfiguration/);
   assert.match(apiClientSource, /export function confirmPerformanceScript/);
   assert.match(scriptPageSource, /<ScriptReview/);
+  assert.match(scriptReviewSource, /结构化请求配置/);
+  assert.match(scriptReviewSource, /只读 Locust 脚本/);
   assert.match(scriptReviewSource, /validation_status/);
   assert.match(scriptReviewSource, /确认脚本/);
-  assert.match(detailSource, /generatePerformanceScript/);
 });
 
-test("confirmed performance script launches the native Locust UI", () => {
+test("confirmed performance script launches the project-native performance run page", () => {
   assert.match(apiClientSource, /export function createPerformanceRun/);
-  assert.match(apiClientSource, /export function createLocustUiSession/);
-  assert.match(apiClientSource, /locust_ui_path/);
+  assert.match(apiClientSource, /export function getPerformanceRun/);
   assert.match(scriptReviewSource, /启动 Locust UI/);
-  assert.match(scriptReviewSource, /createLocustUiSession/);
-  assert.match(scriptReviewSource, /window\.open\(session\.url/);
+  assert.match(scriptReviewSource, /performance-tests\/\$\{testId\}\/runs\/\$\{run\.id\}/);
+  assert.doesNotMatch(scriptReviewSource, /createLocustUiSession|window\.open/);
 });
 
-test("performance run workspace and stats UI are gone", () => {
-  assert.equal(
-    existsSync(new URL("../src/components/ai-testing/performance-testing/run-workspace.tsx", import.meta.url)),
-    false,
-  );
+test("performance detail does not auto-launch a duplicate Locust session", () => {
+  assert.doesNotMatch(detailSource, /autoStarted|Auto-launch/);
+  assert.doesNotMatch(detailSource, /负载配置|LoadProfileRail/);
+  assert.match(detailSource, /成功规则与目标/);
+});
+
+test("project-native performance run workspace is present", () => {
   assert.equal(
     existsSync(
-      new URL("../src/app/(main)/projects/[projectId]/performance-test-runs/[runId]/page.tsx", import.meta.url),
+      new URL("../src/app/(main)/projects/[projectId]/performance-tests/[testId]/runs/[runId]/page.tsx", import.meta.url),
     ),
-    false,
+    true,
   );
-  assert.doesNotMatch(apiClientSource, /PerformanceRunStats/);
-  assert.doesNotMatch(apiClientSource, /PerformanceAnalysis/);
-  assert.doesNotMatch(apiClientSource, /streamPerformanceRun/);
-  assert.doesNotMatch(detailSource, /listPerformanceRuns/);
+  assert.match(apiClientSource, /export function getPerformanceRun/);
+  assert.match(apiClientSource, /export function getPerformanceRunStats/);
+  assert.match(apiClientSource, /export function stopPerformanceRun/);
+  assert.match(runDetailSource, /实时图表/);
+  assert.match(runDetailSource, /运行日志/);
 });

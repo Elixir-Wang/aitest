@@ -97,6 +97,15 @@ async def generate_api_test_cases(input_data: ApiAutomationGenerationInput) -> A
             ]
         )
 
+    if input_data.planned_test_points:
+        content_parts.extend(
+            [
+                "",
+                "后端确定性测试点计划（每个 key 必须输出且只能输出一条主用例，不得自行删减或合并）:",
+                json.dumps(input_data.planned_test_points, ensure_ascii=False, indent=2),
+            ]
+        )
+
     if input_data.generation_goal:
         content_parts.extend(["", f"生成目标: {input_data.generation_goal}"])
 

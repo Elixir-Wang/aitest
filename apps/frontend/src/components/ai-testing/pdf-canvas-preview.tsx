@@ -125,7 +125,7 @@ export function PdfCanvasPreview({ objectUrl }: Props) {
         pagesElement.appendChild(canvas);
 
         const renderTask = page.render({
-          canvasContext: context,
+          canvas,
           viewport,
         });
         renderTasksRef.current.push(renderTask);

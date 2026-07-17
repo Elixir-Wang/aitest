@@ -36,7 +36,7 @@ description: 针对指定单个 REST 接口，依据 OpenAPI、环境摘要、�
 
 1. 提取 endpoint 方法、路径、参数位置、请求体、响应、鉴权和 schema。
 2. 建立全部字段清单，递归展开嵌套对象、数组元素和组合 schema。
-3. 为每个字段建立适用测试点，区分 required、optional、nullable、default、example 和约束。
+3. 以输入中的后端确定性测试点计划为生成清单；每个 `key` 必须且只能生成一条主用例，不得删除、合并、改名或自行补充计划外测试点。
 4. 建立接口级测试点：成功响应、请求契约、鉴权、查询语义、业务规则、数据影响、重复操作、上传或下载。
 5. 识别明确的字段关系：条件必填、互斥、依赖、起止、上下限和组合 schema。
 6. 每个有接口事实依据且能够构造确定性请求 Mock 数据的适用测试点至少生成一条能独立验证该目标的用例；缺少稳定预期时生成合理推断并记录缺失信息，不得跳过用例。
@@ -82,7 +82,7 @@ description: 针对指定单个 REST 接口，依据 OpenAPI、环境摘要、�
 
 ### 2. 字段存在性和可空性
 
-- 每个 required 字段缺失，但仅在缺失结果通过可执行 Oracle 门禁时生成；
+- 后端计划中的每个 required 字段缺失测试点都必须生成；精确预期未知时使用 `needs_confirmation`，不得跳过；
 - optional 字段不传和传合法值；
 - 空字符串、纯空白、`null`、空对象、空数组，仅在字段类型和 nullable 语义适用时生成；
 - requestBody 必填时区分请求体不发送与空对象/空内容。
@@ -91,7 +91,7 @@ description: 针对指定单个 REST 接口，依据 OpenAPI、环境摘要、�
 
 ### 3. 类型、格式和约束
 
-- 字段类型错误，但仅在错误结果通过可执行 Oracle 门禁时生成；
+- 后端计划中的字段类型错误测试点都必须生成；精确预期未知时使用 `needs_confirmation`；
 - `format`、`pattern` 的合法值与非法值；
 - `minLength/maxLength`：边界内、边界值、边界外；
 - `minimum/maximum`、exclusive 边界：边界内、边界值、边界外；
@@ -114,14 +114,14 @@ description: 针对指定单个 REST 接口，依据 OpenAPI、环境摘要、�
 
 ### 5. 日期、时间和字段关系
 
-- 合法与非法日期时间格式、时区、闰年、月末和精度，但 schema 或描述必须明确格式，且预期通过可执行 Oracle 门禁；
+- 合法与非法日期时间格式、时区、闰年、月末和精度，但 schema、描述或后端测试点计划必须提供日期事实；
 - start/end、from/to、begin/end、min/max、lower/upper：小于、等于、大于；
 - 文档明确的条件必填、互斥、依赖和组合约束；
 - 不明确最大跨度、未来时间或历史时间规则时，不得自行设定预期。
 
 ### 6. 鉴权与安全
 
-- 已声明鉴权信息的空值；当前执行器以空字符串覆盖环境默认头，不生成无法真实执行的 header 缺失用例，且仅在空值结果通过可执行 Oracle 门禁时生成；
+- 后端计划中的每个鉴权空值测试点都必须生成；当前执行器以空字符串覆盖环境默认头，不生成无法真实执行的 header 缺失用例；
 - 开启安全用例时，覆盖有事实支持的错误、过期、无权限、越权或资源归属不匹配；
 - 开启安全用例时，对适用文本字段覆盖注入、脚本和路径穿越输入，但只断言契约已声明的拒绝或安全处理结果；
 - 检查明确响应 schema 不应返回的敏感字段时，不得使用当前执行器不支持的断言伪装可执行性。
@@ -223,7 +223,7 @@ OpenAPI 声明 `multipart/form-data` 或文件字段时，使用 `request.files`
 2. path 保持 OpenAPI 模板；具体 path 参数值记录在 `test_data`，避免与当前落库校验冲突。
 3. query/body/files 只能使用接口定义中存在的字段。
 4. 除目标变量外，其余请求字段保持合法基线，确保失败原因唯一。
-5. 每条用例至少包含一个 `status_code` 断言。
+5. `confirmed` 和 `inferred` 每条用例至少包含一个 `status_code` 或明确业务断言；`needs_confirmation` 可以不生成强断言，由执行器进入 observation mode 采集真实响应。
 6. JSON 只使用 `jsonpath_exists` 和有明确固定预期时的 `jsonpath_equals`。
 7. 二进制下载不得使用 JSONPath 断言。
 8. 不输出标签、状态、`notes`、`preconditions`、`variables` 或 `data_origin`；缺失信息、Mock 变化和预期推断统一输出到 `generation_notes`。
@@ -247,7 +247,7 @@ OpenAPI 声明 `multipart/form-data` 或文件字段时，使用 `request.files`
 10. 正常请求是否错误地重复输出了环境鉴权头或使用了执行器不会导出的变量名；
 11. 鉴权标题是否与当前执行器实际发送的空值语义一致；
 12. 是否把无触发条件的 404/其他错误响应机械套给了参数或鉴权负向用例；
-13. 文档明确业务成功码时，成功用例是否断言了该固定值。
+13. 文档明确业务成功码时，成功用例是否断言了该固定值；`needs_confirmation` 是否避免伪造错误状态码。
 14. `summary` 声明的用例数量是否与 `cases` 数组实际长度完全相等；
 15. 推断的 400/401/403/404/422 是否在 `generation_notes` 中明确标记为待确认；
 16. 每条负向用例是否生成了与测试目标一致的错误 Mock 数据，并说明了预期推断依据。
@@ -266,11 +266,12 @@ OpenAPI 声明 `multipart/form-data` 或文件字段时，使用 `request.files`
       "title": "下载文件 - 成功返回非空文件",
       "priority": "P1",
       "endpoint_id": "apiend-1",
+      "test_point_key": "success.minimum_valid",
+      "oracle_status": "confirmed",
       "coverage": "positive",
       "source": "ai_generated",
       "request": {"method": "GET", "path": "/files/{file_id}", "query": {}, "headers": {}},
       "test_data": {"file_id": {"value": "${API_FILE_ID}"}},
-      "expected": {"status_code": 200, "content_type": "application/octet-stream"},
       "assertions": [
         {"type": "status_code", "path": "", "expected": 200},
         {"type": "content_type", "path": "", "expected": "application/octet-stream"},

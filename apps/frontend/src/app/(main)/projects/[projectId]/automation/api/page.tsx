@@ -34,6 +34,7 @@ import { toast } from "sonner";
 
 import { ApiScenarioList } from "@/components/ai-testing/api-automation/api-scenario-list";
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Select as AnimatedSelect, SelectOption } from "@/components/ui/animated-select-1";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +61,7 @@ import {
   type ApiAutomationEnvironment,
   type ApiAutomationGenerationRun,
   type ApiAutomationRun,
+  type ApiScriptGenerationRun,
   type ApiAutomationScenario,
   type ApiAutomationScenarioStep,
   type ApiAutomationScript,
@@ -83,6 +85,7 @@ import {
   getApiAutomationRunLogs,
   getApiAutomationRunReport,
   getApiAutomationScenario,
+  getApiScriptGenerationRun,
   importOpenApiDocument,
   listApiAutomationCaseSets,
   listApiAutomationEndpoints,
@@ -1159,17 +1162,32 @@ export default function Page() {
 
     setBusy(true);
     try {
-      const generated = await generateApiAutomationScripts(projectId, {
+      const queued = await generateApiAutomationScripts(projectId, {
         endpoint_ids: endpointIds,
         api_environment_id: selectedEnvironment?.id ?? null,
       });
+      notifyAiTaskStarted();
+      toast.info("脚本生成任务已提交，可在任务中心查看进度");
+      let generated: ApiScriptGenerationRun = queued;
+      let pollCount = 0;
+      while (["queued", "running"].includes(generated.status) && pollCount < 240) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        pollCount += 1;
+        generated = await getApiScriptGenerationRun(projectId, queued.id);
+      }
+      if (["queued", "running"].includes(generated.status)) {
+        throw new Error("脚本生成任务执行时间过长，请到任务中心查看进度");
+      }
+      if (generated.status !== "completed") {
+        throw new Error(generated.error_message || "脚本生成失败，请查看任务详情");
+      }
       const scriptRows = await listApiAutomationScripts(projectId);
       setScripts(scriptRows);
-      setSelectedScriptIds(generated.scripts.map((script) => script.id));
-      setActiveScriptId(generated.scripts[0]?.id ?? scriptRows[0]?.id ?? "");
+      setSelectedScriptIds(scriptRows.filter((script) => generated.endpoint_ids.includes(script.endpoint_id || "")).map((script) => script.id));
+      setActiveScriptId(scriptRows[0]?.id ?? "");
       setActiveTab("测试脚本");
       toast.success(
-        `脚本生成完成：新增 ${generated.summary.created}，更新 ${generated.summary.updated}，未变化 ${generated.summary.unchanged}`,
+        `脚本生成完成：新增 ${generated.summary.created ?? 0}，更新 ${generated.summary.updated ?? 0}，未变化 ${generated.summary.unchanged ?? 0}`,
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "脚本生成失败");
@@ -1425,11 +1443,10 @@ export default function Page() {
   return (
     <PageShell
       activeTab={activeTab}
-      breadcrumbs={[
-        { label: "测试资产" },
-        { label: "接口自动化", href: "/automation/api" },
+      breadcrumbs={moduleBreadcrumbs(
+        "apiAutomation",
         ...(selectedCaseSet ? [{ label: selectedCaseSet.name }] : []),
-      ]}
+      )}
       description="导入 OpenAPI、生成接口自动化用例、生成 pytest 脚本并执行。"
       fillViewport={activeTab === "接口用例"}
       onTabChange={setActiveTab}

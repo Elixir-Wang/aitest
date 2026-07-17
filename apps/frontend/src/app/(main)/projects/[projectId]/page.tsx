@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ClipboardCheck, FileText, Gauge } from "lucide-react";
 
 import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import {
   type ApiDashboardOverview,
@@ -87,7 +88,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={[{ label: "项目工作区" }, { label: "项目", href: "/projects" }, { label: projectName }]}
+      breadcrumbs={moduleBreadcrumbs("projects", { label: projectName })}
       description=""
       projectScope="project"
       title={projectName}

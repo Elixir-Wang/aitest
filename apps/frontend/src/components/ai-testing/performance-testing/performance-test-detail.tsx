@@ -1,17 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
-import { AlertTriangle, Gauge } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   ApiRequestError,
-  createLocustUiSession,
   createPerformanceRun,
   getPerformanceTest,
   listPerformanceScripts,
@@ -19,14 +18,11 @@ import {
   type PerformanceTest,
 } from "@/lib/api-client";
 
-import { LoadProfileRail } from "./load-profile-rail";
-
 export function PerformanceTestDetail({ projectId, testId }: { projectId: string; testId: string }) {
   const router = useRouter();
   const [item, setItem] = useState<PerformanceTest | null>(null);
   const [scripts, setScripts] = useState<PerformanceScript[]>([]);
   const [loading, setLoading] = useState(false);
-  const autoStarted = useRef(false);
 
   useEffect(() => {
     let ignore = false;
@@ -36,13 +32,6 @@ export function PerformanceTestDetail({ projectId, testId }: { projectId: string
         if (ignore) return;
         setItem(result);
         setScripts(scriptItems);
-
-        // Auto-launch if there's a confirmed script
-        const confirmedScript = scriptItems.find((s) => s.validation_status === "confirmed");
-        if (confirmedScript && !autoStarted.current) {
-          autoStarted.current = true;
-          launchLocust(confirmedScript);
-        }
       })
       .catch((error) => toast.error(apiErrorMessage(error)))
       .finally(() => {
@@ -63,8 +52,7 @@ export function PerformanceTestDetail({ projectId, testId }: { projectId: string
     setLoading(true);
     try {
       const run = await createPerformanceRun(projectId, testId, script.id);
-      const session = await createLocustUiSession(projectId, run.id);
-      window.open(session.url, "_blank");
+      router.push(`/projects/${projectId}/performance-tests/${testId}/runs/${run.id}`);
     } catch (error) {
       toast.error(apiErrorMessage(error));
     } finally {
@@ -101,7 +89,7 @@ export function PerformanceTestDetail({ projectId, testId }: { projectId: string
           onClick={() => {
             const confirmedScript = scripts.find((s) => s.validation_status === "confirmed");
             if (confirmedScript) {
-              launchLocust(confirmedScript);
+              void launchLocust(confirmedScript);
             } else {
               toast.error("没有已确认的脚本，请先生成并确认脚本");
             }
@@ -111,39 +99,22 @@ export function PerformanceTestDetail({ projectId, testId }: { projectId: string
         </Button>
       </section>
 
-      <section className="grid gap-6 py-6 lg:grid-cols-2">
-        <div>
-          <SectionTitle icon={Gauge} title="负载配置" />
-          <LoadProfileRail
-            measurementSeconds={item.load_config.measurement_duration_seconds}
-            spawnRate={item.load_config.spawn_rate}
-            users={item.load_config.users}
-          />
-          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <Definition
-              label="等待时间"
-              value={`${item.load_config.wait_time_min_seconds} - ${item.load_config.wait_time_max_seconds} 秒`}
-            />
-            <Definition label="请求超时" value={`${item.load_config.request_timeout_seconds} 秒`} />
-          </dl>
-        </div>
-        <div>
-          <SectionTitle title="成功规则与目标" />
-          <div className="space-y-3 text-sm">
-            <div>
-              <p className="mb-1 text-muted-foreground text-xs">成功状态码</p>
-              <div className="flex flex-wrap gap-1">
-                {(item.success_rules.find((rule) => rule.kind === "status_code")?.status_codes ?? []).map((code) => (
-                  <Badge key={code} variant="outline">
-                    {code}
-                  </Badge>
-                ))}
+      <section className="py-6">
+        <SectionTitle title="成功规则与目标" />
+        <div className="space-y-3 text-sm">
+          <div>
+            <p className="mb-1 text-muted-foreground text-xs">成功状态码</p>
+            <div className="flex flex-wrap gap-1">
+              {(item.success_rules.find((rule) => rule.kind === "status_code")?.status_codes ?? []).map((code) => (
+                <Badge key={code} variant="outline">
+                  {code}
+                </Badge>
+              ))}
               </div>
-            </div>
-            <pre className="max-h-48 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs">
-              {JSON.stringify(item.performance_goal, null, 2)}
-            </pre>
           </div>
+          <pre className="max-h-48 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs">
+            {JSON.stringify(item.performance_goal, null, 2)}
+          </pre>
         </div>
       </section>
 
@@ -177,15 +148,8 @@ export function PerformanceTestDetail({ projectId, testId }: { projectId: string
   );
 }
 
-function SectionTitle({ icon: Icon, title }: { icon?: typeof Gauge; title: string }) {
-  return Icon ? (
-    <div className="mb-3 flex items-center gap-2 font-semibold text-sm">
-      <Icon className="size-4" />
-      {title}
-    </div>
-  ) : (
-    <h2 className="mb-3 font-semibold text-sm">{title}</h2>
-  );
+function SectionTitle({ title }: { title: string }) {
+  return <h2 className="mb-3 font-semibold text-sm">{title}</h2>;
 }
 
 function Fact({ label, value }: { label: string; value: string }) {
@@ -193,15 +157,6 @@ function Fact({ label, value }: { label: string; value: string }) {
     <div className="px-1">
       <p className="text-muted-foreground text-xs">{label}</p>
       <p className="mt-1 font-medium text-sm">{value}</p>
-    </div>
-  );
-}
-
-function Definition({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border-slate-300 border-l-2 px-2 py-1 dark:border-slate-700">
-      <dt className="text-muted-foreground text-xs">{label}</dt>
-      <dd className="font-medium text-sm">{value}</dd>
     </div>
   );
 }

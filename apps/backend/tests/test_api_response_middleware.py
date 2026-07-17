@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import HTMLResponse, JSONResponse, StreamingResponse
+from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
@@ -25,13 +25,6 @@ async def stream_endpoint(request):
     return StreamingResponse(events(), media_type="text/event-stream")
 
 
-async def locust_ui_endpoint(request):
-    return HTMLResponse("<html><title>Locust</title></html>")
-
-
-async def locust_ui_json_endpoint(request):
-    return JSONResponse({"stats": []})
-
 
 async def unhandled_error_endpoint(request):
     raise RuntimeError("database is locked")
@@ -43,8 +36,6 @@ def test_api_response_middleware_wraps_json_but_preserves_streams() -> None:
             Route("/api/v1/json", json_endpoint),
             Route("/api/v1/error", error_endpoint),
             Route("/api/v1/stream", stream_endpoint),
-            Route("/api/v1/projects/p/performance-test-runs/r/locust-ui/", locust_ui_endpoint),
-            Route("/api/v1/projects/p/performance-test-runs/r/locust-ui/stats/requests", locust_ui_json_endpoint),
         ]
     )
     app.add_middleware(ApiResponseMiddleware)
@@ -67,11 +58,6 @@ def test_api_response_middleware_wraps_json_but_preserves_streams() -> None:
     assert "text/event-stream" in stream_response.headers["content-type"]
     assert stream_response.headers["x-trace-id"].startswith("trace_")
 
-    locust_response = client.get("/api/v1/projects/p/performance-test-runs/r/locust-ui/")
-    assert locust_response.status_code == 200
-    assert locust_response.text == "<html><title>Locust</title></html>"
-    locust_json_response = client.get("/api/v1/projects/p/performance-test-runs/r/locust-ui/stats/requests")
-    assert locust_json_response.json() == {"stats": []}
 
 
 def test_api_response_middleware_preserves_empty_204_body() -> None:

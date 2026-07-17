@@ -11,13 +11,6 @@ export default function Page() {
 
   return (
     <ExplorationRunCreatePage
-      breadcrumbs={[
-        { label: "项目工作区" },
-        { label: "项目", href: "/projects" },
-        { label: projectName, href: `/projects/${params.projectId}` },
-        { label: "探索", href: "/exploration" },
-        { label: "编辑探索任务" },
-      ]}
       mode="edit"
       projectId={params.projectId}
       projectName={projectName}

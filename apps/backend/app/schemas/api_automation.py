@@ -203,6 +203,8 @@ class ApiTestCaseOut(BaseModel):
     project_id: str
     endpoint_id: str | None
     title: str
+    test_point_key: str
+    oracle_status: Literal["confirmed", "inferred", "needs_confirmation"]
     test_description: str
     priority: str
     coverage: str
@@ -261,6 +263,20 @@ class ApiScriptGenerateIn(_StrippedModel):
 class ApiRunCreateIn(_StrippedModel):
     script_ids: list[str] = Field(min_length=1)
     api_environment_id: str | None = None
+
+
+class ApiOracleProposalCreateIn(_StrippedModel):
+    run_id: str = Field(min_length=1)
+
+
+class ApiOracleProposalReviewIn(_StrippedModel):
+    scope: Literal["case_only", "case_and_endpoint_asset"] = "case_only"
+    review_comment: str = ""
+    assertions: list[dict[str, Any]] | None = None
+
+
+class ApiOracleProposalRejectIn(_StrippedModel):
+    review_comment: str = ""
 
 
 class ApiScenarioIn(_StrippedModel):

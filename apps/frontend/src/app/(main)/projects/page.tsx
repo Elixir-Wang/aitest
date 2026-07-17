@@ -8,6 +8,7 @@ import { Eye, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
@@ -177,7 +178,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={[{ label: "项目工作区" }, { label: "项目" }]}
+      breadcrumbs={moduleBreadcrumbs("projects")}
       description="管理项目、成员、环境配置和测试资产健康度。"
       projectScope="all"
       title="项目"

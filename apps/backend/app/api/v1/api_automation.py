@@ -12,6 +12,9 @@ from app.schemas.api_automation import (
     ApiEnvironmentIn,
     ApiEnvironmentOut,
     ApiGenerationRunOut,
+    ApiOracleProposalCreateIn,
+    ApiOracleProposalRejectIn,
+    ApiOracleProposalReviewIn,
     ApiRunCreateIn,
     ApiScenarioExecuteIn,
     ApiScenarioIn,
@@ -148,6 +151,57 @@ def delete_api_test_case(project_id: str, case_id: str, actor=Depends(require_ad
     service.delete_api_test_case(project_id, case_id, actor)
 
 
+@router.post("/api-test-cases/{case_id}/oracle-proposals")
+def create_oracle_proposal(
+    project_id: str,
+    case_id: str,
+    payload: ApiOracleProposalCreateIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return service.create_oracle_proposal(project_id, case_id, payload.run_id, actor)
+
+
+@router.get("/oracle-proposals")
+def list_oracle_proposals(
+    project_id: str,
+    status: str = Query(default=""),
+    actor=Depends(current_user),
+) -> list[dict]:
+    return service.list_oracle_proposals(project_id, actor, status=status)
+
+
+@router.post("/oracle-proposals/{proposal_id}/approve")
+def approve_oracle_proposal(
+    project_id: str,
+    proposal_id: str,
+    payload: ApiOracleProposalReviewIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return service.approve_oracle_proposal(
+        project_id,
+        proposal_id,
+        scope=payload.scope,
+        review_comment=payload.review_comment,
+        assertions=payload.assertions,
+        actor=actor,
+    )
+
+
+@router.post("/oracle-proposals/{proposal_id}/reject")
+def reject_oracle_proposal(
+    project_id: str,
+    proposal_id: str,
+    payload: ApiOracleProposalRejectIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return service.reject_oracle_proposal(
+        project_id,
+        proposal_id,
+        review_comment=payload.review_comment,
+        actor=actor,
+    )
+
+
 @router.get("/api-automation/generation-runs", response_model=list[ApiGenerationRunOut])
 def list_api_automation_generation_runs(project_id: str, actor=Depends(current_user)) -> list[dict]:
     return service.list_generation_runs(project_id, actor)
@@ -193,9 +247,27 @@ def retry_failed_api_generation_items(
     return run
 
 
-@router.post("/api-automation/scripts/generate")
-def generate_api_scripts(project_id: str, payload: ApiScriptGenerateIn, actor=Depends(require_admin)) -> dict:
-    return service.generate_project_scripts(project_id, payload.endpoint_ids, actor, force=payload.force)
+@router.post("/api-automation/scripts/generate", status_code=202)
+def generate_api_scripts(
+    project_id: str,
+    payload: ApiScriptGenerateIn,
+    background_tasks: BackgroundTasks,
+    actor=Depends(require_admin),
+) -> dict:
+    run = service.create_script_generation_run(
+        project_id,
+        payload.endpoint_ids,
+        actor,
+        force=payload.force,
+        api_environment_id=payload.api_environment_id,
+    )
+    background_tasks.add_task(service.execute_script_generation_run, run["id"])
+    return run
+
+
+@router.get("/api-automation/scripts/generation-runs/{run_id}")
+def get_api_script_generation_run(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
+    return service.get_script_generation_run(project_id, run_id, actor)
 
 
 @router.get("/api-scripts")

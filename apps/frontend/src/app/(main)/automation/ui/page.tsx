@@ -6,6 +6,7 @@ import { Loader2, Play, RotateCcw, Square } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -112,7 +113,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={[{ label: "测试资产" }, { label: "UI 自动化" }]}
+      breadcrumbs={moduleBreadcrumbs("uiAutomation")}
       description="使用项目级探索产物，在当前项目任意环境中执行 Chrome 自动化。"
       projectScope="all"
       title="UI 自动化"

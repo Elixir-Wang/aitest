@@ -23,8 +23,8 @@ def test_execute_exploration_async_invokes_deep_agent_with_user_message(monkeypa
             captured["runtime"] = require_exploration_runtime()
             yield ("values", {"messages": []})
 
-    def fake_page_exploration_agent(model, tools=None, skill_names=None, max_actions=80):
-        captured["agent_args"] = (model, tools, skill_names, max_actions)
+    def fake_page_exploration_agent(model, tools=None, skill_names=None, max_actions=80, exploration_mode="goal"):
+        captured["agent_args"] = (model, tools, skill_names, max_actions, exploration_mode)
         return FakeAgent()
 
     class FakeConnection:
@@ -783,7 +783,7 @@ def test_execute_exploration_async_publishes_realtime_events(monkeypatch) -> Non
         async def astream(self, payload, **kwargs):
             yield ("values", {"messages": [{"content": "探索完成，发现工作台入口。"}]})
 
-    def fake_page_exploration_agent(model, tools=None, skill_names=None, max_actions=80):
+    def fake_page_exploration_agent(model, tools=None, skill_names=None, max_actions=80, exploration_mode="goal"):
         return FakeAgent()
 
     class FakeConnection:
@@ -848,7 +848,7 @@ def test_execute_exploration_async_does_not_complete_after_stop(monkeypatch) -> 
         async def astream(self, payload, **kwargs):
             yield ("values", {"messages": [{"content": "探索完成。"}]})
 
-    def fake_page_exploration_agent(model, tools=None, skill_names=None, max_actions=80):
+    def fake_page_exploration_agent(model, tools=None, skill_names=None, max_actions=80, exploration_mode="goal"):
         return FakeAgent()
 
     class FakeRun:

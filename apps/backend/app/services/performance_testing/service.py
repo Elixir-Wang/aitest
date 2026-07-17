@@ -490,40 +490,17 @@ def _require_performance_test(db, project_id: str, test_id: str):
 
 
 def _cleanup_test_artifacts(project_id: str, test_id: str) -> None:
-    """Stop any Locust session tied to the test and drop its run directory."""
-
-    from app.services.performance_testing.locust_session import stop_session
+    from app.services.performance_testing import headless_worker
 
     perf_root = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "performance_testing"
-    sessions_file = perf_root / "active_sessions.json"
-    if sessions_file.is_file():
-        try:
-            payload = json.loads(sessions_file.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            payload = {}
-        cleaned: dict[str, dict] = {}
-        if isinstance(payload, dict):
-            for run_id, info in payload.items():
-                if isinstance(info, dict) and info.get("test_id") == test_id:
-                    stop_session(project_id, str(run_id))
-                    continue
-                cleaned[str(run_id)] = info
-        sessions_file.write_text(json.dumps(cleaned, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    runs_root = perf_root / "runs"
-    if not runs_root.is_dir():
-        return
-    for run_dir in runs_root.iterdir():
-        if not run_dir.is_dir():
-            continue
-        snapshot_path = run_dir / "snapshot.json"
-        matches = False
-        if snapshot_path.is_file():
-            try:
-                payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                payload = {}
-            if isinstance(payload, dict) and payload.get("test_id") == test_id:
-                matches = True
-        if matches:
-            shutil.rmtree(run_dir, ignore_errors=True)
+    with connect() as db:
+        run_ids = [
+            row["id"]
+            for row in db.execute(
+                "SELECT id FROM performance_test_runs WHERE project_id = ? AND performance_test_id = ?",
+                (project_id, test_id),
+            ).fetchall()
+        ]
+    for run_id in run_ids:
+        headless_worker.stop_headless_run(run_id)
+        shutil.rmtree(perf_root / "runs" / run_id, ignore_errors=True)

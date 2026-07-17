@@ -147,3 +147,18 @@ metadata:
   source_run_id: exp_LK61g3aD7GfcAa6zL5_7VQ
   source_artifact_path: D:\project\test_project\apps\backend\data\projects\project-1\page_exploration\runs\exp_LK61g3aD7GfcAa6zL5_7VQ\pages\page-agentStore.yaml
   module: 主探索模块
+regions: []
+elements: []
+interactions: []
+blockers: []
+merge_history:
+- delta_run_id: run-1
+  added: 0
+  updated: 0
+  duplicate: 1
+  conflict_count: 0
+- delta_run_id: run-events
+  added: 0
+  updated: 0
+  duplicate: 1
+  conflict_count: 0

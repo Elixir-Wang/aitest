@@ -26,6 +26,8 @@ class ApiGeneratedCase(BaseModel):
     test_description: str = ""
     priority: str = "P2"
     endpoint_id: str
+    test_point_key: str
+    oracle_status: Literal["confirmed", "inferred", "needs_confirmation"]
     coverage: Literal["positive", "negative", "boundary", "security", "scenario"] = "positive"
     source: Literal["ai_generated", "manual", "approved_test_case"] = "ai_generated"
     request: dict[str, Any]
@@ -41,6 +43,7 @@ class ApiAutomationGenerationInput(BaseModel):
     source_test_cases: list[dict[str, Any]] = Field(default_factory=list)
     generation_goal: str = ""
     include_security_cases: bool = False
+    planned_test_points: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ApiAutomationGenerationResult(BaseModel):

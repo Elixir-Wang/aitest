@@ -8,11 +8,14 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _ensure_performance_test_columns(db)
     _ensure_api_test_script_columns(db)
     _ensure_api_automation_run_columns(db)
+    _ensure_api_script_generation_runs(db)
     _ensure_api_scenario_columns(db)
     _migrate_project_environment_scope(db)
     _migrate_api_environment_auth_types(db)
     _ensure_test_case_display_order(db)
     _ensure_api_test_case_structure_columns(db)
+    _ensure_api_test_case_oracle_columns(db)
+    _ensure_api_oracle_feedback_tables(db)
     _ensure_api_generation_batch_structure(db)
     _backfill_legacy_api_scenario_endpoints(db)
     _migrate_legacy_site_exploration_assignment(db)
@@ -20,9 +23,39 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _ensure_all_projects_conversation_scope(db)
 
 
+def _ensure_api_script_generation_runs(db: sqlite3.Connection) -> None:
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS api_script_generation_runs (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          task_id TEXT NOT NULL UNIQUE,
+          status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted')),
+          endpoint_ids_json TEXT NOT NULL DEFAULT '[]',
+          api_environment_id TEXT,
+          force INTEGER NOT NULL DEFAULT 0,
+          suite_path TEXT NOT NULL DEFAULT '',
+          changed_files_json TEXT NOT NULL DEFAULT '[]',
+          result_summary_json TEXT NOT NULL DEFAULT '{}',
+          error_message TEXT NOT NULL DEFAULT '',
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          started_at TEXT,
+          finished_at TEXT,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE SET NULL
+        )
+        """
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_api_script_generation_runs_project_created "
+        "ON api_script_generation_runs(project_id, created_at)"
+    )
+
+
 def _drop_legacy_performance_run_tables(db: sqlite3.Connection) -> None:
     db.execute("DROP TABLE IF EXISTS performance_analysis_runs")
-    db.execute("DROP TABLE IF EXISTS performance_test_runs")
 
 
 def _ensure_performance_test_columns(db: sqlite3.Connection) -> None:
@@ -52,6 +85,71 @@ def _ensure_api_automation_run_columns(db: sqlite3.Connection) -> None:
         db.execute("ALTER TABLE api_automation_runs ADD COLUMN target_ids_json TEXT NOT NULL DEFAULT '[]'")
     if "scenario_result_path" not in columns:
         db.execute("ALTER TABLE api_automation_runs ADD COLUMN scenario_result_path TEXT NOT NULL DEFAULT ''")
+    if "observation_result_path" not in columns:
+        db.execute("ALTER TABLE api_automation_runs ADD COLUMN observation_result_path TEXT NOT NULL DEFAULT ''")
+    table_sql_row = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'api_automation_runs'"
+    ).fetchone()
+    if table_sql_row and "'observed'" not in str(table_sql_row["sql"] or ""):
+        _rebuild_api_automation_runs_with_observed_status(db)
+
+
+def _rebuild_api_automation_runs_with_observed_status(db: sqlite3.Connection) -> None:
+    db.execute("PRAGMA foreign_keys = OFF")
+    db.execute("DROP TABLE IF EXISTS api_automation_runs_new")
+    db.execute(
+        """
+        CREATE TABLE api_automation_runs_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          api_environment_id TEXT,
+          task_id TEXT NOT NULL UNIQUE,
+          status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'passed', 'observed', 'failed', 'cancelled', 'interrupted')),
+          script_ids_json TEXT NOT NULL DEFAULT '[]',
+          target_type TEXT NOT NULL DEFAULT 'scripts',
+          target_ids_json TEXT NOT NULL DEFAULT '[]',
+          execution_snapshot_json TEXT NOT NULL DEFAULT '{}',
+          command_summary TEXT NOT NULL DEFAULT '',
+          stdout_path TEXT NOT NULL DEFAULT '',
+          stderr_path TEXT NOT NULL DEFAULT '',
+          json_report_path TEXT NOT NULL DEFAULT '',
+          scenario_result_path TEXT NOT NULL DEFAULT '',
+          observation_result_path TEXT NOT NULL DEFAULT '',
+          summary_json TEXT NOT NULL DEFAULT '{}',
+          error_message TEXT NOT NULL DEFAULT '',
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          finished_at TEXT,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE SET NULL
+        )
+        """
+    )
+    db.execute(
+        """
+        INSERT INTO api_automation_runs_new (
+          id, project_id, api_environment_id, task_id, status, script_ids_json,
+          target_type, target_ids_json, execution_snapshot_json, command_summary,
+          stdout_path, stderr_path, json_report_path, scenario_result_path,
+          observation_result_path, summary_json, error_message, created_by,
+          created_at, updated_at, finished_at
+        )
+        SELECT
+          id, project_id, api_environment_id, task_id, status, script_ids_json,
+          target_type, target_ids_json, execution_snapshot_json, command_summary,
+          stdout_path, stderr_path, json_report_path, scenario_result_path,
+          observation_result_path, summary_json, error_message, created_by,
+          created_at, updated_at, finished_at
+        FROM api_automation_runs
+        """
+    )
+    db.execute("DROP TABLE api_automation_runs")
+    db.execute("ALTER TABLE api_automation_runs_new RENAME TO api_automation_runs")
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_api_runs_project_created ON api_automation_runs(project_id, created_at)"
+    )
+    db.execute("PRAGMA foreign_keys = ON")
 
 
 def _ensure_api_scenario_columns(db: sqlite3.Connection) -> None:
@@ -201,6 +299,87 @@ def _ensure_api_test_case_structure_columns(db: sqlite3.Connection) -> None:
     columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_test_cases)").fetchall()}
     if "status" in columns or "tags_json" in columns:
         _drop_deprecated_api_test_case_columns(db)
+
+
+def _ensure_api_test_case_oracle_columns(db: sqlite3.Connection) -> None:
+    row = db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_test_cases'").fetchone()
+    if not row:
+        return
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_test_cases)").fetchall()}
+    if "test_point_key" not in columns:
+        db.execute("ALTER TABLE api_test_cases ADD COLUMN test_point_key TEXT NOT NULL DEFAULT ''")
+    if "oracle_status" not in columns:
+        db.execute(
+            "ALTER TABLE api_test_cases ADD COLUMN oracle_status TEXT NOT NULL DEFAULT 'confirmed'"
+        )
+    db.execute(
+        "UPDATE api_test_cases SET test_point_key = 'legacy.' || id WHERE test_point_key = ''"
+    )
+    db.execute(
+        "UPDATE api_test_cases SET oracle_status = 'confirmed' "
+        "WHERE oracle_status IS NULL OR oracle_status NOT IN ('confirmed', 'inferred', 'needs_confirmation')"
+    )
+
+
+def _ensure_api_oracle_feedback_tables(db: sqlite3.Connection) -> None:
+    db.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS api_test_case_versions (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL,
+          version INTEGER NOT NULL,
+          snapshot_json TEXT NOT NULL DEFAULT '{}',
+          change_source TEXT NOT NULL DEFAULT 'oracle_approval',
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(case_id) REFERENCES api_test_cases(id) ON DELETE CASCADE,
+          UNIQUE(case_id, version)
+        );
+        CREATE INDEX IF NOT EXISTS idx_api_test_case_versions_case
+          ON api_test_case_versions(case_id, version);
+        CREATE TABLE IF NOT EXISTS api_endpoint_oracle_facts (
+          id TEXT PRIMARY KEY,
+          endpoint_id TEXT NOT NULL,
+          test_point_key TEXT NOT NULL,
+          assertions_json TEXT NOT NULL DEFAULT '[]',
+          evidence_run_ids_json TEXT NOT NULL DEFAULT '[]',
+          approved_by TEXT NOT NULL,
+          approved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE CASCADE,
+          UNIQUE(endpoint_id, test_point_key)
+        );
+        CREATE TABLE IF NOT EXISTS api_oracle_proposals (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          endpoint_id TEXT NOT NULL,
+          case_id TEXT NOT NULL,
+          run_id TEXT NOT NULL,
+          test_point_key TEXT NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected', 'superseded')) DEFAULT 'pending',
+          current_snapshot_json TEXT NOT NULL DEFAULT '{}',
+          proposed_snapshot_json TEXT NOT NULL DEFAULT '{}',
+          reasoning TEXT NOT NULL DEFAULT '',
+          confidence REAL NOT NULL DEFAULT 0,
+          review_scope TEXT NOT NULL DEFAULT '',
+          review_comment TEXT NOT NULL DEFAULT '',
+          reviewed_by TEXT,
+          reviewed_at TEXT,
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE CASCADE,
+          FOREIGN KEY(case_id) REFERENCES api_test_cases(id) ON DELETE CASCADE,
+          FOREIGN KEY(run_id) REFERENCES api_automation_runs(id) ON DELETE CASCADE
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_api_oracle_proposals_run_case
+          ON api_oracle_proposals(run_id, case_id);
+        CREATE INDEX IF NOT EXISTS idx_api_oracle_proposals_project_status
+          ON api_oracle_proposals(project_id, status, created_at);
+        """
+    )
 
 
 def _ensure_api_generation_batch_structure(db: sqlite3.Connection) -> None:

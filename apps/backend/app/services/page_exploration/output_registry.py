@@ -79,11 +79,7 @@ def _register_exploration_outputs(
 
     page_artifacts = _collect_project_page_artifacts_for_run(project_id=project_id, run_id=run_id)
     timeline_events = _read_timeline_events_from_run_dir(run_dir)
-    completion_status = (
-        result_status
-        if result_status == "failed"
-        else _exploration_completion_status(timeline_events)
-    )
+    completion_status = result_status if result_status in {"failed", "partial", "blocked"} else _exploration_completion_status(timeline_events)
     report_path = _write_exploration_report(
         run_dir=run_dir,
         run_id=run_id,

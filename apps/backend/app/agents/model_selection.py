@@ -1,7 +1,14 @@
 from dataclasses import dataclass
 from pydantic import SecretStr
-from langchain_deepseek import ChatDeepSeek
-from langchain_openai import ChatOpenAI
+try:
+    from langchain_deepseek import ChatDeepSeek
+except ModuleNotFoundError:
+    ChatDeepSeek = None
+
+try:
+    from langchain_openai import ChatOpenAI
+except ModuleNotFoundError:
+    ChatOpenAI = None
 from app.agents.capabilities import get_ai_capability
 from app.core.db import connect
 from app.repositories import model_repo
@@ -38,6 +45,8 @@ def build_agent_model(selection: ModelSelection, *, extra_body: dict | None = No
     if extra_body is not None:
         kwargs["extra_body"] = extra_body
     if is_deepseek_model(selection):
+        if ChatDeepSeek is None:
+            raise RuntimeError("未安装 langchain-deepseek，无法构建 DeepSeek 模型。")
         return ChatDeepSeek(
             model=selection.model,
             api_key=SecretStr(selection.api_key),
@@ -46,6 +55,8 @@ def build_agent_model(selection: ModelSelection, *, extra_body: dict | None = No
             **kwargs,
         )
     kwargs["use_responses_api"] = should_use_responses_api(selection)
+    if ChatOpenAI is None:
+        raise RuntimeError("未安装 langchain-openai，无法构建 OpenAI 兼容模型。")
     return ChatOpenAI(
         model=selection.model,
         api_key=SecretStr(selection.api_key),

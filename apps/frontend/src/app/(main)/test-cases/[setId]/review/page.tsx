@@ -8,6 +8,7 @@ import { Check, ChevronRight, CircleX, Download, List, Loader2, Network, Pencil,
 import { toast } from "sonner";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { TestCaseMindMap } from "@/components/ai-testing/test-case-mind-map";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -287,11 +288,7 @@ export default function TestCaseReviewPage() {
 
   return (
     <PageShell
-      breadcrumbs={[
-        { label: "测试资产" },
-        { label: "测试用例", href: "/test-cases" },
-        ...(testCaseSet ? [{ label: testCaseSet.name }] : []),
-      ]}
+      breadcrumbs={moduleBreadcrumbs("testCases", ...(testCaseSet ? [{ label: testCaseSet.name }] : []))}
       description="逐条采纳或不采纳生成用例，并沉淀下次重新生成需要避开的反馈。"
       fillViewport
       title={testCaseSet?.name ?? "测试用例评审"}

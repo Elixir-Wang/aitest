@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Eye, ListTodo } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { ProcessingState } from "@/components/ai-testing/table-loading-row";
 import { Button } from "@/components/ui/button";
 import { Button as PaginationButton } from "@/components/ui/button-1";
@@ -146,7 +147,7 @@ export default function Page() {
 
   return (
     <PageShell
-      breadcrumbs={[{ label: "工作台", href: "/dashboard" }, { label: "任务中心" }]}
+      breadcrumbs={moduleBreadcrumbs("tasks")}
       description="汇总需求分析、探索、知识库、用例、UI 自动化和失败诊断任务。"
       projectScope="all"
       tabs={["全部任务", "等待人工", "失败任务"]}
