@@ -10,6 +10,8 @@ You are operating inside the root of one business project's pytest + requests su
 - Create or repair shared files before generating endpoint test files.
 - Keep each endpoint's test module and adjacent data file together.
 - Treat backend-provided `artifacts.directory`, `artifacts.test_file`, and `artifacts.data_file` as mandatory targets.
+- Treat `artifacts.data_file` as a read-only database snapshot. Never rewrite, append, wrap, rename fields, or duplicate its cases.
+- Only create or update `artifacts.test_file` for a selected endpoint, reusing existing test and shared code where possible.
 - Do not replace backend-provided endpoint targets with inferred names such as `test_agent.py` or `test_v1.py`.
 - Use runtime environment variables for base URLs, authentication, secrets, and file paths.
 - Never write credentials, cookies, tokens, or host-machine absolute paths into generated source files.
@@ -22,7 +24,6 @@ You are operating inside the root of one business project's pytest + requests su
 The suite must contain the shared files listed by the backend suite contract, including:
 
 - `pytest.ini`
-- `pyproject.toml`
 - `conftest.py`
 - `api/client.py`
 - `utils/data_loader.py`

@@ -7,6 +7,8 @@ from app.api.v1 import v1_router
 from app.core.logging import setup_logging
 from app.core.response import ApiResponseMiddleware, ApiUnhandledExceptionMiddleware
 from app.seed.init_db import init_db
+from app.core.db import connect
+from app.services.performance_testing import run_repo
 from app.services import task_service, test_case_service
 from app.services.api_automation import service as api_automation_service
 from app.services.page_exploration import event_bus, page_exploration_service
@@ -47,6 +49,8 @@ app.add_middleware(
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    with connect() as db:
+        run_repo.recover_stale_runs(db)
     recover_interrupted_exploration_runs()
     task_service.recover_interrupted_requirement_analysis_runs()
     test_case_service.recover_interrupted_test_case_generation_runs()

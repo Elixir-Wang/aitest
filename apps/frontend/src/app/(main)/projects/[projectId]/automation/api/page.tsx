@@ -7,8 +7,6 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import {
   AlertCircle,
-  ArrowDown,
-  ArrowUp,
   Braces,
   CheckCircle2,
   ChevronDown,
@@ -21,7 +19,6 @@ import {
   Loader2,
   Pencil,
   Play,
-  Plus,
   RefreshCw,
   Search,
   Settings2,
@@ -34,7 +31,6 @@ import { toast } from "sonner";
 
 import { ApiScenarioList } from "@/components/ai-testing/api-automation/api-scenario-list";
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
-import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Select as AnimatedSelect, SelectOption } from "@/components/ui/animated-select-1";
 import { Badge } from "@/components/ui/badge";
@@ -61,30 +57,22 @@ import {
   type ApiAutomationEnvironment,
   type ApiAutomationGenerationRun,
   type ApiAutomationRun,
-  type ApiScriptGenerationRun,
-  type ApiAutomationScenario,
-  type ApiAutomationScenarioStep,
   type ApiAutomationScript,
   type ApiAutomationTestCase,
+  type ApiScriptGenerationRun,
   createApiAutomationEnvironment,
   createApiAutomationRun,
-  createApiAutomationScenario,
   debugApiAutomationEndpoint,
   deleteApiAutomationEndpoint,
   deleteApiAutomationEnvironment,
   deleteApiAutomationRun,
-  deleteApiAutomationScenario,
   deleteApiAutomationScript,
   deleteApiAutomationTestCase,
-  executeApiAutomationScenario,
   formatDateTime,
   generateApiAutomationScripts,
   generateApiAutomationTestCases,
   getApiAutomationGenerationRun,
   getApiAutomationRun,
-  getApiAutomationRunLogs,
-  getApiAutomationRunReport,
-  getApiAutomationScenario,
   getApiScriptGenerationRun,
   importOpenApiDocument,
   listApiAutomationCaseSets,
@@ -93,14 +81,10 @@ import {
   listApiAutomationRuns,
   listApiAutomationScripts,
   listApiAutomationTestCases,
-  publishApiAutomationScenario,
-  replaceApiAutomationScenarioSteps,
   updateApiAutomationEnvironment,
-  updateApiAutomationScenario,
-  validateApiAutomationScenario,
 } from "@/lib/api-client";
-import { createId } from "@/lib/create-id.mjs";
 import { cn } from "@/lib/utils";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
 const tabs = ["接口资产", "接口环境", "接口用例", "测试脚本", "运行记录", "场景编排"];
 
@@ -198,7 +182,6 @@ export default function Page() {
   const searchParams = useSearchParams();
   const projectId = params.projectId;
   const selectedCaseSetId = searchParams.get("set");
-  const selectedRunId = searchParams.get("run");
   const [activeTab, setActiveTab] = useState(() => tabFromSearchParam(searchParams.get("tab")));
   const [selectedCaseSet, setSelectedCaseSet] = useState<ApiAutomationCaseSet | null>(null);
   const [endpoints, setEndpoints] = useState<ApiAutomationEndpoint[]>([]);
@@ -223,20 +206,7 @@ export default function Page() {
   const [runEnvironmentFilter, setRunEnvironmentFilter] = useState("all");
   const [runKeyword, setRunKeyword] = useState("");
   const [runLoading, setRunLoading] = useState(false);
-  const [runDetailOpen, setRunDetailOpen] = useState(false);
-  const [runLogs, setRunLogs] = useState({ stdout: "", stderr: "" });
-  const [runReport, setRunReport] = useState<Record<string, unknown> | null>(null);
-  const [runReportLoading, setRunReportLoading] = useState(false);
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
-  const [scenarios, setScenarios] = useState<ApiAutomationScenario[]>([]);
-  const [activeScenarioId, setActiveScenarioId] = useState("");
-  const [activeScenario, setActiveScenario] = useState<ApiAutomationScenario | null>(null);
-  const [scenarioName, setScenarioName] = useState("");
-  const [scenarioDescription, setScenarioDescription] = useState("");
-  const [scenarioVariablesText, setScenarioVariablesText] = useState("{}");
-  const [scenarioSteps, setScenarioSteps] = useState<ApiAutomationScenarioStep[]>([]);
-  const [activeScenarioStepId, setActiveScenarioStepId] = useState("");
-  const [scenarioValidation, setScenarioValidation] = useState<{ errors: string[]; warnings: string[] } | null>(null);
   const [selectedEndpointAssetIds, setSelectedEndpointAssetIds] = useState<string[]>([]);
   const [activeEndpointId, setActiveEndpointId] = useState("");
   const [expandedEndpointGroups, setExpandedEndpointGroups] = useState<string[]>([]);
@@ -347,10 +317,6 @@ export default function Page() {
     ],
     [activeScriptCases],
   );
-  const activeScenarioStep = useMemo(
-    () => scenarioSteps.find((step) => step.id === activeScenarioStepId) ?? scenarioSteps[0] ?? null,
-    [activeScenarioStepId, scenarioSteps],
-  );
   const runTargetScriptIds = useMemo(
     () => (selectedScriptIds.length > 0 ? selectedScriptIds : activeScript ? [activeScript.id] : []),
     [activeScript, selectedScriptIds],
@@ -431,21 +397,6 @@ export default function Page() {
     }
   }, []);
 
-  const applyScenario = useCallback((scenario: ApiAutomationScenario) => {
-    setActiveScenario(scenario);
-    setScenarioName(scenario.name);
-    setScenarioDescription(scenario.description);
-    setScenarioVariablesText(JSON.stringify(scenario.variables, null, 2));
-    setScenarioSteps(scenario.steps);
-    setActiveScenarioStepId((current) =>
-      current && scenario.steps.some((step) => step.id === current) ? current : (scenario.steps[0]?.id ?? ""),
-    );
-    setScenarios((current) => {
-      const exists = current.some((item) => item.id === scenario.id);
-      return exists ? current.map((item) => (item.id === scenario.id ? scenario : item)) : [scenario, ...current];
-    });
-  }, []);
-
   const loadRuns = useCallback(
     async (silent = false) => {
       if (!silent) setRunLoading(true);
@@ -487,9 +438,6 @@ export default function Page() {
     try {
       await Promise.all(ids.map((runId) => deleteApiAutomationRun(projectId, runId)));
       setSelectedRunIds((current) => current.filter((id) => !ids.includes(id)));
-      if (run?.id && ids.includes(run.id)) {
-        closeRunDetail();
-      }
       const nextPage = runs.length === ids.length && runPage > 1 ? runPage - 1 : runPage;
       if (nextPage !== runPage) {
         setRunPage(nextPage);
@@ -505,245 +453,12 @@ export default function Page() {
   }
 
   const openRunDetail = useCallback(
-    async (nextRun: ApiAutomationRun, syncUrl = true) => {
+    (nextRun: ApiAutomationRun) => {
       setRun(nextRun);
-      setRunLogs({ stdout: "", stderr: "" });
-      setRunReport(null);
-      setRunDetailOpen(true);
-      if (syncUrl) {
-        const nextParams = new URLSearchParams(searchParams.toString());
-        nextParams.set("run", nextRun.id);
-        router.replace(`?${nextParams.toString()}`, { scroll: false });
-      }
-      try {
-        setRunLogs(await getApiAutomationRunLogs(projectId, nextRun.id));
-      } catch {
-        // Logs may not exist while a run is queued.
-      }
+      router.push(`/projects/${projectId}/automation/api/runs/${nextRun.id}`);
     },
-    [projectId, router, searchParams],
+    [projectId, router],
   );
-
-  function closeRunDetail() {
-    setRunDetailOpen(false);
-    const nextParams = new URLSearchParams(searchParams.toString());
-    nextParams.delete("run");
-    const query = nextParams.toString();
-    router.replace(query ? `?${query}` : "?", { scroll: false });
-  }
-
-  async function loadRunReport() {
-    if (!run) return;
-    setRunReportLoading(true);
-    try {
-      setRunReport(await getApiAutomationRunReport(projectId, run.id));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "JSON 报告加载失败");
-    } finally {
-      setRunReportLoading(false);
-    }
-  }
-
-  async function handleCreateScenario() {
-    setBusy(true);
-    try {
-      const created = await createApiAutomationScenario(projectId, {
-        name: `新建接口场景 ${scenarios.length + 1}`,
-        description: "",
-        variables: {},
-      });
-      setActiveScenarioId(created.id);
-      applyScenario(created);
-      setActiveTab("场景编排");
-      toast.success("场景已创建");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "场景创建失败");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveScenario(showToast = true) {
-    if (!activeScenario) return null;
-    const variables = parseJsonObject(scenarioVariablesText, "场景变量");
-    await updateApiAutomationScenario(projectId, activeScenario.id, {
-      name: scenarioName.trim() || activeScenario.name,
-      description: scenarioDescription.trim(),
-      variables,
-    });
-    const saved = await replaceApiAutomationScenarioSteps(
-      projectId,
-      activeScenario.id,
-      scenarioSteps.map((step, index) => ({
-        id: step.id,
-        api_test_case_id: step.api_test_case_id,
-        endpoint_id: step.endpoint_id,
-        step_order: index,
-        name: step.name,
-        request_overrides: step.request_overrides,
-        bindings: step.bindings,
-        extractors: step.extractors,
-        assertions: step.assertions,
-        on_failure: step.on_failure,
-        enabled: step.enabled,
-      })),
-    );
-    applyScenario(saved);
-    setScenarioValidation(null);
-    if (showToast) toast.success("场景修改已保存");
-    return saved;
-  }
-
-  async function handleSaveScenario() {
-    setBusy(true);
-    try {
-      await saveScenario();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "场景保存失败");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleValidateScenario() {
-    if (!activeScenario) return;
-    setBusy(true);
-    try {
-      await saveScenario(false);
-      const result = await validateApiAutomationScenario(projectId, activeScenario.id);
-      setScenarioValidation({ errors: result.errors, warnings: result.warnings });
-      toast[result.valid ? "success" : "error"](result.valid ? "场景校验通过" : `发现 ${result.errors.length} 个问题`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "场景校验失败");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handlePublishScenario() {
-    if (!activeScenario) return;
-    setBusy(true);
-    try {
-      await saveScenario(false);
-      const published = await publishApiAutomationScenario(projectId, activeScenario.id);
-      applyScenario(published);
-      setScenarioValidation({ errors: [], warnings: [] });
-      toast.success(`场景已发布为版本 ${published.revision}`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "场景发布失败");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleExecuteScenario() {
-    if (!activeScenario || !selectedEnvironmentId) {
-      toast.error("请选择已发布场景和运行环境");
-      return;
-    }
-    setBusy(true);
-    try {
-      const created = await executeApiAutomationScenario(projectId, activeScenario.id, selectedEnvironmentId);
-      setRun(created);
-      setRuns((current) => [created, ...current.filter((item) => item.id !== created.id)]);
-      setRunTotal((current) => current + 1);
-      setActiveTab("运行记录");
-      void openRunDetail(created);
-      toast.success("场景运行已提交");
-      notifyAiTaskStarted();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "场景运行失败");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleRerun(run: ApiAutomationRun) {
-    if (run.target_type !== "scenario") {
-      await handleRun(run.script_ids, run.api_environment_id ?? "");
-      return;
-    }
-    const scenarioId = run.target_ids[0];
-    if (!scenarioId || !run.api_environment_id) {
-      toast.error("原场景或运行环境已不可用");
-      return;
-    }
-    setBusy(true);
-    try {
-      const created = await executeApiAutomationScenario(projectId, scenarioId, run.api_environment_id);
-      setRun(created);
-      setRuns((current) => [created, ...current.filter((item) => item.id !== created.id)]);
-      setRunTotal((current) => current + 1);
-      void openRunDetail(created);
-      toast.success("场景运行已重新提交");
-      notifyAiTaskStarted();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "场景重新执行失败");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleDeleteScenario() {
-    if (!activeScenario) return;
-    setBusy(true);
-    try {
-      await deleteApiAutomationScenario(projectId, activeScenario.id);
-      const remaining = scenarios.filter((scenario) => scenario.id !== activeScenario.id);
-      setScenarios(remaining);
-      setActiveScenarioId(remaining[0]?.id ?? "");
-      setActiveScenario(null);
-      toast.success("场景已删除");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "场景删除失败");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function addScenarioStep(caseId: string) {
-    const testCase = apiTestCases.find((item) => item.id === caseId);
-    if (!testCase || !activeScenario) return;
-    const id = `apistep-${createId()}`;
-    setScenarioSteps((current) => [
-      ...current,
-      {
-        id,
-        scenario_id: activeScenario.id,
-        project_id: projectId,
-        step_type: "api_request",
-        endpoint_id: testCase.endpoint_id,
-        api_test_case_id: testCase.id,
-        step_order: current.length,
-        name: testCase.title,
-        request_overrides: {},
-        bindings: [],
-        extractors: [],
-        assertions: [],
-        control_config: {},
-        on_failure: "stop",
-        enabled: true,
-        created_at: "",
-        updated_at: "",
-      },
-    ]);
-    setActiveScenarioStepId(id);
-  }
-
-  function updateScenarioStep(stepId: string, updates: Partial<ApiAutomationScenarioStep>) {
-    setScenarioSteps((current) => current.map((step) => (step.id === stepId ? { ...step, ...updates } : step)));
-  }
-
-  function moveScenarioStep(stepId: string, offset: number) {
-    setScenarioSteps((current) => {
-      const index = current.findIndex((step) => step.id === stepId);
-      const target = index + offset;
-      if (index < 0 || target < 0 || target >= current.length) return current;
-      const next = [...current];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next.map((step, stepOrder) => ({ ...step, step_order: stepOrder }));
-    });
-  }
 
   function toggleEndpointGroup(group: string) {
     setExpandedEndpointGroups((current) =>
@@ -837,41 +552,6 @@ export default function Page() {
   useEffect(() => {
     void loadRuns();
   }, [loadRuns]);
-
-  useEffect(() => {
-    if (!activeScenarioId) {
-      setActiveScenario(null);
-      setScenarioSteps([]);
-      return;
-    }
-    let cancelled = false;
-    getApiAutomationScenario(projectId, activeScenarioId)
-      .then((scenario) => {
-        if (!cancelled) applyScenario(scenario);
-      })
-      .catch((error) => {
-        if (!cancelled) toast.error(error instanceof Error ? error.message : "场景加载失败");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeScenarioId, applyScenario, projectId]);
-
-  useEffect(() => {
-    if (!selectedRunId) return;
-    setActiveTab("运行记录");
-    let cancelled = false;
-    getApiAutomationRun(projectId, selectedRunId)
-      .then((selectedRun) => {
-        if (!cancelled) void openRunDetail(selectedRun, false);
-      })
-      .catch((error) => {
-        if (!cancelled) toast.error(error instanceof Error ? error.message : "运行记录不存在");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [openRunDetail, projectId, selectedRunId]);
 
   useEffect(() => {
     if (!selectedCaseSetId) {
@@ -1183,7 +863,11 @@ export default function Page() {
       }
       const scriptRows = await listApiAutomationScripts(projectId);
       setScripts(scriptRows);
-      setSelectedScriptIds(scriptRows.filter((script) => generated.endpoint_ids.includes(script.endpoint_id || "")).map((script) => script.id));
+      setSelectedScriptIds(
+        scriptRows
+          .filter((script) => generated.endpoint_ids.includes(script.endpoint_id || ""))
+          .map((script) => script.id),
+      );
       setActiveScriptId(scriptRows[0]?.id ?? "");
       setActiveTab("测试脚本");
       toast.success(
@@ -1443,10 +1127,7 @@ export default function Page() {
   return (
     <PageShell
       activeTab={activeTab}
-      breadcrumbs={moduleBreadcrumbs(
-        "apiAutomation",
-        ...(selectedCaseSet ? [{ label: selectedCaseSet.name }] : []),
-      )}
+      breadcrumbs={moduleBreadcrumbs("apiAutomation", ...(selectedCaseSet ? [{ label: selectedCaseSet.name }] : []))}
       description="导入 OpenAPI、生成接口自动化用例、生成 pytest 脚本并执行。"
       fillViewport={activeTab === "接口用例"}
       onTabChange={setActiveTab}
@@ -2540,397 +2221,6 @@ export default function Page() {
 
       {activeTab === "场景编排" && <ApiScenarioList projectId={projectId} />}
 
-      {activeTab === "场景编排" && activeScenarioId === "__legacy_disabled__" && (
-        <section className="overflow-hidden rounded-md border bg-background">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <div>
-                <h2 className="font-semibold text-sm">场景编排</h2>
-                <p className="text-muted-foreground text-xs">
-                  {activeScenario ? `${scenarioSteps.length} 个步骤` : "尚未选择场景"}
-                </p>
-              </div>
-              {activeScenario ? (
-                <Badge variant="outline">
-                  {activeScenario.status === "ready" ? `已发布 v${activeScenario.revision}` : "未发布"}
-                </Badge>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Select value={selectedEnvironmentId} onValueChange={setSelectedEnvironmentId}>
-                <SelectTrigger className="w-44">
-                  <SelectValue placeholder="选择运行环境" />
-                </SelectTrigger>
-                <SelectContent>
-                  {environments.map((environment) => (
-                    <SelectItem key={environment.id} value={environment.id}>
-                      {environment.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button disabled={busy || !activeScenario} onClick={handleSaveScenario} size="sm" variant="outline">
-                保存
-              </Button>
-              <Button disabled={busy || !activeScenario} onClick={handleValidateScenario} size="sm" variant="outline">
-                <ShieldCheck className="size-4" />
-                校验
-              </Button>
-              <Button disabled={busy || !activeScenario} onClick={handlePublishScenario} size="sm" variant="outline">
-                发布
-              </Button>
-              <Button
-                disabled={busy || activeScenario?.status !== "ready" || !selectedEnvironmentId}
-                onClick={handleExecuteScenario}
-                size="sm"
-              >
-                <Play className="size-4" />
-                运行
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid min-h-[620px] lg:grid-cols-[240px_minmax(300px,0.9fr)_minmax(360px,1.1fr)]">
-            <aside className="border-r">
-              <div className="flex h-11 items-center justify-between border-b px-3">
-                <span className="font-medium text-sm">场景</span>
-                <Button
-                  aria-label="新建场景"
-                  disabled={busy}
-                  onClick={handleCreateScenario}
-                  size="icon-sm"
-                  variant="ghost"
-                >
-                  <Plus className="size-4" />
-                </Button>
-              </div>
-              <div className="max-h-[575px] overflow-y-auto p-2">
-                {scenarios.length === 0 ? (
-                  <div className="px-2 py-10 text-center text-muted-foreground text-sm">暂无场景</div>
-                ) : null}
-                {scenarios.map((scenario) => (
-                  <button
-                    className={cn(
-                      "mb-1 w-full rounded-md px-3 py-2.5 text-left hover:bg-muted",
-                      activeScenarioId === scenario.id && "bg-muted",
-                    )}
-                    key={scenario.id}
-                    onClick={() => setActiveScenarioId(scenario.id)}
-                    type="button"
-                  >
-                    <div className="truncate font-medium text-sm">{scenario.name}</div>
-                    <div className="mt-1 flex items-center justify-between text-muted-foreground text-xs">
-                      <span>{scenario.steps.length} 步</span>
-                      <span>{scenario.status === "ready" ? `v${scenario.revision}` : "未发布"}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </aside>
-
-            <div className="border-r">
-              <div className="flex h-11 items-center justify-between gap-2 border-b px-3">
-                <span className="font-medium text-sm">执行步骤</span>
-                <Select disabled={!activeScenario || apiTestCases.length === 0} onValueChange={addScenarioStep}>
-                  <SelectTrigger className="h-8 w-40">
-                    <SelectValue placeholder="添加接口用例" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {apiTestCases.map((testCase) => (
-                      <SelectItem key={testCase.id} value={testCase.id}>
-                        {testCase.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="max-h-[575px] overflow-y-auto p-3">
-                {scenarioSteps.length === 0 ? (
-                  <div className="py-20 text-center text-muted-foreground text-sm">从已有接口用例添加第一个步骤</div>
-                ) : null}
-                {scenarioSteps.map((step, index) => (
-                  <div
-                    className={cn(
-                      "mb-2 grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2 rounded-md border px-2 py-2",
-                      activeScenarioStep?.id === step.id && "border-sky-400 bg-sky-50/60 dark:bg-sky-500/10",
-                    )}
-                    key={step.id}
-                  >
-                    <span className="flex size-6 items-center justify-center rounded bg-muted font-semibold text-xs">
-                      {index + 1}
-                    </span>
-                    <button
-                      className="min-w-0 text-left"
-                      onClick={() => setActiveScenarioStepId(step.id)}
-                      type="button"
-                    >
-                      <div className="truncate font-medium text-sm">{step.name}</div>
-                      <div className="truncate font-mono text-[11px] text-muted-foreground">
-                        {endpoints.find((endpoint) => endpoint.id === step.endpoint_id)?.path ?? step.api_test_case_id}
-                      </div>
-                    </button>
-                    <div className="flex items-center">
-                      <Button
-                        aria-label="上移步骤"
-                        disabled={index === 0}
-                        onClick={() => moveScenarioStep(step.id, -1)}
-                        size="icon-sm"
-                        variant="ghost"
-                      >
-                        <ArrowUp className="size-3.5" />
-                      </Button>
-                      <Button
-                        aria-label="下移步骤"
-                        disabled={index === scenarioSteps.length - 1}
-                        onClick={() => moveScenarioStep(step.id, 1)}
-                        size="icon-sm"
-                        variant="ghost"
-                      >
-                        <ArrowDown className="size-3.5" />
-                      </Button>
-                      <Button
-                        aria-label="删除步骤"
-                        onClick={() => setScenarioSteps((current) => current.filter((item) => item.id !== step.id))}
-                        size="icon-sm"
-                        variant="ghost"
-                      >
-                        <X className="size-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="max-h-[620px] overflow-y-auto p-4">
-              {!activeScenario ? (
-                <div className="py-24 text-center text-muted-foreground text-sm">新建或选择一个场景开始编排</div>
-              ) : (
-                <div className="space-y-5">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="space-y-1 text-xs" htmlFor="scenario-name">
-                      <span className="font-medium">场景名称</span>
-                      <Input
-                        id="scenario-name"
-                        value={scenarioName}
-                        onChange={(event) => setScenarioName(event.target.value)}
-                      />
-                    </label>
-                    <label className="space-y-1 text-xs" htmlFor="scenario-variables">
-                      <span className="font-medium">场景变量</span>
-                      <Input
-                        id="scenario-variables"
-                        value={scenarioVariablesText}
-                        onChange={(event) => setScenarioVariablesText(event.target.value)}
-                      />
-                    </label>
-                  </div>
-                  <label className="block space-y-1 text-xs" htmlFor="scenario-description">
-                    <span className="font-medium">描述</span>
-                    <Textarea
-                      className="min-h-16"
-                      id="scenario-description"
-                      value={scenarioDescription}
-                      onChange={(event) => setScenarioDescription(event.target.value)}
-                    />
-                  </label>
-
-                  {scenarioValidation ? (
-                    <div
-                      className={cn(
-                        "rounded-md border p-3 text-xs",
-                        scenarioValidation.errors.length
-                          ? "border-red-300 bg-red-50 dark:bg-red-950/20"
-                          : "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20",
-                      )}
-                    >
-                      {scenarioValidation.errors.length === 0 ? <div className="font-medium">校验通过</div> : null}
-                      {[...scenarioValidation.errors, ...scenarioValidation.warnings].map((message) => (
-                        <div className="mt-1" key={message}>
-                          {message}
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  {activeScenarioStep ? (
-                    <div className="space-y-4 border-t pt-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <Input
-                          className="font-medium"
-                          value={activeScenarioStep.name}
-                          onChange={(event) => updateScenarioStep(activeScenarioStep.id, { name: event.target.value })}
-                        />
-                        <Select
-                          value={activeScenarioStep.on_failure}
-                          onValueChange={(value: ApiAutomationScenarioStep["on_failure"]) =>
-                            updateScenarioStep(activeScenarioStep.id, { on_failure: value })
-                          }
-                        >
-                          <SelectTrigger className="w-32">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="stop">失败即停止</SelectItem>
-                            <SelectItem value="continue">失败后继续</SelectItem>
-                            <SelectItem value="always_run">始终执行</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {(["request_overrides", "bindings", "extractors", "assertions"] as const).map((field) => (
-                        <label
-                          className="block space-y-1 text-xs"
-                          htmlFor={`scenario-step-${activeScenarioStep.id}-${field}`}
-                          key={`${activeScenarioStep.id}-${field}`}
-                        >
-                          <span className="font-medium">{scenarioStepFieldLabel(field)}</span>
-                          <Textarea
-                            className="min-h-24 font-mono text-xs"
-                            defaultValue={JSON.stringify(activeScenarioStep[field], null, 2)}
-                            id={`scenario-step-${activeScenarioStep.id}-${field}`}
-                            onBlur={(event) => {
-                              try {
-                                const value =
-                                  field === "request_overrides"
-                                    ? parseJsonObject(event.target.value, "请求覆盖")
-                                    : parseJsonArray(event.target.value, scenarioStepFieldLabel(field));
-                                updateScenarioStep(activeScenarioStep.id, { [field]: value });
-                              } catch (error) {
-                                toast.error(error instanceof Error ? error.message : "JSON 格式错误");
-                              }
-                            }}
-                          />
-                        </label>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  <div className="flex justify-end border-t pt-4">
-                    <Button disabled={busy} onClick={handleDeleteScenario} size="sm" variant="destructive">
-                      <Trash2 className="size-4" />
-                      删除场景
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
-
-      <Dialog open={runDetailOpen} onOpenChange={(open) => (open ? setRunDetailOpen(true) : closeRunDetail())}>
-        <DialogContent className="max-h-[calc(100vh-2rem)] overflow-hidden p-0 sm:max-w-4xl">
-          <DialogHeader className="border-b px-6 py-5">
-            <DialogTitle className="flex items-center gap-2">
-              运行详情
-              {run ? (
-                <Badge className={runStatusTone(run.status)} variant="outline">
-                  {runStatusLabel(run.status)}
-                </Badge>
-              ) : null}
-            </DialogTitle>
-            <DialogDescription className="font-mono">{run?.id ?? ""}</DialogDescription>
-          </DialogHeader>
-          {run ? (
-            <div className="min-h-0 space-y-6 overflow-y-auto px-6 py-5">
-              <div className="grid gap-x-6 gap-y-4 border-b pb-5 sm:grid-cols-2 lg:grid-cols-4">
-                <RunDetailValue label="开始时间" value={formatDateTime(run.created_at)} />
-                <RunDetailValue label="执行环境" value={run.execution_snapshot.environment?.name ?? "已删除环境"} />
-                <RunDetailValue label="执行结果" value={runResultLabel(run)} />
-                <RunDetailValue label="耗时" value={runDurationLabel(run)} />
-                <RunDetailValue
-                  label="脚本 / 用例"
-                  value={`${run.execution_snapshot.script_count ?? run.script_ids.length} / ${run.execution_snapshot.case_count ?? 0}`}
-                />
-                <RunDetailValue label="执行人" value={run.created_by_name || "-"} />
-                <RunDetailValue label="Base URL" mono value={run.execution_snapshot.environment?.api_base_url ?? "-"} />
-                <RunDetailValue label="命令" mono value={run.command_summary || "-"} />
-              </div>
-
-              {run.target_type === "scenario" ? (
-                <div className="grid gap-3 rounded-md border p-4 sm:grid-cols-3">
-                  <RunDetailValue label="场景" value={run.execution_snapshot.scenario?.name ?? "已删除场景"} />
-                  <RunDetailValue label="发布版本" value={`v${run.execution_snapshot.scenario?.revision ?? "-"}`} />
-                  <RunDetailValue label="步骤数" value={`${run.execution_snapshot.scenario?.step_count ?? 0} 个`} />
-                </div>
-              ) : (
-                <div>
-                  <div className="mb-2 font-semibold text-sm">执行脚本</div>
-                  <div className="overflow-hidden rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>接口信息</TableHead>
-                          <TableHead>脚本</TableHead>
-                          <TableHead className="text-right">用例数</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {(run.execution_snapshot.scripts ?? []).map((script) => (
-                          <TableRow key={script.id}>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                {script.method ? <MethodBadge method={script.method} /> : null}
-                                <span className="max-w-80 truncate">
-                                  {script.endpoint_summary || script.path || "-"}
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-mono text-xs">{script.name}</TableCell>
-                            <TableCell className="text-right tabular-nums">{script.case_count}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              )}
-
-              {run.error_message ? (
-                <div>
-                  <div className="mb-2 font-semibold text-red-700 text-sm dark:text-red-300">失败原因</div>
-                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 p-3 text-xs dark:border-red-900 dark:bg-red-950/30">
-                    {run.error_message}
-                  </pre>
-                </div>
-              ) : null}
-
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div className="font-semibold text-sm">运行日志</div>
-                  {run.json_report_path ? (
-                    <Button disabled={runReportLoading} onClick={loadRunReport} size="sm" variant="outline">
-                      {runReportLoading ? <Loader2 className="size-4 animate-spin" /> : <FileJson className="size-4" />}
-                      查看 JSON 报告
-                    </Button>
-                  ) : null}
-                </div>
-                <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-md bg-zinc-950 p-4 font-mono text-xs text-zinc-100 leading-5">
-                  {runLogs.stdout ||
-                    runLogs.stderr ||
-                    (API_RUN_ACTIVE_STATUSES.has(run.status) ? "任务执行中，日志将在完成后显示。" : "暂无运行日志。")}
-                </pre>
-              </div>
-
-              {runReport ? (
-                <div>
-                  <div className="mb-2 font-semibold text-sm">JSON 报告</div>
-                  <pre className="max-h-96 overflow-auto rounded-md bg-zinc-950 p-4 font-mono text-xs text-zinc-100 leading-5">
-                    {JSON.stringify(runReport, null, 2)}
-                  </pre>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          <DialogFooter className="mx-0 mb-0 px-6 py-4">
-            <Button disabled={isRunRerunDisabled(run, busy)} onClick={() => (run ? handleRerun(run) : undefined)}>
-              <RefreshCw className="size-4" />
-              按原配置重新执行
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={environmentOpen} onOpenChange={setEnvironmentOpen}>
         <DialogContent className="max-h-[calc(100vh-2rem)] overflow-hidden p-0 sm:max-w-3xl">
           <DialogHeader className="px-6 pt-6">
@@ -3563,24 +2853,6 @@ function parseDebugBody(value: string): unknown {
   }
 }
 
-function RunDetailValue({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="min-w-0">
-      <div className="text-muted-foreground text-xs">{label}</div>
-      <div className={cn("mt-1 truncate font-medium text-sm", mono && "font-mono text-xs")} title={value}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function isRunRerunDisabled(run: ApiAutomationRun | null, busy: boolean) {
-  if (busy || !run?.api_environment_id) return true;
-  if (run.target_type === "scenario" && run.target_ids.length === 0) return true;
-  if (run.target_type !== "scenario" && run.script_ids.length === 0) return true;
-  return API_RUN_ACTIVE_STATUSES.has(run.status);
-}
-
 function runStatusLabel(status: string) {
   return (
     (
@@ -3655,25 +2927,6 @@ function parseJsonObject(value: string, label: string): Record<string, unknown> 
     throw new Error(`${label}必须是 JSON 对象`);
   }
   return parsed as Record<string, unknown>;
-}
-
-function parseJsonArray(value: string, label: string): Array<Record<string, unknown>> {
-  const trimmed = value.trim();
-  if (!trimmed) return [];
-  const parsed = JSON.parse(trimmed) as unknown;
-  if (!Array.isArray(parsed) || parsed.some((item) => !item || Array.isArray(item) || typeof item !== "object")) {
-    throw new Error(`${label}必须是 JSON 对象数组`);
-  }
-  return parsed as Array<Record<string, unknown>>;
-}
-
-function scenarioStepFieldLabel(field: "request_overrides" | "bindings" | "extractors" | "assertions") {
-  return {
-    request_overrides: "请求覆盖",
-    bindings: "变量绑定",
-    extractors: "响应提取",
-    assertions: "步骤断言（留空则继承用例）",
-  }[field];
 }
 
 function MethodBadge({ method }: { method: string }) {

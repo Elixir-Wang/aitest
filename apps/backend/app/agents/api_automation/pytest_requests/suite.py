@@ -12,7 +12,6 @@ SUPPORTED_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "opti
 REQUIRED_SUITE_FILES = (
     "AGENTS.md",
     "pytest.ini",
-    "pyproject.toml",
     "conftest.py",
     "api/__init__.py",
     "api/client.py",

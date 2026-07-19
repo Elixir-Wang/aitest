@@ -1,4 +1,5 @@
 import asyncio
+import csv
 import json
 from contextlib import contextmanager
 from pathlib import Path
@@ -20,6 +21,8 @@ REPORT_FILES = {
     "result_stats.csv",
     "result_stats_history.csv",
     "result_failures.csv",
+    "result_exceptions.csv",
+    "result_tasks.csv",
     "stdout.log",
     "stderr.log",
 }
@@ -38,7 +41,7 @@ def create_performance_run(
         from app.core.exceptions import api_error
         raise api_error(400, "PERFORMANCE_RUN_INVALID", "必须提供 script_id。")
     with _script_lookup(project_id, test_id, script_id, actor) as context:
-        run_id = headless_worker.start_headless_run(
+        run_id = headless_worker.create_run_session(
             project_id=project_id,
             test_id=test_id,
             script_id=script_id,
@@ -47,7 +50,35 @@ def create_performance_run(
             load_config=context["load_config"],
             created_by=str(actor["id"]),
         )
-    return {"id": run_id, "status": "starting"}
+    return {"id": run_id, "status": "created"}
+
+
+@test_router.post("/runs/{run_id}/start")
+def start_performance_run(
+    project_id: str,
+    test_id: str,
+    run_id: str,
+    payload: dict | None = None,
+    actor=Depends(current_user),
+) -> dict[str, str | bool]:
+    run = _require_run(project_id, run_id, actor)
+    if run["performance_test_id"] != test_id:
+        from app.core.exceptions import api_error
+        raise api_error(404, "PERFORMANCE_RUN_NOT_FOUND", "性能测试运行不存在。")
+    try:
+        accepted = headless_worker.start_headless_run(run_id, payload or {})
+    except (FileNotFoundError, KeyError, ValueError) as exc:
+        from app.core.exceptions import api_error
+        raise api_error(409, "PERFORMANCE_RUN_START_INVALID", str(exc)) from exc
+    return {"id": run_id, "accepted": accepted}
+
+
+@test_router.get("/runs/history")
+def list_performance_run_history(project_id: str, test_id: str, actor=Depends(current_user)) -> dict:
+    _ensure_project_visible(project_id, actor)
+    with connect() as db:
+        runs = run_repo.list_runs(db, project_id, test_id)
+        return {"performance_test_id": test_id, "runs": [_run_payload(row) for row in runs]}
 
 
 @run_router.get("/{run_id}")
@@ -63,16 +94,56 @@ def get_performance_run_stats(project_id: str, run_id: str, actor=Depends(curren
         return {
             "run": _run_payload(run),
             "stats": [dict(row) for row in run_repo.list_stats(db, run_id)],
+            "request_stats": _request_stats(project_id, run_id),
             "failures": [dict(row) for row in run_repo.list_failures(db, run_id)],
             "exceptions": [dict(row) for row in run_repo.list_exceptions(db, run_id)],
             "events": [dict(row) for row in run_repo.list_events(db, run_id)],
         }
 
 
+@run_router.get("/{run_id}/state")
+def get_performance_run_state(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
+    return {"run": _run_payload(_require_run(project_id, run_id, actor))}
+
+
+@run_router.get("/{run_id}/charts")
+def get_performance_run_charts(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
+    _require_run(project_id, run_id, actor)
+    with connect() as db:
+        return {"run_id": run_id, "samples": [dict(row) for row in run_repo.list_stats(db, run_id)]}
+
+
+@run_router.get("/{run_id}/failures")
+def get_performance_run_failures(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
+    _require_run(project_id, run_id, actor)
+    with connect() as db:
+        return {"run_id": run_id, "failures": [dict(row) for row in run_repo.list_failures(db, run_id)]}
+
+
+@run_router.get("/{run_id}/exceptions")
+def get_performance_run_exceptions(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
+    _require_run(project_id, run_id, actor)
+    with connect() as db:
+        return {"run_id": run_id, "exceptions": [dict(row) for row in run_repo.list_exceptions(db, run_id)]}
+
+
 @run_router.post("/{run_id}/stop")
 def stop_performance_run(project_id: str, run_id: str, actor=Depends(current_user)) -> dict[str, str | bool]:
     _require_run(project_id, run_id, actor)
     return {"id": run_id, "accepted": headless_worker.stop_headless_run(run_id)}
+
+
+@run_router.post("/{run_id}/reset-stats")
+def reset_performance_run_stats(project_id: str, run_id: str, actor=Depends(current_user)) -> dict[str, str | bool]:
+    run = _require_run(project_id, run_id, actor)
+    if run["status"] in {"created", "stopping"}:
+        from app.core.exceptions import api_error
+        raise api_error(409, "PERFORMANCE_STATS_RESET_INVALID", "当前运行状态不支持重置统计。")
+    headless_worker.reset_headless_stats(run_id)
+    with connect() as db:
+        run_repo.reset_stats(db, run_id)
+        run_repo.append_event(db, run_id, "stats_reset", "info", "已重置运行统计", {})
+    return {"id": run_id, "reset": True}
 
 
 @run_router.get("/{run_id}/reports")
@@ -109,7 +180,8 @@ def download_performance_run_report(
 
 
 def format_run_sse_event(event: str, payload: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False, separators=(",", ":"))}\n\n"
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return f"event: {event}\ndata: {encoded}\n\n"
 
 
 @run_router.get("/{run_id}/stream")
@@ -173,7 +245,45 @@ def _run_report_directory(project_id: str, run_id: str) -> Path:
     return (settings.PROJECT_FILE_STORAGE_ROOT / project_id / "performance_testing" / "runs" / run_id).resolve()
 
 
+def _request_stats(project_id: str, run_id: str) -> list[dict[str, object]]:
+    path = _run_report_directory(project_id, run_id) / "result_stats.csv"
+    if not path.is_file():
+        return []
+    try:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+    except (OSError, UnicodeDecodeError):
+        return []
+    result = []
+    for row in rows:
+        if row.get("Type") == "Aggregated":
+            continue
+        result.append(
+            {
+                "name": row.get("Name", ""),
+                "method": row.get("Type", ""),
+                "request_count": int(float(row.get("Request Count") or 0)),
+                "failure_count": int(float(row.get("Failure Count") or 0)),
+                "failure_rate": (
+                    int(float(row.get("Failure Count") or 0))
+                    / int(float(row.get("Request Count") or 1))
+                ),
+                "average_response_time_ms": float(row.get("Average Response Time") or 0),
+                "median_response_time_ms": float(row.get("Median Response Time") or row.get("50%") or 0),
+                "p50_response_time_ms": float(row.get("50%") or 0),
+                "p95_response_time_ms": float(row.get("95%") or 0),
+                "p99_response_time_ms": float(row.get("99%") or 0),
+                "min_response_time_ms": float(row.get("Min Response Time") or 0),
+                "max_response_time_ms": float(row.get("Max Response Time") or 0),
+                "requests_per_second": float(row.get("Requests/s") or 0),
+                "content_size": int(float(row.get("Average Content Size") or 0)),
+            }
+        )
+    return result
+
+
 def _run_payload(row) -> dict:
+    runtime_config = api_automation_repo.loads_json(row["runtime_config_json"], {})
     return {
         "id": row["id"],
         "project_id": row["project_id"],
@@ -181,6 +291,7 @@ def _run_payload(row) -> dict:
         "script_id": row["script_id"],
         "status": row["status"],
         "load_config": api_automation_repo.loads_json(row["load_config_json"], {}),
+        "target_host": runtime_config.get("api_base_url", ""),
         "latest_summary": api_automation_repo.loads_json(row["latest_summary_json"], {}),
         "error_code": row["error_code"],
         "error_message": row["error_message"],
@@ -284,5 +395,3 @@ def _build_runtime_environment(row) -> dict:
         "variables": api_automation_repo.loads_json(row["variables_json"], {}),
         "verify_ssl": bool(row["verify_ssl"]),
     }
-
-

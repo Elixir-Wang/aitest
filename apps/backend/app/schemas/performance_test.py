@@ -96,6 +96,8 @@ class PerformanceGoal(BaseModel):
 
     max_fail_ratio: float = Field(default=0.0, ge=0, le=1)
     max_average_response_time_ms: float = Field(default=1000.0, gt=0)
+    max_p95_response_time_ms: float | None = Field(default=None, gt=0)
+    min_average_rps: float | None = Field(default=None, ge=0)
 
 
 class PerformanceSuccessRule(BaseModel):
@@ -197,6 +199,7 @@ class PerformanceTestOut(BaseModel):
     endpoint_path: str
     api_environment_id: str | None
     environment_name: str
+    latest_script_id: str | None = None
     request_config: PerformanceRequestConfig
     load_config: PerformanceLoadConfig
     data_config: PerformanceDataConfig

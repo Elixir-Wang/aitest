@@ -39,7 +39,7 @@ type RowAction = {
 
 interface PageShellProps {
   title: string;
-  description: string;
+  description?: string;
   breadcrumbs: BreadcrumbInput[];
   projectScope?: ProjectScope;
   tabs?: ModuleTab[];
@@ -61,8 +61,6 @@ interface MetricCardProps {
 }
 
 export function PageShell({
-  title,
-  description,
   breadcrumbs,
   tabs = [],
   activeTab,
@@ -104,13 +102,7 @@ export function PageShell({
       className={cn("@container/main flex flex-col gap-4 md:gap-6", fillViewport && "min-h-0 flex-1 overflow-hidden")}
       style={fillViewport ? { height: "calc(100vh - 6.5rem)", maxHeight: "calc(100vh - 6.5rem)" } : undefined}
     >
-      <PageHeader
-        actions={actions}
-        description={description}
-        onPrimaryAction={onPrimaryAction}
-        primaryAction={primaryAction}
-        title={title}
-      />
+      <PageHeader actions={actions} onPrimaryAction={onPrimaryAction} primaryAction={primaryAction} />
       {tabs.length > 0 && (
         <ModuleTabs actions={tabActions} activeTab={activeTab} onTabChange={onTabChange} tabs={tabs} />
       )}
@@ -124,24 +116,16 @@ function normalizeBreadcrumbs(items: BreadcrumbInput[]): BreadcrumbItem[] {
 }
 
 function PageHeader({
-  title,
-  description,
   primaryAction,
   onPrimaryAction,
   actions,
 }: {
-  title: string;
-  description: string;
   primaryAction?: string;
   onPrimaryAction?: () => void;
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-      <div className="min-w-0 space-y-1">
-        <h1 className="font-heading font-semibold text-2xl tracking-normal">{title}</h1>
-        <p className="text-muted-foreground text-sm">{description}</p>
-      </div>
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-end">
       <div className="flex flex-wrap items-center gap-2">
         {actions}
         {primaryAction && <Button onClick={onPrimaryAction}>{primaryAction}</Button>}

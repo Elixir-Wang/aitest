@@ -930,6 +930,7 @@ export type PerformanceTest = {
   endpoint_path: string;
   api_environment_id: string | null;
   environment_name: string;
+  latest_script_id: string | null;
   request_config: PerformanceRequestConfig;
   load_config: PerformanceLoadConfig;
   data_config: PerformanceDataConfig;
@@ -1008,6 +1009,7 @@ export type PerformanceRun = {
   script_id: string;
   status: string;
   load_config: Record<string, unknown>;
+  target_host: string;
   latest_summary: Record<string, unknown>;
   error_code: string;
   error_message: string;
@@ -1043,9 +1045,17 @@ export type PerformanceRunReports = { run_id: string; reports: PerformanceRunRep
 export type PerformanceRunStats = {
   run: PerformanceRun;
   stats: Array<Record<string, unknown>>;
+  request_stats: Array<Record<string, unknown>>;
   failures: Array<Record<string, unknown>>;
   exceptions: Array<Record<string, unknown>>;
   events: Array<Record<string, unknown>>;
+};
+
+export type PerformanceRunStartOptions = {
+  users: number;
+  spawn_rate: number;
+  run_time: number;
+  host?: string;
 };
 
 export type ApiAutomationCaseSet = {
@@ -1149,6 +1159,18 @@ export function createPerformanceRun(projectId: string, testId: string, scriptId
   });
 }
 
+export function startPerformanceRun(
+  projectId: string,
+  testId: string,
+  runId: string,
+  options?: PerformanceRunStartOptions,
+) {
+  return apiRequest<{ id: string; accepted: boolean }>(
+    `/projects/${projectId}/performance-tests/${testId}/runs/${runId}/start`,
+    { method: "POST", body: JSON.stringify(options ?? {}) },
+  );
+}
+
 export function getPerformanceRun(projectId: string, runId: string) {
   return apiRequest<PerformanceRun>(`/projects/${projectId}/performance-test-runs/${runId}`);
 }
@@ -1202,6 +1224,15 @@ export function stopPerformanceRun(projectId: string, runId: string) {
   return apiRequest<{ id: string; accepted: boolean }>(`/projects/${projectId}/performance-test-runs/${runId}/stop`, {
     method: "POST",
   });
+}
+
+export function resetPerformanceRunStats(projectId: string, runId: string) {
+  return apiRequest<{ id: string; reset: boolean }>(
+    `/projects/${projectId}/performance-test-runs/${runId}/reset-stats`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function deleteApiAutomationEndpoint(projectId: string, endpointId: string) {

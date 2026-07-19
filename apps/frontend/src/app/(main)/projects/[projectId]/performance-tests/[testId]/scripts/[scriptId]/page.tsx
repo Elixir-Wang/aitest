@@ -12,7 +12,7 @@ export default function Page() {
     <PageShell
       breadcrumbs={moduleBreadcrumbs(
         "performanceTests",
-        { label: "任务详情", href: `/projects/${params.projectId}/performance-tests/${params.testId}` },
+        { label: "性能测试列表", href: `/projects/${params.projectId}/performance-tests` },
         { label: "脚本审核" },
       )}
       description="审核结构化请求配置、校验结果和只读 Locust 脚本。"

@@ -163,7 +163,11 @@ def update_performance_test(
         for field in payload.model_fields_set:
             value = getattr(payload, field)
             if field in {"request_config", "load_config", "data_config", "circuit_breaker", "performance_goal"} and value is not None:
-                fields[field] = value.model_dump(mode="json", exclude_none=field == "performance_goal")
+                fields[field] = value.model_dump(
+                    mode="json",
+                    exclude_none=True,
+                    exclude_unset=field == "performance_goal",
+                )
             elif field == "success_rules" and value is not None:
                 fields[field] = [rule.model_dump(mode="json", exclude_none=True) for rule in value]
             elif field in {"name", "description"} and isinstance(value, str):

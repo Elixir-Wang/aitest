@@ -532,13 +532,11 @@ def test_api_run_snapshot_and_legacy_history_include_environment_and_endpoint_co
             ),
         )
 
-    actor = {
-        "id": "u-admin",
-        "role": "admin",
-        "nickname": "管理员",
-        "username": "admin",
-        "project_scope": "全部项目",
-    }
+    with connect() as db:
+        actor = db.execute(
+            "SELECT ? AS id, ? AS role, ? AS nickname, ? AS username, ? AS project_scope",
+            ("u-admin", "admin", "管理员", "admin", "全部项目"),
+        ).fetchone()
     created = service.create_api_run(
         "project-1",
         ApiRunCreateIn(script_ids=["apiscript-1"], api_environment_id="apienv-1"),

@@ -57,11 +57,6 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
   const allSelected = visibleIds.length > 0 && visibleSelectedIds.length === visibleIds.length;
   const partiallySelected = visibleSelectedIds.length > 0 && !allSelected;
 
-  const _goalCount = items.filter((item) => Object.keys(item.performance_goal).length > 0).length;
-  const _failedCount = items.filter(
-    (item) => item.latest_run_status === "failed" || item.latest_goal_status === "failed",
-  ).length;
-
   function toggleOne(itemId: string, checked: boolean) {
     setSelectedIds((current) => (checked ? [...new Set([...current, itemId])] : current.filter((id) => id !== itemId)));
   }
@@ -134,7 +129,15 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
                 <TableCell>
                   <button
                     className="max-w-48 truncate text-left font-medium hover:underline"
-                    onClick={() => router.push(`/projects/${projectId}/performance-tests/${item.id}`)}
+                    onClick={() => {
+                      if (item.latest_script_id) {
+                        router.push(
+                          `/projects/${projectId}/performance-tests/${item.id}/scripts/${item.latest_script_id}`,
+                        );
+                      } else {
+                        router.push(`/projects/${projectId}/performance-tests`);
+                      }
+                    }}
                     title={item.name}
                     type="button"
                   >
@@ -157,7 +160,9 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
                       {
                         label: "查看",
                         icon: ArrowRight,
-                        href: `/projects/${projectId}/performance-tests/${item.id}`,
+                        href: item.latest_script_id
+                          ? `/projects/${projectId}/performance-tests/${item.id}/scripts/${item.latest_script_id}`
+                          : `/projects/${projectId}/performance-tests`,
                       },
                       {
                         label: "删除",
@@ -196,15 +201,6 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
   );
 }
 
-function _Summary({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) {
-  return (
-    <div className="border-b px-4 py-3 last:border-b-0 sm:border-r sm:border-b-0 sm:last:border-r-0">
-      <p className="text-muted-foreground text-xs">{label}</p>
-      <p className={warning ? "mt-1 font-semibold text-destructive text-lg" : "mt-1 font-semibold text-lg"}>{value}</p>
-    </div>
-  );
-}
-
 function RunBadge({ status }: { status: string }) {
   const labels: Record<string, string> = {
     queued: "排队中",
@@ -222,13 +218,6 @@ function RunBadge({ status }: { status: string }) {
       {labels[status] ?? status}
     </Badge>
   );
-}
-
-function _GoalBadge({ status, configured }: { status: string; configured: boolean }) {
-  if (!configured) return <Badge variant="outline">未配置</Badge>;
-  if (!status) return <Badge variant="outline">待评估</Badge>;
-  const label = { passed: "通过", failed: "未通过", not_evaluated: "未评估" }[status] ?? status;
-  return <Badge variant={status === "failed" ? "destructive" : "secondary"}>{label}</Badge>;
 }
 
 function apiErrorMessage(error: unknown, fallback: string) {

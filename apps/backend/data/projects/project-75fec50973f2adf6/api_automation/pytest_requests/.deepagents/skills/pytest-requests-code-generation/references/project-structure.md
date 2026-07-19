@@ -6,7 +6,6 @@
 pytest_requests/
 ├── AGENTS.md
 ├── pytest.ini
-├── pyproject.toml
 ├── conftest.py
 ├── api/
 │   ├── __init__.py
@@ -34,7 +33,7 @@ pytest_requests/
 
 | 层级 | 职责 |
 |---|---|
-| `pytest.ini` / `pyproject.toml` | pytest 和项目依赖配置 |
+| `pytest.ini` | pytest 配置 |
 | `conftest.py` | 根级 fixture 和运行时 client |
 | `api/` | 共享 HTTP client 和 endpoint 封装 |
 | `testcases/` | 数据驱动的 endpoint 测试 |

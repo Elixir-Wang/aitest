@@ -54,6 +54,45 @@ def get_run(db: Connection, run_id: str) -> Row | None:
     return db.execute("SELECT * FROM performance_test_runs WHERE id = ?", (run_id,)).fetchone()
 
 
+def list_runs(db: Connection, project_id: str, performance_test_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT * FROM performance_test_runs
+        WHERE project_id = ? AND performance_test_id = ?
+        ORDER BY created_at DESC, id DESC
+        """,
+        (project_id, performance_test_id),
+    ).fetchall()
+
+
+def recover_stale_runs(db: Connection, timeout_minutes: int = 5) -> int:
+    rows = db.execute(
+        """
+        SELECT id FROM performance_test_runs
+        WHERE status IN ('starting', 'running')
+          AND updated_at < datetime('now', ?)
+        """,
+        (f"-{timeout_minutes} minutes",),
+    ).fetchall()
+    for row in rows:
+        update_run_status(
+            db,
+            row["id"],
+            "failed",
+            error_code="PERFORMANCE_RUN_TIMEOUT",
+            error_message="Worker 超过心跳窗口未更新运行状态。",
+        )
+        append_event(db, row["id"], "worker_timeout", "error", "Worker 心跳超时，运行已恢复为失败", {})
+    return len(rows)
+
+
+def touch_run(db: Connection, run_id: str) -> None:
+    db.execute(
+        "UPDATE performance_test_runs SET updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('starting', 'running')",
+        (run_id,),
+    )
+
+
 def update_run_status(
     db: Connection,
     run_id: str,
@@ -117,6 +156,16 @@ def set_report_directory(db: Connection, run_id: str, report_directory: str) -> 
     db.execute(
         "UPDATE performance_test_runs SET report_directory = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         (report_directory, run_id),
+    )
+
+
+def reset_stats(db: Connection, run_id: str) -> None:
+    db.execute("DELETE FROM performance_test_run_stats WHERE run_id = ?", (run_id,))
+    db.execute("DELETE FROM performance_test_run_failures WHERE run_id = ?", (run_id,))
+    db.execute("DELETE FROM performance_test_run_exceptions WHERE run_id = ?", (run_id,))
+    db.execute(
+        "UPDATE performance_test_runs SET latest_summary_json = '{}', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (run_id,),
     )
 
 

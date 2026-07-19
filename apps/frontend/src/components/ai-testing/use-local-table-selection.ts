@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 export function useLocalTableSelection<T extends { id: string }>(initialRows: T[]) {
   const [rows, setRows] = useState(initialRows);
@@ -27,9 +27,9 @@ export function useLocalTableSelection<T extends { id: string }>(initialRows: T[
     setSelectedIds([]);
   }
 
-  function clearSelection() {
-    setSelectedIds([]);
-  }
+  const clearSelection = useCallback(() => {
+    setSelectedIds((current) => (current.length === 0 ? current : []));
+  }, []);
 
   function deleteOne(id: string) {
     setRows((current) => current.filter((row) => row.id !== id));

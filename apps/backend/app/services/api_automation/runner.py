@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -14,27 +15,31 @@ SENSITIVE_RE = re.compile(
 )
 
 
+def _run_backend_pytest(
+    args: list[str],
+    *,
+    cwd: Path,
+    text: bool,
+    capture_output: bool,
+    timeout: int,
+    env: dict[str, str],
+):
+    return subprocess.run(
+        [sys.executable, "-m", "pytest", *args],
+        cwd=cwd,
+        text=text,
+        capture_output=capture_output,
+        timeout=timeout,
+        env=env,
+    )
+
+
 def collect_script_suite(*, suite_path: Path, timeout: int, test_paths: list[str] | None = None) -> dict[str, Any]:
     suite_path = suite_path.resolve()
     process_env = dict(os.environ)
     process_env.pop("VIRTUAL_ENV", None)
-    sync = subprocess.run(
-        ["uv", "sync"],
-        cwd=suite_path,
-        text=True,
-        capture_output=True,
-        timeout=timeout,
-        env=process_env,
-    )
-    if sync.returncode != 0:
-        return {
-            "ok": False,
-            "exitcode": sync.returncode,
-            "stdout": _redact(sync.stdout),
-            "stderr": _redact(sync.stderr),
-        }
-    collected = subprocess.run(
-        ["uv", "run", "pytest", "--collect-only", *(test_paths or ["testcases"])],
+    collected = _run_backend_pytest(
+        ["--collect-only", *(test_paths or ["testcases"])],
         cwd=suite_path,
         text=True,
         capture_output=True,
@@ -70,31 +75,18 @@ def run_script_suite(
     process_env["API_SCENARIO_RESULT_PATH"] = str(scenario_result_path)
     process_env["API_OBSERVATION_RESULT_PATH"] = str(observation_result_path)
 
-    sync = subprocess.run(
-        ["uv", "sync"],
-        cwd=suite_path,
-        text=True,
-        capture_output=True,
-        timeout=timeout,
-        env=process_env,
-    )
-    stdout_parts = [sync.stdout]
-    stderr_parts = [sync.stderr]
-
     report_path = run_dir / "report.json"
     pytest_targets = test_paths or ["tests"]
-    pytest = subprocess.run(
-        ["uv", "run", "pytest", *pytest_targets, "--json-report", f"--json-report-file={report_path}"],
+    pytest = _run_backend_pytest(
+        [*pytest_targets, "--json-report", f"--json-report-file={report_path}"],
         cwd=suite_path,
         text=True,
         capture_output=True,
         timeout=timeout,
         env=process_env,
     )
-    stdout_parts.append(pytest.stdout)
-    stderr_parts.append(pytest.stderr)
-    (run_dir / "stdout.txt").write_text(_redact("\n".join(stdout_parts)), encoding="utf-8")
-    (run_dir / "stderr.txt").write_text(_redact("\n".join(stderr_parts)), encoding="utf-8")
+    (run_dir / "stdout.txt").write_text(_redact(pytest.stdout), encoding="utf-8")
+    (run_dir / "stderr.txt").write_text(_redact(pytest.stderr), encoding="utf-8")
 
     if not report_path.exists():
         return {

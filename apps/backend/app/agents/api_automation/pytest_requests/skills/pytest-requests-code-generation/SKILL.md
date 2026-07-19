@@ -22,7 +22,7 @@ description: 在当前业务项目的 pytest_requests 目录中生成或更新 p
 
 ## Oracle 执行与观察证据
 
-- 数据文件必须保留后端提供的 `case_id`、`test_point_key` 和 `oracle_status`，不得自行推断、合并或改名。
+- 数据文件中的 `id` 是数据库主键，`case_id` 是观察证据兼容别名，两者由后端保证一致；必须原样读取，并保留 `endpoint_id`、`test_point_key` 和 `oracle_status`。
 - `confirmed` 用例正常发送请求并执行全部断言。
 - `inferred` 用例正常发送请求并执行当前推断断言，同时记录实际响应供失败后校准。
 - `needs_confirmation` 用例正常发送请求，不执行尚无事实依据的强 Oracle 断言，但请求构造、网络异常和响应解析错误仍按测试失败处理。
@@ -38,7 +38,6 @@ description: 在当前业务项目的 pytest_requests 目录中生成或更新 p
 ```text
 AGENTS.md
 pytest.ini
-pyproject.toml
 conftest.py
 api/__init__.py
 api/client.py
@@ -57,6 +56,8 @@ data/__init__.py
 
 - 每个 endpoint 使用后端提供的 `artifacts.directory`、`artifacts.test_file` 和 `artifacts.data_file` 维护文件归属。
 - `artifacts.test_file` 和 `artifacts.data_file` 是唯一合法输出文件，不得自行改名或改目录。
+- `artifacts.data_file` 是后端预先写入的数据库用例快照，只读；不得覆盖、追加、包装 `cases` 键、修改 `id`/`endpoint_id` 或复制用例。
+- Agent 只创建或更新 `artifacts.test_file`；再次生成时先复用现有测试代码并做最小修改。
 - 测试代码与相邻 YAML 数据文件放在后端指定的同一 endpoint 目录。
 - 新增 endpoint 只新增对应模块和数据文件。
 - 更新 endpoint 只修改对应 endpoint 文件，除非 collection 暴露了必要的共享依赖修复。

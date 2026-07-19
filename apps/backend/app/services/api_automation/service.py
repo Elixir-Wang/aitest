@@ -1,8 +1,10 @@
 import asyncio
 import hashlib
 import json
+import os
 import secrets
 import shutil
+import tempfile
 import threading
 import time
 from dataclasses import asdict
@@ -13,6 +15,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 import yaml
+from fastapi import HTTPException
 
 from app.agents.api_automation.case_generation import service as api_generation_agent_service
 from app.agents.api_automation.case_generation.schemas import ApiAutomationGenerationInput
@@ -1101,6 +1104,71 @@ def _prepare_endpoint_generation(suite_path: Path, endpoints: list[dict]) -> tup
     return endpoint_payload, artifacts_by_endpoint
 
 
+def _write_canonical_endpoint_data(artifacts_by_endpoint: dict[str, dict], cases_by_endpoint: dict[str, list[dict]]) -> None:
+    """Write the backend-owned case snapshot before/after the AI edits test code.
+
+    The data file is a persistence artifact, not model output. Keeping it deterministic
+    prevents the agent from changing IDs, endpoint ownership, or appending duplicate cases.
+    """
+    for endpoint_id, artifact in artifacts_by_endpoint.items():
+        data_path = Path(artifact["data_file_path"])
+        data_path.parent.mkdir(parents=True, exist_ok=True)
+        canonical_cases = [
+            {**case, "case_id": str(case["id"])}
+            for case in cases_by_endpoint[endpoint_id]
+        ]
+        fd, temp_name = tempfile.mkstemp(prefix=f".{data_path.name}.", suffix=".tmp", dir=data_path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                yaml.safe_dump(
+                    canonical_cases,
+                    handle,
+                    allow_unicode=True,
+                    sort_keys=False,
+                    default_flow_style=False,
+                )
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_name, data_path)
+        finally:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+
+
+def _snapshot_endpoint_artifacts(artifacts_by_endpoint: dict[str, dict]) -> dict[Path, bytes | None]:
+    paths = {
+        Path(artifact[key])
+        for artifact in artifacts_by_endpoint.values()
+        for key in ("test_file_path", "data_file_path")
+    }
+    return {path: path.read_bytes() if path.is_file() else None for path in paths}
+
+
+def _restore_endpoint_artifacts(snapshot: dict[Path, bytes | None]) -> None:
+    for path, content in snapshot.items():
+        if content is None:
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_name, path)
+        finally:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+
+
 def _validate_generated_endpoint_artifacts(suite_path: Path, artifacts_by_endpoint: dict[str, dict]) -> None:
     suite_path = suite_path.resolve()
     for endpoint_id, artifact in artifacts_by_endpoint.items():
@@ -1352,9 +1420,11 @@ def generate_project_scripts(project_id: str, endpoint_ids: list[str], actor, *,
                 artifacts_by_endpoint[endpoint_id]["expected_case_ids"] = [
                     case["id"] for case in cases_by_endpoint[endpoint_id]
                 ]
+            artifact_snapshot = _snapshot_endpoint_artifacts(artifacts_by_endpoint)
             selection = resolve_model_selection("api_test_generation")
             model = build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
             try:
+                _write_canonical_endpoint_data(artifacts_by_endpoint, cases_by_endpoint)
                 asyncio.run(
                     generate_pytest_requests_endpoints(
                         model=model,
@@ -1366,25 +1436,29 @@ def generate_project_scripts(project_id: str, endpoint_ids: list[str], actor, *,
                         },
                     )
                 )
+                # Re-assert the DB snapshot because the agent is not allowed to own data files.
+                _write_canonical_endpoint_data(artifacts_by_endpoint, cases_by_endpoint)
+                _validate_generated_endpoint_artifacts(generated_suite_path, artifacts_by_endpoint)
+                _collect_generated_suite(generated_suite_path, artifacts_by_endpoint)
+                legacy_paths = [
+                    path
+                    for endpoint_id in changed_endpoint_ids
+                    for path in _find_legacy_endpoint_artifacts(
+                        generated_suite_path,
+                        endpoint_id,
+                        artifacts_by_endpoint[endpoint_id],
+                    )
+                ]
+                _cleanup_legacy_endpoint_artifacts(generated_suite_path, legacy_paths)
             except Exception as exc:
+                _restore_endpoint_artifacts(artifact_snapshot)
+                if isinstance(exc, HTTPException):
+                    raise
                 raise api_error(
                     422,
                     "API_SCRIPT_GENERATION_FAILED",
                     f"DeepAgents 生成 pytest 项目失败：{str(exc)[:2000]}",
                 ) from exc
-
-            _validate_generated_endpoint_artifacts(generated_suite_path, artifacts_by_endpoint)
-            _collect_generated_suite(generated_suite_path, artifacts_by_endpoint)
-            legacy_paths = [
-                path
-                for endpoint_id in changed_endpoint_ids
-                for path in _find_legacy_endpoint_artifacts(
-                    generated_suite_path,
-                    endpoint_id,
-                    artifacts_by_endpoint[endpoint_id],
-                )
-            ]
-            _cleanup_legacy_endpoint_artifacts(generated_suite_path, legacy_paths)
         suite_path = storage.store_path(generated_suite_path) or str(generated_suite_path)
     else:
         suite_path = str(existing_by_endpoint[endpoint_ids[0]]["suite_path"])
@@ -1694,7 +1768,7 @@ def create_api_run(project_id: str, payload: ApiRunCreateIn, actor) -> dict:
             "script_count": len(script_snapshots),
             "endpoint_count": len({item["endpoint_id"] for item in script_snapshots if item["endpoint_id"]}),
             "case_count": sum(int(item["case_count"] or 0) for item in script_snapshots),
-            "created_by_name": actor.get("nickname") or actor.get("username") or actor["id"],
+            "created_by_name": operation_log_service.actor_display_name(actor),
         }
         api_automation_repo.create_api_run(
             db,
@@ -1704,7 +1778,7 @@ def create_api_run(project_id: str, payload: ApiRunCreateIn, actor) -> dict:
             api_environment_id=payload.api_environment_id,
             script_ids=payload.script_ids,
             execution_snapshot=execution_snapshot,
-            command_summary="uv run pytest tests --json-report",
+            command_summary="python -m pytest tests --json-report",
             created_by=actor["id"],
         )
         row = api_automation_repo.find_api_run(db, run_id)
@@ -1878,7 +1952,7 @@ def create_api_scenario_run(
         "suite_path": storage.store_path(artifacts["suite_path"]) or str(artifacts["suite_path"]),
         "test_file_path": storage.store_path(artifacts["test_file_path"]) or str(artifacts["test_file_path"]),
         "data_file_path": storage.store_path(artifacts["data_file_path"]) or str(artifacts["data_file_path"]),
-        "created_by_name": actor.get("nickname") or actor.get("username") or actor["id"],
+        "created_by_name": operation_log_service.actor_display_name(actor),
     }
     with connect() as db:
         api_automation_repo.create_api_run(
@@ -1891,7 +1965,7 @@ def create_api_scenario_run(
             target_type="scenario",
             target_ids=[scenario_id],
             execution_snapshot=execution_snapshot,
-            command_summary=f"uv run pytest {relative_test_path} --json-report",
+            command_summary=f"python -m pytest {relative_test_path} --json-report",
             created_by=actor["id"],
         )
         return _serialize_api_run(api_automation_repo.find_api_run(db, run_id), db)

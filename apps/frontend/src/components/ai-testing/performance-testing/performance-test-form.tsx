@@ -350,9 +350,7 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
             <h3 className="font-semibold text-base">请求配置</h3>
           </div>
 
-          {previewing ? (
-            <p className="text-muted-foreground text-xs md:col-span-2">正在生成请求预览</p>
-          ) : null}
+          {previewing ? <p className="text-muted-foreground text-xs md:col-span-2">正在生成请求预览</p> : null}
           {preview?.warnings.map((warning) => (
             <div
               className="mb-2 flex items-start gap-2 bg-amber-50 px-3 py-2 text-amber-800 text-xs md:col-span-2"
@@ -522,7 +520,6 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
             />
           </Field>
 
-
           {/* 安全熔断区块 */}
           <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
             <Settings className="size-4 text-muted-foreground" />
@@ -533,9 +530,7 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
             <label className="flex items-center gap-2">
               <input
                 checked={circuitBreaker.enabled}
-                onChange={(event) =>
-                  setCircuitBreaker((current) => ({ ...current, enabled: event.target.checked }))
-                }
+                onChange={(event) => setCircuitBreaker((current) => ({ ...current, enabled: event.target.checked }))}
                 type="checkbox"
               />
               <span className="text-sm">启用失败率安全熔断</span>

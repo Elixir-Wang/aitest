@@ -17,7 +17,7 @@ export function LoadStageEditor({
   onChange: (stages: PerformanceLoadStage[]) => void;
 }) {
   if (mode === "fixed") {
-    return <p className="border-y py-4 text-muted-foreground text-sm">固定负载参数将在 Locust UI 中配置。</p>;
+    return <p className="border-y py-4 text-muted-foreground text-sm">固定负载参数将在运行控制台中配置。</p>;
   }
 
   function update(index: number, patch: Partial<PerformanceLoadStage>) {

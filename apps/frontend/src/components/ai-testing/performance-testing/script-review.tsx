@@ -119,7 +119,7 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
           ) : null}
           {script.validation_status === "confirmed" ? (
             <Button disabled={saving} onClick={startRun}>
-              启动 Locust UI
+              进入 Locust 控制台
             </Button>
           ) : null}
         </div>

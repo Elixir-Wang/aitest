@@ -6,7 +6,6 @@
 pytest_requests/
 ├── AGENTS.md              # 本文件 - 项目规范
 ├── pytest.ini             # pytest 配置
-├── pyproject.toml         # 项目元数据与依赖
 ├── conftest.py            # 根级 fixture（api_client session fixture）
 ├── api/                   # API 封装层
 │   ├── __init__.py

@@ -22,6 +22,10 @@ _STOP_REQUESTED: set[str] = set()
 _PROCESS_LOCK = threading.Lock()
 
 
+def _control_path(run_dir: Path) -> Path:
+    return run_dir / "locust-control.json"
+
+
 def build_headless_command(*, run_dir: Path, users: int, spawn_rate: float, duration_seconds: int) -> list[str]:
     csv_prefix = run_dir / "result"
     return [
@@ -59,7 +63,7 @@ def _write_run_files(run_dir: Path, run_id: str, script_code: str, runtime_paylo
     (run_dir / "locustfile.py").write_text(runtime_locustfile_source(), encoding="utf-8")
 
 
-def start_headless_run(
+def create_run_session(
     *,
     project_id: str,
     test_id: str,
@@ -87,13 +91,39 @@ def start_headless_run(
         )
         run_repo.append_event(db, run_id, "run_created", "info", "已创建性能测试运行", {})
 
+    return run_id
+
+
+def start_headless_run(run_id: str, options: dict[str, Any] | None = None) -> bool:
+    with connect() as db:
+        run = run_repo.get_run(db, run_id)
+    if run is None:
+        raise KeyError(f"性能测试运行不存在: {run_id}")
+    if run["status"] != "created":
+        raise ValueError(f"只有 created 状态的运行可以启动: {run['status']}")
+    run_dir = _run_dir(run["project_id"], run_id)
+    runtime_path = run_dir / "runtime.json"
+    if not (run_dir / "generated_locustfile.py").is_file() or not runtime_path.is_file():
+        raise FileNotFoundError(f"性能测试运行产物不存在: {run_id}")
     environment = dict(os.environ)
     environment["AI_TESTING_DB_PATH"] = str(settings.DB_PATH)
+    load_config = json.loads(run["load_config_json"] or "{}")
+    options = options or {}
+    users = int(options.get("users") or load_config.get("users") or 1)
+    spawn_rate = float(options.get("spawn_rate") or load_config.get("spawn_rate") or 1)
+    duration_seconds = int(options.get("run_time") or load_config.get("measurement_duration_seconds") or 60)
+    if users < 1 or spawn_rate <= 0 or duration_seconds < 1:
+        raise ValueError("users、spawn_rate 和 run_time 必须为正数。")
+    host = str(options.get("host") or "").strip()
+    if host:
+        runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+        runtime["environment"]["api_base_url"] = host
+        runtime_path.write_text(json.dumps(runtime, ensure_ascii=False), encoding="utf-8")
     command = build_headless_command(
         run_dir=run_dir,
-        users=int(load_config.get("users") or 1),
-        spawn_rate=float(load_config.get("spawn_rate") or 1),
-        duration_seconds=int(load_config.get("measurement_duration_seconds") or 60),
+        users=users,
+        spawn_rate=spawn_rate,
+        duration_seconds=duration_seconds,
     )
     stdout_file = (run_dir / "stdout.log").open("w", encoding="utf-8")
     stderr_file = (run_dir / "stderr.log").open("w", encoding="utf-8")
@@ -121,7 +151,7 @@ def start_headless_run(
         run_repo.update_run_status(db, run_id, "starting")
         run_repo.append_event(db, run_id, "worker_started", "info", "性能测试 Worker 已启动", {"pid": process.pid})
     threading.Thread(target=_monitor_run, args=(run_id, process, stdout_file, stderr_file, run_dir), daemon=True).start()
-    return run_id
+    return True
 
 
 def parse_locust_stats_history(content: str) -> dict[str, Any] | None:
@@ -196,6 +226,30 @@ def _collect_locust_results(db, run_id: str, run_dir: Path) -> None:
                     method=str(row.get("Method") or ""),
                     reason=str(row.get("Error") or ""),
                 )
+    events_path = run_dir / "locust-events.jsonl"
+    if events_path.exists():
+        for line in events_path.read_text(encoding="utf-8").splitlines():
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if event.get("kind") == "failure":
+                run_repo.upsert_failure(
+                    db,
+                    run_id=run_id,
+                    request_name=str(event.get("name") or ""),
+                    method=str(event.get("request_type") or ""),
+                    reason=str(event.get("reason") or "HTTP failure"),
+                    status_code=int(event["status_code"]) if event.get("status_code") else None,
+                )
+            elif event.get("kind") == "exception":
+                run_repo.upsert_exception(
+                    db,
+                    run_id=run_id,
+                    request_name=str(event.get("name") or ""),
+                    exception_type=str(event.get("exception_type") or "Exception"),
+                    message=str(event.get("message") or "")[:2000],
+                )
     run_repo.set_report_directory(db, run_id, str(run_dir))
 
 
@@ -213,6 +267,8 @@ def _monitor_run(
             current = run_repo.get_run(db, run_id)
             if current and current["status"] == "starting":
                 run_repo.update_run_status(db, run_id, "running")
+            if current and current["status"] in {"starting", "running"}:
+                run_repo.touch_run(db, run_id)
         threading.Event().wait(1)
 
     return_code = process.wait()
@@ -258,4 +314,32 @@ def stop_headless_run(run_id: str) -> bool:
             return False
         _STOP_REQUESTED.add(run_id)
     process.terminate()
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        process.kill()
     return True
+
+
+def reset_headless_stats(run_id: str) -> bool:
+    with connect() as db:
+        run = run_repo.get_run(db, run_id)
+    if run is None:
+        raise KeyError(f"性能测试运行不存在: {run_id}")
+    run_dir = _run_dir(run["project_id"], run_id)
+    with _PROCESS_LOCK:
+        process = _PROCESSES.get(run_id)
+    if process is not None and process.poll() is None:
+        _control_path(run_dir).write_text(
+            json.dumps({"id": secrets.token_hex(8), "action": "reset_stats"}),
+            encoding="utf-8",
+        )
+        events_path = run_dir / "locust-events.jsonl"
+        events_path.write_text("", encoding="utf-8")
+        return True
+    for name in ("result_stats.csv", "result_stats_history.csv", "result_failures.csv", "result_exceptions.csv", "result.html"):
+        try:
+            (run_dir / name).unlink()
+        except FileNotFoundError:
+            pass
+    return False

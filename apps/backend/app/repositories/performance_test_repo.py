@@ -72,6 +72,13 @@ def list_performance_tests(db: Connection, project_id: str) -> list[Row]:
           COALESCE(api_endpoints.method, '') AS endpoint_method,
           COALESCE(api_endpoints.path, '') AS endpoint_path,
           COALESCE(api_test_environments.name, '') AS environment_name,
+          (
+            SELECT id
+            FROM performance_test_scripts
+            WHERE performance_test_id = performance_tests.id
+            ORDER BY version DESC
+            LIMIT 1
+          ) AS latest_script_id,
           '' AS latest_run_status,
           '{}' AS latest_goal_result_json,
           NULL AS latest_run_at
@@ -94,6 +101,13 @@ def find_performance_test(db: Connection, test_id: str) -> Row | None:
           COALESCE(api_endpoints.method, '') AS endpoint_method,
           COALESCE(api_endpoints.path, '') AS endpoint_path,
           COALESCE(api_test_environments.name, '') AS environment_name,
+          (
+            SELECT id
+            FROM performance_test_scripts
+            WHERE performance_test_id = performance_tests.id
+            ORDER BY version DESC
+            LIMIT 1
+          ) AS latest_script_id,
           '' AS latest_run_status,
           '{}' AS latest_goal_result_json,
           NULL AS latest_run_at
@@ -145,6 +159,7 @@ def serialize_performance_test(row: Row) -> dict[str, Any]:
         "endpoint_path": row["endpoint_path"],
         "api_environment_id": row["api_environment_id"],
         "environment_name": row["environment_name"],
+        "latest_script_id": row["latest_script_id"],
         "request_config": _loads(row["request_config_json"], {}),
         "load_config": _loads(row["load_config_json"], {}),
         "data_config": _loads(row["data_config_json"], {}),

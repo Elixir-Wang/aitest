@@ -93,6 +93,42 @@ def test_validate_generated_endpoint_artifacts_accepts_exact_files(tmp_path: Pat
     service._validate_generated_endpoint_artifacts(tmp_path, artifacts)
 
 
+def test_write_canonical_endpoint_data_replaces_agent_output_with_exact_database_snapshot(tmp_path: Path) -> None:
+    _, artifacts = service._prepare_endpoint_generation(tmp_path, [_endpoint()])
+    artifact = artifacts["apiend-1"]
+    artifact["data_file_path"].parent.mkdir(parents=True)
+    artifact["data_file_path"].write_text(
+        yaml.safe_dump({"cases": [{"case_id": "case-1"}, {"case_id": "case-1"}]}),
+        encoding="utf-8",
+    )
+    expected_cases = [
+        {"id": "case-1", "endpoint_id": "apiend-1", "title": "first"},
+        {"id": "case-2", "endpoint_id": "apiend-1", "title": "second"},
+    ]
+
+    service._write_canonical_endpoint_data(artifacts, {"apiend-1": expected_cases})
+
+    assert yaml.safe_load(artifact["data_file_path"].read_text(encoding="utf-8")) == [
+        {**expected_cases[0], "case_id": "case-1"},
+        {**expected_cases[1], "case_id": "case-2"},
+    ]
+
+
+def test_restore_endpoint_artifacts_rolls_back_existing_and_new_files(tmp_path: Path) -> None:
+    _, artifacts = service._prepare_endpoint_generation(tmp_path, [_endpoint()])
+    artifact = artifacts["apiend-1"]
+    artifact["test_file_path"].parent.mkdir(parents=True)
+    artifact["test_file_path"].write_text("original test\n", encoding="utf-8")
+    snapshot = service._snapshot_endpoint_artifacts(artifacts)
+
+    artifact["test_file_path"].write_text("broken test\n", encoding="utf-8")
+    artifact["data_file_path"].write_text("broken data\n", encoding="utf-8")
+    service._restore_endpoint_artifacts(snapshot)
+
+    assert artifact["test_file_path"].read_text(encoding="utf-8") == "original test\n"
+    assert not artifact["data_file_path"].exists()
+
+
 def test_validate_generated_endpoint_artifacts_rejects_wrong_endpoint_data(tmp_path: Path) -> None:
     _, artifacts = service._prepare_endpoint_generation(tmp_path, [_endpoint()])
     artifact = artifacts["apiend-1"]

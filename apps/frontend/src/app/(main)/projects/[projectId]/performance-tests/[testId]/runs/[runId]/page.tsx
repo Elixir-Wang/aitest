@@ -12,7 +12,7 @@ export default function Page() {
     <PageShell
       breadcrumbs={moduleBreadcrumbs(
         "performanceTests",
-        { label: "任务详情", href: `/projects/${params.projectId}/performance-tests/${params.testId}` },
+        { label: "性能测试列表", href: `/projects/${params.projectId}/performance-tests` },
         { label: "运行详情" },
       )}
       description="实时查看压测指标、失败请求、异常和运行报告。"

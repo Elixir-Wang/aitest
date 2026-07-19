@@ -1,0 +1,508 @@
+- id: apitc-143e7505ecc20b44
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 必填字段 end_date 传入空字符串
+  test_point_key: body.required.end_date.empty
+  oracle_status: needs_confirmation
+  test_description: end_date 传入空字符串，验证后端拒绝非法日期值。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: ''
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 文档仅声明 200 与无触发说明的 404。按已声明错误响应推断为 404 作为可执行断言；执行失败时应结合实际响应调整为 400/422。Mock
+    数据在合法基线上仅将 end_date 置为空字符串。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-143e7505ecc20b44
+- id: apitc-1cfbf670c7f54c2e
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 必填字段 end_date 传入 null
+  test_point_key: body.required.end_date.null
+  oracle_status: needs_confirmation
+  test_description: end_date 显式传 null，验证后端拒绝必填字段为 null 的请求。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: null
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 文档仅声明 200 与无触发说明的 404。按已声明错误响应推断为 404 作为可执行断言；执行失败时应结合实际响应调整为 400/422。Mock
+    数据在合法基线上仅将 end_date 置为 null。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-1cfbf670c7f54c2e
+- id: apitc-2310a7603fa11a81
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 鉴权 Header cybertron-robot-token 为空
+  test_point_key: header.required.cybertron-robot-token.empty
+  oracle_status: needs_confirmation
+  test_description: 使用空字符串覆盖 cybertron-robot-token 默认值，验证后端拒绝空值鉴权。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers:
+      cybertron-robot-token: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 当前执行器以空字符串覆盖环境默认鉴权头。文档未声明鉴权失败的具体状态码，按已声明错误响应推断为 404 作为可执行断言；执行失败时应结合实际响应调整为
+    401/403。Mock 数据在合法基线上仅将 cybertron-robot-token 置为空字符串。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-2310a7603fa11a81
+- id: apitc-2c521289e988174b
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 鉴权 Header cybertron-robot-key 为空
+  test_point_key: header.required.cybertron-robot-key.empty
+  oracle_status: needs_confirmation
+  test_description: 使用空字符串覆盖 cybertron-robot-key 默认值，验证后端拒绝空值鉴权。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers:
+      cybertron-robot-key: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 当前执行器以空字符串覆盖环境默认鉴权头。文档未声明鉴权失败的具体状态码，按已声明错误响应推断为 404 作为可执行断言；执行失败时应结合实际响应调整为
+    401/403。Mock 数据在合法基线上仅将 cybertron-robot-key 置为空字符串。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-2c521289e988174b
+- id: apitc-3a83b72c8c378028
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 请求体缺少必填字段 start_date
+  test_point_key: body.required.start_date.missing
+  oracle_status: needs_confirmation
+  test_description: 请求体中省略 start_date，仅保留 end_date，验证后端拒绝该必填缺失请求。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+    body:
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 接口仅声明 200 与无触发说明的 404。必填字段缺失触发的具体状态码未在文档给出，按已声明错误响应推断为 404 作为可执行断言；执行失败时应根据实际响应调整为
+    400/422。Mock 数据在合法基线上仅删除 start_date 字段。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-3a83b72c8c378028
+- id: apitc-3e7bfadd803e8f41
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 日期范围 start_date 晚于 end_date
+  test_point_key: body.date_relation.start_after_end
+  oracle_status: needs_confirmation
+  test_description: start_date 晚于 end_date，验证后端拒绝非法日期范围。
+  priority: P2
+  coverage: boundary
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+    body:
+      start_date: '2026-02-05'
+      end_date: '2026-02-01'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 文档未明确 start_date > end_date 的具体错误状态码。按已声明错误响应推断为 404 作为可执行断言；执行失败时应结合实际响应调整为
+    400/422。Mock 数据在合法基线上仅互换 start_date 与 end_date。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-3e7bfadd803e8f41
+- id: apitc-88a2d4254b92b0d9
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 必填字段 start_date 传入空字符串
+  test_point_key: body.required.start_date.empty
+  oracle_status: needs_confirmation
+  test_description: start_date 传入空字符串，验证后端拒绝非法日期值。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+    body:
+      start_date: ''
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 文档仅声明 200 与无触发说明的 404。按已声明错误响应推断为 404 作为可执行断言；执行失败时应结合实际响应调整为 400/422。Mock
+    数据在合法基线上仅将 start_date 置为空字符串。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-88a2d4254b92b0d9
+- id: apitc-9155fbab5952d401
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 字段 end_date 使用非法日期格式
+  test_point_key: body.end_date.invalid_format
+  oracle_status: needs_confirmation
+  test_description: end_date 传入非 YYYY-MM-DD 格式的字符串，验证后端拒绝非法日期格式。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: 2026/02/05
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 文档未声明日期 format/pattern，触发非法格式的具体状态码未知。按已声明错误响应推断为 404 作为可执行断言；执行失败时应结合实际响应调整为
+    400/422。Mock 数据在合法基线上仅将 end_date 改为 2026/02/05。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-9155fbab5952d401
+- id: apitc-a16d12be30472090
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 请求发送空 JSON 对象
+  test_point_key: request_body.empty_object
+  oracle_status: needs_confirmation
+  test_description: 请求体发送 {} 空对象，验证后端拒绝缺失全部必填字段。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+    body: ''
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 文档仅声明 200 与无触发说明的 404。按已声明错误响应推断为 404 作为可执行断言；执行失败时应结合实际响应调整为 400/422。Mock
+    数据为发送空对象 {}。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-a16d12be30472090
+- id: apitc-a1ceceb7c291b57b
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 最小合法请求成功
+  test_point_key: success.minimum_valid
+  oracle_status: confirmed
+  test_description: 使用必填字段 start_date 与 end_date 构造最小合法请求，验证正常返回 200 且业务码为 000000。
+  priority: P0
+  coverage: positive
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 200
+  - type: jsonpath_equals
+    path: $.code
+    expected: 0
+  - type: jsonpath_exists
+    path: $.data
+    expected: true
+  notes: OpenAPI 文档明确成功响应 code=000000，成功用例直接断言该固定业务码。其他 data 子字段为数值，按文档存在性进行结构校验。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-a1ceceb7c291b57b
+- id: apitc-a6f1b4c3aecaff20
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 必填字段 start_date 类型错误
+  test_point_key: body.required.start_date.invalid_type
+  oracle_status: needs_confirmation
+  test_description: start_date 传入数值类型而非字符串，验证后端拒绝类型不匹配请求。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+    body:
+      start_date: 20260201
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 文档仅声明 200 与无触发说明的 404。按已声明错误响应推断为 404 作为可执行断言；执行失败时应结合实际响应调整为 400/422。Mock
+    数据在合法基线上仅将 start_date 类型改为整数。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-a6f1b4c3aecaff20
+- id: apitc-ab020193ad354bea
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 必填字段 start_date 传入 null
+  test_point_key: body.required.start_date.null
+  oracle_status: needs_confirmation
+  test_description: start_date 显式传 null，验证后端拒绝必填字段为 null 的请求。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+    body:
+      start_date: null
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 文档仅声明 200 与无触发说明的 404。按已声明错误响应推断为 404 作为可执行断言；执行失败时应结合实际响应调整为 400/422。Mock
+    数据在合法基线上仅将 start_date 置为 null。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-ab020193ad354bea
+- id: apitc-affd5a90be3ac701
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 请求体缺少必填字段 end_date
+  test_point_key: body.required.end_date.missing
+  oracle_status: needs_confirmation
+  test_description: 请求体中省略 end_date，仅保留 start_date，验证后端拒绝该必填缺失请求。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+    body:
+      start_date: '2026-02-01'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 接口仅声明 200 与无触发说明的 404。必填字段缺失触发的具体状态码未在文档给出，按已声明错误响应推断为 404 作为可执行断言；执行失败时应根据实际响应调整为
+    400/422。Mock 数据在合法基线上仅删除 end_date 字段。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-affd5a90be3ac701
+- id: apitc-b0af117aae66ee04
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 请求不发送 requestBody
+  test_point_key: request_body.missing
+  oracle_status: needs_confirmation
+  test_description: 完全不发送请求体，验证后端在缺失 body 时拒绝请求。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 文档仅声明 200 与无触发说明的 404，且未给出缺失 body 的具体状态码。按已声明错误响应推断为 404 作为可执行断言；执行失败时应结合实际响应调整为
+    400/422。Mock 数据为完全省略 body。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-b0af117aae66ee04
+- id: apitc-c0c431533d1c2f07
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 日期范围 start_date 等于 end_date
+  test_point_key: body.date_relation.start_equals_end
+  oracle_status: needs_confirmation
+  test_description: start_date 与 end_date 使用相同日期，验证后端对单日范围的响应行为。
+  priority: P2
+  coverage: boundary
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-01'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 200
+  - type: jsonpath_equals
+    path: $.code
+    expected: 0
+  notes: 文档未明确 start_date == end_date 是否允许。按最小日数范围处理推断该请求应成功并返回 code=000000。Mock 数据在合法基线上仅将
+    end_date 改为 2026-02-01。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-c0c431533d1c2f07
+- id: apitc-da1123dba6f2f9b2
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 鉴权 Header username 为空
+  test_point_key: header.required.username.empty
+  oracle_status: needs_confirmation
+  test_description: 使用空字符串覆盖 username 默认值，验证后端拒绝空值鉴权。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers:
+      username: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 当前执行器以空字符串覆盖环境默认鉴权头。文档未声明鉴权失败的具体状态码，按已声明错误响应推断为 404 作为可执行断言；执行失败时应结合实际响应调整为
+    401/403。Mock 数据在合法基线上仅将 username 置为空字符串。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-da1123dba6f2f9b2
+- id: apitc-eca2bad7b76342b7
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 必填字段 end_date 类型错误
+  test_point_key: body.required.end_date.invalid_type
+  oracle_status: needs_confirmation
+  test_description: end_date 传入数值类型而非字符串，验证后端拒绝类型不匹配请求。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: 20260205
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 文档仅声明 200 与无触发说明的 404。按已声明错误响应推断为 404 作为可执行断言；执行失败时应结合实际响应调整为 400/422。Mock
+    数据在合法基线上仅将 end_date 类型改为整数。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-eca2bad7b76342b7
+- id: apitc-f029fd94041c4c9d
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 字段 start_date 使用非法日期格式
+  test_point_key: body.start_date.invalid_format
+  oracle_status: needs_confirmation
+  test_description: start_date 传入非 YYYY-MM-DD 格式的字符串，验证后端拒绝非法日期格式。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: ''
+    headers: ''
+    body:
+      start_date: 2026/02/01
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 404
+  notes: 文档未声明日期 format/pattern，触发非法格式的具体状态码未知。按已声明错误响应推断为 404 作为可执行断言；执行失败时应结合实际响应调整为
+    400/422。Mock 数据在合法基线上仅将 start_date 改为 2026/02/01。
+  created_at: '2026-07-17 12:28:24'
+  updated_at: '2026-07-17 12:28:24'
+  case_id: apitc-f029fd94041c4c9d

@@ -18,7 +18,7 @@ SYSTEM_PROMPT = """
 你只能操作当前 filesystem backend 的根目录，它就是当前业务项目的 pytest_requests 项目目录。
 先检查现有目录和文件，再执行初始化或接口增量生成；不要创建第二个测试项目。
 
-初始化阶段必须先确保公共框架存在，包括 AGENTS.md、pytest.ini、pyproject.toml、conftest.py、
+初始化阶段必须先确保公共框架存在，包括 AGENTS.md、pytest.ini、conftest.py、
 api/client.py、testcases/conftest.py、utils/__init__.py、utils/data_loader.py、utils/assertions.py、
 utils/assert_utils.py、support/__init__.py、config/__init__.py 和 data/__init__.py。
 
@@ -27,6 +27,8 @@ utils/assert_utils.py、support/__init__.py、config/__init__.py 和 data/__init
 
 每个 endpoint 的 artifacts.directory、artifacts.test_file 和 artifacts.data_file 由后端确定，是该接口唯一合法的
 输出目录、测试文件和数据文件。必须严格写入这些相对路径，不得自行改成 test_agent.py、test_v1.py 或其他目录。
+后端会在调用前写好 artifacts.data_file；该文件是数据库用例快照，只能读取，不得重写、追加、包装 cases 键、
+修改 id/endpoint_id 或复制已有用例。只创建或更新 artifacts.test_file，并复用当前项目已有公共代码。
 
 完成文件修改后执行 pytest --collect-only。collection 失败时，读取 traceback 和相关文件，修复后重试；
 collection 不得发送真实 API 请求。只有整个项目 collection 成功后，才报告生成成功。
@@ -95,6 +97,8 @@ async def generate_pytest_requests_endpoints(
                         "只处理下面 JSON 中的 endpoint 及其 cases，保留未选中的 endpoint 文件。复用已有公共 client、"
                         "fixture、loader 和 assertions；不要创建第二个测试项目。每个 endpoint 的 artifacts.test_file 和 "
                         "artifacts.data_file 是唯一合法输出文件，必须创建或更新这些精确路径，不得自行选择其他文件名或目录。"
+                        "artifacts.data_file 已由后端根据数据库快照写入，只允许读取，禁止覆盖、追加或改变其 YAML 结构；"
+                        "仅生成或更新 artifacts.test_file。"
                         "修改后先收集变更测试，再收集整个项目，"
                         "collection 失败时读取错误并修复。\n\n"
                         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"

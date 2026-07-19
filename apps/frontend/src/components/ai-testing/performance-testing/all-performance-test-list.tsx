@@ -201,7 +201,11 @@ export function AllPerformanceTestList() {
                   <TableCell>
                     <Link
                       className="block max-w-48 truncate font-medium hover:underline"
-                      href={`/projects/${item.projectId}/performance-tests/${item.id}`}
+                      href={
+                        item.latest_script_id
+                          ? `/projects/${item.projectId}/performance-tests/${item.id}/scripts/${item.latest_script_id}`
+                          : `/projects/${item.projectId}/performance-tests`
+                      }
                       title={item.name}
                     >
                       {item.name}
@@ -223,7 +227,9 @@ export function AllPerformanceTestList() {
                         {
                           label: "查看",
                           icon: ArrowRight,
-                          href: `/projects/${item.projectId}/performance-tests/${item.id}`,
+                          href: item.latest_script_id
+                            ? `/projects/${item.projectId}/performance-tests/${item.id}/scripts/${item.latest_script_id}`
+                            : `/projects/${item.projectId}/performance-tests`,
                         },
                         {
                           label: "删除",
