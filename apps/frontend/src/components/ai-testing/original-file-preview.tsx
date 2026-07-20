@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { renderAsync } from "docx-preview";
 import dynamic from "next/dynamic";
 
+import { renderAsync } from "docx-preview";
 import { FileText, Loader2 } from "lucide-react";
 
+import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 
 const PdfCanvasPreview = dynamic(
@@ -38,9 +39,11 @@ type OriginalFilePreviewProps = {
 export function OriginalFilePreview({ preview, selectedFilename }: OriginalFilePreviewProps) {
   if (!preview) {
     return (
-      <div className="flex min-h-[360px] items-center justify-center rounded-lg border border-dashed bg-muted/20 text-muted-foreground text-sm">
-        请选择一个原始文件。
-      </div>
+      <IllustratedEmptyState
+        className="min-h-[360px] rounded-lg border border-dashed bg-muted/20"
+        description="请从文件列表中选择一个原始文件进行预览。"
+        title="暂无原始文件预览"
+      />
     );
   }
 

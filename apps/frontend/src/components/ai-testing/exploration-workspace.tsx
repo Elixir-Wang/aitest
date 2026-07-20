@@ -35,6 +35,7 @@ import {
   ExplorationProjectPagesTree,
 } from "@/components/ai-testing/exploration-project-pages-tree";
 import { ExplorationRunsTable } from "@/components/ai-testing/exploration-runs-table";
+import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
 import { ListToolbar, type PageBreadcrumb, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
@@ -969,7 +970,11 @@ export function ExplorationWorkspace({
             </div>
           </div>
           {artifactProjectOptions.length === 0 ? (
-            <div className="rounded-lg border p-8 text-center text-muted-foreground text-sm">暂无可切换项目。</div>
+            <IllustratedEmptyState
+              className="rounded-lg border"
+              description="创建项目后，可在这里查看页面探索产物。"
+              title="暂无可切换项目"
+            />
           ) : null}
           {selectedArtifactProject ? (
             <div>

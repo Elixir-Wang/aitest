@@ -8,6 +8,7 @@ import { AlertTriangle, ArrowLeft, Play, RefreshCw, Square, X } from "lucide-rea
 import { toast } from "sonner";
 
 import { ExplorationTaskInfoPanel } from "@/components/ai-testing/exploration-task-info-panel";
+import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import type { AgentPlanStatus } from "@/components/ui/agent-plan";
@@ -1412,9 +1413,11 @@ function ExplorationReportPanel({
           emptyText="当前探索报告暂无可展示内容。"
         />
       ) : (
-        <div className="rounded-lg border bg-muted/20 p-4 text-muted-foreground text-sm">
-          暂无探索报告。探索任务完成后会在这里展示 Markdown 格式报告。
-        </div>
+        <IllustratedEmptyState
+          className="rounded-lg border bg-muted/20"
+          description="探索任务完成后，会在这里展示 Markdown 格式报告。"
+          title="暂无探索报告"
+        />
       )}
     </ShellSection>
   );

@@ -55,7 +55,7 @@ function DataGrid({
   rowKey: (row: Record<string, unknown>, index: number) => string;
 }) {
   return (
-    <div className="overflow-x-auto rounded-md border">
+    <div className="overflow-x-auto rounded-md border dark:border-slate-800">
       <table className="w-full min-w-[900px] border-collapse text-left text-xs">
         <thead className="bg-muted/40 text-muted-foreground">
           <tr>
@@ -69,7 +69,7 @@ function DataGrid({
         <tbody className="divide-y">
           {rows.length ? (
             rows.map((row, index) => (
-              <tr className="hover:bg-muted/20" key={rowKey(row, index)}>
+              <tr className="hover:bg-muted/20 dark:hover:bg-slate-900/60" key={rowKey(row, index)}>
                 {columns.map(([key]) => (
                   <td className="max-w-[420px] px-3 py-2.5 align-top" key={key}>
                     <span className={key === "name" || key === "error" || key === "msg" ? "break-all" : "tabular-nums"}>

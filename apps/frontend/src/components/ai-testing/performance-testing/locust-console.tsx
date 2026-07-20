@@ -143,8 +143,8 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
 
   return (
     <div className="space-y-3">
-      <header className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_32px_-28px_rgba(15,23,42,0.55)]">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-slate-100 border-b px-0 py-4">
+      <header className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_32px_-28px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-black/20">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-slate-100 border-b px-0 py-4 dark:border-slate-800">
           <div className="flex min-w-0 items-center gap-4">
             <div className="relative flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-[0_8px_18px_-10px_rgba(37,99,235,0.9)]">
               <Activity aria-hidden="true" className="size-6" strokeWidth={2.2} />
@@ -152,18 +152,20 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-[1.1rem] text-slate-950 tracking-tight">LOCUST</span>
+                <span className="font-semibold text-[1.1rem] text-slate-950 tracking-tight dark:text-slate-100">
+                  LOCUST
+                </span>
                 <Badge className={statusBadgeClass(run?.status)} variant="outline">
                   {statusText(run?.status)}
                 </Badge>
               </div>
-              <p className="mt-0.5 truncate font-mono text-[11px] text-slate-500">运行 / {runId}</p>
+              <p className="mt-0.5 truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">运行 / {runId}</p>
             </div>
           </div>
           <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
             {canStart ? (
               <Button
-                className="h-9 flex-1 bg-blue-600 px-4 text-white shadow-sm hover:bg-blue-700 sm:flex-none"
+                className="h-9 flex-1 bg-blue-600 px-4 text-white shadow-sm hover:bg-blue-700 sm:flex-none dark:bg-blue-500 dark:hover:bg-blue-400"
                 disabled={working}
                 onClick={start}
                 size="sm"
@@ -183,7 +185,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
               </Button>
             ) : null}
             <Button
-              className="h-9 flex-1 border-slate-200 bg-slate-100/70 px-3 text-slate-700 hover:bg-slate-100 sm:flex-none"
+              className="h-9 flex-1 border-slate-200 bg-slate-100/70 px-3 text-slate-700 hover:bg-slate-100 sm:flex-none dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:bg-slate-800"
               disabled={run?.status !== "running" || working}
               onClick={reset}
               size="sm"
@@ -193,7 +195,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
             </Button>
           </div>
         </div>
-        <div className="grid grid-cols-2 divide-x divide-slate-100 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 divide-x divide-slate-100 sm:grid-cols-3 lg:grid-cols-6 dark:divide-slate-800">
           <Metric icon={Users} label="用户数" tone="slate" value={aggregate.user_count} />
           <Metric icon={Activity} label="每秒请求数" tone="blue" value={aggregate.requests_per_second} />
           <Metric icon={Gauge} label="失败率" tone="red" suffix="%" value={percentage(aggregate.failure_rate)} />
@@ -210,7 +212,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
       </header>
 
       {run?.error_message ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700 text-sm">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700 text-sm dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
           <span className="font-medium">运行失败：</span>
           {run.error_message}
         </div>
@@ -218,35 +220,35 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
 
       <Tabs defaultValue="statistics">
         <TabsList
-          className="h-12 w-full justify-start gap-5 overflow-x-auto rounded-none border-slate-200 border-b bg-transparent p-0"
+          className="h-12 w-full justify-start gap-5 overflow-x-auto rounded-none border-slate-200 border-b bg-transparent p-0 dark:border-slate-800"
           variant="line"
         >
           <TabsTrigger
-            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950"
+            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950 dark:text-slate-400 dark:data-[state=active]:text-slate-100"
             value="statistics"
           >
             统计
           </TabsTrigger>
           <TabsTrigger
-            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950"
+            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950 dark:text-slate-400 dark:data-[state=active]:text-slate-100"
             value="charts"
           >
             趋势图
           </TabsTrigger>
           <TabsTrigger
-            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950"
+            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950 dark:text-slate-400 dark:data-[state=active]:text-slate-100"
             value="failures"
           >
             失败请求
           </TabsTrigger>
           <TabsTrigger
-            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950"
+            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950 dark:text-slate-400 dark:data-[state=active]:text-slate-100"
             value="exceptions"
           >
             异常
           </TabsTrigger>
           <TabsTrigger
-            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950"
+            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950 dark:text-slate-400 dark:data-[state=active]:text-slate-100"
             value="downloads"
           >
             下载文件
@@ -286,7 +288,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {(reports?.reports ?? []).map((report) => (
               <a
-                className="rounded-md border px-4 py-3 text-sm transition-colors hover:bg-muted/40"
+                className="rounded-md border px-4 py-3 text-sm transition-colors hover:bg-muted/40 dark:border-slate-800 dark:hover:bg-slate-900"
                 href={performanceRunReportUrl(projectId, runId, report.name)}
                 key={report.name}
               >
@@ -320,15 +322,15 @@ function Metric({
   suffix?: string;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 border-slate-100 border-b px-4 py-4 last:border-r-0 sm:px-5 lg:border-r lg:border-b-0 lg:py-4">
+    <div className="flex min-w-0 items-center gap-3 border-slate-100 border-b px-4 py-4 last:border-r-0 sm:px-5 lg:border-r lg:border-b-0 lg:py-4 dark:border-slate-800">
       <span
-        className={`flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 ${metricToneClass(tone)}`}
+        className={`flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 dark:bg-slate-800/80 ${metricToneClass(tone)}`}
       >
         <Icon aria-hidden="true" className="size-5" strokeWidth={1.8} />
       </span>
       <div className="min-w-0">
-        <p className="truncate text-[11px] text-slate-500">{label}</p>
-        <p className="mt-0.5 font-mono font-semibold text-[1.05rem] text-slate-900 tabular-nums">
+        <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{label}</p>
+        <p className="mt-0.5 font-mono font-semibold text-[1.05rem] text-slate-900 tabular-nums dark:text-slate-100">
           {value === undefined || value === null ? "-" : `${formatNumber(value)}${suffix}`}
         </p>
       </div>
@@ -414,11 +416,15 @@ function statusText(status?: PerformanceRun["status"]) {
 }
 
 function statusBadgeClass(status?: PerformanceRun["status"]) {
-  if (status === "running") return "border-emerald-200 bg-emerald-50 text-emerald-600";
-  if (status === "starting" || status === "stopping") return "border-amber-200 bg-amber-50 text-amber-700";
-  if (status === "failed" || status === "cancelled") return "border-red-200 bg-red-50 text-red-600";
-  if (status === "completed" || status === "stopped") return "border-blue-200 bg-blue-50 text-blue-600";
-  return "border-emerald-200 bg-emerald-50 text-emerald-600";
+  if (status === "running")
+    return "border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300";
+  if (status === "starting" || status === "stopping")
+    return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
+  if (status === "failed" || status === "cancelled")
+    return "border-red-200 bg-red-50 text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300";
+  if (status === "completed" || status === "stopped")
+    return "border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300";
+  return "border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300";
 }
 
 function apiErrorMessage(error: unknown) {

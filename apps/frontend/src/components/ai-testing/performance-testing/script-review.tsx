@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
 import { CheckCircle2, FileCode2, ShieldCheck } from "lucide-react";
+import { codeToTokens } from "shiki";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { OneClipboard } from "@/components/ui/one-clipboard";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ApiRequestError,
@@ -155,18 +157,97 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
         <section className="min-w-0">
           <div className="mb-2 flex items-center justify-between gap-3">
             <h2 className="font-semibold text-sm">只读 Locust 脚本</h2>
-            <span className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-              Python
-            </span>
+            <div className="flex items-center gap-2">
+              <OneClipboard copiedLabel="已复制" label="复制" text={script.code} />
+              <span className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                Python
+              </span>
+            </div>
           </div>
-          <pre className="max-h-[720px] overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-4 font-mono text-slate-800 text-xs leading-5 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:shadow-none">
-            <code className="whitespace-pre">{script.code}</code>
-          </pre>
+          <PythonCodeBlock code={script.code} />
         </section>
       </div>
     </div>
   );
 }
+
+function PythonCodeBlock({ code }: { code: string }) {
+  const [highlightedLines, setHighlightedLines] = useState<HighlightedLine[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    void codeToTokens(code, {
+      lang: "python",
+      themes: { light: "github-light", dark: "github-dark" },
+      defaultColor: false,
+    }).then(({ tokens }) => {
+      if (active) {
+        let lineOffset = 0;
+        setHighlightedLines(
+          tokens.map((line, number) => {
+            const highlightedLine = {
+              number: number + 1,
+              offset: line[0]?.offset ?? lineOffset,
+              tokens: line.map((token) => ({
+                content: token.content,
+                offset: token.offset,
+                style: token.htmlStyle ?? {},
+              })),
+            };
+            lineOffset += line.map((token) => token.content).join("").length + 1;
+            return highlightedLine;
+          }),
+        );
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [code]);
+
+  if (!highlightedLines) {
+    return (
+      <pre className="max-h-[720px] overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-5 font-mono text-[13px] text-slate-800 leading-6 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:shadow-none">
+        <code className="whitespace-pre-wrap break-words">{code}</code>
+      </pre>
+    );
+  }
+
+  return (
+    <pre className="max-h-[720px] overflow-auto rounded-lg border border-slate-200 bg-[#fff] py-5 font-mono text-[13px] text-[color:var(--shiki-light)] leading-6 shadow-sm dark:border-slate-800 dark:bg-[#24292e] dark:text-[color:var(--shiki-dark)] dark:shadow-none">
+      <code className="block min-w-full">
+        {highlightedLines.map((line) => (
+          <span className="grid grid-cols-[3rem_minmax(0,1fr)]" key={line.offset}>
+            <span className="select-none border-slate-200 border-r bg-slate-50/80 px-3 text-right text-slate-400 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-500">
+              {line.number}
+            </span>
+            <span className="min-w-0 whitespace-pre-wrap break-words px-5">
+              {line.tokens.length === 0
+                ? " "
+                : line.tokens.map((token) => (
+                    <span
+                      className="text-[color:var(--shiki-light)] dark:text-[color:var(--shiki-dark)]"
+                      key={token.offset}
+                      style={token.style as CSSProperties}
+                    >
+                      {token.content}
+                    </span>
+                  ))}
+            </span>
+          </span>
+        ))}
+      </code>
+    </pre>
+  );
+}
+
+type HighlightedLine = {
+  number: number;
+  offset: number;
+  tokens: Array<{ content: string; offset: number; style: Record<string, string> }>;
+};
 
 function JsonField({
   label,
@@ -185,7 +266,7 @@ function JsonField({
     <div className="block space-y-2 text-sm">
       <p className="font-medium text-xs">{label}</p>
       <Textarea
-        className="font-mono text-xs"
+        className="bg-white font-mono text-xs dark:bg-[#24292e]"
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
         rows={rows}

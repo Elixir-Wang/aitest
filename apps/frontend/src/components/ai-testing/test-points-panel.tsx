@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, Loader2, Play, Save } from "lucide-react";
 import { toast } from "sonner";
 
+import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -114,9 +115,11 @@ export function TestPointsPanel({
   if (error) return <div className="p-6 text-destructive text-sm">{error}</div>;
   if (!data?.requirement_version_id)
     return (
-      <div className="flex min-h-72 items-center justify-center rounded-lg border border-dashed bg-muted/10 p-8 text-center text-muted-foreground text-sm">
-        尚未生成最终需求，请先在需求分析中点击“转为最终需求”。
-      </div>
+      <IllustratedEmptyState
+        className="rounded-lg border border-dashed bg-muted/10"
+        description="请先在需求分析中点击“转为最终需求”。"
+        title="暂无测试点"
+      />
     );
 
   const isRunning = Boolean(data.run && ACTIVE_STATUSES.has(data.run.status));
@@ -139,9 +142,19 @@ export function TestPointsPanel({
         </div>
       ) : null}
       {data.points.length === 0 && !isRunning ? (
-        <div className="rounded-md border border-dashed p-8 text-center text-muted-foreground text-sm">
-          暂无测试点，请点击生成。
-        </div>
+        <IllustratedEmptyState
+          action={
+            canEdit ? (
+              <Button onClick={generate} size="sm" type="button">
+                <Play className="size-4" />
+                生成测试点
+              </Button>
+            ) : null
+          }
+          className="rounded-lg border border-dashed bg-muted/10"
+          description="当前最终需求尚未生成测试点。"
+          title="暂无测试点"
+        />
       ) : null}
       {data.points.length > 0 ? (
         <div className="overflow-hidden rounded-lg border">

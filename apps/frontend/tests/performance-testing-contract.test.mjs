@@ -142,6 +142,12 @@ test("performance script API and review route support generation, edits, and con
   assert.match(scriptReviewSource, /确认脚本/);
 });
 
+test("performance script review reuses the clipboard control and keeps JSON editors white", () => {
+  assert.match(scriptReviewSource, /import \{ OneClipboard \} from "@\/components\/ui\/one-clipboard"/);
+  assert.match(scriptReviewSource, /<OneClipboard copiedLabel="已复制" label="复制" text=\{script\.code\} \/>/);
+  assert.match(scriptReviewSource, /className="bg-white font-mono text-xs dark:bg-\[#24292e\]"/);
+});
+
 test("confirmed performance script explicitly enters the Locust console", () => {
   assert.match(apiClientSource, /export function createPerformanceRun/);
   assert.match(apiClientSource, /export function getPerformanceRun/);

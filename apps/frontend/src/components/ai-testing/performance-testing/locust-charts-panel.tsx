@@ -13,7 +13,7 @@ export type LocustChartSample = {
 export function LocustChartsPanel({ samples }: { samples: LocustChartSample[] }) {
   if (samples.length < 2) {
     return (
-      <div className="rounded-md border px-4 py-16 text-center text-muted-foreground text-sm">
+      <div className="rounded-md border px-4 py-16 text-center text-muted-foreground text-sm dark:border-slate-800">
         产生多条采样数据后将显示趋势图
       </div>
     );
@@ -62,7 +62,7 @@ export function LocustChartsPanel({ samples }: { samples: LocustChartSample[] })
 
 function ChartCard({ title, children }: { title: string; children: React.ReactElement }) {
   return (
-    <section className="rounded-md border p-4">
+    <section className="rounded-md border p-4 dark:border-slate-800">
       <h3 className="mb-4 font-medium text-sm">{title}</h3>
       <div className="h-72 w-full">
         <ResponsiveContainer height="100%" width="100%">

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import Image from "next/image";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import {
@@ -30,6 +29,7 @@ import {
 import { toast } from "sonner";
 
 import { ApiScenarioList } from "@/components/ai-testing/api-automation/api-scenario-list";
+import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Select as AnimatedSelect, SelectOption } from "@/components/ui/animated-select-1";
@@ -1280,17 +1280,17 @@ export default function Page() {
                 );
               })}
               {endpoints.length === 0 ? (
-                <div className="flex h-full min-h-72 flex-col items-center justify-center gap-3 px-6 text-center text-sm">
-                  <FileJson className="size-9 text-muted-foreground" />
-                  <div>
-                    <div className="font-medium">暂无接口资产</div>
-                    <div className="mt-1 text-muted-foreground">从右上角导入 OpenAPI、URL 或粘贴内容。</div>
-                  </div>
-                  <Button onClick={() => openImportDialog("file")} size="sm">
-                    <ImportIcon className="size-4" />
-                    导入接口
-                  </Button>
-                </div>
+                <IllustratedEmptyState
+                  action={
+                    <Button onClick={() => openImportDialog("file")} size="sm">
+                      <ImportIcon className="size-4" />
+                      导入接口
+                    </Button>
+                  }
+                  className="h-full"
+                  description="从右上角导入 OpenAPI、URL 或粘贴内容。"
+                  title="暂无接口资产"
+                />
               ) : null}
             </div>
           </aside>
@@ -1357,9 +1357,11 @@ export default function Page() {
                 </div>
               </div>
             ) : (
-              <div className="flex h-full min-h-96 items-center justify-center text-muted-foreground text-sm">
-                请选择左侧接口查看详情。
-              </div>
+              <IllustratedEmptyState
+                className="min-h-96"
+                description="请从左侧接口列表中选择一项查看详情。"
+                title="请选择接口"
+              />
             )}
           </section>
         </div>
@@ -1608,23 +1610,16 @@ export default function Page() {
                 );
               })}
               {apiCaseEndpoints.length === 0 ? (
-                <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 py-6 text-center">
-                  <Image
-                    alt=""
-                    aria-hidden="true"
-                    className="h-32 w-44 object-contain"
-                    height={180}
-                    src="/illustrations/api-cases-empty-left.svg"
-                    width={240}
-                  />
-                  <div className="mt-4">
-                    <div className="font-medium text-foreground text-sm">暂无接口用例</div>
-                    <div className="mt-2 text-muted-foreground text-sm">请先在接口资产页签选择接口并生成用例。</div>
-                  </div>
-                  <Button className="mt-5" onClick={() => setActiveTab("接口资产")} size="sm">
-                    去选择接口
-                  </Button>
-                </div>
+                <IllustratedEmptyState
+                  action={
+                    <Button onClick={() => setActiveTab("接口资产")} size="sm">
+                      去选择接口
+                    </Button>
+                  }
+                  className="min-h-0 flex-1"
+                  description="请先在接口资产页签选择接口并生成用例。"
+                  title="暂无接口用例"
+                />
               ) : null}
             </div>
           </aside>
@@ -1715,20 +1710,11 @@ export default function Page() {
                 </TableBody>
               </Table>
               {filteredApiTestCases.length === 0 ? (
-                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 py-6 text-center text-sm">
-                  <Image
-                    alt=""
-                    aria-hidden="true"
-                    className="h-36 w-48 object-contain"
-                    height={180}
-                    src="/illustrations/api-cases-empty-right.svg"
-                    width={240}
-                  />
-                  <div>
-                    <div className="font-medium text-foreground text-sm">暂无接口用例</div>
-                    <div className="mt-1 text-muted-foreground">请在左侧选择接口进行展示测试用例。</div>
-                  </div>
-                </div>
+                <IllustratedEmptyState
+                  className="min-h-0 flex-1"
+                  description="请在左侧选择接口进行展示测试用例。"
+                  title="暂无接口用例"
+                />
               ) : null}
             </div>
           </ShellSection>

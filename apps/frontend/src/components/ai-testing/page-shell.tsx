@@ -5,7 +5,7 @@ import { type ComponentPropsWithoutRef, type ReactNode, useEffect } from "react"
 import Link from "next/link";
 
 import type { LucideIcon } from "lucide-react";
-import { CircleAlert, Ellipsis, Plus, Search, Trash2 } from "lucide-react";
+import { Ellipsis, Plus, Search, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,11 +17,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
+import { IllustratedEmptyState } from "./illustrated-empty-state";
 import { type BreadcrumbItem, useWorkspaceBreadcrumbs } from "./workspace-breadcrumbs";
 
 type ProjectScope = "all" | "project" | "none";
@@ -302,29 +302,8 @@ export function RowActions({ label, actions }: { label: string; actions: RowActi
   );
 }
 
-export function EmptyState({
-  title,
-  description,
-  status = "骨架已接入",
-}: {
-  title: string;
-  description: string;
-  status?: string;
-}) {
-  return (
-    <Empty className="min-h-72 border bg-card">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <CircleAlert />
-        </EmptyMedia>
-        <EmptyTitle>{title}</EmptyTitle>
-        <EmptyDescription>{description}</EmptyDescription>
-      </EmptyHeader>
-      <EmptyContent>
-        <StatusBadge tone={status === "Soon" ? "muted" : "default"}>{status}</StatusBadge>
-      </EmptyContent>
-    </Empty>
-  );
+export function EmptyState({ title, description }: { title: string; description: string; status?: string }) {
+  return <IllustratedEmptyState className="rounded-xl border bg-card" description={description} title={title} />;
 }
 
 export function SoonPage({ title, description }: { title: string; description: string }) {

@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { Expand, Loader2, Maximize2, Minimize2, Minus, Plus } from "lucide-react";
 
+import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ApiTestCase, ApiTestCaseStep } from "@/lib/api-client";
@@ -363,9 +364,11 @@ export function TestCaseMindMap({ active, cases, setName, selectedCaseId, onSele
 
   if (cases.length === 0) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center bg-[#fbfcfe] text-muted-foreground text-sm dark:bg-background">
-        当前筛选条件下没有可展示的测试用例。
-      </div>
+      <IllustratedEmptyState
+        className="min-h-0 flex-1 bg-[#fbfcfe] dark:bg-background"
+        description="请调整筛选条件或生成测试用例后再查看脑图。"
+        title="暂无可展示的测试用例"
+      />
     );
   }
 

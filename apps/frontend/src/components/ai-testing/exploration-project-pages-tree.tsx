@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { ChevronDown, ChevronRight, FileCode2, FileText, Folder, FolderOpen } from "lucide-react";
 
+import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Loader } from "@/components/ui/loader";
 import { Table, TableBody } from "@/components/ui/table";
@@ -263,7 +264,7 @@ export function ExplorationProjectPagesTree({
           </Table>
         </div>
       ) : pages.length === 0 ? (
-        <div className="p-8 text-center text-muted-foreground text-sm">暂无页面信息。</div>
+        <IllustratedEmptyState description="执行页面探索后，已发现的页面会展示在这里。" title="暂无页面信息" />
       ) : (
         <div className="grid min-h-[30rem] lg:grid-cols-[18rem_minmax(0,1fr)]">
           <aside className="min-h-0 border-b bg-muted/20 lg:border-r lg:border-b-0">
