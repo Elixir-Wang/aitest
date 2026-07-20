@@ -1,0 +1,16 @@
+run_id: exp_-f2F3GoSM_nIdibfHl4oZQ
+project_id: project-c10e2dae57c2d088
+updated_at: '2026-07-20T11:26:10.639465+00:00'
+items:
+- id: ''
+  content: 首次快照并识别站点入口、认证状态和顶层模块
+  status: completed
+- id: ''
+  content: 按模块执行可交互元素并记录状态变化
+  status: in_progress
+- id: ''
+  content: 清理本轮创建的测试数据并验证
+  status: pending
+- id: ''
+  content: 汇总页面建档报告、失败项和停止原因
+  status: pending

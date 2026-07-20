@@ -10,16 +10,12 @@ export default function Page() {
   const params = useParams<{ projectId: string; testId: string; runId: string }>();
   return (
     <PageShell
-      breadcrumbs={moduleBreadcrumbs(
-        "performanceTests",
-        { label: "性能测试列表", href: `/projects/${params.projectId}/performance-tests` },
-        { label: "运行详情" },
-      )}
-      description="实时查看压测指标、失败请求、异常和运行报告。"
+      breadcrumbs={moduleBreadcrumbs("performanceTests", { label: "Locust 控制台" })}
+      description="项目内迁移的 Locust 原生启动、统计、图表、失败、异常和下载控制台。"
       projectScope="project"
-      title="性能测试运行"
+      title="Locust 控制台"
     >
-      <PerformanceRunDetail projectId={params.projectId} runId={params.runId} />
+      <PerformanceRunDetail projectId={params.projectId} runId={params.runId} testId={params.testId} />
     </PageShell>
   );
 }

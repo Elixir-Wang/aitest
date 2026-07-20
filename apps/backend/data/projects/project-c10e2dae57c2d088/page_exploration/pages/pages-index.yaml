@@ -1,0 +1,23 @@
+pages:
+  page-file-library.yaml:
+    display_name: file-library
+    breadcrumb:
+    - file-library
+    structure_summary: 发现 16 个元素
+    run_id: exp_-f2F3GoSM_nIdibfHl4oZQ
+    captured_at: '2026-07-20T11:27:14.481582Z'
+  page-chat.yaml:
+    display_name: chat
+    breadcrumb:
+    - chat
+    structure_summary: 发现 13 个元素
+    run_id: exp_-f2F3GoSM_nIdibfHl4oZQ
+    captured_at: '2026-07-20T11:27:14.473337Z'
+  page-application-knowledge-search.yaml:
+    display_name: knowledge-search
+    breadcrumb:
+    - application
+    - knowledge-search
+    structure_summary: 发现 11 个元素
+    run_id: exp_-f2F3GoSM_nIdibfHl4oZQ
+    captured_at: '2026-07-20T11:27:14.465788Z'

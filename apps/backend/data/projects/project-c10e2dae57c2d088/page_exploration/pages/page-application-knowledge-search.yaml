@@ -1,0 +1,140 @@
+schema_version: '3.0'
+page:
+  id: page-application-knowledge-search
+  title: WeAgent
+  normalized_path: /application/knowledge-search
+states:
+- id: page-application-knowledge-search__root__001
+  type: root
+  title: WeAgent
+  url: http://192.168.160.67:8080/application/knowledge-search
+  elements:
+  - key: link-知识库搜索 当前
+    role: link
+    name: 知识库搜索 当前
+    action: click
+    locators:
+    - code: 'getByRole(''link'', { name: ''知识库搜索 当前'' })'
+    - code: locator('a:nth-of-type(4)')
+    context:
+      role: div
+      name: 知识资产二级导航
+  - key: clickable-百工智库 / 知识库搜索--in--all-topk
+    role: clickable
+    name: 百工智库 / 知识库搜索
+    action: click
+    locators:
+    - code: locator('header')
+    context:
+      ordinal: 1
+      role: div
+      name: 百工智库 / 知识库搜索 知识库搜索 文本知识库 图片知识库 * 知识库 选择知识库 元数据检索 * 检索模式 混合检索 * 检索知识类型
+        All * 相似度阈值 ▲ ▼ * 向量检索条数 ▲ ▼ * 关键词检索条数 ▲ ▼ * topK条
+  - key: clickable-百工智库 / 知识库搜索--in--百工智库 / 知识库搜索
+    role: clickable
+    name: 百工智库 / 知识库搜索
+    action: click
+    locators:
+    - code: locator('header > div:nth-of-type(1)')
+    context:
+      ordinal: 2
+      role: header
+      name: 百工智库 / 知识库搜索
+  - key: clickable-面包屑
+    role: clickable
+    name: 面包屑
+    action: click
+    locators:
+    - code: locator('nav')
+    context:
+      role: div
+      name: 百工智库 / 知识库搜索
+  - key: link-知识库搜索
+    role: link
+    name: 知识库搜索
+    action: click
+    locators:
+    - code: 'getByRole(''link'', { name: ''知识库搜索'' })'
+    - code: locator('nav > a')
+    context:
+      role: nav
+      name: 面包屑
+  - key: clickable-知识库搜索
+    role: clickable
+    name: 知识库搜索
+    action: click
+    locators:
+    - code: locator('main > div > div:nth-of-type(1) > div')
+    context:
+      role: div
+      name: 知识库搜索
+  - key: clickable-百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前 应用空间
+      应用广场 运营中心 文档中心 系统管理 基 基础设施 当前团队 jing.wang1 管理员 百工智库 / 知识库搜索 知识库搜索 文本知识库 图片知识库
+      * 知识库 选择知识库 元数据检索 --in--rag-jing-wang1
+    role: clickable
+    name: '百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前 应用空间 应用广场 运营中心
+      文档中心 系统管理 基 基础设施 当前团队 jing.wang1 管理员 百工智库 / 知识库搜索 知识库搜索 文本知识库 图片知识库 * 知识库 选择知识库
+      元数据检索 '
+    action: click
+    locators:
+    - code: locator('#root')
+    context:
+      ordinal: 1
+      role: body
+      name: 百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前 应用空间 应用广场 运营中心
+        文档中心 系统管理 基 基础设施 当前团队 jing.wang1 管理员 百工智库 / 知识
+  - key: clickable-百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前 应用空间
+      应用广场 运营中心 文档中心 系统管理 基 基础设施 当前团队 jing.wang1 管理员 百工智库 / 知识库搜索 知识库搜索 文本知识库 图片知识库
+      * 知识库 选择知识库 元数据检索 --in--rag-jing-wang1-2
+    role: clickable
+    name: '百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前 应用空间 应用广场 运营中心
+      文档中心 系统管理 基 基础设施 当前团队 jing.wang1 管理员 百工智库 / 知识库搜索 知识库搜索 文本知识库 图片知识库 * 知识库 选择知识库
+      元数据检索 '
+    action: click
+    locators:
+    - code: locator('body > div > div:nth-of-type(1)')
+    context:
+      ordinal: 2
+      role: div
+      name: 百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前 应用空间 应用广场 运营中心
+        文档中心 系统管理 基 基础设施 当前团队 jing.wang1 管理员 百工智库 / 知识
+  - key: clickable-业务工作区 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前 应用空间 应用广场 运营中心 文档中心 系统管理
+    role: clickable
+    name: 业务工作区 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前 应用空间 应用广场 运营中心 文档中心 系统管理
+    action: click
+    locators:
+    - code: locator('aside > div:nth-of-type(2)')
+    context:
+      role: aside
+      name: 百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前 应用空间 应用广场 运营中心
+        文档中心 系统管理 基 基础设施 当前团队 jing.wang1 管理员
+  - key: clickable-知识资产 知识库 文件管理 知识库问答 知识库搜索 当前
+    role: clickable
+    name: 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前
+    action: click
+    locators:
+    - code: locator('aside > div:nth-of-type(2) > div:nth-of-type(2)')
+    context:
+      role: div
+      name: 业务工作区 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前 应用空间 应用广场 运营中心 文档中心 系统管理
+  - key: clickable-知识资产二级导航
+    role: clickable
+    name: 知识资产二级导航
+    action: click
+    locators:
+    - code: locator('aside > div:nth-of-type(2) > div:nth-of-type(2) > div')
+    context:
+      role: div
+      name: 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前
+  assertion_texts:
+  - WeAgent
+  - 知识库搜索
+  - 知识库搜索 当前
+  - 百工智库 / 知识库搜索
+  - 面包屑
+  - 百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前 应用空间 应用广场 运营中心 文档中心
+    系统管理 基 基础设施 当前团队 jing.wang1 管理员 百工智库 / 知识库搜索 知识库搜索 文本知识库 图片知识库 * 知识库 选择知识库 元数据检索
+  - 业务工作区 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前 应用空间 应用广场 运营中心 文档中心 系统管理
+  - 知识资产 知识库 文件管理 知识库问答 知识库搜索 当前
+  - 知识资产二级导航
+  children: []

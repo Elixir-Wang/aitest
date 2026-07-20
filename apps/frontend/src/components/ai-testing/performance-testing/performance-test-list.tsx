@@ -158,7 +158,7 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
                   <RowActions
                     actions={[
                       {
-                        label: "查看",
+                        label: "脚本审核",
                         icon: ArrowRight,
                         href: item.latest_script_id
                           ? `/projects/${projectId}/performance-tests/${item.id}/scripts/${item.latest_script_id}`

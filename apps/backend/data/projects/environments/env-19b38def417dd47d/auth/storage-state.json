@@ -1,0 +1,27 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://192.168.160.67:8080",
+      "localStorage": [
+        {
+          "name": "last-space-id",
+          "value": "\"space_22cd3e233e81449f91bb7994e6a6ca17\""
+        },
+        {
+          "name": "weagent.loginForm",
+          "value": "{\"name\":\"jing.wang1\",\"password\":\"123456\"}"
+        },
+        {
+          "name": "weagent.token",
+          "value": "{\"state\":{\"token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmNzI3YjUzNDVjYWY0YTA0YTEzOTZiOTQ2MDFmMTQzZiIsInJvbGUiOjEsImV4cCI6MTc4NzEzODU3NX0.r3Alc9kZWtPtfk8bpb31qd0VgDM6ep8NnfG-U0jW1yk\",\"user\":{\"create_time\":1776822417000,\"update_time\":1781511238000,\"user_id\":\"f727b5345caf4a04a1396b94601f143f\",\"username\":\"jing.wang1\",\"role\":1,\"is_disabled\":false,\"spaces\":[{\"space_id\":\"space_22cd3e233e81449f91bb7994e6a6ca17\",\"name\":\"基础设施\",\"is_owner\":false},{\"space_id\":\"space_308ab44aacbc443580c53bac7dfc017c\",\"name\":\"jing.wang\",\"is_owner\":true},{\"space_id\":\"space_5383750a9f41465bb137cc2e5758ec1f\",\"name\":\"国寿财\",\"is_owner\":false},{\"space_id\":\"space_57a5ef8d59be40ae873871be705855b5\",\"name\":\"AI语音引擎\",\"is_owner\":false},{\"space_id\":\"space_8bafd1d613bc4dd0a9f82e8139b5c15c\",\"name\":\"保险AI\",\"is_owner\":false},{\"space_id\":\"space_8cf7fb77987a406cae93413e78609eaa\",\"name\":\"QA测试空间\",\"is_owner\":false},{\"space_id\":\"space_be7a153dc3f241a4b7f521565e247bca\",\"name\":\"黎明保险\",\"is_owner\":false},{\"space_id\":\"space_fe1ffb642da84ec892472fc7e4f5c487\",\"name\":\"test\",\"is_owner\":true}],\"avatar\":\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%20width='64'%20height='64'%3e%3cdefs%3e%3clinearGradient%20id='g'%20x1='0'%20x2='1'%20y1='0'%20y2='1'%3e%3cstop%20offset='0'%20stop-color='%2360A5FA'/%3e%3cstop%20offset='1'%20stop-color='%232563EB'/%3e%3c/linearGradient%3e%3c/defs%3e%3ccircle%20cx='32'%20cy='32'%20r='32'%20fill='url(%23g)'/%3e%3ccircle%20cx='32'%20cy='26'%20r='10'%20fill='%23fff'%20opacity='0.85'/%3e%3cpath%20d='M14%2054c3-10%2012-14%2018-14s15%204%2018%2014'%20fill='%23fff'%20opacity='0.85'/%3e%3c/svg%3e\",\"group_id\":\"pg_admin\",\"group_name\":\"管理员\",\"capabilities\":[\"view_cost\",\"view_memory\"],\"space_capabilities\":{\"space_22cd3e233e81449f91bb7994e6a6ca17\":[\"manage_resources\",\"manage_space_members\",\"use_agent\",\"use_qa\",\"view_observability\"],\"space_308ab44aacbc443580c53bac7dfc017c\":[\"manage_resources\",\"manage_space_members\",\"use_agent\",\"use_qa\",\"view_observability\"],\"space_5383750a9f41465bb137cc2e5758ec1f\":[\"manage_resources\",\"use_agent\",\"use_qa\"],\"space_57a5ef8d59be40ae873871be705855b5\":[\"manage_resources\",\"manage_space_members\",\"use_agent\",\"use_qa\",\"view_observability\"],\"space_8bafd1d613bc4dd0a9f82e8139b5c15c\":[\"manage_resources\",\"use_agent\",\"use_qa\"],\"space_8cf7fb77987a406cae93413e78609eaa\":[\"manage_resources\",\"manage_space_members\",\"use_agent\",\"use_qa\",\"view_observability\"],\"space_be7a153dc3f241a4b7f521565e247bca\":[\"manage_resources\",\"manage_space_members\",\"use_agent\",\"use_qa\",\"view_observability\"],\"space_fe1ffb642da84ec892472fc7e4f5c487\":[\"manage_resources\",\"manage_space_members\",\"use_agent\",\"use_qa\",\"view_observability\"]}},\"currentSpace\":{\"space_id\":\"space_22cd3e233e81449f91bb7994e6a6ca17\",\"name\":\"基础设施\",\"is_owner\":false}},\"version\":0}"
+        },
+        {
+          "name": "weagent.isRemember",
+          "value": "true"
+        }
+      ],
+      "indexedDB": []
+    }
+  ]
+}

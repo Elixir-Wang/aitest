@@ -1,0 +1,69 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.1, pluggy-1.6.0
+rootdir: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\api_automation\pytest_requests
+configfile: pytest.ini
+plugins: anyio-4.13.0, langsmith-0.8.5, locust-2.45.0, json-report-1.5.0, metadata-3.1.1
+collected 18 items
+
+testcases\openapi\v1\agent\analysis\post\test_api.py .........F........  [100%]
+
+================================== FAILURES ===================================
+_________________ test_agent_analysis[apitc-a1ceceb7c291b57b] _________________
+
+api_client = <support.client.ApiClient object at 0x0000021A883EBB60>
+case = {'assertions': [{'expected': 200, 'path': '', 'type': 'status_code'}, {'expected': 0, 'path': '$.code', 'type': 'jsonp...npath_exists'}], 'case_id': 'apitc-a1ceceb7c291b57b', 'coverage': 'positive', 'created_at': '2026-07-17 12:28:24', ...}
+
+    @pytest.mark.parametrize("case", TEST_CASES, ids=_case_id)
+    def test_agent_analysis(api_client, case):
+        """按用例数据发送请求，仅对已确认 Oracle 执行强断言。"""
+        response = api_client.request(case["request"], case.get("test_data"))
+        oracle_status = case.get("oracle_status")
+        if oracle_status in {"inferred", "needs_confirmation"}:
+            record_observation(case, response)
+        if oracle_status in {"confirmed", "inferred"}:
+>           assert_response_assertions(response, case.get("assertions", []))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:24: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 200, 'path': '', 'type': 'status_code'}, {'expected': 0, 'path': '$.code', 'type': 'jsonpath_equals'}, {'expected': True, 'path': '$.data', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+                assert response.status_code == expected, (
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+                )
+            elif assertion_type == "jsonpath_exists":
+                body = response.json()
+                actual = _read_path(body, path)
+                assert actual is not None, (
+                    f"{location} 失败\n"
+                    f"  路径: {path}\n"
+                    f"  实际值: {actual}\n"
+                    f"  说明: 期望该路径存在且值不为 None"
+                )
+            elif assertion_type == "jsonpath_equals":
+                body = response.json()
+                actual = _read_path(body, path)
+                # 确保错误消息在一行内包含关键对比信息
+>               assert actual == expected, (
+                       ^^^^^^^^^^^^^^^^^^
+                    f"路径 {path}: 期望 {expected!r}, 实际 {actual!r}"
+E                   AssertionError: 路径 $.code: 期望 0, 实际 '000000'
+
+support\assertions.py:31: AssertionError
+--------------------------------- JSON report ---------------------------------
+report saved to: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\api_automation\runs\apirun-2b423c136fc25080\report.json
+=========================== short test summary info ===========================
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-a1ceceb7c291b57b]
+======================== 1 failed, 17 passed in 2.44s =========================

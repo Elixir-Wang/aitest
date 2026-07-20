@@ -108,10 +108,109 @@ def run_script_suite(
     status = "failed"
     if pytest.returncode == 0 and summary.get("failed", 0) == 0:
         status = "observed" if observations else "passed"
+
+    # 构建详细的失败消息
+    error_message = ""
+    if pytest.returncode != 0:
+        failed_count = summary.get("failed", 0)
+        passed_count = summary.get("passed", 0)
+        total_count = summary.get("total", 0)
+
+        # 从 stdout.txt 中解析详细的失败信息（包含完整的错误消息）
+        stdout_path = run_dir / "stdout.txt"
+        stdout_content = stdout_path.read_text(encoding="utf-8") if stdout_path.exists() else ""
+
+        # 从 report.json 中提取失败的测试用例信息
+        failed_tests = []
+        for test in summary.get("tests", []):
+            if test.get("outcome") == "failed":
+                nodeid = test.get("nodeid", "")
+                # 提取用例名称（去掉路径）
+                test_name = nodeid.split("::")[-1] if "::" in nodeid else nodeid
+
+                # 从 stdout 中提取该用例的详细失败信息
+                error_detail = "断言失败"
+                lines = stdout_content.split("\n")
+                test_block_start = -1
+                test_block_end = -1
+
+                # 找到该用例的失败信息块
+                for i, line in enumerate(lines):
+                    if test_name in line and "test_agent_analysis" in line:
+                        test_block_start = i
+                        # 找到下一个测试用例或 FAILURES 结束标记
+                        for j in range(i + 1, len(lines)):
+                            if lines[j].startswith("===") or lines[j].startswith("FAILED"):
+                                test_block_end = j
+                                break
+                        break
+
+                if test_block_start >= 0:
+                    test_block_end = test_block_end if test_block_end > 0 else min(test_block_start + 60, len(lines))
+                    test_block = "\n".join(lines[test_block_start:test_block_end])
+
+                    # 从测试块中提取详细信息
+                    # 1. 提取 case_id
+                    case_id_match = re.search(r"case_id['\"]:\s*['\"]([^'\"]+)['\"]", test_block)
+                    if case_id_match:
+                        case_id = case_id_match.group(1)
+
+                    # 2. 提取断言失败详情（查找 "断言X" 或 "期望值"/"实际值"）
+                    assertion_detail = ""
+                    for line in lines[test_block_start:test_block_end]:
+                        if "断言" in line and "失败" in line:
+                            # 找到失败信息，提取关键部分
+                            assertion_detail = line.strip()
+                            break
+
+                    # 3. 如果没有找到，从 E 行提取错误
+                    if not assertion_detail:
+                        for line in lines[test_block_start:test_block_end]:
+                            if line.strip().startswith("E "):
+                                assertion_detail = line.strip()[2:].strip()
+                                break
+
+                    # 4. 尝试从断言代码中提取期望值和实际值
+                    expected_match = re.search(r"expected['\"]?:\s*(\d+|true|false|'[^']*'|\"[^\"]*\")", test_block)
+                    actual_line = ""
+                    for line in lines[test_block_start:test_block_end]:
+                        if "实际值" in line or "actual" in line.lower():
+                            actual_line = line
+                            break
+
+                    if assertion_detail:
+                        error_detail = assertion_detail
+                    elif expected_match:
+                        error_detail = f"期望 {expected_match.group(1)}"
+                        if actual_line:
+                            actual_match = re.search(r"[实际actual][:：]\s*(.+?)(?:\n|$)", actual_line, re.IGNORECASE)
+                            if actual_match:
+                                error_detail += f"，实际 {actual_match.group(1).strip()}"
+                        else:
+                            error_detail += "（查看详情请查看控制台输出）"
+                    else:
+                        error_detail = f"用例 {case_id}" if case_id else "断言失败"
+
+                # 清理错误详情，限制长度
+                if len(error_detail) > 80:
+                    error_detail = error_detail[:80] + "..."
+
+                failed_tests.append(f"{test_name}: {error_detail}")
+
+        if failed_tests:
+            # 构建详细错误消息
+            error_message = f"pytest 执行失败：{failed_count}/{total_count} 个测试用例失败\n\n"
+            for i, failed in enumerate(failed_tests[:5], 1):
+                error_message += f"  {i}. {failed}\n"
+            if len(failed_tests) > 5:
+                error_message += f"  ... 还有 {len(failed_tests) - 5} 个失败用例\n"
+        else:
+            error_message = f"pytest 执行失败（exitcode={pytest.returncode}）"
+
     return {
         "status": status,
         "summary": summary,
-        "error_message": "" if pytest.returncode == 0 else "pytest 执行失败。",
+        "error_message": error_message,
         "stdout_path": str(run_dir / "stdout.txt"),
         "stderr_path": str(run_dir / "stderr.txt"),
         "json_report_path": str(report_path),

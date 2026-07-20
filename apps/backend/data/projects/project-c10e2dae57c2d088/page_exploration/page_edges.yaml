@@ -1,0 +1,17 @@
+edges:
+- id: edge-bf7a2aad1adbbcea
+  run_id: exp_-f2F3GoSM_nIdibfHl4oZQ
+  from_page_id: page-file-library
+  to_page_id: page-chat
+  action: click
+  from_url: /file-library
+  to_url: /chat
+  observed_at: '2026-07-20T11:26:37.642721+00:00'
+- id: edge-29cf16d5d37b0c4c
+  run_id: exp_-f2F3GoSM_nIdibfHl4oZQ
+  from_page_id: page-chat
+  to_page_id: page-application-knowledge-search
+  action: click
+  from_url: /chat
+  to_url: /application/knowledge-search
+  observed_at: '2026-07-20T11:26:43.809489+00:00'

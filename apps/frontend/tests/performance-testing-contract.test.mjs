@@ -51,9 +51,21 @@ const runDetailSource = readFileSync(
   new URL("../src/components/ai-testing/performance-testing/performance-run-detail.tsx", import.meta.url),
   "utf8",
 );
-const detailSource = readFileSync(
-  new URL("../src/components/ai-testing/performance-testing/performance-test-detail.tsx", import.meta.url),
+const locustConsoleSource = readFileSync(
+  new URL("../src/components/ai-testing/performance-testing/locust-console.tsx", import.meta.url),
   "utf8",
+);
+const locustStartPanelSource = readFileSync(
+  new URL("../src/components/ai-testing/performance-testing/locust-start-panel.tsx", import.meta.url),
+  "utf8",
+);
+const detailPageUrl = new URL(
+  "../src/app/(main)/projects/[projectId]/performance-tests/[testId]/page.tsx",
+  import.meta.url,
+);
+const detailComponentUrl = new URL(
+  "../src/components/ai-testing/performance-testing/performance-test-detail.tsx",
+  import.meta.url,
 );
 
 test("performance testing sidebar entry is enabled and project scoped", () => {
@@ -134,18 +146,19 @@ test("performance script API and review route support generation, edits, and con
   assert.match(scriptReviewSource, /确认脚本/);
 });
 
-test("confirmed performance script launches the project-native performance run page", () => {
+test("confirmed performance script explicitly enters the Locust console", () => {
   assert.match(apiClientSource, /export function createPerformanceRun/);
   assert.match(apiClientSource, /export function getPerformanceRun/);
-  assert.match(scriptReviewSource, /启动 Locust UI/);
+  assert.match(scriptReviewSource, /进入 Locust 控制台/);
   assert.match(scriptReviewSource, /performance-tests\/\$\{testId\}\/runs\/\$\{run\.id\}/);
   assert.doesNotMatch(scriptReviewSource, /createLocustUiSession|window\.open/);
 });
 
-test("performance detail does not auto-launch a duplicate Locust session", () => {
-  assert.doesNotMatch(detailSource, /autoStarted|Auto-launch/);
-  assert.doesNotMatch(detailSource, /负载配置|LoadProfileRail/);
-  assert.match(detailSource, /成功规则与目标/);
+test("performance test detail page is removed", () => {
+  assert.equal(existsSync(detailPageUrl), false);
+  assert.equal(existsSync(detailComponentUrl), false);
+  assert.doesNotMatch(projectListSource, /performance-tests\/\$\{item\.id\}(?!\/)/);
+  assert.doesNotMatch(allListSource, /performance-tests\/\$\{item\.id\}(?!\/)/);
 });
 
 test("project-native performance run workspace is present", () => {
@@ -157,7 +170,13 @@ test("project-native performance run workspace is present", () => {
   );
   assert.match(apiClientSource, /export function getPerformanceRun/);
   assert.match(apiClientSource, /export function getPerformanceRunStats/);
+  assert.match(apiClientSource, /export function startPerformanceRun/);
   assert.match(apiClientSource, /export function stopPerformanceRun/);
-  assert.match(runDetailSource, /实时图表/);
-  assert.match(runDetailSource, /运行日志/);
+  assert.match(runDetailSource, /LocustConsole/);
+  assert.match(locustStartPanelSource, /Start new load test/);
+  assert.match(locustConsoleSource, /Statistics/);
+  assert.match(locustConsoleSource, /Charts/);
+  assert.match(locustConsoleSource, /Failures/);
+  assert.match(locustConsoleSource, /Exceptions/);
+  assert.match(locustConsoleSource, /Download Data/);
 });

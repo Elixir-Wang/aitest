@@ -97,6 +97,7 @@ export function ApiRunDetail({ projectId, runId }: { projectId: string; runId: s
       )}
       description="查看一次接口自动化运行的执行环境、结果、日志和 JSON 报告。"
       projectScope="project"
+      title="接口自动化运行详情"
     >
       <ShellSection className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-5">

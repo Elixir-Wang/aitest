@@ -1,0 +1,206 @@
+schema_version: '3.0'
+page:
+  id: page-file-library
+  title: WeAgent
+  normalized_path: /file-library
+states:
+- id: page-file-library__root__001
+  type: root
+  title: WeAgent
+  url: http://192.168.160.67:8080/file-library?category=category_c5d4a028bd3a488e8ad6119f99e2c08d
+  elements:
+  - key: link-文件管理 当前
+    role: link
+    name: 文件管理 当前
+    action: click
+    locators:
+    - code: 'getByRole(''link'', { name: ''文件管理 当前'' })'
+    - code: locator('a:nth-of-type(2)')
+    context:
+      role: div
+      name: 知识资产二级导航
+  - key: clickable-百工智库 / 文件管理--in--agentic
+    role: clickable
+    name: 百工智库 / 文件管理
+    action: click
+    locators:
+    - code: locator('header')
+    context:
+      ordinal: 1
+      role: div
+      name: '百工智库 / 文件管理 文件管理 解析设置 文件库 - 用于文本知识库 文件库 - 用于 Agentic 知识库 类目管理 默认类别 全部状态
+        查询 批量操作 上传文件 文件名称 文件大小 状态 创建人 上传时间 任务开始时间 耗时 操作 '
+  - key: clickable-百工智库 / 文件管理--in--百工智库 / 文件管理
+    role: clickable
+    name: 百工智库 / 文件管理
+    action: click
+    locators:
+    - code: locator('header > div:nth-of-type(1)')
+    context:
+      ordinal: 2
+      role: header
+      name: 百工智库 / 文件管理
+  - key: clickable-面包屑
+    role: clickable
+    name: 面包屑
+    action: click
+    locators:
+    - code: locator('nav')
+    context:
+      role: div
+      name: 百工智库 / 文件管理
+  - key: link-文件管理
+    role: link
+    name: 文件管理
+    action: click
+    locators:
+    - code: 'getByRole(''link'', { name: ''文件管理'' })'
+    - code: locator('nav > a')
+    context:
+      role: nav
+      name: 面包屑
+  - key: clickable-文件管理 解析设置
+    role: clickable
+    name: 文件管理 解析设置
+    action: click
+    locators:
+    - code: locator('main > div > div:nth-of-type(1)')
+    context:
+      role: div
+      name: 文件管理 解析设置 文件库 - 用于文本知识库 文件库 - 用于 Agentic 知识库 类目管理 默认类别 全部状态 查询 批量操作 上传文件
+        文件名称 文件大小 状态 创建人 上传时间 任务开始时间 耗时 操作 文件名称 文件大小 状态
+  - key: clickable-类目管理 默认类别 全部状态 查询 批量操作 上传文件 文件名称 文件大小 状态 创建人 上传时间 任务开始时间 耗时 操作
+      文件名称 文件大小 状态 创建人 上传时间 任务开始时间 耗时 操作 PDF A-RAG.pdf 4.6 MB 解析完成 qifeng.dai 2026/5/29
+      23:39:10 2026/5
+    role: clickable
+    name: 类目管理 默认类别 全部状态 查询 批量操作 上传文件 文件名称 文件大小 状态 创建人 上传时间 任务开始时间 耗时 操作 文件名称 文件大小
+      状态 创建人 上传时间 任务开始时间 耗时 操作 PDF A-RAG.pdf 4.6 MB 解析完成 qifeng.dai 2026/5/29 23:39:10
+      2026/5
+    action: click
+    locators:
+    - code: locator('main > div > div:nth-of-type(3)')
+    context:
+      role: div
+      name: 文件管理 解析设置 文件库 - 用于文本知识库 文件库 - 用于 Agentic 知识库 类目管理 默认类别 全部状态 查询 批量操作 上传文件
+        文件名称 文件大小 状态 创建人 上传时间 任务开始时间 耗时 操作 文件名称 文件大小 状态
+  - key: clickable-全部状态 查询 批量操作 上传文件
+    role: clickable
+    name: 全部状态 查询 批量操作 上传文件
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(3) > div:nth-of-type(2) > div > div:nth-of-type(1)')
+    context:
+      role: div
+      name: 全部状态 查询 批量操作 上传文件 文件名称 文件大小 状态 创建人 上传时间 任务开始时间 耗时 操作 文件名称 文件大小 状态 创建人
+        上传时间 任务开始时间 耗时 操作 PDF A-RAG.pdf 4.6 MB 解析完成 qifeng
+  - key: button-上传文件
+    role: button
+    name: 上传文件
+    action: click
+    locators:
+    - code: 'getByRole(''button'', { name: ''上传文件'' })'
+    - code: locator('div > div:nth-of-type(1) > button:nth-of-type(3)')
+    context:
+      role: div
+      name: 全部状态 查询 批量操作 上传文件
+  - key: button-删除--in--pdf-a-rag-pdf-4-6-mb-qifeng-dai-2026-5-2
+    role: button
+    name: 删除
+    action: click
+    locators:
+    - code: locator('tr:nth-of-type(2) > td:nth-of-type(9) > div > button:nth-of-type(3)')
+    context:
+      ordinal: 1
+      role: tr
+      name: PDF A-RAG.pdf 4.6 MB 解析完成 qifeng.dai 2026/5/29 23:39:10 2026/5/29 23:38:36
+        34.0秒
+  - key: button-删除--in--pdf-2026-harnessengineering-78-pdf-24-5-
+    role: button
+    name: 删除
+    action: click
+    locators:
+    - code: locator('tr:nth-of-type(3) > td:nth-of-type(9) > div > button:nth-of-type(3)')
+    context:
+      ordinal: 2
+      role: tr
+      name: PDF 清华大学2026驾驭工程HarnessEngineering研究报告78页.pdf 24.5 MB 解析完成 qifeng.dai
+        2026/5/29 23:41:06 2026/5/29 23:38:37 2分29秒
+  - key: button-删除--in--pdf-pdf-11-0-mb-qifeng-dai-2026-5-29-23-
+    role: button
+    name: 删除
+    action: click
+    locators:
+    - code: locator('tr:nth-of-type(4) > td:nth-of-type(9) > div > button:nth-of-type(3)')
+    context:
+      ordinal: 3
+      role: tr
+      name: PDF 【标准方案】企业级知识库综合解决方案（终).pdf 11.0 MB 解析完成 qifeng.dai 2026/5/29 23:40:07
+        2026/5/29 23:38:36 1分31秒
+  - key: clickable-百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 当前 知识库问答 知识库搜索 应用空间
+      应用广场 运营中心 文档中心 系统管理 基 基础设施 当前团队 jing.wang1 管理员 百工智库 / 文件管理 文件管理 解析设置 文件库 - 用于文本知识库
+      文件库 - 用于 Agen--in--rag-jing-wang1
+    role: clickable
+    name: 百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 当前 知识库问答 知识库搜索 应用空间 应用广场 运营中心
+      文档中心 系统管理 基 基础设施 当前团队 jing.wang1 管理员 百工智库 / 文件管理 文件管理 解析设置 文件库 - 用于文本知识库 文件库
+      - 用于 Agen
+    action: click
+    locators:
+    - code: locator('#root')
+    context:
+      ordinal: 1
+      role: body
+      name: 百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 当前 知识库问答 知识库搜索 应用空间 应用广场 运营中心
+        文档中心 系统管理 基 基础设施 当前团队 jing.wang1 管理员 百工智库 / 文件
+  - key: clickable-百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 当前 知识库问答 知识库搜索 应用空间
+      应用广场 运营中心 文档中心 系统管理 基 基础设施 当前团队 jing.wang1 管理员 百工智库 / 文件管理 文件管理 解析设置 文件库 - 用于文本知识库
+      文件库 - 用于 Agen--in--rag-jing-wang1-2
+    role: clickable
+    name: 百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 当前 知识库问答 知识库搜索 应用空间 应用广场 运营中心
+      文档中心 系统管理 基 基础设施 当前团队 jing.wang1 管理员 百工智库 / 文件管理 文件管理 解析设置 文件库 - 用于文本知识库 文件库
+      - 用于 Agen
+    action: click
+    locators:
+    - code: locator('body > div > div:nth-of-type(1)')
+    context:
+      ordinal: 2
+      role: div
+      name: 百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 当前 知识库问答 知识库搜索 应用空间 应用广场 运营中心
+        文档中心 系统管理 基 基础设施 当前团队 jing.wang1 管理员 百工智库 / 文件
+  - key: clickable-业务工作区 知识资产 知识库 文件管理 当前 知识库问答 知识库搜索 应用空间 应用广场 运营中心 文档中心 系统管理
+    role: clickable
+    name: 业务工作区 知识资产 知识库 文件管理 当前 知识库问答 知识库搜索 应用空间 应用广场 运营中心 文档中心 系统管理
+    action: click
+    locators:
+    - code: locator('aside > div:nth-of-type(2)')
+    context:
+      role: aside
+      name: 百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 当前 知识库问答 知识库搜索 应用空间 应用广场 运营中心
+        文档中心 系统管理 基 基础设施 当前团队 jing.wang1 管理员
+  - key: clickable-知识资产 知识库 文件管理 当前 知识库问答 知识库搜索
+    role: clickable
+    name: 知识资产 知识库 文件管理 当前 知识库问答 知识库搜索
+    action: click
+    locators:
+    - code: locator('aside > div:nth-of-type(2) > div:nth-of-type(2)')
+    context:
+      role: div
+      name: 业务工作区 知识资产 知识库 文件管理 当前 知识库问答 知识库搜索 应用空间 应用广场 运营中心 文档中心 系统管理
+  assertion_texts:
+  - WeAgent
+  - 文件管理
+  - 上传文件
+  - 文件名称 文件大小 状态 创建人 上传时间 任务开始时间 耗时 操作
+  - 上传时间
+  - 删除
+  - 文件管理 当前
+  - 百工智库 / 文件管理
+  - 面包屑
+  - 文件管理 解析设置
+  - 类目管理 默认类别 全部状态 查询 批量操作 上传文件 文件名称 文件大小 状态 创建人 上传时间 任务开始时间 耗时 操作 文件名称 文件大小 状态 创建人
+    上传时间 任务开始时间 耗时 操作 PDF A-RAG.pdf 4.6 MB 解析完成 qifeng.dai 2026/5/29 23:39:10 2026/5
+  - 全部状态 查询 批量操作 上传文件
+  - 百工智库 企业知识与 RAG 平台 新建知识库 业务工作区 知识资产 知识库 文件管理 当前 知识库问答 知识库搜索 应用空间 应用广场 运营中心 文档中心
+    系统管理 基 基础设施 当前团队 jing.wang1 管理员 百工智库 / 文件管理 文件管理 解析设置 文件库 - 用于文本知识库 文件库 - 用于 Agen
+  - 业务工作区 知识资产 知识库 文件管理 当前 知识库问答 知识库搜索 应用空间 应用广场 运营中心 文档中心 系统管理
+  - 知识资产 知识库 文件管理 当前 知识库问答 知识库搜索
+  children: []

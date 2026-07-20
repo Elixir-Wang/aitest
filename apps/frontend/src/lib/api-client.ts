@@ -1007,7 +1007,7 @@ export type PerformanceRun = {
   project_id: string;
   performance_test_id: string;
   script_id: string;
-  status: string;
+  status: "created" | "starting" | "ready" | "running" | "stopping" | "completed" | "stopped" | "failed" | "cancelled";
   load_config: Record<string, unknown>;
   target_host: string;
   latest_summary: Record<string, unknown>;
@@ -1051,7 +1051,7 @@ export type PerformanceRunStats = {
   events: Array<Record<string, unknown>>;
 };
 
-export type PerformanceRunStartOptions = {
+export type PerformanceRunStartPayload = {
   users: number;
   spawn_rate: number;
   run_time: number;
@@ -1159,24 +1159,24 @@ export function createPerformanceRun(projectId: string, testId: string, scriptId
   });
 }
 
-export function startPerformanceRun(
-  projectId: string,
-  testId: string,
-  runId: string,
-  options?: PerformanceRunStartOptions,
-) {
-  return apiRequest<{ id: string; accepted: boolean }>(
-    `/projects/${projectId}/performance-tests/${testId}/runs/${runId}/start`,
-    { method: "POST", body: JSON.stringify(options ?? {}) },
-  );
-}
-
 export function getPerformanceRun(projectId: string, runId: string) {
   return apiRequest<PerformanceRun>(`/projects/${projectId}/performance-test-runs/${runId}`);
 }
 
 export function getPerformanceRunStats(projectId: string, runId: string) {
   return apiRequest<PerformanceRunStats>(`/projects/${projectId}/performance-test-runs/${runId}/stats`);
+}
+
+export function startPerformanceRun(
+  projectId: string,
+  testId: string,
+  runId: string,
+  payload: PerformanceRunStartPayload,
+) {
+  return apiRequest<{ id: string; accepted: boolean }>(
+    `/projects/${projectId}/performance-tests/${testId}/runs/${runId}/start`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
 }
 
 export function listPerformanceRunReports(projectId: string, runId: string) {
