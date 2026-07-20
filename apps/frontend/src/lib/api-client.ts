@@ -238,6 +238,46 @@ export type ApiTestCaseSetCreate = {
   notes: string;
 };
 
+export type ApiTestPoint = {
+  id: string;
+  project_id: string;
+  document_id: string;
+  requirement_version_id: string;
+  generation_run_id: string;
+  point_key: string;
+  title: string;
+  module: string;
+  category: string;
+  priority: string;
+  description: string;
+  preconditions: string[];
+  verification_points: string[];
+  source_refs: string[];
+  notes: string;
+  status: "draft" | "confirmed" | "deprecated";
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiTestPointGenerationRun = {
+  id: string;
+  task_id: string;
+  requirement_version_id: string;
+  status: string;
+  status_label?: string;
+  input_snapshot: Record<string, unknown>;
+  error_message: string;
+  created_at: string;
+  finished_at: string | null;
+};
+
+export type ApiTestPointOverview = {
+  requirement_version_id: string | null;
+  requirement_version_no: number | null;
+  run: ApiTestPointGenerationRun | null;
+  points: ApiTestPoint[];
+};
+
 type ApiDashboardMetric = {
   label: string;
   value: string;

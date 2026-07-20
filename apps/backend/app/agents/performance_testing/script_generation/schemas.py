@@ -1,3 +1,5 @@
+"""Structured models used by the performance script generation capability."""
+
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field

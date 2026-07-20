@@ -1,6 +1,6 @@
 import json
 
-from app.services.performance_testing.models import LocustScriptPlan
+from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan
 
 
 def render_locust_script(plan: LocustScriptPlan) -> str:

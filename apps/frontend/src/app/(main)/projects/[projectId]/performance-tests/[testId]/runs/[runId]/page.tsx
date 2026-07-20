@@ -11,7 +11,7 @@ export default function Page() {
   return (
     <PageShell
       breadcrumbs={moduleBreadcrumbs("performanceTests", { label: "Locust 控制台" })}
-      description="项目内迁移的 Locust 原生启动、统计、图表、失败、异常和下载控制台。"
+      description="查看 Locust 实时统计、趋势、失败请求、异常和运行报告。"
       projectScope="project"
       title="Locust 控制台"
     >

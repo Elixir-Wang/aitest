@@ -1,34 +1,34 @@
 run_id: exp_Am3HGwQW4awyEobW17YWEw
 project_id: project-75fec50973f2adf6
-updated_at: '2026-07-17T11:44:54.762856+00:00'
+updated_at: '2026-07-20T16:47:26.725977+00:00'
 items:
 - id: ''
-  content: 导航到工作台页面并建立初始快照
+  content: Snap and inventory landing page /agentStore
   status: completed
 - id: ''
-  content: 盘点工作台页面所有可交互元素
+  content: Map navigation/sidebar to discover workspace areas
   status: completed
 - id: ''
-  content: 执行：创建按钮 - 打开创建智能体弹窗/流程
-  status: completed
+  content: Test workspace search box
+  status: in_progress
 - id: ''
-  content: 执行：搜索框 - 测试搜索功能
-  status: completed
+  content: Test workspace filters (类型, 范围, 状态) and sort
+  status: pending
 - id: ''
-  content: 执行：类型筛选下拉框
-  status: completed
+  content: Click 创建 (Create) button to open creation dialog
+  status: pending
 - id: ''
-  content: 执行：智能体卡片操作 - 分析/使用/对话历史
-  status: completed
+  content: Click 导入 (Import) button to open import dialog
+  status: pending
 - id: ''
-  content: 执行：分析页面 - 数据统计/用户洞察切换
-  status: completed
+  content: Click agent cards (edit, analyze, use, history)
+  status: pending
 - id: ''
-  content: 执行：分析页面 - 时间选择器
-  status: completed
+  content: Test create agent end-to-end flow
+  status: pending
 - id: ''
-  content: 返回工作台继续执行其他元素
-  status: completed
+  content: Cleanup test data and verify
+  status: pending
 - id: ''
-  content: 生成最终报告
-  status: completed
+  content: Produce final report
+  status: pending

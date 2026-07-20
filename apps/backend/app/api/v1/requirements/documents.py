@@ -13,6 +13,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.document import SourceDocumentUpdateIn
 from app.services.document import documents as document_documents
+from app.services import test_point_service
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirements"])
 
@@ -65,9 +66,15 @@ def update_requirement(
     project_id: str,
     document_id: str,
     payload: SourceDocumentUpdateIn,
+    background_tasks: BackgroundTasks,
     actor=Depends(require_admin),
 ) -> dict:
-    return document_documents.update_document(project_id, document_id, payload, actor)
+    result = document_documents.update_document(project_id, document_id, payload, actor)
+    run = test_point_service.enqueue_generation(project_id, document_id, actor, require_admin=True)
+    if run and run["status"] == "queued":
+        background_tasks.add_task(test_point_service.execute_generation_run, run["id"])
+    result["test_point_generation_run"] = run
+    return result
 
 
 @router.delete("/{document_id}")

@@ -50,6 +50,7 @@ class TestCaseGenerationInput(BaseModel):
     requirement_name: str = Field(..., description="需求名称")
     requirement_content: str = Field(..., description="最终需求内容（需求理解）")
     generation_scope: str = Field(default="", description="生成范围（可选，如：只生成登录模块的测试用例）")
+    test_points: list[dict] = Field(default_factory=list, description="当前最终需求版本下的测试点")
     rejected_case_feedback: list[RejectedTestCaseFeedback] = Field(default_factory=list, description="历史不采纳用例反馈")
 
 

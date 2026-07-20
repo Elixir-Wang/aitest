@@ -38,6 +38,7 @@ import {
   requirementVersionSummary,
 } from "@/components/ai-testing/requirement-version-detail-content";
 import { StandardMarkdownEditor } from "@/components/ai-testing/standard-markdown-editor";
+import { TestPointsPanel } from "@/components/ai-testing/test-points-panel";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { AiEditInput } from "@/components/ui/ai-input";
 import {
@@ -78,8 +79,8 @@ import {
   formatDateTime,
 } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
-import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { cn } from "@/lib/utils";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useAuthStore } from "@/stores/auth-store";
 
 const STANDARD_FILE_SECTION_ID = "standard-file-section";
@@ -514,6 +515,7 @@ export default function DocumentDetailPage() {
   const [finalizeConfirmOpen, setFinalizeConfirmOpen] = useState(false);
   const [reviewClearConfirmOpen, setReviewClearConfirmOpen] = useState(false);
   const token = useAuthStore((state) => state.token);
+  const authUser = useAuthStore((state) => state.user);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
@@ -823,7 +825,10 @@ export default function DocumentDetailPage() {
     } else if (queryTab === "clarification") {
       setActiveTab("analysis");
       setAnalysisTab("clarification");
-    } else if (queryTab && ["overview", "original", "standard", "analysis", "final", "versions"].includes(queryTab)) {
+    } else if (
+      queryTab &&
+      ["overview", "original", "standard", "analysis", "final", "test-points", "versions"].includes(queryTab)
+    ) {
       setActiveTab(queryTab);
     }
     void loadOverview();
@@ -1664,6 +1669,7 @@ export default function DocumentDetailPage() {
           <TabsTrigger value="standard">标准文件</TabsTrigger>
           <TabsTrigger value="analysis">需求分析</TabsTrigger>
           <TabsTrigger value="final">最终需求</TabsTrigger>
+          <TabsTrigger value="test-points">测试点</TabsTrigger>
           <TabsTrigger value="versions">版本记录</TabsTrigger>
         </TabsList>
 
@@ -2278,6 +2284,15 @@ export default function DocumentDetailPage() {
                 emptyText={finalRequirementEmptyText}
               />
             )}
+          </ShellSection>
+        </TabsContent>
+
+        <TabsContent value="test-points">
+          <ShellSection>
+            <div className="mb-3">
+              <h2 className="font-medium text-sm">测试点</h2>
+            </div>
+            <TestPointsPanel canEdit={authUser?.role === "admin"} documentId={documentId} projectId={projectId} />
           </ShellSection>
         </TabsContent>
 

@@ -35,6 +35,11 @@ AI_CAPABILITIES: tuple[AiCapability, ...] = (
         description="根据最终需求文档生成完整、系统、可执行的测试用例集。",
     ),
     AiCapability(
+        id="test_point_generation",
+        name="测试点生成",
+        description="根据指定最终需求版本生成结构化、可追溯、可评审的业务测试点。",
+    ),
+    AiCapability(
         id="api_test_generation",
         name="接口自动化用例生成",
         description="根据 OpenAPI 接口定义、接口环境摘要和测试重点生成结构化接口自动化用例。",

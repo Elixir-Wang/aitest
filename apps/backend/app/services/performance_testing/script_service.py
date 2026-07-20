@@ -12,8 +12,8 @@ from app.repositories import (
     performance_test_repo,
 )
 from app.services.performance_testing import service
-from app.services.performance_testing.ai_plan_builder import PROMPT_VERSION, build_ai_or_default_plan
-from app.services.performance_testing.models import LocustScriptPlan
+from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan
+from app.agents.performance_testing.script_generation.service import PROMPT_VERSION, build_ai_or_default_plan
 from app.services.performance_testing.script_renderer import render_locust_script
 from app.services.performance_testing.validator import validate_locust_script
 

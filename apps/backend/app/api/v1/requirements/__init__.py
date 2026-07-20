@@ -22,6 +22,7 @@ from app.api.v1.requirements import (
     documents,
     files,
     metadata,
+    test_points,
     versions,
 )
 from app.dependencies.auth import current_user
@@ -36,6 +37,7 @@ router.include_router(versions.router)
 router.include_router(analysis_runs.router)
 router.include_router(analysis.router)
 router.include_router(metadata.router)
+router.include_router(test_points.router)
 
 
 global_router = APIRouter(prefix="/requirements", tags=["requirements"])

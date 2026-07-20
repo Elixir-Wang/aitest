@@ -15,10 +15,6 @@ const locustConsoleUrl = new URL(
   "../src/components/ai-testing/performance-testing/locust-console.tsx",
   import.meta.url,
 );
-const locustStartPanelUrl = new URL(
-  "../src/components/ai-testing/performance-testing/locust-start-panel.tsx",
-  import.meta.url,
-);
 const testDetailUrl = new URL(
   "../src/components/ai-testing/performance-testing/performance-test-detail.tsx",
   import.meta.url,
@@ -32,16 +28,15 @@ test("performance run page hosts the Locust-native console", () => {
   assert.equal(existsSync(locustConsoleUrl), true);
   const detailSource = readFileSync(detailUrl, "utf8");
   const consoleSource = readFileSync(locustConsoleUrl, "utf8");
-  const startPanelSource = readFileSync(locustStartPanelUrl, "utf8");
   assert.match(detailSource, /LocustConsole/);
-  assert.match(startPanelSource, /Start new load test/);
-  assert.match(consoleSource, /Statistics/);
-  assert.match(consoleSource, /Charts/);
-  assert.match(consoleSource, /Failures/);
-  assert.match(consoleSource, /Exceptions/);
-  assert.match(consoleSource, /Download Data/);
-  assert.match(consoleSource, /Stop/);
-  assert.match(consoleSource, /Reset Stats/);
+  assert.doesNotMatch(consoleSource, /LocustStartPanel|Start new load test/);
+  assert.match(consoleSource, /统计/);
+  assert.match(consoleSource, /趋势图/);
+  assert.match(consoleSource, /失败请求/);
+  assert.match(consoleSource, /下载文件/);
+  assert.match(consoleSource, /开始压测/);
+  assert.match(consoleSource, /停止/);
+  assert.match(consoleSource, /重置统计/);
 });
 
 

@@ -43,6 +43,18 @@ async def generate_test_cases(input_data: TestCaseGenerationInput) -> TestCaseGe
         content_parts.append("")
         content_parts.append(f"生成范围: {input_data.generation_scope}")
 
+    if input_data.test_points:
+        content_parts.append("")
+        content_parts.append("测试点（必须覆盖已提供测试点，不得忽略；测试点未明确的业务规则不得编造）:")
+        for index, point in enumerate(input_data.test_points, 1):
+            content_parts.append(
+                f"{index}. [{point.get('point_key', '')}] {point.get('title', '')} "
+                f"模块={point.get('module', '')} 类型={point.get('category', '')} 优先级={point.get('priority', '')}"
+            )
+            content_parts.append(f"   描述: {point.get('description', '')}")
+            for verification in point.get("verification_points", []):
+                content_parts.append(f"   验证点: {verification}")
+
     if input_data.rejected_case_feedback:
         content_parts.append("")
         content_parts.append("历史不采纳用例反馈（重新生成时必须参考，避免再次生成同类问题；反馈为空时不得编造拒绝原因）:")

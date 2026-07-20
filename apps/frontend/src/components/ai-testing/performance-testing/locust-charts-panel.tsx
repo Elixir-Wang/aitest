@@ -14,13 +14,13 @@ export function LocustChartsPanel({ samples }: { samples: LocustChartSample[] })
   if (samples.length < 2) {
     return (
       <div className="rounded-md border px-4 py-16 text-center text-muted-foreground text-sm">
-        Charts appear after Locust has produced multiple samples.
+        产生多条采样数据后将显示趋势图
       </div>
     );
   }
   return (
     <div className="grid gap-5 xl:grid-cols-2">
-      <ChartCard title="Total requests per second">
+      <ChartCard title="每秒请求数与失败率">
         <LineChart data={samples}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="sampledAt" minTickGap={30} />
@@ -31,14 +31,14 @@ export function LocustChartsPanel({ samples }: { samples: LocustChartSample[] })
           <Line
             dataKey="failuresPerSecond"
             dot={false}
-            name="Failures/s"
+            name="失败数/秒"
             stroke="var(--destructive)"
             strokeWidth={2}
             type="monotone"
           />
         </LineChart>
       </ChartCard>
-      <ChartCard title="Response time and users">
+      <ChartCard title="响应时间与用户数">
         <LineChart data={samples}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="sampledAt" minTickGap={30} />
@@ -48,12 +48,12 @@ export function LocustChartsPanel({ samples }: { samples: LocustChartSample[] })
           <Line
             dataKey="responseTime"
             dot={false}
-            name="Average response time"
+            name="平均响应时间"
             stroke="var(--chart-2)"
             strokeWidth={2}
             type="monotone"
           />
-          <Line dataKey="users" dot={false} name="Users" stroke="var(--chart-4)" strokeWidth={2} type="stepAfter" />
+          <Line dataKey="users" dot={false} name="用户数" stroke="var(--chart-4)" strokeWidth={2} type="stepAfter" />
         </LineChart>
       </ChartCard>
     </div>

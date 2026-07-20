@@ -235,6 +235,7 @@ def _projection_tool_event_to_timeline_event(
                     "plan_steps": plan_steps,
                 }
             ),
+            "display": display,
         }
     if display is None:
         return None

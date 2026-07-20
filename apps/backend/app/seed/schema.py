@@ -239,6 +239,56 @@ CREATE INDEX IF NOT EXISTS idx_test_case_sets_project_updated
 CREATE INDEX IF NOT EXISTS idx_test_case_sets_requirement
   ON test_case_sets(requirement_doc_id);
 
+CREATE TABLE IF NOT EXISTS test_point_generation_runs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  document_id TEXT NOT NULL,
+  requirement_version_id TEXT NOT NULL,
+  task_id TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed')),
+  input_json TEXT NOT NULL DEFAULT '{}',
+  error_message TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finished_at TEXT,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
+  FOREIGN KEY(requirement_version_id) REFERENCES document_versions(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_test_point_generation_version
+  ON test_point_generation_runs(document_id, requirement_version_id);
+
+CREATE TABLE IF NOT EXISTS test_points (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  document_id TEXT NOT NULL,
+  requirement_version_id TEXT NOT NULL,
+  generation_run_id TEXT NOT NULL,
+  point_key TEXT NOT NULL,
+  title TEXT NOT NULL,
+  module TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'P1',
+  description TEXT NOT NULL DEFAULT '',
+  preconditions_json TEXT NOT NULL DEFAULT '[]',
+  verification_points_json TEXT NOT NULL DEFAULT '[]',
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  notes TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK(status IN ('draft', 'confirmed', 'deprecated')) DEFAULT 'draft',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
+  FOREIGN KEY(requirement_version_id) REFERENCES document_versions(id) ON DELETE CASCADE,
+  FOREIGN KEY(generation_run_id) REFERENCES test_point_generation_runs(id) ON DELETE CASCADE,
+  UNIQUE(requirement_version_id, point_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_test_points_document_version
+  ON test_points(document_id, requirement_version_id, status);
+
 CREATE TABLE IF NOT EXISTS test_case_generation_runs (
   id TEXT PRIMARY KEY,
   test_case_set_id TEXT NOT NULL,

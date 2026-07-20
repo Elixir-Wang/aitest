@@ -6,7 +6,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from app.services.performance_testing.models import LocustScriptPlan, ScriptValidationResult
+from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan, ScriptValidationResult
 
 
 ALLOWED_IMPORTS = {"json", "math", "random", "time", "uuid", "locust"}

@@ -11,7 +11,7 @@ from app.agents.test_case_generation.schemas import (
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
-from app.repositories import document_repo, project_repo, test_case_repo
+from app.repositories import document_repo, project_repo, test_case_repo, test_point_repo
 from app.schemas.test_case import TestCaseReviewIn, TestCaseSetCreateIn
 from app.services.test_case_xmind_exporter import build_test_case_set_xmind, safe_xmind_filename
 
@@ -228,9 +228,10 @@ def _build_generation_input(run_context: dict) -> TestCaseGenerationInput:
         if not requirement:
             raise ValueError("需求文档不存在，无法生成测试用例。")
 
-        version = document_repo.find_latest_final_requirement_version(db, requirement["id"])
-        if not version:
+        version = document_repo.find_version(db, requirement["current_version_id"]) if requirement["current_version_id"] else None
+        if not version or version["source_action"] not in {"requirement_analysis", "requirement_analysis_finalize", "edit"}:
             raise ValueError("该需求文档尚未生成最终需求，请先完成需求分析。")
+        point_rows = test_point_repo.list_points(db, requirement["id"], version["id"])
 
     final_requirement_content = _read_final_requirement_content(version)
     if not final_requirement_content.strip():
@@ -244,6 +245,20 @@ def _build_generation_input(run_context: dict) -> TestCaseGenerationInput:
         requirement_name=requirement["name"],
         requirement_content=final_requirement_content,
         generation_scope=generation_scope,
+        test_points=[
+            {
+                "point_key": row["point_key"],
+                "title": row["title"],
+                "module": row["module"],
+                "category": row["category"],
+                "priority": row["priority"],
+                "description": row["description"],
+                "verification_points": json.loads(row["verification_points_json"] or "[]"),
+                "status": row["status"],
+            }
+            for row in point_rows
+            if row["status"] != "deprecated"
+        ],
         rejected_case_feedback=[
             RejectedTestCaseFeedback.model_validate(item)
             for item in _generation_run_input_snapshot(run_context).get("rejected_case_feedback", [])

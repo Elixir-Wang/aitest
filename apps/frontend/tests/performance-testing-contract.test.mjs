@@ -55,10 +55,6 @@ const locustConsoleSource = readFileSync(
   new URL("../src/components/ai-testing/performance-testing/locust-console.tsx", import.meta.url),
   "utf8",
 );
-const locustStartPanelSource = readFileSync(
-  new URL("../src/components/ai-testing/performance-testing/locust-start-panel.tsx", import.meta.url),
-  "utf8",
-);
 const detailPageUrl = new URL(
   "../src/app/(main)/projects/[projectId]/performance-tests/[testId]/page.tsx",
   import.meta.url,
@@ -173,10 +169,9 @@ test("project-native performance run workspace is present", () => {
   assert.match(apiClientSource, /export function startPerformanceRun/);
   assert.match(apiClientSource, /export function stopPerformanceRun/);
   assert.match(runDetailSource, /LocustConsole/);
-  assert.match(locustStartPanelSource, /Start new load test/);
-  assert.match(locustConsoleSource, /Statistics/);
-  assert.match(locustConsoleSource, /Charts/);
-  assert.match(locustConsoleSource, /Failures/);
-  assert.match(locustConsoleSource, /Exceptions/);
-  assert.match(locustConsoleSource, /Download Data/);
+  assert.doesNotMatch(locustConsoleSource, /LocustStartPanel|Start new load test/);
+  assert.match(locustConsoleSource, /统计/);
+  assert.match(locustConsoleSource, /趋势图/);
+  assert.match(locustConsoleSource, /失败请求/);
+  assert.match(locustConsoleSource, /下载文件/);
 });

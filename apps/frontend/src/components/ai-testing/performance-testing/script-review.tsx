@@ -153,9 +153,14 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
         </section>
 
         <section className="min-w-0">
-          <h2 className="mb-2 font-semibold text-sm">只读 Locust 脚本</h2>
-          <pre className="max-h-[720px] overflow-auto rounded-lg border bg-slate-950 p-4 text-slate-100 text-xs leading-5">
-            <code>{script.code}</code>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="font-semibold text-sm">只读 Locust 脚本</h2>
+            <span className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+              Python
+            </span>
+          </div>
+          <pre className="max-h-[720px] overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-4 font-mono text-slate-800 text-xs leading-5 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:shadow-none">
+            <code className="whitespace-pre">{script.code}</code>
           </pre>
         </section>
       </div>

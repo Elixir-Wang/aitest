@@ -3,18 +3,18 @@
 import { useMemo } from "react";
 
 const COLUMNS = [
-  ["method", "Type"],
-  ["name", "Name"],
-  ["request_count", "Requests"],
-  ["failure_count", "Fails"],
-  ["median_response_time_ms", "Median (ms)"],
-  ["p95_response_time_ms", "95%ile (ms)"],
-  ["p99_response_time_ms", "99%ile (ms)"],
-  ["average_response_time_ms", "Average (ms)"],
-  ["min_response_time_ms", "Min (ms)"],
-  ["max_response_time_ms", "Max (ms)"],
-  ["content_size", "Average size (bytes)"],
-  ["requests_per_second", "Current RPS"],
+  ["method", "方法"],
+  ["name", "名称"],
+  ["request_count", "请求数"],
+  ["failure_count", "失败数"],
+  ["median_response_time_ms", "中位数（毫秒）"],
+  ["p95_response_time_ms", "P95（毫秒）"],
+  ["p99_response_time_ms", "P99（毫秒）"],
+  ["average_response_time_ms", "平均值（毫秒）"],
+  ["min_response_time_ms", "最小值（毫秒）"],
+  ["max_response_time_ms", "最大值（毫秒）"],
+  ["content_size", "平均大小（字节）"],
+  ["requests_per_second", "当前 RPS"],
 ] as const;
 
 export function LocustStatisticsTable({ rows }: { rows: Array<Record<string, unknown>> }) {
@@ -22,7 +22,7 @@ export function LocustStatisticsTable({ rows }: { rows: Array<Record<string, unk
   return (
     <DataGrid
       columns={COLUMNS}
-      empty="No requests have been recorded."
+      empty="暂无请求记录"
       rows={displayedRows}
       rowKey={(row, index) => `${index}:${String(row.method ?? "")}:${String(row.name ?? "")}`}
     />
@@ -39,12 +39,7 @@ export function LocustGenericTable({
   empty: string;
 }) {
   return (
-    <DataGrid
-      columns={columns}
-      empty={empty}
-      rows={rows}
-      rowKey={(row, index) => JSON.stringify(row) + ":" + index}
-    />
+    <DataGrid columns={columns} empty={empty} rows={rows} rowKey={(row, index) => `${JSON.stringify(row)}:${index}`} />
   );
 }
 

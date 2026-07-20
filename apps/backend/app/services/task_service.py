@@ -15,6 +15,7 @@ RUNNING_INDICATOR_SOURCE_TYPES = {
     "requirement_analysis_run",
     "requirement_finalization_run",
     "test_case_generation_run",
+    "test_point_generation_run",
     "api_automation_generation_run",
     "api_script_generation_run",
     "api_automation_run",
@@ -63,6 +64,13 @@ TEST_CASE_GENERATION_STATUS = {
     "failed": (FAILED_GROUP, "生成失败"),
 }
 
+TEST_POINT_GENERATION_STATUS = {
+    "queued": (RUNNING_GROUP, "排队中"),
+    "running": (RUNNING_GROUP, "生成中"),
+    "completed": (COMPLETED_GROUP, "生成完成"),
+    "failed": (FAILED_GROUP, "生成失败"),
+}
+
 API_AUTOMATION_GENERATION_STATUS = {
     "queued": (RUNNING_GROUP, "排队中"),
     "running": (RUNNING_GROUP, "生成中"),
@@ -97,6 +105,7 @@ STATUS_META_BY_SOURCE_TYPE = {
     "requirement_analysis_run": REQUIREMENT_ANALYSIS_STATUS,
     "requirement_finalization_run": REQUIREMENT_FINALIZATION_STATUS,
     "test_case_generation_run": TEST_CASE_GENERATION_STATUS,
+    "test_point_generation_run": TEST_POINT_GENERATION_STATUS,
     "api_automation_generation_run": API_AUTOMATION_GENERATION_STATUS,
     "api_script_generation_run": API_SCRIPT_GENERATION_STATUS,
     "api_automation_run": API_AUTOMATION_RUN_STATUS,
@@ -160,6 +169,7 @@ def get_task_by_source_for_event(*, source_type: str, source_id: str) -> dict | 
             *_requirement_analysis_run_tasks(db, project_names),
             *_requirement_finalization_tasks(db, project_names),
             *_test_case_generation_tasks(db, project_names),
+            *_test_point_generation_tasks(db, project_names),
             *_api_automation_generation_tasks(db, project_names),
             *_api_script_generation_tasks(db, project_names),
             *_api_automation_run_tasks(db, project_names),
@@ -283,6 +293,7 @@ def _collect_visible_tasks(actor) -> list[dict]:
             *_requirement_analysis_run_tasks(db, project_names),
             *_requirement_finalization_tasks(db, project_names),
             *_test_case_generation_tasks(db, project_names),
+            *_test_point_generation_tasks(db, project_names),
             *_api_automation_generation_tasks(db, project_names),
             *_api_script_generation_tasks(db, project_names),
             *_api_automation_run_tasks(db, project_names),
@@ -463,6 +474,30 @@ def _test_case_generation_tasks(db, project_names: dict[str, str]) -> list[dict]
             created_at=row["created_at"],
             updated_at=row["updated_at"] or row["created_at"],
             detail_url=f"/test-cases?set={row['test_case_set_id']}",
+        )
+        for row in rows
+    ]
+
+
+def _test_point_generation_tasks(db, project_names: dict[str, str]) -> list[dict]:
+    if not project_names or not _table_exists(db, "test_point_generation_runs"):
+        return []
+    rows = db.execute(
+        """SELECT r.id, r.task_id, r.status, r.error_message, r.created_at, r.updated_at,
+                  r.project_id, r.document_id, d.name AS document_name
+           FROM test_point_generation_runs r
+           JOIN source_documents d ON d.id = r.document_id
+           WHERE r.project_id IN ({})""".format(_placeholders(project_names)),
+        tuple(project_names),
+    ).fetchall()
+    return [
+        _task(
+            task_id=row["task_id"], source_type="test_point_generation_run", source_id=row["id"],
+            project_id=row["project_id"], project_name=project_names[row["project_id"]],
+            module="requirement", module_label="测试点", title=row["document_name"], status=row["status"],
+            status_meta=TEST_POINT_GENERATION_STATUS, summary=row["error_message"],
+            created_at=row["created_at"], updated_at=row["updated_at"] or row["created_at"],
+            detail_url=f"/projects/{row['project_id']}/requirements/{row['document_id']}?tab=test-points",
         )
         for row in rows
     ]

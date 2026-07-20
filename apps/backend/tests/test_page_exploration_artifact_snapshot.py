@@ -1336,7 +1336,7 @@ def test_exploration_completion_status_is_failed_for_step_errors(tmp_path: Path)
     assert page_exploration_service._exploration_completion_status([]) == "completed"
 
 
-def test_projection_write_todos_only_completed_updates_plan_without_transcript_display() -> None:
+def test_projection_write_todos_completed_updates_plan_with_transcript_display() -> None:
     tool_inputs: dict[str, dict] = {}
     started = page_exploration_service._projection_chunk_to_timeline_events(
         "updates",
@@ -1386,6 +1386,8 @@ def test_projection_write_todos_only_completed_updates_plan_without_transcript_d
     events = completed
     assert [event["type"] for event in events] == ["agent_plan_updated"]
     assert events[0]["payload"]["tool_name"] == "write_todos"
+    assert events[0]["display"]["kind"] == "todo_update"
+    assert events[0]["display"]["title"] == "探索计划更新"
     assert events[0]["payload"]["plan_steps"] == [
         {
             "step_id": "agent-todo-1",

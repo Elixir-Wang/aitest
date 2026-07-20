@@ -30,7 +30,15 @@ def test_api_does_not_call_generic_agent_runtime() -> None:
 
 def test_agent_packages_have_definition_entrypoint() -> None:
     agent_root = BACKEND_APP / "agents"
-    ignored = {"__pycache__", "api_automation", "requirement_analysis", "shared", "site_exploration", "skills"}
+    ignored = {
+        "__pycache__",
+        "api_automation",
+        "performance_testing",
+        "requirement_analysis",
+        "shared",
+        "site_exploration",
+        "skills",
+    }
     missing: list[str] = []
     for package in sorted(path for path in agent_root.iterdir() if path.is_dir()):
         if package.name.startswith("_") or package.name in ignored:
@@ -76,3 +84,22 @@ def test_api_automation_uses_explicit_child_capabilities() -> None:
     )
     assert "PROJECT_FILE_STORAGE_ROOT" not in pytest_source
     assert "api_automation_repo" not in pytest_source
+
+
+def test_performance_testing_uses_explicit_child_capabilities() -> None:
+    package = BACKEND_APP / "agents" / "performance_testing"
+
+    assert not (package / "agent.py").exists()
+    assert not (package / "schemas.py").exists()
+    assert not (package / "service.py").exists()
+
+    child_package = package / "script_generation"
+    assert (child_package / "agent.py").exists()
+    assert (child_package / "schemas.py").exists()
+    assert (child_package / "service.py").exists()
+
+    script_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in _python_files(package / "script_generation")
+    )
+    assert "from app.services.performance_testing" not in script_source

@@ -16,6 +16,7 @@ from app.repositories import (
     requirement_finalization_run_repo,
     session_repo,
     test_case_repo,
+    test_point_repo,
     user_repo,
 )
 
@@ -37,5 +38,6 @@ __all__ = [
     "requirement_finalization_run_repo",
     "session_repo",
     "test_case_repo",
+    "test_point_repo",
     "user_repo",
 ]

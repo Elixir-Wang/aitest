@@ -186,6 +186,66 @@ def test_generation_item_validation_is_atomic(monkeypatch: pytest.MonkeyPatch, t
     assert cases == []
 
 
+def test_generation_normalizes_body_for_missing_request_body_point(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint()
+
+    created = service.create_generation_run(
+        "project-1",
+        ApiAutomationGenerateIn(endpoint_ids=["apiend-1"], generate_code=False),
+        ACTOR,
+    )
+
+    # The seeded endpoint only plans a success point, so add the missing-body
+    # point directly to exercise the persistence boundary's normalization.
+    with connect() as db:
+        item = api_automation_repo.list_generation_items(db, created["id"])[0]
+        attempt_id = "attempt-normalize"
+        api_automation_repo.start_generation_item_attempt(db, item["id"], attempt_id)
+        count = service._persist_generation_item_cases(
+            db,
+            created["id"],
+            item["id"],
+            attempt_id,
+            ApiAutomationGenerationResult(
+                summary="生成 2 条",
+                cases=[
+                    ApiGeneratedCase(
+                        title="登录成功",
+                        endpoint_id="apiend-1",
+                        test_point_key="success.minimum_valid",
+                        oracle_status="confirmed",
+                        coverage="positive",
+                        request={"method": "POST", "path": "/login"},
+                        assertions=[{"type": "status_code", "expected": 200}],
+                    ),
+                    ApiGeneratedCase(
+                        title="请求体缺失",
+                        endpoint_id="apiend-1",
+                        test_point_key="request_body.missing",
+                        oracle_status="needs_confirmation",
+                        coverage="negative",
+                        request={"method": "POST", "path": "/login", "body": {}},
+                        assertions=[],
+                    ),
+                ],
+            ),
+            planned_test_points=[
+                {"key": "success.minimum_valid", "oracle_status": "confirmed"},
+                {"key": "request_body.missing", "oracle_status": "needs_confirmation"},
+            ],
+        )
+        rows = api_automation_repo.list_api_test_cases(db, "project-1")
+
+    assert count == 2
+    missing_body_rows = [row for row in rows if row["test_point_key"] == "request_body.missing"]
+    assert len(missing_body_rows) == 1
+    assert "body" not in api_automation_repo.loads_json(missing_body_rows[0]["request_json"], {})
+
+
 def test_execute_generation_run_saves_generated_cases(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_endpoint()

@@ -7,12 +7,13 @@
 - ``POST /projects/{project_id}/requirements/{document_id}/analysis/{analysis_id}/clarification-answers`` —— 提交问答
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 
 from app.dependencies.auth import current_user
 from app.schemas.document import RequirementAnalysisFinalizeIn, RequirementClarificationAnswerIn, RequirementPreliminaryUpdateIn
 from app.services.document import analysis as document_analysis
 from app.services.document import analysis_runs as document_analysis_runs
+from app.services import test_point_service
 
 router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirements"])
 
@@ -27,9 +28,15 @@ async def finalize_requirement_analysis(
     project_id: str,
     document_id: str,
     payload: RequirementAnalysisFinalizeIn,
+    background_tasks: BackgroundTasks,
     actor=Depends(current_user),
 ) -> dict:
-    return await document_analysis.finalize_requirement_analysis(project_id, document_id, payload, actor)
+    result = await document_analysis.finalize_requirement_analysis(project_id, document_id, payload, actor)
+    run = test_point_service.enqueue_generation(project_id, document_id, actor)
+    if run and run["status"] == "queued":
+        background_tasks.add_task(test_point_service.execute_generation_run, run["id"])
+    result["test_point_generation_run"] = run
+    return result
 
 
 @router.put("/{document_id}/analysis/{analysis_id}/preliminary")

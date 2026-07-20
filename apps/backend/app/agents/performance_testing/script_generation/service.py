@@ -1,8 +1,12 @@
+"""Application service for AI-assisted Locust plan generation."""
+
 import json
 from typing import Any
 
-from app.services.performance_testing.models import LocustScriptPlan
-from app.services.performance_testing.plan_builder import SENSITIVE_HEADER_NAMES, build_default_plan
+from app.agents.model_selection import build_agent_model, resolve_model_selection
+from app.agents.performance_testing.script_generation.agent import performance_script_generation_agent
+from app.agents.performance_testing.script_generation.planner import SENSITIVE_HEADER_NAMES, build_default_plan
+from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan
 
 
 CAPABILITY_ID = "performance_script_generation"
@@ -32,14 +36,13 @@ def build_ai_or_default_plan(performance_test: dict[str, Any]) -> tuple[LocustSc
     default = build_default_plan(performance_test)
     payload = script_plan_input(performance_test)
     try:
-        from app.agents.model_selection import build_agent_model, resolve_model_selection
-
         selection = resolve_model_selection(CAPABILITY_ID)
         model = build_agent_model(selection).with_structured_output(LocustScriptPlan)
-        generated = model.invoke(
-            "根据白名单输入生成 LocustScriptPlan。不得新增接口、导入、文件或进程能力。"
-            f"\nINPUT={json.dumps(payload, ensure_ascii=False, sort_keys=True)}"
+        agent = performance_script_generation_agent(model)
+        result = agent.invoke(
+            {"messages": [{"role": "user", "content": f"INPUT={json.dumps(payload, ensure_ascii=False, sort_keys=True)}"}]}
         )
+        generated = result.get("structured_response") if isinstance(result, dict) else None
         plan = generated if isinstance(generated, LocustScriptPlan) else LocustScriptPlan.model_validate(generated)
         plan.test_id = default.test_id
         plan.request.method = default.request.method
@@ -55,3 +58,6 @@ def build_ai_or_default_plan(performance_test: dict[str, Any]) -> tuple[LocustSc
         return plan, "ai_plan", selection.model
     except Exception:
         return default, "default_plan", ""
+
+
+__all__ = ["CAPABILITY_ID", "PROMPT_VERSION", "build_ai_or_default_plan", "script_plan_input"]

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { RotateCcw, Square } from "lucide-react";
+import { Activity, Clock3, FileText, Gauge, RotateCcw, ShieldX, Square, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -24,8 +24,7 @@ import {
   streamPerformanceRun,
 } from "@/lib/api-client";
 
-import { LocustChartsPanel, type LocustChartSample } from "./locust-charts-panel";
-import { LocustStartPanel } from "./locust-start-panel";
+import { type LocustChartSample, LocustChartsPanel } from "./locust-charts-panel";
 import { LocustGenericTable, LocustStatisticsTable } from "./locust-statistics-table";
 
 const TERMINAL_STATUSES = new Set<PerformanceRun["status"]>(["completed", "stopped", "failed", "cancelled"]);
@@ -85,7 +84,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
     };
   }, [projectId, refresh, runId]);
 
-  const defaults = useMemo<PerformanceRunStartPayload>(() => {
+  const startDefaults = useMemo<PerformanceRunStartPayload>(() => {
     const config = run?.load_config ?? {};
     return {
       users: Number(config.users ?? 1),
@@ -94,12 +93,12 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
     };
   }, [run?.load_config]);
 
-  async function start(payload: PerformanceRunStartPayload) {
+  async function start() {
     setWorking(true);
     try {
-      await startPerformanceRun(projectId, testId, runId, payload);
+      await startPerformanceRun(projectId, testId, runId, startDefaults);
       await refresh();
-      toast.success("Load test started");
+      toast.success("压测已开始");
     } catch (error) {
       toast.error(apiErrorMessage(error));
     } finally {
@@ -112,7 +111,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
     try {
       await stopPerformanceRun(projectId, runId);
       await refresh();
-      toast.success("Load test stopped");
+      toast.success("压测已停止");
     } catch (error) {
       toast.error(apiErrorMessage(error));
     } finally {
@@ -126,7 +125,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
       await resetPerformanceRunStats(projectId, runId);
       setSamples([]);
       await refresh();
-      toast.success("Statistics reset");
+      toast.success("统计数据已重置");
     } catch (error) {
       toast.error(apiErrorMessage(error));
     } finally {
@@ -135,65 +134,123 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
   }
 
   if (loading && !run) {
-    return <div className="py-20 text-center text-muted-foreground text-sm">Loading Locust console…</div>;
+    return <div className="py-20 text-center text-muted-foreground text-sm">正在加载 Locust 控制台...</div>;
   }
 
   const aggregate = snapshot?.stats.at(-1) ?? {};
+  const canStart = run?.status === "created";
   const canStop = run?.status === "starting" || run?.status === "running";
 
   return (
-    <div className="space-y-5">
-      <header className="overflow-hidden rounded-lg border bg-slate-950 text-slate-100 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-3">
-              <span className="font-semibold text-lg tracking-tight">LOCUST</span>
-              <Badge className="border-slate-700 bg-slate-900 text-slate-200" variant="outline">
-                {statusText(run?.status)}
-              </Badge>
+    <div className="space-y-3">
+      <header className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_32px_-28px_rgba(15,23,42,0.55)]">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-slate-100 border-b px-0 py-4">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="relative flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-[0_8px_18px_-10px_rgba(37,99,235,0.9)]">
+              <Activity aria-hidden="true" className="size-6" strokeWidth={2.2} />
+              <span className="absolute -right-1 -bottom-1 size-3 rounded-full border-2 border-background bg-emerald-400" />
             </div>
-            <p className="mt-1 truncate font-mono text-slate-400 text-xs">run / {runId}</p>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-[1.1rem] text-slate-950 tracking-tight">LOCUST</span>
+                <Badge className={statusBadgeClass(run?.status)} variant="outline">
+                  {statusText(run?.status)}
+                </Badge>
+              </div>
+              <p className="mt-0.5 truncate font-mono text-[11px] text-slate-500">运行 / {runId}</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button disabled={!canStop || working} onClick={stop} size="sm" variant="destructive">
-              <Square className="mr-2 size-3.5" /> Stop
-            </Button>
+          <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+            {canStart ? (
+              <Button
+                className="h-9 flex-1 bg-blue-600 px-4 text-white shadow-sm hover:bg-blue-700 sm:flex-none"
+                disabled={working}
+                onClick={start}
+                size="sm"
+              >
+                <Activity className="mr-2 size-3.5" /> 开始压测
+              </Button>
+            ) : null}
+            {canStop ? (
+              <Button
+                className="h-9 flex-1 px-3 sm:flex-none"
+                disabled={working}
+                onClick={stop}
+                size="sm"
+                variant="destructive"
+              >
+                <Square className="mr-2 size-3.5" /> 停止
+              </Button>
+            ) : null}
             <Button
-              className="border-slate-700 bg-slate-900 text-slate-100 hover:bg-slate-800"
+              className="h-9 flex-1 border-slate-200 bg-slate-100/70 px-3 text-slate-700 hover:bg-slate-100 sm:flex-none"
               disabled={run?.status !== "running" || working}
               onClick={reset}
               size="sm"
               variant="outline"
             >
-              <RotateCcw className="mr-2 size-3.5" /> Reset Stats
+              <RotateCcw className="mr-2 size-3.5" /> 重置统计
             </Button>
           </div>
         </div>
-        <div className="grid grid-cols-2 border-slate-800 border-t sm:grid-cols-4 lg:grid-cols-6">
-          <Metric label="Users" value={aggregate.user_count} />
-          <Metric label="RPS" value={aggregate.requests_per_second} />
-          <Metric label="Failure rate" suffix="%" value={percentage(aggregate.failure_rate)} />
-          <Metric label="Requests" value={aggregate.request_count} />
-          <Metric label="Failures" value={aggregate.failure_count} />
-          <Metric label="Avg response" suffix=" ms" value={aggregate.average_response_time_ms} />
+        <div className="grid grid-cols-2 divide-x divide-slate-100 sm:grid-cols-3 lg:grid-cols-6">
+          <Metric icon={Users} label="用户数" tone="slate" value={aggregate.user_count} />
+          <Metric icon={Activity} label="每秒请求数" tone="blue" value={aggregate.requests_per_second} />
+          <Metric icon={Gauge} label="失败率" tone="red" suffix="%" value={percentage(aggregate.failure_rate)} />
+          <Metric icon={FileText} label="请求数" tone="blue" value={aggregate.request_count} />
+          <Metric icon={ShieldX} label="失败数" tone="purple" value={aggregate.failure_count} />
+          <Metric
+            icon={Clock3}
+            label="平均响应时间"
+            tone="amber"
+            suffix=" ms"
+            value={aggregate.average_response_time_ms}
+          />
         </div>
       </header>
 
-      {run?.status === "created" ? <LocustStartPanel defaults={defaults} disabled={working} onStart={start} /> : null}
-
       {run?.error_message ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-destructive text-sm">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700 text-sm">
+          <span className="font-medium">运行失败：</span>
           {run.error_message}
         </div>
       ) : null}
 
       <Tabs defaultValue="statistics">
-        <TabsList className="w-full justify-start overflow-x-auto" variant="line">
-          <TabsTrigger value="statistics">Statistics</TabsTrigger>
-          <TabsTrigger value="charts">Charts</TabsTrigger>
-          <TabsTrigger value="failures">Failures</TabsTrigger>
-          <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
-          <TabsTrigger value="downloads">Download Data</TabsTrigger>
+        <TabsList
+          className="h-12 w-full justify-start gap-5 overflow-x-auto rounded-none border-slate-200 border-b bg-transparent p-0"
+          variant="line"
+        >
+          <TabsTrigger
+            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950"
+            value="statistics"
+          >
+            统计
+          </TabsTrigger>
+          <TabsTrigger
+            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950"
+            value="charts"
+          >
+            趋势图
+          </TabsTrigger>
+          <TabsTrigger
+            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950"
+            value="failures"
+          >
+            失败请求
+          </TabsTrigger>
+          <TabsTrigger
+            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950"
+            value="exceptions"
+          >
+            异常
+          </TabsTrigger>
+          <TabsTrigger
+            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950"
+            value="downloads"
+          >
+            下载文件
+          </TabsTrigger>
         </TabsList>
         <TabsContent className="pt-4" value="statistics">
           <LocustStatisticsTable rows={statisticsRows(snapshot)} />
@@ -204,24 +261,24 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
         <TabsContent className="pt-4" value="failures">
           <LocustGenericTable
             columns={[
-              ["method", "Type"],
-              ["name", "Name"],
-              ["error", "Error"],
-              ["occurrences", "Occurrences"],
+              ["method", "方法"],
+              ["name", "名称"],
+              ["error", "错误信息"],
+              ["occurrences", "次数"],
             ]}
-            empty="No failures have been recorded."
+            empty="暂无失败请求"
             rows={snapshot?.failures ?? []}
           />
         </TabsContent>
         <TabsContent className="pt-4" value="exceptions">
           <LocustGenericTable
             columns={[
-              ["count", "Count"],
-              ["msg", "Message"],
-              ["traceback", "Traceback"],
-              ["nodes", "Nodes"],
+              ["count", "次数"],
+              ["msg", "异常信息"],
+              ["traceback", "堆栈信息"],
+              ["nodes", "节点"],
             ]}
-            empty="No exceptions have been recorded."
+            empty="暂无异常记录"
             rows={snapshot?.exceptions ?? []}
           />
         </TabsContent>
@@ -233,13 +290,13 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
                 href={performanceRunReportUrl(projectId, runId, report.name)}
                 key={report.name}
               >
-                <span className="block font-medium">{report.name}</span>
+                <span className="block font-medium">{reportLabel(report.name)}</span>
                 <span className="mt-1 block text-muted-foreground text-xs">{formatBytes(report.size)}</span>
               </a>
             ))}
             {!reports?.reports.length ? (
               <div className="col-span-full rounded-md border px-4 py-12 text-center text-muted-foreground text-sm">
-                Download files appear after Locust writes run artifacts.
+                运行结束后将显示可下载的报告文件
               </div>
             ) : null}
           </div>
@@ -249,15 +306,44 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
   );
 }
 
-function Metric({ label, value, suffix = "" }: { label: string; value: unknown; suffix?: string }) {
+function Metric({
+  icon: Icon,
+  label,
+  tone,
+  value,
+  suffix = "",
+}: {
+  icon: typeof Activity;
+  label: string;
+  tone: "slate" | "blue" | "red" | "purple" | "amber";
+  value: unknown;
+  suffix?: string;
+}) {
   return (
-    <div className="border-slate-800 border-r px-4 py-3 last:border-r-0">
-      <p className="text-[10px] text-slate-500 uppercase tracking-[0.14em]">{label}</p>
-      <p className="mt-1 font-mono font-semibold text-base tabular-nums">
-        {value === undefined || value === null ? "-" : `${formatNumber(value)}${suffix}`}
-      </p>
+    <div className="flex min-w-0 items-center gap-3 border-slate-100 border-b px-4 py-4 last:border-r-0 sm:px-5 lg:border-r lg:border-b-0 lg:py-4">
+      <span
+        className={`flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 ${metricToneClass(tone)}`}
+      >
+        <Icon aria-hidden="true" className="size-5" strokeWidth={1.8} />
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-[11px] text-slate-500">{label}</p>
+        <p className="mt-0.5 font-mono font-semibold text-[1.05rem] text-slate-900 tabular-nums">
+          {value === undefined || value === null ? "-" : `${formatNumber(value)}${suffix}`}
+        </p>
+      </div>
     </div>
   );
+}
+
+function metricToneClass(tone: "slate" | "blue" | "red" | "purple" | "amber") {
+  return {
+    slate: "text-slate-500",
+    blue: "text-blue-600",
+    red: "text-red-500",
+    purple: "text-violet-500",
+    amber: "text-amber-500",
+  }[tone];
 }
 
 function chartSample(snapshot: PerformanceRunStats): LocustChartSample | null {
@@ -279,7 +365,7 @@ function statisticsRows(snapshot: PerformanceRunStats | null) {
   if (latest) {
     rows.push({
       method: "",
-      name: "Aggregated",
+      name: "汇总",
       request_count: latest.request_count,
       failure_count: latest.failure_count,
       median_response_time_ms: latest.p50_response_time_ms,
@@ -314,20 +400,43 @@ function formatBytes(value: number) {
 function statusText(status?: PerformanceRun["status"]) {
   return (
     {
-      created: "READY",
-      starting: "SPAWNING",
-      ready: "READY",
-      running: "RUNNING",
-      stopping: "STOPPING",
-      completed: "COMPLETED",
-      stopped: "STOPPED",
-      failed: "FAILED",
-      cancelled: "CANCELLED",
-    }[status ?? "created"] ?? "UNKNOWN"
+      created: "就绪",
+      starting: "启动中",
+      ready: "就绪",
+      running: "运行中",
+      stopping: "停止中",
+      completed: "已完成",
+      stopped: "已停止",
+      failed: "失败",
+      cancelled: "已取消",
+    }[status ?? "created"] ?? "未知状态"
   );
+}
+
+function statusBadgeClass(status?: PerformanceRun["status"]) {
+  if (status === "running") return "border-emerald-200 bg-emerald-50 text-emerald-600";
+  if (status === "starting" || status === "stopping") return "border-amber-200 bg-amber-50 text-amber-700";
+  if (status === "failed" || status === "cancelled") return "border-red-200 bg-red-50 text-red-600";
+  if (status === "completed" || status === "stopped") return "border-blue-200 bg-blue-50 text-blue-600";
+  return "border-emerald-200 bg-emerald-50 text-emerald-600";
 }
 
 function apiErrorMessage(error: unknown) {
   if (error instanceof ApiRequestError) return error.traceId ? `${error.message}（${error.traceId}）` : error.message;
-  return error instanceof Error ? error.message : "Locust console request failed";
+  return error instanceof Error ? error.message : "Locust 控制台请求失败";
+}
+
+function reportLabel(name: string) {
+  return (
+    {
+      "result.html": "HTML 测试报告",
+      "result_stats.csv": "统计数据 CSV",
+      "result_stats_history.csv": "统计历史 CSV",
+      "result_failures.csv": "失败请求 CSV",
+      "result_exceptions.csv": "异常记录 CSV",
+      "result_tasks.csv": "任务数据 CSV",
+      "stdout.log": "标准输出日志",
+      "stderr.log": "错误输出日志",
+    }[name] ?? name
+  );
 }

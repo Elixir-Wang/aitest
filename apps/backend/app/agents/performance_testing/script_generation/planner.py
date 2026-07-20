@@ -1,6 +1,8 @@
+"""Deterministic, non-LLM defaults for Locust script plan generation."""
+
 from typing import Any
 
-from app.services.performance_testing.models import LocustScriptPlan
+from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan
 
 
 SENSITIVE_HEADER_NAMES = {
@@ -52,3 +54,6 @@ def build_default_plan(performance_test: dict[str, Any]) -> LocustScriptPlan:
             or [{"kind": "status_code", "status_codes": [200]}],
         }
     )
+
+
+__all__ = ["SENSITIVE_HEADER_NAMES", "build_default_plan"]

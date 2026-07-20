@@ -1030,8 +1030,27 @@ def _persist_generation_item_cases(
     endpoint = api_automation_repo.find_endpoint(db, item["endpoint_id"]) if item else None
     if not item or not endpoint:
         raise ValueError("接口自动化生成子任务关联接口不存在。")
-    validate_generated_cases(_serialize_endpoint(endpoint), planned_test_points, result.cases)
-    for generated_case in result.cases:
+    # Models occasionally serialize a missing request body as ``body: {}`` (or
+    # another empty value).  The canonical request contract represents an
+    # omitted body by omitting the key entirely.  Normalize only this exact,
+    # unambiguous test point before strict validation; all other malformed
+    # requests must still fail the item atomically.
+    normalized_cases = [
+        generated_case.model_copy(
+            update={
+                "request": {
+                    key: value
+                    for key, value in generated_case.request.items()
+                    if key != "body"
+                }
+            }
+        )
+        if generated_case.test_point_key == "request_body.missing" and "body" in generated_case.request
+        else generated_case
+        for generated_case in result.cases
+    ]
+    validate_generated_cases(_serialize_endpoint(endpoint), planned_test_points, normalized_cases)
+    for generated_case in normalized_cases:
         api_automation_repo.create_api_test_case(
             db,
             case_id=f"apitc-{secrets.token_hex(8)}",

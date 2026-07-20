@@ -196,7 +196,7 @@ function renderApiCaseRequest(request: Record<string, unknown>) {
       </div>
       {Object.keys(pathParams).length > 0 ? <KeyValueBlock title="Path 参数" value={pathParams} /> : null}
       {Object.keys(query).length > 0 ? <KeyValueBlock title="Query 参数" value={query} /> : null}
-      {Object.keys(headers).length > 0 ? <KeyValueBlock title="Headers 覆盖" value={headers} /> : null}
+      {Object.keys(headers).length > 0 ? <KeyValueBlock title="Headers" value={headers} /> : null}
       {body !== undefined ? <KeyValueBlock title="Body" value={body} /> : null}
     </div>
   );
