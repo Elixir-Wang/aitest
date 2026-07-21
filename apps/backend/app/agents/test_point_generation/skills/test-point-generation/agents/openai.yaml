@@ -1,4 +1,0 @@
-interface:
-  display_name: "Test Point Generation"
-  short_description: "Generate traceable business test points"
-  default_prompt: "Use $test-point-generation to generate structured test points from this finalized requirement."

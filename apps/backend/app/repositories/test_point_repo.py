@@ -35,6 +35,9 @@ def update_run(db: Connection, run_id: str, *, status: str, error_message: str |
 
 
 def requeue_run(db: Connection, run_id: str) -> None:
+    run = db.execute("SELECT requirement_version_id FROM test_point_generation_runs WHERE id = ?", (run_id,)).fetchone()
+    if run:
+        db.execute("DELETE FROM test_points WHERE requirement_version_id = ?", (run["requirement_version_id"],))
     db.execute(
         """UPDATE test_point_generation_runs
         SET status = 'queued', error_message = '', finished_at = NULL, updated_at = CURRENT_TIMESTAMP
@@ -59,14 +62,14 @@ def replace_points(db: Connection, *, run_id: str, project_id: str, document_id:
             """INSERT INTO test_points
             (id, project_id, document_id, requirement_version_id, generation_run_id,
              point_key, title, module, category, priority, description,
-             preconditions_json, verification_points_json, source_refs_json, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             preconditions_json, verification_points_json, source_refs_json, notes, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 point["id"], project_id, document_id, version_id, run_id,
                 point["point_key"], point["title"], point["module"], point["category"], point["priority"], point["description"],
                 json.dumps(point["preconditions"], ensure_ascii=False),
-                json.dumps(point["verification_points"], ensure_ascii=False),
-                json.dumps(point["source_refs"], ensure_ascii=False), point["notes"],
+                json.dumps(point["verification_points"], ensure_ascii=False), json.dumps(point["source_refs"], ensure_ascii=False),
+                point["notes"], point.get("status", "draft"),
             ),
         )
 
@@ -88,3 +91,7 @@ def update_point(db: Connection, point_id: str, values: dict[str, object]) -> No
     assignments.append("updated_at = CURRENT_TIMESTAMP")
     params.append(point_id)
     db.execute(f"UPDATE test_points SET {', '.join(assignments)} WHERE id = ?", tuple(params))
+
+
+def delete_point(db: Connection, point_id: str) -> None:
+    db.execute("DELETE FROM test_points WHERE id = ?", (point_id,))

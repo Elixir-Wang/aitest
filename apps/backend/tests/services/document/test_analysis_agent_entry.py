@@ -1,7 +1,10 @@
+import pytest
+
 from app.agents.requirement_analysis.schemas import RequirementInput
 from app.services.document import analysis
 
 
+@pytest.mark.anyio
 async def test_analyze_requirement_with_agent_does_not_pass_run_id(monkeypatch) -> None:
     input_data = RequirementInput(
         requirement_name="超长文本性能优化",

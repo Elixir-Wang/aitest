@@ -1,0 +1,384 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.1, pluggy-1.6.0
+rootdir: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\api_automation\pytest_requests
+configfile: pytest.ini
+plugins: anyio-4.13.0, langsmith-0.8.5, locust-2.45.0, json-report-1.5.0, metadata-3.1.1
+collected 10 items
+
+testcases\openapi\v1\conversation\segment\create\post\test_api.py FFFFFF [ 60%]
+FFFF                                                                     [100%]
+
+================================== FAILURES ===================================
+_ TestConversationSegmentCreate.test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u5fc5\u586b username \u4f20\u5165 null] _
+
+self = <testcases.openapi.v1.conversation.segment.create.post.test_api.TestConversationSegmentCreate object at 0x0000028DFEBCCCD0>
+api_client = <support.client.ApiClient object at 0x0000028DFEC182F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-00ede898ded9008f', 'coverage': 'negative', 'created_at': '2026-07-21 02:01:58', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[c.get("title", c.get("test_point_key", "")) for c in cases],
+    )
+    def test_conversation_segment_create(self, api_client, case):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\conversation\segment\create\post\test_api.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestConversationSegmentCreate.test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u5fc5\u586b username \u4f20\u5165\u975e\u6cd5\u7c7b\u578b] _
+
+self = <testcases.openapi.v1.conversation.segment.create.post.test_api.TestConversationSegmentCreate object at 0x0000028DFEBCD450>
+api_client = <support.client.ApiClient object at 0x0000028DFEC182F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-437f1fec9ce62ef2', 'coverage': 'negative', 'created_at': '2026-07-21 02:01:58', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[c.get("title", c.get("test_point_key", "")) for c in cases],
+    )
+    def test_conversation_segment_create(self, api_client, case):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\conversation\segment\create\post\test_api.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestConversationSegmentCreate.test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u8bf7\u6c42\u4f53\u53d1\u9001\u7a7a JSON \u5bf9\u8c61] _
+
+self = <testcases.openapi.v1.conversation.segment.create.post.test_api.TestConversationSegmentCreate object at 0x0000028DFEBF03E0>
+api_client = <support.client.ApiClient object at 0x0000028DFEC182F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-6338ec6abab9a7db', 'coverage': 'negative', 'created_at': '2026-07-21 02:01:58', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[c.get("title", c.get("test_point_key", "")) for c in cases],
+    )
+    def test_conversation_segment_create(self, api_client, case):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\conversation\segment\create\post\test_api.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestConversationSegmentCreate.test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u9274\u6743 header username \u4e3a\u7a7a] _
+
+self = <testcases.openapi.v1.conversation.segment.create.post.test_api.TestConversationSegmentCreate object at 0x0000028DFEBF08A0>
+api_client = <support.client.ApiClient object at 0x0000028DFEC182F0>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-94106c052106b6db', 'coverage': 'security', 'created_at': '2026-07-21 02:01:58', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[c.get("title", c.get("test_point_key", "")) for c in cases],
+    )
+    def test_conversation_segment_create(self, api_client, case):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\conversation\segment\create\post\test_api.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestConversationSegmentCreate.test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u9274\u6743 header cybertron-robot-token \u4e3a\u7a7a] _
+
+self = <testcases.openapi.v1.conversation.segment.create.post.test_api.TestConversationSegmentCreate object at 0x0000028DFEC10A70>
+api_client = <support.client.ApiClient object at 0x0000028DFEC182F0>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-9ccbc7dd9c0b7516', 'coverage': 'security', 'created_at': '2026-07-21 02:01:58', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[c.get("title", c.get("test_point_key", "")) for c in cases],
+    )
+    def test_conversation_segment_create(self, api_client, case):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\conversation\segment\create\post\test_api.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestConversationSegmentCreate.test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u8bf7\u6c42\u4f53\u7f3a\u5c11\u5fc5\u586b\u5b57\u6bb5 username] _
+
+self = <testcases.openapi.v1.conversation.segment.create.post.test_api.TestConversationSegmentCreate object at 0x0000028DFD8F7790>
+api_client = <support.client.ApiClient object at 0x0000028DFEC182F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-a8e58d28c0bcd5ca', 'coverage': 'negative', 'created_at': '2026-07-21 02:01:58', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[c.get("title", c.get("test_point_key", "")) for c in cases],
+    )
+    def test_conversation_segment_create(self, api_client, case):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\conversation\segment\create\post\test_api.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestConversationSegmentCreate.test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u4e0d\u53d1\u9001\u8bf7\u6c42\u4f53] _
+
+self = <testcases.openapi.v1.conversation.segment.create.post.test_api.TestConversationSegmentCreate object at 0x0000028DFD8F79B0>
+api_client = <support.client.ApiClient object at 0x0000028DFEC182F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-b173202bc7252bee', 'coverage': 'negative', 'created_at': '2026-07-21 02:01:58', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[c.get("title", c.get("test_point_key", "")) for c in cases],
+    )
+    def test_conversation_segment_create(self, api_client, case):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\conversation\segment\create\post\test_api.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestConversationSegmentCreate.test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u6700\u5c0f\u5408\u6cd5\u8bf7\u6c42\u6210\u529f] _
+
+self = <testcases.openapi.v1.conversation.segment.create.post.test_api.TestConversationSegmentCreate object at 0x0000028DFEC00650>
+api_client = <support.client.ApiClient object at 0x0000028DFEC182F0>
+case = {'assertions': [{'expected': 200, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.data.segment_code'...npath_exists'}], 'case_id': 'apitc-d97642b968a182aa', 'coverage': 'positive', 'created_at': '2026-07-21 02:01:58', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[c.get("title", c.get("test_point_key", "")) for c in cases],
+    )
+    def test_conversation_segment_create(self, api_client, case):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\conversation\segment\create\post\test_api.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 200, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.data.segment_code', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+                assert response.status_code == assertion["expected"]
+            elif atype == "content_type":
+                assert assertion["expected"] in response.headers.get("Content-Type", "")
+            elif atype == "header_exists":
+                assert assertion["path"] in response.headers
+            elif atype == "header_equals":
+                assert response.headers.get(assertion.get("path", "")) == assertion.get("expected")
+            elif atype == "body_not_empty":
+                assert bool(response.content) is bool(assertion.get("expected", True))
+            elif atype == "body_sha256":
+                assert hashlib.sha256(response.content).hexdigest() == assertion["expected"]
+            elif atype == "jsonpath":
+                value = _resolve_jsonpath(response, assertion["path"])
+                assert value == assertion["expected"]
+            elif atype == "jsonpath_equals":
+                value = _read_path(response.json(), assertion.get("path", ""))
+                assert value == assertion.get("expected")
+            elif atype == "jsonpath_exists":
+                value = _read_path(response.json(), assertion.get("path", ""))
+>               assert value is not None
+                       ^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:122: AssertionError
+_ TestConversationSegmentCreate.test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u9274\u6743 header cybertron-robot-key \u4e3a\u7a7a] _
+
+self = <testcases.openapi.v1.conversation.segment.create.post.test_api.TestConversationSegmentCreate object at 0x0000028DFEC00850>
+api_client = <support.client.ApiClient object at 0x0000028DFEC182F0>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-df7cc9834a73870b', 'coverage': 'security', 'created_at': '2026-07-21 02:01:58', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[c.get("title", c.get("test_point_key", "")) for c in cases],
+    )
+    def test_conversation_segment_create(self, api_client, case):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\conversation\segment\create\post\test_api.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestConversationSegmentCreate.test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u5fc5\u586b username \u4f20\u5165\u7a7a\u5b57\u7b26\u4e32] _
+
+self = <testcases.openapi.v1.conversation.segment.create.post.test_api.TestConversationSegmentCreate object at 0x0000028DFD8CB2F0>
+api_client = <support.client.ApiClient object at 0x0000028DFEC182F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-eb91d5e25084ea34', 'coverage': 'negative', 'created_at': '2026-07-21 02:01:58', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[c.get("title", c.get("test_point_key", "")) for c in cases],
+    )
+    def test_conversation_segment_create(self, api_client, case):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\conversation\segment\create\post\test_api.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+--------------------------------- JSON report ---------------------------------
+report saved to: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\api_automation\runs\apirun-d1561787848b4bd0\report.json
+=========================== short test summary info ===========================
+FAILED testcases/openapi/v1/conversation/segment/create/post/test_api.py::TestConversationSegmentCreate::test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u5fc5\u586b username \u4f20\u5165 null]
+FAILED testcases/openapi/v1/conversation/segment/create/post/test_api.py::TestConversationSegmentCreate::test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u5fc5\u586b username \u4f20\u5165\u975e\u6cd5\u7c7b\u578b]
+FAILED testcases/openapi/v1/conversation/segment/create/post/test_api.py::TestConversationSegmentCreate::test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u8bf7\u6c42\u4f53\u53d1\u9001\u7a7a JSON \u5bf9\u8c61]
+FAILED testcases/openapi/v1/conversation/segment/create/post/test_api.py::TestConversationSegmentCreate::test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u9274\u6743 header username \u4e3a\u7a7a]
+FAILED testcases/openapi/v1/conversation/segment/create/post/test_api.py::TestConversationSegmentCreate::test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u9274\u6743 header cybertron-robot-token \u4e3a\u7a7a]
+FAILED testcases/openapi/v1/conversation/segment/create/post/test_api.py::TestConversationSegmentCreate::test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u8bf7\u6c42\u4f53\u7f3a\u5c11\u5fc5\u586b\u5b57\u6bb5 username]
+FAILED testcases/openapi/v1/conversation/segment/create/post/test_api.py::TestConversationSegmentCreate::test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u4e0d\u53d1\u9001\u8bf7\u6c42\u4f53]
+FAILED testcases/openapi/v1/conversation/segment/create/post/test_api.py::TestConversationSegmentCreate::test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u6700\u5c0f\u5408\u6cd5\u8bf7\u6c42\u6210\u529f]
+FAILED testcases/openapi/v1/conversation/segment/create/post/test_api.py::TestConversationSegmentCreate::test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u9274\u6743 header cybertron-robot-key \u4e3a\u7a7a]
+FAILED testcases/openapi/v1/conversation/segment/create/post/test_api.py::TestConversationSegmentCreate::test_conversation_segment_create[\u521b\u5efa\u667a\u80fd\u4f53\u4f1a\u8bdd - \u5fc5\u586b username \u4f20\u5165\u7a7a\u5b57\u7b26\u4e32]
+============================= 10 failed in 1.31s ==============================

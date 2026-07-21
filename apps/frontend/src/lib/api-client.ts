@@ -244,7 +244,6 @@ export type ApiTestPoint = {
   document_id: string;
   requirement_version_id: string;
   generation_run_id: string;
-  point_key: string;
   title: string;
   module: string;
   category: string;
@@ -275,6 +274,7 @@ export type ApiTestPointOverview = {
   requirement_version_no: number | null;
   run: ApiTestPointGenerationRun | null;
   points: ApiTestPoint[];
+  markdown_content: string;
 };
 
 type ApiDashboardMetric = {
@@ -1672,5 +1672,12 @@ export function healthStatusToLabel(healthStatus: string) {
         testing: "测试中",
       } as Record<string, string>
     )[healthStatus] ?? healthStatus
+  );
+}
+
+export function generateTestPoints(projectId: string, documentId: string) {
+  return apiRequest<ApiTestPointGenerationRun>(
+    `/projects/${projectId}/requirements/${documentId}/test-points/generate`,
+    { method: "POST" },
   );
 }

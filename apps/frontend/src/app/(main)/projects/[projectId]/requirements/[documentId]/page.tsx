@@ -390,6 +390,34 @@ type PendingAnswerDraft = {
   answerType: "recommended_option" | "custom" | "defer";
 };
 
+type RequirementClarificationAnswerPayload =
+  | { question_id: string; answer_type: "defer" }
+  | { question_id: string; answer_type: "recommended_option"; selected_option_id: string }
+  | { question_id: string; answer_type: "custom"; custom_answer: string };
+
+function buildClarificationAnswerPayload(
+  questionId: string,
+  answerType: PendingAnswerDraft["answerType"],
+  selectedOptionId: string,
+  customAnswer: string,
+): RequirementClarificationAnswerPayload {
+  if (answerType === "defer") {
+    return { question_id: questionId, answer_type: "defer" };
+  }
+  if (answerType === "recommended_option") {
+    return {
+      question_id: questionId,
+      answer_type: "recommended_option",
+      selected_option_id: selectedOptionId,
+    };
+  }
+  return {
+    question_id: questionId,
+    answer_type: "custom",
+    custom_answer: customAnswer,
+  };
+}
+
 type RequirementAnalysisResult = {
   id: string;
   project_id: string;
@@ -583,7 +611,7 @@ export default function DocumentDetailPage() {
   );
   const isBlocked = analysisResult?.status === "blocked" || analysisResult?.quality_result === "blocked";
   const isFinalized = Boolean(analysisResult?.finalized_version_id);
-  const canEditPreliminary = Boolean(analysisResult && analysisReportMarkdown.trim() && !isFinalized && !reviewLoading);
+  const canEditPreliminary = Boolean(analysisResult && analysisReportMarkdown.trim() && !reviewLoading);
   const isPrimaryAnalysisChanged = Boolean(
     analysisResult?.primary_mapping_id && analysisResult.primary_mapping_id !== currentPrimaryFile?.id,
   );
@@ -596,9 +624,6 @@ export default function DocumentDetailPage() {
     }
     if (!analysisReportMarkdown.trim()) {
       return "需求理解为空";
-    }
-    if (isFinalized) {
-      return "已转为最终需求";
     }
     if (isBlocked) {
       return "存在阻塞问题，不能转为最终需求";
@@ -1205,7 +1230,7 @@ export default function DocumentDetailPage() {
     clearRequirementAnalysisTabs();
     let runId = "";
     try {
-      const task = await apiRequest<ApiTaskItem>(`/projects/${projectId}/requirements/${documentId}/review`, {
+      const task = await apiRequest<ApiTaskItem>(`/projects/${projectId}/requirements/${documentId}/analysis-runs`, {
         method: "POST",
       });
       runId = task.source_id;
@@ -1237,7 +1262,7 @@ export default function DocumentDetailPage() {
         fallbackMessage: "需求分析提交失败",
         actionLabel: "提交需求分析",
         method: "POST",
-        path: `/projects/${projectId}/requirements/${documentId}/review`,
+        path: `/projects/${projectId}/requirements/${documentId}/analysis-runs`,
       });
       setReviewLoading(false);
       await loadOverview({ silent: true });
@@ -1417,17 +1442,14 @@ export default function DocumentDetailPage() {
         `/projects/${projectId}/requirements/${documentId}/analysis/${analysisResult.id}/clarification-answers`,
         {
           method: "POST",
-          body: JSON.stringify({
-            question_id: item.id,
-            answer_type: answerType,
-            selected_option_id: answerType === "recommended_option" ? draft.selectedOptionId : "",
-            custom_answer:
-              answerType === "defer"
-                ? ""
-                : selectedFallbackOption
-                  ? selectedFallbackOption.answer_markdown
-                  : customAnswer,
-          }),
+          body: JSON.stringify(
+            buildClarificationAnswerPayload(
+              item.id,
+              answerType,
+              draft.selectedOptionId,
+              selectedFallbackOption ? selectedFallbackOption.answer_markdown : customAnswer,
+            ),
+          ),
         },
       );
       setAnalysisResult(result.analysis);
@@ -2288,12 +2310,7 @@ export default function DocumentDetailPage() {
         </TabsContent>
 
         <TabsContent value="test-points">
-          <ShellSection>
-            <div className="mb-3">
-              <h2 className="font-medium text-sm">测试点</h2>
-            </div>
-            <TestPointsPanel canEdit={authUser?.role === "admin"} documentId={documentId} projectId={projectId} />
-          </ShellSection>
+          <TestPointsPanel canEdit={authUser?.role === "admin"} documentId={documentId} projectId={projectId} />
         </TabsContent>
 
         <TabsContent value="versions">

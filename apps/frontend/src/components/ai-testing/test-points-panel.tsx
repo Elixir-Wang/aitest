@@ -2,17 +2,24 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Loader2, Play, Save } from "lucide-react";
+import { Loader2, Pencil, RefreshCw, Save, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
+import { ListToolbar, ShellSection } from "@/components/ai-testing/page-shell";
+import { StandardMarkdownEditor } from "@/components/ai-testing/standard-markdown-editor";
+import { TestPointsList } from "@/components/ai-testing/test-points-list";
+import { AiEditInput } from "@/components/ui/ai-input";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
-import { ApiRequestError, type ApiTestPoint, type ApiTestPointOverview, apiRequest } from "@/lib/api-client";
+import { notifyAiTaskStarted } from "@/lib/ai-task-events";
+import { ApiRequestError, type ApiTestPointOverview, apiRequest, generateTestPoints } from "@/lib/api-client";
 
 const ACTIVE_STATUSES = new Set(["queued", "running"]);
+
+type DocumentEditResponse = {
+  edited_content: string;
+  change_summary: string;
+};
 
 export function TestPointsPanel({
   projectId,
@@ -26,16 +33,23 @@ export function TestPointsPanel({
   const [data, setData] = useState<ApiTestPointOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [savingId, setSavingId] = useState("");
+  const [markdownDraft, setMarkdownDraft] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editingWithAi, setEditingWithAi] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [search, setSearch] = useState("");
 
   const load = useCallback(
     async (silent = false) => {
       if (!silent) setLoading(true);
       try {
         setError("");
-        setData(
-          await apiRequest<ApiTestPointOverview>(`/projects/${projectId}/requirements/${documentId}/test-points`),
+        const overview = await apiRequest<ApiTestPointOverview>(
+          `/projects/${projectId}/requirements/${documentId}/test-points`,
         );
+        setData(overview);
+        setMarkdownDraft(overview.markdown_content);
       } catch (requestError) {
         setError(
           requestError instanceof ApiRequestError && requestError.status === 404
@@ -61,163 +75,192 @@ export function TestPointsPanel({
     return () => window.clearInterval(timer);
   }, [data?.run, load]);
 
-  async function generate() {
-    try {
-      const run = await apiRequest<ApiTestPointOverview["run"]>(
-        `/projects/${projectId}/requirements/${documentId}/test-points/generate`,
-        { method: "POST" },
-      );
-      setData((current) => (current ? { ...current, run } : current));
-      toast.success("测试点生成任务已提交");
-    } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "提交测试点生成失败");
-    }
+  async function persistMarkdown(markdownContent: string) {
+    const updated = await apiRequest<ApiTestPointOverview>(
+      `/projects/${projectId}/requirements/${documentId}/test-points/markdown`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ markdown_content: markdownContent }),
+      },
+    );
+    setData(updated);
+    setMarkdownDraft(updated.markdown_content);
+    setEditing(false);
+    return updated;
   }
 
-  async function save(point: ApiTestPoint) {
-    setSavingId(point.id);
+  async function saveMarkdownDraft() {
+    setSaving(true);
     try {
-      const updated = await apiRequest<ApiTestPoint>(
-        `/projects/${projectId}/requirements/${documentId}/test-points/${point.id}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ title: point.title, description: point.description }),
-        },
-      );
-      setData((current) =>
-        current
-          ? { ...current, points: current.points.map((item) => (item.id === updated.id ? updated : item)) }
-          : current,
-      );
+      await persistMarkdown(markdownDraft);
       toast.success("测试点已保存");
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "测试点保存失败");
     } finally {
-      setSavingId("");
+      setSaving(false);
     }
   }
 
-  function updatePoint(id: string, patch: Partial<ApiTestPoint>) {
-    setData((current) =>
-      current
-        ? { ...current, points: current.points.map((item) => (item.id === id ? { ...item, ...patch } : item)) }
-        : current,
-    );
+  async function editTestPointsWithAi(instruction: string) {
+    if (!data?.markdown_content.trim()) return;
+    setEditingWithAi(true);
+    let editedContent = "";
+    try {
+      const editResult = await apiRequest<DocumentEditResponse>("/agents/document-editor/run", {
+        method: "POST",
+        body: JSON.stringify({ content: data.markdown_content, instruction }),
+      });
+      editedContent = editResult.edited_content;
+      if (!editedContent.trim()) {
+        toast.info(editResult.change_summary || "AI 未修改测试点");
+        return;
+      }
+      await persistMarkdown(editedContent);
+      toast.success(editResult.change_summary || "AI修改已保存");
+    } catch (requestError) {
+      if (editedContent.trim()) {
+        setMarkdownDraft(editedContent);
+        setEditing(true);
+      }
+      toast.error(requestError instanceof Error ? requestError.message : "智能修改失败");
+    } finally {
+      setEditingWithAi(false);
+    }
   }
 
-  if (loading)
-    return (
-      <div className="flex items-center gap-2 p-6 text-muted-foreground text-sm">
-        <Loader2 className="size-4 animate-spin" />
-        加载测试点中...
-      </div>
-    );
-  if (error) return <div className="p-6 text-destructive text-sm">{error}</div>;
-  if (!data?.requirement_version_id)
-    return (
-      <IllustratedEmptyState
-        className="rounded-lg border border-dashed bg-muted/10"
-        description="请先在需求分析中点击“转为最终需求”。"
-        title="暂无测试点"
-      />
-    );
+  async function regenerateTestPoints() {
+    if (!data?.requirement_version_id) return;
+    setRegenerating(true);
+    try {
+      await generateTestPoints(projectId, documentId);
+      toast.success("测试点正在重新生成中...");
+      notifyAiTaskStarted();
+      void load(true);
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "重新生成失败");
+    } finally {
+      setRegenerating(false);
+    }
+  }
 
-  const isRunning = Boolean(data.run && ACTIVE_STATUSES.has(data.run.status));
+  const isRunning = Boolean(data?.run && ACTIVE_STATUSES.has(data.run.status));
+  const hasPoints = Boolean(data?.points.length);
+  const showActions = Boolean(canEdit && hasPoints && !isRunning && !regenerating);
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-muted-foreground text-sm">
-          最终需求 v{data.requirement_version_no} · {data.points.length} 个测试点
+    <div>
+      {loading ? (
+        <div className="flex items-center gap-2 p-6 text-muted-foreground text-sm">
+          <Loader2 className="size-4 animate-spin" />
+          加载测试点中...
         </div>
-        {canEdit ? (
-          <Button disabled={isRunning} onClick={generate} type="button">
-            <Play className="size-4" />
-            {isRunning ? "生成中" : "重新生成测试点"}
-          </Button>
-        ) : null}
-      </div>
-      {data.run?.status === "failed" ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
-          {data.run.error_message || "测试点生成失败"}
-        </div>
-      ) : null}
-      {data.points.length === 0 && !isRunning ? (
+      ) : error ? (
+        <div className="p-6 text-destructive text-sm">{error}</div>
+      ) : !data?.requirement_version_id ? (
         <IllustratedEmptyState
-          action={
-            canEdit ? (
-              <Button onClick={generate} size="sm" type="button">
-                <Play className="size-4" />
-                生成测试点
-              </Button>
-            ) : null
-          }
           className="rounded-lg border border-dashed bg-muted/10"
-          description="当前最终需求尚未生成测试点。"
+          description="请先在需求分析中点击“转为最终需求”。"
           title="暂无测试点"
         />
-      ) : null}
-      {data.points.length > 0 ? (
-        <div className="overflow-hidden rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>测试点</TableHead>
-                <TableHead>模块</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead>优先级</TableHead>
-                <TableHead>验证点</TableHead>
-                <TableHead className="w-20">操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.points.map((point) => (
-                <TableRow key={point.id}>
-                  <TableCell className="align-top">
-                    <Input
-                      disabled={!canEdit}
-                      onChange={(event) => updatePoint(point.id, { title: event.target.value })}
-                      value={point.title}
-                    />
-                    <div className="mt-1 text-muted-foreground text-xs">{point.point_key}</div>
-                    <Textarea
-                      className="mt-2 min-h-16"
-                      disabled={!canEdit}
-                      onChange={(event) => updatePoint(point.id, { description: event.target.value })}
-                      value={point.description}
-                    />
-                  </TableCell>
-                  <TableCell className="align-top">{point.module || "-"}</TableCell>
-                  <TableCell className="align-top">{point.category}</TableCell>
-                  <TableCell className="align-top">{point.priority}</TableCell>
-                  <TableCell className="align-top text-xs">
-                    {point.verification_points.map((item) => (
-                      <div key={item} className="mb-1">
-                        • {item}
-                      </div>
-                    ))}
-                  </TableCell>
-                  <TableCell className="align-top">
-                    <Button
-                      disabled={!canEdit || savingId === point.id}
-                      onClick={() => void save(point)}
-                      size="icon"
-                      title="保存测试点"
-                      type="button"
-                      variant="ghost"
-                    >
-                      {savingId === point.id ? (
-                        <Loader2 className="size-4 animate-spin" />
+      ) : (
+        <div className="space-y-4">
+          {data.run?.status === "failed" ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
+              {data.run.error_message || "测试点生成失败"}
+            </div>
+          ) : null}
+          {!hasPoints ? (
+            <IllustratedEmptyState
+              className="rounded-lg border border-dashed bg-muted/10"
+              description="当前最终需求尚未生成测试点。"
+              title="暂无测试点"
+            />
+          ) : null}
+          {hasPoints ? (
+            <ShellSection>
+              <ListToolbar
+                actions={
+                  showActions ? (
+                    <>
+                      {data.requirement_version_id ? (
+                        <Button
+                          disabled={regenerating || isRunning}
+                          onClick={regenerateTestPoints}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          <RefreshCw className={`size-3.5 ${regenerating ? "animate-spin" : ""}`} />
+                          {regenerating ? "重新生成中" : "重新生成"}
+                        </Button>
+                      ) : null}
+                      {editing ? (
+                        <>
+                          <Button disabled={saving} onClick={saveMarkdownDraft} size="sm" type="button">
+                            <Save className="size-3.5" />
+                            {saving ? "保存中" : "保存"}
+                          </Button>
+                          <Button
+                            disabled={saving}
+                            onClick={() => {
+                              setMarkdownDraft(data.markdown_content ?? "");
+                              setEditing(false);
+                            }}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            <X className="size-3.5" />
+                            取消
+                          </Button>
+                        </>
                       ) : (
-                        <Save className="size-4" />
+                        <>
+                          <AiEditInput
+                            disabled={editingWithAi}
+                            loading={editingWithAi}
+                            onSubmit={editTestPointsWithAi}
+                            placeholder="描述你希望如何修改当前测试点..."
+                            title="AI修改测试点"
+                          />
+                          <Button
+                            onClick={() => {
+                              setMarkdownDraft(data.markdown_content ?? "");
+                              setEditing(true);
+                            }}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            <Pencil className="size-3.5" />
+                            修改
+                          </Button>
+                        </>
                       )}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    </>
+                  ) : null
+                }
+                onSearch={setSearch}
+                placeholder="搜索测试点标题、模块或类型"
+                title="测试点列表"
+              />
+              {editing ? (
+                <StandardMarkdownEditor content={markdownDraft} onChange={setMarkdownDraft} />
+              ) : (
+                <TestPointsList
+                  projectId={projectId}
+                  documentId={documentId}
+                  data={data}
+                  canEdit={Boolean(canEdit)}
+                  key={search}
+                  search={search}
+                  onDataChange={() => void load(true)}
+                />
+              )}
+            </ShellSection>
+          ) : null}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

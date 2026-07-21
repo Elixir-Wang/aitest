@@ -1,11 +1,7 @@
 import json
 from pathlib import Path
 
-from app.agents.requirement_finalization.schemas import (
-    FinalizationSourceDocument,
-    HandledClarification,
-    RequirementFinalizationInput,
-)
+from app.agents.requirement_finalization.schemas import HandledClarification, RequirementFinalizationInput
 from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
 from app.repositories import document_repo, requirement_clarification_answer_repo
@@ -57,21 +53,10 @@ def build_finalization_context(db, *, project_id: str, document_id: str, analysi
     if not primary_file or not primary_file["markdown_file_path"]:
         raise api_error(409, "DOCUMENT_PRIMARY_FILE_NOT_READY", "请先完成主需求标准文件转换后再转为最终需求。")
 
-    primary_document = _source_document(primary_file)
-    supporting_documents = [
-        _source_document(row)
-        for row in document_repo.list_file_mappings(db, document_id)
-        if row["id"] != primary_file["id"]
-        and row["conversion_status"] in {"success", "warning"}
-        and row["markdown_file_path"]
-    ]
-
     return RequirementFinalizationInput(
         document_name=document["name"],
-        standard_markdown=primary_document.markdown_content,
+        standard_markdown=_read_markdown(primary_file["markdown_file_path"]),
         preliminary_markdown=preliminary_markdown,
-        primary_document=primary_document,
-        supporting_documents=supporting_documents,
         handled_clarifications=handled_clarifications,
     )
 
@@ -95,13 +80,6 @@ def _handled_clarification(question: dict, answer, priority: str) -> HandledClar
         module_key=str(question.get("module_key") or ""),
         source_excerpt=str(question.get("source_excerpt") or question.get("primary_excerpt") or ""),
         impact=str(question.get("impact") or question.get("test_impact") or ""),
-    )
-
-
-def _source_document(row) -> FinalizationSourceDocument:
-    return FinalizationSourceDocument(
-        filename=row["original_filename"],
-        markdown_content=_read_markdown(row["markdown_file_path"]),
     )
 
 

@@ -3,11 +3,6 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class FinalizationSourceDocument(BaseModel):
-    filename: str
-    markdown_content: str
-
-
 class HandledClarification(BaseModel):
     question_id: str
     priority: Literal["P0", "P1", "P2", "P3"]
@@ -24,8 +19,6 @@ class RequirementFinalizationInput(BaseModel):
     document_name: str
     standard_markdown: str
     preliminary_markdown: str
-    primary_document: FinalizationSourceDocument
-    supporting_documents: list[FinalizationSourceDocument] = Field(default_factory=list)
     handled_clarifications: list[HandledClarification] = Field(default_factory=list)
 
 
@@ -37,7 +30,6 @@ class RequirementFinalizationOutput(BaseModel):
 
 
 __all__ = [
-    "FinalizationSourceDocument",
     "HandledClarification",
     "RequirementFinalizationInput",
     "RequirementFinalizationOutput",

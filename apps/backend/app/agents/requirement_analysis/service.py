@@ -57,7 +57,6 @@ async def analyze_requirement(input_data: RequirementInput) -> RequirementAnalys
             content_parts.append(f"\n--- 辅助文档 {i} ---")
             content_parts.append(doc)
 
-    content_parts.append("\n请使用 requirements-analysis skill 分析该需求。")
     content = "\n".join(content_parts)
 
     # 调用 Agent

@@ -8,10 +8,15 @@ def _model_selection(provider: str = "openai", model: str = "gpt-4o-mini") -> Mo
     return ModelSelection(provider=provider, model=model, base_url=None, api_key="test-key")
 
 
-def test_requirement_finalization_input_excludes_no_op_bucket():
+def test_requirement_finalization_input_is_minimal():
     from app.agents.requirement_finalization.schemas import RequirementFinalizationInput
 
-    assert "no_op_clarifications" not in RequirementFinalizationInput.model_fields
+    assert set(RequirementFinalizationInput.model_fields) == {
+        "document_name",
+        "standard_markdown",
+        "preliminary_markdown",
+        "handled_clarifications",
+    }
 
 
 def test_requirement_finalization_reuses_requirement_analysis_model(monkeypatch):
@@ -44,7 +49,6 @@ def test_requirement_finalization_reuses_requirement_analysis_model(monkeypatch)
                 document_name="需求",
                 standard_markdown="# 标准需求\n",
                 preliminary_markdown="# 初步需求\n",
-                primary_document={"filename": "main.md", "markdown_content": "# 标准需求\n"},
             )
         )
     )
@@ -106,7 +110,6 @@ def test_requirement_finalization_disables_thinking_for_reasoning_models(monkeyp
                 document_name="需求",
                 standard_markdown="# 标准需求\n",
                 preliminary_markdown="# 初步需求\n",
-                primary_document={"filename": "main.md", "markdown_content": "# 标准需求\n"},
             )
         )
     )

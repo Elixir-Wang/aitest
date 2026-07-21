@@ -24,7 +24,6 @@ def test_requirement_analysis_uses_new_deepagents_layout() -> None:
     assert (AGENT_ROOT / "agent.py").exists()
     assert (AGENT_ROOT / "service.py").exists()
     assert (AGENT_ROOT / "schemas.py").exists()
-    assert (AGENT_ROOT / "system_prompt.py").exists()
     assert (AGENT_ROOT / "skills" / "requirements-analysis" / "SKILL.md").exists()
     assert (AGENT_ROOT / "skills" / "requirements-analysis" / "references" / "understanding.md").exists()
     assert (AGENT_ROOT / "skills" / "requirements-analysis" / "references" / "clarification.md").exists()

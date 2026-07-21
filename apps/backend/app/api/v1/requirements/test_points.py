@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends
 
 from app.dependencies.auth import current_user, require_admin
-from app.schemas.test_point import TestPointOverviewOut, TestPointOut, TestPointUpdateIn
+from app.schemas.test_point import TestPointMarkdownUpdateIn, TestPointOverviewOut, TestPointOut, TestPointUpdateIn
 from app.services import test_point_service
 
 
@@ -26,6 +26,16 @@ def generate_test_points(
     return run
 
 
+@router.put("/{document_id}/test-points/markdown", response_model=TestPointOverviewOut)
+def update_test_points_markdown(
+    project_id: str,
+    document_id: str,
+    payload: TestPointMarkdownUpdateIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return test_point_service.save_markdown(project_id, document_id, payload, actor)
+
+
 @router.patch("/{document_id}/test-points/{point_id}", response_model=TestPointOut)
 def update_test_point(
     project_id: str,
@@ -35,3 +45,14 @@ def update_test_point(
     actor=Depends(require_admin),
 ) -> dict:
     return test_point_service.update_point(project_id, document_id, point_id, payload, actor)
+
+
+@router.delete("/{document_id}/test-points/{point_id}")
+def delete_test_point(
+    project_id: str,
+    document_id: str,
+    point_id: str,
+    actor=Depends(require_admin),
+) -> dict:
+    test_point_service.delete_point(project_id, document_id, point_id, actor)
+    return {"success": True}

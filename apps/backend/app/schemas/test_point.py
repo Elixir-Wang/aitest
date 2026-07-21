@@ -20,13 +20,16 @@ class TestPointUpdateIn(BaseModel):
         return value.strip() if isinstance(value, str) else value
 
 
+class TestPointMarkdownUpdateIn(BaseModel):
+    markdown_content: str = Field(min_length=1)
+
+
 class TestPointOut(BaseModel):
     id: str
     project_id: str
     document_id: str
     requirement_version_id: str
     generation_run_id: str
-    point_key: str
     title: str
     module: str
     category: str
@@ -56,3 +59,4 @@ class TestPointOverviewOut(BaseModel):
     requirement_version_no: int | None
     run: TestPointGenerationRunOut | None
     points: list[TestPointOut]
+    markdown_content: str

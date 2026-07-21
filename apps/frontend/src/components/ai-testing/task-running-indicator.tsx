@@ -17,6 +17,7 @@ const RUNNING_INDICATOR_SOURCE_TYPES = new Set([
   "requirement_analysis_run",
   "requirement_finalization_run",
   "test_case_generation_run",
+  "test_point_generation_run",
   "api_automation_generation_run",
   "api_script_generation_run",
   "api_automation_run",

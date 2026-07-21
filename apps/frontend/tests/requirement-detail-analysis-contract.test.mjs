@@ -148,6 +148,11 @@ test("preliminary requirement can be finalized into the final requirement tab", 
   assert.match(pageSource, /尚未生成最终需求，请先在初步需求中点击“转为最终需求”。/);
 });
 
+test("requirement analysis starts through the canonical analysis-runs endpoint", () => {
+  assert.match(pageSource, /`\/projects\/\$\{projectId\}\/requirements\/\$\{documentId\}\/analysis-runs`/);
+  assert.doesNotMatch(pageSource, /`\/projects\/\$\{projectId\}\/requirements\/\$\{documentId\}\/review`/);
+});
+
 test("final requirement conversion can appear in the top running task indicator", () => {
   assert.match(taskRunningIndicatorSource, /"requirement_finalization_run"/);
 });
@@ -191,13 +196,23 @@ test("clarification questions do not render prompt prefixes or guessed fallback 
   assert.doesNotMatch(pageSource, /<Badge variant="outline">\{pendingIssueTypeLabels\[issueType\]\}<\/Badge>/);
   assert.doesNotMatch(pageSource, /className="inline"[\s\S]*content=\{itemImpact\}/);
   assert.doesNotMatch(pageSource, /<MarkdownPreview[\s\S]*content=\{itemImpact\}/);
-  assert.match(pageSource, /<span className="font-medium">影响：<\/span>/);
+  assert.match(pageSource, /<span className="font-medium">测试影响：<\/span>/);
   assert.doesNotMatch(pageSource, /<span>影响<\/span>/);
   assert.match(pageSource, /return \[\];\s*\}/);
   assert.doesNotMatch(pageSource, /function inferPendingLikelyAnswers/);
   assert.doesNotMatch(pageSource, /候选答案 A/);
   assert.doesNotMatch(pageSource, /候选答案 B/);
   assert.doesNotMatch(pageSource, /安全指标：所有接口必须经过身份认证/);
+});
+
+test("clarification answer payload only sends fields required by its answer type", () => {
+  assert.match(pageSource, /function buildClarificationAnswerPayload/);
+  assert.match(pageSource, /answer_type: "defer"/);
+  assert.match(pageSource, /answer_type: "recommended_option"/);
+  assert.match(pageSource, /selected_option_id: selectedOptionId/);
+  assert.match(pageSource, /answer_type: "custom"/);
+  assert.match(pageSource, /custom_answer:/);
+  assert.doesNotMatch(pageSource, /selected_option_id: answerType === "recommended_option"/);
 });
 
 test("handled clarification answers move behind the managed handled menu", () => {

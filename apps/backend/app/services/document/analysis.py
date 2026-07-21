@@ -439,22 +439,6 @@ async def finalize_requirement_analysis(
         current_hash = content_hash(preliminary_markdown)
         stored_hash = analysis["draft_content_hash"] or current_hash
         finalized_version_id = analysis["finalized_version_id"]
-        if finalized_version_id:
-            if stored_hash != current_hash:
-                raise api_error(409, "REQUIREMENT_ANALYSIS_DRAFT_CHANGED", "初步需求内容已变化，请重新执行需求分析。")
-            finalized_version = document_repo.find_version(db, finalized_version_id)
-            if finalized_version:
-                finalized_path = resolve_stored_path(finalized_version["file_path"]) or Path(finalized_version["file_path"])
-                markdown_content = finalized_path.read_text(encoding="utf-8") if finalized_path.exists() else preliminary_markdown
-                return {
-                    "analysis": serialize_requirement_analysis(analysis),
-                    "version": serialize_version(finalized_version),
-                    "document": {
-                        "id": document["id"],
-                        "current_version_id": document["current_version_id"],
-                    },
-                    "markdown_content": markdown_content,
-                }
 
         if analysis["status"] == "blocked" or analysis["quality_result"] == "blocked":
             raise api_error(409, "REQUIREMENT_ANALYSIS_BLOCKED", "存在阻塞问题，不能转为最终需求。")
