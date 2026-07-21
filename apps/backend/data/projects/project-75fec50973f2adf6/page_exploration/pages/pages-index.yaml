@@ -1,0 +1,8 @@
+pages:
+  page-workspace.yaml:
+    display_name: workspace
+    breadcrumb:
+    - workspace
+    structure_summary: 发现 17 个元素
+    run_id: exp_Am3HGwQW4awyEobW17YWEw
+    captured_at: '2026-07-21T14:10:40.966598Z'

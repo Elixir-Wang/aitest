@@ -1,0 +1,205 @@
+schema_version: '3.0'
+page:
+  id: page-workspace
+  title: 百融百工
+  normalized_path: /workspace
+states:
+- id: page-workspace__root__001
+  type: root
+  title: 百融百工
+  url: https://www.cybotstar.cn/workspace
+  elements:
+  - key: button-创建智能体
+    role: button
+    name: 创建智能体
+    action: click
+    locators:
+    - code: 'getByRole(''button'', { name: ''创建智能体'' })'
+    - code: locator('div:nth-of-type(2) > button')
+    context:
+      role: div
+      name: 创建智能体
+  - key: clickable-工作台--in--工作台 资源库 效果评测
+    role: clickable
+    name: 工作台
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(4)
+        > div:nth-of-type(1)')
+    context:
+      ordinal: 1
+      role: div
+      name: 工作台 资源库 效果评测
+  - key: clickable-工作台--in--test-multi-agent-001-test-multi-agent-fo
+    role: clickable
+    name: 工作台
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div > div > div > div:nth-of-type(1)
+        > div > div:nth-of-type(1)')
+    context:
+      ordinal: 2
+      role: div
+      name: 工作台 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建 test_Multi_Agent_001 草稿 Test
+        multi-agent for exploration cleanup 编辑 hongbao.wan
+  - key: clickable-类型 全部
+    role: clickable
+    name: 类型 全部
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div
+        > form > div:nth-of-type(1)')
+    context:
+      role: form
+      name: 类型 全部 范围 全部 状态 全部
+  - key: clickable-类型
+    role: clickable
+    name: 类型
+    action: click
+    locators:
+    - code: 'getByText(''类型'', { exact: true })'
+    - code: locator('div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div
+        > form > div:nth-of-type(1) > div:nth-of-type(1)')
+    context:
+      role: div
+      name: 类型 全部
+  - key: combobox-element-6
+    role: combobox
+    name: element-6
+    action: fill
+    locators:
+    - code: locator('div:nth-of-type(1) > div > div > form > div:nth-of-type(1) >
+        div:nth-of-type(2) > div > div > span:nth-of-type(1) > input')
+    context:
+      role: div
+      name: 请选择
+  - key: clickable-范围 全部
+    role: clickable
+    name: 范围 全部
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div
+        > form > div:nth-of-type(2)')
+    context:
+      role: form
+      name: 类型 全部 范围 全部 状态 全部
+  - key: clickable-范围
+    role: clickable
+    name: 范围
+    action: click
+    locators:
+    - code: 'getByText(''范围'', { exact: true })'
+    - code: locator('div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div
+        > form > div:nth-of-type(2) > div:nth-of-type(1)')
+    context:
+      role: div
+      name: 范围 全部
+  - key: combobox-element-9
+    role: combobox
+    name: element-9
+    action: fill
+    locators:
+    - code: locator('div:nth-of-type(2) > div:nth-of-type(2) > div > div > span:nth-of-type(1)
+        > input')
+    context:
+      role: div
+      name: 请选择
+  - key: clickable-状态 全部
+    role: clickable
+    name: 状态 全部
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div
+        > form > div:nth-of-type(3)')
+    context:
+      role: form
+      name: 类型 全部 范围 全部 状态 全部
+  - key: clickable-状态
+    role: clickable
+    name: 状态
+    action: click
+    locators:
+    - code: 'getByText(''状态'', { exact: true })'
+    - code: locator('div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div
+        > form > div:nth-of-type(3) > div:nth-of-type(1)')
+    context:
+      role: div
+      name: 状态 全部
+  - key: combobox-element-12
+    role: combobox
+    name: element-12
+    action: fill
+    locators:
+    - code: locator('div:nth-of-type(1) > div > div > form > div:nth-of-type(3) >
+        div:nth-of-type(2) > div > div > span:nth-of-type(1) > input')
+    context:
+      role: div
+      name: 请选择
+  - key: clickable-排序 按创建时间排序 | 导入 创建
+    role: clickable
+    name: 排序 按创建时间排序 | 导入 创建
+    action: click
+    locators:
+    - code: locator('body > div:nth-of-type(1) > div > div > div > div > div > div:nth-of-type(1)
+        > div > div:nth-of-type(2) > div > div > div:nth-of-type(2)')
+    context:
+      role: div
+      name: 类型 全部 范围 全部 状态 全部 排序 按创建时间排序 | 导入 创建
+  - key: clickable-按创建时间排序--in--排序 按创建时间排序
+    role: clickable
+    name: 按创建时间排序
+    action: click
+    locators:
+    - code: locator('div > div > div > div:nth-of-type(1) > div > div:nth-of-type(2)
+        > div > div > div:nth-of-type(2) > div:nth-of-type(1) > div')
+    context:
+      ordinal: 1
+      role: div
+      name: 排序 按创建时间排序
+  - key: combobox-element-15
+    role: combobox
+    name: element-15
+    action: fill
+    locators:
+    - code: locator('div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div
+        > span:nth-of-type(1) > input')
+    context:
+      role: div
+      name: 选择排序方式
+  - key: clickable-按创建时间排序--in--选择排序方式
+    role: clickable
+    name: 按创建时间排序
+    action: click
+    locators:
+    - code: locator('div:nth-of-type(1) > div > div:nth-of-type(2) > div > div > div:nth-of-type(2)
+        > div:nth-of-type(1) > div > div > span:nth-of-type(2)')
+    context:
+      ordinal: 2
+      role: div
+      name: 选择排序方式
+  - key: button-创建
+    role: button
+    name: 创建
+    action: click
+    locators:
+    - code: 'getByRole(''button'', { name: ''创建'' })'
+    - code: locator('div:nth-of-type(4) > button')
+    context:
+      role: div
+      name: 创建
+  assertion_texts:
+  - 百融百工
+  - 创建智能体
+  - 工作台
+  - 类型
+  - 范围
+  - 状态
+  - 排序
+  - 按创建时间排序
+  - 导入
+  - 创建
+  - 类型 全部
+  - 范围 全部
+  - 状态 全部
+  - 排序 按创建时间排序 | 导入 创建
+  children: []

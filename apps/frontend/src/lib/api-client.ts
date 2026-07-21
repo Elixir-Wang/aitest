@@ -254,7 +254,6 @@ export type ApiTestPoint = {
   verification_points: string[];
   source_refs: string[];
   notes: string;
-  status: "draft" | "confirmed" | "deprecated";
   created_at: string;
   updated_at: string;
 };

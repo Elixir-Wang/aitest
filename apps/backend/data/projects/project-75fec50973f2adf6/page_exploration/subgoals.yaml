@@ -1,34 +1,34 @@
 run_id: exp_Am3HGwQW4awyEobW17YWEw
 project_id: project-75fec50973f2adf6
-updated_at: '2026-07-20T16:47:26.725977+00:00'
+updated_at: '2026-07-21T14:09:56.124832+00:00'
 items:
 - id: ''
-  content: Snap and inventory landing page /agentStore
-  status: completed
-- id: ''
-  content: Map navigation/sidebar to discover workspace areas
-  status: completed
-- id: ''
-  content: Test workspace search box
+  content: Explore 工作台 (Workbench) main module and its tabs
   status: in_progress
 - id: ''
-  content: Test workspace filters (类型, 范围, 状态) and sort
+  content: Explore 资源库 (Resource Library) module
   status: pending
 - id: ''
-  content: Click 创建 (Create) button to open creation dialog
+  content: Explore 效果评测 (Effect Evaluation) module
   status: pending
 - id: ''
-  content: Click 导入 (Import) button to open import dialog
+  content: Explore 运行中心 submodules (发布管理/线上观测/自动优化)
   status: pending
 - id: ''
-  content: Click agent cards (edit, analyze, use, history)
+  content: Explore 创作中心 (Creation Center) - 创建智能体 flow
   status: pending
 - id: ''
-  content: Test create agent end-to-end flow
+  content: Explore 管理中心 submodules (空间管理/文档中心)
   status: pending
 - id: ''
-  content: Cleanup test data and verify
+  content: Explore 探索广场 (Discovery Plaza) filters and cards
   status: pending
 - id: ''
-  content: Produce final report
+  content: Explore 批量任务 (Batch Task) module
+  status: pending
+- id: ''
+  content: Clean up any test data created
+  status: pending
+- id: ''
+  content: Compile final exploration report
   status: pending

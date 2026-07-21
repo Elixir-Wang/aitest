@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Check, Loader2, Play, Save } from "lucide-react";
+import { Loader2, Play, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
@@ -81,7 +81,7 @@ export function TestPointsPanel({
         `/projects/${projectId}/requirements/${documentId}/test-points/${point.id}`,
         {
           method: "PATCH",
-          body: JSON.stringify({ title: point.title, description: point.description, status: point.status }),
+          body: JSON.stringify({ title: point.title, description: point.description }),
         },
       );
       setData((current) =>
@@ -166,7 +166,6 @@ export function TestPointsPanel({
                 <TableHead>类型</TableHead>
                 <TableHead>优先级</TableHead>
                 <TableHead>验证点</TableHead>
-                <TableHead>状态</TableHead>
                 <TableHead className="w-20">操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -196,20 +195,6 @@ export function TestPointsPanel({
                         • {item}
                       </div>
                     ))}
-                  </TableCell>
-                  <TableCell className="align-top">
-                    <Button
-                      disabled={!canEdit}
-                      onClick={() =>
-                        updatePoint(point.id, { status: point.status === "confirmed" ? "draft" : "confirmed" })
-                      }
-                      size="sm"
-                      type="button"
-                      variant={point.status === "confirmed" ? "default" : "outline"}
-                    >
-                      {point.status === "confirmed" ? <Check className="size-4" /> : null}
-                      {point.status === "confirmed" ? "已确认" : "草稿"}
-                    </Button>
                   </TableCell>
                   <TableCell className="align-top">
                     <Button

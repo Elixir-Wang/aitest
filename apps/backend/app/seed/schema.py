@@ -254,7 +254,7 @@ CREATE TABLE IF NOT EXISTS test_point_generation_runs (
   finished_at TEXT,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
   FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
-  FOREIGN KEY(requirement_version_id) REFERENCES document_versions(id) ON DELETE CASCADE
+  FOREIGN KEY(requirement_version_id) REFERENCES source_document_versions(id) ON DELETE CASCADE
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_test_point_generation_version
@@ -276,18 +276,17 @@ CREATE TABLE IF NOT EXISTS test_points (
   verification_points_json TEXT NOT NULL DEFAULT '[]',
   source_refs_json TEXT NOT NULL DEFAULT '[]',
   notes TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL CHECK(status IN ('draft', 'confirmed', 'deprecated')) DEFAULT 'draft',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
   FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
-  FOREIGN KEY(requirement_version_id) REFERENCES document_versions(id) ON DELETE CASCADE,
+  FOREIGN KEY(requirement_version_id) REFERENCES source_document_versions(id) ON DELETE CASCADE,
   FOREIGN KEY(generation_run_id) REFERENCES test_point_generation_runs(id) ON DELETE CASCADE,
   UNIQUE(requirement_version_id, point_key)
 );
 
 CREATE INDEX IF NOT EXISTS idx_test_points_document_version
-  ON test_points(document_id, requirement_version_id, status);
+  ON test_points(document_id, requirement_version_id);
 
 CREATE TABLE IF NOT EXISTS test_case_generation_runs (
   id TEXT PRIMARY KEY,

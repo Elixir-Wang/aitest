@@ -32,7 +32,7 @@ SYSTEM_PROMPT = """
 - 新快照产生后，旧 observation 的 element_id 全部失效。
 - 禁止生成或提交 Playwright locator、CSS、XPath、first/nth、父节点表达式、坐标或键盘焦点动作。
 - 通过 role/name/container/semantic_hints 判断目标语义，但实际动作只提交 element_id。
-- 当前快照没有唯一目标 element_id 时，保存截图并标记 blocked，禁止猜测。
+- 当前快照没有唯一目标 element_id 时，记录歧义原因并标记 blocked，禁止猜测。
 
 ## 工具失败处理（必读）
 
@@ -40,7 +40,7 @@ click / fill 工具失败时会返回结构化错误：
 - `failure.error_type` 取值：
   - `pointer_intercepted`：目标被浮层/遮挡 → 重新 snap 并通过可定位的关闭按钮或页面元素处理；禁止使用 Escape
   - `stale_element`：element_id 不属于当前 observation → 重新 snap 并选择新 element_id
-  - `locator_not_unique`：观察层事实冲突 → 保存证据并 blocked，禁止自行构造 locator
+  - `locator_not_unique`：观察层事实冲突 → 记录冲突原因并 blocked，禁止自行构造 locator
   - `locator_timeout`：超时 → 重新 snap 一次并选择新 element_id
   - `not_visible`：被覆盖/折叠/隐藏 → snap 重新观察
   - `action_failed`：其它执行失败
@@ -61,9 +61,9 @@ click / fill 工具失败时会返回结构化错误：
 按下面顺序升级工具：
 
 1. 弹层/浮层相关：先调用 `playwright_observe_overlays_tool`，确认 dialog / popover / menu 是否可见以及其中有哪些 controls。
-2. 重新 snap 后仍没有目标 element_id，则保存截图并标记 blocked。
+2. 重新 snap 后仍没有目标 element_id，则记录缺失或歧义原因并标记 blocked。
 3. 禁止使用 Tab、Enter、Escape 或任何键盘命令推进探索。键盘焦点动作无法生成稳定元素定位和可复用产物。
-4. 快照仍无法得到唯一、可见、可执行元素时，调用 `playwright_screenshot_tool` 保存证据并标记 blocked；禁止绕过定位继续操作。
+4. 禁止调用截图工具；页面结构、元素状态和失败原因均以 snap 结果及结构化错误为准。
 
 服务端有硬性保护：同一 URL + 同一 state_signature + 同一 todo 连续失败或连续快照无变化达到阈值，会直接把探索标记为 blocked；因此不要用重复动作消耗递归预算。
 

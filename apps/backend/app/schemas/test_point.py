@@ -3,9 +3,6 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 
-TestPointStatus = Literal["draft", "confirmed", "deprecated"]
-
-
 class TestPointUpdateIn(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=240)
     module: str | None = Field(default=None, max_length=120)
@@ -16,7 +13,6 @@ class TestPointUpdateIn(BaseModel):
     verification_points: list[str] | None = None
     source_refs: list[str] | None = None
     notes: str | None = None
-    status: TestPointStatus | None = None
 
     @field_validator("title", "module", "category", "description", "notes", mode="before")
     @classmethod
@@ -40,7 +36,6 @@ class TestPointOut(BaseModel):
     verification_points: list[str]
     source_refs: list[str]
     notes: str
-    status: TestPointStatus
     created_at: str
     updated_at: str
 

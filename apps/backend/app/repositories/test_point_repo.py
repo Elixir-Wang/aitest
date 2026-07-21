@@ -59,8 +59,8 @@ def replace_points(db: Connection, *, run_id: str, project_id: str, document_id:
             """INSERT INTO test_points
             (id, project_id, document_id, requirement_version_id, generation_run_id,
              point_key, title, module, category, priority, description,
-             preconditions_json, verification_points_json, source_refs_json, notes, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')""",
+             preconditions_json, verification_points_json, source_refs_json, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 point["id"], project_id, document_id, version_id, run_id,
                 point["point_key"], point["title"], point["module"], point["category"], point["priority"], point["description"],

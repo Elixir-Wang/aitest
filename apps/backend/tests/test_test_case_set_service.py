@@ -355,6 +355,27 @@ def test_execute_test_case_generation_run_completes_and_persists_cases(
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_requirement_and_exploration()
+    with core_db.connect() as db:
+        db.execute(
+            """
+            INSERT INTO test_point_generation_runs
+              (id, project_id, document_id, requirement_version_id, task_id, status, created_by)
+            VALUES ('tpgr-1', 'project-1', 'doc-1', 'version-1', 'test_point_generation:tpgr-1', 'completed', ?)
+            """,
+            (ACTOR["id"],),
+        )
+        db.executemany(
+            """
+            INSERT INTO test_points
+              (id, project_id, document_id, requirement_version_id, generation_run_id,
+               point_key, title, module, category, priority, description)
+            VALUES (?, 'project-1', 'doc-1', 'version-1', 'tpgr-1', ?, ?, '登录', '功能', 'P0', ?)
+            """,
+            [
+                ("tp-1", "TP-LOGIN-001", "正确账号登录", "验证正确账号密码可以登录。"),
+                ("tp-2", "TP-LOGIN-002", "错误密码登录", "验证错误密码不能登录。"),
+            ],
+        )
     created = test_case_service.create_test_case_set(
         "project-1",
         TestCaseSetCreateIn(name="登录需求测试用例集", requirement_doc_id="doc-1"),
@@ -366,6 +387,8 @@ def test_execute_test_case_generation_run_completes_and_persists_cases(
         assert "用户可以登录系统" in input_data.requirement_content
         assert "原始需求" not in input_data.requirement_content
         assert not hasattr(input_data, "include_company_knowledge")
+        assert [point["point_key"] for point in input_data.test_points] == ["TP-LOGIN-001", "TP-LOGIN-002"]
+        assert all("status" not in point for point in input_data.test_points)
         return AgentTestCaseGenerationResult(
             summary="覆盖登录成功和失败场景。",
             total_count=1,

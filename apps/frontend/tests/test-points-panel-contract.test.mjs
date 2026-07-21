@@ -16,3 +16,9 @@ test("test points prerequisite empty state reuses the illustrated empty-state tr
   assert.match(panelSource, /title="暂无测试点"/);
   assert.match(panelSource, /请先在需求分析中点击“转为最终需求”。/);
 });
+
+test("test points are directly effective without a status workflow", () => {
+  assert.doesNotMatch(panelSource, /point\.status/);
+  assert.doesNotMatch(panelSource, />状态</);
+  assert.doesNotMatch(panelSource, /已确认|草稿|废弃/);
+});

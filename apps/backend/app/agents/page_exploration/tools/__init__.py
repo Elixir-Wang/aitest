@@ -16,7 +16,6 @@ from app.agents.page_exploration.tools.navigation_tools import (
 from app.agents.page_exploration.tools.extraction_tools import (
     playwright_observe_overlays_tool,
     playwright_scoped_query_tool,
-    playwright_screenshot_tool,
     playwright_snap_tool,
 )
 
@@ -39,7 +38,6 @@ NAVIGATION_TOOLS = [
 EXTRACTION_TOOLS = [
     playwright_snap_tool,
     playwright_observe_overlays_tool,
-    playwright_screenshot_tool,
 ]
 
 STATE_TOOLS = [
@@ -79,7 +77,6 @@ __all__ = [
     "playwright_snap_tool",
     "playwright_scoped_query_tool",
     "playwright_observe_overlays_tool",
-    "playwright_screenshot_tool",
     # 状态工具
     "check_explored_url_tool",
     # URL 工具（工厂函数 + 核心函数）

@@ -254,10 +254,8 @@ def _build_generation_input(run_context: dict) -> TestCaseGenerationInput:
                 "priority": row["priority"],
                 "description": row["description"],
                 "verification_points": json.loads(row["verification_points_json"] or "[]"),
-                "status": row["status"],
             }
             for row in point_rows
-            if row["status"] != "deprecated"
         ],
         rejected_case_feedback=[
             RejectedTestCaseFeedback.model_validate(item)
