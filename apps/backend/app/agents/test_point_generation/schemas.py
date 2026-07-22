@@ -29,11 +29,58 @@ class GeneratedTestPoint(BaseModel):
     verification_points: list[str] = Field(min_length=1)
     source_refs: list[str] = Field(default_factory=list)
     notes: str = ""
+    requirement_obligation_keys: list[str] = Field(min_length=1)
 
 
 class TestPointGenerationResult(BaseModel):
-    summary: str = ""
     points: list[GeneratedTestPoint]
+    unsupported_assumptions: list[str] = Field(default_factory=list)
 
 
-__all__ = ["GeneratedTestPoint", "TestPointGenerationInput", "TestPointGenerationResult", "TestPointCategory", "TestPointPriority"]
+class RequirementObligation(BaseModel):
+    obligation_key: str = Field(min_length=1, max_length=120)
+    source_section: str = Field(min_length=1, max_length=240)
+    statement: str = Field(min_length=1)
+    obligation_type: Literal[
+        "business_rule",
+        "module",
+        "flow",
+        "threshold",
+        "compatibility",
+        "display",
+        "logging",
+        "performance",
+        "permission",
+        "security",
+        "exception",
+    ]
+    modules: list[str] = Field(default_factory=list)
+    thresholds: list[str] = Field(default_factory=list)
+    explicit: bool = True
+    test_required: bool = True
+
+
+class RequirementObligationExtractionResult(BaseModel):
+    obligations: list[RequirementObligation] = Field(min_length=1)
+    unverifiable_items: list[str] = Field(default_factory=list)
+
+
+class TestPointCoverageResult(BaseModel):
+    status: Literal["complete", "incomplete", "invalid"]
+    obligation_count: int
+    covered_obligation_count: int
+    missing_obligation_keys: list[str] = Field(default_factory=list)
+    unknown_obligation_keys: list[str] = Field(default_factory=list)
+    unsupported_assumptions: list[str] = Field(default_factory=list)
+
+
+__all__ = [
+    "GeneratedTestPoint",
+    "RequirementObligation",
+    "RequirementObligationExtractionResult",
+    "TestPointCoverageResult",
+    "TestPointGenerationInput",
+    "TestPointGenerationResult",
+    "TestPointCategory",
+    "TestPointPriority",
+]

@@ -39,7 +39,7 @@ export default function Page() {
     try {
       const [projects, projectOverview, requirements] = await Promise.all([
         apiRequest<ApiProject[]>("/projects"),
-        apiRequest<ApiDashboardOverview>(`/dashboard/overview?project_id=${projectId}&days=7`),
+        apiRequest<ApiDashboardOverview>(`/dashboard/overview?project_id=${projectId}&days=30`),
         apiRequest<ApiRequirementDocument[]>(`/projects/${projectId}/requirements`),
       ]);
       const nextProject = projects.find((item) => item.id === projectId) ?? null;

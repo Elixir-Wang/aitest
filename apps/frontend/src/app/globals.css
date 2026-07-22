@@ -164,6 +164,41 @@
   --sidebar-ring: #4d9a84;
 }
 
+[data-theme-mode="evergreen"] {
+  --background: #ffffff;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --popover: #ffffff;
+  --popover-foreground: #111827;
+  --primary: #16803c;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f8f6;
+  --secondary-foreground: #26322b;
+  --muted: #f5f8f6;
+  --muted-foreground: #66706b;
+  --accent: #e4f4ea;
+  --accent-foreground: #126b33;
+  --destructive: #d94c3f;
+  --destructive-foreground: #ffffff;
+  --border: #e3e8e5;
+  --input: #e3e8e5;
+  --ring: #69ae82;
+  --chart-1: #16803c;
+  --chart-2: #44a166;
+  --chart-3: #8cc8a0;
+  --chart-4: #ff8b6b;
+  --chart-5: #285f3b;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #25322a;
+  --sidebar-primary: #16803c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e4f4ea;
+  --sidebar-accent-foreground: #126b33;
+  --sidebar-border: #e3e8e5;
+  --sidebar-ring: #69ae82;
+}
+
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);

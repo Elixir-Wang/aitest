@@ -11,8 +11,6 @@ class HandledClarification(BaseModel):
     insertion_anchor: str = ""
     module_name: str = ""
     module_key: str = ""
-    source_excerpt: str = ""
-    impact: str = ""
 
 
 class RequirementFinalizationInput(BaseModel):

@@ -1,0 +1,492 @@
+- id: apitc-092b7a0600cad087
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: start_date 等于 end_date - 单日区间边界
+  test_point_key: body.date_relation.start_equals_end
+  oracle_status: needs_confirmation
+  test_description: start_date 与 end_date 同值，验证单日查询的边界合法性。
+  priority: P2
+  coverage: boundary
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+    body:
+      start_date: '2026-02-03'
+      end_date: '2026-02-03'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 200
+  notes: Mock 数据保持日期格式合法，仅将 start_date 与 end_date 设为同值；文档未明确单日区间是否允许，200 为推断的成功结果，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-092b7a0600cad087
+- id: apitc-0f6b9d2ef1f4b4e0
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: start_date 为空字符串
+  test_point_key: body.required.start_date.empty
+  oracle_status: needs_confirmation
+  test_description: 必填字符串字段 start_date 传入空字符串，验证空值拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+    body:
+      start_date: ''
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: Mock 数据将 start_date 改为空字符串，其余字段保持合法基线；状态码 400 为推断值，文档未明确空字符串对应的错误响应，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-0f6b9d2ef1f4b4e0
+- id: apitc-1e0fea95ec543224
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 必填字段 end_date 缺失
+  test_point_key: body.required.end_date.missing
+  oracle_status: needs_confirmation
+  test_description: 请求体仅包含 start_date，验证必填字段 end_date 缺失时的契约拒绝行为。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+    body:
+      start_date: '2026-02-01'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: Mock 数据在合法基线上去掉 end_date；状态码 400 为推断值，文档未明确缺失必填字段对应的错误响应，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-1e0fea95ec543224
+- id: apitc-271c4fde29f225a6
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 鉴权 header username 为空
+  test_point_key: header.required.username.empty
+  oracle_status: needs_confirmation
+  test_description: username 使用空字符串覆盖环境默认值，验证鉴权失败的契约拒绝行为。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers:
+      username: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 401
+  notes: 用空字符串覆盖 username 的环境默认值，其余字段保持合法基线；文档未明确鉴权失败的错误响应，401 为常见推断值，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-271c4fde29f225a6
+- id: apitc-34d44084da220ad3
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 必填字段 start_date 缺失
+  test_point_key: body.required.start_date.missing
+  oracle_status: needs_confirmation
+  test_description: 请求体仅包含 end_date，验证必填字段 start_date 缺失时的契约拒绝行为。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+    body:
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: Mock 数据在合法基线上去掉 start_date；接口仅声明 200 和 404，缺失必填字段的 HTTP 状态码未在文档中给出，400 为常见
+    REST 推断值，需在执行后结合实际响应调整断言。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-34d44084da220ad3
+- id: apitc-34ffad68c4c2382e
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: end_date 类型错误
+  test_point_key: body.required.end_date.invalid_type
+  oracle_status: needs_confirmation
+  test_description: end_date 传入数字类型，验证 schema 类型不符时的契约拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+    body:
+      start_date: '2026-02-01'
+      end_date: 20260205
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: Mock 数据将 end_date 改为数字类型（schema 声明为 string），其余字段保持合法基线；状态码 400 为推断值，文档未明确类型错误对应的错误响应，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-34ffad68c4c2382e
+- id: apitc-5bdd5e6f7ac97c5e
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 请求体为空对象
+  test_point_key: request_body.empty_object
+  oracle_status: needs_confirmation
+  test_description: 发送空 JSON 对象 {}，验证必填字段全部缺失时的契约拒绝行为。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+    body: '{}'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 请求体为合法基线的空对象版本，所有必填字段缺失；状态码 400 为推断值，文档未明确空对象对应的错误响应，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-5bdd5e6f7ac97c5e
+- id: apitc-646cda970affb2ba
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 鉴权 header cybertron-robot-key 为空
+  test_point_key: header.required.cybertron-robot-key.empty
+  oracle_status: needs_confirmation
+  test_description: cybertron-robot-key 使用空字符串覆盖环境默认值，验证鉴权失败的契约拒绝行为。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers:
+      cybertron-robot-key: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 401
+  notes: 用空字符串覆盖 cybertron-robot-key 的环境默认值，其余字段保持合法基线；文档未明确鉴权失败的错误响应，401 为常见推断值，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-646cda970affb2ba
+- id: apitc-75c6c33e2b2a64ea
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 鉴权 header cybertron-robot-token 为空
+  test_point_key: header.required.cybertron-robot-token.empty
+  oracle_status: needs_confirmation
+  test_description: cybertron-robot-token 使用空字符串覆盖环境默认值，验证鉴权失败的契约拒绝行为。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers:
+      cybertron-robot-token: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 401
+  notes: 用空字符串覆盖 cybertron-robot-token 的环境默认值，其余字段保持合法基线；文档未明确鉴权失败的错误响应，401 为常见推断值，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-75c6c33e2b2a64ea
+- id: apitc-7935688cfbd92907
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 请求体缺失
+  test_point_key: request_body.missing
+  oracle_status: needs_confirmation
+  test_description: 不发送任何 requestBody，验证必填请求体缺失时的契约拒绝行为。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 完全不发送 requestBody；状态码 400 为推断值，文档未明确必填请求体缺失时的错误响应，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-7935688cfbd92907
+- id: apitc-7ec78898f4faac79
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: start_date 非法日期格式
+  test_point_key: body.start_date.invalid_format
+  oracle_status: needs_confirmation
+  test_description: start_date 使用非 YYYY-MM-DD 格式，验证日期格式校验的拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+    body:
+      start_date: 2026/02/01
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: Mock 数据将 start_date 改为 2026/02/01（与文档示例 YYYY-MM-DD 不一致），其余字段保持合法基线；schema
+    未声明 format/pattern，400 为常见推断值，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-7ec78898f4faac79
+- id: apitc-8bdf0a74086cf020
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: end_date 非法日期格式
+  test_point_key: body.end_date.invalid_format
+  oracle_status: needs_confirmation
+  test_description: end_date 使用非 YYYY-MM-DD 格式，验证日期格式校验的拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+    body:
+      start_date: '2026-02-01'
+      end_date: 2026/02/05
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: Mock 数据将 end_date 改为 2026/02/05（与文档示例 YYYY-MM-DD 不一致），其余字段保持合法基线；schema 未声明
+    format/pattern，400 为常见推断值，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-8bdf0a74086cf020
+- id: apitc-a58db85e176be10f
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: start_date 晚于 end_date - 日期关系非法
+  test_point_key: body.date_relation.start_after_end
+  oracle_status: needs_confirmation
+  test_description: start_date 晚于 end_date，验证日期顺序约束的拒绝行为。
+  priority: P2
+  coverage: boundary
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+    body:
+      start_date: '2026-02-10'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: Mock 数据将 start_date 设为晚于 end_date；schema 未声明 start<=end 约束，400 为常见推断值，文档也未明确该场景的错误响应，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-a58db85e176be10f
+- id: apitc-b69707f6fdcf16d5
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: start_date 类型错误
+  test_point_key: body.required.start_date.invalid_type
+  oracle_status: needs_confirmation
+  test_description: start_date 传入数字类型，验证 schema 类型不符时的契约拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+    body:
+      start_date: 20260201
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: Mock 数据将 start_date 改为数字类型（schema 声明为 string），其余字段保持合法基线；状态码 400 为推断值，文档未明确类型错误对应的错误响应，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-b69707f6fdcf16d5
+- id: apitc-bd0b0f7e0d7640dc
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: end_date 为 null
+  test_point_key: body.required.end_date.null
+  oracle_status: needs_confirmation
+  test_description: 必填字段 end_date 传入 null，验证 null 拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+    body:
+      start_date: '2026-02-01'
+      end_date: null
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: Mock 数据将 end_date 设为 null，其余字段保持合法基线；状态码 400 为推断值，文档未明确 null 对应的错误响应，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-bd0b0f7e0d7640dc
+- id: apitc-d355a12d3288dfd7
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: start_date 为 null
+  test_point_key: body.required.start_date.null
+  oracle_status: needs_confirmation
+  test_description: 必填字段 start_date 传入 null，验证 null 拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+    body:
+      start_date: null
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: Mock 数据将 start_date 设为 null，其余字段保持合法基线；状态码 400 为推断值，文档未明确 null 对应的错误响应，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-d355a12d3288dfd7
+- id: apitc-e90a21c88df5f1d9
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 最小合法请求 - start_date 与 end_date 均合法
+  test_point_key: success.minimum_valid
+  oracle_status: confirmed
+  test_description: 使用文档示例日期范围验证智能体数据分析接口的成功响应契约与业务成功码。
+  priority: P0
+  coverage: positive
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 200
+  - type: jsonpath_equals
+    path: $.code
+    expected: 0
+  - type: jsonpath_exists
+    path: $.data
+    expected: true
+  notes: 正常请求使用 schema example 构造 start_date=2026-02-01、end_date=2026-02-05；环境摘要已配置
+    cybertron_agent 鉴权，运行时由执行器注入三个鉴权 header，请求层不重复输出。成功业务码 000000 来自文档 example。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-e90a21c88df5f1d9
+- id: apitc-f5143727bdf0b959
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: end_date 为空字符串
+  test_point_key: body.required.end_date.empty
+  oracle_status: needs_confirmation
+  test_description: 必填字符串字段 end_date 传入空字符串，验证空值拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    query: '{}'
+    headers: '{}'
+    body:
+      start_date: '2026-02-01'
+      end_date: ''
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: Mock 数据将 end_date 改为空字符串，其余字段保持合法基线；状态码 400 为推断值，文档未明确空字符串对应的错误响应，执行后需结合实际响应调整。
+  created_at: '2026-07-22 07:29:50'
+  updated_at: '2026-07-22 07:29:50'
+  case_id: apitc-f5143727bdf0b959

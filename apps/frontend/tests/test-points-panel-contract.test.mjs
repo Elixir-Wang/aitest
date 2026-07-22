@@ -30,12 +30,28 @@ test("test point generation keeps the list area visible", () => {
   assert.doesNotMatch(panelSource, /hasPoints && !regenerating/);
 });
 
+test("test points panel reports refreshed generation state to its container", () => {
+  assert.match(panelSource, /onOverviewChange\?: \(overview: ApiTestPointOverview\) => void/);
+  assert.match(panelSource, /setData\(overview\);\s*onOverviewChange\?\.\(overview\);/);
+});
+
 test("test points actions live in the list toolbar without a second outer toolbar", () => {
   assert.match(panelSource, /<ShellSection>[\s\S]*?<ListToolbar[\s\S]*?actions=\{/);
   assert.doesNotMatch(panelSource, /<h2 className="font-medium text-sm">测试点<\/h2>/);
   assert.match(panelSource, /title="测试点列表"/);
   assert.doesNotMatch(listSource, /<ShellSection>/);
   assert.doesNotMatch(listSource, /<ListToolbar/);
+});
+
+test("test point mind map aligns its bottom edge with the viewport", () => {
+  assert.match(panelSource, /const mindMapContainerRef = useRef<HTMLDivElement>\(null\)/);
+  assert.match(panelSource, /window\.innerHeight - container\.getBoundingClientRect\(\)\.top - 16/);
+  assert.match(
+    panelSource,
+    /<div className="flex min-h-\[32rem\] flex-none rounded-lg border" ref=\{mindMapContainerRef\}>\s*<TestPointMindMap/,
+  );
+  assert.doesNotMatch(panelSource, /<div className="flex min-h-\[32rem\] flex-1 rounded-lg border" ref=\{mindMapContainerRef\}>/);
+  assert.doesNotMatch(panelSource, /h-\[calc\(100dvh-15rem\)\]/);
 });
 
 test("test points list omits the priority summary footer", () => {
@@ -56,6 +72,13 @@ test("test points list uses the requested title and column order", () => {
 
 test("test point titles open the detail dialog", () => {
   assert.match(listSource, /onClick=\{\(\) => openDetail\(point\)\}[\s\S]*?\{point\.title\}/);
+});
+
+test("selecting a test point in the mind map keeps the mind map visible", () => {
+  const handler = panelSource.match(/function handleSelectPoint\(pointId: string\) \{([\s\S]*?)\n {2}\}/)?.[1] ?? "";
+
+  assert.match(handler, /setSelectedPointId\(pointId\)/);
+  assert.doesNotMatch(handler, /setViewMode\("list"\)/);
 });
 
 test("pagination is spaced from the table and page size updates visible rows", () => {

@@ -78,8 +78,6 @@ def _handled_clarification(question: dict, answer, priority: str) -> HandledClar
         insertion_anchor=str(answer["insertion_anchor"] or ""),
         module_name=str(question.get("module_name") or question.get("module") or ""),
         module_key=str(question.get("module_key") or ""),
-        source_excerpt=str(question.get("source_excerpt") or question.get("primary_excerpt") or ""),
-        impact=str(question.get("impact") or question.get("test_impact") or ""),
     )
 
 

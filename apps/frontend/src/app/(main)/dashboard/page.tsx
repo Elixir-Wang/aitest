@@ -23,7 +23,7 @@ const metricIcons: Record<string, LucideIcon> = {
 export default function Page() {
   const { currentProjectId, hydrate, scope } = useProjectContextStore();
   const [overview, setOverview] = useState<ApiDashboardOverview | null>(null);
-  const [trendDays, setTrendDays] = useState(7);
+  const [trendDays, setTrendDays] = useState(30);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const projectId = scope === "project" && currentProjectId ? currentProjectId : "all";

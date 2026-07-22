@@ -24,6 +24,12 @@ class TestPointMarkdownUpdateIn(BaseModel):
     markdown_content: str = Field(min_length=1)
 
 
+class TestPointRequirementObligationOut(BaseModel):
+    obligation_key: str
+    source_section: str
+    statement: str
+
+
 class TestPointOut(BaseModel):
     id: str
     project_id: str
@@ -38,6 +44,7 @@ class TestPointOut(BaseModel):
     preconditions: list[str]
     verification_points: list[str]
     source_refs: list[str]
+    requirement_obligations: list[TestPointRequirementObligationOut]
     notes: str
     created_at: str
     updated_at: str
@@ -54,9 +61,19 @@ class TestPointGenerationRunOut(BaseModel):
     finished_at: str | None = None
 
 
+class TestPointCoverageSummaryOut(BaseModel):
+    status: Literal["pending", "complete", "incomplete", "invalid"]
+    obligation_count: int
+    covered_obligation_count: int
+    missing_obligations: list[TestPointRequirementObligationOut]
+    unsupported_assumptions: list[str]
+    supplement_round: int
+
+
 class TestPointOverviewOut(BaseModel):
     requirement_version_id: str | None
     requirement_version_no: int | None
     run: TestPointGenerationRunOut | None
     points: list[TestPointOut]
     markdown_content: str
+    coverage_summary: TestPointCoverageSummaryOut

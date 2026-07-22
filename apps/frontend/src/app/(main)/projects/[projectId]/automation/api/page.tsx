@@ -3007,53 +3007,64 @@ function FieldRow({ row }: { row: ApiFieldRow }) {
 
 function ResponseSummary({ responses }: { responses: Record<string, unknown> }) {
   const entries = Object.entries(responses);
+  const preferredStatus = entries.find(([status]) => status.startsWith("2"))?.[0] ?? entries[0]?.[0] ?? "";
+  const [selectedStatus, setSelectedStatus] = useState(preferredStatus);
+  const activeStatus = entries.some(([status]) => status === selectedStatus) ? selectedStatus : preferredStatus;
+  const activeEntry = entries.find(([status]) => status === activeStatus);
+  const response = asRecord(activeEntry?.[1]);
+  const contentEntries = Object.entries(asRecord(response.content));
+  const responseRows = contentEntries.flatMap(([contentType, content]) =>
+    getSchemaRows(asRecord(asRecord(content).schema), {
+      fallbackName: contentType,
+      location: "response",
+    }),
+  );
+  const responseDescription =
+    asString(response.description) || (activeStatus.startsWith("2") ? "Successful Response" : "响应定义");
+
   if (entries.length === 0) {
     return null;
   }
 
   return (
-    <section className="space-y-3">
-      <div className="border-b pb-2">
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-2">
         <h3 className="font-semibold text-lg">响应信息</h3>
+        {activeEntry ? (
+          <div className="flex items-center gap-6">
+            <Select onValueChange={setSelectedStatus} value={activeStatus}>
+              <SelectTrigger
+                aria-label="选择响应状态码"
+                className="h-8 w-auto min-w-16 border-0 bg-transparent px-1 font-mono text-xs shadow-none"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                {entries.map(([status]) => (
+                  <SelectItem key={status} value={status}>
+                    {status}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {contentEntries.map(([contentType]) => (
+              <ContentTypeBadge key={contentType} value={contentType} />
+            ))}
+          </div>
+        ) : null}
       </div>
-      <div className="space-y-3">
-        {entries.map(([status, value]) => {
-          const response = asRecord(value);
-          const contentEntries = Object.entries(asRecord(response.content));
-          const responseRows = contentEntries.flatMap(([contentType, content]) =>
-            getSchemaRows(asRecord(asRecord(content).schema), {
-              fallbackName: contentType,
-              location: "response",
-            }),
-          );
-          const responseDescription =
-            asString(response.description) || (status.startsWith("2") ? "Successful Response" : "响应定义");
-          return (
-            <div className="overflow-hidden rounded-md border bg-background" key={status}>
-              <div className="flex flex-wrap items-center gap-2 border-b bg-muted/20 px-4 py-3">
-                <Badge className="bg-background px-2.5 font-mono" variant="outline">
-                  {status}
-                </Badge>
-                <span className="font-medium text-sm">{responseDescription}</span>
-                {contentEntries.length > 0 ? (
-                  <div className="ml-auto flex flex-wrap justify-end gap-2">
-                    {contentEntries.map(([contentType]) => (
-                      <ContentTypeBadge key={contentType} value={contentType} />
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-              {responseRows.length > 0 ? (
-                <div className="divide-y px-4 py-1">
-                  {responseRows.map((row) => (
-                    <FieldRow key={`${status}-${row.location}-${row.name}`} row={row} />
-                  ))}
-                </div>
-              ) : null}
+      {activeEntry ? (
+        <div className="space-y-3">
+          <p className="text-muted-foreground text-sm">{responseDescription}</p>
+          {responseRows.length > 0 ? (
+            <div className="divide-y">
+              {responseRows.map((row) => (
+                <FieldRow key={`${activeStatus}-${row.location}-${row.name}`} row={row} />
+              ))}
             </div>
-          );
-        })}
-      </div>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }

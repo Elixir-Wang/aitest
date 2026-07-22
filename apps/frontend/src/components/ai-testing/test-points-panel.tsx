@@ -1,16 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Loader2, Pencil, RefreshCw, Save, X } from "lucide-react";
+import { List, Loader2, Network, Pencil, RefreshCw, Save, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
 import { ListToolbar, ShellSection } from "@/components/ai-testing/page-shell";
 import { StandardMarkdownEditor } from "@/components/ai-testing/standard-markdown-editor";
+import { TestPointCoverageSummary } from "@/components/ai-testing/test-point-coverage-summary";
+import { TestPointMindMap } from "@/components/ai-testing/test-point-mind-map";
 import { TestPointsList } from "@/components/ai-testing/test-points-list";
 import { AiEditInput } from "@/components/ui/ai-input";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import { ApiRequestError, type ApiTestPointOverview, apiRequest, generateTestPoints } from "@/lib/api-client";
 
@@ -25,10 +28,12 @@ export function TestPointsPanel({
   projectId,
   documentId,
   canEdit,
+  onOverviewChange,
 }: {
   projectId: string;
   documentId: string;
   canEdit: boolean;
+  onOverviewChange?: (overview: ApiTestPointOverview) => void;
 }) {
   const [data, setData] = useState<ApiTestPointOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,6 +44,9 @@ export function TestPointsPanel({
   const [editingWithAi, setEditingWithAi] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"list" | "mindmap">("list");
+  const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+  const mindMapContainerRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(
     async (silent = false) => {
@@ -49,6 +57,7 @@ export function TestPointsPanel({
           `/projects/${projectId}/requirements/${documentId}/test-points`,
         );
         setData(overview);
+        onOverviewChange?.(overview);
         setMarkdownDraft(overview.markdown_content);
       } catch (requestError) {
         setError(
@@ -62,7 +71,7 @@ export function TestPointsPanel({
         if (!silent) setLoading(false);
       }
     },
-    [documentId, projectId],
+    [documentId, onOverviewChange, projectId],
   );
 
   useEffect(() => {
@@ -74,6 +83,24 @@ export function TestPointsPanel({
     const timer = window.setInterval(() => void load(true), 2500);
     return () => window.clearInterval(timer);
   }, [data?.run, load]);
+
+  useEffect(() => {
+    if (viewMode !== "mindmap") return;
+
+    const resizeMindMapContainer = () => {
+      const container = mindMapContainerRef.current;
+      if (!container) return;
+      const availableHeight = window.innerHeight - container.getBoundingClientRect().top - 16;
+      container.style.height = `${Math.max(512, availableHeight)}px`;
+    };
+
+    const frameId = window.requestAnimationFrame(resizeMindMapContainer);
+    window.addEventListener("resize", resizeMindMapContainer);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", resizeMindMapContainer);
+    };
+  }, [viewMode]);
 
   async function persistMarkdown(markdownContent: string) {
     const updated = await apiRequest<ApiTestPointOverview>(
@@ -147,6 +174,21 @@ export function TestPointsPanel({
   const hasPoints = Boolean(data?.points.length);
   const showActions = Boolean(canEdit && hasPoints && !isRunning && !regenerating);
 
+  const filteredPoints = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return data?.points ?? [];
+    return (data?.points ?? []).filter(
+      (p) =>
+        p.title.toLowerCase().includes(keyword) ||
+        (p.module && p.module.toLowerCase().includes(keyword)) ||
+        p.category.toLowerCase().includes(keyword)
+    );
+  }, [data?.points, search]);
+
+  function handleSelectPoint(pointId: string) {
+    setSelectedPointId(pointId);
+  }
+
   return (
     <div>
       {loading ? (
@@ -159,11 +201,12 @@ export function TestPointsPanel({
       ) : !data?.requirement_version_id ? (
         <IllustratedEmptyState
           className="rounded-lg border border-dashed bg-muted/10"
-          description="请先在需求分析中点击“转为最终需求”。"
+          description='请先在需求分析中点击"转为最终需求"。'
           title="暂无测试点"
         />
       ) : (
         <div className="space-y-4">
+          <TestPointCoverageSummary coverage={data.coverage_summary} />
           {data.run?.status === "failed" ? (
             <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
               {data.run.error_message || "测试点生成失败"}
@@ -180,65 +223,87 @@ export function TestPointsPanel({
             <ShellSection>
               <ListToolbar
                 actions={
-                  showActions ? (
-                    <>
-                      {data.requirement_version_id ? (
-                        <Button
-                          disabled={regenerating || isRunning}
-                          onClick={regenerateTestPoints}
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          <RefreshCw className={`size-3.5 ${regenerating ? "animate-spin" : ""}`} />
-                          {regenerating ? "重新生成中" : "重新生成"}
-                        </Button>
-                      ) : null}
-                      {editing ? (
-                        <>
-                          <Button disabled={saving} onClick={saveMarkdownDraft} size="sm" type="button">
-                            <Save className="size-3.5" />
-                            {saving ? "保存中" : "保存"}
-                          </Button>
+                  <>
+                    <fieldset aria-label="视图切换" className="flex h-8 rounded-lg border bg-slate-50 p-0.5 dark:bg-muted/50">
+                      <Button
+                        className="h-full gap-1.5 px-3 text-sm"
+                        onClick={() => setViewMode("list")}
+                        size="sm"
+                        variant={viewMode === "list" ? "secondary" : "ghost"}
+                      >
+                        <List className="size-4" />
+                        列表
+                      </Button>
+                      <Button
+                        className="h-full gap-1.5 px-3 text-sm"
+                        onClick={() => setViewMode("mindmap")}
+                        size="sm"
+                        variant={viewMode === "mindmap" ? "secondary" : "ghost"}
+                      >
+                        <Network className="size-4" />
+                        脑图
+                      </Button>
+                    </fieldset>
+                    {showActions ? (
+                      <>
+                        {data.requirement_version_id ? (
                           <Button
-                            disabled={saving}
-                            onClick={() => {
-                              setMarkdownDraft(data.markdown_content ?? "");
-                              setEditing(false);
-                            }}
+                            disabled={regenerating || isRunning}
+                            onClick={regenerateTestPoints}
                             size="sm"
                             type="button"
                             variant="outline"
                           >
-                            <X className="size-3.5" />
-                            取消
+                            <RefreshCw className={cn("size-3.5", regenerating && "animate-spin")} />
+                            {regenerating ? "重新生成中" : "重新生成"}
                           </Button>
-                        </>
-                      ) : (
-                        <>
-                          <AiEditInput
-                            disabled={editingWithAi}
-                            loading={editingWithAi}
-                            onSubmit={editTestPointsWithAi}
-                            placeholder="描述你希望如何修改当前测试点..."
-                            title="AI修改测试点"
-                          />
-                          <Button
-                            onClick={() => {
-                              setMarkdownDraft(data.markdown_content ?? "");
-                              setEditing(true);
-                            }}
-                            size="sm"
-                            type="button"
-                            variant="outline"
-                          >
-                            <Pencil className="size-3.5" />
-                            修改
-                          </Button>
-                        </>
-                      )}
-                    </>
-                  ) : null
+                        ) : null}
+                        {editing ? (
+                          <>
+                            <Button disabled={saving} onClick={saveMarkdownDraft} size="sm" type="button">
+                              <Save className="size-3.5" />
+                              {saving ? "保存中" : "保存"}
+                            </Button>
+                            <Button
+                              disabled={saving}
+                              onClick={() => {
+                                setMarkdownDraft(data.markdown_content ?? "");
+                                setEditing(false);
+                              }}
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              <X className="size-3.5" />
+                              取消
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <AiEditInput
+                              disabled={editingWithAi}
+                              loading={editingWithAi}
+                              onSubmit={editTestPointsWithAi}
+                              placeholder="描述你希望如何修改当前测试点..."
+                              title="AI修改测试点"
+                            />
+                            <Button
+                              onClick={() => {
+                                setMarkdownDraft(data.markdown_content ?? "");
+                                setEditing(true);
+                              }}
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              <Pencil className="size-3.5" />
+                              修改
+                            </Button>
+                          </>
+                        )}
+                      </>
+                    ) : null}
+                  </>
                 }
                 onSearch={setSearch}
                 placeholder="搜索测试点标题、模块或类型"
@@ -246,6 +311,15 @@ export function TestPointsPanel({
               />
               {editing ? (
                 <StandardMarkdownEditor content={markdownDraft} onChange={setMarkdownDraft} />
+              ) : viewMode === "mindmap" ? (
+                <div className="flex min-h-[32rem] flex-none rounded-lg border" ref={mindMapContainerRef}>
+                  <TestPointMindMap
+                    active={true}
+                    points={filteredPoints}
+                    selectedPointId={selectedPointId}
+                    onSelectPoint={handleSelectPoint}
+                  />
+                </div>
               ) : (
                 <TestPointsList
                   projectId={projectId}
@@ -255,6 +329,7 @@ export function TestPointsPanel({
                   key={search}
                   search={search}
                   onDataChange={() => void load(true)}
+                  highlightedId={selectedPointId}
                 />
               )}
             </ShellSection>

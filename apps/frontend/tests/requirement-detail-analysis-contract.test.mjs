@@ -76,6 +76,10 @@ test("overview uses requirement progress steps instead of summary metric cards",
   assert.match(pageSource, /title: "标准需求"/);
   assert.match(pageSource, /title: "需求分析"/);
   assert.match(pageSource, /title: "最终需求"/);
+  assert.match(pageSource, /title: "测试要点"/);
+  assert.match(pageSource, /按原始需求、标准需求、需求分析、最终需求、测试要点推进。/);
+  assert.match(pageSource, /md:right-\[10%\] md:left-\[10%\]/);
+  assert.match(pageSource, /relative grid gap-5 md:grid-cols-5/);
   assert.match(pageSource, /status === "running" \? <Loader2 className="size-4 animate-spin" \/> : null/);
   assert.match(
     pageSource,
@@ -95,6 +99,21 @@ test("overview uses requirement progress steps instead of summary metric cards",
   assert.doesNotMatch(pageSource, /<SummaryMetric label="主需求文件"/);
   assert.doesNotMatch(pageSource, /<SummaryMetric label="辅助文件"/);
   assert.doesNotMatch(pageSource, /<SummaryMetric\s+label="最终需求"/);
+});
+
+test("version history tab renders the table without a duplicate section heading or outer shell", () => {
+  assert.match(pageSource, /<TabsContent value="versions">\s*\{versionsError \?/);
+  assert.doesNotMatch(pageSource, /<TabsContent value="versions">\s*<ShellSection>/);
+  assert.doesNotMatch(pageSource, /<h2 className="font-medium text-sm">版本记录<\/h2>/);
+});
+
+test("overview tracks the test point generation stage through the existing test points endpoint", () => {
+  assert.match(pageSource, /const \[testPointOverview, setTestPointOverview\] = useState<ApiTestPointOverview \| null>\(null\)/);
+  assert.match(pageSource, /`\/projects\/\$\{projectId\}\/requirements\/\$\{documentId\}\/test-points`/);
+  assert.match(pageSource, /<TestPointsPanel[\s\S]*onOverviewChange=\{setTestPointOverview\}/);
+  assert.match(pageSource, /const testPointGenerationRunning = \["queued", "running"\]\.includes\(testPointRunStatus\)/);
+  assert.match(pageSource, /status: testPointGenerationRunning \? "running" : hasGeneratedTestPoints \? "completed" : "upcoming"/);
+  assert.match(pageSource, /toast\.success\("已转为最终需求"\)[\s\S]*await loadTestPointOverview\(\)/);
 });
 
 test("review action is presented inside the requirement analysis tab", () => {

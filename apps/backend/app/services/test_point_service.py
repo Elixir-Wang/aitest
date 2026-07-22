@@ -39,15 +39,33 @@ def get_overview(project_id: str, document_id: str, actor) -> dict:
                 "run": None,
                 "points": [],
                 "markdown_content": "",
+                "coverage_summary": {
+                    "status": "pending",
+                    "obligation_count": 0,
+                    "covered_obligation_count": 0,
+                    "missing_obligations": [],
+                    "unsupported_assumptions": [],
+                    "supplement_round": 0,
+                },
             }
         run = test_point_repo.find_run_by_version(db, document_id, version["id"])
         rows = test_point_repo.list_points(db, document_id, version["id"])
+        point_links = test_point_repo.list_point_obligation_links(db, version["id"]) if rows else {}
+        obligations = test_point_repo.list_obligations(db, document_id, version["id"]) if rows else []
         return {
             "requirement_version_id": version["id"],
             "requirement_version_no": version["version_no"],
             "run": _serialize_run(run),
-            "points": [_serialize_point(row) for row in rows],
+            "points": [_serialize_point(row, point_links) for row in rows],
             "markdown_content": serialize_test_points([_serialize_internal_point(row) for row in rows]),
+            "coverage_summary": _compute_coverage_summary(run, point_links, obligations) if run else {
+                "status": "pending",
+                "obligation_count": 0,
+                "covered_obligation_count": 0,
+                "missing_obligations": [],
+                "unsupported_assumptions": [],
+                "supplement_round": 0,
+            },
         }
 
 
@@ -60,7 +78,7 @@ def update_point(project_id: str, document_id: str, point_id: str, payload: Test
             raise api_error(404, "TEST_POINT_NOT_FOUND", "测试点不存在。")
         values = payload.model_dump(exclude_unset=True)
         test_point_repo.update_point(db, point_id, values)
-        return _serialize_point(test_point_repo.find_point(db, point_id))
+        return _serialize_point(test_point_repo.find_point(db, point_id), {})
 
 
 def delete_point(project_id: str, document_id: str, point_id: str, actor) -> None:
@@ -226,11 +244,48 @@ def _serialize_run(row):
     return {"id": row["id"], "task_id": row["task_id"], "requirement_version_id": row["requirement_version_id"], "status": row["status"], "status_label": STATUS_LABELS.get(row["status"], row["status"]), "input_snapshot": snapshot, "error_message": row["error_message"], "created_at": row["created_at"], "finished_at": row["finished_at"]}
 
 
-def _serialize_point(row):
+def _serialize_point(row, point_links: dict[str, list[str]] | None = None):
     if not row:
         return None
-    return {"id": row["id"], "project_id": row["project_id"], "document_id": row["document_id"], "requirement_version_id": row["requirement_version_id"], "generation_run_id": row["generation_run_id"], "title": row["title"], "module": row["module"], "category": row["category"], "priority": row["priority"], "description": row["description"], "preconditions": json.loads(row["preconditions_json"] or "[]"), "verification_points": json.loads(row["verification_points_json"] or "[]"), "source_refs": json.loads(row["source_refs_json"] or "[]"), "notes": row["notes"], "created_at": row["created_at"], "updated_at": row["updated_at"]}
+    serialized = {"id": row["id"], "project_id": row["project_id"], "document_id": row["document_id"], "requirement_version_id": row["requirement_version_id"], "generation_run_id": row["generation_run_id"], "title": row["title"], "module": row["module"], "category": row["category"], "priority": row["priority"], "description": row["description"], "preconditions": json.loads(row["preconditions_json"] or "[]"), "verification_points": json.loads(row["verification_points_json"] or "[]"), "source_refs": json.loads(row["source_refs_json"] or "[]"), "notes": row["notes"], "created_at": row["created_at"], "updated_at": row["updated_at"]}
+    if point_links is not None:
+        linked_keys = point_links.get(row["id"], [])
+        serialized["requirement_obligations"] = [{"obligation_key": k, "source_section": "", "statement": ""} for k in linked_keys]
+    else:
+        serialized["requirement_obligations"] = []
+    return serialized
 
 
 def _serialize_internal_point(row):
-    return _serialize_point(row) | {"point_key": row["point_key"]}
+    serialized = _serialize_point(row, None)
+    serialized["point_key"] = row["point_key"]
+    return serialized
+
+
+def _compute_coverage_summary(run, point_links: dict[str, list[str]], obligations: list[dict]) -> dict:
+    run = dict(run) if run is not None else None
+    covered_keys: set[str] = set()
+    for linked_keys in point_links.values():
+        covered_keys.update(linked_keys)
+    obligation_map = {ob["obligation_key"]: ob for ob in obligations}
+    missing = [
+        {"obligation_key": ob["obligation_key"], "source_section": ob["source_section"], "statement": ob["statement"]}
+        for ob in obligations
+        if ob["obligation_key"] not in covered_keys and ob.get("test_required", True)
+    ]
+    coverage_status = run.get("coverage_status") if run else "pending"
+    supplement_round = run.get("supplement_round") if run else 0
+    unsupported_assumptions = []
+    if run and run.get("unsupported_assumptions_json"):
+        try:
+            unsupported_assumptions = json.loads(run["unsupported_assumptions_json"])
+        except json.JSONDecodeError:
+            unsupported_assumptions = []
+    return {
+        "status": coverage_status or "pending",
+        "obligation_count": len(obligations),
+        "covered_obligation_count": len([ob for ob in obligations if ob["obligation_key"] in covered_keys]),
+        "missing_obligations": missing,
+        "unsupported_assumptions": unsupported_assumptions,
+        "supplement_round": supplement_round or 0,
+    }

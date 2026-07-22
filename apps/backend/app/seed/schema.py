@@ -248,6 +248,12 @@ CREATE TABLE IF NOT EXISTS test_point_generation_runs (
   status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed')),
   input_json TEXT NOT NULL DEFAULT '{}',
   error_message TEXT NOT NULL DEFAULT '',
+  coverage_status TEXT NOT NULL DEFAULT 'pending',
+  obligation_count INTEGER NOT NULL DEFAULT 0,
+  covered_obligation_count INTEGER NOT NULL DEFAULT 0,
+  missing_obligations_json TEXT NOT NULL DEFAULT '[]',
+  unsupported_assumptions_json TEXT NOT NULL DEFAULT '[]',
+  supplement_round INTEGER NOT NULL DEFAULT 0,
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -287,6 +293,39 @@ CREATE TABLE IF NOT EXISTS test_points (
 
 CREATE INDEX IF NOT EXISTS idx_test_points_document_version
   ON test_points(document_id, requirement_version_id);
+
+CREATE TABLE IF NOT EXISTS test_point_requirement_obligations (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  document_id TEXT NOT NULL,
+  requirement_version_id TEXT NOT NULL,
+  obligation_key TEXT NOT NULL,
+  source_section TEXT NOT NULL,
+  statement TEXT NOT NULL,
+  obligation_type TEXT NOT NULL,
+  modules_json TEXT NOT NULL DEFAULT '[]',
+  thresholds_json TEXT NOT NULL DEFAULT '[]',
+  explicit INTEGER NOT NULL DEFAULT 1,
+  test_required INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(document_id) REFERENCES source_documents(id) ON DELETE CASCADE,
+  FOREIGN KEY(requirement_version_id) REFERENCES source_document_versions(id) ON DELETE CASCADE,
+  UNIQUE(requirement_version_id, obligation_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_test_point_obligations_document_version
+  ON test_point_requirement_obligations(document_id, requirement_version_id);
+
+CREATE TABLE IF NOT EXISTS test_point_obligations (
+  test_point_id TEXT NOT NULL,
+  obligation_id TEXT NOT NULL,
+  requirement_version_id TEXT NOT NULL,
+  PRIMARY KEY(test_point_id, obligation_id),
+  FOREIGN KEY(test_point_id) REFERENCES test_points(id) ON DELETE CASCADE,
+  FOREIGN KEY(obligation_id) REFERENCES test_point_requirement_obligations(id) ON DELETE CASCADE,
+  FOREIGN KEY(requirement_version_id) REFERENCES source_document_versions(id) ON DELETE CASCADE
+);
 
 CREATE TABLE IF NOT EXISTS test_case_generation_runs (
   id TEXT PRIMARY KEY,

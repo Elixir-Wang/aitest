@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChevronLeft, ChevronRight, Eye, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -74,6 +74,7 @@ interface TestPointsListProps {
   canEdit: boolean;
   search?: string;
   onDataChange?: () => void;
+  highlightedId?: string | null;
 }
 
 function TestPointDetailDialog({
@@ -233,6 +234,7 @@ export function TestPointsList({
   canEdit,
   search = "",
   onDataChange,
+  highlightedId,
 }: TestPointsListProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
@@ -353,6 +355,11 @@ export function TestPointsList({
                 <TableRow
                   data-state={selectedIds.includes(point.id) ? "selected" : undefined}
                   key={point.id}
+                  className={
+                    highlightedId === point.id
+                      ? "bg-blue-50/70 ring-1 ring-blue-200 dark:bg-blue-500/15 dark:ring-blue-500/30"
+                      : undefined
+                  }
                 >
                   <TableCell>
                     <Checkbox
@@ -488,14 +495,39 @@ export function TestPointsList({
 }
 
 function OverflowTooltipText({ value }: { value: string }) {
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  useEffect(() => {
+    const node = textRef.current;
+    if (!node) {
+      return;
+    }
+
+    const updateOverflowState = () => {
+      setIsOverflowing(node.scrollWidth > node.clientWidth);
+    };
+
+    updateOverflowState();
+    const resizeObserver = new ResizeObserver(updateOverflowState);
+    resizeObserver.observe(node);
+    return () => resizeObserver.disconnect();
+  });
+
+  const content = (
+    <span ref={textRef} className="block truncate">
+      {value}
+    </span>
+  );
+
+  if (!value || !isOverflowing) {
+    return content;
+  }
+
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="block truncate">{value}</span>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-sm whitespace-normal break-words leading-relaxed">
-        {value}
-      </TooltipContent>
+      <TooltipTrigger asChild>{content}</TooltipTrigger>
+      <TooltipContent className="max-w-sm whitespace-normal break-words leading-relaxed">{value}</TooltipContent>
     </Tooltip>
   );
 }

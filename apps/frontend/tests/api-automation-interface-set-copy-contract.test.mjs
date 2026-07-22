@@ -382,3 +382,20 @@ test("project api automation endpoint schema detail uses compact badges and resp
   assert.match(projectPageSource, /border-b bg-muted\/20 px-4 py-3/);
   assert.match(projectPageSource, /<ContentTypeBadge key=\{contentType\} value=\{contentType\} \/>/);
 });
+
+test("project api automation endpoint responses switch by status code", () => {
+  assert.match(
+    projectPageSource,
+    /const preferredStatus = entries\.find\(\(\[status\]\) => status\.startsWith\("2"\)\)\?\.\[0\] \?\? entries\[0\]\?\.\[0\] \?\? "";/,
+  );
+  assert.match(projectPageSource, /<Select onValueChange=\{setSelectedStatus\} value=\{activeStatus\}>/);
+  assert.match(projectPageSource, /<SelectItem key=\{status\} value=\{status\}>\s*\{status\}\s*<\/SelectItem>/);
+  assert.match(projectPageSource, /const activeEntry = entries\.find\(\(\[status\]\) => status === activeStatus\);/);
+  assert.match(projectPageSource, /activeEntry \? \(/);
+  assert.match(
+    projectPageSource,
+    /<div className="flex flex-wrap items-center justify-between gap-3 border-b pb-2">[\s\S]*<h3 className="font-semibold text-lg">响应信息<\/h3>[\s\S]*<Select onValueChange=\{setSelectedStatus\} value=\{activeStatus\}>[\s\S]*contentEntries\.map/,
+  );
+  assert.match(projectPageSource, /<p className="text-muted-foreground text-sm">\{responseDescription\}<\/p>/);
+  assert.doesNotMatch(projectPageSource, /border-b bg-muted\/20 px-4 py-3/);
+});

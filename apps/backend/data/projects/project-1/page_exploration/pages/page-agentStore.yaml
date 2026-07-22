@@ -162,3 +162,13 @@ merge_history:
   updated: 0
   duplicate: 1
   conflict_count: 0
+- delta_run_id: run-1
+  added: 0
+  updated: 0
+  duplicate: 1
+  conflict_count: 0
+- delta_run_id: run-events
+  added: 0
+  updated: 0
+  duplicate: 1
+  conflict_count: 0

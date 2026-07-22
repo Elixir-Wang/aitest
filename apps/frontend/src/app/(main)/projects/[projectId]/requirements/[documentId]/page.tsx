@@ -73,6 +73,7 @@ import {
   API_BASE_URL,
   ApiRequestError,
   type ApiTaskItem,
+  type ApiTestPointOverview,
   apiBlobRequest,
   apiErrorFromXhr,
   apiRequest,
@@ -506,6 +507,7 @@ export default function DocumentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [overview, setOverview] = useState<RequirementOverviewResponse | null>(null);
+  const [testPointOverview, setTestPointOverview] = useState<ApiTestPointOverview | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [analysisTab, setAnalysisTab] = useState("analysis-report");
   const [selectedFileId, setSelectedFileId] = useState("");
@@ -637,6 +639,9 @@ export default function DocumentDetailPage() {
     overview?.files.some((file) => ["pending", "processing"].includes(file.conversion_status)),
   );
   const hasFinalRequirementContent = Boolean(initialMarkdownContent.trim());
+  const testPointRunStatus = testPointOverview?.run?.status ?? "";
+  const testPointGenerationRunning = ["queued", "running"].includes(testPointRunStatus);
+  const hasGeneratedTestPoints = Boolean(testPointOverview?.points.length);
   const hasStandardRequirement = Boolean(
     overview && overview.stats.conversion_success + overview.stats.conversion_warning > 0,
   );
@@ -690,6 +695,11 @@ export default function DocumentDetailPage() {
       title: "最终需求",
       status: finalizingRequirement ? "running" : isFinalized && hasFinalRequirementContent ? "completed" : "upcoming",
     },
+    {
+      id: "test-points",
+      title: "测试要点",
+      status: testPointGenerationRunning ? "running" : hasGeneratedTestPoints ? "completed" : "upcoming",
+    },
   ];
   const analysisReportEmptyText = reviewLoading
     ? "需求分析中，分析完成后会在这里展示需求分析报告。"
@@ -731,6 +741,17 @@ export default function DocumentDetailPage() {
     },
     [documentId, projectId, setFileRows],
   );
+
+  const loadTestPointOverview = useCallback(async () => {
+    try {
+      const data = await apiRequest<ApiTestPointOverview>(
+        `/projects/${projectId}/requirements/${documentId}/test-points`,
+      );
+      setTestPointOverview(data);
+    } catch {
+      setTestPointOverview(null);
+    }
+  }, [documentId, projectId]);
 
   const loadLatestAnalysis = useCallback(async () => {
     try {
@@ -857,9 +878,10 @@ export default function DocumentDetailPage() {
       setActiveTab(queryTab);
     }
     void loadOverview();
+    void loadTestPointOverview();
     void loadLatestAnalysis();
     void loadRequirementVersions({ silent: true });
-  }, [loadLatestAnalysis, loadOverview, loadRequirementVersions, searchParams]);
+  }, [loadLatestAnalysis, loadOverview, loadRequirementVersions, loadTestPointOverview, searchParams]);
 
   useEffect(() => {
     selectedFileRef.current = selectedFile;
@@ -900,6 +922,16 @@ export default function DocumentDetailPage() {
     }, 3000);
     return () => window.clearInterval(timer);
   }, [hasRunningConversions, loadOverview]);
+
+  useEffect(() => {
+    if (!testPointGenerationRunning) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void loadTestPointOverview();
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [loadTestPointOverview, testPointGenerationRunning]);
 
   useEffect(() => {
     const wasRunning = hasRunningConversionsRef.current;
@@ -1368,6 +1400,7 @@ export default function DocumentDetailPage() {
       setFinalizeConfirmOpen(false);
       toast.success("已转为最终需求");
       await loadOverview({ silent: true });
+      await loadTestPointOverview();
       await loadRequirementVersions({ silent: true });
       setActiveTab("final");
     } catch (requestError) {
@@ -1691,7 +1724,7 @@ export default function DocumentDetailPage() {
           <TabsTrigger value="standard">标准文件</TabsTrigger>
           <TabsTrigger value="analysis">需求分析</TabsTrigger>
           <TabsTrigger value="final">最终需求</TabsTrigger>
-          <TabsTrigger value="test-points">测试点</TabsTrigger>
+          <TabsTrigger value="test-points">测试要点</TabsTrigger>
           <TabsTrigger value="versions">版本记录</TabsTrigger>
         </TabsList>
 
@@ -2310,76 +2343,76 @@ export default function DocumentDetailPage() {
         </TabsContent>
 
         <TabsContent value="test-points">
-          <TestPointsPanel canEdit={authUser?.role === "admin"} documentId={documentId} projectId={projectId} />
+          <TestPointsPanel
+            canEdit={authUser?.role === "admin"}
+            documentId={documentId}
+            onOverviewChange={setTestPointOverview}
+            projectId={projectId}
+          />
         </TabsContent>
 
         <TabsContent value="versions">
-          <ShellSection>
-            <div className="mb-3">
-              <h2 className="font-medium text-sm">版本记录</h2>
+          {versionsError ? (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-destructive text-sm">
+              {versionsError}
             </div>
-            {versionsError ? (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-destructive text-sm">
-                {versionsError}
-              </div>
-            ) : (
-              <div className="overflow-hidden rounded-lg border">
-                <Table className="table-fixed">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-24 pl-5">版本</TableHead>
-                      <TableHead>摘要</TableHead>
-                      <TableHead className="w-28 text-center">生效版本</TableHead>
-                      <TableHead className="w-48">创建时间</TableHead>
-                      <TableHead className="w-20 text-center">操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {finalRequirementVersions.map((version) => {
-                      const versionHref = `/projects/${projectId}/requirements/${documentId}/versions/${version.id}`;
-                      const summary = requirementVersionSummary(version);
-                      const isCurrentVersion = version.id === overview.document.current_version_id;
+          ) : (
+            <div className="overflow-hidden rounded-lg border">
+              <Table className="table-fixed">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-24 pl-5">版本</TableHead>
+                    <TableHead>摘要</TableHead>
+                    <TableHead className="w-28 text-center">生效版本</TableHead>
+                    <TableHead className="w-48">创建时间</TableHead>
+                    <TableHead className="w-20 text-center">操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {finalRequirementVersions.map((version) => {
+                    const versionHref = `/projects/${projectId}/requirements/${documentId}/versions/${version.id}`;
+                    const summary = requirementVersionSummary(version);
+                    const isCurrentVersion = version.id === overview.document.current_version_id;
 
-                      return (
-                        <TableRow key={version.id}>
-                          <TableCell className="pl-5">
-                            <Link className="font-medium text-primary hover:underline" href={versionHref}>
-                              {`v${version.version_no}`}
+                    return (
+                      <TableRow key={version.id}>
+                        <TableCell className="pl-5">
+                          <Link className="font-medium text-primary hover:underline" href={versionHref}>
+                            {`v${version.version_no}`}
+                          </Link>
+                        </TableCell>
+                        <TableCell>
+                          <div className="truncate text-foreground" title={summary}>
+                            {summary}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={isCurrentVersion ? "default" : "secondary"}>
+                            {isCurrentVersion ? "是" : "否"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{formatDateTime(version.created_at)}</TableCell>
+                        <TableCell className="text-center">
+                          <Button aria-label="预览版本" asChild size="icon-sm" variant="ghost">
+                            <Link href={versionHref}>
+                              <Eye className="size-4" />
                             </Link>
-                          </TableCell>
-                          <TableCell>
-                            <div className="truncate text-foreground" title={summary}>
-                              {summary}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant={isCurrentVersion ? "default" : "secondary"}>
-                              {isCurrentVersion ? "是" : "否"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{formatDateTime(version.created_at)}</TableCell>
-                          <TableCell className="text-center">
-                            <Button aria-label="预览版本" asChild size="icon-sm" variant="ghost">
-                              <Link href={versionHref}>
-                                <Eye className="size-4" />
-                              </Link>
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    {finalRequirementVersions.length === 0 ? (
-                      <TableRow>
-                        <TableCell className="py-8 text-center text-muted-foreground text-sm" colSpan={5}>
-                          尚未生成最终需求版本
+                          </Button>
                         </TableCell>
                       </TableRow>
-                    ) : null}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </ShellSection>
+                    );
+                  })}
+                  {finalRequirementVersions.length === 0 ? (
+                    <TableRow>
+                      <TableCell className="py-8 text-center text-muted-foreground text-sm" colSpan={5}>
+                        尚未生成最终需求版本
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
       <Dialog onOpenChange={(open) => !open && setSourceExcerptItem(null)} open={Boolean(sourceExcerptItem)}>
@@ -2606,12 +2639,12 @@ function RequirementProgressSteps({ steps }: { steps: RequirementProgressStep[] 
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-medium text-sm">需求处理进度</h2>
-          <p className="mt-1 text-muted-foreground text-xs">按原始需求、标准需求、需求分析、最终需求推进。</p>
+          <p className="mt-1 text-muted-foreground text-xs">按原始需求、标准需求、需求分析、最终需求、测试要点推进。</p>
         </div>
       </div>
       <div className="relative">
-        <div className="absolute top-4 bottom-4 left-4 w-px bg-border md:top-5 md:right-[12.5%] md:left-[12.5%] md:h-px md:w-auto" />
-        <div className="relative grid gap-5 md:grid-cols-4">
+        <div className="absolute top-4 bottom-4 left-4 w-px bg-border md:top-5 md:right-[10%] md:left-[10%] md:h-px md:w-auto" />
+        <div className="relative grid gap-5 md:grid-cols-5">
           {steps.map((step) => (
             <div className="relative flex gap-3 md:flex-col md:items-center md:gap-2 md:text-center" key={step.id}>
               <RequirementStepMarker status={step.status} />

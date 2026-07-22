@@ -17,10 +17,34 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _ensure_api_test_case_oracle_columns(db)
     _ensure_api_oracle_feedback_tables(db)
     _ensure_api_generation_batch_structure(db)
+    _ensure_test_point_coverage_structure(db)
     _backfill_legacy_api_scenario_endpoints(db)
     _migrate_legacy_site_exploration_assignment(db)
     _seed_operation_log_retention_policy(db)
     _ensure_all_projects_conversation_scope(db)
+
+
+def _ensure_test_point_coverage_structure(db: sqlite3.Connection) -> None:
+    row = db.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'test_point_generation_runs'"
+    ).fetchone()
+    if not row:
+        return
+    columns = {
+        str(column["name"])
+        for column in db.execute("PRAGMA table_info(test_point_generation_runs)").fetchall()
+    }
+    missing_columns = {
+        "coverage_status": "ALTER TABLE test_point_generation_runs ADD COLUMN coverage_status TEXT NOT NULL DEFAULT 'pending'",
+        "obligation_count": "ALTER TABLE test_point_generation_runs ADD COLUMN obligation_count INTEGER NOT NULL DEFAULT 0",
+        "covered_obligation_count": "ALTER TABLE test_point_generation_runs ADD COLUMN covered_obligation_count INTEGER NOT NULL DEFAULT 0",
+        "missing_obligations_json": "ALTER TABLE test_point_generation_runs ADD COLUMN missing_obligations_json TEXT NOT NULL DEFAULT '[]'",
+        "unsupported_assumptions_json": "ALTER TABLE test_point_generation_runs ADD COLUMN unsupported_assumptions_json TEXT NOT NULL DEFAULT '[]'",
+        "supplement_round": "ALTER TABLE test_point_generation_runs ADD COLUMN supplement_round INTEGER NOT NULL DEFAULT 0",
+    }
+    for column, statement in missing_columns.items():
+        if column not in columns:
+            db.execute(statement)
 
 
 def _ensure_api_script_generation_runs(db: sqlite3.Connection) -> None:

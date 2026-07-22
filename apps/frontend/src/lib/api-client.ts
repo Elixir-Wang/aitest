@@ -252,6 +252,7 @@ export type ApiTestPoint = {
   preconditions: string[];
   verification_points: string[];
   source_refs: string[];
+  requirement_obligations: ApiTestPointRequirementObligation[];
   notes: string;
   created_at: string;
   updated_at: string;
@@ -269,12 +270,28 @@ export type ApiTestPointGenerationRun = {
   finished_at: string | null;
 };
 
+export type ApiTestPointRequirementObligation = {
+  obligation_key: string;
+  source_section: string;
+  statement: string;
+};
+
+export type ApiTestPointCoverageSummary = {
+  status: "pending" | "complete" | "incomplete" | "invalid";
+  obligation_count: number;
+  covered_obligation_count: number;
+  missing_obligations: ApiTestPointRequirementObligation[];
+  unsupported_assumptions: string[];
+  supplement_round: number;
+};
+
 export type ApiTestPointOverview = {
   requirement_version_id: string | null;
   requirement_version_no: number | null;
   run: ApiTestPointGenerationRun | null;
   points: ApiTestPoint[];
   markdown_content: string;
+  coverage_summary: ApiTestPointCoverageSummary;
 };
 
 type ApiDashboardMetric = {

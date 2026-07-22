@@ -20,6 +20,7 @@ export function IllustratedEmptyState({ title, description, action, className }:
           aria-hidden="true"
           className="h-36 w-48 object-contain"
           height={180}
+          loading="eager"
           src="/illustrations/api-cases-empty-right.svg"
           width={240}
         />

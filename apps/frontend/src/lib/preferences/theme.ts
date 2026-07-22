@@ -2,6 +2,7 @@ export const THEME_MODE_OPTIONS = [
   { label: "Default", value: "light" },
   { label: "Claude", value: "claude" },
   { label: "Mint", value: "mint" },
+  { label: "Evergreen", value: "evergreen" },
   { label: "Dark", value: "dark" },
 ] as const;
 

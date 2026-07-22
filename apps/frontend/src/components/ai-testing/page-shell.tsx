@@ -102,7 +102,9 @@ export function PageShell({
       className={cn("@container/main flex flex-col gap-4 md:gap-6", fillViewport && "min-h-0 flex-1 overflow-hidden")}
       style={fillViewport ? { height: "calc(100vh - 6.5rem)", maxHeight: "calc(100vh - 6.5rem)" } : undefined}
     >
-      <PageHeader actions={actions} onPrimaryAction={onPrimaryAction} primaryAction={primaryAction} />
+      {(actions ?? primaryAction) && (
+        <PageHeader actions={actions} onPrimaryAction={onPrimaryAction} primaryAction={primaryAction} />
+      )}
       {tabs.length > 0 && (
         <ModuleTabs actions={tabActions} activeTab={activeTab} onTabChange={onTabChange} tabs={tabs} />
       )}
@@ -312,7 +314,7 @@ export function SoonPage({ title, description }: { title: string; description: s
 
 export function ShellSection({ children, className, ...props }: ComponentPropsWithoutRef<"div">) {
   return (
-    <div className={cn("rounded-xl border bg-card p-4", className)} {...props}>
+    <div className={cn("flex min-h-0 flex-1 flex-col rounded-xl border bg-card p-4", className)} {...props}>
       {children}
     </div>
   );
