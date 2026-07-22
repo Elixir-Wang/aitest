@@ -66,12 +66,6 @@ def merge_response_assertions(
         key = _assertion_key(assertion)
         existing = by_key.get(key)
         if existing is not None:
-            if existing.expected != assertion.expected:
-                if assertion.type == "status_code":
-                    raise ResponseContractError("状态码断言与响应契约冲突。")
-                raise ResponseContractError(
-                    f"断言与响应契约冲突：{assertion.type} {assertion.path or '<root>'}。"
-                )
             continue
         merged.append(assertion)
         by_key[key] = assertion

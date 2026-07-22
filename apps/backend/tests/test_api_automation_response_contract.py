@@ -149,17 +149,27 @@ def test_merge_response_assertions_completes_missing_contract_and_deduplicates()
     ]
 
 
-def test_merge_response_assertions_rejects_fixed_value_conflict() -> None:
-    with pytest.raises(ResponseContractError, match="断言与响应契约冲突"):
+def test_merge_response_assertions_prefers_contract_over_generated_fixed_value() -> None:
+    assertions = _assertion_dicts(
         merge_response_assertions(
             [{"type": "jsonpath_equals", "path": "$.code", "expected": "000000"}],
             [{"type": "jsonpath_equals", "path": "$.code", "expected": "0"}],
         )
+    )
+
+    assert assertions == [
+        {"type": "jsonpath_equals", "path": "$.code", "expected": "000000"},
+    ]
 
 
-def test_merge_response_assertions_rejects_status_code_conflict() -> None:
-    with pytest.raises(ResponseContractError, match="状态码断言与响应契约冲突"):
+def test_merge_response_assertions_prefers_contract_over_generated_status_code() -> None:
+    assertions = _assertion_dicts(
         merge_response_assertions(
             [{"type": "status_code", "path": "", "expected": 200}],
             [{"type": "status_code", "path": "", "expected": 201}],
         )
+    )
+
+    assert assertions == [
+        {"type": "status_code", "path": "", "expected": 200},
+    ]
