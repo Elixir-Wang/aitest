@@ -5,13 +5,12 @@
 | 断言类型 | 用法 | 示例 |
 |----------|------|------|
 | status_code | `status_code: int` | `status_code: 200` |
-| body 字段等值 | `body.field: value` | `body.code: 0` |
-| body 字段存在 | `body.field_exists: path` | `body.user_id_exists: true` |
-| body 非空 | `body_not_empty: [path1, path2]` | `body_not_empty: ["data.items"]` |
-| header 存在 | `header_exists: Header-Name` | `header_exists: Content-Type` |
-| header 等值 | `header.Header-Name: value` | `header.Content-Type: application/json` |
-| content_type | `content_type: text` | `content_type: application/json` |
-| response_time | `response_time_lt: ms` | `response_time_lt: 500` |
+| jsonpath_equals | `{"type":"jsonpath_equals","path":"$.code","expected":"000000"}` | 固定业务码 |
+| jsonpath_exists | `{"type":"jsonpath_exists","path":"$.data.user_id","expected":true}` | 响应字段存在 |
+| body_not_empty | `{"type":"body_not_empty","path":"$.data.items","expected":true}` | 响应体或数组非空 |
+| header_exists | `{"type":"header_exists","path":"Content-Disposition","expected":true}` | Header 存在 |
+| header_equals | `{"type":"header_equals","path":"Content-Type","expected":"application/json"}` | Header 等值 |
+| content_type | `{"type":"content_type","path":"","expected":"application/json"}` | 响应媒体类型 |
 
 ## 断言工具
 
@@ -20,44 +19,42 @@
 import json
 import re
 
-def assert_response(response, assertions: dict):
+def assert_response(response, assertions: list[dict]):
     """统一断言入口"""
-    if "status_code" in assertions:
-        assert response.status_code == assertions["status_code"]
-
-    if "content_type" in assertions:
-        assert assertions["content_type"] in response.headers.get("Content-Type", "")
-
-    if "body" in assertions:
-        body = response.json()
-        for key, expected in assertions["body"].items():
-            actual = get_nested_value(body, key)
-            assert actual == expected, f"body.{key}: expected {expected}, got {actual}"
-
-    if "body_not_empty" in assertions:
-        body = response.json()
-        for path in assertions["body_not_empty"]:
-            value = get_nested_value(body, path)
-            assert value, f"body.{path} should not be empty"
-
-    if "header" in assertions:
-        for key, expected in assertions["header"].items():
-            assert response.headers.get(key) == expected
-
-    if "response_time_lt" in assertions:
-        assert response.elapsed.total_seconds() * 1000 < assertions["response_time_lt"]
+    for rule in assertions:
+        kind = rule["type"]
+        path = rule.get("path", "")
+        expected = rule.get("expected")
+        if kind == "status_code":
+            assert response.status_code == expected
+        elif kind == "content_type":
+            assert expected in response.headers.get("Content-Type", "")
+        elif kind in {"jsonpath_exists", "jsonpath_equals", "body_not_empty"}:
+            body = response.json()
+            exists, actual = get_json_path(body, path)
+            assert exists, f"{kind}: JSONPath missing: {path}"
+            if kind == "jsonpath_equals":
+                assert actual == expected, f"{path}: expected {expected}, got {actual}"
+            elif kind == "body_not_empty":
+                assert actual, f"{path} should not be empty"
+        elif kind == "header_exists":
+            assert path in response.headers
+        elif kind == "header_equals":
+            assert response.headers.get(path) == expected
 
 
-def get_nested_value(data: dict, path: str):
-    """支持点号路径的嵌套取值"""
-    keys = path.split(".")
+def get_json_path(data: dict, path: str):
+    """支持 $.foo.bar 形式的对象路径。"""
+    keys = path.removeprefix("$.").split(".") if path else []
     value = data
     for key in keys:
         if isinstance(value, dict):
-            value = value.get(key)
+            if key not in value:
+                return False, None
+            value = value[key]
         else:
-            return None
-    return value
+            return False, None
+    return True, value
 ```
 
 ## YAML 断言示例
@@ -65,20 +62,14 @@ def get_nested_value(data: dict, path: str):
 ```yaml
 cases:
   - name: 正常登录
-    request:
-      username: "test"
-      password: "123"
     assertions:
-      status_code: 200
-      body:
-        code: 0
-        message: "success"
-        data.token_exists: true
-      header:
-        Content-Type: application/json
-
-  - name: 响应时间要求
-    assertions:
-      status_code: 200
-      response_time_lt: 500
+      - type: status_code
+        path: ""
+        expected: 200
+      - type: jsonpath_equals
+        path: $.code
+        expected: "000000"
+      - type: jsonpath_exists
+        path: $.data.user_id
+        expected: true
 ```

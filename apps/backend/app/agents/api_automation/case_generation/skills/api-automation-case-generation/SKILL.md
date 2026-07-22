@@ -223,13 +223,14 @@ OpenAPI 声明 `multipart/form-data` 或文件字段时，使用 `request.files`
 2. path 保持 OpenAPI 模板；具体 path 参数值记录在 `test_data`，避免与当前落库校验冲突。
 3. query/body/files 只能使用接口定义中存在的字段。
 4. 除目标变量外，其余请求字段保持合法基线，确保失败原因唯一。
-5. `confirmed` 和 `inferred` 每条用例至少包含一个 `status_code` 或明确业务断言；`needs_confirmation` 可以不生成强断言，由执行器进入 observation mode 采集真实响应。
-6. JSON 只使用 `jsonpath_exists` 和有明确固定预期时的 `jsonpath_equals`。
-7. 二进制下载不得使用 JSONPath 断言。
-8. 不输出标签、状态、`notes`、`preconditions`、`variables` 或 `data_origin`；缺失信息、Mock 变化和预期推断统一输出到 `generation_notes`。
-9. 正常请求省略由环境统一管理的鉴权 header；请求级 `headers` 只表达非鉴权业务头或有意覆盖的鉴权空值。
-10. 精确预期未知时必须明确写入 `generation_notes`，不得让用户误以为推断值来自接口文档。
-11. 推断 OpenAPI responses 中不存在的状态码时，必须说明推断依据和待确认项；优先使用接口已声明的错误响应。
+5. 输入测试点中的 `required_assertions` 是后端根据 OpenAPI 响应契约编译出的只读事实；必须原样保留，不得删除、修改或弱化。模型可以补充额外断言，但不得与其冲突。
+6. `confirmed` 和 `inferred` 每条用例至少包含一个 `status_code` 或明确业务断言；`needs_confirmation` 可以不生成未知业务的强 Oracle，但仍必须保留所有已明确的响应契约断言。
+7. JSON 只使用 `jsonpath_exists` 和有明确固定预期时的 `jsonpath_equals`。
+8. 二进制下载不得使用 JSONPath 断言。
+9. 不输出标签、状态、`notes`、`preconditions`、`variables` 或 `data_origin`；缺失信息、Mock 变化和预期推断统一输出到 `generation_notes`。
+10. 正常请求省略由环境统一管理的鉴权 header；请求级 `headers` 只表达非鉴权业务头或有意覆盖的鉴权空值。
+11. 精确预期未知时必须明确写入 `generation_notes`，不得让用户误以为推断值来自接口文档。
+12. 推断 OpenAPI responses 中不存在的状态码时，必须说明推断依据和待确认项；优先使用接口已声明的错误响应。
 
 ## 输出前检查
 

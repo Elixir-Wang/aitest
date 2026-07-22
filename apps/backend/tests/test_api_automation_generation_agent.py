@@ -63,6 +63,53 @@ def _seed_project_endpoint() -> None:
         )
 
 
+def _seed_project_endpoint_with_response_schema() -> None:
+    with connect() as db:
+        db.execute(
+            "INSERT INTO projects (id, name, description, status, created_by) VALUES (?, ?, '', 'active', ?)",
+            ("project-1", "测试项目", ACTOR["id"]),
+        )
+        api_automation_repo.upsert_endpoint(
+            db,
+            endpoint_id="apiend-1",
+            project_id="project-1",
+            document_id=None,
+            method="POST",
+            path="/analysis",
+            normalized_path="/analysis",
+            summary="智能体数据分析",
+            description="",
+            tags=["analysis"],
+            parameters=[],
+            request_body={"content": {"application/json": {"schema": {"type": "object"}}}},
+            responses={
+                "200": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "code": {
+                                        "type": "string",
+                                        "description": '返回码，"000000" 表示成功',
+                                        "example": "000000",
+                                    },
+                                    "data": {
+                                        "type": "object",
+                                        "properties": {"user_cnt": {"type": "number"}},
+                                    },
+                                },
+                            }
+                        }
+                    }
+                }
+            },
+            auth={},
+            source={"source_type": "manual"},
+            created_by=ACTOR["id"],
+        )
+
+
 def _seed_additional_endpoints(endpoint_ids: list[str]) -> None:
     with connect() as db:
         for endpoint_id in endpoint_ids:
@@ -468,6 +515,134 @@ def test_generation_input_applies_approved_endpoint_oracle_fact(
         "approved_by": ACTOR["id"],
         "evidence_run_ids": ["apirun-1"],
     }
+
+
+def test_generation_input_adds_required_response_contract_assertions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint_with_response_schema()
+    created = service.create_generation_run(
+        "project-1",
+        ApiAutomationGenerateIn(endpoint_ids=["apiend-1"], generate_code=False),
+        ACTOR,
+    )
+
+    with connect() as db:
+        item = api_automation_repo.list_generation_items(db, created["id"])[0]
+        input_data = service._build_generation_item_input(db, created["id"], item["id"])
+
+    planned_point = next(point for point in input_data.planned_test_points if point["key"] == "success.minimum_valid")
+    assert planned_point["required_assertions"] == [
+        {"type": "status_code", "path": "", "expected": 200},
+        {"type": "content_type", "path": "", "expected": "application/json"},
+        {"type": "jsonpath_equals", "path": "$.code", "expected": "000000"},
+        {"type": "jsonpath_exists", "path": "$.data", "expected": True},
+        {"type": "jsonpath_exists", "path": "$.data.user_cnt", "expected": True},
+    ]
+
+
+def test_persist_generation_item_cases_completes_missing_response_contract_assertions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint_with_response_schema()
+    created = service.create_generation_run(
+        "project-1",
+        ApiAutomationGenerateIn(endpoint_ids=["apiend-1"], generate_code=False),
+        ACTOR,
+    )
+
+    with connect() as db:
+        item = api_automation_repo.list_generation_items(db, created["id"])[0]
+        input_data = service._build_generation_item_input(db, created["id"], item["id"])
+        attempt_id = "attempt-response-contract"
+        api_automation_repo.start_generation_item_attempt(db, item["id"], attempt_id)
+        count = service._persist_generation_item_cases(
+            db,
+            created["id"],
+            item["id"],
+            attempt_id,
+            ApiAutomationGenerationResult(
+                summary="生成 1 条",
+                cases=[
+                    ApiGeneratedCase(
+                        title="分析成功",
+                        endpoint_id="apiend-1",
+                        test_point_key="success.minimum_valid",
+                        oracle_status="confirmed",
+                        coverage="positive",
+                        request={"method": "POST", "path": "/analysis"},
+                        assertions=[{"type": "status_code", "expected": 200}],
+                    )
+                ],
+            ),
+            planned_test_points=input_data.planned_test_points,
+        )
+        rows = api_automation_repo.list_api_test_cases(db, "project-1")
+
+    assert count == 1
+    assert api_automation_repo.loads_json(rows[0]["assertions_json"], []) == [
+        {"type": "status_code", "path": "", "expected": 200},
+        {"type": "content_type", "path": "", "expected": "application/json"},
+        {"type": "jsonpath_equals", "path": "$.code", "expected": "000000"},
+        {"type": "jsonpath_exists", "path": "$.data", "expected": True},
+        {"type": "jsonpath_exists", "path": "$.data.user_cnt", "expected": True},
+    ]
+
+
+def test_generation_skills_require_backend_response_contract_assertions() -> None:
+    root = Path(__file__).resolve().parents[1]
+    case_generation_skill = (
+        root
+        / "app"
+        / "agents"
+        / "api_automation"
+        / "case_generation"
+        / "skills"
+        / "api-automation-case-generation"
+        / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assertion_guidelines = (
+        root
+        / "app"
+        / "agents"
+        / "api_automation"
+        / "case_generation"
+        / "skills"
+        / "api-automation-case-generation"
+        / "references"
+        / "assertion-guidelines.md"
+    ).read_text(encoding="utf-8")
+    pytest_generation_skill = (
+        root
+        / "app"
+        / "agents"
+        / "api_automation"
+        / "pytest_requests"
+        / "skills"
+        / "pytest-requests-code-generation"
+        / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assertion_mapping = (
+        root
+        / "app"
+        / "agents"
+        / "api_automation"
+        / "pytest_requests"
+        / "skills"
+        / "pytest-requests-code-generation"
+        / "references"
+        / "assertion-mapping.md"
+    ).read_text(encoding="utf-8")
+
+    assert "required_assertions" in case_generation_skill
+    assert "不得删除、修改或弱化" in case_generation_skill
+    assert "必须生成 `jsonpath_exists`" in assertion_guidelines
+    assert "已明确的响应契约断言" in pytest_generation_skill
+    assert "jsonpath_exists" in assertion_mapping
 
 
 def test_generation_run_serializes_items_and_retries_only_failures(

@@ -106,3 +106,35 @@ def test_validation_accepts_exact_approved_oracle_fact() -> None:
     case.assertions = [{"type": "status_code", "path": "", "expected": 201}]
 
     validate_generated_cases(ENDPOINT, planned, [case])
+
+
+def test_validation_rejects_missing_required_response_contract_assertion() -> None:
+    planned = [
+        {
+            "key": "success.minimum_valid",
+            "oracle_status": "confirmed",
+            "required_assertions": [
+                {"type": "status_code", "path": "", "expected": 200},
+                {"type": "jsonpath_exists", "path": "$.data.user_cnt", "expected": True},
+            ],
+        }
+    ]
+
+    with pytest.raises(ValueError, match=r"缺少响应契约断言.*jsonpath_exists \$\.data\.user_cnt"):
+        validate_generated_cases(ENDPOINT, planned, [_case("success.minimum_valid", coverage="positive")])
+
+
+def test_validation_allows_needs_confirmation_case_with_required_contract_assertions() -> None:
+    planned = [
+        {
+            "key": "request_body.missing",
+            "oracle_status": "needs_confirmation",
+            "required_assertions": [
+                {"type": "jsonpath_exists", "path": "$.code", "expected": True},
+            ],
+        }
+    ]
+    case = _case("request_body.missing")
+    case.assertions = [{"type": "jsonpath_exists", "path": "$.code", "expected": True}]
+
+    validate_generated_cases(ENDPOINT, planned, [case])

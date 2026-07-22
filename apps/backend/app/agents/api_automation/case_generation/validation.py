@@ -45,12 +45,24 @@ def validate_generated_cases(
         planned_oracle_status = planned_point.get("oracle_status")
         if planned_oracle_status and case.oracle_status != planned_oracle_status:
             raise ValueError(f"测试点 {case.test_point_key} 的 oracle_status 与测试点计划不一致。")
+        required_assertions = planned_point.get("required_assertions") or []
+        generated_assertions = [
+            assertion.model_dump() if hasattr(assertion, "model_dump") else dict(assertion)
+            for assertion in case.assertions
+        ]
+        generated_assertion_keys = {
+            _assertion_key(assertion)
+            for assertion in generated_assertions
+        }
+        for required_assertion in required_assertions:
+            if _assertion_key(required_assertion) not in generated_assertion_keys:
+                raise ValueError(
+                    "测试点 "
+                    f"{case.test_point_key} 缺少响应契约断言："
+                    f"{required_assertion.get('type', '')} {required_assertion.get('path', '')}。"
+                )
         if planned_point.get("oracle_fact"):
             approved_assertions = planned_point.get("assertions") or []
-            generated_assertions = [
-                assertion.model_dump() if hasattr(assertion, "model_dump") else dict(assertion)
-                for assertion in case.assertions
-            ]
             if generated_assertions != approved_assertions:
                 raise ValueError(f"测试点 {case.test_point_key} 的生成断言与审批断言不一致。")
 
@@ -61,3 +73,11 @@ def validate_generated_cases(
     ]
     if len({repr(request) for request in success_requests}) != len(success_requests):
         raise ValueError("成功基线存在重复请求。")
+
+
+def _assertion_key(assertion: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(assertion.get("type") or ""),
+        str(assertion.get("path") or "").strip(),
+        repr(assertion.get("expected")),
+    )

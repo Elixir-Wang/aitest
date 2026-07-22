@@ -159,6 +159,7 @@ type ApiFieldRow = {
   required: boolean;
   description: string;
   constraints: string[];
+  example?: string;
   depth?: number;
 };
 type EndpointDebugForm = {
@@ -2951,10 +2952,19 @@ function EndpointFieldSection({
     return null;
   }
 
+  const locations = Array.from(new Set(rows.map((row) => row.location)));
+
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between gap-3 border-b pb-2">
-        <h3 className="font-semibold text-lg">{title}</h3>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="font-semibold text-lg">{title}</h3>
+          {locations.map((location) => (
+            <Badge className="w-fit font-normal" key={location} variant="secondary">
+              {location}
+            </Badge>
+          ))}
+        </div>
         {contentType ? <ContentTypeBadge value={contentType} /> : null}
       </div>
       <div className="divide-y rounded-md border border-transparent">
@@ -2968,7 +2978,7 @@ function EndpointFieldSection({
 
 function FieldRow({ row }: { row: ApiFieldRow }) {
   return (
-    <div className="grid gap-3 py-3 md:grid-cols-[minmax(220px,1.1fr)_64px_64px_56px_minmax(220px,1.4fr)] md:items-center md:gap-2">
+    <div className="grid gap-3 py-3 md:grid-cols-[minmax(220px,1.1fr)_64px_56px_minmax(220px,1.4fr)] md:items-center md:gap-2">
       <span
         className="min-w-0 truncate font-mono font-semibold text-emerald-600 text-sm dark:text-emerald-300"
         style={{ paddingLeft: `${(row.depth ?? 0) * 16}px` }}
@@ -2979,9 +2989,6 @@ function FieldRow({ row }: { row: ApiFieldRow }) {
       <Badge className="w-fit" variant="secondary">
         {row.type}
       </Badge>
-      <Badge className="w-fit" variant="secondary">
-        {row.location}
-      </Badge>
       {row.required ? (
         <Badge className="w-fit bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-200" variant="secondary">
           必填
@@ -2991,6 +2998,11 @@ function FieldRow({ row }: { row: ApiFieldRow }) {
       )}
       <div className="min-w-0 space-y-1">
         <p className="min-w-0 text-muted-foreground text-sm">{row.description || "暂无说明"}</p>
+        {row.example !== undefined ? (
+          <p className="text-muted-foreground text-sm">
+            示例：<code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">{row.example}</code>
+          </p>
+        ) : null}
         {row.constraints.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
             {row.constraints.map((constraint) => (
@@ -3029,7 +3041,12 @@ function ResponseSummary({ responses }: { responses: Record<string, unknown> }) 
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-2">
-        <h3 className="font-semibold text-lg">响应信息</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="font-semibold text-lg">响应信息</h3>
+          <Badge className="w-fit font-normal" variant="secondary">
+            response
+          </Badge>
+        </div>
         {activeEntry ? (
           <div className="flex items-center gap-6">
             <Select onValueChange={setSelectedStatus} value={activeStatus}>
@@ -3039,7 +3056,7 @@ function ResponseSummary({ responses }: { responses: Record<string, unknown> }) 
               >
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent align="end">
+              <SelectContent align="end" className="w-20 min-w-20" position="popper">
                 {entries.map(([status]) => (
                   <SelectItem key={status} value={status}>
                     {status}
@@ -3094,6 +3111,7 @@ function getParameterRows(parameters: Record<string, unknown>[], ...locations: s
         required: Boolean(parameter.required),
         description: asString(parameter.description),
         constraints: getSchemaConstraints(schema),
+        example: formatSchemaExample("example" in parameter ? parameter.example : schema.example),
       };
     })
     .filter((row) => acceptedLocations.has(row.location));
@@ -3181,6 +3199,7 @@ function getSchemaRows(
         required: Boolean(options.required),
         description: options.description ?? asString(schema.description),
         constraints: getSchemaConstraints(schema),
+        example: formatSchemaExample(schema.example),
         depth: options.depth ?? 0,
       },
     ];
@@ -3196,6 +3215,7 @@ function getSchemaRows(
       required: required.has(name),
       description: asString(propertySchema.description),
       constraints: getSchemaConstraints(propertySchema),
+      example: formatSchemaExample(propertySchema.example),
       depth: options.depth ?? 0,
     };
     const children = getSchemaRows(propertySchema, {
@@ -3294,6 +3314,13 @@ function asDisplayValue(value: unknown): string {
     return String(value);
   }
   return "";
+}
+
+function formatSchemaExample(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return JSON.stringify(value);
 }
 
 function asStringArray(value: unknown): string[] {

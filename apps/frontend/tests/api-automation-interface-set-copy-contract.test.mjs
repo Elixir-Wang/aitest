@@ -378,7 +378,7 @@ test("project api automation generation and execution notify the top running tas
 test("project api automation endpoint schema detail uses compact badges and response header", () => {
   assert.match(projectPageSource, /function ContentTypeBadge/);
   assert.match(projectPageSource, /rounded-md border bg-muted\/40 px-2 py-1 font-mono/);
-  assert.match(projectPageSource, /md:grid-cols-\[minmax\(220px,1\.1fr\)_64px_64px_56px_minmax\(220px,1\.4fr\)\]/);
+  assert.match(projectPageSource, /md:grid-cols-\[minmax\(220px,1\.1fr\)_64px_56px_minmax\(220px,1\.4fr\)\]/);
   assert.match(projectPageSource, /border-b bg-muted\/20 px-4 py-3/);
   assert.match(projectPageSource, /<ContentTypeBadge key=\{contentType\} value=\{contentType\} \/>/);
 });
@@ -397,5 +397,6 @@ test("project api automation endpoint responses switch by status code", () => {
     /<div className="flex flex-wrap items-center justify-between gap-3 border-b pb-2">[\s\S]*<h3 className="font-semibold text-lg">响应信息<\/h3>[\s\S]*<Select onValueChange=\{setSelectedStatus\} value=\{activeStatus\}>[\s\S]*contentEntries\.map/,
   );
   assert.match(projectPageSource, /<p className="text-muted-foreground text-sm">\{responseDescription\}<\/p>/);
+  assert.match(projectPageSource, /<SelectContent align="end" className="w-20 min-w-20" position="popper">/);
   assert.doesNotMatch(projectPageSource, /border-b bg-muted\/20 px-4 py-3/);
 });

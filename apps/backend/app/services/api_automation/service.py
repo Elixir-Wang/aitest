@@ -20,6 +20,10 @@ from fastapi import HTTPException
 from app.agents.api_automation.case_generation import service as api_generation_agent_service
 from app.agents.api_automation.case_generation.schemas import ApiAutomationGenerationInput
 from app.agents.api_automation.case_generation.planner import plan_api_test_points
+from app.agents.api_automation.case_generation.response_contract import (
+    compile_response_contract,
+    merge_response_assertions,
+)
 from app.agents.api_automation.case_generation.validation import validate_generated_cases
 from app.agents.api_automation.pytest_requests.agent import (
     generate_pytest_requests_endpoints,
@@ -986,9 +990,10 @@ def _build_generation_item_input(db, run_id: str, item_id: str) -> ApiAutomation
         environment = api_automation_repo.find_api_environment(db, run["api_environment_id"])
         if environment:
             environment_summary = _serialize_api_environment(environment)
+    serialized_endpoint = _serialize_endpoint(endpoint)
     planned_test_points = [
         asdict(point)
-        for point in plan_api_test_points(_serialize_endpoint(endpoint))
+        for point in plan_api_test_points(serialized_endpoint)
     ]
     oracle_facts = {
         fact["test_point_key"]: fact
@@ -1004,6 +1009,13 @@ def _build_generation_item_input(db, run_id: str, item_id: str) -> ApiAutomation
             "approved_by": fact["approved_by"],
             "evidence_run_ids": api_automation_repo.loads_json(fact["evidence_run_ids_json"], []),
         }
+    for planned_point in planned_test_points:
+        if planned_point.get("oracle_fact") or planned_point.get("category") != "positive":
+            continue
+        planned_point["required_assertions"] = [
+            assertion.model_dump()
+            for assertion in compile_response_contract(serialized_endpoint)
+        ]
     return ApiAutomationGenerationInput(
         project_id=run["project_id"],
         endpoints=[_serialize_endpoint(endpoint)],
@@ -1049,8 +1061,20 @@ def _persist_generation_item_cases(
         else generated_case
         for generated_case in result.cases
     ]
-    validate_generated_cases(_serialize_endpoint(endpoint), planned_test_points, normalized_cases)
-    for generated_case in normalized_cases:
+    planned_points_by_key = {point["key"]: point for point in planned_test_points}
+    completed_cases = [
+        generated_case.model_copy(
+            update={
+                "assertions": merge_response_assertions(
+                    planned_points_by_key.get(generated_case.test_point_key, {}).get("required_assertions", []),
+                    generated_case.assertions,
+                )
+            }
+        )
+        for generated_case in normalized_cases
+    ]
+    validate_generated_cases(_serialize_endpoint(endpoint), planned_test_points, completed_cases)
+    for generated_case in completed_cases:
         api_automation_repo.create_api_test_case(
             db,
             case_id=f"apitc-{secrets.token_hex(8)}",
