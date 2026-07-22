@@ -50,11 +50,17 @@ def test_compile_json_response_contract_includes_nested_fields_and_fixed_success
     assert assertions == [
         {"type": "status_code", "path": "", "expected": 200},
         {"type": "content_type", "path": "", "expected": "application/json"},
+        {"type": "jsonpath_exists", "path": "$.code", "expected": True},
+        {"type": "jsonpath_type", "path": "$.code", "expected": "string"},
         {"type": "jsonpath_equals", "path": "$.code", "expected": "000000"},
         {"type": "jsonpath_exists", "path": "$.message", "expected": True},
+        {"type": "jsonpath_type", "path": "$.message", "expected": "string"},
         {"type": "jsonpath_exists", "path": "$.data", "expected": True},
+        {"type": "jsonpath_type", "path": "$.data", "expected": "object"},
         {"type": "jsonpath_exists", "path": "$.data.user_cnt", "expected": True},
+        {"type": "jsonpath_type", "path": "$.data.user_cnt", "expected": "number"},
         {"type": "jsonpath_exists", "path": "$.data.normal_answer_rate", "expected": True},
+        {"type": "jsonpath_type", "path": "$.data.normal_answer_rate", "expected": "number"},
     ]
 
 
@@ -85,8 +91,42 @@ def test_compile_array_contract_does_not_assume_first_item_or_non_empty() -> Non
     assertions = _assertion_dicts(compile_response_contract(endpoint, expected_status_code=200))
 
     assert {"type": "jsonpath_exists", "path": "$.items", "expected": True} in assertions
+    assert {"type": "jsonpath_type", "path": "$.items", "expected": "array"} in assertions
     assert not any("[0]" in assertion["path"] for assertion in assertions)
     assert not any(assertion["type"] == "body_not_empty" for assertion in assertions)
+
+
+def test_compile_json_response_contract_maps_json_types_and_skips_nullable_fields() -> None:
+    endpoint = {
+        "responses": {
+            "200": {
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "count": {"type": "integer"},
+                                "enabled": {"type": "boolean"},
+                                "metadata": {"type": "object"},
+                                "tags": {"type": "array"},
+                                "optional_name": {"type": "string", "nullable": True},
+                                "nothing": {"type": "null"},
+                            },
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    assertions = _assertion_dicts(compile_response_contract(endpoint, expected_status_code=200))
+
+    assert {"type": "jsonpath_type", "path": "$.count", "expected": "number"} in assertions
+    assert {"type": "jsonpath_type", "path": "$.enabled", "expected": "boolean"} in assertions
+    assert {"type": "jsonpath_type", "path": "$.metadata", "expected": "object"} in assertions
+    assert {"type": "jsonpath_type", "path": "$.tags", "expected": "array"} in assertions
+    assert {"type": "jsonpath_type", "path": "$.nothing", "expected": "null"} in assertions
+    assert not any(assertion["path"] == "$.optional_name" and assertion["type"] == "jsonpath_type" for assertion in assertions)
 
 
 def test_compile_binary_response_contract_avoids_jsonpath() -> None:

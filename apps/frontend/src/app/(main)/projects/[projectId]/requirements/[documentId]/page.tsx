@@ -508,6 +508,7 @@ export default function DocumentDetailPage() {
   const [error, setError] = useState("");
   const [overview, setOverview] = useState<RequirementOverviewResponse | null>(null);
   const [testPointOverview, setTestPointOverview] = useState<ApiTestPointOverview | null>(null);
+  const [testPointActionsContainer, setTestPointActionsContainer] = useState<HTMLDivElement | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [analysisTab, setAnalysisTab] = useState("analysis-report");
   const [selectedFileId, setSelectedFileId] = useState("");
@@ -1718,15 +1719,23 @@ export default function DocumentDetailPage() {
         />
       ) : null}
       <Tabs className="space-y-4" onValueChange={handleDetailTabChange} value={activeTab}>
-        <TabsList>
-          <TabsTrigger value="overview">概览</TabsTrigger>
-          <TabsTrigger value="original">原始文件</TabsTrigger>
-          <TabsTrigger value="standard">标准文件</TabsTrigger>
-          <TabsTrigger value="analysis">需求分析</TabsTrigger>
-          <TabsTrigger value="final">最终需求</TabsTrigger>
-          <TabsTrigger value="test-points">测试要点</TabsTrigger>
-          <TabsTrigger value="versions">版本记录</TabsTrigger>
-        </TabsList>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <TabsList>
+            <TabsTrigger value="overview">概览</TabsTrigger>
+            <TabsTrigger value="original">原始文件</TabsTrigger>
+            <TabsTrigger value="standard">标准文件</TabsTrigger>
+            <TabsTrigger value="analysis">需求分析</TabsTrigger>
+            <TabsTrigger value="final">最终需求</TabsTrigger>
+            <TabsTrigger value="test-points">测试要点</TabsTrigger>
+            <TabsTrigger value="versions">版本记录</TabsTrigger>
+          </TabsList>
+          {activeTab === "test-points" ? (
+            <div
+              className="flex flex-wrap items-center justify-end gap-2 max-sm:w-full max-sm:justify-start"
+              ref={setTestPointActionsContainer}
+            />
+          ) : null}
+        </div>
 
         <TabsContent value="overview">
           <RequirementProgressSteps steps={requirementProgressSteps} />
@@ -2348,6 +2357,7 @@ export default function DocumentDetailPage() {
             documentId={documentId}
             onOverviewChange={setTestPointOverview}
             projectId={projectId}
+            actionContainer={testPointActionsContainer}
           />
         </TabsContent>
 

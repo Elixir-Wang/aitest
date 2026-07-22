@@ -1050,14 +1050,19 @@ def _persist_generation_item_cases(
     normalized_cases = [
         generated_case.model_copy(
             update={
-                "request": {
-                    key: value
-                    for key, value in generated_case.request.items()
-                    if key != "body"
-                }
+                "request": generated_case.request.model_validate(
+                    {
+                        key: value
+                        for key, value in generated_case.request.model_dump(exclude_unset=True).items()
+                        if key != "body"
+                    }
+                )
             }
         )
-        if generated_case.test_point_key == "request_body.missing" and "body" in generated_case.request
+        if (
+            generated_case.test_point_key == "request_body.missing"
+            and "body" in generated_case.request.model_fields_set
+        )
         else generated_case
         for generated_case in result.cases
     ]
@@ -1066,7 +1071,11 @@ def _persist_generation_item_cases(
         generated_case.model_copy(
             update={
                 "assertions": merge_response_assertions(
-                    planned_points_by_key.get(generated_case.test_point_key, {}).get("required_assertions", []),
+                    _required_generated_case_assertions(
+                        _serialize_endpoint(endpoint),
+                        planned_points_by_key.get(generated_case.test_point_key, {}),
+                        generated_case.assertions,
+                    ),
                     generated_case.assertions,
                 )
             }
@@ -1092,7 +1101,7 @@ def _persist_generation_item_cases(
             coverage=generated_case.coverage,
             source=generated_case.source,
             preconditions=[],
-            request=generated_case.request,
+            request=generated_case.request.model_dump(exclude_unset=True),
             test_data=generated_case.test_data,
             expected={},
             assertions=[assertion.model_dump() for assertion in generated_case.assertions],
@@ -1103,6 +1112,34 @@ def _persist_generation_item_cases(
             created_by="system",
         )
     return len(result.cases)
+
+
+def _required_generated_case_assertions(
+    endpoint: dict[str, Any],
+    planned_point: dict[str, Any],
+    generated_assertions: list,
+) -> list:
+    required = planned_point.get("required_assertions", [])
+    if planned_point.get("oracle_fact"):
+        return required
+
+    success_status_code = next(
+        (
+            assertion.expected
+            for assertion in generated_assertions
+            if assertion.type == "status_code"
+            and isinstance(assertion.expected, int)
+            and not isinstance(assertion.expected, bool)
+            and 200 <= assertion.expected <= 299
+        ),
+        None,
+    )
+    if success_status_code is None:
+        return required
+    return merge_response_assertions(
+        compile_response_contract(endpoint, expected_status_code=success_status_code),
+        required,
+    )
 
 
 def _generation_error_message(exc: Exception) -> str:

@@ -537,9 +537,13 @@ def test_generation_input_adds_required_response_contract_assertions(
     assert planned_point["required_assertions"] == [
         {"type": "status_code", "path": "", "expected": 200},
         {"type": "content_type", "path": "", "expected": "application/json"},
+        {"type": "jsonpath_exists", "path": "$.code", "expected": True},
+        {"type": "jsonpath_type", "path": "$.code", "expected": "string"},
         {"type": "jsonpath_equals", "path": "$.code", "expected": "000000"},
         {"type": "jsonpath_exists", "path": "$.data", "expected": True},
+        {"type": "jsonpath_type", "path": "$.data", "expected": "object"},
         {"type": "jsonpath_exists", "path": "$.data.user_cnt", "expected": True},
+        {"type": "jsonpath_type", "path": "$.data.user_cnt", "expected": "number"},
     ]
 
 
@@ -587,10 +591,66 @@ def test_persist_generation_item_cases_completes_missing_response_contract_asser
     assert api_automation_repo.loads_json(rows[0]["assertions_json"], []) == [
         {"type": "status_code", "path": "", "expected": 200},
         {"type": "content_type", "path": "", "expected": "application/json"},
+        {"type": "jsonpath_exists", "path": "$.code", "expected": True},
+        {"type": "jsonpath_type", "path": "$.code", "expected": "string"},
         {"type": "jsonpath_equals", "path": "$.code", "expected": "000000"},
         {"type": "jsonpath_exists", "path": "$.data", "expected": True},
+        {"type": "jsonpath_type", "path": "$.data", "expected": "object"},
         {"type": "jsonpath_exists", "path": "$.data.user_cnt", "expected": True},
+        {"type": "jsonpath_type", "path": "$.data.user_cnt", "expected": "number"},
     ]
+
+
+def test_persist_generation_item_cases_corrects_fixed_success_code_for_boundary_case(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint_with_response_schema()
+    created = service.create_generation_run(
+        "project-1",
+        ApiAutomationGenerateIn(endpoint_ids=["apiend-1"], generate_code=False),
+        ACTOR,
+    )
+
+    with connect() as db:
+        item = api_automation_repo.list_generation_items(db, created["id"])[0]
+        attempt_id = "attempt-boundary-success-contract"
+        api_automation_repo.start_generation_item_attempt(db, item["id"], attempt_id)
+        service._persist_generation_item_cases(
+            db,
+            created["id"],
+            item["id"],
+            attempt_id,
+            ApiAutomationGenerationResult(
+                summary="生成 1 条",
+                cases=[
+                    ApiGeneratedCase(
+                        title="单日范围查询",
+                        endpoint_id="apiend-1",
+                        test_point_key="body.date_relation.start_equals_end",
+                        oracle_status="needs_confirmation",
+                        coverage="boundary",
+                        request={"method": "POST", "path": "/analysis"},
+                        assertions=[
+                            {"type": "status_code", "expected": 200},
+                            {"type": "jsonpath_equals", "path": "$.code", "expected": 0},
+                        ],
+                    )
+                ],
+            ),
+            planned_test_points=[
+                {
+                    "key": "body.date_relation.start_equals_end",
+                    "oracle_status": "needs_confirmation",
+                }
+            ],
+        )
+        rows = api_automation_repo.list_api_test_cases(db, "project-1")
+
+    assertions = api_automation_repo.loads_json(rows[0]["assertions_json"], [])
+    assert {"type": "jsonpath_equals", "path": "$.code", "expected": "000000"} in assertions
+    assert {"type": "jsonpath_equals", "path": "$.code", "expected": 0} not in assertions
 
 
 def test_generation_skills_require_backend_response_contract_assertions() -> None:
@@ -881,6 +941,7 @@ def test_api_automation_generation_result_schema_uses_typed_assertions() -> None
     schema = ApiAutomationGenerationResult.model_json_schema()
 
     assertion_schema = schema["$defs"]["ApiAssertion"]
+    assert "jsonpath_type" in assertion_schema["properties"]["type"]["enum"]
     assert assertion_schema["properties"]["expected"]["anyOf"] == [
         {"type": "string"},
         {"type": "integer"},
@@ -891,6 +952,65 @@ def test_api_automation_generation_result_schema_uses_typed_assertions() -> None
     assert schema["$defs"]["ApiGeneratedCase"]["properties"]["assertions"]["items"] == {
         "$ref": "#/$defs/ApiAssertion"
     }
+
+
+def test_generated_case_rejects_unsupported_jsonpath_type() -> None:
+    with pytest.raises(ValueError, match="标准 JSON 类型"):
+        ApiGeneratedCase(
+            title="响应类型错误",
+            endpoint_id="apiend-1",
+            test_point_key="success.minimum_valid",
+            oracle_status="confirmed",
+            request={"method": "POST", "path": "/analysis"},
+            assertions=[{"type": "jsonpath_type", "path": "$.code", "expected": "integer"}],
+        )
+
+
+def test_generated_case_unwraps_minimax_text_encoded_request_and_test_data() -> None:
+    case = ApiGeneratedCase(
+        title="登录成功",
+        endpoint_id="apiend-1",
+        test_point_key="success.minimum_valid",
+        oracle_status="confirmed",
+        request={
+            "$text": '{"method":"POST","path":"/login","query":{},"headers":{},"body":{"username":"demo"}}'
+        },
+        test_data={"$text": '{"account":"demo"}'},
+        assertions=[{"type": "status_code", "expected": 200}],
+    )
+
+    assert case.request.model_dump(exclude_unset=True) == {
+        "method": "POST",
+        "path": "/login",
+        "query": {},
+        "headers": {},
+        "body": {"username": "demo"},
+    }
+    assert case.test_data == {"account": "demo"}
+
+
+def test_generated_case_rejects_invalid_text_encoded_request() -> None:
+    with pytest.raises(ValueError, match=r"request\.\$text.*有效 JSON 对象"):
+        ApiGeneratedCase(
+            title="登录成功",
+            endpoint_id="apiend-1",
+            test_point_key="success.minimum_valid",
+            oracle_status="confirmed",
+            request={"$text": "not-json"},
+            assertions=[{"type": "status_code", "expected": 200}],
+        )
+
+
+def test_generated_case_rejects_text_encoded_request_without_method_or_path() -> None:
+    with pytest.raises(ValueError, match="method"):
+        ApiGeneratedCase(
+            title="登录成功",
+            endpoint_id="apiend-1",
+            test_point_key="success.minimum_valid",
+            oracle_status="confirmed",
+            request={"$text": '{"path":"/login"}'},
+            assertions=[{"type": "status_code", "expected": 200}],
+        )
 
 
 @pytest.mark.anyio

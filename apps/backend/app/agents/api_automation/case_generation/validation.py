@@ -32,7 +32,7 @@ def validate_generated_cases(
     endpoint_path = str(endpoint.get("path") or "")
     planned_by_key = {str(point.get("key") or ""): point for point in planned_test_points}
     for case in cases:
-        request = case.request
+        request = case.request.model_dump(exclude_unset=True)
         if case.endpoint_id != endpoint_id:
             raise ValueError(f"测试点 {case.test_point_key} 的 endpoint_id 不一致。")
         if str(request.get("method") or "").upper() != endpoint_method:
@@ -67,7 +67,7 @@ def validate_generated_cases(
                 raise ValueError(f"测试点 {case.test_point_key} 的生成断言与审批断言不一致。")
 
     success_requests = [
-        case.request
+        case.request.model_dump(exclude_unset=True)
         for case in cases
         if case.coverage == "positive" and case.test_point_key.startswith("success.")
     ]

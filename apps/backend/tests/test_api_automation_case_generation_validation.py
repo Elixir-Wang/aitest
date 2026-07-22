@@ -75,6 +75,20 @@ def test_validation_accepts_complete_point_set_with_real_missing_body() -> None:
     )
 
 
+def test_validation_still_rejects_a_real_method_mismatch() -> None:
+    cases = [
+        _case(
+            "success.minimum_valid",
+            coverage="positive",
+            request={"method": "GET", "path": "/analysis"},
+        ),
+        _case("request_body.missing"),
+    ]
+
+    with pytest.raises(ValueError, match="请求方法不一致"):
+        validate_generated_cases(ENDPOINT, PLANNED, cases)
+
+
 def test_validation_rejects_model_changes_to_approved_oracle_fact() -> None:
     planned = [
         {

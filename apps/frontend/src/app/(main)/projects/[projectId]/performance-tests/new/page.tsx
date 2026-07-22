@@ -11,9 +11,9 @@ export default function Page() {
   return (
     <PageShell
       breadcrumbs={moduleBreadcrumbs("performanceTests", { label: "新建性能测试" })}
-      description="定义接口、请求数据、负载和可选性能目标。"
+      description="定义单接口场景、负载窗口、质量门禁与安全熔断。"
       projectScope="project"
-      title="新建性能测试"
+      title="新建托管性能场景"
     >
       <PerformanceTestForm initialProjectId={params.projectId} />
     </PageShell>

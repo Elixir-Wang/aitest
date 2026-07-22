@@ -29,6 +29,16 @@ test("api automation interface-set list uses requested create and count copy", (
   assert.doesNotMatch(pageSource, /<TableHead>用例数量<\/TableHead>/);
 });
 
+test("aggregate api automation page exposes an interface-case tab", () => {
+  assert.match(pageSource, /const tabs = \["接口集", "接口用例"\];/);
+  assert.match(pageSource, /activeTab=\{activeTab\}/);
+  assert.match(pageSource, /tabs=\{tabs\}/);
+  assert.match(pageSource, /activeTab === "接口用例"/);
+  assert.match(pageSource, /listApiAutomationTestCases/);
+  assert.match(pageSource, /title="接口用例列表"/);
+  assert.match(pageSource, /href=\{`\/projects\/\$\{item\.project_id\}\/automation\/api\/cases\/\$\{item\.id\}`\}/);
+});
+
 test("api automation interface-set list removes project and status columns", () => {
   assert.doesNotMatch(pageSource, /<TableHead>项目<\/TableHead>/);
   assert.doesNotMatch(pageSource, /<TableHead>状态<\/TableHead>/);

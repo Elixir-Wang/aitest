@@ -39,6 +39,41 @@ def get_scenario(db: Connection, scenario_id: str) -> Row | None:
     return db.execute("SELECT * FROM performance_scenarios WHERE id = ?", (scenario_id,)).fetchone()
 
 
+def list_scenarios(db: Connection, project_id: str) -> list[Row]:
+    return db.execute(
+        "SELECT * FROM performance_scenarios WHERE project_id = ? ORDER BY updated_at DESC, id DESC",
+        (project_id,),
+    ).fetchall()
+
+
+def update_scenario(
+    db: Connection,
+    scenario_id: str,
+    *,
+    name: str,
+    description: str,
+    api_environment_id: str,
+    scenario_definition: dict[str, Any],
+    load_profile: dict[str, Any],
+    data_source: dict[str, Any],
+    quality_gate: dict[str, Any],
+    safety_policy: dict[str, Any],
+) -> None:
+    db.execute(
+        """UPDATE performance_scenarios SET
+          name = ?, description = ?, api_environment_id = ?, definition_version = definition_version + 1,
+          scenario_definition_json = ?, load_profile_json = ?, data_source_json = ?,
+          quality_gate_json = ?, safety_policy_json = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?""",
+        (name, description, api_environment_id, _dumps(scenario_definition), _dumps(load_profile),
+         _dumps(data_source), _dumps(quality_gate), _dumps(safety_policy), scenario_id),
+    )
+
+
+def delete_scenario(db: Connection, scenario_id: str) -> None:
+    db.execute("DELETE FROM performance_scenarios WHERE id = ?", (scenario_id,))
+
+
 def serialize_scenario(row: Row) -> dict[str, Any]:
     return {
         "id": row["id"], "project_id": row["project_id"], "name": row["name"], "description": row["description"],

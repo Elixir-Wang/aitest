@@ -7,6 +7,7 @@
 | status_code | `status_code: int` | `status_code: 200` |
 | jsonpath_equals | `{"type":"jsonpath_equals","path":"$.code","expected":"000000"}` | 固定业务码 |
 | jsonpath_exists | `{"type":"jsonpath_exists","path":"$.data.user_id","expected":true}` | 响应字段存在 |
+| jsonpath_type | `{"type":"jsonpath_type","path":"$.data.user_id","expected":"string"}` | JSON 字段类型 |
 | body_not_empty | `{"type":"body_not_empty","path":"$.data.items","expected":true}` | 响应体或数组非空 |
 | header_exists | `{"type":"header_exists","path":"Content-Disposition","expected":true}` | Header 存在 |
 | header_equals | `{"type":"header_equals","path":"Content-Type","expected":"application/json"}` | Header 等值 |
@@ -29,12 +30,15 @@ def assert_response(response, assertions: list[dict]):
             assert response.status_code == expected
         elif kind == "content_type":
             assert expected in response.headers.get("Content-Type", "")
-        elif kind in {"jsonpath_exists", "jsonpath_equals", "body_not_empty"}:
+        elif kind in {"jsonpath_exists", "jsonpath_equals", "jsonpath_type", "body_not_empty"}:
             body = response.json()
             exists, actual = get_json_path(body, path)
             assert exists, f"{kind}: JSONPath missing: {path}"
             if kind == "jsonpath_equals":
                 assert actual == expected, f"{path}: expected {expected}, got {actual}"
+            elif kind == "jsonpath_type":
+                actual_type = "boolean" if isinstance(actual, bool) else "number" if isinstance(actual, (int, float)) else "string" if isinstance(actual, str) else "array" if isinstance(actual, list) else "object" if isinstance(actual, dict) else "null" if actual is None else type(actual).__name__
+                assert actual_type == expected, f"{path}: expected type {expected}, got {actual_type}"
             elif kind == "body_not_empty":
                 assert actual, f"{path} should not be empty"
         elif kind == "header_exists":
@@ -72,4 +76,7 @@ cases:
       - type: jsonpath_exists
         path: $.data.user_id
         expected: true
+      - type: jsonpath_type
+        path: $.data.user_id
+        expected: string
 ```

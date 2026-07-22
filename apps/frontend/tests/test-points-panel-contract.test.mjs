@@ -35,8 +35,16 @@ test("test points panel reports refreshed generation state to its container", ()
   assert.match(panelSource, /setData\(overview\);\s*onOverviewChange\?\.\(overview\);/);
 });
 
-test("test points actions live in the list toolbar without a second outer toolbar", () => {
-  assert.match(panelSource, /<ShellSection>[\s\S]*?<ListToolbar[\s\S]*?actions=\{/);
+test("test points actions mount beside the active top-level tab", () => {
+  assert.match(panelSource, /import \{ createPortal \} from "react-dom"/);
+  assert.match(panelSource, /actionContainer\?: HTMLElement \| null/);
+  assert.match(panelSource, /createPortal\(testPointActions, actionContainer\)/);
+  assert.match(requirementPageSource, /const \[testPointActionsContainer, setTestPointActionsContainer\]/);
+  assert.match(requirementPageSource, /activeTab === "test-points"/);
+  assert.match(requirementPageSource, /ref=\{setTestPointActionsContainer\}/);
+  assert.match(requirementPageSource, /actionContainer=\{testPointActionsContainer\}/);
+  assert.match(panelSource, /!hasPoints && canEdit/);
+  assert.match(panelSource, /生成测试点/);
   assert.doesNotMatch(panelSource, /<h2 className="font-medium text-sm">测试点<\/h2>/);
   assert.match(panelSource, /title="测试点列表"/);
   assert.doesNotMatch(listSource, /<ShellSection>/);
@@ -50,7 +58,10 @@ test("test point mind map aligns its bottom edge with the viewport", () => {
     panelSource,
     /<div className="flex min-h-\[32rem\] flex-none rounded-lg border" ref=\{mindMapContainerRef\}>\s*<TestPointMindMap/,
   );
-  assert.doesNotMatch(panelSource, /<div className="flex min-h-\[32rem\] flex-1 rounded-lg border" ref=\{mindMapContainerRef\}>/);
+  assert.doesNotMatch(
+    panelSource,
+    /<div className="flex min-h-\[32rem\] flex-1 rounded-lg border" ref=\{mindMapContainerRef\}>/,
+  );
   assert.doesNotMatch(panelSource, /h-\[calc\(100dvh-15rem\)\]/);
 });
 

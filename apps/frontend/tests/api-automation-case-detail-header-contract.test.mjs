@@ -27,3 +27,8 @@ test("api automation case title shares the tag row", () => {
     /<div className="flex min-w-0 flex-wrap items-center gap-2">[\s\S]*?<h1[^>]*>\{testCase\.title\}<\/h1>[\s\S]*?<Badge/,
   );
 });
+
+test("api automation case detail names JSON field type assertions", () => {
+  assert.match(detailPageSource, /jsonpath_type: "校验 JSON 字段类型"/);
+  assert.match(detailPageSource, /\$\{path\} 类型 = \$\{expected\}/);
+});

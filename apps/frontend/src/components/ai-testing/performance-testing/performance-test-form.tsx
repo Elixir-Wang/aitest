@@ -19,15 +19,14 @@ import {
   type ApiProject,
   ApiRequestError,
   apiRequest,
-  createPerformanceTest,
-  generatePerformanceScript,
+  createPerformanceScenario,
   listApiAutomationEndpoints,
   listApiAutomationEnvironments,
   type PerformanceCircuitBreaker,
   type PerformanceDataConfig,
-  type PerformanceLoadConfig,
   type PerformanceLoadStage,
   type PerformanceRequestPreview,
+  type PerformanceScenarioCreatePayload,
   previewPerformanceRequest,
 } from "@/lib/api-client";
 
@@ -40,6 +39,11 @@ type NumericDraft = {
   timeout: string;
   maxFailPercent: string;
   maxAverageMs: string;
+  users: string;
+  spawnRate: string;
+  warmup: string;
+  measurement: string;
+  stopTimeout: string;
 };
 
 const initialNumbers: NumericDraft = {
@@ -48,6 +52,11 @@ const initialNumbers: NumericDraft = {
   timeout: "30",
   maxFailPercent: "0",
   maxAverageMs: "3000",
+  users: "10",
+  spawnRate: "1",
+  warmup: "30",
+  measurement: "60",
+  stopTimeout: "10",
 };
 
 const initialDataConfig: PerformanceDataConfig = {
@@ -81,7 +90,7 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
   const [headersJson, setHeadersJson] = useState("{}");
   const [bodyJson, setBodyJson] = useState("null");
   const [successCodes, setSuccessCodes] = useState("200");
-  const [mode, setMode] = useState<PerformanceLoadConfig["mode"]>("fixed");
+  const [mode, setMode] = useState<"fixed" | "staged">("fixed");
   const [stages, setStages] = useState<PerformanceLoadStage[]>([]);
   const [dataConfig, setDataConfig] = useState<PerformanceDataConfig>(initialDataConfig);
   const [circuitBreaker, setCircuitBreaker] = useState<PerformanceCircuitBreaker>(initialCircuitBreaker);
@@ -162,9 +171,9 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
       });
   }, [endpointId, environmentId, selectedProjectId]);
 
-  function changeMode(nextMode: PerformanceLoadConfig["mode"]) {
+  function changeMode(nextMode: "fixed" | "staged") {
     setMode(nextMode);
-    setStages(defaultStages(nextMode));
+    setStages(nextMode === "fixed" ? [] : defaultStages("gradient"));
   }
 
   function changeEndpoint(nextEndpointId: string) {
@@ -181,51 +190,83 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
       toast.error("请选择项目、环境和接口，并填写测试名称");
       return;
     }
-    if (mode !== "fixed" && stages.length === 0) {
+    if (mode === "staged" && stages.length === 0) {
       toast.error("当前测试模式至少需要一个负载阶段");
       return;
     }
     setSaving(true);
     try {
-      const created = await createPerformanceTest(selectedProjectId, {
+      const loadProfile =
+        mode === "fixed"
+          ? {
+              mode: "fixed",
+              target_users: positiveNumber(numbers.users, "目标用户数"),
+              spawn_rate: positiveNumber(numbers.spawnRate, "爬升速率"),
+              warmup_seconds: nonNegativeInteger(numbers.warmup, "预热时长"),
+              measurement_seconds: positiveNumber(numbers.measurement, "测量时长"),
+              stop_timeout_seconds: nonNegativeInteger(numbers.stopTimeout, "停止超时"),
+            }
+          : {
+              mode: "staged",
+              stages: stages.map((stage) => ({
+                name: stage.name,
+                target_users: stage.target_users,
+                spawn_rate: stage.spawn_rate,
+                hold_seconds: stage.hold_seconds,
+                record_metrics: true,
+              })),
+              stop_timeout_seconds: nonNegativeInteger(numbers.stopTimeout, "停止超时"),
+            };
+      const payload: PerformanceScenarioCreatePayload = {
         name: name.trim(),
         description: description.trim(),
-        target_type: "endpoint",
-        endpoint_id: endpointId,
         api_environment_id: environmentId,
-        request_config: {
-          path_parameters: parseObject(pathJson, "Path 参数"),
-          query_parameters: parseObject(queryJson, "Query 参数"),
-          headers: parseObject(headersJson, "Headers"),
-          body: parseJson(bodyJson, "Request Body"),
-          random_seed: null,
+        scenario_definition: {
+          personas: [
+            {
+              id: "default",
+              name: "默认用户",
+              wait_time: {
+                min_seconds: positiveNumber(numbers.waitMin, "最小等待时间"),
+                max_seconds: positiveNumber(numbers.waitMax, "最大等待时间"),
+              },
+              steps: [
+                {
+                  type: "http",
+                  endpoint_id: endpointId,
+                  request: {
+                    path_parameters: parseObject(pathJson, "Path 参数"),
+                    query_parameters: parseObject(queryJson, "Query 参数"),
+                    headers: parseObject(headersJson, "Headers"),
+                    body: parseJson(bodyJson, "Request Body"),
+                    timeout_seconds: positiveNumber(numbers.timeout, "请求超时"),
+                  },
+                  assertions: [
+                    {
+                      kind: "status_code",
+                      status_codes: successCodes
+                        .split(",")
+                        .map((value) => Number(value.trim()))
+                        .filter(Number.isInteger),
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
         },
-        load_config: {
-          mode,
-          users: 10,
-          spawn_rate: 1,
-          measurement_duration_seconds: 60,
-          wait_time_min_seconds: positiveNumber(numbers.waitMin, "最小等待时间"),
-          wait_time_max_seconds: positiveNumber(numbers.waitMax, "最大等待时间"),
-          request_timeout_seconds: positiveNumber(numbers.timeout, "请求超时"),
-          stages: mode === "fixed" ? [] : stages,
+        load_profile: loadProfile,
+        data_source: {
+          source: dataConfig.source,
+          selection_strategy: dataConfig.selection_strategy,
+          rows: dataConfig.json_rows,
         },
-        data_config: dataConfig,
-        circuit_breaker: circuitBreaker,
-        performance_goal: compactGoal(numbers),
-        success_rules: [
-          {
-            kind: "status_code",
-            status_codes: successCodes
-              .split(",")
-              .map((value) => Number(value.trim()))
-              .filter((value) => Number.isInteger(value)),
-          },
-        ],
-      });
-      const script = await generatePerformanceScript(selectedProjectId, created.id);
-      toast.success("性能测试已创建，Locust 脚本已生成");
-      router.push(`/projects/${selectedProjectId}/performance-tests/${created.id}/scripts/${script.id}`);
+        quality_gate: compactGoal(numbers),
+        safety_policy: circuitBreaker,
+      };
+      await createPerformanceScenario(selectedProjectId, payload);
+      toast.success("托管性能场景已创建");
+      router.push(`/projects/${selectedProjectId}/performance-tests`);
     } catch (error) {
       toast.error(apiErrorMessage(error, "性能测试创建失败"));
     } finally {
@@ -250,7 +291,7 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
               </Button>
               <Button disabled={saving || previewing} onClick={() => void submit()}>
                 {saving ? <LoaderCircle className="animate-spin" /> : <Check />}
-                保存并生成 Locust 脚本
+                创建托管性能场景
               </Button>
             </div>
           </div>
@@ -318,18 +359,15 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="test-mode">测试模式</FieldLabel>
+            <FieldLabel htmlFor="test-mode">负载计划</FieldLabel>
             <Select
               id="test-mode"
               placeholder="选择测试模式"
-              setValue={(value) => changeMode(value as PerformanceLoadConfig["mode"])}
+              setValue={(value) => changeMode(value as "fixed" | "staged")}
               value={mode}
             >
               <SelectOption value="fixed">固定负载</SelectOption>
-              <SelectOption value="gradient">手动梯度</SelectOption>
-              <SelectOption value="stress">压力测试</SelectOption>
-              <SelectOption value="spike">峰值测试</SelectOption>
-              <SelectOption value="endurance">耐久测试</SelectOption>
+              <SelectOption value="staged">阶段负载</SelectOption>
             </Select>
           </Field>
 
@@ -435,6 +473,63 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
             />
           </Field>
 
+          {mode === "fixed" ? (
+            <>
+              <Field>
+                <FieldLabel htmlFor="test-users">目标用户数</FieldLabel>
+                <Input
+                  id="test-users"
+                  min={1}
+                  onChange={(event) => updateNumber("users", event.target.value)}
+                  type="number"
+                  value={numbers.users}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="test-spawn-rate">爬升速率（用户/秒）</FieldLabel>
+                <Input
+                  id="test-spawn-rate"
+                  min={0.1}
+                  onChange={(event) => updateNumber("spawnRate", event.target.value)}
+                  step={0.1}
+                  type="number"
+                  value={numbers.spawnRate}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="test-warmup">预热时长（秒）</FieldLabel>
+                <Input
+                  id="test-warmup"
+                  min={0}
+                  onChange={(event) => updateNumber("warmup", event.target.value)}
+                  type="number"
+                  value={numbers.warmup}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="test-measurement">测量时长（秒）</FieldLabel>
+                <Input
+                  id="test-measurement"
+                  min={1}
+                  onChange={(event) => updateNumber("measurement", event.target.value)}
+                  type="number"
+                  value={numbers.measurement}
+                />
+              </Field>
+            </>
+          ) : null}
+
+          <Field>
+            <FieldLabel htmlFor="test-stop-timeout">停止超时（秒）</FieldLabel>
+            <Input
+              id="test-stop-timeout"
+              min={0}
+              onChange={(event) => updateNumber("stopTimeout", event.target.value)}
+              type="number"
+              value={numbers.stopTimeout}
+            />
+          </Field>
+
           {/* 测试数据区块 */}
           <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
             <FileText className="size-4 text-muted-foreground" />
@@ -488,7 +583,7 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
           </Field>
 
           <Field className="md:col-span-2">
-            <LoadStageEditor mode={mode} onChange={setStages} stages={stages} />
+            <LoadStageEditor mode={mode === "staged" ? "gradient" : "fixed"} onChange={setStages} stages={stages} />
           </Field>
 
           {/* 性能目标区块 */}
@@ -592,8 +687,7 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
   );
 }
 
-function defaultStages(mode: PerformanceLoadConfig["mode"]): PerformanceLoadStage[] {
-  if (mode === "fixed") return [];
+function defaultStages(mode: "gradient" | "spike" | "endurance"): PerformanceLoadStage[] {
   if (mode === "spike") {
     return [
       { name: "正常负载", target_users: 20, spawn_rate: 5, hold_seconds: 180, order: 0 },
@@ -643,6 +737,12 @@ function parseObject(value: string, label: string): Record<string, unknown> {
 function positiveNumber(value: string, label: string) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`${label} 必须大于 0`);
+  return parsed;
+}
+
+function nonNegativeInteger(value: string, label: string) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) throw new Error(`${label} 必须是非负整数`);
   return parsed;
 }
 

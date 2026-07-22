@@ -259,6 +259,7 @@ function formatAssertionType(type: string) {
         status_code: "校验响应状态码",
         jsonpath_equals: "校验 JSON 字段值",
         jsonpath_exists: "校验 JSON 字段存在",
+        jsonpath_type: "校验 JSON 字段类型",
         content_type: "校验响应内容类型",
         header_exists: "校验响应头存在",
         header_equals: "校验响应头值",
@@ -272,6 +273,9 @@ function formatAssertionType(type: string) {
 function formatAssertionDetail(assertion: Record<string, unknown>) {
   const path = asString(assertion.path);
   const expected = formatUnknown(assertion.expected);
+  if (asString(assertion.type) === "jsonpath_type") {
+    return `${path} 类型 = ${expected}`;
+  }
   return path ? `${path} = ${expected}` : expected;
 }
 

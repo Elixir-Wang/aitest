@@ -136,16 +136,29 @@ def _append_property_assertions(
             continue
         _reject_unresolved_ref(child_schema)
         path = f"{parent_path}.{name}"
-        fixed_value = _fixed_value(str(name), child_schema)
-        if fixed_value is _MISSING:
-            assertions.append(ApiAssertion(type="jsonpath_exists", path=path, expected=True))
-        else:
-            assertions.append(ApiAssertion(type="jsonpath_equals", path=path, expected=fixed_value))
         normalized_child = _normalize_schema(child_schema)
+        fixed_value = _fixed_value(str(name), child_schema)
+        assertions.append(ApiAssertion(type="jsonpath_exists", path=path, expected=True))
+        json_type = _json_assertion_type(normalized_child)
+        if json_type:
+            assertions.append(ApiAssertion(type="jsonpath_type", path=path, expected=json_type))
+        if fixed_value is not _MISSING:
+            assertions.append(ApiAssertion(type="jsonpath_equals", path=path, expected=fixed_value))
         if normalized_child.get("type") == "object" or normalized_child.get("properties"):
             _append_property_assertions(normalized_child, path, assertions)
         if normalized_child.get("type") == "array" and int(normalized_child.get("minItems") or 0) >= 1:
             assertions.append(ApiAssertion(type="body_not_empty", path=path, expected=True))
+
+
+def _json_assertion_type(schema: dict[str, Any]) -> str:
+    if schema.get("nullable"):
+        return ""
+    raw_type = schema.get("type")
+    if raw_type == "integer":
+        return "number"
+    if raw_type in {"string", "number", "boolean", "object", "array", "null"}:
+        return raw_type
+    return ""
 
 
 def _normalize_schema(schema: dict[str, Any]) -> dict[str, Any]:
