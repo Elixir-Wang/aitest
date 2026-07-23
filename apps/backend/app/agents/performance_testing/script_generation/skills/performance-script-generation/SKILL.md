@@ -1,111 +1,102 @@
 ---
 name: performance-script-generation
-description: 根据白名单接口、负载配置和数据规则生成 Locust 性能测试脚本。自动创建 HttpUser 类、任务权重、认证流程、负载形状和阈值检查。
+description: 根据单个白名单接口、负载配置、数据规则和成功规则生成受控的 LocustScriptPlan，供项目 renderer 生成可执行脚本。
 ---
 
-# 性能测试脚本生成专家
+# Locust 性能测试计划生成专家
 
-根据白名单接口、负载配置和数据规则，生成完整的 Locust 性能测试脚本。
+根据已确认的单个接口、负载配置、数据规则和成功规则，生成 `LocustScriptPlan`。项目中的确定性 renderer 负责将 Plan 编译为 `locustfile.py`。
 
-## 事实边界
+## 支持范围
 
-1. 只使用输入中提供的接口、方法、路径和负载配置。
-2. 不新增任何输入中没有的接口、请求头、导入或文件能力。
-3. 只生成可被 Locust 直接执行的脚本。
-4. 不将认证密钥、Cookie 或其他敏感凭证写入输出。
-5. 保持输入中的方法、路径、负载配置和测试数据边界不变。
+仅支持以下能力：
 
-## 输出目标
+1. 单个 HTTP 接口的重复请求。
+2. 路径参数、查询参数、JSON body 和普通请求头。
+3. 固定负载或已给定 stages 的阶段负载。
+4. 固定数据或输入中给出的 JSON 数据行。
+5. 状态码、JSONPath 存在性和 JSONPath 相等性成功规则。
 
-生成完整的 `locustfile.py`，包含：
+不支持且不得自行补充：
 
-1. **HttpUser 类**：定义模拟用户行为
-2. **Task 任务**：使用 `@task` 装饰器定义测试任务
-3. **等待时间**：`wait_time = between(min, max)` 模拟真实用户间隔
-4. **认证流程**：`on_start()` 方法处理登录和 token 获取
-5. **负载形状**：可选的 `LoadTestShape` 类定义复杂负载模式
-6. **阈值检查**：可选的事件钩子验证 SLA
+1. 登录、刷新 token、Cookie 获取或其他认证流程。
+2. CRUD 串联、多接口业务流程、额外请求或清理请求。
+3. 新增导入、文件读取、进程调用、环境变量或网络目标。
+4. FastHttpUser、事件钩子、阈值规则或未在输入提供的任务权重。
+5. CSV 文件读取；当输入为 CSV 数据源时，保留输入配置，不要虚构读取逻辑。
 
-## 工作流程
+## 输入契约
 
-1. 解析白名单接口列表，识别端点、方法、路径和预期负载
-2. 根据接口特点选择合适的用户类型（匿名、认证、CRUD）
-3. 设计任务权重，反映真实业务流量分布
-4. 生成 locustfile.py 文件
-5. 如需复杂负载模式，添加自定义 LoadTestShape
+输入包含以下顶层字段：
 
-## 用户类型选择
-
-| 用户类型 | 适用场景 | 关键特征 |
-|----------|----------|----------|
-| **匿名用户** | 公开接口测试 | 无认证，仅浏览 |
-| **认证用户** | 需要登录的接口 | on_start 获取 token，后续请求携带 |
-| **CRUD 用户** | 完整业务流程 | 创建→读取→更新→删除，保留资源 ID |
-| **混合用户** | 复杂系统 | 组合多种行为模式 |
-
-## 输出结构
-
-```python
-from locust import HttpUser, task, between
-
-class PerformanceUser(HttpUser):
-    """性能测试用户"""
-    wait_time = between(1, 5)  # 任务间隔（秒）
-
-    def on_start(self):
-        """初始化（如登录）"""
-        pass
-
-    @task(<weight>)  # 权重，越大概率被执行
-    def test_endpoint(self):
-        """测试指定端点"""
-        self.client.get("/api/endpoint")
-
-    def on_stop(self):
-        """清理（如登出）"""
-        pass
+```text
+test_id
+endpoint: method, path, name
+request: path_parameters, query_parameters, headers, body, timeout_seconds, random_seed
+load: mode, wait_time_min_seconds, wait_time_max_seconds, stages
+data: source, selection_strategy, json_rows
+success_rules
 ```
 
-## 项目结构规范
+处理规则：
 
-使用 `references/project-structure.md` 中的项目结构规范生成 Locust 项目：
+1. `endpoint.method`、`endpoint.path`、`endpoint.name` 必须原样保留。
+2. 不得新增或删除 path 参数、query 参数、headers、body 字段、成功规则或数据行。
+3. 不得创建输入中不存在的接口、请求、导入、文件或运行能力。
+4. 不得猜测业务字段、认证方式、成功状态码或数据值；关键信息缺失时必须拒绝生成。
+5. `load.mode=fixed` 时保留空 stages；其他模式必须保留输入中的非空 stages。
+6. `wait_time_min_seconds` 不能大于 `wait_time_max_seconds`。
 
-- 每个项目独立的 `performance_testing/` 目录
-- 模块化用户类（anonymous/auth/crud）
-- 分离的负载形状文件
-- 数据文件与脚本分离
-- 运行记录在 `runs/` 目录
+## 参数化规则
 
-## 详细模式参考
+下列占位符可以出现在 path 参数、query 参数、headers 或 body 中：
 
-使用 `references/locust-patterns.md` 中的模式生成：
+| 占位符 | 含义 |
+|---|---|
+| `${sequence}` | 当前用户的递增请求序号 |
+| `${uuid}` | 本次请求生成的 UUID |
+| `${timestamp}` | 当前 Unix 时间戳 |
+| `${random_int}` | 1 到 1,000,000 的随机整数 |
+| `${field}` | 当前 JSON 数据行中的 `field` 值 |
 
-- 基础 HttpUser 类
-- 认证用户（Bearer Token / Cookie）
-- CRUD 完整流程
-- 自定义负载形状（Step / Spike / Soak）
-- 数据驱动模式
-- 阈值检查事件钩子
-- FastHttpUser 高性能模式
+路径参数使用单大括号格式，例如：
 
-## 执行指南
+```text
+/api/items/{item_id}
+```
 
-使用 `references/execution-guide.md` 运行生成的脚本：
+其值由 `request.path_parameters.item_id` 提供。
 
-- 本地交互模式：`locust -f locustfile.py --host http://api.example.com`
-- 无头 CI 模式：`locust --headless --users 50 --spawn-rate 10 -t 2m`
-- 分布式模式：master + worker 架构
-- 结果分析：p95/p99 延迟、错误率、吞吐量
+## 负载规则
 
-## 脚本生成约束
+| mode | 使用方式 |
+|---|---|
+| `fixed` | 不生成 LoadTestShape，使用运行命令提供的 users 与 spawn rate。 |
+| `gradient` | 使用输入 stages 逐级提升或降低用户数。 |
+| `stress` | 使用输入 stages 持续提高用户数。 |
+| `spike` | 使用输入 stages 表达正常、峰值和恢复。 |
+| `endurance` | 使用输入 stages 表达长时间稳定负载。 |
 
-- 不新增接口路径
-- 不新增请求头（除认证必需）
-- 不新增导入依赖
-- 不写死敏感凭证（使用环境变量）
-- 保持任务权重合理（高频操作权重高）
-- 等待时间模拟真实用户行为
+每个 stage 必须保留：`name`、`target_users`、`spawn_rate`、`hold_seconds`、`order`。
+
+## 成功规则
+
+多个 `success_rules` 按 AND 关系处理，任一规则失败则该请求失败。
+
+```json
+{"kind": "status_code", "status_codes": [200, 201]}
+```
+
+```json
+{"kind": "jsonpath_exists", "json_path": "$.data.id"}
+```
+
+```json
+{"kind": "jsonpath_equals", "json_path": "$.success", "expected": true}
+```
 
 ## 输出格式
 
-直接输出完整的 `locustfile.py` 文件内容，包含所有必要的类、方法和配置。不输出 Markdown 包裹的解释文字。
+只输出符合 `LocustScriptPlan` 的结构化结果，供系统的 renderer 编译。
+
+不要输出 Markdown、解释文字、Python 代码、`locustfile.py` 内容、认证逻辑或任何输入外的能力。

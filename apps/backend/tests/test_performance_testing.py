@@ -18,7 +18,7 @@ from app.schemas.performance_test import (
     PerformanceTestUpdateIn,
 )
 from app.seed.init_db import init_db
-from app.services.performance_testing import service
+from app.services.performance_testing import run_repo, service
 
 
 ADMIN = {"id": "u-admin", "role": "admin", "project_scope": "全部项目"}
@@ -241,6 +241,81 @@ def test_create_and_update_performance_test(monkeypatch: pytest.MonkeyPatch, tmp
     assert listed["latest_run_status"] == ""
     assert listed["latest_goal_status"] == ""
     assert listed["latest_run_at"] is None
+
+
+def test_delete_performance_test_rejects_active_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_assets()
+    created = service.create_performance_test("project-1", _payload(), ADMIN)
+
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO performance_test_scripts (
+              id, performance_test_id, project_id, version, generation_source,
+              template_version, input_hash, code, validation_status
+            ) VALUES (?, ?, ?, 1, 'default_plan', 'v1', 'hash', 'code', 'confirmed')
+            """,
+            ("perfscript-1", created["id"], "project-1"),
+        )
+        run_repo.create_run(
+            db,
+            run_id="perfrun-1",
+            project_id="project-1",
+            performance_test_id=created["id"],
+            script_id="perfscript-1",
+            load_config={},
+            runtime_config={},
+            created_by="u-admin",
+        )
+        run_repo.update_run_status(db, "perfrun-1", "starting")
+        run_repo.update_run_status(db, "perfrun-1", "running")
+
+    with pytest.raises(HTTPException) as exc_info:
+        service.delete_performance_test("project-1", created["id"], ADMIN)
+
+    assert exc_info.value.detail["code"] == "PERFORMANCE_TEST_RUN_ACTIVE"
+    with connect() as db:
+        assert db.execute("SELECT id FROM performance_tests WHERE id = ?", (created["id"],)).fetchone() is not None
+
+
+def test_delete_performance_test_removes_all_run_artifacts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_assets()
+    created = service.create_performance_test("project-1", _payload(), ADMIN)
+    run_dir = settings.PROJECT_FILE_STORAGE_ROOT / "project-1" / "performance_testing" / "runs" / "perfrun-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "result_stats.csv").write_text("history", encoding="utf-8")
+
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO performance_test_scripts (
+              id, performance_test_id, project_id, version, generation_source,
+              template_version, input_hash, code, validation_status
+            ) VALUES (?, ?, ?, 1, 'default_plan', 'v1', 'hash', 'code', 'confirmed')
+            """,
+            ("perfscript-1", created["id"], "project-1"),
+        )
+        run_repo.create_run(
+            db,
+            run_id="perfrun-1",
+            project_id="project-1",
+            performance_test_id=created["id"],
+            script_id="perfscript-1",
+            load_config={},
+            runtime_config={},
+            created_by="u-admin",
+        )
+        run_repo.update_run_status(db, "perfrun-1", "starting")
+        run_repo.update_run_status(db, "perfrun-1", "running")
+        run_repo.update_run_status(db, "perfrun-1", "completed")
+
+    service.delete_performance_test("project-1", created["id"], ADMIN)
+
+    with connect() as db:
+        assert db.execute("SELECT id FROM performance_test_runs WHERE id = 'perfrun-1'").fetchone() is None
+    assert not run_dir.exists()
 
 
 def test_default_success_codes_come_from_openapi(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

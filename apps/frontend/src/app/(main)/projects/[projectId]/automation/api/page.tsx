@@ -1771,7 +1771,7 @@ export default function Page() {
               {scripts.map((script) => (
                 <div
                   className={cn(
-                    "mb-1 flex items-start gap-2 rounded-md border border-transparent px-2 py-2 transition-colors hover:border-slate-200 hover:bg-slate-100/70 dark:hover:border-border dark:hover:bg-muted/45",
+                    "mb-1 flex items-center gap-2 rounded-md border border-transparent px-2 py-2 transition-colors hover:border-slate-200 hover:bg-slate-100/70 dark:hover:border-border dark:hover:bg-muted/45",
                     activeScript?.id === script.id &&
                       "border-sky-200 bg-sky-50/80 shadow-xs dark:border-sky-500/35 dark:bg-sky-500/15",
                   )}
@@ -1858,18 +1858,19 @@ export default function Page() {
                         <label className="font-medium text-xs" htmlFor="script-run-environment">
                           运行环境
                         </label>
-                        <Select value={selectedEnvironment?.id ?? ""} onValueChange={setSelectedEnvironmentId}>
-                          <SelectTrigger className="w-full" id="script-run-environment">
-                            <SelectValue placeholder="选择接口环境" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {environments.map((environment) => (
-                              <SelectItem key={environment.id} value={environment.id}>
-                                {environment.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <AnimatedSelect
+                          className="w-full min-w-0"
+                          id="script-run-environment"
+                          placeholder="选择接口环境"
+                          setValue={setSelectedEnvironmentId}
+                          value={selectedEnvironment?.id ?? ""}
+                        >
+                          {environments.map((environment) => (
+                            <SelectOption key={environment.id} value={environment.id}>
+                              {environment.name}
+                            </SelectOption>
+                          ))}
+                        </AnimatedSelect>
                       </div>
 
                       <div className="space-y-2">

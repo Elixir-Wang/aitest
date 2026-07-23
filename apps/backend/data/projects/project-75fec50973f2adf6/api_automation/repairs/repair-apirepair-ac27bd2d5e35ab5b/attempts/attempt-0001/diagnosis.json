@@ -1,0 +1,49 @@
+{
+  "summary": "All 16 failed test cases for POST /openapi/v1/agent/analysis/ return HTTP 200 instead of the expected HTTP 400/401 for negative scenarios. The server is not rejecting missing/invalid date fields, empty/null/invalid date formats, start_date > end_date, missing/empty body, or empty auth headers. The 2 passing tests are positive scenarios where 200 is correct. This strongly indicates an interface-level validation defect rather than a test code issue.",
+  "issues": [
+    {
+      "failure_ids": [
+        "apitc-09fd33cb0bb132a5",
+        "apitc-0ee6b9e5e6529e06",
+        "apitc-0fa4569487135c73",
+        "apitc-1390b8512a1c6397",
+        "apitc-3d569246208d59b0",
+        "apitc-43d80d3151916fcc",
+        "apitc-548a653ef0c5911c",
+        "apitc-601d342b42319a54",
+        "apitc-83daafe626237b5a",
+        "apitc-8773219c06858e99",
+        "apitc-9be0cd19dee2f78f",
+        "apitc-c0bfe6796bb13edf",
+        "apitc-e2d67372b8cb14a5",
+        "apitc-4019628145266b77",
+        "apitc-db22381ffeef7e0f",
+        "apitc-eb2f89327dd381be"
+      ],
+      "classification": "interface_bug",
+      "confidence": 0.88,
+      "evidence": [
+        "Failure categories span three logically distinct validators: missing required dates (expected 400), invalid date format / ordering / empty body (expected 400), and missing/empty auth headers (expected 401). All three return 200, suggesting parameter validation and auth checks are missing or disabled in the deployed build.",
+        "Test runtime per case is 30-430 ms with a successful HTTP round-trip, ruling out DNS/TLS/timeout/environment-connectivity issues. The 200 response was deliberately returned by the server.",
+        "The 2 passing positive cases (minimal-valid-request, start_date == end_date boundary) also return 200, which is correct. They share the same endpoint, environment, and credentials, isolating the issue to input-validation/auth logic rather than environment-wide breakage.",
+        "No traceback in test infrastructure; failure occurs strictly inside utils/assertions.py:103 comparing actual status_code (200) against the expected status_code (400 or 401).",
+        "All 16 failures cluster around the same root pattern (validation/auth missing) — a single root-cause grouping is appropriate.",
+        "Standard HTTP conventions dictate 400 for malformed/invalid body parameters and 401 for missing/invalid auth credentials; both expectations are explicitly asserted in approved test cases."
+      ],
+      "root_cause": "The interface POST /openapi/v1/agent/analysis/ on the production environment 塞伯坦-生产 (https://www.cybotstar.cn/) is not enforcing request validation or authentication properly. Negative scenarios that should produce 400 (required-field checks, type checks, format checks, range/order checks, missing/empty body) and 401 (missing/empty auth headers username / cybertron-robot-key / cybertron-robot-token) all return 200, indicating that the request-body validator and/or the auth middleware are absent, broken, or bypassed in the current deployment.",
+      "recommendation": "Hand off to the interface/backend owner of /openapi/v1/agent/analysis/. Suggested investigation points (do NOT modify test cases or weaken assertions):\n1. Confirm the current OpenAPI contract for the endpoint — are 400/401 still the documented negative responses, or has the contract been recently changed?\n2. Check whether the production deployment has the latest validation/auth middleware live; an outdated build or disabled validator could explain the universal 200.\n3. Capture the actual response body of one failing case (e.g., '必填字段 start_date 缺失'). If the body is a 200 with a business-level error code, the controller rejects the call but the HTTP layer still returns 200 — a real validation/contract defect.\n4. Verify whether auth headers username / cybertron-robot-key / cybertron-robot-token are still the active authentication scheme.\n5. Cross-check the 2 passing positive cases — they share the same endpoint and credentials, so any auth/environment-wide breakage should affect them too. The fact that they pass while 16 negatives fail isolates the issue to input-validation logic.\nTest cases, expected status codes, and assertions MUST NOT be weakened or deleted to mask this defect.",
+      "repairable": false
+    }
+  ],
+  "risks": [
+    "If the production environment is misconfigured (e.g., a catch-all middleware returning 200 for any controller-level error), this could partially be an environment_issue. However, the 2 positive cases still return legitimate 200, so the server is genuinely reachable and processing requests — pointing back to missing validation logic rather than connectivity.",
+    "If the interface contract was intentionally changed (e.g., endpoint now uses a different auth scheme or relaxed validation rules), the 16 failing cases would become contract_ambiguity rather than interface_bug. This requires the user/owner to confirm the current OpenAPI spec."
+  ],
+  "needs_user_input": true,
+  "suggested_questions": [
+    "请问 POST /openapi/v1/agent/analysis/ 的当前 OpenAPI/接口契约中，必填字段校验和鉴权 Header 的预期行为是什么？服务端应当在参数缺失/非法时返回 400、在鉴权失败时返回 401，对吗？",
+    "塞伯坦-生产环境当前部署的版本是否为最新？是否可能存在版本回滚或验证/鉴权中间件未启用的情况？",
+    "针对这些负向用例（例如 '必填字段 start_date 缺失'），实际响应体内容是什么？是 200 + 业务错误码，还是其他情况？",
+    "鉴权 Header（username / cybertron-robot-key / cybertron-robot-token）是否仍是当前生效的鉴权方式？是否存在已切换到新鉴权但用例未更新的情况？"
+  ]
+}

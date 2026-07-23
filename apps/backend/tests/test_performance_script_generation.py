@@ -1,8 +1,25 @@
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
 from app.agents.performance_testing.script_generation.planner import build_default_plan
-from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan
+from app.agents.performance_testing.script_generation.schemas import LocustLoadPlan, LocustScriptPlan
 from app.agents.performance_testing.script_generation.service import script_plan_input
 from app.services.performance_testing.script_renderer import render_locust_script
 from app.services.performance_testing.validator import validate_locust_script
+
+
+SKILL_PATH = (
+    Path(__file__).parents[1]
+    / "app"
+    / "agents"
+    / "performance_testing"
+    / "script_generation"
+    / "skills"
+    / "performance-script-generation"
+    / "SKILL.md"
+)
 
 
 def _performance_test() -> dict:
@@ -65,6 +82,13 @@ def test_renderer_uses_locust_http_user_and_controlled_request() -> None:
     assert "LoadTestShape" not in source
 
 
+def test_renderer_resolves_single_brace_path_parameters() -> None:
+    source = render_locust_script(build_default_plan(_performance_test()))
+
+    assert 'path = path.replace("{" + key + "}", str(value))' in source
+    assert 'path.replace("{{" + key + "}}"' not in source
+
+
 def test_renderer_emits_controlled_load_shape_for_gradient_mode() -> None:
     performance_test = _performance_test()
     performance_test["load_config"] = {
@@ -81,6 +105,30 @@ def test_renderer_emits_controlled_load_shape_for_gradient_mode() -> None:
     assert "class PerformanceLoadShape(LoadTestShape):" in source
     assert '"target_users": 50' in source
     assert "return (stage[\"target_users\"], stage[\"spawn_rate\"])" in source
+
+
+def test_load_plan_rejects_wait_time_range_in_reverse() -> None:
+    with pytest.raises(ValidationError, match="wait_time_min_seconds"):
+        LocustLoadPlan.model_validate(
+            {
+                "mode": "fixed",
+                "wait_time_min_seconds": 3,
+                "wait_time_max_seconds": 1,
+                "stages": [],
+            }
+        )
+
+
+def test_load_plan_requires_stages_for_non_fixed_mode() -> None:
+    with pytest.raises(ValidationError, match="stages"):
+        LocustLoadPlan.model_validate(
+            {
+                "mode": "spike",
+                "wait_time_min_seconds": 1,
+                "wait_time_max_seconds": 3,
+                "stages": [],
+            }
+        )
 
 
 def test_renderer_supports_json_parameter_rows() -> None:
@@ -128,3 +176,11 @@ def test_ai_plan_input_is_whitelisted() -> None:
     assert "must-not-leak" not in serialized
     assert "cybertron-robot-key" in serialized
     assert set(payload) == {"test_id", "endpoint", "request", "load", "data", "success_rules"}
+
+
+def test_skill_describes_structured_plan_contract() -> None:
+    skill = SKILL_PATH.read_text(encoding="utf-8")
+
+    assert "LocustScriptPlan" in skill
+    assert "只输出符合 `LocustScriptPlan`" in skill
+    assert "直接输出完整的 `locustfile.py`" not in skill

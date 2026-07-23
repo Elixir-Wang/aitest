@@ -370,6 +370,22 @@ CREATE TABLE IF NOT EXISTS test_cases (
 CREATE INDEX IF NOT EXISTS idx_test_cases_set_display_order
   ON test_cases(test_case_set_id, display_order);
 
+CREATE TABLE IF NOT EXISTS manual_test_cases (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  preconditions TEXT NOT NULL DEFAULT '',
+  steps_json TEXT NOT NULL DEFAULT '[]',
+  notes TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_manual_test_cases_project_updated
+  ON manual_test_cases(project_id, updated_at);
+
 CREATE TABLE IF NOT EXISTS project_environments (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
@@ -678,6 +694,8 @@ CREATE TABLE IF NOT EXISTS api_automation_runs (
   json_report_path TEXT NOT NULL DEFAULT '',
   scenario_result_path TEXT NOT NULL DEFAULT '',
   observation_result_path TEXT NOT NULL DEFAULT '',
+  parent_run_id TEXT,
+  source_repair_attempt_id TEXT,
   summary_json TEXT NOT NULL DEFAULT '{}',
   error_message TEXT NOT NULL DEFAULT '',
   created_by TEXT NOT NULL,
@@ -690,6 +708,48 @@ CREATE TABLE IF NOT EXISTS api_automation_runs (
 
 CREATE INDEX IF NOT EXISTS idx_api_runs_project_created
   ON api_automation_runs(project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS api_repair_sessions (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  source_run_id TEXT NOT NULL,
+  current_run_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('active', 'passed', 'closed', 'failed')) DEFAULT 'active',
+  current_revision INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(source_run_id) REFERENCES api_automation_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY(current_run_id) REFERENCES api_automation_runs(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_repair_sessions_project_updated
+  ON api_repair_sessions(project_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS api_repair_attempts (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  attempt_number INTEGER NOT NULL,
+  base_run_id TEXT NOT NULL,
+  base_revision INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  user_context TEXT NOT NULL DEFAULT '',
+  diagnosis_json TEXT NOT NULL DEFAULT '{}',
+  validation_json TEXT NOT NULL DEFAULT '{}',
+  decision TEXT NOT NULL DEFAULT '',
+  applied_run_id TEXT,
+  error_message TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(session_id, attempt_number),
+  FOREIGN KEY(session_id) REFERENCES api_repair_sessions(id) ON DELETE CASCADE,
+  FOREIGN KEY(base_run_id) REFERENCES api_automation_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY(applied_run_id) REFERENCES api_automation_runs(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_repair_attempts_session_number
+  ON api_repair_attempts(session_id, attempt_number);
 
 CREATE TABLE IF NOT EXISTS api_oracle_proposals (
   id TEXT PRIMARY KEY,
@@ -801,6 +861,37 @@ CREATE TABLE IF NOT EXISTS performance_test_runs (
 
 CREATE INDEX IF NOT EXISTS idx_performance_test_runs_project_created
   ON performance_test_runs(project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS performance_analysis_sessions (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('collecting', 'analyzing', 'waiting_approval', 'failed', 'rejected')),
+  analysis_version INTEGER NOT NULL,
+  category TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '',
+  direct_cause TEXT NOT NULL DEFAULT '',
+  root_cause TEXT NOT NULL DEFAULT '',
+  confidence REAL NOT NULL DEFAULT 0,
+  evidence_json TEXT NOT NULL DEFAULT '[]',
+  missing_evidence_json TEXT NOT NULL DEFAULT '[]',
+  proposal_json TEXT NOT NULL DEFAULT '{}',
+  model_name TEXT NOT NULL DEFAULT '',
+  error_message TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finished_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(run_id) REFERENCES performance_test_runs(id) ON DELETE CASCADE,
+  UNIQUE(run_id, analysis_version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_performance_analysis_run_status
+  ON performance_analysis_sessions(run_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_performance_analysis_project_created
+  ON performance_analysis_sessions(project_id, created_at);
 
 CREATE TABLE IF NOT EXISTS performance_test_run_stats (
   id TEXT PRIMARY KEY,
@@ -1203,4 +1294,75 @@ CREATE INDEX IF NOT EXISTS idx_global_knowledge_folders_base_parent ON global_kn
 CREATE INDEX IF NOT EXISTS idx_global_knowledge_vault_files_folder ON global_knowledge_vault_files(folder_id, sort_order, display_name);
 CREATE INDEX IF NOT EXISTS idx_knowledge_conversations_project_updated ON knowledge_conversations(project_id, created_by, updated_at);
 CREATE INDEX IF NOT EXISTS idx_knowledge_conversation_messages_conversation_created ON knowledge_conversation_messages(conversation_id, created_at);
+
+CREATE TABLE IF NOT EXISTS ui_automation_generation_runs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  test_case_id TEXT NOT NULL,
+  environment_id TEXT NOT NULL,
+  exploration_run_id TEXT NOT NULL DEFAULT '',
+  task_id TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'queued',
+  suite_path TEXT NOT NULL DEFAULT '',
+  changed_files_json TEXT NOT NULL DEFAULT '[]',
+  error_message TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  started_at TEXT,
+  finished_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(test_case_id) REFERENCES test_cases(id) ON DELETE CASCADE,
+  FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ui_automation_assets (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  test_case_id TEXT NOT NULL,
+  source_version INTEGER NOT NULL DEFAULT 1,
+  generation_run_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'ready',
+  pytest_node_id TEXT NOT NULL,
+  suite_path TEXT NOT NULL,
+  test_file_path TEXT NOT NULL,
+  data_file_path TEXT NOT NULL,
+  plan_file_path TEXT NOT NULL,
+  source_hash TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(project_id, test_case_id),
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(test_case_id) REFERENCES test_cases(id) ON DELETE CASCADE,
+  FOREIGN KEY(generation_run_id) REFERENCES ui_automation_generation_runs(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ui_automation_execution_runs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  asset_id TEXT NOT NULL,
+  environment_id TEXT NOT NULL,
+  task_id TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'queued',
+  run_dir TEXT NOT NULL DEFAULT '',
+  result_json TEXT NOT NULL DEFAULT '{}',
+  stdout_path TEXT NOT NULL DEFAULT '',
+  stderr_path TEXT NOT NULL DEFAULT '',
+  trace_path TEXT NOT NULL DEFAULT '',
+  screenshot_paths_json TEXT NOT NULL DEFAULT '[]',
+  error_message TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  started_at TEXT,
+  finished_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(asset_id) REFERENCES ui_automation_assets(id) ON DELETE CASCADE,
+  FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ui_generation_project_created ON ui_automation_generation_runs(project_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ui_assets_project_updated ON ui_automation_assets(project_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_ui_execution_project_created ON ui_automation_execution_runs(project_id, created_at);
 """

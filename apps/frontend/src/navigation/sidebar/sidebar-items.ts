@@ -102,8 +102,6 @@ export const sidebarItems: NavGroup[] = [
         title: "UI 自动化",
         url: "/automation/ui",
         icon: PlaySquare,
-        comingSoon: true,
-        disabled: true,
       },
       {
         title: "接口自动化",

@@ -1,18 +1,60 @@
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.test_case import (
+    ManualTestCaseAiGenerateRequest,
+    ManualTestCaseAiGenerateResponse,
+    ManualTestCaseCreateIn,
+    ManualTestCaseOut,
     TestCaseReviewIn,
     TestCaseReviewOut,
     TestCaseSetCreateIn,
     TestCaseSetOut,
 )
 from app.services import test_case_service
+from app.services.manual_test_case_generation import generate_manual_test_case_preview
 
 
 router = APIRouter(prefix="/projects/{project_id}/test-case-sets", tags=["test-cases"])
+manual_router = APIRouter(prefix="/projects/{project_id}/test-cases", tags=["test-cases"])
+
+
+@manual_router.get("", response_model=list[ManualTestCaseOut])
+def list_project_manual_test_cases(project_id: str, actor=Depends(current_user)) -> list[dict]:
+    return test_case_service.list_manual_test_cases(project_id, actor)
+
+
+@manual_router.get("/{case_id}", response_model=ManualTestCaseOut)
+def get_project_manual_test_case(project_id: str, case_id: str, actor=Depends(current_user)) -> dict:
+    return test_case_service.get_manual_test_case(project_id, case_id, actor)
+
+
+@manual_router.post("", response_model=ManualTestCaseOut)
+def create_project_manual_test_case(
+    project_id: str,
+    payload: ManualTestCaseCreateIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return test_case_service.create_manual_test_case(project_id, payload, actor)
+
+
+@manual_router.post("/ai-generate", response_model=ManualTestCaseAiGenerateResponse)
+async def generate_project_manual_test_case(
+    project_id: str,
+    payload: ManualTestCaseAiGenerateRequest,
+    actor=Depends(require_admin),
+) -> ManualTestCaseAiGenerateResponse:
+    try:
+        return await generate_manual_test_case_preview(actor, project_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail={"code": "AI_GENERATION_FAILED", "message": str(exc)}) from exc
+
+
+@manual_router.delete("/{case_id}", status_code=204)
+def delete_project_manual_test_case(project_id: str, case_id: str, actor=Depends(require_admin)) -> None:
+    test_case_service.delete_manual_test_case(project_id, case_id, actor)
 
 
 @router.get("", response_model=list[TestCaseSetOut])

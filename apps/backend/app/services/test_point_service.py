@@ -2,8 +2,8 @@ import json
 import secrets
 from pathlib import Path
 
-from app.agents.test_point_generation import generate_test_points
-from app.agents.test_point_generation.schemas import TestPointGenerationInput
+from app.agents.test_point_generation import extract_requirement_obligations, generate_test_points
+from app.agents.test_point_generation.schemas import RequirementObligation, TestPointGenerationInput
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.logging import logger
@@ -148,15 +148,15 @@ def enqueue_generation(project_id: str, document_id: str, actor, *, require_admi
             logger.warning("enqueue_generation: no valid version | source_action={}", version["source_action"] if version else "None")
             raise api_error(409, "NO_FINAL_REQUIREMENT", "请先生成最终需求。")
         existing = test_point_repo.find_run_by_version(db, document_id, version["id"])
-        if existing:
+        if existing is not None:
             logger.info("enqueue_generation: existing run found | run_id={}, status={}", existing["id"], existing["status"])
-        if existing["status"] in {"queued", "running"}:
-            return _serialize_run(existing)
-        if existing["status"] in {"completed", "failed"}:
-            test_point_repo.requeue_run(db, existing["id"])
-            run = test_point_repo.find_run(db, existing["id"])
-            logger.info("enqueue_generation: requeued run | run_id={}, previous_status={}", existing["id"], existing["status"])
-            return _serialize_run(run)
+            if existing["status"] in {"queued", "running"}:
+                return _serialize_run(existing)
+            if existing["status"] in {"completed", "failed"}:
+                test_point_repo.requeue_run(db, existing["id"])
+                run = test_point_repo.find_run(db, existing["id"])
+                logger.info("enqueue_generation: requeued run | run_id={}, previous_status={}", existing["id"], existing["status"])
+                return _serialize_run(run)
         run_id = f"tpgr-{secrets.token_hex(8)}"
         task_id = f"test_point_generation:{run_id}"
         input_snapshot = {
@@ -192,13 +192,23 @@ async def execute_generation_run(run_id: str) -> None:
         if not document or not version:
             raise ValueError("最终需求版本不存在，无法生成测试点。")
         content = _read_version(version)
-        logger.info("execute_generation_run: calling generate_test_points | run_id={}, requirement={}", run_id, document["name"])
-        result = await generate_test_points(
+        logger.info("execute_generation_run: extracting obligations | run_id={}", run_id)
+        obligation_result = await extract_requirement_obligations(
             TestPointGenerationInput(
                 requirement_name=document["name"],
                 requirement_content=content,
                 requirement_version_id=version["id"],
             )
+        )
+        obligations = [RequirementObligation(**ob.model_dump()) for ob in obligation_result.obligations]
+        logger.info("execute_generation_run: calling generate_test_points | run_id={}, requirement={}, obligations_count={}", run_id, document["name"], len(obligations))
+        result = await generate_test_points(
+            TestPointGenerationInput(
+                requirement_name=document["name"],
+                requirement_content=content,
+                requirement_version_id=version["id"],
+            ),
+            obligations=obligations,
         )
         points = [point.model_dump() | {"id": f"tp-{secrets.token_hex(8)}"} for point in result.points]
         logger.info("execute_generation_run: generated {} points | run_id={}", len(points), run_id)

@@ -1,0 +1,2 @@
+"""UI automation agent capabilities."""
+

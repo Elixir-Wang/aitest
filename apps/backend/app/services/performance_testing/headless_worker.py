@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -53,6 +54,11 @@ def _run_dir(project_id: str, run_id: str) -> Path:
     return settings.PROJECT_FILE_STORAGE_ROOT / project_id / "performance_testing" / "runs" / run_id
 
 
+def _prune_run_history(db, project_id: str, performance_test_id: str) -> None:
+    for run_id in run_repo.prune_run_history(db, project_id, performance_test_id, limit=10):
+        shutil.rmtree(_run_dir(project_id, run_id), ignore_errors=True)
+
+
 def _write_run_files(run_dir: Path, run_id: str, script_code: str, runtime_payload: dict[str, Any]) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "runtime.json").write_text(
@@ -90,6 +96,7 @@ def create_run_session(
             created_by=created_by,
         )
         run_repo.append_event(db, run_id, "run_created", "info", "已创建性能测试运行", {})
+        _prune_run_history(db, project_id, test_id)
 
     return run_id
 
@@ -143,6 +150,7 @@ def start_headless_run(run_id: str, options: dict[str, Any] | None = None) -> bo
         with connect() as db:
             run_repo.update_run_status(db, run_id, "starting", error_code="PERFORMANCE_RUN_START_FAILED", error_message=str(exc))
             run_repo.update_run_status(db, run_id, "failed", error_code="PERFORMANCE_RUN_START_FAILED", error_message=str(exc))
+            _prune_run_history(db, run["project_id"], run["performance_test_id"])
         raise
 
     with _PROCESS_LOCK:
@@ -155,10 +163,20 @@ def start_headless_run(run_id: str, options: dict[str, Any] | None = None) -> bo
 
 
 def parse_locust_stats_history(content: str) -> dict[str, Any] | None:
-    rows = list(csv.DictReader(content.splitlines()))
-    aggregate = next((row for row in reversed(rows) if row.get("Type") == "Aggregated"), None)
-    if not aggregate:
-        return None
+    samples = parse_locust_stats_history_samples(content)
+    return samples[-1] if samples else None
+
+
+def parse_locust_stats_history_samples(content: str) -> list[dict[str, Any]]:
+    rows = csv.DictReader(content.splitlines())
+    return [
+        _locust_history_sample(row)
+        for row in rows
+        if row.get("Type") == "Aggregated" or row.get("Name") == "Aggregated"
+    ]
+
+
+def _locust_history_sample(aggregate: dict[str, str | None]) -> dict[str, Any]:
     request_count = int(float(aggregate.get("Total Request Count") or aggregate.get("Request Count") or 0))
     failure_count = int(float(aggregate.get("Total Failure Count") or aggregate.get("Failure Count") or 0))
     return {
@@ -167,13 +185,20 @@ def parse_locust_stats_history(content: str) -> dict[str, Any] | None:
         "request_count": request_count,
         "failure_count": failure_count,
         "requests_per_second": float(aggregate.get("Requests/s") or 0),
+        "failures_per_second": float(aggregate.get("Failures/s") or 0),
         "failure_rate": failure_count / request_count if request_count else 0,
         "average_response_time_ms": float(aggregate.get("Total Average Response Time") or aggregate.get("Average Response Time") or 0),
-        "p50_response_time_ms": float(aggregate.get("50%") or 0),
-        "p95_response_time_ms": float(aggregate.get("95%") or 0),
-        "p99_response_time_ms": float(aggregate.get("99%") or 0),
+        "p50_response_time_ms": _locust_float(aggregate.get("50%")),
+        "p95_response_time_ms": _locust_float(aggregate.get("95%")),
+        "p99_response_time_ms": _locust_float(aggregate.get("99%")),
         "source": "locust_csv_history",
     }
+
+
+def _locust_float(value: object) -> float:
+    if value in (None, "", "N/A"):
+        return 0.0
+    return float(value)
 
 
 def _read_history_sample(run_dir: Path) -> dict[str, Any] | None:
@@ -194,7 +219,20 @@ def _persist_realtime_sample(db, run_id: str, run_dir: Path, last_sampled_at: st
     return str(sample["sampled_at"])
 
 
+def _normalize_failure_reason(reason: str) -> str:
+    match = re.fullmatch(r"CatchResponseError\((['\"])(.*)\1\)", reason.strip())
+    return match.group(2) if match else reason.strip()
+
+
+def _failure_status_code(reason: str) -> int | None:
+    match = re.search(r"status code:\s*(\d{3})", reason)
+    return int(match.group(1)) if match else None
+
+
 def _collect_locust_results(db, run_id: str, run_dir: Path) -> None:
+    run = run_repo.get_run(db, run_id)
+    load_config = json.loads(run["load_config_json"] or "{}") if run else {}
+    configured_users = int(load_config.get("users") or 0)
     stats_path = run_dir / "result_stats.csv"
     if stats_path.exists():
         with stats_path.open("r", encoding="utf-8-sig", newline="") as handle:
@@ -204,7 +242,7 @@ def _collect_locust_results(db, run_id: str, run_dir: Path) -> None:
             request_count = int(float(aggregate.get("Request Count") or 0))
             failure_count = int(float(aggregate.get("Failure Count") or 0))
             run_repo.append_stats(db, run_id=run_id, sample={
-                "user_count": 0,
+                "user_count": configured_users,
                 "request_count": request_count,
                 "failure_count": failure_count,
                 "requests_per_second": float(aggregate.get("Requests/s") or 0),
@@ -215,16 +253,37 @@ def _collect_locust_results(db, run_id: str, run_dir: Path) -> None:
                 "p99_response_time_ms": float(aggregate.get("99%") or 0),
                 "source": "locust_csv",
             })
+    run_repo.clear_failure_details(db, run_id)
+    imported_failures = False
     failures_path = run_dir / "result_failures.csv"
     if failures_path.exists():
         with failures_path.open("r", encoding="utf-8-sig", newline="") as handle:
             for row in csv.DictReader(handle):
+                imported_failures = True
+                reason = _normalize_failure_reason(str(row.get("Error") or ""))
                 run_repo.upsert_failure(
                     db,
                     run_id=run_id,
                     request_name=str(row.get("Name") or ""),
                     method=str(row.get("Method") or ""),
-                    reason=str(row.get("Error") or ""),
+                    reason=reason,
+                    count=int(float(row.get("Occurrences") or 1)),
+                    status_code=_failure_status_code(reason),
+                )
+    imported_exceptions = False
+    exceptions_path = run_dir / "result_exceptions.csv"
+    if exceptions_path.exists():
+        with exceptions_path.open("r", encoding="utf-8-sig", newline="") as handle:
+            for row in csv.DictReader(handle):
+                imported_exceptions = True
+                message = str(row.get("Message") or "")
+                run_repo.upsert_exception(
+                    db,
+                    run_id=run_id,
+                    request_name="",
+                    exception_type=message.partition(":")[0] or "Exception",
+                    message=message,
+                    count=int(float(row.get("Count") or 1)),
                 )
     events_path = run_dir / "locust-events.jsonl"
     if events_path.exists():
@@ -233,16 +292,16 @@ def _collect_locust_results(db, run_id: str, run_dir: Path) -> None:
                 event = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if event.get("kind") == "failure":
+            if event.get("kind") == "failure" and not imported_failures:
                 run_repo.upsert_failure(
                     db,
                     run_id=run_id,
                     request_name=str(event.get("name") or ""),
                     method=str(event.get("request_type") or ""),
-                    reason=str(event.get("reason") or "HTTP failure"),
+                    reason=_normalize_failure_reason(str(event.get("reason") or "HTTP failure")),
                     status_code=int(event["status_code"]) if event.get("status_code") else None,
                 )
-            elif event.get("kind") == "exception":
+            elif event.get("kind") == "exception" and not imported_exceptions:
                 run_repo.upsert_exception(
                     db,
                     run_id=run_id,
@@ -305,6 +364,9 @@ def _monitor_run(
                 )
             message = "性能测试失败"
         run_repo.append_event(db, run_id, "run_finished", "info" if return_code == 0 else "error", message, {"return_code": return_code})
+        current = run_repo.get_run(db, run_id)
+        if current:
+            _prune_run_history(db, current["project_id"], current["performance_test_id"])
 
 
 def stop_headless_run(run_id: str) -> bool:

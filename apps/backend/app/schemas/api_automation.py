@@ -265,6 +265,53 @@ class ApiRunCreateIn(_StrippedModel):
     api_environment_id: str | None = None
 
 
+class ApiRepairSessionCreateIn(_StrippedModel):
+    user_context: str = Field(default="", max_length=20_000)
+
+
+class ApiRepairApprovalIn(_StrippedModel):
+    comment: str = Field(default="", max_length=20_000)
+
+
+class ApiRepairRejectIn(_StrippedModel):
+    comment: str = Field(default="", max_length=20_000)
+
+
+class ApiRepairRollbackIn(_StrippedModel):
+    revision: int = Field(ge=0)
+    reason: str = Field(default="", max_length=20_000)
+
+
+class ApiRepairAttemptOut(BaseModel):
+    id: str
+    session_id: str
+    attempt_number: int
+    base_run_id: str
+    base_revision: int
+    status: str
+    user_context: str
+    diagnosis: dict[str, Any]
+    validation: dict[str, Any]
+    decision: str
+    applied_run_id: str | None
+    error_message: str
+    created_at: str
+    updated_at: str
+
+
+class ApiRepairSessionOut(BaseModel):
+    id: str
+    project_id: str
+    source_run_id: str
+    current_run_id: str
+    status: str
+    current_revision: int
+    created_by: str
+    created_at: str
+    updated_at: str
+    attempts: list[ApiRepairAttemptOut] = Field(default_factory=list)
+
+
 class ApiOracleProposalCreateIn(_StrippedModel):
     run_id: str = Field(min_length=1)
 

@@ -11,6 +11,7 @@ from app.core.db import connect
 from app.services.performance_testing import run_repo
 from app.services import task_service, test_case_service, test_point_service
 from app.services.api_automation import service as api_automation_service
+from app.services.ui_automation import service as ui_automation_service
 from app.services.page_exploration import event_bus, page_exploration_service
 
 recover_interrupted_exploration_runs = page_exploration_service.recover_interrupted_exploration_runs
@@ -56,6 +57,7 @@ def startup() -> None:
     test_case_service.recover_interrupted_test_case_generation_runs()
     test_point_service.recover_interrupted_generation_runs()
     api_automation_service.recover_interrupted_api_automation_tasks()
+    ui_automation_service.recover_interrupted_ui_automation_tasks()
     logger.info("Application started — AI Testing System API v0.1.0")
 
 

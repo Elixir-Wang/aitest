@@ -1967,6 +1967,16 @@ def execute_api_run(run_id: str) -> dict:
             error_message=result["error_message"],
         )
         updated = api_automation_repo.find_api_run(db, run_id)
+        if updated and "source_repair_attempt_id" in updated.keys() and updated["source_repair_attempt_id"]:
+            attempt = api_automation_repo.find_repair_attempt(db, updated["source_repair_attempt_id"])
+            if attempt:
+                api_automation_repo.update_repair_attempt(db, attempt["id"], status="completed")
+                api_automation_repo.update_repair_session(
+                    db,
+                    attempt["session_id"],
+                    status="passed" if result["status"] == "passed" else "active",
+                    current_run_id=run_id,
+                )
         return _serialize_api_run(updated, db)
 
 
@@ -2793,6 +2803,10 @@ def _serialize_api_run(row: Row | None, db=None) -> dict:
         "json_report_path": row["json_report_path"],
         "scenario_result_path": row["scenario_result_path"] if "scenario_result_path" in keys else "",
         "observation_result_path": row["observation_result_path"] if "observation_result_path" in keys else "",
+        "parent_run_id": row["parent_run_id"] if "parent_run_id" in keys else None,
+        "source_repair_attempt_id": row["source_repair_attempt_id"]
+        if "source_repair_attempt_id" in keys
+        else None,
         "summary": api_automation_repo.loads_json(row["summary_json"], {}),
         "error_message": row["error_message"],
         "created_by_name": created_by_name or row["created_by"],

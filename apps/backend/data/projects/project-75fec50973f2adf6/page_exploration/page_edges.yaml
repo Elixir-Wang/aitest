@@ -1,0 +1,17 @@
+edges:
+- id: edge-a8b431e8d24f62ad
+  run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  from_page_id: page-workspace
+  to_page_id: page-botSetting
+  action: click
+  from_url: /workspace
+  to_url: /botSetting
+  observed_at: '2026-07-23T02:41:05.598836+00:00'
+- id: edge-c209d6cee345a8f6
+  run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  from_page_id: page-botSetting
+  to_page_id: page-agentRelease
+  action: click
+  from_url: /botSetting
+  to_url: /agentRelease
+  observed_at: '2026-07-23T02:42:53.277736+00:00'

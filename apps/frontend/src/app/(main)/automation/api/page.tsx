@@ -27,13 +27,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import {
   type ApiAutomationCaseSet,
-  type ApiAutomationTestCase,
   type ApiProject,
   apiRequest,
   createApiAutomationCaseSet,
   formatDateTime,
   listApiAutomationCaseSets,
-  listApiAutomationTestCases,
   updateApiAutomationCaseSet,
 } from "@/lib/api-client";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
@@ -44,12 +42,6 @@ type ApiCaseSetForm = {
   notes: string;
 };
 
-type AggregateApiTestCase = ApiAutomationTestCase & {
-  projectName: string;
-};
-
-const tabs = ["接口集", "接口用例"];
-
 const emptyForm: ApiCaseSetForm = {
   name: "",
   projectId: "",
@@ -58,9 +50,7 @@ const emptyForm: ApiCaseSetForm = {
 
 export default function Page() {
   const selection = useLocalTableSelection<ApiAutomationCaseSet>([]);
-  const caseSelection = useLocalTableSelection<AggregateApiTestCase>([]);
   const [projects, setProjects] = useState<ApiProject[]>([]);
-  const [activeTab, setActiveTab] = useState("接口集");
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -73,12 +63,6 @@ export default function Page() {
   const filteredRows = selection.rows.filter((item) =>
     [item.name, item.notes].some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase())),
   );
-  const filteredCases = caseSelection.rows.filter((item) =>
-    [item.title, item.test_description, item.projectName].some((value) =>
-      value.toLowerCase().includes(searchText.trim().toLowerCase()),
-    ),
-  );
-
   const loadCaseSets = useCallback(
     async (nextProjects: ApiProject[]) => {
       const projectIds = nextProjects.filter((project) => project.status === "active").map((project) => project.id);
@@ -92,27 +76,13 @@ export default function Page() {
     [selection.setRows],
   );
 
-  const loadCases = useCallback(
-    async (nextProjects: ApiProject[]) => {
-      const activeProjects = nextProjects.filter((project) => project.status === "active");
-      const data = await Promise.all(
-        activeProjects.map(async (project) => {
-          const testCases = await listApiAutomationTestCases(project.id);
-          return testCases.map((testCase) => ({ ...testCase, projectName: project.name }));
-        }),
-      );
-      caseSelection.setRows(data.flat().sort((first, second) => second.updated_at.localeCompare(first.updated_at)));
-    },
-    [caseSelection.setRows],
-  );
-
   useEffect(() => {
     async function loadInitialData() {
       setLoading(true);
       try {
         const nextProjects = await apiRequest<ApiProject[]>("/projects");
         setProjects(nextProjects);
-        await Promise.all([loadCaseSets(nextProjects), loadCases(nextProjects)]);
+        await loadCaseSets(nextProjects);
       } catch (requestError) {
         toast.error(requestError instanceof Error ? requestError.message : "接口自动化数据加载失败");
       } finally {
@@ -121,7 +91,7 @@ export default function Page() {
     }
 
     void loadInitialData();
-  }, [loadCaseSets, loadCases]);
+  }, [loadCaseSets]);
 
   function openCreateDialog() {
     setEditingSet(null);
@@ -168,15 +138,8 @@ export default function Page() {
   }
 
   return (
-    <PageShell
-      activeTab={activeTab}
-      breadcrumbs={moduleBreadcrumbs("apiAutomation")}
-      description="查看接口集和已生成的接口用例。"
-      onTabChange={setActiveTab}
-      tabs={tabs}
-      title="接口自动化"
-    >
-      <ShellSection className={activeTab === "接口集" ? undefined : "hidden"}>
+    <PageShell breadcrumbs={moduleBreadcrumbs("apiAutomation")} description="查看和维护接口集。" title="接口自动化">
+      <ShellSection>
         <ListToolbar
           createLabel="新建接口集"
           onCreate={openCreateDialog}
@@ -262,66 +225,6 @@ export default function Page() {
           </Table>
         </div>
       </ShellSection>
-      {activeTab === "接口用例" && (
-        <ShellSection>
-          <ListToolbar onSearch={setSearchText} placeholder="搜索用例、描述或项目" title="接口用例列表" />
-          <div className="overflow-hidden rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>用例名称</TableHead>
-                  <TableHead>所属项目</TableHead>
-                  <TableHead>优先级</TableHead>
-                  <TableHead>更新时间</TableHead>
-                  <TableHead className="w-16">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? <TableLoadingRow colSpan={5} label="接口用例加载中" /> : null}
-                {!loading
-                  ? filteredCases.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="max-w-96 font-medium">
-                          <Link
-                            className="block truncate hover:underline"
-                            href={`/projects/${item.project_id}/automation/api/cases/${item.id}`}
-                            title={item.title}
-                          >
-                            {item.title}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="max-w-48 truncate" title={item.projectName}>
-                          {item.projectName}
-                        </TableCell>
-                        <TableCell>{item.priority || "P2"}</TableCell>
-                        <TableCell>{formatDateTime(item.updated_at)}</TableCell>
-                        <TableCell>
-                          <RowActions
-                            actions={[
-                              {
-                                label: "查看详情",
-                                icon: ClipboardCheck,
-                                href: `/projects/${item.project_id}/automation/api/cases/${item.id}`,
-                              },
-                            ]}
-                            label={`打开 ${item.title} 操作菜单`}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  : null}
-                {!loading && filteredCases.length === 0 ? (
-                  <TableRow>
-                    <TableCell className="h-24 text-center text-muted-foreground" colSpan={5}>
-                      暂无接口用例。请在项目的接口资产中生成用例。
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </div>
-        </ShellSection>
-      )}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
           <DialogHeader className="shrink-0 gap-3 px-6 pt-6">

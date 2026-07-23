@@ -1,0 +1,46 @@
+from fastapi import BackgroundTasks
+
+from app.api.v1 import ui_automation
+from app.api.v1 import v1_router
+from app.schemas.ui_automation import UiAutomationGenerateIn
+
+
+def test_generation_input_accepts_one_case_only():
+    payload = UiAutomationGenerateIn(test_case_id="case-1", environment_id="env-1")
+    assert payload.test_case_id == "case-1"
+    assert not hasattr(payload, "test_case_ids")
+
+
+def test_ui_automation_routes_are_registered():
+    paths = {route.path for route in v1_router.routes}
+    assert "/projects/{project_id}/ui-automation/generation-runs" in paths
+    assert "/projects/{project_id}/ui-automation/assets" in paths
+    assert "/projects/{project_id}/ui-automation/assets/{asset_id}/runs" in paths
+    assert "/projects/{project_id}/ui-automation/runs/{run_id}" in paths
+
+
+def test_generation_route_schedules_background_execution(monkeypatch):
+    captured = {}
+
+    monkeypatch.setattr(
+        ui_automation.service,
+        "create_generation_run",
+        lambda project_id, payload, actor: {"id": "uigen-1", "project_id": project_id, **payload},
+    )
+
+    class FakeBackgroundTasks:
+        def add_task(self, function, *args, **kwargs):
+            captured["function"] = function
+            captured["args"] = args
+
+    result = ui_automation.create_generation_run(
+        "project-1",
+        UiAutomationGenerateIn(test_case_id="case-1", environment_id="env-1"),
+        FakeBackgroundTasks(),
+        actor={"id": "user-1"},
+    )
+
+    assert result["id"] == "uigen-1"
+    assert captured["function"] is ui_automation.service.execute_generation_run
+    assert captured["args"] == ("uigen-1",)
+

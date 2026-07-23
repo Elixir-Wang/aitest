@@ -205,9 +205,16 @@ def delete_performance_test(project_id: str, test_id: str, actor) -> None:
         _require_visible_project(db, project_id, actor)
         current = _require_performance_test(db, project_id, test_id)
         current_data = performance_test_repo.serialize_performance_test(current)
+        runs = db.execute(
+            "SELECT id, status FROM performance_test_runs WHERE project_id = ? AND performance_test_id = ?",
+            (project_id, test_id),
+        ).fetchall()
+        if any(row["status"] in {"created", "starting", "running", "stopping"} for row in runs):
+            raise api_error(409, "PERFORMANCE_TEST_RUN_ACTIVE", "当前压测正在运行，请停止压测后再删除。")
+        run_ids = [row["id"] for row in runs]
         performance_script_repo.delete_scripts_by_test(db, test_id)
         performance_test_repo.delete_performance_test(db, test_id)
-        _cleanup_test_artifacts(project_id, test_id)
+    _cleanup_test_artifacts(project_id, run_ids)
     operation_log_service.record_change(
         log_type="audit",
         module="performance_testing",
@@ -493,18 +500,10 @@ def _require_performance_test(db, project_id: str, test_id: str):
     return row
 
 
-def _cleanup_test_artifacts(project_id: str, test_id: str) -> None:
+def _cleanup_test_artifacts(project_id: str, run_ids: list[str]) -> None:
     from app.services.performance_testing import headless_worker
 
     perf_root = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "performance_testing"
-    with connect() as db:
-        run_ids = [
-            row["id"]
-            for row in db.execute(
-                "SELECT id FROM performance_test_runs WHERE project_id = ? AND performance_test_id = ?",
-                (project_id, test_id),
-            ).fetchall()
-        ]
     for run_id in run_ids:
         headless_worker.stop_headless_run(run_id)
         shutil.rmtree(perf_root / "runs" / run_id, ignore_errors=True)

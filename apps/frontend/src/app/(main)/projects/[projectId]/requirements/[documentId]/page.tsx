@@ -2662,7 +2662,7 @@ function RequirementProgressSteps({ steps }: { steps: RequirementProgressStep[] 
                 <h3
                   className={cn(
                     "font-medium text-sm",
-                    step.status === "completed" && "text-emerald-700 dark:text-emerald-300",
+                    step.status === "completed" && "text-primary",
                     step.status === "running" && "text-primary",
                     step.status === "upcoming" && "text-muted-foreground",
                   )}
@@ -2684,7 +2684,7 @@ function RequirementStepMarker({ status }: { status: RequirementProgressStepStat
       className={cn(
         "z-10 flex size-8 shrink-0 items-center justify-center rounded-full border bg-card",
         status === "completed" &&
-          "border-emerald-500 bg-emerald-500 text-white shadow-[0_0_0_4px] shadow-emerald-500/15",
+          "border-primary bg-primary text-primary-foreground shadow-[0_0_0_4px] shadow-primary/15",
         status === "running" &&
           "border-primary bg-primary text-primary-foreground shadow-[0_0_0_4px] shadow-primary/15",
         status === "upcoming" && "border-border bg-muted/80 text-muted-foreground",

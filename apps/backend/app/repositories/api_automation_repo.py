@@ -934,14 +934,17 @@ def create_api_run(
     target_type: str = "scripts",
     target_ids: list[str] | None = None,
     status: str = "queued",
+    parent_run_id: str | None = None,
+    source_repair_attempt_id: str | None = None,
 ) -> str:
     db.execute(
         """
         INSERT INTO api_automation_runs (
           id, project_id, api_environment_id, task_id, status,
-          script_ids_json, target_type, target_ids_json, execution_snapshot_json, command_summary, created_by
+          script_ids_json, target_type, target_ids_json, execution_snapshot_json, command_summary,
+          parent_run_id, source_repair_attempt_id, created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run_id,
@@ -954,10 +957,136 @@ def create_api_run(
             dumps_json(target_ids or []),
             dumps_json(execution_snapshot or {}),
             command_summary,
+            parent_run_id,
+            source_repair_attempt_id,
             created_by,
         ),
     )
     return run_id
+
+
+def create_repair_session(
+    db: Connection,
+    *,
+    session_id: str,
+    project_id: str,
+    source_run_id: str,
+    current_run_id: str,
+    created_by: str,
+) -> str:
+    db.execute(
+        """
+        INSERT INTO api_repair_sessions (
+          id, project_id, source_run_id, current_run_id, status, current_revision, created_by
+        ) VALUES (?, ?, ?, ?, 'active', 0, ?)
+        """,
+        (session_id, project_id, source_run_id, current_run_id, created_by),
+    )
+    return session_id
+
+
+def find_repair_session(db: Connection, session_id: str) -> Row | None:
+    return db.execute("SELECT * FROM api_repair_sessions WHERE id = ?", (session_id,)).fetchone()
+
+
+def find_active_repair_session_for_run(db: Connection, project_id: str, run_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT * FROM api_repair_sessions
+        WHERE project_id = ? AND source_run_id = ? AND status = 'active'
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (project_id, run_id),
+    ).fetchone()
+
+
+def update_repair_session(
+    db: Connection,
+    session_id: str,
+    *,
+    status: str | None = None,
+    current_run_id: str | None = None,
+    current_revision: int | None = None,
+) -> None:
+    db.execute(
+        """
+        UPDATE api_repair_sessions
+        SET status = COALESCE(?, status),
+            current_run_id = COALESCE(?, current_run_id),
+            current_revision = COALESCE(?, current_revision),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (status, current_run_id, current_revision, session_id),
+    )
+
+
+def create_repair_attempt(
+    db: Connection,
+    *,
+    attempt_id: str,
+    session_id: str,
+    attempt_number: int,
+    base_run_id: str,
+    base_revision: int,
+    user_context: str = "",
+) -> str:
+    db.execute(
+        """
+        INSERT INTO api_repair_attempts (
+          id, session_id, attempt_number, base_run_id, base_revision, status, user_context
+        ) VALUES (?, ?, ?, ?, ?, 'queued', ?)
+        """,
+        (attempt_id, session_id, attempt_number, base_run_id, base_revision, user_context),
+    )
+    return attempt_id
+
+
+def find_repair_attempt(db: Connection, attempt_id: str) -> Row | None:
+    return db.execute("SELECT * FROM api_repair_attempts WHERE id = ?", (attempt_id,)).fetchone()
+
+
+def list_repair_attempts(db: Connection, session_id: str) -> list[Row]:
+    return db.execute(
+        "SELECT * FROM api_repair_attempts WHERE session_id = ? ORDER BY attempt_number ASC",
+        (session_id,),
+    ).fetchall()
+
+
+def update_repair_attempt(
+    db: Connection,
+    attempt_id: str,
+    *,
+    status: str | None = None,
+    diagnosis: dict[str, Any] | None = None,
+    validation: dict[str, Any] | None = None,
+    decision: str | None = None,
+    applied_run_id: str | None = None,
+    error_message: str | None = None,
+) -> None:
+    db.execute(
+        """
+        UPDATE api_repair_attempts
+        SET status = COALESCE(?, status),
+            diagnosis_json = COALESCE(?, diagnosis_json),
+            validation_json = COALESCE(?, validation_json),
+            decision = COALESCE(?, decision),
+            applied_run_id = COALESCE(?, applied_run_id),
+            error_message = COALESCE(?, error_message),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (
+            status,
+            dumps_json(diagnosis) if diagnosis is not None else None,
+            dumps_json(validation) if validation is not None else None,
+            decision,
+            applied_run_id,
+            error_message,
+            attempt_id,
+        ),
+    )
 
 
 def find_api_run(db: Connection, run_id: str) -> Row | None:

@@ -15,6 +15,10 @@ from app.schemas.api_automation import (
     ApiOracleProposalCreateIn,
     ApiOracleProposalRejectIn,
     ApiOracleProposalReviewIn,
+    ApiRepairApprovalIn,
+    ApiRepairRejectIn,
+    ApiRepairRollbackIn,
+    ApiRepairSessionCreateIn,
     ApiRunCreateIn,
     ApiScenarioExecuteIn,
     ApiScenarioIn,
@@ -28,7 +32,7 @@ from app.schemas.api_automation import (
     ApiTestCaseOut,
     OpenAPIImportIn,
 )
-from app.services.api_automation import service
+from app.services.api_automation import self_healing, service
 
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["api-automation"])
@@ -351,6 +355,104 @@ def get_api_run_report(project_id: str, run_id: str, actor=Depends(current_user)
 @router.get("/api-runs/{run_id}/scenario-result")
 def get_api_scenario_run_result(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
     return service.get_api_scenario_run_result(project_id, run_id, actor)
+
+
+@router.post("/api-runs/{run_id}/repair-session")
+def create_api_repair_session(
+    project_id: str,
+    run_id: str,
+    payload: ApiRepairSessionCreateIn,
+    background_tasks: BackgroundTasks,
+    actor=Depends(require_admin),
+) -> dict:
+    created = self_healing.create_repair_session(project_id, run_id, payload.user_context, actor)
+    if created["status"] == "queued":
+        background_tasks.add_task(self_healing.execute_repair_attempt, created["attempt_id"])
+    return created
+
+
+@router.get("/api-repair-sessions/{session_id}")
+def get_api_repair_session(project_id: str, session_id: str, actor=Depends(current_user)) -> dict:
+    return self_healing.get_repair_session(project_id, session_id, actor)
+
+
+@router.get("/api-repair-attempts/{attempt_id}")
+def get_api_repair_attempt(project_id: str, attempt_id: str, actor=Depends(current_user)) -> dict:
+    return self_healing.get_repair_attempt(project_id, attempt_id, actor)
+
+
+@router.get("/api-repair-attempts/{attempt_id}/diff")
+def get_api_repair_diff(project_id: str, attempt_id: str, actor=Depends(current_user)) -> dict:
+    return {"diff": self_healing.get_repair_diff(project_id, attempt_id, actor)}
+
+
+@router.get("/api-repair-attempts/{attempt_id}/logs")
+def get_api_repair_logs(project_id: str, attempt_id: str, actor=Depends(current_user)) -> dict:
+    return self_healing.get_repair_logs(project_id, attempt_id, actor)
+
+
+@router.get("/api-repair-attempts/{attempt_id}/report")
+def get_api_repair_report(project_id: str, attempt_id: str, actor=Depends(current_user)) -> dict:
+    return self_healing.get_repair_report(project_id, attempt_id, actor)
+
+
+@router.post("/api-repair-attempts/{attempt_id}/approve")
+def approve_api_repair_attempt(
+    project_id: str,
+    attempt_id: str,
+    payload: ApiRepairApprovalIn,
+    background_tasks: BackgroundTasks,
+    actor=Depends(require_admin),
+) -> dict:
+    result = self_healing.approve_repair_attempt(project_id, attempt_id, payload.comment, actor)
+    background_tasks.add_task(self_healing.execute_candidate_repair, attempt_id)
+    return result
+
+
+@router.post("/api-repair-attempts/{attempt_id}/apply")
+def apply_api_repair_attempt(
+    project_id: str,
+    attempt_id: str,
+    payload: ApiRepairApprovalIn,
+    background_tasks: BackgroundTasks,
+    actor=Depends(require_admin),
+) -> dict:
+    result = self_healing.apply_repair_attempt(project_id, attempt_id, payload.comment, actor)
+    background_tasks.add_task(service.execute_api_run, result["run_id"])
+    return result
+
+
+@router.post("/api-repair-attempts/{attempt_id}/discard")
+def discard_api_repair_attempt(
+    project_id: str,
+    attempt_id: str,
+    payload: ApiRepairRejectIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return self_healing.discard_repair_attempt(project_id, attempt_id, payload.comment, actor)
+
+
+@router.post("/api-repair-attempts/{attempt_id}/reject")
+def reject_api_repair_attempt(
+    project_id: str,
+    attempt_id: str,
+    payload: ApiRepairRejectIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return self_healing.reject_repair_attempt(project_id, attempt_id, payload.comment, actor)
+
+
+@router.post("/api-repair-sessions/{session_id}/rollback")
+def rollback_api_repair_session(
+    project_id: str,
+    session_id: str,
+    payload: ApiRepairRollbackIn,
+    background_tasks: BackgroundTasks,
+    actor=Depends(require_admin),
+) -> dict:
+    result = self_healing.rollback_repair_session(project_id, session_id, payload.revision, payload.reason, actor)
+    background_tasks.add_task(service.execute_api_run, result["run_id"])
+    return result
 
 
 @router.get("/api-scenarios")

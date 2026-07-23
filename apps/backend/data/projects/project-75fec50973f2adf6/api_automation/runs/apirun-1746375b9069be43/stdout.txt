@@ -1,0 +1,558 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.1, pluggy-1.6.0
+rootdir: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\api_automation\pytest_requests
+configfile: pytest.ini
+plugins: anyio-4.13.0, langsmith-0.8.5, locust-2.45.0, json-report-1.5.0, metadata-3.1.1
+collected 18 items
+
+testcases\openapi\v1\agent\analysis\post\test_api.py FFFFFFFF.F.FFFFFFF  [100%]
+
+================================== FAILURES ===================================
+_ TestAgentAnalysis.test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 start_date \u7c7b\u578b\u9519\u8bef] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A8A68CD0>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-09fd33cb0bb132a5', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 end_date \u4f20\u5165 null] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A8A69450>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-0ee6b9e5e6529e06', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 end_date \u7c7b\u578b\u9519\u8bef] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A8A843E0>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-0fa4569487135c73', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[\u5b57\u6bb5 start_date \u975e\u6cd5\u65e5\u671f\u683c\u5f0f] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A8A848A0>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-1390b8512a1c6397', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 end_date \u4f20\u5165\u7a7a\u5b57\u7b26\u4e32] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A8AA0950>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-3d569246208d59b0', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[\u9274\u6743 Header cybertron-robot-token \u4e3a\u7a7a] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A86D3680>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-4019628145266b77', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 end_date \u7f3a\u5931] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A86D3CE0>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-43d80d3151916fcc', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 start_date \u4f20\u5165 null] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A8A4D050>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-548a653ef0c5911c', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[\u5b57\u6bb5 end_date \u975e\u6cd5\u65e5\u671f\u683c\u5f0f] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A86D73E0>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-601d342b42319a54', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[\u65e5\u671f\u5173\u7cfb - start_date \u665a\u4e8e end_date] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A8B69010>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-83daafe626237b5a', 'coverage': 'boundary', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+____ TestAgentAnalysis.test_agent_analysis[\u8bf7\u6c42\u4f53\u7f3a\u5931] ____
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A8B692B0>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-8773219c06858e99', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 start_date \u4f20\u5165\u7a7a\u5b57\u7b26\u4e32] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A8A5E820>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-9be0cd19dee2f78f', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[\u8bf7\u6c42\u4f53\u4e3a\u7a7a\u5bf9\u8c61] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A8AA4410>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-c0bfe6796bb13edf', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[\u9274\u6743 Header cybertron-robot-key \u4e3a\u7a7a] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A8AA4710>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-db22381ffeef7e0f', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 start_date \u7f3a\u5931] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A8A16360>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-e2d67372b8cb14a5', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[\u9274\u6743 Header username \u4e3a\u7a7a] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x00000128A8A16570>
+api_client = <support.client.ApiClient object at 0x00000128A8AA82F0>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-eb2f89327dd381be', 'coverage': 'negative', 'created_at': '2026-07-23 02:34:03', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        cases,
+        ids=[case.get("title", case.get("test_point_key", "")) for case in cases],
+    )
+    def test_agent_analysis(self, api_client, case):
+        response = api_client.request(_build_request(case), case.get("test_data"))
+>       assert_response(response, case.get("assertions"))
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+--------------------------------- JSON report ---------------------------------
+report saved to: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\api_automation\runs\apirun-1746375b9069be43\report.json
+=========================== short test summary info ===========================
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 start_date \u7c7b\u578b\u9519\u8bef]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 end_date \u4f20\u5165 null]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 end_date \u7c7b\u578b\u9519\u8bef]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u5b57\u6bb5 start_date \u975e\u6cd5\u65e5\u671f\u683c\u5f0f]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 end_date \u4f20\u5165\u7a7a\u5b57\u7b26\u4e32]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u9274\u6743 Header cybertron-robot-token \u4e3a\u7a7a]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 end_date \u7f3a\u5931]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 start_date \u4f20\u5165 null]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u5b57\u6bb5 end_date \u975e\u6cd5\u65e5\u671f\u683c\u5f0f]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u65e5\u671f\u5173\u7cfb - start_date \u665a\u4e8e end_date]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u8bf7\u6c42\u4f53\u7f3a\u5931]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 start_date \u4f20\u5165\u7a7a\u5b57\u7b26\u4e32]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u8bf7\u6c42\u4f53\u4e3a\u7a7a\u5bf9\u8c61]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u9274\u6743 Header cybertron-robot-key \u4e3a\u7a7a]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u5fc5\u586b\u5b57\u6bb5 start_date \u7f3a\u5931]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[\u9274\u6743 Header username \u4e3a\u7a7a]
+======================== 16 failed, 2 passed in 2.70s =========================

@@ -29,14 +29,17 @@ test("api automation interface-set list uses requested create and count copy", (
   assert.doesNotMatch(pageSource, /<TableHead>用例数量<\/TableHead>/);
 });
 
-test("aggregate api automation page exposes an interface-case tab", () => {
-  assert.match(pageSource, /const tabs = \["接口集", "接口用例"\];/);
-  assert.match(pageSource, /activeTab=\{activeTab\}/);
-  assert.match(pageSource, /tabs=\{tabs\}/);
-  assert.match(pageSource, /activeTab === "接口用例"/);
-  assert.match(pageSource, /listApiAutomationTestCases/);
-  assert.match(pageSource, /title="接口用例列表"/);
-  assert.match(pageSource, /href=\{`\/projects\/\$\{item\.project_id\}\/automation\/api\/cases\/\$\{item\.id\}`\}/);
+test("aggregate api automation page only exposes the interface-set list", () => {
+  assert.doesNotMatch(pageSource, /const tabs =/);
+  assert.doesNotMatch(pageSource, /activeTab=\{activeTab\}/);
+  assert.doesNotMatch(pageSource, /tabs=\{tabs\}/);
+  assert.doesNotMatch(pageSource, /activeTab === "接口用例"/);
+  assert.doesNotMatch(pageSource, /listApiAutomationTestCases/);
+  assert.doesNotMatch(pageSource, /title="接口用例列表"/);
+  assert.doesNotMatch(
+    pageSource,
+    /href=\{`\/projects\/\$\{item\.project_id\}\/automation\/api\/cases\/\$\{item\.id\}`\}/,
+  );
 });
 
 test("api automation interface-set list removes project and status columns", () => {
@@ -366,6 +369,18 @@ test("project api automation script workspace summarizes real environment config
   assert.match(projectPageSource, /Object\.keys\(selectedEnvironment\.variables\)\.length/);
   assert.match(projectPageSource, /Object\.keys\(selectedEnvironment\.default_headers\)\.length/);
   assert.doesNotMatch(projectPageSource, /selectedEnvironment \? "修改环境配置" : "新建接口环境"/);
+});
+
+test("project api automation script list centers each script row and uses the global environment select", () => {
+  assert.match(
+    projectPageSource,
+    /"mb-1 flex items-center gap-2 rounded-md border border-transparent px-2 py-2 transition-colors/,
+  );
+  assert.match(projectPageSource, /<AnimatedSelect[\s\S]*placeholder="选择接口环境"[\s\S]*<SelectOption/);
+  assert.doesNotMatch(
+    projectPageSource,
+    /<Select value=\{selectedEnvironment\?\.id \?\? ""\} onValueChange=\{setSelectedEnvironmentId\}>/,
+  );
 });
 
 test("project api automation script workspace summarizes preconditions without repeating cases", () => {

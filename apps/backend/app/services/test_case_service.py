@@ -12,7 +12,7 @@ from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
 from app.repositories import document_repo, project_repo, test_case_repo, test_point_repo
-from app.schemas.test_case import TestCaseReviewIn, TestCaseSetCreateIn
+from app.schemas.test_case import ManualTestCaseCreateIn, TestCaseReviewIn, TestCaseSetCreateIn
 from app.services.test_case_xmind_exporter import build_test_case_set_xmind, safe_xmind_filename
 
 
@@ -25,6 +25,52 @@ STATUS_LABELS = {
 }
 
 PRIORITY_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+
+
+def list_manual_test_cases(project_id: str, actor) -> list[dict]:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        return [_serialize_manual_case(row) for row in test_case_repo.list_manual_cases_by_project(db, project_id)]
+
+
+def get_manual_test_case(project_id: str, case_id: str, actor) -> dict:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = test_case_repo.find_manual_case_by_id(db, case_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "测试用例不存在。")
+        return _serialize_manual_case(row)
+
+
+def create_manual_test_case(project_id: str, payload: ManualTestCaseCreateIn, actor) -> dict:
+    _require_admin(actor)
+    case_id = f"mtc-{secrets.token_hex(8)}"
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        test_case_repo.create_manual_case(
+            db,
+            case_id=case_id,
+            project_id=project_id,
+            title=payload.title,
+            preconditions=payload.preconditions,
+            steps_json=json.dumps([step.model_dump() for step in payload.steps], ensure_ascii=False),
+            notes=payload.notes,
+            created_by=actor["id"],
+        )
+        created = test_case_repo.find_manual_case_by_id(db, case_id)
+        if not created:
+            raise api_error(500, "MANUAL_TEST_CASE_CREATE_FAILED", "测试用例创建失败。")
+        return _serialize_manual_case(created)
+
+
+def delete_manual_test_case(project_id: str, case_id: str, actor) -> None:
+    _require_admin(actor)
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = test_case_repo.find_manual_case_by_id(db, case_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "测试用例不存在。")
+        test_case_repo.delete_manual_case(db, case_id)
 
 
 def list_project_test_case_sets(project_id: str, actor) -> list[dict]:
@@ -431,6 +477,25 @@ def _serialize_case(row) -> dict:
         "review_feedback": row["review_feedback"],
         "reviewed_by": row["reviewed_by"],
         "reviewed_at": row["reviewed_at"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _serialize_manual_case(row) -> dict:
+    try:
+        raw_steps = json.loads(row["steps_json"] or "[]")
+    except json.JSONDecodeError:
+        raw_steps = []
+    return {
+        "id": row["id"],
+        "project_id": row["project_id"],
+        "project_name": row["project_name"],
+        "title": row["title"],
+        "preconditions": row["preconditions"],
+        "steps": raw_steps,
+        "notes": row["notes"],
+        "created_by": row["created_by"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }

@@ -19,7 +19,7 @@ from app.core import db as core_db
 from app.core import storage
 from app.seed.init_db import init_db
 from app.seed.seeds import _ensure_test_case_display_order
-from app.schemas.test_case import TestCaseReviewIn, TestCaseSetCreateIn
+from app.schemas.test_case import ManualTestCaseCreateIn, TestCaseReviewIn, TestCaseSetCreateIn
 from app.services import task_service, test_case_service
 
 
@@ -83,6 +83,52 @@ def _seed_project_requirement_and_exploration() -> None:
             VALUES (?, ?, ?, ?, ?, 'completed', '登录', '采集登录页面事实', ?, CURRENT_TIMESTAMP)
             """,
             ("explore-1", "project-1", "env-1", "doc-1", "登录探索", ACTOR["id"]),
+        )
+
+
+def test_manual_test_case_create_list_and_delete(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_requirement_and_exploration()
+
+    created = test_case_service.create_manual_test_case(
+        "project-1",
+        ManualTestCaseCreateIn(
+            title="登录成功",
+            preconditions="用户账号已注册",
+            steps=[
+                {"action": "输入正确账号密码", "expected_result": "账号密码填写完成"},
+                {"action": "点击登录", "expected_result": "进入系统首页"},
+            ],
+            notes="手工回归用例",
+        ),
+        ACTOR,
+    )
+
+    assert created["project_id"] == "project-1"
+    assert created["project_name"] == "测试项目"
+    assert created["title"] == "登录成功"
+    assert created["steps"][1]["expected_result"] == "进入系统首页"
+    assert created["notes"] == "手工回归用例"
+
+    listed = test_case_service.list_manual_test_cases("project-1", ACTOR)
+    assert [item["id"] for item in listed] == [created["id"]]
+
+    detail = test_case_service.get_manual_test_case("project-1", created["id"], ACTOR)
+    assert detail == created
+
+    with pytest.raises(HTTPException) as exc_info:
+        test_case_service.get_manual_test_case("missing-project", created["id"], ACTOR)
+    assert exc_info.value.status_code == 404
+
+    test_case_service.delete_manual_test_case("project-1", created["id"], ACTOR)
+    assert test_case_service.list_manual_test_cases("project-1", ACTOR) == []
+
+
+def test_manual_test_case_requires_action_and_expected_result() -> None:
+    with pytest.raises(ValidationError):
+        ManualTestCaseCreateIn(
+            title="登录失败",
+            steps=[{"action": "点击登录", "expected_result": ""}],
         )
 
 

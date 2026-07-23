@@ -309,6 +309,21 @@ export function RequirementUploadPage({
             </Field>
           )}
 
+          <Field>
+            <FieldLabel>图片解析</FieldLabel>
+            <RadioGroup className="grid gap-2 sm:grid-cols-2" value="no">
+              <Label className="flex cursor-default items-center gap-3 rounded-lg border p-3 text-sm">
+                <RadioGroupItem value="no" />
+                否
+              </Label>
+              <Label className="flex cursor-not-allowed items-center gap-3 rounded-lg border p-3 text-muted-foreground text-sm">
+                <RadioGroupItem disabled value="yes" />
+                <span>是</span>
+                <span className="rounded bg-muted px-2 py-0.5 text-xs">暂不支持</span>
+              </Label>
+            </RadioGroup>
+          </Field>
+
           <div className="space-y-2">
             <FieldLabel>上传文件</FieldLabel>
             <FileUpload1

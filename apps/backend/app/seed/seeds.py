@@ -111,6 +111,10 @@ def _ensure_api_automation_run_columns(db: sqlite3.Connection) -> None:
         db.execute("ALTER TABLE api_automation_runs ADD COLUMN scenario_result_path TEXT NOT NULL DEFAULT ''")
     if "observation_result_path" not in columns:
         db.execute("ALTER TABLE api_automation_runs ADD COLUMN observation_result_path TEXT NOT NULL DEFAULT ''")
+    if "parent_run_id" not in columns:
+        db.execute("ALTER TABLE api_automation_runs ADD COLUMN parent_run_id TEXT")
+    if "source_repair_attempt_id" not in columns:
+        db.execute("ALTER TABLE api_automation_runs ADD COLUMN source_repair_attempt_id TEXT")
     table_sql_row = db.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'api_automation_runs'"
     ).fetchone()
@@ -139,6 +143,8 @@ def _rebuild_api_automation_runs_with_observed_status(db: sqlite3.Connection) ->
           json_report_path TEXT NOT NULL DEFAULT '',
           scenario_result_path TEXT NOT NULL DEFAULT '',
           observation_result_path TEXT NOT NULL DEFAULT '',
+          parent_run_id TEXT,
+          source_repair_attempt_id TEXT,
           summary_json TEXT NOT NULL DEFAULT '{}',
           error_message TEXT NOT NULL DEFAULT '',
           created_by TEXT NOT NULL,
@@ -156,14 +162,16 @@ def _rebuild_api_automation_runs_with_observed_status(db: sqlite3.Connection) ->
           id, project_id, api_environment_id, task_id, status, script_ids_json,
           target_type, target_ids_json, execution_snapshot_json, command_summary,
           stdout_path, stderr_path, json_report_path, scenario_result_path,
-          observation_result_path, summary_json, error_message, created_by,
+          observation_result_path, parent_run_id, source_repair_attempt_id,
+          summary_json, error_message, created_by,
           created_at, updated_at, finished_at
         )
         SELECT
           id, project_id, api_environment_id, task_id, status, script_ids_json,
           target_type, target_ids_json, execution_snapshot_json, command_summary,
           stdout_path, stderr_path, json_report_path, scenario_result_path,
-          observation_result_path, summary_json, error_message, created_by,
+          observation_result_path, parent_run_id, source_repair_attempt_id,
+          summary_json, error_message, created_by,
           created_at, updated_at, finished_at
         FROM api_automation_runs
         """

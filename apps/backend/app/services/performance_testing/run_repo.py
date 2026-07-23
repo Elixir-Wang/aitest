@@ -14,6 +14,7 @@ RUN_STATUS_TRANSITIONS = {
     "failed": set(),
     "cancelled": set(),
 }
+TERMINAL_RUN_STATUSES = ("completed", "stopped", "failed", "cancelled")
 
 
 def _dumps(value: Any) -> str:
@@ -59,10 +60,37 @@ def list_runs(db: Connection, project_id: str, performance_test_id: str) -> list
         """
         SELECT * FROM performance_test_runs
         WHERE project_id = ? AND performance_test_id = ?
-        ORDER BY created_at DESC, id DESC
+        ORDER BY COALESCE(finished_at, created_at) DESC, created_at DESC, id DESC
         """,
         (project_id, performance_test_id),
     ).fetchall()
+
+
+def prune_run_history(
+    db: Connection,
+    project_id: str,
+    performance_test_id: str,
+    *,
+    limit: int = 10,
+) -> list[str]:
+    rows = db.execute(
+        """
+        SELECT id FROM performance_test_runs
+        WHERE project_id = ? AND performance_test_id = ?
+          AND status IN ('created', 'completed', 'stopped', 'failed', 'cancelled')
+        ORDER BY COALESCE(finished_at, updated_at, created_at) DESC, created_at DESC, id DESC
+        LIMIT -1 OFFSET ?
+        """,
+        (project_id, performance_test_id, max(limit, 0)),
+    ).fetchall()
+    run_ids = [row["id"] for row in rows]
+    if run_ids:
+        db.executemany("DELETE FROM performance_test_runs WHERE id = ?", ((run_id,) for run_id in run_ids))
+    return run_ids
+
+
+def delete_run(db: Connection, run_id: str) -> None:
+    db.execute("DELETE FROM performance_test_runs WHERE id = ?", (run_id,))
 
 
 def recover_stale_runs(db: Connection, timeout_minutes: int = 5) -> int:
@@ -169,6 +197,11 @@ def reset_stats(db: Connection, run_id: str) -> None:
     )
 
 
+def clear_failure_details(db: Connection, run_id: str) -> None:
+    db.execute("DELETE FROM performance_test_run_failures WHERE run_id = ?", (run_id,))
+    db.execute("DELETE FROM performance_test_run_exceptions WHERE run_id = ?", (run_id,))
+
+
 def list_stats(db: Connection, run_id: str) -> list[Row]:
     return db.execute(
         "SELECT * FROM performance_test_run_stats WHERE run_id = ? ORDER BY sampled_at, id",
@@ -183,22 +216,32 @@ def upsert_failure(
     request_name: str,
     method: str,
     reason: str,
+    count: int = 1,
     status_code: int | None = None,
     response_excerpt: str = "",
 ) -> None:
     db.execute(
         """
         INSERT INTO performance_test_run_failures (
-          id, run_id, request_name, method, reason, sample_status_code, sample_response_excerpt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          id, run_id, request_name, method, reason, count, sample_status_code, sample_response_excerpt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(run_id, request_name, method, reason) DO UPDATE SET
-          count = count + 1,
+          count = count + excluded.count,
           last_occurred_at = CURRENT_TIMESTAMP,
           sample_status_code = COALESCE(performance_test_run_failures.sample_status_code, excluded.sample_status_code),
           sample_response_excerpt = CASE WHEN performance_test_run_failures.sample_response_excerpt = ''
             THEN excluded.sample_response_excerpt ELSE performance_test_run_failures.sample_response_excerpt END
         """,
-        (f"perffailure-{secrets.token_hex(8)}", run_id, request_name, method, reason, status_code, response_excerpt[:1000]),
+        (
+            f"perffailure-{secrets.token_hex(8)}",
+            run_id,
+            request_name,
+            method,
+            reason,
+            max(count, 1),
+            status_code,
+            response_excerpt[:1000],
+        ),
     )
 
 
@@ -216,17 +259,25 @@ def upsert_exception(
     request_name: str,
     exception_type: str,
     message: str,
+    count: int = 1,
 ) -> None:
     db.execute(
         """
         INSERT INTO performance_test_run_exceptions (
-          id, run_id, request_name, exception_type, message
-        ) VALUES (?, ?, ?, ?, ?)
+          id, run_id, request_name, exception_type, message, count
+        ) VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(run_id, request_name, exception_type, message) DO UPDATE SET
-          count = count + 1,
+          count = count + excluded.count,
           last_occurred_at = CURRENT_TIMESTAMP
         """,
-        (f"perfexception-{secrets.token_hex(8)}", run_id, request_name, exception_type, message[:2000]),
+        (
+            f"perfexception-{secrets.token_hex(8)}",
+            run_id,
+            request_name,
+            exception_type,
+            message[:2000],
+            max(count, 1),
+        ),
     )
 
 

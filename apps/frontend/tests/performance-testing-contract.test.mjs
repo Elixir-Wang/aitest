@@ -131,6 +131,13 @@ test("performance lists use native shell sections and expose creation actions", 
   assert.match(projectListSource, /createLabel="新建性能测试"/);
 });
 
+test("deleting a performance test confirms all history will be removed", () => {
+  assert.match(projectListSource, /将同时删除该条目下的全部压测历史/);
+  assert.match(allListSource, /将同时删除该条目下的全部压测历史/);
+  assert.match(projectListSource, /window\.confirm/);
+  assert.match(allListSource, /window\.confirm/);
+});
+
 test("performance script API and review route support generation, edits, and confirmation", () => {
   assert.match(apiClientSource, /export function generatePerformanceScript/);
   assert.match(apiClientSource, /export function updatePerformanceScriptConfiguration/);
@@ -180,4 +187,14 @@ test("project-native performance run workspace is present", () => {
   assert.match(locustConsoleSource, /趋势图/);
   assert.match(locustConsoleSource, /失败请求/);
   assert.match(locustConsoleSource, /下载文件/);
+});
+
+test("performance AI analysis API is readonly and project scoped", () => {
+  assert.match(apiClientSource, /export type PerformanceAnalysis/);
+  assert.match(apiClientSource, /export function createPerformanceAnalysis/);
+  assert.match(apiClientSource, /export function getPerformanceAnalysis/);
+  assert.match(apiClientSource, /export function listPerformanceRunAnalyses/);
+  assert.match(apiClientSource, /performance-test-runs\/\$\{runId\}\/ai-analysis/);
+  assert.match(apiClientSource, /performance-analysis\/\$\{analysisId\}/);
+  assert.doesNotMatch(apiClientSource, /apply-and-rerun/);
 });

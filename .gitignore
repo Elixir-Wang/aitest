@@ -5,6 +5,7 @@
 .idea/
 .vscode/
 .agents/
+.playwright-cli/
 .claude/
 .codex/
 .codex-artifacts/

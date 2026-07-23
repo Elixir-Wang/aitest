@@ -43,3 +43,44 @@ requirements, long-text, variable-length, correction
 
 ### Tags
 requirements, long-text, boundary, correction
+
+## [LRN-20260723-UIA-001] correction
+
+**Logged**: 2026-07-23T00:00:00+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: ui-automation-architecture
+
+### Summary
+UI 自动化不是每个业务项目一套 pytest-Playwright 工程，而是整个平台共用一套自动化环境；业务项目和用例只是共享工程中的命名空间资产。
+
+### Details
+- 共享根目录为 `apps/backend/data/ui_automation/pytest_playwright/`。
+- POM、测试代码和数据分别按 `project_key` 放入 `pages/generated/`、`testcases/generated/` 和 `data/projects/`。
+- 平台只初始化一次公共 fixture、配置和工具。
+- 修改共享工程和执行全量 collection 时使用共享工作区锁。
+
+### Source
+- User correction
+
+### Tags
+ui-automation, pytest-playwright, shared-suite, correction
+## [LRN-20260723-001] correction
+
+**Logged**: 2026-07-23T00:00:00+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+When asked to migrate an existing list style, matching only the toolbar and table border is insufficient; the source list's selection model and aggregate-list structure must also be preserved.
+
+### Details
+- The first UI automation migration retained page-level project and environment filters.
+- The reference API automation list has no such filter block and uses header/row checkboxes backed by `useLocalTableSelection`.
+- Execution-specific environment selection belongs in the execution action flow, not in the aggregate list header.
+
+### Pattern-Key
+frontend-list-style-migration-includes-interaction-model
+
+---

@@ -2,6 +2,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.agents.manual_test_case_generation.schemas import ManualTestCaseAiGenerateIn, ManualTestCaseAiGenerateOut
+
 
 GenerationScopeType = Literal["all", "specified"]
 TestCaseReviewStatus = Literal["ready_for_review", "approved", "rejected"]
@@ -62,6 +64,51 @@ class TestCaseStep(BaseModel):
         if isinstance(value, str):
             return value.strip()
         return value
+
+
+class ManualTestCaseStep(BaseModel):
+    action: str = Field(min_length=1)
+    expected_result: str = Field(min_length=1)
+
+    @field_validator("action", "expected_result", mode="before")
+    @classmethod
+    def _strip_strings(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class ManualTestCaseCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=120)
+    preconditions: str = ""
+    steps: list[ManualTestCaseStep] = Field(min_length=1)
+    notes: str = ""
+
+    @field_validator("title", "preconditions", "notes", mode="before")
+    @classmethod
+    def _strip_strings(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+ManualTestCaseAiGenerateRequest = ManualTestCaseAiGenerateIn
+ManualTestCaseAiGenerateResponse = ManualTestCaseAiGenerateOut
+
+
+class ManualTestCaseOut(BaseModel):
+    id: str
+    project_id: str
+    project_name: str = ""
+    title: str
+    preconditions: str
+    steps: list[ManualTestCaseStep]
+    notes: str
+    created_by: str
+    created_at: str
+    updated_at: str
 
 
 class TestCaseReviewIn(BaseModel):

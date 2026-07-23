@@ -1,3 +1,83 @@
+## [ERR-20260723-001] apply_patch_windows_pipe
+
+**Logged**: 2026-07-23T00:00:00+08:00
+**Priority**: low
+**Status**: pending
+**Area**: config
+
+### Summary
+Directly piping a patch here-string to the Windows apply_patch wrapper returned access denied.
+
+### Error
+```text
+Access is denied.
+```
+
+### Context
+- The wrapper is present but cannot be launched from this shell environment.
+- Equivalent edits are being applied through the persistent file API.
+
+### Suggested Fix
+Use a working apply_patch executable or allow the Codex wrapper to launch.
+
+### Metadata
+- Reproducible: yes
+- Related Files: none
+
+---
+
+## [ERR-20260723-002] powershell-combined-regex-quoting
+
+**Logged**: 2026-07-23T00:00:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+A combined PowerShell verification command used nested quotes in an `rg` regular expression and failed before running any checks.
+
+### Error
+```text
+The string is missing the terminator: '.
+```
+
+### Context
+- The command combined status discovery, Biome, Node tests, and TypeScript validation.
+- A regex containing both single and double quotes made the PowerShell command fragile.
+
+### Suggested Fix
+Split verification into simple commands, or pass complex regular expressions as separate safely quoted arguments.
+
+### Metadata
+- Reproducible: yes
+- Related Files: `apps/backend/app/services/ui_automation/service.py`
+
+---
+
+## [ERR-20260723-UIA-001] windows-short-long-path-relative-to
+
+**Logged**: 2026-07-23T00:00:00+08:00
+**Priority**: medium
+**Status**: resolved
+**Area**: filesystem
+
+### Summary
+Windows 临时目录可能同时出现 8.3 短路径和规范长路径，直接使用 `Path.relative_to()` 会把同一目录误判为不相关路径。
+
+### Error
+```text
+ValueError: '<long path>' is not in the subpath of '<8.3 short path>'
+```
+
+### Suggested Fix
+持久化 suite 相对路径时先统一规范路径表示，或使用经过根目录安全校验的相对路径辅助函数；测试脚本不要直接对短路径根调用 `relative_to()`。
+
+### Metadata
+- Reproducible: yes
+- Related Files: `apps/backend/app/agents/ui_automation/pytest_playwright/suite.py`
+
+---
+
 # Errors
 
 ## [ERR-20260714-006] rtk-pytest-interpreter-mismatch
@@ -167,5 +247,34 @@ Avoid nested PowerShell for simple reads. When nesting is required, use an encod
 ### Metadata
 - Reproducible: yes
 - Related Files: none
+
+---
+## [ERR-20260723-001] biome-parenthesized-path-on-windows
+
+**Logged**: 2026-07-23T00:00:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+Running Biome through `cmd.exe` and `rtk` preserved literal quotes around a path containing parentheses, so Biome received an invalid Windows filename.
+
+### Error
+```text
+文件名、目录名或卷标语法不正确。 (os error 123)
+No files were processed in the specified paths.
+```
+
+### Context
+- Command: `rtk npx biome check "src/app/(main)/test-cases/page.tsx"`
+- Workspace: `apps/frontend`
+- The diagnostic path contained literal quote characters.
+
+### Suggested Fix
+Run the configured directory-level `npm run check`, or invoke Biome through a shell that does not preserve the quotes in the argument.
+
+### Metadata
+- Reproducible: yes
+- Related Files: `apps/frontend/src/app/(main)/test-cases/page.tsx`
 
 ---

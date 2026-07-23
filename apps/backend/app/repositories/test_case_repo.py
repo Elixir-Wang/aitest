@@ -10,6 +10,13 @@ JOIN projects p ON p.id = tcs.project_id
 JOIN source_documents d ON d.id = tcs.requirement_doc_id
 """
 
+BASE_MANUAL_CASE_SELECT = """
+SELECT mtc.*,
+       p.name AS project_name
+FROM manual_test_cases mtc
+JOIN projects p ON p.id = mtc.project_id
+"""
+
 
 def list_by_project(db: Connection, project_id: str) -> list[Row]:
     return db.execute(
@@ -52,6 +59,46 @@ def list_cases_by_set(db: Connection, test_case_set_id: str) -> list[Row]:
 
 def find_case_by_id(db: Connection, case_id: str) -> Row | None:
     return db.execute("SELECT * FROM test_cases WHERE id = ?", (case_id,)).fetchone()
+
+
+def list_manual_cases_by_project(db: Connection, project_id: str) -> list[Row]:
+    return db.execute(
+        f"""
+        {BASE_MANUAL_CASE_SELECT}
+        WHERE mtc.project_id = ?
+        ORDER BY mtc.updated_at DESC, mtc.created_at DESC
+        """,
+        (project_id,),
+    ).fetchall()
+
+
+def find_manual_case_by_id(db: Connection, case_id: str) -> Row | None:
+    return db.execute(f"{BASE_MANUAL_CASE_SELECT} WHERE mtc.id = ?", (case_id,)).fetchone()
+
+
+def create_manual_case(
+    db: Connection,
+    *,
+    case_id: str,
+    project_id: str,
+    title: str,
+    preconditions: str,
+    steps_json: str,
+    notes: str,
+    created_by: str,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO manual_test_cases
+          (id, project_id, title, preconditions, steps_json, notes, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (case_id, project_id, title, preconditions, steps_json, notes, created_by),
+    )
+
+
+def delete_manual_case(db: Connection, case_id: str) -> None:
+    db.execute("DELETE FROM manual_test_cases WHERE id = ?", (case_id,))
 
 
 def update_case_review(

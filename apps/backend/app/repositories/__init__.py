@@ -8,6 +8,7 @@ from app.repositories import (
     exploration_run_repo,
     model_repo,
     operation_log_repo,
+    performance_analysis_repo,
     performance_script_repo,
     performance_test_repo,
     project_repo,
@@ -18,6 +19,7 @@ from app.repositories import (
     test_case_repo,
     test_point_repo,
     user_repo,
+    ui_automation_repo,
 )
 
 __all__ = [
@@ -30,6 +32,7 @@ __all__ = [
     "exploration_run_repo",
     "model_repo",
     "operation_log_repo",
+    "performance_analysis_repo",
     "performance_script_repo",
     "performance_test_repo",
     "project_repo",
@@ -40,4 +43,5 @@ __all__ = [
     "test_case_repo",
     "test_point_repo",
     "user_repo",
+    "ui_automation_repo",
 ]

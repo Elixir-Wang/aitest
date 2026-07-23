@@ -186,6 +186,46 @@ export type ApiTestCase = {
   updated_at: string;
 };
 
+export type ApiManualTestCase = {
+  id: string;
+  project_id: string;
+  project_name: string;
+  title: string;
+  preconditions: string;
+  steps: ApiTestCaseStep[];
+  notes: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiManualTestCaseCreate = {
+  title: string;
+  preconditions: string;
+  steps: ApiTestCaseStep[];
+  notes: string;
+};
+
+export type ApiManualTestCaseAiGenerateRequest = {
+  description: string;
+  include_exploration_artifacts: boolean;
+};
+
+export type ApiManualTestCaseAiGenerateResult = {
+  title: string;
+  preconditions: string;
+  steps: ApiTestCaseStep[];
+  generation_notes: string[];
+  source_summary: {
+    description_used: boolean;
+    exploration_artifacts_requested: boolean;
+    exploration_artifacts_used: boolean;
+    page_count: number;
+    operation_count: number;
+    truncated: boolean;
+  };
+};
+
 export type ApiTestCaseReviewStats = {
   case_count: number;
   approved_count: number;
@@ -236,6 +276,52 @@ export type ApiTestCaseSetCreate = {
   generation_scope_type: ApiTestCaseGenerationScopeType;
   generation_scope_text: string;
   notes: string;
+};
+
+export type UiAutomationGenerationRun = {
+  id: string;
+  project_id: string;
+  test_case_id: string;
+  environment_id: string;
+  exploration_run_id: string;
+  task_id: string;
+  status: string;
+  suite_path: string;
+  changed_files: string[];
+  error_message: string;
+  created_by: string;
+};
+
+export type UiAutomationAsset = {
+  id: string;
+  project_id: string;
+  test_case_id: string;
+  source_version: number;
+  generation_run_id: string;
+  status: string;
+  pytest_node_id: string;
+  suite_path: string;
+  test_file_path: string;
+  data_file_path: string;
+  plan_file_path: string;
+  source_hash: string;
+  created_by: string;
+};
+
+export type UiAutomationExecutionRun = {
+  id: string;
+  project_id: string;
+  asset_id: string;
+  environment_id: string;
+  status: string;
+  run_dir: string;
+  result: Record<string, unknown>;
+  stdout_path: string;
+  stderr_path: string;
+  trace_path: string;
+  screenshot_paths: string[];
+  error_message: string;
+  created_by: string;
 };
 
 export type ApiTestPoint = {
@@ -803,6 +889,58 @@ export type ApiAutomationRun = {
   finished_at: string | null;
 };
 
+export type ApiRepairIssue = {
+  failure_ids: string[];
+  classification: string;
+  confidence: number;
+  root_cause: string;
+  recommendation: string;
+  repairable: boolean;
+};
+
+export type ApiRepairProposal = {
+  target: "test_script";
+  action: string;
+  title: string;
+  summary: string;
+  confidence: number;
+  proposed_changes: string[];
+  script_repair_allowed: boolean;
+};
+
+export type ApiRepairAttempt = {
+  id: string;
+  session_id: string;
+  attempt_number: number;
+  base_run_id: string;
+  base_revision: number;
+  status: string;
+  user_context: string;
+  diagnosis: { summary?: string; issues?: ApiRepairIssue[]; proposal?: ApiRepairProposal };
+  validation: {
+    summary?: Record<string, number>;
+    changed_files?: string[];
+    status?: string;
+  };
+  decision: string;
+  applied_run_id: string | null;
+  error_message: string;
+  created_at: string;
+  updated_at: string;
+  available_actions: string[];
+};
+
+export type ApiRepairSession = {
+  id: string;
+  project_id: string;
+  source_run_id: string;
+  current_run_id: string;
+  status: string;
+  current_revision: number;
+  attempts: ApiRepairAttempt[];
+  available_actions: string[];
+};
+
 export type ApiAutomationScenarioStepType = "api_request" | "condition" | "wait" | "poll" | "assign";
 
 export type ApiAutomationScenarioBinding = {
@@ -1076,6 +1214,12 @@ export type PerformanceRun = {
   updated_at: string;
 };
 
+export type PerformanceRunHistory = {
+  performance_test_id: string;
+  retention_limit: number;
+  runs: PerformanceRun[];
+};
+
 export type ApiScriptGenerationRun = {
   id: string;
   project_id: string;
@@ -1098,13 +1242,79 @@ export type PerformanceRunReport = { name: string; size: number };
 
 export type PerformanceRunReports = { run_id: string; reports: PerformanceRunReport[] };
 
+export type PerformanceRunFailure = {
+  request_name: string;
+  method: string;
+  reason: string;
+  count: number;
+  sample_status_code: number | null;
+};
+
+export type PerformanceRunException = {
+  request_name: string;
+  exception_type: string;
+  message: string;
+  count: number;
+};
+
 export type PerformanceRunStats = {
   run: PerformanceRun;
   stats: Array<Record<string, unknown>>;
   request_stats: Array<Record<string, unknown>>;
-  failures: Array<Record<string, unknown>>;
-  exceptions: Array<Record<string, unknown>>;
+  failures: PerformanceRunFailure[];
+  exceptions: PerformanceRunException[];
   events: Array<Record<string, unknown>>;
+};
+
+export type PerformanceRunCharts = {
+  run_id: string;
+  samples: Array<Record<string, unknown>>;
+};
+
+export type PerformanceAnalysisEvidence = {
+  source: string;
+  level: "observed" | "derived" | "inferred";
+  title: string;
+  detail: string;
+  reference?: string;
+};
+
+export type PerformanceAnalysisChange = {
+  id: string;
+  target_type: "performance_config" | "locust_script" | "platform_code";
+  target: string;
+  before?: unknown;
+  after?: unknown;
+  reason: string;
+  risk_level: "low" | "medium" | "high";
+};
+
+export type PerformanceAnalysis = {
+  id: string;
+  project_id: string;
+  run_id: string;
+  status: "collecting" | "analyzing" | "waiting_approval" | "failed" | "rejected";
+  analysis_version: number;
+  category: string;
+  summary: string;
+  direct_cause: string;
+  root_cause: string;
+  confidence: number;
+  evidence: PerformanceAnalysisEvidence[];
+  missing_evidence: string[];
+  proposal: {
+    changes?: PerformanceAnalysisChange[];
+    requires_second_approval?: boolean;
+    can_auto_rerun?: boolean;
+    readonly?: boolean;
+  };
+  model_name: string;
+  error_message: string;
+  created_by: string;
+  created_at: string;
+  finished_at?: string | null;
+  updated_at: string;
+  available_actions: string[];
 };
 
 export type PerformanceRunStartPayload = {
@@ -1251,8 +1461,40 @@ export function getPerformanceRun(projectId: string, runId: string) {
   return apiRequest<PerformanceRun>(`/projects/${projectId}/performance-test-runs/${runId}`);
 }
 
+export function deletePerformanceRun(projectId: string, runId: string) {
+  return apiRequest<void>(`/projects/${projectId}/performance-test-runs/${runId}`, { method: "DELETE" });
+}
+
+export function listPerformanceRunHistory(projectId: string, testId: string) {
+  return apiRequest<PerformanceRunHistory>(`/projects/${projectId}/performance-tests/${testId}/runs/history`);
+}
+
 export function getPerformanceRunStats(projectId: string, runId: string) {
   return apiRequest<PerformanceRunStats>(`/projects/${projectId}/performance-test-runs/${runId}/stats`);
+}
+
+export function getPerformanceRunCharts(projectId: string, runId: string) {
+  return apiRequest<PerformanceRunCharts>(`/projects/${projectId}/performance-test-runs/${runId}/charts`);
+}
+
+export function createPerformanceAnalysis(projectId: string, runId: string) {
+  return apiRequest<PerformanceAnalysis>(`/projects/${projectId}/performance-test-runs/${runId}/ai-analysis`, {
+    method: "POST",
+  });
+}
+
+export function listPerformanceRunAnalyses(projectId: string, runId: string) {
+  return apiRequest<PerformanceAnalysis[]>(`/projects/${projectId}/performance-test-runs/${runId}/ai-analysis`);
+}
+
+export function getPerformanceAnalysis(projectId: string, analysisId: string) {
+  return apiRequest<PerformanceAnalysis>(`/projects/${projectId}/performance-analysis/${analysisId}`);
+}
+
+export function rejectPerformanceAnalysis(projectId: string, analysisId: string) {
+  return apiRequest<PerformanceAnalysis>(`/projects/${projectId}/performance-analysis/${analysisId}/reject`, {
+    method: "POST",
+  });
 }
 
 export function startPerformanceRun(
@@ -1271,8 +1513,10 @@ export function listPerformanceRunReports(projectId: string, runId: string) {
   return apiRequest<PerformanceRunReports>(`/projects/${projectId}/performance-test-runs/${runId}/reports`);
 }
 
-export function performanceRunReportUrl(projectId: string, runId: string, filename: string) {
-  return `${API_BASE_URL}/projects/${projectId}/performance-test-runs/${runId}/reports/${encodeURIComponent(filename)}`;
+export function downloadPerformanceRunReport(projectId: string, runId: string, filename: string) {
+  return apiBlobRequest(
+    `/projects/${projectId}/performance-test-runs/${runId}/reports/${encodeURIComponent(filename)}`,
+  );
 }
 
 export async function streamPerformanceRun(
@@ -1406,6 +1650,35 @@ export function listApiAutomationCaseSets(projectId: string) {
   return apiRequest<ApiAutomationCaseSet[]>(`/projects/${projectId}/api-case-sets`);
 }
 
+export function listUiAutomationAssets(projectId: string) {
+  return apiRequest<UiAutomationAsset[]>(`/projects/${projectId}/ui-automation/assets`);
+}
+
+export function createUiAutomationGenerationRun(
+  projectId: string,
+  payload: { test_case_id: string; environment_id: string; exploration_run_id?: string },
+) {
+  return apiRequest<UiAutomationGenerationRun>(`/projects/${projectId}/ui-automation/generation-runs`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getUiAutomationGenerationRun(projectId: string, runId: string) {
+  return apiRequest<UiAutomationGenerationRun>(`/projects/${projectId}/ui-automation/generation-runs/${runId}`);
+}
+
+export function createUiAutomationExecutionRun(projectId: string, assetId: string, environmentId: string) {
+  return apiRequest<UiAutomationExecutionRun>(`/projects/${projectId}/ui-automation/assets/${assetId}/runs`, {
+    method: "POST",
+    body: JSON.stringify({ environment_id: environmentId }),
+  });
+}
+
+export function getUiAutomationExecutionRun(projectId: string, runId: string) {
+  return apiRequest<UiAutomationExecutionRun>(`/projects/${projectId}/ui-automation/runs/${runId}`);
+}
+
 export function createApiAutomationCaseSet(projectId: string, payload: { name: string; notes: string }) {
   return apiRequest<ApiAutomationCaseSet>(`/projects/${projectId}/api-case-sets`, {
     method: "POST",
@@ -1488,6 +1761,49 @@ export function getApiAutomationRunLogs(projectId: string, runId: string) {
 
 export function getApiAutomationRunReport(projectId: string, runId: string) {
   return apiRequest<Record<string, unknown>>(`/projects/${projectId}/api-runs/${runId}/report`);
+}
+
+export function createApiRepairSession(projectId: string, runId: string, userContext = "") {
+  return apiRequest<{ session_id: string; attempt_id: string; status: string }>(
+    `/projects/${projectId}/api-runs/${runId}/repair-session`,
+    { method: "POST", body: JSON.stringify({ user_context: userContext }) },
+  );
+}
+
+export function getApiRepairSession(projectId: string, sessionId: string) {
+  return apiRequest<ApiRepairSession>(`/projects/${projectId}/api-repair-sessions/${sessionId}`);
+}
+
+export function approveApiRepairAttempt(projectId: string, attemptId: string, comment = "") {
+  return apiRequest<ApiRepairAttempt>(`/projects/${projectId}/api-repair-attempts/${attemptId}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ comment }),
+  });
+}
+
+export function applyApiRepairAttempt(projectId: string, attemptId: string, comment = "") {
+  return apiRequest<{ session_id: string; attempt_id: string; run_id: string; status: string }>(
+    `/projects/${projectId}/api-repair-attempts/${attemptId}/apply`,
+    { method: "POST", body: JSON.stringify({ comment }) },
+  );
+}
+
+export function discardApiRepairAttempt(projectId: string, attemptId: string, comment = "") {
+  return apiRequest<ApiRepairAttempt>(`/projects/${projectId}/api-repair-attempts/${attemptId}/discard`, {
+    method: "POST",
+    body: JSON.stringify({ comment }),
+  });
+}
+
+export function rejectApiRepairAttempt(projectId: string, attemptId: string, comment = "") {
+  return apiRequest<ApiRepairAttempt>(`/projects/${projectId}/api-repair-attempts/${attemptId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ comment }),
+  });
+}
+
+export function getApiRepairAttemptDiff(projectId: string, attemptId: string) {
+  return apiRequest<{ diff: string }>(`/projects/${projectId}/api-repair-attempts/${attemptId}/diff`);
 }
 
 export function getApiAutomationScenarioRunResult(projectId: string, runId: string) {

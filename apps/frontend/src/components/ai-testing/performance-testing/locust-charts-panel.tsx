@@ -7,7 +7,8 @@ export type LocustChartSample = {
   users: number;
   rps: number;
   failuresPerSecond: number;
-  responseTime: number;
+  p50ResponseTime: number;
+  p95ResponseTime: number;
 };
 
 export function LocustChartsPanel({ samples }: { samples: LocustChartSample[] }) {
@@ -20,7 +21,7 @@ export function LocustChartsPanel({ samples }: { samples: LocustChartSample[] })
   }
   return (
     <div className="grid gap-5 xl:grid-cols-2">
-      <ChartCard title="每秒请求数与失败率">
+      <ChartCard title="每秒请求数">
         <LineChart data={samples}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="sampledAt" minTickGap={30} />
@@ -38,7 +39,7 @@ export function LocustChartsPanel({ samples }: { samples: LocustChartSample[] })
           />
         </LineChart>
       </ChartCard>
-      <ChartCard title="响应时间与用户数">
+      <ChartCard title="响应时间">
         <LineChart data={samples}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="sampledAt" minTickGap={30} />
@@ -46,13 +47,30 @@ export function LocustChartsPanel({ samples }: { samples: LocustChartSample[] })
           <Tooltip />
           <Legend />
           <Line
-            dataKey="responseTime"
+            dataKey="p50ResponseTime"
             dot={false}
-            name="平均响应时间"
+            name="中位数 (P50)"
             stroke="var(--chart-2)"
             strokeWidth={2}
             type="monotone"
           />
+          <Line
+            dataKey="p95ResponseTime"
+            dot={false}
+            name="95% 分位"
+            stroke="var(--chart-3)"
+            strokeWidth={2}
+            type="monotone"
+          />
+        </LineChart>
+      </ChartCard>
+      <ChartCard className="xl:col-span-2" title="用户数">
+        <LineChart data={samples}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="sampledAt" minTickGap={30} />
+          <YAxis allowDecimals={false} />
+          <Tooltip />
+          <Legend />
           <Line dataKey="users" dot={false} name="用户数" stroke="var(--chart-4)" strokeWidth={2} type="stepAfter" />
         </LineChart>
       </ChartCard>
@@ -60,9 +78,17 @@ export function LocustChartsPanel({ samples }: { samples: LocustChartSample[] })
   );
 }
 
-function ChartCard({ title, children }: { title: string; children: React.ReactElement }) {
+function ChartCard({
+  title,
+  children,
+  className = "",
+}: {
+  title: string;
+  children: React.ReactElement;
+  className?: string;
+}) {
   return (
-    <section className="rounded-md border p-4 dark:border-slate-800">
+    <section className={`rounded-md border p-4 dark:border-slate-800 ${className}`}>
       <h3 className="mb-4 font-medium text-sm">{title}</h3>
       <div className="h-72 w-full">
         <ResponsiveContainer height="100%" width="100%">

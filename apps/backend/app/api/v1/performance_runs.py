@@ -1,21 +1,23 @@
 import asyncio
 import csv
 import json
+import shutil
 from contextlib import contextmanager
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 
 from app.core import settings
 from app.core.db import connect
 from app.dependencies.auth import current_user
 from app.repositories import api_automation_repo, performance_script_repo, project_repo
-from app.services.performance_testing import headless_worker, run_repo
+from app.services.performance_testing import analysis_service, headless_worker, run_repo
 
 
 test_router = APIRouter(prefix="/projects/{project_id}/performance-tests/{test_id}", tags=["performance-tests"])
 run_router = APIRouter(prefix="/projects/{project_id}/performance-test-runs", tags=["performance-test-runs"])
+analysis_router = APIRouter(prefix="/projects/{project_id}/performance-analysis", tags=["performance-analysis"])
 REPORT_FILES = {
     "result.html",
     "result_stats.csv",
@@ -27,6 +29,7 @@ REPORT_FILES = {
     "stderr.log",
 }
 TERMINAL_STATUSES = {"completed", "stopped", "failed", "cancelled"}
+ACTIVE_STATUSES = {"starting", "running", "stopping"}
 
 
 @test_router.post("/runs")
@@ -77,13 +80,52 @@ def start_performance_run(
 def list_performance_run_history(project_id: str, test_id: str, actor=Depends(current_user)) -> dict:
     _ensure_project_visible(project_id, actor)
     with connect() as db:
-        runs = run_repo.list_runs(db, project_id, test_id)
-        return {"performance_test_id": test_id, "runs": [_run_payload(row) for row in runs]}
+        runs = run_repo.list_runs(db, project_id, test_id)[:10]
+        return {"performance_test_id": test_id, "retention_limit": 10, "runs": [_run_payload(row) for row in runs]}
 
 
 @run_router.get("/{run_id}")
 def get_performance_run(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
     return _run_payload(_require_run(project_id, run_id, actor))
+
+
+@run_router.delete("/{run_id}", status_code=204)
+def delete_performance_run(project_id: str, run_id: str, actor=Depends(current_user)) -> None:
+    from app.core.exceptions import api_error
+
+    run = _require_run(project_id, run_id, actor)
+    if run["status"] in ACTIVE_STATUSES:
+        raise api_error(409, "PERFORMANCE_RUN_ACTIVE", "运行中的压测记录不能删除。")
+    with connect() as db:
+        run_repo.delete_run(db, run_id)
+    shutil.rmtree(_run_report_directory(project_id, run_id), ignore_errors=True)
+
+
+@run_router.post("/{run_id}/ai-analysis", status_code=202)
+def create_performance_analysis(
+    project_id: str,
+    run_id: str,
+    background_tasks: BackgroundTasks,
+    actor=Depends(current_user),
+) -> dict:
+    created = analysis_service.create_analysis(project_id, run_id, actor)
+    background_tasks.add_task(analysis_service.execute_analysis, created["id"])
+    return created
+
+
+@run_router.get("/{run_id}/ai-analysis")
+def list_performance_run_analyses(project_id: str, run_id: str, actor=Depends(current_user)) -> list[dict]:
+    return analysis_service.list_run_analyses(project_id, run_id, actor)
+
+
+@analysis_router.get("/{analysis_id}")
+def get_performance_analysis(project_id: str, analysis_id: str, actor=Depends(current_user)) -> dict:
+    return analysis_service.get_analysis(project_id, analysis_id, actor)
+
+
+@analysis_router.post("/{analysis_id}/reject")
+def reject_performance_analysis(project_id: str, analysis_id: str, actor=Depends(current_user)) -> dict:
+    return analysis_service.reject_analysis(project_id, analysis_id, actor)
 
 
 @run_router.get("/{run_id}/stats")
@@ -93,7 +135,7 @@ def get_performance_run_stats(project_id: str, run_id: str, actor=Depends(curren
         run = run_repo.get_run(db, run_id)
         return {
             "run": _run_payload(run),
-            "stats": [dict(row) for row in run_repo.list_stats(db, run_id)],
+            "stats": [_stat_payload(row) for row in run_repo.list_stats(db, run_id)],
             "request_stats": _request_stats(project_id, run_id),
             "failures": [dict(row) for row in run_repo.list_failures(db, run_id)],
             "exceptions": [dict(row) for row in run_repo.list_exceptions(db, run_id)],
@@ -110,7 +152,11 @@ def get_performance_run_state(project_id: str, run_id: str, actor=Depends(curren
 def get_performance_run_charts(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
     _require_run(project_id, run_id, actor)
     with connect() as db:
-        return {"run_id": run_id, "samples": [dict(row) for row in run_repo.list_stats(db, run_id)]}
+        samples = [_stat_payload(row) for row in run_repo.list_stats(db, run_id)]
+    history_samples = _history_samples(project_id, run_id)
+    if len(history_samples) > len(samples):
+        samples = history_samples
+    return {"run_id": run_id, "samples": samples}
 
 
 @run_router.get("/{run_id}/failures")
@@ -211,7 +257,7 @@ async def stream_performance_run(project_id: str, run_id: str, actor=Depends(cur
                     "stats",
                     {
                         "run": _run_payload(run),
-                        "latest": dict(stats[-1]),
+                        "latest": _stat_payload(stats[-1]),
                         "failures": [dict(row) for row in failures],
                         "exceptions": [dict(row) for row in exceptions],
                     },
@@ -245,6 +291,16 @@ def _run_report_directory(project_id: str, run_id: str) -> Path:
     return (settings.PROJECT_FILE_STORAGE_ROOT / project_id / "performance_testing" / "runs" / run_id).resolve()
 
 
+def _history_samples(project_id: str, run_id: str) -> list[dict[str, object]]:
+    path = _run_report_directory(project_id, run_id) / "result_stats_history.csv"
+    if not path.is_file():
+        return []
+    try:
+        return headless_worker.parse_locust_stats_history_samples(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return []
+
+
 def _request_stats(project_id: str, run_id: str) -> list[dict[str, object]]:
     path = _run_report_directory(project_id, run_id) / "result_stats.csv"
     if not path.is_file():
@@ -256,18 +312,17 @@ def _request_stats(project_id: str, run_id: str) -> list[dict[str, object]]:
         return []
     result = []
     for row in rows:
-        if row.get("Type") == "Aggregated":
+        if row.get("Type") == "Aggregated" or row.get("Name") == "Aggregated":
             continue
+        request_count = int(float(row.get("Request Count") or 0))
+        failure_count = int(float(row.get("Failure Count") or 0))
         result.append(
             {
                 "name": row.get("Name", ""),
                 "method": row.get("Type", ""),
-                "request_count": int(float(row.get("Request Count") or 0)),
-                "failure_count": int(float(row.get("Failure Count") or 0)),
-                "failure_rate": (
-                    int(float(row.get("Failure Count") or 0))
-                    / int(float(row.get("Request Count") or 1))
-                ),
+                "request_count": request_count,
+                "failure_count": failure_count,
+                "failure_rate": failure_count / request_count if request_count else 0,
                 "average_response_time_ms": float(row.get("Average Response Time") or 0),
                 "median_response_time_ms": float(row.get("Median Response Time") or row.get("50%") or 0),
                 "p50_response_time_ms": float(row.get("50%") or 0),
@@ -301,6 +356,12 @@ def _run_payload(row) -> dict:
         "finished_at": row["finished_at"],
         "updated_at": row["updated_at"],
     }
+
+
+def _stat_payload(row) -> dict:
+    payload = dict(row)
+    raw_stats = api_automation_repo.loads_json(payload.pop("stats_json", "{}"), {})
+    return {**payload, **raw_stats}
 
 
 @contextmanager

@@ -1,0 +1,197 @@
+schema_version: '3.0'
+page:
+  id: page-agentRelease
+  title: 百融百工
+  normalized_path: /agentRelease
+states:
+- id: page-agentRelease__root__001
+  type: root
+  title: 百融百工
+  url: https://www.cybotstar.cn/agentRelease?agentId=19449&access_type=0&agent_type=1&version=1.0.0
+  elements:
+  - key: clickable-explorebot-2026--in--explorebot-2026-api-api
+    role: clickable
+    name: ExploreBot_2026
+    action: click
+    locators:
+    - code: 'getByText(''ExploreBot_2026'', { exact: true })'
+    - code: locator('body > div:nth-of-type(1) > div > div:nth-of-type(1)')
+    context:
+      ordinal: 1
+      role: div
+      name: ExploreBot_2026 发布中... 正在发布版本，请稍等。可进入发布管理查看发布结果。 发布平台 操作 API调用 通过API,可直接进行调用或发出请求
+        网页 用户可以在网页直接与您的智能体聊天 网站嵌入 复制代码,将智能体添加到
+  - key: clickable-explorebot-2026--in--explorebot-2026
+    role: clickable
+    name: ExploreBot_2026
+    action: click
+    locators:
+    - code: 'getByText(''ExploreBot_2026'', { exact: true })'
+    - code: locator('body > div:nth-of-type(1) > div > div:nth-of-type(1) > div:nth-of-type(1)')
+    context:
+      ordinal: 2
+      role: div
+      name: ExploreBot_2026
+  - key: clickable-ExploreBot_2026 发布中... 正在发布版本，请稍等。可进入发布管理查看发布结果。 发布平台 操作 API调用
+      通过API,可直接进行调用或发出请求 网页 用户可以在网页直接与您的智能体聊天 网站嵌入 复制代码,将智能体添加到网站 百工探索广场 智能体会出现在百工探索广场中,为你的智能体获得更多曝光
+      钉钉--in--explorebot-2026-api-api
+    role: clickable
+    name: ExploreBot_2026 发布中... 正在发布版本，请稍等。可进入发布管理查看发布结果。 发布平台 操作 API调用 通过API,可直接进行调用或发出请求
+      网页 用户可以在网页直接与您的智能体聊天 网站嵌入 复制代码,将智能体添加到网站 百工探索广场 智能体会出现在百工探索广场中,为你的智能体获得更多曝光
+      钉钉
+    action: click
+    locators:
+    - code: locator('#app')
+    context:
+      ordinal: 1
+      role: body
+      name: ExploreBot_2026 发布中... 正在发布版本，请稍等。可进入发布管理查看发布结果。 发布平台 操作 API调用 通过API,可直接进行调用或发出请求
+        网页 用户可以在网页直接与您的智能体聊天 网站嵌入 复制代码,将智能体添加到
+  - key: clickable-ExploreBot_2026 发布中... 正在发布版本，请稍等。可进入发布管理查看发布结果。 发布平台 操作 API调用
+      通过API,可直接进行调用或发出请求 网页 用户可以在网页直接与您的智能体聊天 网站嵌入 复制代码,将智能体添加到网站 百工探索广场 智能体会出现在百工探索广场中,为你的智能体获得更多曝光
+      钉钉--in--explorebot-2026-api-api-2
+    role: clickable
+    name: ExploreBot_2026 发布中... 正在发布版本，请稍等。可进入发布管理查看发布结果。 发布平台 操作 API调用 通过API,可直接进行调用或发出请求
+      网页 用户可以在网页直接与您的智能体聊天 网站嵌入 复制代码,将智能体添加到网站 百工探索广场 智能体会出现在百工探索广场中,为你的智能体获得更多曝光
+      钉钉
+    action: click
+    locators:
+    - code: locator('#agent-release-page')
+    context:
+      ordinal: 2
+      role: div
+      name: ExploreBot_2026 发布中... 正在发布版本，请稍等。可进入发布管理查看发布结果。 发布平台 操作 API调用 通过API,可直接进行调用或发出请求
+        网页 用户可以在网页直接与您的智能体聊天 网站嵌入 复制代码,将智能体添加到
+  - key: clickable-explorebot-2026--in--explorebot-2026-2
+    role: clickable
+    name: ExploreBot_2026
+    action: click
+    locators:
+    - code: 'getByText(''ExploreBot_2026'', { exact: true })'
+    - code: locator('body > div:nth-of-type(1) > div > div:nth-of-type(1) > div:nth-of-type(1)
+        > div:nth-of-type(3)')
+    context:
+      ordinal: 3
+      role: div
+      name: ExploreBot_2026
+  assertion_texts:
+  - 百融百工
+  - ExploreBot_2026
+  - ExploreBot_2026 发布中... 正在发布版本，请稍等。可进入发布管理查看发布结果。 发布平台 操作 API调用 通过API,可直接进行调用或发出请求
+    网页 用户可以在网页直接与您的智能体聊天 网站嵌入 复制代码,将智能体添加到网站 百工探索广场 智能体会出现在百工探索广场中,为你的智能体获得更多曝光 钉钉
+  children:
+  - id: page-agentRelease__popover__6d4b4342
+    type: popover
+    title: 百融百工
+    url: https://www.cybotstar.cn/agentRelease?agentId=19449&access_type=0&agent_type=1
+    elements:
+    - key: button-确认
+      role: button
+      name: 确认
+      action: click
+      locators:
+      - code: 'locator(''.uui-modal-wrap'').getByRole(''button'', { name: ''确认'',
+          exact: true })'
+      - code: 'locator(''.uui-modal-wrap'').getByRole(''button'', { name: ''确认'' })'
+      context:
+        role: div
+        name: 确认
+    - key: clickable-确认--in--确认
+      role: clickable
+      name: 确认
+      action: click
+      locators:
+      - code: locator('div:nth-of-type(8) > div:nth-of-type(2) > div > div > div:nth-of-type(2)
+          > div')
+      context:
+        ordinal: 1
+        role: div
+        name: 确认
+    - key: clickable-确认要发布吗？ 确认--in--确认要发布吗？ 确认
+      role: clickable
+      name: 确认要发布吗？ 确认
+      action: click
+      locators:
+      - code: locator('body > div:nth-of-type(8) > div:nth-of-type(2)')
+      context:
+        ordinal: 1
+        role: div
+        name: 确认要发布吗？ 确认
+    - key: clickable-确认要发布吗？ 确认--in--确认要发布吗？ 确认-2
+      role: clickable
+      name: 确认要发布吗？ 确认
+      action: click
+      locators:
+      - code: locator('body > div:nth-of-type(8) > div:nth-of-type(2) > div')
+      context:
+        ordinal: 2
+        role: div
+        name: 确认要发布吗？ 确认
+    - key: clickable-确认要发布吗？ 确认--in--确认要发布吗？ 确认-3
+      role: clickable
+      name: 确认要发布吗？ 确认
+      action: click
+      locators:
+      - code: locator('div:nth-of-type(8) > div:nth-of-type(2) > div > div')
+      context:
+        ordinal: 3
+        role: div
+        name: 确认要发布吗？ 确认
+    - key: clickable-确认要发布吗？--in--确认要发布吗？ 确认
+      role: clickable
+      name: 确认要发布吗？
+      action: click
+      locators:
+      - code: 'locator(''.uui-modal-wrap'').getByText(''确认要发布吗？'', { exact: true })'
+      - code: 'getByText(''确认要发布吗？'', { exact: true })'
+      context:
+        ordinal: 1
+        role: div
+        name: 确认要发布吗？ 确认
+    - key: clickable-确认要发布吗？--in--确认要发布吗？
+      role: clickable
+      name: 确认要发布吗？
+      action: click
+      locators:
+      - code: 'locator(''.uui-modal-wrap'').getByText(''确认要发布吗？'', { exact: true })'
+      - code: 'getByText(''确认要发布吗？'', { exact: true })'
+      context:
+        ordinal: 2
+        role: div
+        name: 确认要发布吗？
+    - key: clickable-确认--in--确认要发布吗？ 确认
+      role: clickable
+      name: 确认
+      action: click
+      locators:
+      - code: locator('div:nth-of-type(8) > div:nth-of-type(2) > div > div > div:nth-of-type(2)')
+      context:
+        ordinal: 2
+        role: div
+        name: 确认要发布吗？ 确认
+    - key: clickable-确认--in--确认-2
+      role: clickable
+      name: 确认
+      action: click
+      locators:
+      - code: locator('div:nth-of-type(8) > div:nth-of-type(2) > div > div > div:nth-of-type(2)
+          > div > button > span')
+      context:
+        ordinal: 3
+        role: button
+        name: 确认
+    assertion_texts:
+    - 百融百工
+    - 确认要发布吗？
+    - 确认
+    - 确认要发布吗？ 确认
+    children: []
+    triggered_by:
+      from_state: page-agentRelease__root__001
+      element_key: clickable-发布
+      action: click
+      url_changed: false
+      observed_url: https://www.cybotstar.cn/agentRelease?agentId=19449&access_type=0&agent_type=1
+    container:
+      role: ''
+      name: 确认要发布吗？ 确认

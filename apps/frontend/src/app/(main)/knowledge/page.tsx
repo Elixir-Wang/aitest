@@ -2198,8 +2198,8 @@ function CompanyKnowledgeVault({
     <div
       className={
         sidebarOpen
-          ? "grid min-h-[32rem] overflow-hidden rounded-lg border bg-background lg:grid-cols-[18rem_minmax(0,1fr)]"
-          : "min-h-[32rem] overflow-hidden rounded-lg border bg-background"
+          ? "grid min-h-0 flex-1 overflow-hidden rounded-lg border bg-background lg:grid-cols-[18rem_minmax(0,1fr)]"
+          : "min-h-0 flex-1 overflow-hidden rounded-lg border bg-background"
       }
     >
       {sidebarOpen ? (
@@ -2259,7 +2259,7 @@ function CompanyKnowledgeVault({
           </div>
         </aside>
       ) : null}
-      <main className="min-w-0 overflow-hidden">
+      <main className="h-full min-h-0 min-w-0 overflow-hidden">
         {file ? (
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">

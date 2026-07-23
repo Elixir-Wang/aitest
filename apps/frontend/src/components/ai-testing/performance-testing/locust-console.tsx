@@ -2,22 +2,30 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Activity, Clock3, FileText, Gauge, RotateCcw, ShieldX, Square, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
+
+import { Activity, Bot, Clock3, FileClock, FileText, Gauge, RotateCcw, ShieldX, Square, Users, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ApiRequestError,
+  createPerformanceRun,
+  deletePerformanceRun,
+  downloadPerformanceRunReport,
   getPerformanceRun,
+  getPerformanceRunCharts,
   getPerformanceRunStats,
+  listPerformanceRunHistory,
   listPerformanceRunReports,
   type PerformanceRun,
+  type PerformanceRunHistory,
   type PerformanceRunReports,
   type PerformanceRunStartPayload,
   type PerformanceRunStats,
-  performanceRunReportUrl,
   resetPerformanceRunStats,
   startPerformanceRun,
   stopPerformanceRun,
@@ -26,46 +34,55 @@ import {
 
 import { type LocustChartSample, LocustChartsPanel } from "./locust-charts-panel";
 import { LocustGenericTable, LocustStatisticsTable } from "./locust-statistics-table";
+import { PerformanceAiAnalysisDrawer } from "./performance-ai-analysis-drawer";
 
 const TERMINAL_STATUSES = new Set<PerformanceRun["status"]>(["completed", "stopped", "failed", "cancelled"]);
+const DELETABLE_STATUSES = new Set<PerformanceRun["status"]>([
+  "created",
+  "completed",
+  "stopped",
+  "failed",
+  "cancelled",
+]);
 
 export function LocustConsole({ projectId, testId, runId }: { projectId: string; testId: string; runId: string }) {
+  const router = useRouter();
   const [run, setRun] = useState<PerformanceRun | null>(null);
   const [snapshot, setSnapshot] = useState<PerformanceRunStats | null>(null);
   const [reports, setReports] = useState<PerformanceRunReports | null>(null);
   const [samples, setSamples] = useState<LocustChartSample[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<PerformanceRunHistory | null>(null);
+  const [deletingRunId, setDeletingRunId] = useState("");
   const runRef = useRef<PerformanceRun | null>(null);
 
   const refresh = useCallback(async () => {
-    const [nextRun, nextSnapshot, nextReports] = await Promise.all([
+    const [nextRun, nextSnapshot, nextCharts, nextReports] = await Promise.all([
       getPerformanceRun(projectId, runId),
       getPerformanceRunStats(projectId, runId),
+      getPerformanceRunCharts(projectId, runId),
       listPerformanceRunReports(projectId, runId),
     ]);
     runRef.current = nextRun;
     setRun(nextRun);
     setSnapshot(nextSnapshot);
     setReports(nextReports);
-    const sample = chartSample(nextSnapshot);
-    if (sample) {
-      setSamples((current) => {
-        if (current.at(-1)?.sampledAt === sample.sampledAt) return current;
-        return [...current.slice(-179), sample];
-      });
-    }
+    setSamples(chartSamples(nextCharts.samples));
   }, [projectId, runId]);
 
   useEffect(() => {
     let disposed = false;
     let fallbackTimer: number | undefined;
     const controller = new AbortController();
+    const refreshSilently = () => refresh().catch(() => undefined);
     const startPollingFallback = () => {
       if (fallbackTimer !== undefined) return;
       fallbackTimer = window.setInterval(() => {
         if (!disposed && (!runRef.current || !TERMINAL_STATUSES.has(runRef.current.status))) {
-          refresh().catch((error) => !disposed && toast.error(apiErrorMessage(error)));
+          void refreshSilently();
         }
       }, 1000);
     };
@@ -73,7 +90,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
       .catch((error) => !disposed && toast.error(apiErrorMessage(error)))
       .finally(() => !disposed && setLoading(false));
     streamPerformanceRun(projectId, runId, controller.signal, () => {
-      if (!disposed) refresh().catch((error) => toast.error(apiErrorMessage(error)));
+      if (!disposed) void refreshSilently();
     }).catch((error) => {
       if (!disposed && (error as Error)?.name !== "AbortError") startPollingFallback();
     });
@@ -119,6 +136,22 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
     }
   }
 
+  async function downloadReport(filename: string) {
+    try {
+      const blob = await downloadPerformanceRunReport(projectId, runId, filename);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    }
+  }
+
   async function reset() {
     setWorking(true);
     try {
@@ -133,6 +166,52 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
     }
   }
 
+  async function rerun() {
+    if (!run) return;
+    setWorking(true);
+    try {
+      const nextRun = await createPerformanceRun(projectId, testId, run.script_id);
+      await startPerformanceRun(projectId, testId, nextRun.id, startDefaults);
+      toast.success("已开始重新压测");
+      router.push(`/projects/${projectId}/performance-tests/${testId}/runs/${nextRun.id}`);
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function openHistory() {
+    setHistoryOpen(true);
+    try {
+      setHistory(await listPerformanceRunHistory(projectId, testId));
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    }
+  }
+
+  async function deleteHistoryRun(historyRun: PerformanceRun) {
+    setDeletingRunId(historyRun.id);
+    try {
+      await deletePerformanceRun(projectId, historyRun.id);
+      const remainingRuns = (history?.runs ?? []).filter((item) => item.id !== historyRun.id);
+      setHistory((current) => (current ? { ...current, runs: remainingRuns } : current));
+      toast.success("历史记录已删除");
+      if (historyRun.id === runId) {
+        const nextRun = remainingRuns[0];
+        router.replace(
+          nextRun
+            ? `/projects/${projectId}/performance-tests/${testId}/runs/${nextRun.id}`
+            : `/projects/${projectId}/performance-tests`,
+        );
+      }
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    } finally {
+      setDeletingRunId("");
+    }
+  }
+
   if (loading && !run) {
     return <div className="py-20 text-center text-muted-foreground text-sm">正在加载 Locust 控制台...</div>;
   }
@@ -140,11 +219,14 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
   const aggregate = snapshot?.stats.at(-1) ?? {};
   const canStart = run?.status === "created";
   const canStop = run?.status === "starting" || run?.status === "running";
+  const canReset = Boolean(run && !["created", "stopping"].includes(run.status));
+  const canRerun = Boolean(run && TERMINAL_STATUSES.has(run.status));
+  const canAnalyze = Boolean(run && TERMINAL_STATUSES.has(run.status));
 
   return (
     <div className="space-y-3">
       <header className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_32px_-28px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-black/20">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-slate-100 border-b px-0 py-4 dark:border-slate-800">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-slate-100 border-b px-4 py-4 sm:px-5 dark:border-slate-800">
           <div className="flex min-w-0 items-center gap-4">
             <div className="relative flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-[0_8px_18px_-10px_rgba(37,99,235,0.9)]">
               <Activity aria-hidden="true" className="size-6" strokeWidth={2.2} />
@@ -163,6 +245,9 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
             </div>
           </div>
           <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+            <Button className="h-9 px-3" onClick={() => void openHistory()} size="sm" variant="outline">
+              <FileClock className="mr-2 size-3.5" /> 历史记录
+            </Button>
             {canStart ? (
               <Button
                 className="h-9 flex-1 bg-blue-600 px-4 text-white shadow-sm hover:bg-blue-700 sm:flex-none dark:bg-blue-500 dark:hover:bg-blue-400"
@@ -184,9 +269,30 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
                 <Square className="mr-2 size-3.5" /> 停止
               </Button>
             ) : null}
+            {canRerun ? (
+              <Button
+                className="h-9 flex-1 px-3 sm:flex-none"
+                disabled={working || !canAnalyze}
+                onClick={() => setAnalysisOpen(true)}
+                size="sm"
+                variant="outline"
+              >
+                <Bot className="mr-2 size-3.5" /> AI 分析
+              </Button>
+            ) : null}
+            {canRerun ? (
+              <Button
+                className="h-9 flex-1 bg-blue-600 px-4 text-white shadow-sm hover:bg-blue-700 sm:flex-none dark:bg-blue-500 dark:hover:bg-blue-400"
+                disabled={working}
+                onClick={rerun}
+                size="sm"
+              >
+                <Activity className="mr-2 size-3.5" /> 重新压测
+              </Button>
+            ) : null}
             <Button
               className="h-9 flex-1 border-slate-200 bg-slate-100/70 px-3 text-slate-700 hover:bg-slate-100 sm:flex-none dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:bg-slate-800"
-              disabled={run?.status !== "running" || working}
+              disabled={!canReset || working}
               onClick={reset}
               size="sm"
               variant="outline"
@@ -210,6 +316,59 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
           />
         </div>
       </header>
+      <PerformanceAiAnalysisDrawer
+        onOpenChange={setAnalysisOpen}
+        open={analysisOpen}
+        projectId={projectId}
+        runId={runId}
+      />
+      <Sheet onOpenChange={setHistoryOpen} open={historyOpen}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-xl" side="right">
+          <SheetHeader>
+            <SheetTitle>压测历史</SheetTitle>
+            <SheetDescription>保留最近 10 次，超过后自动清理最早记录。</SheetDescription>
+          </SheetHeader>
+          <div className="space-y-2 px-4 pb-6">
+            {(history?.runs ?? []).map((historyRun) => (
+              <div className="flex items-center rounded-lg border hover:bg-muted/50" key={historyRun.id}>
+                <button
+                  className="flex min-w-0 flex-1 items-center justify-between gap-4 px-4 py-3 text-left"
+                  onClick={() =>
+                    router.push(`/projects/${projectId}/performance-tests/${testId}/runs/${historyRun.id}`)
+                  }
+                  type="button"
+                >
+                  <span className="min-w-0">
+                    <span className="block font-medium text-sm">
+                      {formatRunTime(historyRun.finished_at ?? historyRun.created_at)}
+                    </span>
+                    <span className="block truncate font-mono text-muted-foreground text-xs">{historyRun.id}</span>
+                  </span>
+                  <Badge className={statusBadgeClass(historyRun.status)} variant="outline">
+                    {statusText(historyRun.status)}
+                  </Badge>
+                </button>
+                {DELETABLE_STATUSES.has(historyRun.status) ? (
+                  <Button
+                    aria-label={`删除历史记录 ${historyRun.id}`}
+                    className="mr-2 size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                    disabled={deletingRunId === historyRun.id}
+                    onClick={() => void deleteHistoryRun(historyRun)}
+                    size="icon"
+                    title="删除本次记录"
+                    variant="ghost"
+                  >
+                    <X className="size-4" />
+                  </Button>
+                ) : null}
+              </div>
+            ))}
+            {history && history.runs.length === 0 ? (
+              <div className="py-16 text-center text-muted-foreground text-sm">暂无历史压测记录</div>
+            ) : null}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {run?.error_message ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700 text-sm dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
@@ -264,9 +423,9 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
           <LocustGenericTable
             columns={[
               ["method", "方法"],
-              ["name", "名称"],
-              ["error", "错误信息"],
-              ["occurrences", "次数"],
+              ["request_name", "名称"],
+              ["reason", "错误信息"],
+              ["count", "次数"],
             ]}
             empty="暂无失败请求"
             rows={snapshot?.failures ?? []}
@@ -276,9 +435,9 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
           <LocustGenericTable
             columns={[
               ["count", "次数"],
-              ["msg", "异常信息"],
-              ["traceback", "堆栈信息"],
-              ["nodes", "节点"],
+              ["exception_type", "异常类型"],
+              ["message", "异常信息"],
+              ["request_name", "请求名称"],
             ]}
             empty="暂无异常记录"
             rows={snapshot?.exceptions ?? []}
@@ -287,14 +446,15 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
         <TabsContent className="pt-4" value="downloads">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {(reports?.reports ?? []).map((report) => (
-              <a
+              <button
                 className="rounded-md border px-4 py-3 text-sm transition-colors hover:bg-muted/40 dark:border-slate-800 dark:hover:bg-slate-900"
-                href={performanceRunReportUrl(projectId, runId, report.name)}
                 key={report.name}
+                onClick={() => void downloadReport(report.name)}
+                type="button"
               >
-                <span className="block font-medium">{reportLabel(report.name)}</span>
-                <span className="mt-1 block text-muted-foreground text-xs">{formatBytes(report.size)}</span>
-              </a>
+                <span className="block text-left font-medium">{reportLabel(report.name)}</span>
+                <span className="mt-1 block text-left text-muted-foreground text-xs">{formatBytes(report.size)}</span>
+              </button>
             ))}
             {!reports?.reports.length ? (
               <div className="col-span-full rounded-md border px-4 py-12 text-center text-muted-foreground text-sm">
@@ -348,44 +508,45 @@ function metricToneClass(tone: "slate" | "blue" | "red" | "purple" | "amber") {
   }[tone];
 }
 
-function chartSample(snapshot: PerformanceRunStats): LocustChartSample | null {
-  const total = snapshot.stats.at(-1);
-  if (!total) return null;
-  return {
-    sampledAt: new Date().toLocaleTimeString([], { hour12: false }),
-    users: Number(total.user_count ?? 0),
-    rps: Number(total.requests_per_second ?? 0),
-    failuresPerSecond: Number(total.failure_rate ?? 0) * 100,
-    responseTime: Number(total.average_response_time_ms ?? 0),
-  };
+function chartSamples(rows: Array<Record<string, unknown>>): LocustChartSample[] {
+  return rows.slice(-180).map((row) => ({
+    sampledAt: formatSampleTime(row.sampled_at),
+    users: Number(row.user_count ?? 0),
+    rps: Number(row.requests_per_second ?? 0),
+    failuresPerSecond: Number(row.failures_per_second ?? 0),
+    p50ResponseTime: Number(row.p50_response_time_ms ?? 0),
+    p95ResponseTime: Number(row.p95_response_time_ms ?? 0),
+  }));
+}
+
+function formatSampleTime(value: unknown) {
+  const text = String(value ?? "");
+  const numericTimestamp = Number(text);
+  const date =
+    Number.isFinite(numericTimestamp) && numericTimestamp > 0
+      ? new Date(numericTimestamp * 1000)
+      : new Date(text.endsWith("Z") ? text : `${text}Z`);
+  return Number.isNaN(date.getTime()) ? text : date.toLocaleTimeString([], { hour12: false });
 }
 
 function statisticsRows(snapshot: PerformanceRunStats | null) {
   if (!snapshot) return [];
-  const rows = [...snapshot.request_stats];
-  const latest = snapshot.stats.at(-1);
-  if (latest) {
-    rows.push({
-      method: "",
-      name: "汇总",
-      request_count: latest.request_count,
-      failure_count: latest.failure_count,
-      median_response_time_ms: latest.p50_response_time_ms,
-      p95_response_time_ms: latest.p95_response_time_ms,
-      p99_response_time_ms: latest.p99_response_time_ms,
-      average_response_time_ms: latest.average_response_time_ms,
-      min_response_time_ms: "-",
-      max_response_time_ms: "-",
-      content_size: "-",
-      requests_per_second: latest.requests_per_second,
-    });
-  }
-  return rows;
+  return snapshot.request_stats.map((row) => (row.name === "Aggregated" ? { ...row, name: "汇总" } : row));
 }
 
 function percentage(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) ? number * 100 : undefined;
+}
+
+function formatRunTime(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function formatNumber(value: unknown) {

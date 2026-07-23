@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class UiAutomationGenerateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    test_case_id: str = Field(min_length=1)
+    environment_id: str = Field(min_length=1)
+    exploration_run_id: str = ""
+
+
+class UiAutomationGenerationRunOut(BaseModel):
+    id: str
+    project_id: str
+    test_case_id: str
+    environment_id: str
+    exploration_run_id: str = ""
+    task_id: str = ""
+    status: str
+    suite_path: str = ""
+    changed_files: list[str] = Field(default_factory=list)
+    error_message: str = ""
+    created_by: str
+
+
+class UiAutomationAssetOut(BaseModel):
+    id: str
+    project_id: str
+    test_case_id: str
+    source_version: int
+    generation_run_id: str
+    status: str
+    pytest_node_id: str
+    suite_path: str
+    test_file_path: str
+    data_file_path: str
+    plan_file_path: str
+    source_hash: str
+    created_by: str
+
+
+class UiAutomationExecutionCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    environment_id: str = Field(min_length=1)
+
+
+class UiAutomationExecutionRunOut(BaseModel):
+    id: str
+    project_id: str
+    asset_id: str
+    environment_id: str
+    status: str
+    run_dir: str = ""
+    result: dict = Field(default_factory=dict)
+    stdout_path: str = ""
+    stderr_path: str = ""
+    trace_path: str = ""
+    screenshot_paths: list[str] = Field(default_factory=list)
+    error_message: str = ""
+    created_by: str
+

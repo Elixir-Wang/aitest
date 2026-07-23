@@ -1,0 +1,109 @@
+{
+  "summary": "POST /openapi/v1/agent/analysis/ 在塞伯坦-生产环境下，16 个负向用例（参数校验类期望 400、鉴权类期望 401）全部实际返回 HTTP 200，失败点统一在 utils/assertions.py:103 的 status_code 断言。2 个正向用例（期望 200）通过，证明接口连通、鉴权正向流程和业务主流程正常，问题集中在负向契约（参数校验器 + 鉴权中间件）未被服务端强制执行，定位为接口缺陷。",
+  "issues": [
+    {
+      "failure_ids": [
+        "apitc-09fd33cb0bb132a5",
+        "apitc-0ee6b9e5e6529e06",
+        "apitc-0fa4569487135c73",
+        "apitc-1390b8512a1c6397",
+        "apitc-3d569246208d59b0",
+        "apitc-43d80d3151916fcc",
+        "apitc-548a653ef0c5911c",
+        "apitc-601d342b42319a54",
+        "apitc-83daafe626237b5a",
+        "apitc-8773219c06858e99",
+        "apitc-9be0cd19dee2f78f",
+        "apitc-c0bfe6796bb13edf",
+        "apitc-e2d67372b8cb14a5",
+        "apitc-4019628145266b77",
+        "apitc-db22381ffeef7e0f",
+        "apitc-eb2f89327dd381be"
+      ],
+      "classification": "interface_bug",
+      "confidence": 0.9,
+      "evidence": [
+        "所有 16 个失败用例在 utils/assertions.py:103 同一断言处失败：assert response.status_code == assertion[\"expected\"]，实际 status_code 全部为 200，期望为 400 或 401。",
+        "失败用例覆盖三类负向契约：(a) 必填字段 start_date/end_date 缺失、传入 null、空字符串、类型错误（期望 400）；(b) 日期格式非法、start_date 晚于 end_date、请求体缺失/为空对象（期望 400）；(c) 鉴权 Header username / cybertron-robot-key / cybertron-robot-token 为空（期望 401）。",
+        "通过的 2 个用例（最小合法请求-必填日期范围查询成功、日期边界-start_date 等于 end_date）期望 200 实际 200，与负向用例形成对照，证明服务端对所有请求统一返回 200。",
+        "失败用例响应耗时在 30-430ms 区间，是正常 HTTP 往返耗时，排除 DNS/TLS/连接超时等环境连通性问题。",
+        "所有失败用例的 setup 与 teardown 均 passed，证明 pytest fixture、api_client、请求构造器、断言辅助器均工作正常，问题不在测试代码基础设施。",
+        "同一端点、同一环境（塞伯坦-生产 https://www.cybotstar.cn/）、同一鉴权下，正向用例通过而负向用例全失败，可定位为接口后端校验/鉴权逻辑缺陷，而非环境级故障。",
+        "期望值 400/401 来自已审批用例的断言定义，符合标准 HTTP 约定（参数错误 400，鉴权失败 401）。",
+        "历史上 3 次诊断尝试均得出同一结论（接口缺陷）且被拒绝/驳回，但服务端行为始终未改变，证据链稳定。"
+      ],
+      "root_cause": "POST /openapi/v1/agent/analysis/ 在塞伯坦-生产环境的当前部署版本中，请求体参数校验器（必填字段、类型、日期格式、start_date ≤ end_date、空请求体拦截）与鉴权 Header（username / cybertron-robot-key / cybertron-robot-token）校验均未生效或被旁路，导致所有负向用例都被当作正常请求受理并统一返回 HTTP 200。这与正向用例（最小合法请求 + 日期边界）返回 200 一致，定位为接口后端实现的契约缺陷，而非测试代码、测试数据或环境问题。",
+      "recommendation": "不修改用例、不调整断言、不删除用例。建议把以下线索交接给接口/后端负责人排查（仅给出定位建议，不修改业务代码）：1. 检查该端点当前部署版本是否包含请求体 Schema 校验器（必填字段、类型、日期格式、start_date 小于等于 end_date、空请求体拦截）；2. 检查鉴权中间件是否对 username / cybertron-robot-key / cybertron-robot-token 任一为空的情况返回 401，并确认当前生产版本是否启用了该中间件；3. 抓取一条负向用例（例如\"必填字段 start_date 缺失\"）的实际响应体，确认是 200 加业务错误码还是 200 加空成功体，若是前者说明控制器拒绝了请求但 HTTP 层仍返回 200，是更明确的契约缺陷；4. 比对塞伯坦-生产与预发/灰度环境的同端点行为，确认是否生产部署版本回退或校验中间件未启用；5. 复核当前 OpenAPI/接口契约文档，确认 400/401 是否仍是官方约定的负向响应码。测试用例与断言不得为通过而弱化或删除。",
+      "repairable": false
+    }
+  ],
+  "risks": [
+    "若 OpenAPI/接口契约最近被修改（例如端点已切换鉴权方案或放宽校验），则 16 个失败用例的期望会变成契约陈旧而非接口缺陷，需要业务方提供最新契约文档以复核。",
+    "若生产环境部署了 catch-all 中间件将所有控制器错误统一转换为 200，则需进一步确认是否仅这一个端点受影响，还是整个网关都存在该问题。"
+  ],
+  "needs_user_input": true,
+  "suggested_questions": [
+    "POST /openapi/v1/agent/analysis/ 的当前 OpenAPI/接口契约中，必填字段校验和鉴权 Header 的预期行为是什么？服务端应当在参数缺失或非法时返回 400、在鉴权失败时返回 401，对吗？",
+    "塞伯坦-生产环境当前部署的版本是否为最新？是否可能存在版本回滚或验证/鉴权中间件未启用的情况？",
+    "针对这些负向用例（例如\"必填字段 start_date 缺失\"），实际响应体内容是什么？是 200 加业务错误码，还是其他情况？",
+    "鉴权 Header（username / cybertron-robot-key / cybertron-robot-token）是否仍是当前生效的鉴权方式？是否存在已切换到新鉴权方案但用例未更新的情况？"
+  ],
+  "proposal": {
+    "target": "interface",
+    "action": "inspect_interface",
+    "title": "POST /openapi/v1/agent/analysis/ 负向契约未生效（统一返回 200）",
+    "summary": "塞伯坦-生产环境下 POST /openapi/v1/agent/analysis/ 的 16 个负向用例（参数校验类期望 400、鉴权类期望 401）全部实际返回 HTTP 200；2 个正向用例（期望 200）正常通过。失败点统一在 utils/assertions.py:103 的 status_code 断言。请求体 Schema 校验器（必填字段、类型、日期格式、start_date ≤ end_date、空请求体拦截）和鉴权 Header（username / cybertron-robot-key / cybertron-robot-token）校验均疑似未在生产部署中启用或被旁路。",
+    "confidence": 0.9,
+    "evidence": [
+      "16 个失败用例均在 utils/assertions.py:103 同一断言处失败：assert response.status_code == assertion[\"expected\"]，实际 status_code 全部为 200，期望为 400 或 401。",
+      "失败用例覆盖三类负向契约：(a) 必填字段 start_date/end_date 缺失、传入 null、空字符串、类型错误（期望 400）；(b) 日期格式非法、start_date 晚于 end_date、请求体缺失/为空对象（期望 400）；(c) 鉴权 Header username / cybertron-robot-key / cybertron-robot-token 为空（期望 401）。",
+      "通过的 2 个用例（最小合法请求、日期边界 start_date 等于 end_date）期望 200 实际 200，与负向用例形成对照，证明服务端对所有请求统一返回 200。",
+      "失败用例响应耗时在 30-430ms 区间，是正常 HTTP 往返耗时，排除 DNS/TLS/连接超时等环境连通性问题。",
+      "所有失败用例的 setup 与 teardown 均 passed，证明 pytest fixture、api_client、请求构造器、断言辅助器均工作正常，问题不在测试代码基础设施。",
+      "同一端点、同一环境、同一鉴权下，正向用例通过而负向用例全失败，定位为接口后端校验/鉴权逻辑缺陷，而非环境级故障。",
+      "期望值 400/401 来自已审批用例的断言定义，符合标准 HTTP 约定（参数错误 400，鉴权失败 401）。",
+      "历史上 3 次诊断尝试均得出同一结论（接口缺陷），服务端行为持续未改变。"
+    ],
+    "observed_status_codes": [
+      200
+    ],
+    "expected_status_codes": [
+      400,
+      401
+    ],
+    "affected_cases": [
+      "apitc-09fd33cb0bb132a5",
+      "apitc-0ee6b9e5e6529e06",
+      "apitc-0fa4569487135c73",
+      "apitc-1390b8512a1c6397",
+      "apitc-3d569246208d59b0",
+      "apitc-43d80d3151916fcc",
+      "apitc-548a653ef0c5911c",
+      "apitc-601d342b42319a54",
+      "apitc-83daafe626237b5a",
+      "apitc-8773219c06858e99",
+      "apitc-9be0cd19dee2f78f",
+      "apitc-c0bfe6796bb13edf",
+      "apitc-e2d67372b8cb14a5",
+      "apitc-4019628145266b77",
+      "apitc-db22381ffeef7e0f",
+      "apitc-eb2f89327dd381be"
+    ],
+    "proposed_changes": [
+      "不修改用例、不调整断言、不删除用例。",
+      "建议把以下线索交接给接口/后端负责人排查（仅给出定位建议，不修改业务代码）：检查该端点当前部署版本是否包含请求体 Schema 校验器（必填字段、类型、日期格式、start_date 小于等于 end_date、空请求体拦截）；检查鉴权中间件是否对 username / cybertron-robot-key / cybertron-robot-token 任一为空的情况返回 401，并确认当前生产版本是否启用了该中间件；抓取一条负向用例的实际响应体，确认是 200 加业务错误码还是 200 加空成功体；比对塞伯坦-生产与预发/灰度环境的同端点行为；复核当前 OpenAPI/接口契约文档，确认 400/401 是否仍是官方约定的负向响应码。"
+    ],
+    "risks": [
+      "若 OpenAPI/接口契约最近被修改（例如端点已切换鉴权方案或放宽校验），则 16 个失败用例的期望会变成契约陈旧而非接口缺陷，需要业务方提供最新契约文档以复核。",
+      "若生产环境部署了 catch-all 中间件将所有控制器错误统一转换为 200，则需进一步确认是否仅这一个端点受影响，还是整个网关都存在该问题。"
+    ],
+    "questions": [
+      "POST /openapi/v1/agent/analysis/ 的当前 OpenAPI/接口契约中，必填字段校验和鉴权 Header 的预期行为是什么？服务端应当在参数缺失或非法时返回 400、在鉴权失败时返回 401，对吗？",
+      "塞伯坦-生产环境当前部署的版本是否为最新？是否可能存在版本回滚或验证/鉴权中间件未启用的情况？",
+      "针对这些负向用例（例如\"必填字段 start_date 缺失\"），实际响应体内容是什么？是 200 加业务错误码，还是其他情况？",
+      "鉴权 Header（username / cybertron-robot-key / cybertron-robot-token）是否仍是当前生效的鉴权方式？是否存在已切换到新鉴权方案但用例未更新的情况？"
+    ],
+    "requires_user_confirmation": true,
+    "script_repair_allowed": false
+  }
+}

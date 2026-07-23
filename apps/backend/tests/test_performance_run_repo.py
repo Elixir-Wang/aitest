@@ -6,6 +6,7 @@ from app.core import db as db_core
 from app.core import settings
 from app.core.db import connect
 from app.seed.init_db import init_db
+from app.services.performance_testing import headless_worker
 from app.services.performance_testing import run_repo
 
 
@@ -120,3 +121,251 @@ def test_run_repository_rejects_illegal_status_transition(
         )
         with pytest.raises(ValueError, match="非法的性能测试运行状态迁移"):
             run_repo.update_run_status(db, "perfrun-1", "completed")
+
+
+def test_prune_run_history_keeps_only_latest_ten_terminal_runs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_run_dependencies()
+
+    with connect() as db:
+        for index in range(11):
+            run_id = f"perfrun-{index:02d}"
+            run_repo.create_run(
+                db,
+                run_id=run_id,
+                project_id="project-1",
+                performance_test_id="perftest-1",
+                script_id="perfscript-1",
+                load_config={},
+                runtime_config={},
+                created_by="u-admin",
+            )
+            db.execute(
+                "UPDATE performance_test_runs SET created_at = datetime('2026-07-01', '+' || ? || ' minutes'), finished_at = created_at WHERE id = ?",
+                (index, run_id),
+            )
+            run_repo.update_run_status(db, run_id, "starting")
+            run_repo.update_run_status(db, run_id, "running")
+            run_repo.update_run_status(db, run_id, "completed")
+
+        removed = run_repo.prune_run_history(db, "project-1", "perftest-1", limit=10)
+        remaining = run_repo.list_runs(db, "project-1", "perftest-1")
+
+    assert removed == ["perfrun-00"]
+    assert [row["id"] for row in remaining] == [f"perfrun-{index:02d}" for index in range(10, 0, -1)]
+
+
+def test_prune_run_history_counts_created_runs_toward_retention_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_run_dependencies()
+
+    with connect() as db:
+        for index in range(11):
+            run_id = f"perfrun-{index:02d}"
+            run_repo.create_run(
+                db,
+                run_id=run_id,
+                project_id="project-1",
+                performance_test_id="perftest-1",
+                script_id="perfscript-1",
+                load_config={},
+                runtime_config={},
+                created_by="u-admin",
+            )
+            db.execute(
+                "UPDATE performance_test_runs SET created_at = datetime('2026-07-01', '+' || ? || ' minutes') WHERE id = ?",
+                (index, run_id),
+            )
+
+        removed = run_repo.prune_run_history(db, "project-1", "perftest-1", limit=10)
+        remaining = run_repo.list_runs(db, "project-1", "perftest-1")
+
+    assert removed == ["perfrun-00"]
+    assert [row["id"] for row in remaining] == [f"perfrun-{index:02d}" for index in range(10, 0, -1)]
+
+
+def test_delete_run_removes_only_selected_history_record(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_run_dependencies()
+
+    with connect() as db:
+        for run_id in ("perfrun-1", "perfrun-2"):
+            run_repo.create_run(
+                db,
+                run_id=run_id,
+                project_id="project-1",
+                performance_test_id="perftest-1",
+                script_id="perfscript-1",
+                load_config={},
+                runtime_config={},
+                created_by="u-admin",
+            )
+        run_repo.append_stats(db, run_id="perfrun-1", sample={"request_count": 10})
+        run_repo.append_event(db, "perfrun-1", "run_finished", "info", "done", {})
+
+        run_repo.delete_run(db, "perfrun-1")
+
+        assert run_repo.get_run(db, "perfrun-1") is None
+        assert run_repo.get_run(db, "perfrun-2") is not None
+        assert run_repo.list_stats(db, "perfrun-1") == []
+        assert run_repo.list_events(db, "perfrun-1") == []
+
+
+def test_collect_locust_results_imports_csv_counts_without_duplicate_event_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_run_dependencies()
+    run_dir = tmp_path / "project-1" / "performance_testing" / "runs" / "perfrun-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "result_failures.csv").write_text(
+        "Method,Name,Error,Occurrences,First Seen,Last Seen\n"
+        "POST,POST /items,404 Not Found,3,2026-07-23T00:00:00Z,2026-07-23T00:01:00Z\n",
+        encoding="utf-8",
+    )
+    (run_dir / "locust-events.jsonl").write_text(
+        '{"kind":"failure","request_type":"POST","name":"POST /items",'
+        '"reason":"404 Not Found","status_code":404}\n',
+        encoding="utf-8",
+    )
+
+    with connect() as db:
+        run_repo.create_run(
+            db,
+            run_id="perfrun-1",
+            project_id="project-1",
+            performance_test_id="perftest-1",
+            script_id="perfscript-1",
+            load_config={},
+            runtime_config={},
+            created_by="u-admin",
+        )
+        headless_worker._collect_locust_results(db, "perfrun-1", run_dir)
+        failures = run_repo.list_failures(db, "perfrun-1")
+
+    assert len(failures) == 1
+    assert failures[0]["request_name"] == "POST /items"
+    assert failures[0]["reason"] == "404 Not Found"
+    assert failures[0]["count"] == 3
+
+
+def test_collect_locust_results_replaces_stale_failures_and_normalizes_catch_response_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_run_dependencies()
+    run_dir = tmp_path / "project-1" / "performance_testing" / "runs" / "perfrun-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "result_failures.csv").write_text(
+        "Method,Name,Error,Occurrences,First Seen,Last Seen\n"
+        "POST,POST /items,CatchResponseError('unexpected status code: 404'),120,2026-07-23T00:00:00Z,2026-07-23T00:01:00Z\n",
+        encoding="utf-8",
+    )
+    (run_dir / "locust-events.jsonl").write_text(
+        '{"kind":"failure","request_type":"POST","name":"POST /items",'
+        '"reason":"unexpected status code: 404","status_code":404}\n',
+        encoding="utf-8",
+    )
+
+    with connect() as db:
+        run_repo.create_run(
+            db,
+            run_id="perfrun-1",
+            project_id="project-1",
+            performance_test_id="perftest-1",
+            script_id="perfscript-1",
+            load_config={},
+            runtime_config={},
+            created_by="u-admin",
+        )
+        run_repo.upsert_failure(
+            db,
+            run_id="perfrun-1",
+            request_name="POST /items",
+            method="POST",
+            reason="unexpected status code: 404",
+            count=120,
+            status_code=404,
+        )
+        headless_worker._collect_locust_results(db, "perfrun-1", run_dir)
+        failures = run_repo.list_failures(db, "perfrun-1")
+
+    assert len(failures) == 1
+    assert failures[0]["reason"] == "unexpected status code: 404"
+    assert failures[0]["count"] == 120
+    assert failures[0]["sample_status_code"] == 404
+
+
+def test_collect_locust_results_uses_configured_user_count_for_final_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_run_dependencies()
+    run_dir = tmp_path / "project-1" / "performance_testing" / "runs" / "perfrun-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "result_stats.csv").write_text(
+        "Type,Name,Request Count,Failure Count,Average Response Time,Requests/s,50%,95%,99%\n"
+        "Aggregated,,120,120,31.15,4.29,20,40,50\n",
+        encoding="utf-8",
+    )
+
+    with connect() as db:
+        run_repo.create_run(
+            db,
+            run_id="perfrun-1",
+            project_id="project-1",
+            performance_test_id="perftest-1",
+            script_id="perfscript-1",
+            load_config={"users": 10},
+            runtime_config={},
+            created_by="u-admin",
+        )
+        headless_worker._collect_locust_results(db, "perfrun-1", run_dir)
+        stats = run_repo.list_stats(db, "perfrun-1")
+
+    assert stats[0]["user_count"] == 10
+
+
+def test_collect_locust_results_imports_exception_csv(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_run_dependencies()
+    run_dir = tmp_path / "project-1" / "performance_testing" / "runs" / "perfrun-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "result_exceptions.csv").write_text(
+        "Count,Message,Traceback,Nodes\n"
+        "2,TimeoutError: timed out,traceback text,node-1\n",
+        encoding="utf-8",
+    )
+
+    with connect() as db:
+        run_repo.create_run(
+            db,
+            run_id="perfrun-1",
+            project_id="project-1",
+            performance_test_id="perftest-1",
+            script_id="perfscript-1",
+            load_config={},
+            runtime_config={},
+            created_by="u-admin",
+        )
+        headless_worker._collect_locust_results(db, "perfrun-1", run_dir)
+        exceptions = run_repo.list_exceptions(db, "perfrun-1")
+
+    assert len(exceptions) == 1
+    assert exceptions[0]["message"] == "TimeoutError: timed out"
+    assert exceptions[0]["count"] == 2

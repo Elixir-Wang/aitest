@@ -7,8 +7,10 @@ FastAPI + SQLite backend for first-version auth, user permission management, and
 ```bash
 cd apps/backend
 uv sync
-uv run uvicorn app.main:app --reload --port 8000
+uv run python -m app.server
 ```
+
+The server cancels active HTTP and SSE requests immediately on `Ctrl+C`.
 
 ## Test
 

@@ -93,6 +93,7 @@ export function AllPerformanceTestList() {
 
   async function removeItems(ids: string[]) {
     if (ids.length === 0) return;
+    if (!window.confirm("删除后将同时删除该条目下的全部压测历史、趋势、日志和下载文件，且无法恢复。")) return;
     setBusy(true);
     try {
       await Promise.all(ids.map((id) => deletePerformanceTest(itemProjectIdMap[id], id)));

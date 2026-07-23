@@ -45,6 +45,11 @@ AI_CAPABILITIES: tuple[AiCapability, ...] = (
         description="根据 OpenAPI 接口定义、接口环境摘要和测试重点生成结构化接口自动化用例。",
     ),
     AiCapability(
+        id="ui_test_generation",
+        name="UI 自动化代码生成",
+        description="根据已采纳测试用例和站点探索证据生成受控 pytest + Playwright UI 自动化代码。",
+    ),
+    AiCapability(
         id="page_exploration",
         name="站点探索",
         description="负责自动化探索 Web 应用，包括页面分析、元素识别、登录表单分析和验证码识别等多模态任务。",
