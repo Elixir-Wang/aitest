@@ -14,7 +14,7 @@ type ApiScenarioVersionPanelProps = {
 
 export function ApiScenarioVersionPanel({ busy, currentRevision, revisions, onRestore }: ApiScenarioVersionPanelProps) {
   return (
-    <div className="min-h-[620px] bg-[radial-gradient(circle_at_top_right,color-mix(in_srgb,var(--primary),transparent_92%),transparent_36%)] p-6">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top_right,color-mix(in_srgb,var(--primary),transparent_92%),transparent_36%)] p-6">
       <div className="mx-auto max-w-4xl">
         <div className="flex items-start justify-between gap-4">
           <div>

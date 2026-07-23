@@ -24,8 +24,8 @@ description: 在当前业务项目的 pytest_requests 目录中生成或更新 p
 
 - 数据文件中的 `id` 是数据库主键，`case_id` 是观察证据兼容别名，两者由后端保证一致；必须原样读取，并保留 `endpoint_id`、`test_point_key` 和 `oracle_status`。
 - `confirmed` 用例正常发送请求并执行全部断言。
-- `inferred` 用例正常发送请求并执行当前推断断言，同时记录实际响应供失败后校准。
-- `needs_confirmation` 用例正常发送请求，不执行尚无事实依据的强 Oracle 断言；但必须执行数据文件中已明确的响应契约断言，且请求构造、网络异常和响应解析错误仍按测试失败处理。
+- `inferred` 用例正常发送请求、记录实际响应并执行当前最佳推断断言；断言失败正常计入 failed，供 AI 修复流程校准。
+- `needs_confirmation` 用例正常发送请求、记录实际响应并执行数据文件中的当前最佳断言；禁止跳过断言或使用 `pytest.skip` 制造假通过。请求构造、网络异常、响应解析和断言错误均按测试失败处理。
 - `inferred` 和 `needs_confirmation` 都必须将脱敏观察证据追加到环境变量 `API_OBSERVATION_RESULT_PATH` 指定的 JSON 文件。
 - 每条观察至少包含 `case_id`、`test_point_key`、`status_code`、`response_headers` 和 `response_body`；禁止写入请求 Header、请求 Cookie、认证配置或环境变量值。
 - 响应 Header 必须移除 `authorization`、`cookie`、`set-cookie`、`x-api-key`、`api-key`、`cybertron-robot-key`、`cybertron-robot-token` 等敏感字段。

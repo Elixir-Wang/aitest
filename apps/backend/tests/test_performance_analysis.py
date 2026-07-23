@@ -234,6 +234,7 @@ def test_diagnosis_service_uses_structured_agent_output() -> None:
     )
 
     class FakeSelection:
+        provider = "OpenAI"
         model = "test-model"
 
     class FakeAgent:
@@ -246,12 +247,53 @@ def test_diagnosis_service_uses_structured_agent_output() -> None:
     diagnosis, model_name = diagnosis_service.diagnose_performance(
         {"run": {"id": "perfrun-1"}},
         selection_resolver=lambda capability_id: FakeSelection(),
-        model_builder=lambda selection: object(),
+        model_builder=lambda selection, **kwargs: object(),
         agent_factory=lambda model: FakeAgent(),
     )
 
     assert diagnosis == expected
     assert model_name == "test-model"
+
+
+def test_diagnosis_service_disables_thinking_for_structured_output() -> None:
+    expected = PerformanceDiagnosis.model_validate(
+        {
+            "category": "performance_config",
+            "confidence": 0.9,
+            "direct_cause": "请求体为空",
+            "root_cause": "性能配置缺少请求体",
+            "evidence": [],
+            "proposed_changes": [],
+            "missing_evidence": [],
+            "requires_second_approval": False,
+            "can_auto_rerun": True,
+        }
+    )
+
+    class FakeSelection:
+        provider = "DeepSeek"
+        model = "deepseek-v4-flash"
+
+    captured = {}
+
+    def fake_model_builder(selection, *, extra_body=None):
+        captured["selection"] = selection
+        captured["extra_body"] = extra_body
+        return object()
+
+    class FakeAgent:
+        def invoke(self, payload):
+            return {"structured_response": expected.model_dump(mode="json")}
+
+    diagnosis, _ = diagnosis_service.diagnose_performance(
+        {"run": {"id": "perfrun-1"}},
+        selection_resolver=lambda capability_id: FakeSelection(),
+        model_builder=fake_model_builder,
+        agent_factory=lambda model: FakeAgent(),
+    )
+
+    assert diagnosis == expected
+    assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
 def test_performance_diagnosis_prompt_requires_simplified_chinese_output() -> None:
@@ -326,3 +368,50 @@ def test_analysis_service_rejects_active_run(monkeypatch: pytest.MonkeyPatch, tm
         analysis_service.create_analysis("project-1", "perfrun-1", {"id": "u-admin", "role": "admin", "project_scope": "全部项目"})
 
     assert exc_info.value.detail["code"] == "PERFORMANCE_ANALYSIS_RUN_ACTIVE"
+
+
+def test_analysis_service_exposes_actionable_rate_limit_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    report_directory = tmp_path / "runs" / "perfrun-1"
+    report_directory.mkdir(parents=True)
+    _seed_evidence_run(report_directory)
+
+    class RateLimitError(Exception):
+        status_code = 429
+
+    logged = {}
+
+    class FakeLogger:
+        def exception(self, message, *args):
+            logged["message"] = message
+            logged["args"] = args
+
+    monkeypatch.setattr(analysis_service, "logger", FakeLogger())
+    monkeypatch.setattr(
+        analysis_service,
+        "diagnose_performance",
+        lambda evidence: (_ for _ in ()).throw(RateLimitError("too many requests")),
+    )
+    created = analysis_service.create_analysis(
+        "project-1",
+        "perfrun-1",
+        {"id": "u-admin", "role": "admin", "project_scope": "全部项目"},
+    )
+
+    analysis_service.execute_analysis(created["id"])
+    failed = analysis_service.get_analysis(
+        "project-1",
+        created["id"],
+        {"id": "u-admin", "role": "admin", "project_scope": "全部项目"},
+    )
+
+    assert failed["status"] == "failed"
+    assert "429" in failed["error_message"]
+    assert "频率限制" in failed["error_message"]
+    assert logged["message"].startswith("performance_analysis_failed")
+    assert logged["args"][:3] == (created["id"], "project-1", "perfrun-1")
+    assert logged["args"][3:5] == ("RateLimitError", 429)
+    assert logged["args"][5] == "too many requests"

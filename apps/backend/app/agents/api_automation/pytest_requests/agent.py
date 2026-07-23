@@ -29,6 +29,9 @@ utils/assert_utils.py、support/__init__.py、config/__init__.py 和 data/__init
 输出目录、测试文件和数据文件。必须严格写入这些相对路径，不得自行改成 test_agent.py、test_v1.py 或其他目录。
 后端会在调用前写好 artifacts.data_file；该文件是数据库用例快照，只能读取，不得重写、追加、包装 cases 键、
 修改 id/endpoint_id 或复制已有用例。只创建或更新 artifacts.test_file，并复用当前项目已有公共代码。
+对于 oracle_status 为 inferred 或 needs_confirmation 的用例，测试文件必须先调用 utils.observations.record_observation(case, response)
+记录脱敏实际响应，再执行数据文件中的当前最佳断言。断言失败必须正常计入 failed，供 AI 修复流程根据观察证据判断测试数据、
+Oracle、测试代码或接口实现问题；禁止使用 pytest.skip 或跳过断言制造假通过。
 
 完成文件修改后执行 pytest --collect-only。collection 失败时，读取 traceback 和相关文件，修复后重试；
 collection 不得发送真实 API 请求。只有整个项目 collection 成功后，才报告生成成功。

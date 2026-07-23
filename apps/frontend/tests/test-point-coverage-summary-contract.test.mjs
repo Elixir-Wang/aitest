@@ -24,5 +24,10 @@ test("test point panel renders requirement coverage", () => {
   assert.match(summarySource, /已覆盖/);
   assert.match(summarySource, /未覆盖/);
   assert.match(summarySource, /当前测试要点未生成完整/);
+  assert.match(
+    summarySource,
+    /key=\{`\$\{obligation\.obligation_key\}:\$\{obligation\.source_section\}:\$\{obligation\.statement\}`\}/,
+  );
+  assert.doesNotMatch(summarySource, /key=\{obligation\.obligation_key\}/);
   assert.doesNotMatch(summarySource, /测试要点：/);
 });

@@ -91,12 +91,9 @@ function TestPointDetailDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[88vh] overflow-hidden p-0"
-        style={{ maxWidth: "72rem", width: "calc(100% - 3rem)" }}
+        className="max-h-[88vh] w-[calc(100%-2rem)] overflow-hidden p-0"
+        style={{ maxWidth: "56rem" }}
       >
-        {/* 屏幕阅读器无障碍标题 */}
-        <DialogTitle className="sr-only">{point.title}</DialogTitle>
-
         {/* Header */}
         <div className="flex items-center justify-between border-b px-6 py-4">
           <div className="flex items-center gap-2">
@@ -106,6 +103,7 @@ function TestPointDetailDialog({
             <Badge variant={CATEGORY_STYLES[point.category] ?? "outline"} className="text-xs font-medium">
               {point.category}
             </Badge>
+            <DialogTitle className="sr-only">{point.title}</DialogTitle>
           </div>
         </div>
 
@@ -346,7 +344,6 @@ export function TestPointsList({
                 <TableHead className="w-[42%]">标题</TableHead>
                 <TableHead className="w-[10%]">优先级</TableHead>
                 <TableHead className="w-[18%]">模块</TableHead>
-                <TableHead className="w-[13%]">类型</TableHead>
                 <TableHead className="w-[10%]">操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -385,14 +382,6 @@ export function TestPointsList({
                   </TableCell>
                   <TableCell>
                     <OverflowTooltipText value={point.module || "-"} />
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={CATEGORY_STYLES[point.category] ?? "outline"}
-                      className="text-xs"
-                    >
-                      {point.category}
-                    </Badge>
                   </TableCell>
                   <TableCell>
                     <RowActions

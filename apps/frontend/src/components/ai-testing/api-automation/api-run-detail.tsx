@@ -132,7 +132,6 @@ export function ApiRunDetail({ projectId, runId }: { projectId: string; runId: s
                 </Badge>
               ) : null}
             </div>
-            <p className="mt-2 break-all font-mono text-muted-foreground text-sm">{runId}</p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             <Button asChild variant="outline">
@@ -192,7 +191,6 @@ export function ApiRunDetail({ projectId, runId }: { projectId: string; runId: s
                 label="脚本 / 用例"
                 value={`${run.execution_snapshot.script_count ?? run.script_ids.length} / ${run.execution_snapshot.case_count ?? 0}`}
               />
-              <RunDetailValue label="执行人" value={run.created_by_name || "-"} />
               <RunDetailValue label="Base URL" mono value={run.execution_snapshot.environment?.api_base_url ?? "-"} />
               <RunDetailValue label="命令" mono value={run.command_summary || "-"} />
             </div>
@@ -329,6 +327,7 @@ function runStatusLabel(status: string) {
         running: "执行中",
         passed: "通过",
         failed: "失败",
+        observed: "已观察",
         cancelled: "已取消",
         interrupted: "已中断",
       } as Record<string, string>

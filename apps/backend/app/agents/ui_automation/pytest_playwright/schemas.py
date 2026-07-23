@@ -17,6 +17,7 @@ StepKind = Literal[
     "press",
     "upload",
     "wait_visible",
+    "click_parameter_text",
 ]
 AssertionKind = Literal["visible", "hidden", "text", "url", "value"]
 
@@ -67,8 +68,10 @@ class StepPlan(StrictModel):
 
     @model_validator(mode="after")
     def validate_target(self):
-        if self.kind != "navigate" and not self.element_key:
+        if self.kind not in {"navigate", "click_parameter_text"} and not self.element_key:
             raise ValueError(f"{self.kind} 步骤必须包含 element_key。")
+        if self.kind == "click_parameter_text" and not self.value_ref:
+            raise ValueError("click_parameter_text 步骤必须包含 value_ref。")
         if self.kind in {"fill", "select_option", "press", "upload"} and not (self.value_ref or self.value):
             raise ValueError(f"{self.kind} 步骤必须包含 value_ref 或 value。")
         return self
@@ -105,6 +108,7 @@ class AutomationPlan(StrictModel):
     source_test_case_version: int = Field(ge=1)
     environment_id: str = Field(min_length=1)
     exploration_run_id: str = ""
+    parameters: list[str] = Field(default_factory=list)
     page_objects: list[PageObjectPlan] = Field(default_factory=list)
     steps: list[StepPlan] = Field(default_factory=list)
     assertions: list[AssertionPlan] = Field(default_factory=list)
@@ -112,6 +116,10 @@ class AutomationPlan(StrictModel):
 
     @model_validator(mode="after")
     def validate_project_namespace(self):
+        if len(self.parameters) != len(set(self.parameters)):
+            raise ValueError("参数名称不能重复。")
+        if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) for name in self.parameters):
+            raise ValueError("参数名称必须是合法的 Python 标识符。")
         project_key = re.sub(r"_+", "_", re.sub(r"[^a-zA-Z0-9_]+", "_", self.project_id.lower())).strip("_")
         page_prefix = f"pages/generated/{project_key}/"
         test_prefix = f"testcases/generated/{project_key}/"

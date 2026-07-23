@@ -11,23 +11,26 @@ import {
   ArrowUp,
   Braces,
   CheckCircle2,
-  CircleDot,
   Clock3,
   GitBranch,
-  GripVertical,
+  LayoutDashboard,
+  ListTree,
   Loader2,
+  PanelRightClose,
+  PanelRightOpen,
   Play,
   Plus,
   RefreshCw,
   Save,
-  Settings2,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Variable,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,30 +42,36 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { ApiAutomationEndpoint, ApiAutomationScenarioStep } from "@/lib/api-client";
+import type { ApiAutomationEndpoint, ApiAutomationScenarioStep, ApiScenarioAiPlan } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 import { ApiScenarioAssetPicker } from "./api-scenario-asset-picker";
+import { ApiScenarioCanvas } from "./api-scenario-canvas";
 import { ApiScenarioRunDrawer } from "./api-scenario-run-drawer";
 import { ApiScenarioStepConfig } from "./api-scenario-step-config";
 import { ApiScenarioVersionPanel } from "./api-scenario-version-panel";
 import { useApiScenarioEditor } from "./use-api-scenario-editor";
 
 type ApiScenarioEditorProps = { projectId: string; scenarioId?: string };
-type EditorView = "orchestration" | "variables" | "versions" | "settings";
+type EditorView = "orchestration" | "variables" | "versions";
+type OrchestrationMode = "canvas" | "list";
 
 const methodTone: Record<string, string> = {
-  GET: "border-blue-200 bg-blue-50 text-blue-700",
-  POST: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  PUT: "border-amber-200 bg-amber-50 text-amber-700",
-  PATCH: "border-violet-200 bg-violet-50 text-violet-700",
-  DELETE: "border-red-200 bg-red-50 text-red-700",
+  GET: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/35 dark:bg-blue-500/15 dark:text-blue-200",
+  POST: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200",
+  PUT: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-200",
+  PATCH:
+    "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/35 dark:bg-violet-500/15 dark:text-violet-200",
+  DELETE: "border-red-200 bg-red-50 text-red-700 dark:border-red-500/35 dark:bg-red-500/15 dark:text-red-200",
 };
 
 export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorProps) {
   const editor = useApiScenarioEditor(projectId, scenarioId);
   const [view, setView] = useState<EditorView>("orchestration");
+  const [orchestrationMode, setOrchestrationMode] = useState<OrchestrationMode>("canvas");
+  const [configPanelOpen, setConfigPanelOpen] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const activeIndex = editor.draft.steps.findIndex((step) => step.id === editor.activeStepId);
   const precedingSteps = activeIndex < 0 ? [] : editor.draft.steps.slice(0, activeIndex);
 
@@ -83,8 +92,8 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
     );
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-border/90 bg-card shadow-[0_24px_70px_color-mix(in_srgb,var(--primary),transparent_88%)]">
-      <header className="flex min-h-[70px] flex-wrap items-center justify-between gap-3 border-b bg-card/95 px-4 py-3">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/90 bg-card shadow-[0_24px_70px_color-mix(in_srgb,var(--primary),transparent_88%)]">
+      <header className="flex min-h-[70px] shrink-0 flex-wrap items-center justify-between gap-3 border-b bg-card/95 px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
           <Button asChild size="icon-sm" variant="outline">
             <Link href={`/projects/${projectId}/automation/api?tab=scenarios`}>
@@ -92,37 +101,44 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
             </Link>
           </Button>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-nowrap items-center gap-2">
               <Input
-                className="h-8 min-w-52 border-transparent bg-transparent px-1 font-semibold text-sm shadow-none hover:border-border focus-visible:border-border"
+                className="h-8 w-72 min-w-52 max-w-[32vw] flex-none border-transparent bg-transparent px-1 font-semibold text-sm shadow-none hover:border-border focus-visible:border-border"
                 onChange={(event) => editor.actions.updateScenarioMeta({ name: event.target.value })}
                 placeholder="请输入场景名称"
                 value={editor.draft.name}
               />
               <Badge
                 className={
-                  editor.scenario?.status === "ready" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                  editor.scenario?.status === "ready"
+                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
+                    : "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200"
                 }
                 variant="secondary"
               >
                 {editor.scenario?.status === "ready" ? `已发布 v${editor.scenario.revision}` : "草稿"}
               </Badge>
-            </div>
-            <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-              <span>{editor.draft.steps.length} 个步骤</span>
-              <CircleDot className="size-2" />
               {editor.scenario?.asset_changes.length ? (
-                <span className="flex items-center gap-1 text-amber-700">
+                <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] text-amber-700 dark:text-amber-300">
                   <AlertTriangle className="size-3" />
                   {editor.scenario.asset_changes.length} 项接口资产变更待确认
                 </span>
-              ) : (
-                <span>{editor.dirty ? "存在未保存修改" : "草稿已同步"}</span>
-              )}
+              ) : editor.dirty ? (
+                <span className="shrink-0 whitespace-nowrap text-[11px] text-amber-700 dark:text-amber-300">
+                  存在未保存修改
+                </span>
+              ) : null}
+              <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">
+                {editor.draft.steps.length} 个步骤
+              </span>
             </div>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => setAiDialogOpen(true)} size="sm" variant="outline">
+            <Sparkles />
+            AI 编排
+          </Button>
           <Select onValueChange={editor.actions.setSelectedEnvironmentId} value={editor.selectedEnvironmentId}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="选择运行环境" />
@@ -175,7 +191,7 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
         </div>
       </header>
 
-      <nav className="flex h-11 items-stretch gap-6 border-b bg-muted/15 px-5">
+      <nav className="flex h-11 shrink-0 items-stretch gap-6 border-b bg-muted/15 px-5">
         <NavButton
           active={view === "orchestration"}
           icon={GitBranch}
@@ -190,102 +206,189 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
           onClick={() => setView("variables")}
         />
         <NavButton active={view === "versions"} icon={Clock3} label="版本记录" onClick={() => setView("versions")} />
-        <NavButton active={view === "settings"} icon={Settings2} label="场景设置" onClick={() => setView("settings")} />
       </nav>
 
       {view === "orchestration" ? (
-        <div className="grid min-h-[620px] grid-cols-[minmax(330px,390px)_minmax(0,1fr)]">
-          <aside className="border-r bg-[linear-gradient(180deg,color-mix(in_srgb,var(--muted),white_72%),color-mix(in_srgb,var(--background),white_35%))]">
-            <div className="flex h-[70px] items-center justify-between border-b px-4">
-              <div>
-                <h2 className="font-semibold text-sm">执行链路</h2>
-                <p className="mt-1 text-[11px] text-muted-foreground">从上到下依次执行</p>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex h-12 shrink-0 items-center justify-between border-b bg-card/80 px-4">
+            <div className="flex items-center gap-2">
+              <div className="grid size-7 place-items-center rounded-lg bg-primary/10 text-primary">
+                <GitBranch className="size-3.5" />
               </div>
-              <div className="flex items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
-                      size="sm"
-                      variant="outline"
-                    >
-                      <GitBranch />
-                      辅助步骤
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-60">
-                    <DropdownMenuLabel>增强线性编排</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <UtilityMenuItem
-                      icon={Variable}
-                      label="数据赋值"
-                      onClick={() => editor.actions.addUtilityStep("assign")}
-                    />
-                    <UtilityMenuItem
-                      icon={GitBranch}
-                      label="条件判断"
-                      onClick={() => editor.actions.addUtilityStep("condition")}
-                    />
-                    <UtilityMenuItem
-                      icon={Clock3}
-                      label="固定等待"
-                      onClick={() => editor.actions.addUtilityStep("wait")}
-                    />
-                    <UtilityMenuItem
-                      icon={RefreshCw}
-                      label="轮询等待"
-                      onClick={() => editor.actions.addUtilityStep("poll")}
-                    />
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Button onClick={() => setAssetPickerOpen(true)} size="sm">
-                  <Plus />
-                  从接口资产添加
+              <div>
+                <div className="font-semibold text-sm">执行链路</div>
+                <div className="text-[10px] text-muted-foreground">
+                  {orchestrationMode === "canvas" ? "以依赖关系查看场景" : "按执行顺序查看场景"}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {orchestrationMode === "canvas" ? (
+                <Button
+                  aria-label={configPanelOpen ? "隐藏节点配置" : "显示节点配置"}
+                  className="h-8 gap-1.5 px-2.5 text-xs"
+                  onClick={() => setConfigPanelOpen((current) => !current)}
+                  size="sm"
+                  title={configPanelOpen ? "隐藏节点配置" : "显示节点配置"}
+                  variant="outline"
+                >
+                  {configPanelOpen ? <PanelRightClose className="size-3.5" /> : <PanelRightOpen className="size-3.5" />}
+                  {configPanelOpen ? "隐藏配置" : "显示配置"}
+                </Button>
+              ) : null}
+              <div className="flex items-center rounded-lg border bg-muted/25 p-0.5">
+                <Button
+                  aria-label="画布视图"
+                  className="h-8 gap-1.5 px-2.5 text-xs"
+                  onClick={() => setOrchestrationMode("canvas")}
+                  size="sm"
+                  variant={orchestrationMode === "canvas" ? "secondary" : "ghost"}
+                >
+                  <LayoutDashboard className="size-3.5" />
+                  画布
+                </Button>
+                <Button
+                  aria-label="列表视图"
+                  className="h-8 gap-1.5 px-2.5 text-xs"
+                  onClick={() => setOrchestrationMode("list")}
+                  size="sm"
+                  variant={orchestrationMode === "list" ? "secondary" : "ghost"}
+                >
+                  <ListTree className="size-3.5" />
+                  列表
                 </Button>
               </div>
             </div>
-            <div className="max-h-[550px] space-y-2 overflow-y-auto p-3">
-              {editor.draft.steps.length === 0 ? (
-                <button
-                  className="grid min-h-52 w-full place-items-center rounded-xl border border-dashed bg-card/60 p-6 text-center"
-                  onClick={() => setAssetPickerOpen(true)}
-                  type="button"
-                >
-                  <div>
-                    <Plus className="mx-auto size-7 text-primary" />
-                    <div className="mt-3 font-medium text-sm">添加第一个接口步骤</div>
-                    <p className="mt-2 text-muted-foreground text-xs leading-5">
-                      从接口资产中选择登录、创建、查询等接口，组成业务链路。
-                    </p>
-                  </div>
-                </button>
-              ) : (
-                editor.draft.steps.map((step, index) => (
-                  <StepCard
-                    endpoint={editor.endpoints.find((endpoint) => endpoint.id === step.endpoint_id)}
-                    index={index}
-                    isActive={editor.activeStepId === step.id}
-                    key={step.id}
-                    onMove={(offset) => {
-                      const target = editor.draft.steps[index + offset];
-                      if (target) editor.actions.reorderSteps(step.id, target.id);
-                    }}
-                    onRemove={() => editor.actions.removeStep(step.id)}
-                    onSelect={() => editor.actions.setActiveStepId(step.id)}
-                    step={step}
-                  />
-                ))
+          </div>
+          {orchestrationMode === "canvas" ? (
+            <div
+              className={cn(
+                "grid min-h-0 flex-1 overflow-hidden",
+                configPanelOpen ? "grid-cols-[minmax(0,1fr)_clamp(360px,32vw,500px)]" : "grid-cols-1",
               )}
+            >
+              <ApiScenarioCanvas
+                activeStepId={editor.activeStepId}
+                endpoints={editor.endpoints}
+                onAddUtilityStep={editor.actions.addUtilityStep}
+                onClearSelection={() => {
+                  editor.actions.setActiveStepId("");
+                  setConfigPanelOpen(false);
+                }}
+                onOpenAssetPicker={() => setAssetPickerOpen(true)}
+                onSelectStep={(stepId) => {
+                  editor.actions.setActiveStepId(stepId);
+                  setConfigPanelOpen(true);
+                }}
+                steps={editor.draft.steps}
+              />
+              {configPanelOpen ? (
+                <div className="min-h-0 min-w-0 border-l">
+                  <ApiScenarioStepConfig
+                    activeStep={editor.activeStep}
+                    endpoints={editor.endpoints}
+                    environment={editor.selectedEnvironment}
+                    onUpdateStep={editor.actions.updateStep}
+                    precedingSteps={precedingSteps}
+                    scenarioVariables={editor.draft.variables}
+                  />
+                </div>
+              ) : null}
             </div>
-          </aside>
-          <ApiScenarioStepConfig
-            activeStep={editor.activeStep}
-            endpoints={editor.endpoints}
-            environment={editor.selectedEnvironment}
-            onUpdateStep={editor.actions.updateStep}
-            precedingSteps={precedingSteps}
-            scenarioVariables={editor.draft.variables}
-          />
+          ) : (
+            <div className="grid min-h-0 flex-1 grid-cols-[minmax(330px,390px)_minmax(0,1fr)] overflow-hidden">
+              <aside className="flex min-h-0 flex-col border-r bg-[linear-gradient(180deg,color-mix(in_srgb,var(--muted),white_72%),color-mix(in_srgb,var(--background),white_35%))] dark:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--muted),black_8%),var(--background))]">
+                <div className="flex h-[70px] items-center justify-between border-b px-4">
+                  <div>
+                    <h2 className="font-semibold text-sm">执行链路</h2>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-200 dark:hover:bg-amber-500/25"
+                          size="sm"
+                          variant="outline"
+                        >
+                          <GitBranch />
+                          辅助步骤
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-60">
+                        <DropdownMenuLabel>增强线性编排</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <UtilityMenuItem
+                          icon={Variable}
+                          label="数据赋值"
+                          onClick={() => editor.actions.addUtilityStep("assign")}
+                        />
+                        <UtilityMenuItem
+                          icon={GitBranch}
+                          label="条件判断"
+                          onClick={() => editor.actions.addUtilityStep("condition")}
+                        />
+                        <UtilityMenuItem
+                          icon={Clock3}
+                          label="固定等待"
+                          onClick={() => editor.actions.addUtilityStep("wait")}
+                        />
+                        <UtilityMenuItem
+                          icon={RefreshCw}
+                          label="轮询等待"
+                          onClick={() => editor.actions.addUtilityStep("poll")}
+                        />
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Button onClick={() => setAssetPickerOpen(true)} size="sm">
+                      <Plus />
+                      从接口资产添加
+                    </Button>
+                  </div>
+                </div>
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+                  {editor.draft.steps.length === 0 ? (
+                    <button
+                      className="grid min-h-52 w-full place-items-center rounded-xl border border-dashed bg-card/60 p-6 text-center"
+                      onClick={() => setAssetPickerOpen(true)}
+                      type="button"
+                    >
+                      <div>
+                        <Plus className="mx-auto size-7 text-primary" />
+                        <div className="mt-3 font-medium text-sm">添加第一个接口步骤</div>
+                        <p className="mt-2 text-muted-foreground text-xs leading-5">
+                          从接口资产中选择登录、创建、查询等接口，组成业务链路。
+                        </p>
+                      </div>
+                    </button>
+                  ) : (
+                    editor.draft.steps.map((step, index) => (
+                      <StepCard
+                        endpoint={editor.endpoints.find((endpoint) => endpoint.id === step.endpoint_id)}
+                        index={index}
+                        isActive={editor.activeStepId === step.id}
+                        key={step.id}
+                        onMove={(offset) => {
+                          const target = editor.draft.steps[index + offset];
+                          if (target) editor.actions.reorderSteps(step.id, target.id);
+                        }}
+                        onRemove={() => editor.actions.removeStep(step.id)}
+                        onSelect={() => editor.actions.setActiveStepId(step.id)}
+                        step={step}
+                      />
+                    ))
+                  )}
+                </div>
+              </aside>
+              <ApiScenarioStepConfig
+                activeStep={editor.activeStep}
+                endpoints={editor.endpoints}
+                environment={editor.selectedEnvironment}
+                onUpdateStep={editor.actions.updateStep}
+                precedingSteps={precedingSteps}
+                scenarioVariables={editor.draft.variables}
+              />
+            </div>
+          )}
         </div>
       ) : null}
       {view === "variables" ? (
@@ -302,13 +405,6 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
           revisions={editor.revisions}
         />
       ) : null}
-      {view === "settings" ? (
-        <SettingsPanel
-          description={editor.draft.description}
-          onChange={(description) => editor.actions.updateScenarioMeta({ description })}
-        />
-      ) : null}
-
       {editor.validation ? (
         <div className="grid gap-2 border-t bg-muted/20 p-3 md:grid-cols-2">
           {editor.validation.errors.length ? (
@@ -321,38 +417,37 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
           ) : null}
         </div>
       ) : null}
-      <footer className="flex h-11 items-center justify-between bg-[linear-gradient(90deg,#172a3d,#244b66)] px-4 text-[11px] text-slate-200">
-        <div className="flex items-center gap-3">
-          <span
-            className={cn(
-              "size-2 rounded-full",
-              editor.latestRunId ? "bg-emerald-400 shadow-[0_0_0_4px_rgba(52,211,153,.12)]" : "bg-slate-500",
-            )}
-          />
-          <span>
-            {editor.latestRunId
-              ? `运行 ${editor.latestRunId} · ${runStatusLabel(editor.latestRunStatus)}`
-              : "尚未运行当前场景"}
-          </span>
-        </div>
-        <button
-          className="text-sky-200 transition-colors hover:text-white disabled:cursor-default disabled:text-slate-400"
-          disabled={!editor.latestRunId}
-          onClick={() => editor.actions.setRunDrawerOpen(true)}
-          type="button"
-        >
-          {editor.scenarioRunResult
-            ? `${editor.scenarioRunResult.steps.filter((step) => step.status === "passed").length}/${editor.scenarioRunResult.steps.length} 步通过 · ${Math.round(editor.scenarioRunResult.duration_ms)} ms · 展开结果`
-            : editor.latestRunId
-              ? "查看运行进度"
-              : "运行结果将在此处展开"}
-        </button>
-      </footer>
+      {editor.latestRunId ? (
+        <footer className="flex h-11 items-center justify-between bg-[linear-gradient(90deg,#172a3d,#244b66)] px-4 text-[11px] text-slate-200">
+          <div className="flex items-center gap-3">
+            <span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_0_4px_rgba(52,211,153,.12)]" />
+            <span>{`运行 ${editor.latestRunId} · ${runStatusLabel(editor.latestRunStatus)}`}</span>
+          </div>
+          <button
+            className="text-sky-200 transition-colors hover:text-white"
+            onClick={() => editor.actions.setRunDrawerOpen(true)}
+            type="button"
+          >
+            {editor.scenarioRunResult
+              ? `${editor.scenarioRunResult.steps.filter((step) => step.status === "passed").length}/${editor.scenarioRunResult.steps.length} 步通过 · ${Math.round(editor.scenarioRunResult.duration_ms)} ms · 展开结果`
+              : "查看运行进度"}
+          </button>
+        </footer>
+      ) : null}
       <ApiScenarioAssetPicker
         endpoints={editor.endpoints}
         onConfirm={editor.actions.addEndpointSteps}
         onOpenChange={setAssetPickerOpen}
         open={assetPickerOpen}
+      />
+      <AiOrchestrationDialog
+        busy={editor.aiBusy}
+        onApply={() => void editor.actions.applyAiPlan()}
+        onDiscard={editor.actions.discardAiPlan}
+        onGenerate={editor.actions.generateAiPlan}
+        onOpenChange={setAiDialogOpen}
+        open={aiDialogOpen}
+        plan={editor.aiPlan}
       />
       <ApiScenarioRunDrawer
         onJumpToStep={(stepId) => {
@@ -366,6 +461,136 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
         status={editor.latestRunStatus}
       />
     </section>
+  );
+}
+
+function AiOrchestrationDialog({
+  busy,
+  onApply,
+  onDiscard,
+  onGenerate,
+  onOpenChange,
+  open,
+  plan,
+}: {
+  busy: boolean;
+  onApply: () => void;
+  onDiscard: () => void;
+  onGenerate: (goal: string, allowWrite: boolean, maxSteps: number) => Promise<ApiScenarioAiPlan | null>;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  plan: ApiScenarioAiPlan | null;
+}) {
+  const [goal, setGoal] = useState("");
+  const [allowWrite, setAllowWrite] = useState(false);
+  const [maxSteps, setMaxSteps] = useState(8);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="top-0 left-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 auto-rows-max content-start overflow-y-auto rounded-none bg-white sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[85vh] sm:w-full sm:max-w-3xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl dark:bg-zinc-950">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="size-4 text-primary" />
+            AI 编排接口场景
+          </DialogTitle>
+          <DialogDescription>AI 只生成可审阅草稿，应用后仍需检查和发布。</DialogDescription>
+        </DialogHeader>
+        {!plan ? (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="font-medium text-sm" htmlFor="ai-scenario-goal">
+                业务目标
+              </label>
+              <Textarea
+                id="ai-scenario-goal"
+                onChange={(event) => setGoal(event.target.value)}
+                placeholder="例如：登录后创建订单，提取订单 ID，并验证订单状态"
+                rows={6}
+                value={goal}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-2 text-sm" htmlFor="ai-scenario-max-steps">
+                <span className="font-medium">最大步骤数</span>
+                <Input
+                  id="ai-scenario-max-steps"
+                  max={100}
+                  min={1}
+                  onChange={(event) => setMaxSteps(Number(event.target.value) || 1)}
+                  type="number"
+                  value={maxSteps}
+                />
+              </label>
+              <label
+                className="flex items-center gap-2 self-end rounded-md border px-3 py-2.5 text-sm"
+                htmlFor="ai-scenario-allow-write"
+              >
+                <input
+                  id="ai-scenario-allow-write"
+                  checked={allowWrite}
+                  className="size-4 accent-primary"
+                  onChange={(event) => setAllowWrite(event.target.checked)}
+                  type="checkbox"
+                />
+                允许 POST、PUT、PATCH、DELETE 写操作
+              </label>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                disabled={busy || !goal.trim()}
+                onClick={() => void onGenerate(goal.trim(), allowWrite, maxSteps)}
+              >
+                {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                生成编排草稿
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/25 p-3">
+              <div>
+                <div className="font-semibold text-sm">{plan.scenario_name}</div>
+                <div className="mt-1 text-muted-foreground text-xs">
+                  {plan.nodes.length} 个步骤 · 置信度 {Math.round(plan.confidence * 100)}%
+                </div>
+              </div>
+              <Badge variant={plan.validation.valid ? "secondary" : "destructive"}>
+                {plan.validation.valid ? "校验通过" : `${plan.validation.errors.length} 个错误`}
+              </Badge>
+            </div>
+            <div className="space-y-2">
+              {plan.nodes.map((node, index) => (
+                <div className="flex items-center gap-3 rounded-md border p-3" key={node.id}>
+                  <span className="grid size-6 shrink-0 place-items-center rounded bg-muted text-xs">{index + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-sm">{node.name || node.id}</div>
+                    <div className="truncate text-muted-foreground text-xs">
+                      {node.type} · {node.endpoint_id ?? "辅助节点"}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {[...plan.validation.errors, ...plan.validation.warnings].length ? (
+              <div className="space-y-1 rounded-md border border-amber-300/60 bg-amber-50/60 p-3 text-amber-900 text-xs dark:bg-amber-500/10 dark:text-amber-200">
+                {[...plan.validation.errors, ...plan.validation.warnings].map((item) => (
+                  <div key={item}>{item}</div>
+                ))}
+              </div>
+            ) : null}
+            <div className="flex justify-end gap-2">
+              <Button disabled={busy} onClick={onDiscard} variant="outline">
+                放弃计划
+              </Button>
+              <Button disabled={busy || !plan.validation.valid} onClick={onApply}>
+                {busy ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
+                应用到草稿
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -463,9 +688,6 @@ function StepCard({
         </div>
       </button>
       <div className="flex flex-col opacity-20 transition-opacity group-hover:opacity-100">
-        <Button aria-label="拖动步骤" size="icon-xs" variant="ghost">
-          <GripVertical />
-        </Button>
         <Button disabled={index === 0} onClick={() => onMove(-1)} size="icon-xs" variant="ghost">
           <ArrowUp />
         </Button>
@@ -485,7 +707,7 @@ function MiniTag({ icon: Icon, text, success }: { icon: typeof Variable; text: s
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded bg-primary/8 px-1.5 py-0.5 text-[9px] text-primary",
-        success && "bg-emerald-50 text-emerald-700",
+        success && "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200",
       )}
     >
       <Icon className="size-2.5" />
@@ -505,7 +727,7 @@ function UtilityMenuItem({
 }) {
   return (
     <DropdownMenuItem className="gap-3 py-2.5" onClick={onClick}>
-      <span className="grid size-7 place-items-center rounded-lg bg-amber-50 text-amber-700">
+      <span className="grid size-7 place-items-center rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200">
         <Icon className="size-3.5" />
       </span>
       <span>{label}</span>
@@ -522,7 +744,7 @@ function VariablesPanel({
 }) {
   const entries = Object.entries(variables);
   return (
-    <div className="min-h-[620px] p-6">
+    <div className="min-h-0 flex-1 overflow-y-auto p-6">
       <div className="mx-auto max-w-3xl">
         <div className="flex items-center justify-between">
           <div>
@@ -577,35 +799,16 @@ function VariablesPanel({
   );
 }
 
-function SettingsPanel({ description, onChange }: { description: string; onChange: (description: string) => void }) {
-  return (
-    <div className="min-h-[620px] p-6">
-      <div className="mx-auto max-w-3xl">
-        <h2 className="font-semibold text-lg">场景设置</h2>
-        <p className="mt-1 text-muted-foreground text-sm">低频元数据集中在这里，不占用编排主工作区。</p>
-        <label className="mt-6 block" htmlFor="scenario-description">
-          <span className="mb-2 block font-medium text-sm">场景描述</span>
-          <Textarea
-            className="min-h-36"
-            id="scenario-description"
-            onChange={(event) => onChange(event.target.value)}
-            placeholder="描述该业务链路覆盖的目标、前置条件和注意事项"
-            value={description}
-          />
-        </label>
-      </div>
-    </div>
-  );
-}
-
 function IssueBox({ title, items, tone }: { title: string; items: string[]; tone: "error" | "warning" | "success" }) {
   return (
     <div
       className={cn(
         "rounded-lg border p-3 text-xs",
         tone === "error" && "border-destructive/30 bg-destructive/5 text-destructive",
-        tone === "warning" && "border-amber-200 bg-amber-50 text-amber-800",
-        tone === "success" && "border-emerald-200 bg-emerald-50 text-emerald-800",
+        tone === "warning" &&
+          "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-200",
+        tone === "success" &&
+          "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200",
       )}
     >
       <div className="font-semibold">{title}</div>

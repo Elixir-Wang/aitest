@@ -15,8 +15,22 @@ def test_ui_automation_routes_are_registered():
     paths = {route.path for route in v1_router.routes}
     assert "/projects/{project_id}/ui-automation/generation-runs" in paths
     assert "/projects/{project_id}/ui-automation/assets" in paths
+    assert "/projects/{project_id}/ui-automation/assets/{asset_id}" in paths
+    assert "/projects/{project_id}/ui-automation/assets/{asset_id}/generation-runs" in paths
     assert "/projects/{project_id}/ui-automation/assets/{asset_id}/runs" in paths
+    assert "/projects/{project_id}/ui-automation/assets/{asset_id}/files" not in paths
+    assert "/projects/{project_id}/ui-automation/assets/{asset_id}/files/{file_kind}" not in paths
     assert "/projects/{project_id}/ui-automation/runs/{run_id}" in paths
+    assert "/projects/{project_id}/ui-automation/runs/{run_id}/logs" in paths
+    assert "/projects/{project_id}/ui-automation/runs/{run_id}/live-view" in paths
+    assert "/projects/{project_id}/ui-automation/runs/{run_id}/live-view/stream" in paths
+    assert "/projects/{project_id}/ui-automation/runs/{run_id}/artifacts/{artifact_kind}" in paths
+    delete_route = next(
+        route
+        for route in v1_router.routes
+        if route.path == "/projects/{project_id}/ui-automation/runs/{run_id}" and "DELETE" in route.methods
+    )
+    assert delete_route.status_code == 204
 
 
 def test_generation_route_schedules_background_execution(monkeypatch):
@@ -43,4 +57,3 @@ def test_generation_route_schedules_background_execution(monkeypatch):
     assert result["id"] == "uigen-1"
     assert captured["function"] is ui_automation.service.execute_generation_run
     assert captured["args"] == ("uigen-1",)
-

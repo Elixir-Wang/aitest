@@ -113,7 +113,7 @@ export function PerformanceAiAnalysisDrawer({
               <PerformanceAiAnalysisProgress status={analysis.status} />
               {analysis.status === "failed" ? (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
-                  {analysis.error_message || "AI 分析失败，请稍后重新分析。"}
+                  {analysisFailureMessage(analysis.error_message)}
                 </div>
               ) : null}
               {analysis.direct_cause ? (
@@ -186,4 +186,11 @@ function apiErrorMessage(error: unknown) {
     return error.traceId ? `${error.message}（${error.traceId}）` : error.message;
   }
   return error instanceof Error ? error.message : "AI 分析请求失败";
+}
+
+function analysisFailureMessage(errorMessage: string) {
+  if (/rate[ _-]?limit/i.test(errorMessage)) {
+    return "AI 分析执行失败：触发模型接口 429 频率限制，可能是请求过于频繁或模型配额不足。请稍后重试或检查模型配额。";
+  }
+  return errorMessage || "AI 分析失败，请稍后重新分析。";
 }

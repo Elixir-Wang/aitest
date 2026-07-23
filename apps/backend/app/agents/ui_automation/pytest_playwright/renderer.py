@@ -17,6 +17,7 @@ SUITE_FILES = {
 - Only edit backend-provided artifact paths.
 - Derived case data may be normalized, but secrets must remain environment references.
 - Never invent locators; every locator requires exploration evidence.
+- Preserve declared case parameters and reference their values instead of hard-coding one value.
 - Run pytest collection after code changes and never execute real tests during generation.
 """,
     "pyproject.toml": """[project]
@@ -37,6 +38,7 @@ addopts = -q
     "conftest.py": """from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -57,6 +59,23 @@ def configure_page(page):
     timeout = int(os.getenv("UI_TIMEOUT_MS", "30000"))
     page.set_default_timeout(timeout)
     page.set_default_navigation_timeout(timeout)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report = outcome.get_result()
+    if report.when != "call" or not report.failed or "page" not in item.funcargs:
+        return
+    target_root = os.getenv("UI_ARTIFACT_DIR", "").strip()
+    if not target_root:
+        return
+    try:
+        target = Path(target_root) / "failure-screenshots" / f"{item.nodeid.replace('/', '_').replace(':', '_')}.png"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        item.funcargs["page"].screenshot(path=str(target), full_page=True)
+    except Exception:
+        pass
 """,
     "config/__init__.py": "",
     "config/settings.py": """from __future__ import annotations
@@ -65,12 +84,17 @@ import os
 
 
 BASE_URL = os.getenv("UI_BASE_URL", "").rstrip("/")
+UI_LOCALE = os.getenv("UI_LOCALE", "zh-CN")
+UI_TIMEOUT_MS = int(os.getenv("UI_TIMEOUT_MS", "30000"))
+UI_AUTH_STATE_PATH = os.getenv("UI_AUTH_STATE_PATH", "").strip()
 """,
     "pages/__init__.py": "",
     "pages/generated/__init__.py": "",
     "pages/base_page.py": """from __future__ import annotations
 
-from playwright.sync_api import Page
+from urllib.parse import urljoin
+
+from playwright.sync_api import Locator, Page, expect
 
 from config.settings import BASE_URL
 
@@ -84,7 +108,23 @@ class BasePage:
     def open(self) -> None:
         if not BASE_URL:
             raise RuntimeError("UI_BASE_URL 未配置。")
-        self.page.goto(f"{BASE_URL}{self.route}")
+        self.page.goto(urljoin(f"{BASE_URL}/", f"/{self.route.lstrip('/')}"))
+
+    def visible_text(self, text: str) -> Locator:
+        return self.page.get_by_text(text, exact=True).first
+
+    def click_first_visible(self, *locators: Locator) -> None:
+        for locator in locators:
+            try:
+                locator.first.wait_for(state="visible", timeout=3_000)
+                locator.first.click()
+                return
+            except Exception:
+                continue
+        raise AssertionError("No candidate locator was visible and clickable")
+
+    def expect_text(self, text: str) -> None:
+        expect(self.visible_text(text)).to_be_visible()
 """,
     "testcases/__init__.py": "",
     "testcases/conftest.py": "",
@@ -117,11 +157,35 @@ def _resolve_environment_values(value):
 """,
     "utils/waiters.py": """from __future__ import annotations
 
-from playwright.sync_api import Locator
+import re
+
+from playwright.sync_api import Locator, Page, TimeoutError as PlaywrightTimeoutError, expect
+
+
+BUSY_TEXT = re.compile(r"停止|生成中|思考中|响应中|加载中|发布中")
 
 
 def wait_visible(locator: Locator, timeout: int | None = None) -> None:
     locator.wait_for(state="visible", timeout=timeout)
+
+
+def wait_until_page_idle(page: Page, timeout: int = 120_000) -> None:
+    try:
+        page.wait_for_load_state("networkidle", timeout=timeout)
+    except PlaywrightTimeoutError:
+        pass
+
+
+def wait_until_not_busy(page: Page, timeout: int = 30_000) -> None:
+    try:
+        expect(page.get_by_text(BUSY_TEXT).first).to_be_hidden(timeout=timeout)
+    except AssertionError:
+        pass
+
+
+def wait_for_page_ready(page: Page, timeout: int = 120_000) -> None:
+    wait_until_page_idle(page, timeout=timeout)
+    wait_until_not_busy(page, timeout=min(timeout, 30_000))
 """,
     "utils/assertions.py": """from playwright.sync_api import expect
 
@@ -142,6 +206,36 @@ def write_result(payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 """,
+    "scripts/__init__.py": "",
+    "scripts/save_auth_state.py": """from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from playwright.sync_api import sync_playwright
+
+
+def main() -> None:
+    base_url = os.getenv("UI_BASE_URL", "").rstrip("/")
+    target = os.getenv("UI_AUTH_STATE_PATH", "").strip()
+    if not base_url or not target:
+        raise SystemExit("UI_BASE_URL 和 UI_AUTH_STATE_PATH 必须配置。")
+    output = Path(target)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=False)
+        context = browser.new_context(ignore_https_errors=True, locale=os.getenv("UI_LOCALE", "zh-CN"))
+        page = context.new_page()
+        page.goto(base_url)
+        page.wait_for_url(lambda url: "/login" not in str(url), timeout=10 * 60 * 1000)
+        context.storage_state(path=str(output))
+        browser.close()
+    print(f"Saved auth state to {output}")
+
+
+if __name__ == "__main__":
+    main()
+""",
     ".deepagents/skills/pytest-playwright-ui-generation/SKILL.md": """---
 name: pytest-playwright-ui-generation
 description: Generate one project-namespaced pytest Playwright case inside the platform-shared suite.
@@ -153,6 +247,7 @@ description: Generate one project-namespaced pytest Playwright case inside the p
 - Use only backend-provided artifact paths.
 - Derived data may be normalized; source test cases are never updated.
 - Never invent locators or remove assertions to make validation pass.
+- Copy case parameter names into AutomationPlan.parameters and use click_parameter_text for dynamic text selection.
 - Use the deterministic render tool for POM and test source changes.
 - Run collection only; real UI execution is a separate user action.
 """,
@@ -247,6 +342,7 @@ def _render_test(plan: AutomationPlan) -> str:
     imports = [
         "from pathlib import Path",
         "",
+        *(["import pytest"] if plan.parameters else []),
         "from playwright.sync_api import expect",
         "",
         "from utils.data_loader import load_case_data",
@@ -255,29 +351,55 @@ def _render_test(plan: AutomationPlan) -> str:
         module = page.file_path.removesuffix(".py").replace("/", ".")
         imports.append(f"from {module} import {page.class_name}")
     suite_parent_index = len(Path(plan.artifacts.test_file).parts) - 1
-    body = [
-        "",
-        "",
-        f"def test_{_python_identifier(plan.automation_case_id)}(page):",
-        f"    case_data = load_case_data(Path(__file__).resolve().parents[{suite_parent_index}] / {json.dumps(plan.artifacts.data_file)})",
-    ]
+    data_expression = (
+        f"load_case_data(Path(__file__).resolve().parents[{suite_parent_index}] / "
+        f"{json.dumps(plan.artifacts.data_file)})"
+    )
+    body = ["", ""]
+    if plan.parameters:
+        body.extend([f"CASE_DATA = {data_expression}", "", ""])
+        for parameter in plan.parameters:
+            body.extend(
+                [
+                    "@pytest.mark.parametrize(",
+                    f"    {json.dumps(parameter)},",
+                    f"    CASE_DATA[\"parameters\"][{json.dumps(parameter)}][\"values\"],",
+                    "    ids=lambda value: str(value),",
+                    ")",
+                ]
+            )
+    parameters = "".join(f", {name}" for name in plan.parameters)
+    body.extend(
+        [
+            f"def test_{_python_identifier(plan.automation_case_id)}(page{parameters}):",
+            "    case_data = CASE_DATA" if plan.parameters else f"    case_data = {data_expression}",
+        ]
+    )
     for page in plan.page_objects:
         body.append(f"    {page.page_key}_page = {page.class_name}(page)")
     for step in plan.steps:
-        body.extend(_render_step(step))
+        body.extend(_render_step(step, set(plan.parameters)))
     for assertion in plan.assertions:
-        body.extend(_render_assertion(assertion))
+        body.extend(_render_assertion(assertion, set(plan.parameters)))
     if not plan.steps and not plan.assertions:
         body.append("    assert case_data is not None")
     return "\n".join([*imports, *body]) + "\n"
 
 
-def _render_step(step: StepPlan) -> list[str]:
+def _render_step(step: StepPlan, parameters: set[str]) -> list[str]:
     page_var = f"{step.page_key}_page"
     if step.kind == "navigate":
         return [f"    {page_var}.open()"]
+    if step.kind == "click_parameter_text":
+        return [f"    {page_var}.visible_text(str({step.value_ref})).click()"]
     target = f"{page_var}.{step.element_key}"
-    value = f"case_data[{json.dumps(step.value_ref)}]" if step.value_ref else json.dumps(step.value, ensure_ascii=False)
+    value = (
+        step.value_ref
+        if step.value_ref in parameters
+        else f"case_data[{json.dumps(step.value_ref)}]"
+        if step.value_ref
+        else json.dumps(step.value, ensure_ascii=False)
+    )
     actions = {
         "click": f"{target}.click()",
         "fill": f"{target}.fill(str({value}))",
@@ -291,9 +413,11 @@ def _render_step(step: StepPlan) -> list[str]:
     return [f"    {actions[step.kind]}"]
 
 
-def _render_assertion(assertion: AssertionPlan) -> list[str]:
+def _render_assertion(assertion: AssertionPlan, parameters: set[str]) -> list[str]:
     expected = (
-        f"case_data[{json.dumps(assertion.expected_ref)}]"
+        assertion.expected_ref
+        if assertion.expected_ref in parameters
+        else f"case_data[{json.dumps(assertion.expected_ref)}]"
         if assertion.expected_ref
         else json.dumps(assertion.expected, ensure_ascii=False)
     )

@@ -1,4 +1,8 @@
-import type { ApiAutomationEndpoint, ApiAutomationScenarioStep } from "@/lib/api-client";
+import type {
+  ApiAutomationEndpoint,
+  ApiAutomationScenarioStep,
+  ApiAutomationScenarioStepInput,
+} from "@/lib/api-client";
 
 export type ApiScenarioVariableOptions = {
   stepOutputs: Array<{ stepId: string; stepName: string; name: string }>;
@@ -25,6 +29,8 @@ export function moveScenarioStep(
   activeId: string,
   overId: string,
 ): ApiAutomationScenarioStep[];
+
+export function toScenarioStepInput(step: ApiAutomationScenarioStep, stepOrder: number): ApiAutomationScenarioStepInput;
 
 export function buildVariableOptions(
   steps: ApiAutomationScenarioStep[],

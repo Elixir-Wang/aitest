@@ -5,7 +5,10 @@ import os
 import re
 import subprocess
 import sys
+import shutil
 from pathlib import Path
+
+from . import live_view
 
 
 SENSITIVE_RE = re.compile(
@@ -33,22 +36,36 @@ def run_case(
     stderr_path = run_dir / "stderr.txt"
     result_path = run_dir / "result.json"
     process_env = _build_environment(environment, result_path)
+    process_env["UI_ARTIFACT_DIR"] = str(browser_output)
     command = [
         sys.executable,
         "-m",
         "pytest",
         "--tracing=retain-on-failure",
+        "--video=on",
         f"--output={browser_output}",
         pytest_node_id,
     ]
-    completed = subprocess.run(
-        command,
-        cwd=suite_path,
-        text=True,
-        capture_output=True,
-        timeout=timeout,
-        env=process_env,
-    )
+    live_session = live_view.start_session(run_id)
+    if live_session.status == "ready":
+        process_env["DISPLAY"] = live_session.display
+        command.insert(4, "--headed")
+    elif os.getenv("UI_HEADED", "0").lower() in {"1", "true", "yes", "on"}:
+        command.insert(4, "--headed")
+        xvfb_run = shutil.which("xvfb-run")
+        if xvfb_run and not process_env.get("DISPLAY"):
+            command = [xvfb_run, "--auto-servernum", "--server-args=-screen 0 1440x900x24", *command]
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=suite_path,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            env=process_env,
+        )
+    finally:
+        live_view.finish_session(run_id)
     stdout_path.write_text(_redact(completed.stdout), encoding="utf-8")
     stderr_path.write_text(_redact(completed.stderr), encoding="utf-8")
     status = "passed" if completed.returncode == 0 else "failed"
@@ -61,6 +78,7 @@ def run_case(
     result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     traces = sorted(browser_output.rglob("trace.zip"))
     screenshots = sorted(browser_output.rglob("*.png"))
+    videos = sorted(browser_output.rglob("*.webm")) + sorted(browser_output.rglob("*.mp4"))
     return {
         **result,
         "result_path": str(result_path),
@@ -68,6 +86,7 @@ def run_case(
         "stderr_path": str(stderr_path),
         "trace_path": str(traces[0]) if traces else "",
         "screenshot_paths": [str(path) for path in screenshots],
+        "video_path": str(videos[0]) if videos else "",
     }
 
 
@@ -87,4 +106,3 @@ def _redact(value: str) -> str:
 
 
 __all__ = ["run_case"]
-

@@ -876,6 +876,13 @@ CREATE TABLE IF NOT EXISTS performance_analysis_sessions (
   evidence_json TEXT NOT NULL DEFAULT '[]',
   missing_evidence_json TEXT NOT NULL DEFAULT '[]',
   proposal_json TEXT NOT NULL DEFAULT '{}',
+  application_status TEXT NOT NULL DEFAULT 'not_requested',
+  selected_change_ids_json TEXT NOT NULL DEFAULT '[]',
+  preflight_json TEXT NOT NULL DEFAULT '{}',
+  applied_script_id TEXT NOT NULL DEFAULT '',
+  applied_run_id TEXT NOT NULL DEFAULT '',
+  applied_by TEXT NOT NULL DEFAULT '',
+  applied_at TEXT,
   model_name TEXT NOT NULL DEFAULT '',
   error_message TEXT NOT NULL DEFAULT '',
   created_by TEXT NOT NULL,
@@ -1072,6 +1079,30 @@ CREATE TABLE IF NOT EXISTS api_scenario_revisions (
 
 CREATE INDEX IF NOT EXISTS idx_api_scenario_revisions_scenario_revision
   ON api_scenario_revisions(scenario_id, revision DESC);
+
+CREATE TABLE IF NOT EXISTS api_scenario_ai_plans (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  scenario_id TEXT,
+  expected_revision INTEGER,
+  goal TEXT NOT NULL,
+  request_json TEXT NOT NULL DEFAULT '{}',
+  plan_json TEXT NOT NULL DEFAULT '{}',
+  validation_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL CHECK(status IN ('preview', 'applied', 'discarded', 'expired')) DEFAULT 'preview',
+  model_provider TEXT NOT NULL DEFAULT '',
+  model_name TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  applied_by TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at TEXT NOT NULL,
+  applied_at TEXT,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(scenario_id) REFERENCES api_scenarios(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_scenario_ai_plans_project_created
+  ON api_scenario_ai_plans(project_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS exploration_runs (
   id TEXT PRIMARY KEY,
@@ -1298,7 +1329,8 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_conversation_messages_conversation_crea
 CREATE TABLE IF NOT EXISTS ui_automation_generation_runs (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
-  test_case_id TEXT NOT NULL,
+  test_case_id TEXT,
+  manual_test_case_id TEXT,
   environment_id TEXT NOT NULL,
   exploration_run_id TEXT NOT NULL DEFAULT '',
   task_id TEXT NOT NULL DEFAULT '',
@@ -1313,13 +1345,16 @@ CREATE TABLE IF NOT EXISTS ui_automation_generation_runs (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
   FOREIGN KEY(test_case_id) REFERENCES test_cases(id) ON DELETE CASCADE,
-  FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE CASCADE
+  FOREIGN KEY(manual_test_case_id) REFERENCES manual_test_cases(id) ON DELETE CASCADE,
+  FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE CASCADE,
+  CHECK ((test_case_id IS NOT NULL) != (manual_test_case_id IS NOT NULL))
 );
 
 CREATE TABLE IF NOT EXISTS ui_automation_assets (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
-  test_case_id TEXT NOT NULL,
+  test_case_id TEXT,
+  manual_test_case_id TEXT,
   source_version INTEGER NOT NULL DEFAULT 1,
   generation_run_id TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'ready',
@@ -1332,10 +1367,11 @@ CREATE TABLE IF NOT EXISTS ui_automation_assets (
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(project_id, test_case_id),
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
   FOREIGN KEY(test_case_id) REFERENCES test_cases(id) ON DELETE CASCADE,
-  FOREIGN KEY(generation_run_id) REFERENCES ui_automation_generation_runs(id) ON DELETE CASCADE
+  FOREIGN KEY(manual_test_case_id) REFERENCES manual_test_cases(id) ON DELETE CASCADE,
+  FOREIGN KEY(generation_run_id) REFERENCES ui_automation_generation_runs(id) ON DELETE CASCADE,
+  CHECK ((test_case_id IS NOT NULL) != (manual_test_case_id IS NOT NULL))
 );
 
 CREATE TABLE IF NOT EXISTS ui_automation_execution_runs (
@@ -1350,6 +1386,7 @@ CREATE TABLE IF NOT EXISTS ui_automation_execution_runs (
   stdout_path TEXT NOT NULL DEFAULT '',
   stderr_path TEXT NOT NULL DEFAULT '',
   trace_path TEXT NOT NULL DEFAULT '',
+  video_path TEXT NOT NULL DEFAULT '',
   screenshot_paths_json TEXT NOT NULL DEFAULT '[]',
   error_message TEXT NOT NULL DEFAULT '',
   created_by TEXT NOT NULL,

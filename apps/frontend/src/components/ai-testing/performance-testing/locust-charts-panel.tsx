@@ -2,6 +2,8 @@
 
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
+const CHART_INITIAL_DIMENSION = { height: 288, width: 320 } as const;
+
 export type LocustChartSample = {
   sampledAt: string;
   users: number;
@@ -91,7 +93,7 @@ function ChartCard({
     <section className={`rounded-md border p-4 dark:border-slate-800 ${className}`}>
       <h3 className="mb-4 font-medium text-sm">{title}</h3>
       <div className="h-72 w-full">
-        <ResponsiveContainer height="100%" width="100%">
+        <ResponsiveContainer height="100%" initialDimension={CHART_INITIAL_DIMENSION} width="100%">
           {children}
         </ResponsiveContainer>
       </div>

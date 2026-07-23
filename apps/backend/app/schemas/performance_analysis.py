@@ -61,8 +61,8 @@ class PerformanceDiagnosis(BaseModel):
             raise ValueError("外部服务或证据不足时不能提供可应用修改")
         if self.category == "platform_code" and not self.requires_second_approval:
             raise ValueError("平台源码修改必须二次审批")
-        if self.category != "performance_config" and self.can_auto_rerun:
-            raise ValueError("只有性能配置问题可以自动重新压测")
+        if self.category not in {"performance_config", "locust_script"} and self.can_auto_rerun:
+            raise ValueError("只有性能配置或 Locust 脚本问题可以自动重新压测")
         if self.category == "insufficient_evidence" and not self.missing_evidence:
             raise ValueError("证据不足时必须说明缺失证据")
         return self
@@ -91,4 +91,17 @@ class PerformanceAnalysisOut(BaseModel):
     finished_at: str | None = None
     updated_at: str
     available_actions: list[str] = Field(default_factory=list)
+    application_status: str = "not_requested"
+    applicable_change_ids: list[str] = Field(default_factory=list)
+    selected_change_ids: list[str] = Field(default_factory=list)
+    preflight: dict[str, Any] = Field(default_factory=dict)
+    applied_script_id: str = ""
+    applied_run_id: str = ""
+    applied_by: str = ""
+    applied_at: str | None = None
 
+
+class PerformanceAnalysisApplyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    change_ids: list[str] = Field(min_length=1)

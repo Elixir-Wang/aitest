@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import yaml
+
 import pytest
 
 from app.core import db as db_core
@@ -99,7 +101,41 @@ def test_diagnosis_stage_does_not_generate_candidate_patch(monkeypatch: pytest.M
     assert attempt["status"] == "proposal_ready"
     assert not (attempt_dir / "workspace").exists()
     assert repair_called is False
-    assert serialized["available_actions"] == []
+    assert serialized["available_actions"] == ["reanalyze"]
+
+
+def test_create_next_repair_attempt_uses_current_session_baseline(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _setup(monkeypatch, tmp_path)
+    created = self_healing.create_repair_session("project-1", "apirun-1", "", ADMIN)
+    with connect() as db:
+        api_automation_repo.update_repair_attempt(db, created["attempt_id"], status="proposal_ready")
+
+    next_attempt = self_healing.create_next_repair_attempt(
+        "project-1", created["session_id"], "补充诊断信息", ADMIN
+    )
+
+    with connect() as db:
+        attempts = api_automation_repo.list_repair_attempts(db, created["session_id"])
+    assert next_attempt["status"] == "queued"
+    assert len(attempts) == 2
+    assert attempts[-1]["attempt_number"] == 2
+    assert attempts[-1]["base_run_id"] == "apirun-1"
+    assert attempts[-1]["base_revision"] == 0
+    assert attempts[-1]["user_context"] == "补充诊断信息"
+
+
+def test_create_next_repair_attempt_rejects_active_attempt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _setup(monkeypatch, tmp_path)
+    created = self_healing.create_repair_session("project-1", "apirun-1", "", ADMIN)
+
+    with pytest.raises(Exception) as exc_info:
+        self_healing.create_next_repair_attempt("project-1", created["session_id"], "", ADMIN)
+
+    assert getattr(exc_info.value, "detail", {}).get("code") == "API_REPAIR_ATTEMPT_NOT_REANALYZABLE"
 
 
 def test_approve_proposal_does_not_apply_formal_suite(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -142,3 +178,82 @@ def test_approve_proposal_does_not_apply_formal_suite(monkeypatch: pytest.Monkey
     assert result["status"] == "candidate_generating"
     assert result["applied_run_id"] is None
     assert sentinel.read_text(encoding="utf-8") == "ORIGINAL = True\n"
+
+
+def test_case_updates_write_database_and_ai_repair_version(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "cases.yaml").write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "case_id": "orphaned-case",
+                    "assertions": [{"type": "status_code", "path": "", "expected": 400}],
+                },
+                {
+                    "case_id": "case-1",
+                    "assertions": [{"type": "status_code", "path": "", "expected": 200}],
+                    "oracle_status": "confirmed",
+                    "notes": "经实际响应校准",
+                }
+            ],
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    with connect() as db:
+        db.execute(
+            "INSERT INTO api_test_cases (id, project_id, title, priority, coverage, source, preconditions_json, request_json, test_data_json, expected_json, assertions_json, variables_json, data_origin_json, data_file_path, notes, created_by, test_description, test_point_key, oracle_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "case-1", "project-1", "示例", "P1", "negative", "ai_generated", "[]", "{}", "{}", "{}", "[]", "{}", "{}", "", "", "u-admin", "", "", "needs_confirmation",
+            ),
+        )
+        self_healing._load_case_updates(
+            workspace,
+            "project-1",
+            db,
+            case_ids={"case-1"},
+            created_by="u-admin",
+        )
+        row = api_automation_repo.find_api_test_case(db, "case-1")
+        versions = api_automation_repo.list_api_test_case_versions(db, "case-1")
+
+    assert api_automation_repo.loads_json(row["assertions_json"], [])[0]["expected"] == 200
+    assert row["oracle_status"] == "confirmed"
+    assert row["notes"] == "经实际响应校准"
+    assert len(versions) == 1
+    assert versions[0]["change_source"] == "ai_repair"
+
+
+def test_apply_proposed_case_updates_calibrates_status_and_confirms_oracle(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    data_path = workspace / "cases.yaml"
+    data_path.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "case_id": "case-1",
+                    "oracle_status": "needs_confirmation",
+                    "assertions": [{"type": "status_code", "path": "", "expected": 400}],
+                    "notes": "按常见约定推断为 400。",
+                }
+            ],
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    updates = self_healing._apply_proposed_case_updates(
+        workspace,
+        [{"case_id": "case-1", "expected_status_code": 400, "actual_status_code": 200}],
+    )
+    case = yaml.safe_load(data_path.read_text(encoding="utf-8"))[0]
+
+    assert case["assertions"][0]["expected"] == 200
+    assert case["oracle_status"] == "confirmed"
+    assert "人工审批后生效" in case["notes"]
+    assert updates[0]["changes"]["assertions"][0]["expected"] == 200

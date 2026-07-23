@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-from app.agents.api_automation.self_healing.diagnosis_agent import diagnose_failure
+from app.agents.api_automation.self_healing.diagnosis_agent import diagnose_failure, enforce_uncertain_oracle_policy
 from app.agents.api_automation.self_healing.repair_agent import repair_failure
 from app.agents.model_selection import build_agent_model, resolve_model_selection, thinking_disabled_extra_body
 from app.core.db import connect
@@ -32,7 +32,7 @@ def _serialize_attempt(row) -> dict:
     if row["status"] == "waiting_approval":
         actions = ["approve_proposal", "reject_proposal"]
     elif row["status"] == "proposal_ready":
-        actions = []
+        actions = ["reanalyze"]
     elif row["status"] == "ready_to_apply":
         actions = ["view_diff", "apply", "discard"]
     elif row["status"] in {"completed", "proposal_rejected", "rejected", "failed", "superseded"}:
@@ -128,6 +128,32 @@ def get_repair_session(project_id: str, session_id: str, actor) -> dict:
         return _serialize_session(row, api_automation_repo.list_repair_attempts(db, session_id))
 
 
+def create_next_repair_attempt(project_id: str, session_id: str, user_context: str, actor) -> dict:
+    api_service._require_admin(actor)
+    with connect() as db:
+        api_service._require_visible_project(db, project_id, actor)
+        session = api_automation_repo.find_repair_session(db, session_id)
+        if not session or session["project_id"] != project_id:
+            raise api_error(404, "API_REPAIR_SESSION_NOT_FOUND", "AI 修复会话不存在。")
+        if session["status"] != "active":
+            raise api_error(409, "API_REPAIR_SESSION_NOT_ACTIVE", "当前 AI 修复会话不可继续分析。")
+        attempts = api_automation_repo.list_repair_attempts(db, session_id)
+        if not attempts or attempts[-1]["status"] != "proposal_ready":
+            raise api_error(409, "API_REPAIR_ATTEMPT_NOT_REANALYZABLE", "当前修复轮次不可重新分析。")
+        attempt_id = f"apirepairatt-{secrets.token_hex(8)}"
+        attempt_number = attempts[-1]["attempt_number"] + 1
+        api_automation_repo.create_repair_attempt(
+            db,
+            attempt_id=attempt_id,
+            session_id=session_id,
+            attempt_number=attempt_number,
+            base_run_id=session["current_run_id"],
+            base_revision=session["current_revision"],
+            user_context=user_context,
+        )
+    return {"session_id": session_id, "attempt_id": attempt_id, "status": "queued"}
+
+
 def _attempt_dir(project_id: str, session_id: str, attempt_number: int) -> Path:
     return (
         storage.PROJECT_FILE_STORAGE_ROOT
@@ -150,6 +176,20 @@ def _read_run_artifacts(run) -> tuple[dict, dict]:
     report_path = storage.resolve_stored_path(run["json_report_path"])
     if report_path and report_path.exists():
         report = json.loads(report_path.read_text(encoding="utf-8"))
+    observation_path = (
+        storage.resolve_stored_path(run["observation_result_path"])
+        if "observation_result_path" in run.keys()
+        else None
+    )
+    if observation_path and observation_path.exists():
+        try:
+            observation_payload = json.loads(observation_path.read_text(encoding="utf-8"))
+            if isinstance(observation_payload, dict):
+                report["observations"] = observation_payload.get("observations", [])
+            elif isinstance(observation_payload, list):
+                report["observations"] = observation_payload
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            report["observations"] = []
     return logs, report
 
 
@@ -192,6 +232,7 @@ def execute_repair_attempt(attempt_id: str) -> None:
         with connect() as db:
             api_automation_repo.update_repair_attempt(db, attempt_id, status="diagnosing")
         diagnosis = asyncio.run(diagnose_failure(model=model, context=context))
+        diagnosis = enforce_uncertain_oracle_policy(diagnosis, context)
         attempt_dir = _attempt_dir(session["project_id"], session["id"], attempt["attempt_number"])
         attempt_dir.mkdir(parents=True, exist_ok=True)
         (attempt_dir / "diagnosis.json").write_text(diagnosis.model_dump_json(indent=2), encoding="utf-8")
@@ -223,8 +264,19 @@ def get_repair_attempt(project_id: str, attempt_id: str, actor) -> dict:
         return _serialize_attempt(attempt)
 
 
-def _load_case_updates(workspace: Path, project_id: str, db) -> None:
-    allowed = {"title", "priority", "coverage", "preconditions", "request", "test_data", "expected", "assertions", "notes"}
+def _load_case_updates(
+    workspace: Path,
+    project_id: str,
+    db,
+    *,
+    case_ids: set[str] | None = None,
+    created_by: str = "system",
+) -> None:
+    allowed = {
+        "title", "priority", "coverage", "preconditions", "request", "test_data", "expected",
+        "assertions", "notes", "test_description", "oracle_status",
+    }
+    loaded_case_ids: set[str] = set()
     for path in workspace.rglob("cases.yaml"):
         payload = yaml.safe_load(path.read_text(encoding="utf-8")) or []
         if not isinstance(payload, list):
@@ -235,11 +287,87 @@ def _load_case_updates(workspace: Path, project_id: str, db) -> None:
             case_id = str(item.get("case_id") or item.get("id") or "")
             if not case_id:
                 continue
+            if case_ids is not None and case_id not in case_ids:
+                continue
             row = api_automation_repo.find_api_test_case(db, case_id)
             if not row or row["project_id"] != project_id:
                 raise ValueError(f"用例不属于当前项目：{case_id}")
+            loaded_case_ids.add(case_id)
             changes = {key: item[key] for key in allowed if key in item}
-            api_automation_repo.update_api_test_case(db, case_id, **changes)
+            current = api_service._serialize_api_test_case(row)
+            effective_changes = {
+                key: value for key, value in changes.items() if current.get(key) != value
+            }
+            if not effective_changes:
+                continue
+            api_automation_repo.update_api_test_case(db, case_id, **effective_changes)
+            updated = api_automation_repo.find_api_test_case(db, case_id)
+            versions = api_automation_repo.list_api_test_case_versions(db, case_id)
+            api_automation_repo.create_api_test_case_version(
+                db,
+                version_id=f"apitcv-{secrets.token_hex(8)}",
+                case_id=case_id,
+                version=max((int(version["version"]) for version in versions), default=0) + 1,
+                snapshot=api_service._serialize_api_test_case(updated),
+                change_source="ai_repair",
+                created_by=created_by,
+            )
+    if case_ids is not None:
+        missing = sorted(case_ids - loaded_case_ids)
+        if missing:
+            raise ValueError(f"候选修复未找到对应测试用例：{', '.join(missing)}")
+
+
+def _apply_proposed_case_updates(workspace: Path, case_updates: list[dict]) -> list[dict]:
+    pending = {str(item["case_id"]): item for item in case_updates}
+    applied: list[dict] = []
+    for path in workspace.rglob("cases.yaml"):
+        payload = yaml.safe_load(path.read_text(encoding="utf-8")) or []
+        if not isinstance(payload, list):
+            raise ValueError(f"用例数据格式错误：{path}")
+        changed = False
+        for case in payload:
+            if not isinstance(case, dict):
+                continue
+            case_id = str(case.get("case_id") or case.get("id") or "")
+            update = pending.get(case_id)
+            if not update:
+                continue
+            expected = update["expected_status_code"]
+            actual = update["actual_status_code"]
+            assertions = case.get("assertions") or []
+            status_assertion = next(
+                (item for item in assertions if item.get("type") == "status_code"),
+                None,
+            )
+            if not status_assertion or status_assertion.get("expected") != expected:
+                raise ValueError(f"用例 {case_id} 的原状态码断言已变化，请重新分析。")
+            status_assertion["expected"] = actual
+            case["oracle_status"] = "confirmed"
+            note = f"AI 修复根据实际响应将状态码从 {expected} 校准为 {actual}，经人工审批后生效。"
+            existing_notes = str(case.get("notes") or "").strip()
+            case["notes"] = f"{existing_notes} {note}".strip()
+            applied.append(
+                {
+                    "case_id": case_id,
+                    "changes": {
+                        "assertions": assertions,
+                        "oracle_status": "confirmed",
+                        "notes": case["notes"],
+                    },
+                    "reason": note,
+                }
+            )
+            changed = True
+        if changed:
+            path.write_text(
+                yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
+                encoding="utf-8",
+            )
+    missing = sorted(set(pending) - {item["case_id"] for item in applied})
+    if missing:
+        raise ValueError(f"候选修复未找到对应测试用例：{', '.join(missing)}")
+    return applied
 
 
 def approve_repair_attempt(project_id: str, attempt_id: str, comment: str, actor) -> dict:
@@ -270,27 +398,38 @@ def execute_candidate_repair(attempt_id: str) -> None:
         run = api_automation_repo.find_api_run(db, attempt["base_run_id"])
         diagnosis_data = api_automation_repo.loads_json(attempt["diagnosis_json"], {})
         history = [_serialize_attempt(item) for item in api_automation_repo.list_repair_attempts(db, session["id"])[:-1]]
-    from app.agents.api_automation.self_healing.schemas import FailureDiagnosis
-
     suite_path = project_suite_path(session["project_id"])
     logs, report = _read_run_artifacts(run)
     context = build_failure_context(
         api_service._serialize_api_run(run), logs, report, suite_path, history, attempt["user_context"]
     )
-    selection = resolve_model_selection("api_test_generation")
-    model = build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
     attempt_dir = _attempt_dir(session["project_id"], session["id"], attempt["attempt_number"])
     try:
         workspace = create_attempt_workspace(session["project_id"], session["id"], attempt["attempt_number"], suite_path)
-        repair_result = asyncio.run(
-            repair_failure(
-                model=model,
-                workspace=workspace,
-                diagnosis=FailureDiagnosis.model_validate(diagnosis_data),
-                context=context,
+        case_updates = diagnosis_data.get("proposal", {}).get("case_updates", [])
+        if case_updates:
+            from app.agents.api_automation.self_healing.schemas import RepairResult
+
+            applied_updates = _apply_proposed_case_updates(workspace, case_updates)
+            repair_result = RepairResult(
+                summary=f"已按审批建议校准 {len(applied_updates)} 条不确定用例。",
+                case_updates=applied_updates,
+                changed_source_files=[],
             )
-        )
-        (workspace / ".repair-result.json").unlink(missing_ok=True)
+        else:
+            from app.agents.api_automation.self_healing.schemas import FailureDiagnosis
+
+            selection = resolve_model_selection("api_test_generation")
+            model = build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
+            repair_result = asyncio.run(
+                repair_failure(
+                    model=model,
+                    workspace=workspace,
+                    diagnosis=FailureDiagnosis.model_validate(diagnosis_data),
+                    context=context,
+                )
+            )
+            (workspace / ".repair-result.json").unlink(missing_ok=True)
         with connect() as db:
             api_automation_repo.update_repair_attempt(db, attempt_id, status="candidate_validating")
         collect_result = collect_script_suite(suite_path=workspace, timeout=120)
@@ -358,6 +497,13 @@ def apply_repair_attempt(project_id: str, attempt_id: str, comment: str, actor) 
             api_automation_repo.update_repair_attempt(db, attempt_id, status="superseded")
         raise api_error(409, "REPAIR_BASE_CHANGED", "正式测试项目已变化，请重新分析。")
     next_revision = session["current_revision"] + 1
+    validation = api_automation_repo.loads_json(attempt["validation_json"], {})
+    repair_result = validation.get("repair_result", {})
+    changed_case_ids = {
+        str(item.get("case_id"))
+        for item in repair_result.get("case_updates", [])
+        if isinstance(item, dict) and item.get("case_id")
+    }
     backup = suite_path.parent / f".{suite_path.name}.repair-backup"
     staging = suite_path.parent / f".{suite_path.name}.repair-staging"
     with project_workspace_lock(project_id):
@@ -367,7 +513,13 @@ def apply_repair_attempt(project_id: str, attempt_id: str, comment: str, actor) 
         if not collect_result["ok"]:
             raise api_error(422, "API_REPAIR_COLLECTION_FAILED", collect_result["stderr"] or "候选修复收集失败。")
         with connect() as db:
-            _load_case_updates(staging, project_id, db)
+            _load_case_updates(
+                staging,
+                project_id,
+                db,
+                case_ids=changed_case_ids,
+                created_by=actor["id"],
+            )
             shutil.rmtree(backup, ignore_errors=True)
             suite_path.rename(backup)
             try:

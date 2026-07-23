@@ -115,6 +115,35 @@ def _stored_point(key: str, title: str) -> dict:
     }
 
 
+def test_atomize_module_obligations_keeps_multi_agent_independently_coverable():
+    obligations = test_point_service._atomize_module_obligations(
+        [
+            RequirementObligation(
+                obligation_key="REQ-003",
+                source_section="涉及配置项位置",
+                statement="支持思考模式的模型显示思考模式开关",
+                obligation_type="display",
+                modules=[
+                    "自主规划Agent - 对话模型配置弹窗",
+                    "Multi-Agent - Agent节点 - 对话模型配置弹窗",
+                    "写作Agent - 正文生成模型配置弹窗",
+                ],
+            )
+        ]
+    )
+
+    assert [item.obligation_key for item in obligations] == [
+        "REQ-003.M01",
+        "REQ-003.M02",
+        "REQ-003.M03",
+    ]
+    assert [item.modules for item in obligations] == [
+        ["自主规划Agent - 对话模型配置弹窗"],
+        ["Multi-Agent - Agent节点 - 对话模型配置弹窗"],
+        ["写作Agent - 正文生成模型配置弹窗"],
+    ]
+
+
 def test_generation_supplements_only_missing_obligations(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -2,7 +2,11 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from app.agents.model_selection import build_agent_model, resolve_model_selection
+from app.agents.model_selection import (
+    build_agent_model,
+    resolve_model_selection,
+    thinking_disabled_extra_body,
+)
 from app.agents.performance_testing.diagnosis.agent import performance_diagnosis_agent
 from app.schemas.performance_analysis import PerformanceDiagnosis
 
@@ -19,7 +23,10 @@ def diagnose_performance(
     agent_factory: Callable[[Any], Any] = performance_diagnosis_agent,
 ) -> tuple[PerformanceDiagnosis, str]:
     selection = selection_resolver(CAPABILITY_ID)
-    model = model_builder(selection)
+    model = model_builder(
+        selection,
+        extra_body=thinking_disabled_extra_body(selection),
+    )
     agent = agent_factory(model)
     result = agent.invoke(
         {

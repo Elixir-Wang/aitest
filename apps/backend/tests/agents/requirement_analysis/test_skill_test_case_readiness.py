@@ -13,14 +13,14 @@ def _read(relative_path: str) -> str:
     return (SKILL_DIR / relative_path).read_text(encoding="utf-8")
 
 
-def test_skill_defines_evidence_bound_mermaid_triggers() -> None:
+def test_skill_keeps_mermaid_optional_and_evidence_bound() -> None:
     content = _read("SKILL.md")
 
-    assert "至少 3 个已确认步骤" in content
-    assert "stateDiagram-v2" in content
-    assert "sequenceDiagram" in content
+    assert "不是必填项" in content
+    assert "复杂流程、状态机或多方交互" in content
     assert "图表只表达已确认事实" in content
     assert "即使 Mermaid 无法渲染" in content
+    assert "Mermaid 是必须的" not in content
 
 
 def test_understanding_is_organized_for_downstream_test_cases() -> None:

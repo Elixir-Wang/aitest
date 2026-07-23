@@ -352,6 +352,67 @@ class ApiScenarioStepsReplaceIn(_StrippedModel):
     steps: list[ApiScenarioStepIn] = Field(default_factory=list, max_length=100)
 
 
+class ApiScenarioAiSourceScope(_StrippedModel):
+    endpoint_ids: list[str] = Field(default_factory=list, max_length=100)
+    tags: list[str] = Field(default_factory=list, max_length=30)
+
+
+class ApiScenarioAiConstraints(_StrippedModel):
+    environment_id: str | None = None
+    max_steps: int = Field(default=8, ge=1, le=100)
+    allow_write: bool = False
+    require_cleanup: bool = False
+
+
+class ApiScenarioAiPlanIn(_StrippedModel):
+    goal: str = Field(min_length=1, max_length=4000)
+    source_scope: ApiScenarioAiSourceScope = Field(default_factory=ApiScenarioAiSourceScope)
+    constraints: ApiScenarioAiConstraints = Field(default_factory=ApiScenarioAiConstraints)
+    scenario_id: str | None = None
+
+
+class ApiScenarioAiPlanNode(_StrippedModel):
+    id: str = Field(min_length=1, max_length=100)
+    type: Literal["api_request", "condition", "wait", "poll", "assign"]
+    endpoint_id: str | None = None
+    name: str = ""
+    request_overrides: dict[str, Any] = Field(default_factory=dict)
+    bindings: list[dict[str, Any]] = Field(default_factory=list)
+    extractors: list[dict[str, Any]] = Field(default_factory=list)
+    assertions: list[dict[str, Any]] = Field(default_factory=list)
+    control_config: dict[str, Any] = Field(default_factory=dict)
+    on_failure: Literal["stop", "continue", "always_run"] = "stop"
+    enabled: bool = True
+
+
+class ApiScenarioAiPlanEdge(_StrippedModel):
+    source: str = Field(min_length=1, max_length=100)
+    target: str = Field(min_length=1, max_length=100)
+    condition: str = "success"
+
+
+class ApiScenarioAiPlanOut(_StrippedModel):
+    plan_id: str
+    plan_version: int = 1
+    graph_version: int = 1
+    scenario_name: str
+    nodes: list[ApiScenarioAiPlanNode] = Field(default_factory=list)
+    edges: list[ApiScenarioAiPlanEdge] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    unresolved_items: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=1)
+    validation: dict[str, Any] = Field(default_factory=dict)
+    expected_revision: int | None = None
+    expires_at: str
+
+
+class ApiScenarioAiPlanApplyIn(_StrippedModel):
+    scenario_id: str = Field(min_length=1)
+    expected_revision: int = Field(ge=0)
+    confirmation: str = Field(min_length=1, max_length=100)
+
+
 class ApiScenarioPublishIn(_StrippedModel):
     confirm_asset_changes: bool = False
 

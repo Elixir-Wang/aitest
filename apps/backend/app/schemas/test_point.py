@@ -57,6 +57,12 @@ class TestPointGenerationRunOut(BaseModel):
     status: str
     input_snapshot: dict
     error_message: str
+    coverage_status: str = "pending"
+    obligation_count: int = 0
+    covered_obligation_count: int = 0
+    missing_obligations: list[str] = Field(default_factory=list)
+    unsupported_assumptions: list[str] = Field(default_factory=list)
+    supplement_round: int = 0
     created_at: str
     finished_at: str | None = None
 

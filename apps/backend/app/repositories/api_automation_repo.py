@@ -1092,10 +1092,8 @@ def update_repair_attempt(
 def find_api_run(db: Connection, run_id: str) -> Row | None:
     return db.execute(
         """
-        SELECT runs.*, users.nickname AS created_by_nickname, users.username AS created_by_username
-        FROM api_automation_runs AS runs
-        LEFT JOIN users ON users.id = runs.created_by
-        WHERE runs.id = ?
+        SELECT * FROM api_automation_runs
+        WHERE id = ?
         """,
         (run_id,),
     ).fetchone()
@@ -1130,9 +1128,8 @@ def list_api_runs(
     offset = (page - 1) * page_size
     rows = db.execute(
         f"""
-        SELECT runs.*, users.nickname AS created_by_nickname, users.username AS created_by_username
+        SELECT runs.*
         FROM api_automation_runs AS runs
-        LEFT JOIN users ON users.id = runs.created_by
         WHERE {where_clause}
         ORDER BY runs.created_at DESC, runs.id DESC
         LIMIT ? OFFSET ?

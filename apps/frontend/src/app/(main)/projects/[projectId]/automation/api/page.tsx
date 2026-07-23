@@ -1130,7 +1130,7 @@ export default function Page() {
       activeTab={activeTab}
       breadcrumbs={moduleBreadcrumbs("apiAutomation", ...(selectedCaseSet ? [{ label: selectedCaseSet.name }] : []))}
       description="导入 OpenAPI、生成接口自动化用例、生成 pytest 脚本并执行。"
-      fillViewport={activeTab === "接口用例"}
+      fillViewport={activeTab === "接口用例" || activeTab === "测试脚本"}
       onTabChange={setActiveTab}
       projectScope="project"
       tabActions={
@@ -1723,7 +1723,7 @@ export default function Page() {
       )}
 
       {activeTab === "测试脚本" && (
-        <div className="grid min-h-[38rem] overflow-hidden rounded-xl border bg-background xl:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 overflow-hidden rounded-xl border bg-background xl:grid-cols-[360px_minmax(0,1fr)]">
           <aside className="no-scrollbar flex min-h-0 flex-col overflow-y-auto overflow-x-hidden border-r bg-muted/20">
             <div className="border-b p-3">
               <div className="flex items-center gap-2">

@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi.responses import FileResponse
 
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.ui_automation import (
+    UiAutomationAssetDetailOut,
     UiAutomationAssetOut,
     UiAutomationExecutionCreateIn,
     UiAutomationExecutionRunOut,
     UiAutomationGenerateIn,
     UiAutomationGenerationRunOut,
+    UiAutomationLiveViewOut,
+    UiAutomationRunLogsOut,
 )
 from app.services.ui_automation import service
 
@@ -33,14 +37,29 @@ def get_generation_run(project_id: str, run_id: str, actor=Depends(current_user)
     return service.get_generation_run(project_id, run_id, actor)
 
 
+@router.get("/generation-runs", response_model=list[UiAutomationGenerationRunOut])
+def list_generation_runs(project_id: str, actor=Depends(current_user)) -> list[dict]:
+    return service.list_generation_runs(project_id, actor)
+
+
 @router.get("/assets", response_model=list[UiAutomationAssetOut])
 def list_assets(project_id: str, actor=Depends(current_user)) -> list[dict]:
     return service.list_assets(project_id, actor)
 
 
-@router.get("/assets/{asset_id}", response_model=UiAutomationAssetOut)
+@router.get("/assets/{asset_id}", response_model=UiAutomationAssetDetailOut)
 def get_asset(project_id: str, asset_id: str, actor=Depends(current_user)) -> dict:
     return service.get_asset(project_id, asset_id, actor)
+
+
+@router.get("/assets/{asset_id}/generation-runs", response_model=list[UiAutomationGenerationRunOut])
+def list_asset_generation_runs(project_id: str, asset_id: str, actor=Depends(current_user)) -> list[dict]:
+    return service.list_asset_generation_runs(project_id, asset_id, actor)
+
+
+@router.get("/assets/{asset_id}/runs", response_model=list[UiAutomationExecutionRunOut])
+def list_asset_execution_runs(project_id: str, asset_id: str, actor=Depends(current_user)) -> list[dict]:
+    return service.list_asset_execution_runs(project_id, asset_id, actor)
 
 
 @router.post("/assets/{asset_id}/runs", response_model=UiAutomationExecutionRunOut)
@@ -61,3 +80,33 @@ def get_execution_run(project_id: str, run_id: str, actor=Depends(current_user))
     result = service.get_execution_run(project_id, run_id, actor)
     return result
 
+
+@router.delete("/runs/{run_id}", status_code=204)
+def delete_execution_run(project_id: str, run_id: str, actor=Depends(require_admin)) -> None:
+    service.delete_execution_run(project_id, run_id, actor)
+
+
+@router.get("/runs/{run_id}/logs", response_model=UiAutomationRunLogsOut)
+def get_execution_logs(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
+    return service.get_execution_logs(project_id, run_id, actor)
+
+
+@router.get("/runs/{run_id}/live-view", response_model=UiAutomationLiveViewOut)
+def get_execution_live_view(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
+    return service.get_execution_live_view(project_id, run_id, actor)
+
+
+@router.get("/runs/{run_id}/live-view/stream")
+def stream_execution_live_view(project_id: str, run_id: str, token: str = Query(min_length=32)):
+    return service.stream_execution_live_view(project_id, run_id, token)
+
+
+@router.get("/runs/{run_id}/artifacts/{artifact_kind}", response_class=FileResponse)
+def get_execution_artifact(
+    project_id: str,
+    run_id: str,
+    artifact_kind: str,
+    index: int = Query(default=0, ge=0),
+    actor=Depends(current_user),
+):
+    return service.get_execution_artifact(project_id, run_id, artifact_kind, index, actor)

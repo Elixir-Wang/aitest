@@ -63,6 +63,25 @@ export function moveScenarioStep(steps, activeId, overId) {
   return next.map((step, stepOrder) => ({ ...step, step_order: stepOrder }));
 }
 
+// Keep persistence payloads separate from server response metadata.
+export function toScenarioStepInput(step, stepOrder) {
+  return {
+    id: step.id,
+    step_type: step.step_type,
+    api_test_case_id: step.api_test_case_id ?? null,
+    endpoint_id: step.endpoint_id ?? null,
+    step_order: stepOrder,
+    name: step.name || "",
+    request_overrides: step.request_overrides || {},
+    bindings: step.bindings || [],
+    extractors: step.extractors || [],
+    assertions: step.assertions || [],
+    control_config: step.control_config || {},
+    on_failure: step.on_failure || "stop",
+    enabled: step.enabled !== false,
+  };
+}
+
 export function buildVariableOptions(steps, activeStepId, scenarioVariables = {}, environmentVariables = {}) {
   const activeIndex = steps.findIndex((step) => step.id === activeStepId);
   const precedingSteps = activeIndex < 0 ? steps : steps.slice(0, activeIndex);

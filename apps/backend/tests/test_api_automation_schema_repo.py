@@ -546,17 +546,21 @@ def test_api_run_snapshot_and_legacy_history_include_environment_and_endpoint_co
     assert created["execution_snapshot"]["environment"]["name"] == "集成测试环境"
     assert created["execution_snapshot"]["endpoint_count"] == 1
     assert created["execution_snapshot"]["scripts"][0]["endpoint_id"] == "apiend-1"
+    assert "created_by_name" not in created
+    assert "created_by_name" not in created["execution_snapshot"]
 
     with connect() as db:
         db.execute(
-            "UPDATE api_automation_runs SET execution_snapshot_json = '{}' WHERE id = ?",
-            (created["id"],),
+            "UPDATE api_automation_runs SET execution_snapshot_json = ? WHERE id = ?",
+            ('{"created_by_name":"历史执行人"}', created["id"]),
         )
 
     legacy = service.list_api_runs("project-1", actor)["items"][0]
     assert legacy["execution_snapshot"]["environment"]["name"] == "集成测试环境"
     assert legacy["execution_snapshot"]["endpoint_count"] == 1
     assert legacy["execution_snapshot"]["case_count"] == 3
+    assert "created_by_name" not in legacy
+    assert "created_by_name" not in legacy["execution_snapshot"]
 
     with connect() as db:
         db.execute("DELETE FROM api_test_scripts WHERE id = ?", ("apiscript-1",))

@@ -14,7 +14,10 @@ import {
   type ApiAutomationScenarioRunResult,
   type ApiAutomationScenarioStep,
   ApiRequestError,
+  type ApiScenarioAiPlan,
+  applyApiScenarioAiPlan,
   createApiAutomationScenario,
+  createApiScenarioAiPlan,
   executeApiAutomationScenario,
   getApiAutomationRun,
   getApiAutomationScenario,
@@ -33,6 +36,7 @@ import {
   createEndpointStep,
   createUtilityStep,
   moveScenarioStep,
+  toScenarioStepInput,
   validateScenarioDraft,
 } from "./api-scenario-model.mjs";
 
@@ -63,6 +67,8 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
   const [latestRunStatus, setLatestRunStatus] = useState("");
   const [scenarioRunResult, setScenarioRunResult] = useState<ApiAutomationScenarioRunResult | null>(null);
   const [runDrawerOpen, setRunDrawerOpen] = useState(false);
+  const [aiPlan, setAiPlan] = useState<ApiScenarioAiPlan | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
 
   const applyScenario = useCallback((nextScenario: ApiAutomationScenario) => {
     setScenario(nextScenario);
@@ -202,11 +208,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       const saved = await replaceApiAutomationScenarioSteps(
         projectId,
         target.id,
-        draft.steps.map((step, stepOrder) => ({
-          ...step,
-          api_test_case_id: null,
-          step_order: stepOrder,
-        })),
+        draft.steps.map((step, stepOrder) => toScenarioStepInput(step, stepOrder)),
       );
       applyScenario(saved);
       setValidation(null);
@@ -301,6 +303,50 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     });
   }
 
+  async function generateAiPlan(goal: string, allowWrite: boolean, maxSteps: number) {
+    setAiBusy(true);
+    try {
+      const saved = await saveScenario(false);
+      const plan = await createApiScenarioAiPlan(projectId, {
+        goal,
+        scenario_id: saved.id,
+        constraints: {
+          environment_id: selectedEnvironmentId || null,
+          max_steps: maxSteps,
+          allow_write: allowWrite,
+          require_cleanup: false,
+        },
+      });
+      setAiPlan(plan);
+      return plan;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "AI 编排失败");
+      return null;
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function applyAiPlan() {
+    if (!aiPlan || !scenario || aiPlan.expected_revision === null) return;
+    setAiBusy(true);
+    try {
+      const applied = await applyApiScenarioAiPlan(projectId, aiPlan.plan_id, {
+        scenario_id: scenario.id,
+        expected_revision: aiPlan.expected_revision,
+        confirmation: "apply_preview",
+      });
+      applyScenario(applied);
+      setAiPlan(null);
+      setValidation(null);
+      toast.success("AI 编排已应用到场景草稿");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "AI 编排应用失败");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   async function pollScenarioRun(runId: string) {
     for (let attempt = 0; attempt < 120; attempt += 1) {
       const run = await getApiAutomationRun(projectId, runId);
@@ -331,6 +377,8 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     latestRunStatus,
     scenarioRunResult,
     runDrawerOpen,
+    aiPlan,
+    aiBusy,
     revisions,
     loading,
     loadError,
@@ -351,6 +399,9 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       publishScenario: handlePublish,
       executeScenario: handleExecute,
       restoreRevision: handleRestoreRevision,
+      generateAiPlan,
+      applyAiPlan,
+      discardAiPlan: () => setAiPlan(null),
     },
   };
 }

@@ -14,19 +14,6 @@ class RequirementInput(BaseModel):
     auxiliary_docs: list[str] = Field(default_factory=list, description="辅助文档列表")
 
 
-class RequirementUnderstanding(BaseModel):
-    """需求理解（9个标准章节）"""
-    background: str = Field(..., description="1. 需求背景")
-    goals: str = Field(..., description="2. 目标与价值")
-    users: str = Field(..., description="3. 用户角色与使用场景")
-    scope: str = Field(..., description="4. 功能范围")
-    flow: str = Field(..., description="5. 业务流程")
-    states: str = Field(..., description="6. 状态流转")
-    rules: str = Field(..., description="7. 业务规则")
-    ui: str = Field(..., description="8. 页面与交互")
-    data: str = Field(..., description="9. 数据与系统交互")
-
-
 class ClarificationItem(BaseModel):
     """单个澄清问题"""
     id: str = Field(..., pattern=r"^clar-\d{3}$", description="问题ID，如 clar-001")
@@ -45,7 +32,11 @@ class ClarificationItem(BaseModel):
 
 class RequirementAnalysisResult(BaseModel):
     """需求分析完整结果"""
-    understanding: RequirementUnderstanding = Field(..., description="需求理解")
+    understanding_markdown: str = Field(
+        ...,
+        min_length=1,
+        description="需求理解文档，使用 Markdown 编写并包含九个标准章节。",
+    )
     clarifications: list[ClarificationItem] = Field(
         min_length=1,
         description=(
@@ -59,39 +50,6 @@ class RequirementAnalysisResult(BaseModel):
     def status(self) -> Literal["completed", "needs_clarification"]:
         """根据是否有澄清问题自动判断状态"""
         return "needs_clarification" if self.clarifications else "completed"
-
-    def to_understanding_markdown(self) -> str:
-        """转换为需求理解 Markdown"""
-        u = self.understanding
-        return f"""# 需求理解
-
-## 1. 需求背景
-{u.background}
-
-## 2. 目标与价值
-{u.goals}
-
-## 3. 用户角色与使用场景
-{u.users}
-
-## 4. 功能范围
-{u.scope}
-
-## 5. 业务流程
-{u.flow}
-
-## 6. 状态流转
-{u.states}
-
-## 7. 业务规则
-{u.rules}
-
-## 8. 页面与交互
-{u.ui}
-
-## 9. 数据与系统交互
-{u.data}
-"""
 
     def to_clarification_markdown(self) -> str:
         """转换为待澄清 Markdown"""
@@ -113,7 +71,6 @@ class RequirementAnalysisResult(BaseModel):
 
 __all__ = [
     "RequirementInput",
-    "RequirementUnderstanding",
     "ClarificationItem",
     "RequirementAnalysisResult",
 ]

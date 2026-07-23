@@ -8,7 +8,6 @@ from app.agents.requirement_analysis.schemas import (
     ClarificationItem,
     RequirementAnalysisResult,
     RequirementInput,
-    RequirementUnderstanding,
 )
 from app.agents.model_selection import ModelSelection
 
@@ -35,23 +34,13 @@ def test_requirement_analysis_uses_new_deepagents_layout() -> None:
 
 def test_requirement_analysis_contract_is_minimal() -> None:
     assert set(RequirementInput.model_fields) == {"requirement_name", "requirement_content", "auxiliary_docs"}
-    assert set(RequirementAnalysisResult.model_fields) == {"understanding", "clarifications"}
+    assert set(RequirementAnalysisResult.model_fields) == {"understanding_markdown", "clarifications"}
 
 
 def test_requirement_analysis_requires_clarification_items() -> None:
     with pytest.raises(ValidationError):
         RequirementAnalysisResult(
-            understanding=RequirementUnderstanding(
-                background="背景",
-                goals="目标",
-                users="用户",
-                scope="范围",
-                flow="流程",
-                states="状态",
-                rules="规则",
-                ui="界面",
-                data="数据",
-            ),
+            understanding_markdown="# 需求理解",
             clarifications=[],
         )
 
@@ -81,17 +70,7 @@ async def test_requirement_analysis_service_returns_structured_response(monkeypa
     from app.agents.requirement_analysis.service import analyze_requirement
 
     expected = RequirementAnalysisResult(
-        understanding=RequirementUnderstanding(
-            background="原文说明用户需要完成登录能力，以便进入系统使用受保护功能。",
-            goals="目标是让已注册用户能够通过账号完成身份识别，进入系统后继续办理业务。",
-            users="主要用户为已注册用户，使用场景是在访问系统时输入账号凭证并进入工作台。",
-            scope="当前范围包含登录入口、凭证提交、系统校验和登录结果反馈。",
-            flow="用户打开登录页，输入账号信息并提交，系统校验后返回成功或失败结果。",
-            states="原文未说明。",
-            rules="原文未说明。",
-            ui="原文未说明。",
-            data="原文未说明。",
-        ),
+        understanding_markdown="# 需求理解\n\n## 1. 需求背景\n原文说明用户需要完成登录能力。",
         clarifications=[
             ClarificationItem(
                 id="clar-001",
@@ -132,17 +111,7 @@ async def test_requirement_analysis_disables_thinking_for_tool_strategy_models(m
     from app.agents.requirement_analysis.service import analyze_requirement
 
     expected = RequirementAnalysisResult(
-        understanding=RequirementUnderstanding(
-            background="已分析。",
-            goals="已分析。",
-            users="已分析。",
-            scope="已分析。",
-            flow="已分析。",
-            states="已分析。",
-            rules="已分析。",
-            ui="已分析。",
-            data="已分析。",
-        ),
+        understanding_markdown="# 需求理解\n\n## 1. 需求背景\n已分析。",
         clarifications=[
             ClarificationItem(  # type: ignore[call-arg]
                 id="clar-001",

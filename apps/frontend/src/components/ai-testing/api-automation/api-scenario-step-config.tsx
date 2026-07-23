@@ -47,7 +47,7 @@ export function ApiScenarioStepConfig({
 }: ApiScenarioStepConfigProps) {
   if (!activeStep) {
     return (
-      <div className="grid min-h-[620px] place-items-center bg-card">
+      <div className="grid min-h-0 place-items-center bg-card">
         <div className="max-w-sm text-center">
           <div className="font-semibold text-base">先添加接口资产</div>
           <p className="mt-2 text-muted-foreground text-sm leading-6">
@@ -68,36 +68,34 @@ export function ApiScenarioStepConfig({
   const utilityStep = ["assign", "condition", "wait"].includes(activeStep.step_type);
 
   return (
-    <section className="min-w-0 bg-card">
-      <div className="flex h-[72px] items-center justify-between border-b px-5">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            {endpoint ? (
-              <Badge className={cn("font-mono text-[10px]", methodTone[endpoint.method])} variant="outline">
-                {endpoint.method}
-              </Badge>
-            ) : null}
-            <Input
-              className="h-8 max-w-md border-transparent bg-transparent px-1 font-semibold text-sm shadow-none hover:border-border focus-visible:border-border"
-              onChange={(event) => onUpdateStep(activeStep.id, { name: event.target.value })}
-              value={activeStep.name}
-            />
-            <Badge className={utilityStep ? "bg-amber-50 text-amber-700" : undefined} variant="secondary">
-              {utilityStep ? "辅助节点" : activeStep.step_type === "poll" ? "轮询节点" : "接口资产"}
-            </Badge>
+    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-card">
+      {utilityStep ? null : (
+        <div className="flex h-[72px] shrink-0 items-center justify-between border-b px-5">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              {endpoint ? (
+                <Badge className={cn("font-mono text-[10px]", methodTone[endpoint.method])} variant="outline">
+                  {endpoint.method}
+                </Badge>
+              ) : null}
+              <Input
+                className="h-8 max-w-md border-transparent bg-transparent px-1 font-semibold text-sm shadow-none hover:border-border focus-visible:border-border"
+                onChange={(event) => onUpdateStep(activeStep.id, { name: event.target.value })}
+                value={activeStep.name}
+              />
+              <Badge variant="secondary">{activeStep.step_type === "poll" ? "轮询节点" : "接口资产"}</Badge>
+            </div>
+            <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+              {endpoint?.path ?? "请选择接口资产"}
+            </div>
           </div>
-          <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-            {endpoint?.path ?? (utilityStep ? utilityDescription(activeStep.step_type) : "请选择接口资产")}
-          </div>
-        </div>
-        {utilityStep ? null : (
           <Button disabled={!endpoint} size="sm" variant="outline">
             查看接口资产
           </Button>
-        )}
-      </div>
+        </div>
+      )}
       {utilityStep ? (
-        <div className="max-h-[548px] overflow-y-auto p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
           <UtilityStepEditor
             step={activeStep}
             variableOptions={variableOptions}
@@ -105,8 +103,11 @@ export function ApiScenarioStepConfig({
           />
         </div>
       ) : (
-        <Tabs className="gap-0" defaultValue="request">
-          <TabsList className="h-11 w-full justify-start rounded-none border-b bg-muted/15 px-5" variant="line">
+        <Tabs className="min-h-0 flex-1 gap-0" defaultValue="request">
+          <TabsList
+            className="h-11 w-full shrink-0 justify-start rounded-none border-b bg-muted/15 px-5"
+            variant="line"
+          >
             <TabsTrigger className="flex-none px-2" value="request">
               请求配置
             </TabsTrigger>
@@ -120,7 +121,7 @@ export function ApiScenarioStepConfig({
               执行控制
             </TabsTrigger>
           </TabsList>
-          <div className="max-h-[548px] overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             <TabsContent className="m-0 p-5" value="request">
               {activeStep.step_type === "poll" ? (
                 <PollEndpointSelector
@@ -439,7 +440,7 @@ function RequestEditor({
       <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-primary text-sm">
         参数结构来自接口资产；这里只配置当前场景的数据值与动态引用。
       </div>
-      <div className="mt-5 grid grid-cols-[180px_minmax(220px,1fr)_190px] gap-3 px-3 font-medium text-muted-foreground text-xs">
+      <div className="mt-5 grid min-w-0 grid-cols-[minmax(140px,0.8fr)_minmax(160px,1fr)_minmax(125px,0.7fr)] gap-3 px-3 font-medium text-muted-foreground text-xs">
         <span>参数</span>
         <span>值</span>
         <span>来源</span>
@@ -454,7 +455,7 @@ function RequestEditor({
             const literal = readPointer(requestOverrides, target);
             return (
               <div
-                className="grid min-h-16 grid-cols-[180px_minmax(220px,1fr)_190px] items-center gap-3 border-b px-3 py-2 last:border-b-0"
+                className="grid min-h-16 min-w-0 grid-cols-[minmax(140px,0.8fr)_minmax(160px,1fr)_minmax(125px,0.7fr)] items-center gap-3 border-b px-3 py-2 last:border-b-0"
                 key={`${field.location}:${field.key}`}
               >
                 <div>

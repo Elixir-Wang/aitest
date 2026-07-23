@@ -57,9 +57,28 @@ _ACCESS_FMT = (
 # agent 频道专用 logger 实例（通过 bind 携带 channel 标识）
 agent_logger = logger.bind(channel="agent")
 
+_configured_level: str | None = None
+_sink_ids: tuple[int, ...] = ()
+
+
+def _close_configured_sinks() -> None:
+    """Flush and remove async sinks before replacing or ending logging."""
+    global _configured_level, _sink_ids
+    if _configured_level is None:
+        return
+    logger.complete()
+    for sink_id in _sink_ids:
+        logger.remove(sink_id)
+    _configured_level = None
+    _sink_ids = ()
+
 
 def setup_logging(level: str = "INFO") -> None:
-    """初始化所有日志处理器，应在应用启动时调用一次。"""
+    """Initialize logging once per process, without accumulating async sinks."""
+    global _configured_level, _sink_ids
+    if _configured_level == level:
+        return
+    _close_configured_sinks()
     _create_log_dirs()
 
     # loguru 全局默认 extra（当请求上下文中无 trace_id 时使用 "-"）
@@ -69,7 +88,7 @@ def setup_logging(level: str = "INFO") -> None:
     logger.remove()
 
     # 控制台（DEBUG+，开发友好的彩色格式）
-    logger.add(
+    console_sink_id = logger.add(
         sys.stdout,
         format=_CONSOLE_FMT,
         level="DEBUG",
@@ -80,7 +99,7 @@ def setup_logging(level: str = "INFO") -> None:
     )
 
     # 通用应用日志（INFO+）
-    logger.add(
+    app_sink_id = logger.add(
         str(LOGS_DIR / "app" / "{time:YYYY-MM-DD}.log"),
         format=_FILE_FMT,
         level=level,
@@ -95,7 +114,7 @@ def setup_logging(level: str = "INFO") -> None:
     )
 
     # 错误日志（WARNING+，与 app 日志互补，专门用于排查问题）
-    logger.add(
+    error_sink_id = logger.add(
         str(LOGS_DIR / "error" / "{time:YYYY-MM-DD}.log"),
         format=_FILE_FMT,
         level="WARNING",
@@ -110,7 +129,7 @@ def setup_logging(level: str = "INFO") -> None:
     )
 
     # HTTP 访问日志（INFO+，只记录带 channel=access 的消息）
-    logger.add(
+    access_sink_id = logger.add(
         str(LOGS_DIR / "access" / "{time:YYYY-MM-DD}.log"),
         format=_ACCESS_FMT,
         level="INFO",
@@ -123,7 +142,7 @@ def setup_logging(level: str = "INFO") -> None:
     )
 
     # AI Agent 执行日志（DEBUG+，只记录带 channel=agent 的消息）
-    logger.add(
+    agent_sink_id = logger.add(
         str(LOGS_DIR / "agent" / "{time:YYYY-MM-DD}.log"),
         format=_FILE_FMT,
         level="DEBUG",
@@ -139,6 +158,19 @@ def setup_logging(level: str = "INFO") -> None:
 
     # 将 uvicorn / stdlib logging 路由到 loguru
     _intercept_stdlib_logging()
+    _sink_ids = (
+        console_sink_id,
+        app_sink_id,
+        error_sink_id,
+        access_sink_id,
+        agent_sink_id,
+    )
+    _configured_level = level
+
+
+def shutdown_logging() -> None:
+    """Flush and release multiprocessing resources owned by async sinks."""
+    _close_configured_sinks()
 
 
 # ── 内部工具 ──────────────────────────────────────────────────────────────────

@@ -8,13 +8,13 @@ import yaml
 from app.core.storage import resolve_stored_path
 
 
-ALLOWED_EVIDENCE_TYPES = {"page", "graph", "summary", "blocker", "snapshot", "trace", "screenshot"}
+ALLOWED_EVIDENCE_TYPES = {"page", "page_yaml", "graph", "summary", "blocker", "snapshot", "trace", "screenshot"}
 
 
 def build_case_data(source_case, *, automation_case_id: str) -> dict:
     steps = _loads_json(_value(source_case, "steps_json", "[]"), [])
     expected = str(_value(source_case, "expected_result", "")).strip()
-    return {
+    payload = {
         "schema_version": "v1",
         "project_id": _value(source_case, "project_id", ""),
         "automation_case_id": automation_case_id,
@@ -29,6 +29,10 @@ def build_case_data(source_case, *, automation_case_id: str) -> dict:
         "steps": [_normalize_step(step, index) for index, step in enumerate(steps, 1)],
         "expected_results": ([{"id": "expected-1", "text": expected}] if expected else []),
     }
+    parameters = _extract_step_parameters(steps)
+    if parameters:
+        payload["parameters"] = parameters
+    return payload
 
 
 def build_evidence_context(*, exploration_run_id: str, artifact_rows: list) -> dict:
@@ -70,6 +74,18 @@ def _normalize_step(step, index: int) -> dict:
     return {"id": f"step-{index}", "action": str(step)}
 
 
+def _extract_step_parameters(steps: list) -> dict:
+    parameters = {}
+    for step in steps:
+        if not isinstance(step, dict) or not isinstance(step.get("parameter"), dict):
+            continue
+        definition = dict(step["parameter"])
+        name = str(definition.pop("name", "")).strip()
+        if name:
+            parameters[name] = definition
+    return parameters
+
+
 def _loads_json(value, default):
     if isinstance(value, (list, dict)):
         return value
@@ -93,4 +109,3 @@ def _value(row, key: str, default=None):
 
 
 __all__ = ["build_case_data", "build_evidence_context"]
-

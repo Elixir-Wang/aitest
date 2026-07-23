@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 TestPointCategory = Literal["功能", "异常", "边界", "权限", "数据", "状态", "性能", "安全", "兼容性"]
@@ -19,6 +19,8 @@ class TestPointGenerationInput(BaseModel):
 
 
 class GeneratedTestPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     point_key: str = Field(min_length=1, max_length=120)
     title: str = Field(min_length=1, max_length=240)
     module: str = Field(default="", max_length=120)
@@ -32,8 +34,24 @@ class GeneratedTestPoint(BaseModel):
     requirement_obligation_keys: list[str] = Field(min_length=1)
 
 
+class GeneratedTestPointDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    module: str = Field(min_length=1, max_length=120)
+    test_point: str = Field(min_length=1, max_length=240)
+    priority: TestPointPriority
+
+
+class TestPointGenerationDraftResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    points: list[GeneratedTestPointDraft] = Field(min_length=1)
+
+
 class TestPointGenerationResult(BaseModel):
-    points: list[GeneratedTestPoint]
+    model_config = ConfigDict(extra="forbid")
+
+    points: list[GeneratedTestPoint] = Field(min_length=1)
     unsupported_assumptions: list[str] = Field(default_factory=list)
 
 
@@ -76,11 +94,13 @@ class TestPointCoverageResult(BaseModel):
 
 __all__ = [
     "GeneratedTestPoint",
+    "GeneratedTestPointDraft",
     "RequirementObligation",
     "RequirementObligationExtractionResult",
     "TestPointCoverageResult",
     "TestPointGenerationInput",
     "TestPointGenerationResult",
+    "TestPointGenerationDraftResult",
     "TestPointCategory",
     "TestPointPriority",
 ]

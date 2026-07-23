@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.api.v1 import v1_router
-from app.core.logging import setup_logging
+from app.core.logging import setup_logging, shutdown_logging
 from app.core.response import ApiResponseMiddleware, ApiUnhandledExceptionMiddleware
 from app.seed.init_db import init_db
 from app.core.db import connect
@@ -49,6 +49,8 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup() -> None:
+    # TestClient and reloaders can run multiple lifespan cycles in one process.
+    setup_logging()
     init_db()
     with connect() as db:
         run_repo.recover_stale_runs(db)
@@ -64,6 +66,7 @@ def startup() -> None:
 @app.on_event("shutdown")
 def shutdown() -> None:
     event_bus.close_all()
+    ui_automation_service.live_view.shutdown_all()
     # 杀掉所有 browser-session.mjs Node 子进程（正常路径由 runtime_context 关闭，
     # 但 Ctrl+C / kill 时 ContextVar 未执行，需要兜底）
     import subprocess, sys
@@ -82,6 +85,7 @@ def shutdown() -> None:
     except Exception:
         pass
     logger.info("Application shutdown signal handled")
+    shutdown_logging()
 
 
 app.add_middleware(ApiResponseMiddleware)

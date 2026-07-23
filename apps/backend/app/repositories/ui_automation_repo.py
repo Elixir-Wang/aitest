@@ -8,7 +8,8 @@ SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS ui_automation_generation_runs (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
-  test_case_id TEXT NOT NULL,
+  test_case_id TEXT,
+  manual_test_case_id TEXT,
   environment_id TEXT NOT NULL,
   exploration_run_id TEXT NOT NULL DEFAULT '',
   task_id TEXT NOT NULL DEFAULT '',
@@ -20,7 +21,8 @@ CREATE TABLE IF NOT EXISTS ui_automation_generation_runs (
   started_at TEXT,
   finished_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK ((test_case_id IS NOT NULL) != (manual_test_case_id IS NOT NULL))
 );
 
 CREATE INDEX IF NOT EXISTS idx_ui_generation_project_created
@@ -29,7 +31,8 @@ CREATE INDEX IF NOT EXISTS idx_ui_generation_project_created
 CREATE TABLE IF NOT EXISTS ui_automation_assets (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
-  test_case_id TEXT NOT NULL,
+  test_case_id TEXT,
+  manual_test_case_id TEXT,
   source_version INTEGER NOT NULL DEFAULT 1,
   generation_run_id TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'ready',
@@ -42,11 +45,15 @@ CREATE TABLE IF NOT EXISTS ui_automation_assets (
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(project_id, test_case_id)
+  CHECK ((test_case_id IS NOT NULL) != (manual_test_case_id IS NOT NULL))
 );
 
 CREATE INDEX IF NOT EXISTS idx_ui_assets_project_updated
   ON ui_automation_assets(project_id, updated_at);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ui_assets_generated_case
+  ON ui_automation_assets(project_id, test_case_id) WHERE test_case_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ui_assets_manual_case
+  ON ui_automation_assets(project_id, manual_test_case_id) WHERE manual_test_case_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS ui_automation_execution_runs (
   id TEXT PRIMARY KEY,
@@ -60,6 +67,7 @@ CREATE TABLE IF NOT EXISTS ui_automation_execution_runs (
   stdout_path TEXT NOT NULL DEFAULT '',
   stderr_path TEXT NOT NULL DEFAULT '',
   trace_path TEXT NOT NULL DEFAULT '',
+  video_path TEXT NOT NULL DEFAULT '',
   screenshot_paths_json TEXT NOT NULL DEFAULT '[]',
   error_message TEXT NOT NULL DEFAULT '',
   created_by TEXT NOT NULL,
@@ -79,7 +87,8 @@ def create_generation_run(
     *,
     run_id: str,
     project_id: str,
-    test_case_id: str,
+    test_case_id: str | None,
+    manual_test_case_id: str | None,
     environment_id: str,
     exploration_run_id: str,
     created_by: str,
@@ -87,15 +96,49 @@ def create_generation_run(
     db.execute(
         """
         INSERT INTO ui_automation_generation_runs (
-          id, project_id, test_case_id, environment_id, exploration_run_id, task_id, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          id, project_id, test_case_id, manual_test_case_id, environment_id,
+          exploration_run_id, task_id, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (run_id, project_id, test_case_id, environment_id, exploration_run_id, f"ui_generation:{run_id}", created_by),
+        (run_id, project_id, test_case_id, manual_test_case_id, environment_id, exploration_run_id,
+         f"ui_generation:{run_id}", created_by),
     )
 
 
 def find_generation_run(db: Connection, run_id: str) -> Row | None:
     return db.execute("SELECT * FROM ui_automation_generation_runs WHERE id = ?", (run_id,)).fetchone()
+
+
+def list_generation_runs(db: Connection, project_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT *
+        FROM ui_automation_generation_runs
+        WHERE project_id = ?
+        ORDER BY updated_at DESC, created_at DESC
+        """,
+        (project_id,),
+    ).fetchall()
+
+
+def list_asset_generation_runs(db: Connection, asset: Row) -> list[Row]:
+    return db.execute(
+        """
+        SELECT *
+        FROM ui_automation_generation_runs
+        WHERE project_id = ?
+          AND ((test_case_id = ? AND ? IS NOT NULL)
+               OR (manual_test_case_id = ? AND ? IS NOT NULL))
+        ORDER BY created_at DESC
+        """,
+        (
+            asset["project_id"],
+            asset["test_case_id"],
+            asset["test_case_id"],
+            asset["manual_test_case_id"],
+            asset["manual_test_case_id"],
+        ),
+    ).fetchall()
 
 
 def list_active_generation_runs(db: Connection) -> list[Row]:
@@ -133,7 +176,8 @@ def upsert_asset(
     *,
     asset_id: str,
     project_id: str,
-    test_case_id: str,
+    test_case_id: str | None,
+    manual_test_case_id: str | None,
     source_version: int,
     generation_run_id: str,
     status: str,
@@ -146,18 +190,25 @@ def upsert_asset(
     created_by: str,
 ) -> str:
     existing = db.execute(
-        "SELECT id FROM ui_automation_assets WHERE project_id = ? AND test_case_id = ?",
-        (project_id, test_case_id),
+        """
+        SELECT id FROM ui_automation_assets
+        WHERE project_id = ?
+          AND ((test_case_id = ? AND ? IS NOT NULL)
+               OR (manual_test_case_id = ? AND ? IS NOT NULL))
+        """,
+        (project_id, test_case_id, test_case_id, manual_test_case_id, manual_test_case_id),
     ).fetchone()
     resolved_id = existing["id"] if existing else asset_id
     db.execute(
         """
         INSERT INTO ui_automation_assets (
-          id, project_id, test_case_id, source_version, generation_run_id, status,
+          id, project_id, test_case_id, manual_test_case_id, source_version, generation_run_id, status,
           pytest_node_id, suite_path, test_file_path, data_file_path, plan_file_path,
           source_hash, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(project_id, test_case_id) DO UPDATE SET
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          test_case_id = excluded.test_case_id,
+          manual_test_case_id = excluded.manual_test_case_id,
           source_version = excluded.source_version,
           generation_run_id = excluded.generation_run_id,
           status = excluded.status,
@@ -173,6 +224,7 @@ def upsert_asset(
             resolved_id,
             project_id,
             test_case_id,
+            manual_test_case_id,
             source_version,
             generation_run_id,
             status,
@@ -222,10 +274,26 @@ def find_execution_run(db: Connection, run_id: str) -> Row | None:
     return db.execute("SELECT * FROM ui_automation_execution_runs WHERE id = ?", (run_id,)).fetchone()
 
 
+def list_execution_runs(db: Connection, project_id: str, asset_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT *
+        FROM ui_automation_execution_runs
+        WHERE project_id = ? AND asset_id = ?
+        ORDER BY created_at DESC
+        """,
+        (project_id, asset_id),
+    ).fetchall()
+
+
 def list_active_execution_runs(db: Connection) -> list[Row]:
     return db.execute(
         "SELECT * FROM ui_automation_execution_runs WHERE status IN ('queued', 'running')"
     ).fetchall()
+
+
+def delete_execution_run(db: Connection, run_id: str) -> None:
+    db.execute("DELETE FROM ui_automation_execution_runs WHERE id = ?", (run_id,))
 
 
 def update_execution_run(db: Connection, run_id: str, **fields) -> None:
@@ -235,6 +303,7 @@ def update_execution_run(db: Connection, run_id: str, **fields) -> None:
         "stdout_path",
         "stderr_path",
         "trace_path",
+        "video_path",
         "error_message",
         "started_at",
         "finished_at",

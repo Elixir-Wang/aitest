@@ -3,6 +3,7 @@ import secrets
 from pathlib import Path
 
 from app.agents.test_point_generation import extract_requirement_obligations, generate_test_points
+from app.agents.test_point_generation.coverage import evaluate_test_point_coverage
 from app.agents.test_point_generation.schemas import RequirementObligation, TestPointGenerationInput
 from app.core.db import connect
 from app.core.exceptions import api_error
@@ -51,14 +52,19 @@ def get_overview(project_id: str, document_id: str, actor) -> dict:
         run = test_point_repo.find_run_by_version(db, document_id, version["id"])
         rows = test_point_repo.list_points(db, document_id, version["id"])
         point_links = test_point_repo.list_point_obligation_links(db, version["id"]) if rows else {}
-        obligations = test_point_repo.list_obligations(db, document_id, version["id"]) if rows else []
+        obligations = test_point_repo.list_obligations(db, document_id, version["id"]) if run else []
         return {
             "requirement_version_id": version["id"],
             "requirement_version_no": version["version_no"],
             "run": _serialize_run(run),
             "points": [_serialize_point(row, point_links) for row in rows],
             "markdown_content": serialize_test_points([_serialize_internal_point(row) for row in rows]),
-            "coverage_summary": _compute_coverage_summary(run, point_links, obligations) if run else {
+            "coverage_summary": _compute_coverage_summary(
+                run,
+                point_links,
+                obligations,
+                {row["id"]: row["module"] for row in rows},
+            ) if run else {
                 "status": "pending",
                 "obligation_count": 0,
                 "covered_obligation_count": 0,
@@ -200,25 +206,117 @@ async def execute_generation_run(run_id: str) -> None:
                 requirement_version_id=version["id"],
             )
         )
-        obligations = [RequirementObligation(**ob.model_dump()) for ob in obligation_result.obligations]
-        logger.info("execute_generation_run: calling generate_test_points | run_id={}, requirement={}, obligations_count={}", run_id, document["name"], len(obligations))
-        result = await generate_test_points(
-            TestPointGenerationInput(
-                requirement_name=document["name"],
-                requirement_content=content,
-                requirement_version_id=version["id"],
-            ),
-            obligations=obligations,
+        obligations = _atomize_module_obligations(
+            [RequirementObligation(**ob.model_dump()) for ob in obligation_result.obligations]
         )
-        points = [point.model_dump() | {"id": f"tp-{secrets.token_hex(8)}"} for point in result.points]
-        logger.info("execute_generation_run: generated {} points | run_id={}", len(points), run_id)
+        if not obligations:
+            raise ValueError("最终需求未提取出可验证的测试义务。")
+        unsupported_from_extraction = list(obligation_result.unverifiable_items)
         with connect() as db:
-            test_point_repo.replace_points(
-                db, run_id=run_id, project_id=run["project_id"], document_id=run["document_id"],
-                version_id=run["requirement_version_id"], points=points,
+            test_point_repo.replace_obligations(
+                db,
+                project_id=run["project_id"],
+                document_id=run["document_id"],
+                version_id=run["requirement_version_id"],
+                obligations=[item.model_dump() for item in obligations],
             )
-            test_point_repo.update_run(db, run_id, status="completed")
-        logger.info("execute_generation_run: completed | run_id={}", run_id)
+        logger.info("execute_generation_run: calling generate_test_points | run_id={}, requirement={}, obligations_count={}", run_id, document["name"], len(obligations))
+        generation_input = TestPointGenerationInput(
+            requirement_name=document["name"],
+            requirement_content=content,
+            requirement_version_id=version["id"],
+        )
+        with connect() as db:
+            had_existing_points = bool(test_point_repo.list_points(db, run["document_id"], run["requirement_version_id"]))
+        existing_points: list = []
+        merged_points: dict[str, object] = {}
+        unsupported_assumptions = list(unsupported_from_extraction)
+        missing_keys: list[str] | None = None
+        final_coverage = None
+        completed_supplement_round = 0
+        for supplement_round in range(4):
+            result = await generate_test_points(
+                generation_input,
+                obligations=obligations,
+                existing_points=existing_points or None,
+                missing_obligation_keys=missing_keys,
+            )
+            unsupported_assumptions.extend(result.unsupported_assumptions)
+            for point in result.points:
+                merged_points[point.point_key] = point
+            existing_points = list(merged_points.values())
+            final_coverage = evaluate_test_point_coverage(
+                obligations,
+                existing_points,
+                unsupported_assumptions,
+            )
+            if final_coverage.status == "complete":
+                completed_supplement_round = supplement_round
+                break
+            missing_keys = [
+                key for key in final_coverage.missing_obligation_keys
+                if ":" not in key
+            ]
+            if supplement_round == 3:
+                break
+            logger.warning(
+                "execute_generation_run: incomplete coverage | run_id={}, missing={}, round={}",
+                run_id,
+                final_coverage.missing_obligation_keys,
+                supplement_round + 1,
+            )
+
+        if final_coverage is None:
+            raise ValueError("测试点生成未返回结果。")
+        points = [point.model_dump() | {"id": f"tp-{secrets.token_hex(8)}"} for point in existing_points]
+        if final_coverage.status == "complete":
+            logger.info("execute_generation_run: generated {} points | run_id={}", len(points), run_id)
+            with connect() as db:
+                test_point_repo.replace_points(
+                    db, run_id=run_id, project_id=run["project_id"], document_id=run["document_id"],
+                    version_id=run["requirement_version_id"], points=points,
+                )
+                test_point_repo.replace_point_obligation_links(
+                    db,
+                    version_id=run["requirement_version_id"],
+                    links={point["id"]: point["requirement_obligation_keys"] for point in points},
+                )
+                test_point_repo.update_run(
+                    db,
+                    run_id,
+                    status="completed",
+                    coverage_status="complete",
+                    obligation_count=final_coverage.obligation_count,
+                    covered_obligation_count=final_coverage.covered_obligation_count,
+                    missing_obligations_json=json.dumps([], ensure_ascii=False),
+                    unsupported_assumptions_json=json.dumps(final_coverage.unsupported_assumptions, ensure_ascii=False),
+                    supplement_round=completed_supplement_round,
+                )
+            logger.info("execute_generation_run: completed | run_id={}", run_id)
+        else:
+            with connect() as db:
+                if not had_existing_points and points:
+                    test_point_repo.replace_points(
+                        db, run_id=run_id, project_id=run["project_id"], document_id=run["document_id"],
+                        version_id=run["requirement_version_id"], points=points,
+                    )
+                    test_point_repo.replace_point_obligation_links(
+                        db,
+                        version_id=run["requirement_version_id"],
+                        links={point["id"]: point["requirement_obligation_keys"] for point in points},
+                    )
+                test_point_repo.update_run(
+                    db,
+                    run_id,
+                    status="failed",
+                    error_message="测试点覆盖不完整，未达到完成门槛。",
+                    coverage_status=final_coverage.status,
+                    obligation_count=final_coverage.obligation_count,
+                    covered_obligation_count=final_coverage.covered_obligation_count,
+                    missing_obligations_json=json.dumps(final_coverage.missing_obligation_keys, ensure_ascii=False),
+                    unsupported_assumptions_json=json.dumps(final_coverage.unsupported_assumptions, ensure_ascii=False),
+                    supplement_round=3,
+                )
     except Exception as exc:
         logger.exception("execute_generation_run: failed | run_id={}, error={}", run_id, str(exc))
         with connect() as db:
@@ -227,7 +325,28 @@ async def execute_generation_run(run_id: str) -> None:
 
 def _read_version(version) -> str:
     path = resolve_stored_path(version["file_path"]) or Path(version["file_path"])
-    return path.read_text(encoding="utf-8") if path.exists() else version["markdown_content"] or ""
+    return path.read_text(encoding="utf-8") if path.is_file() else version["markdown_content"] or ""
+
+
+def _atomize_module_obligations(obligations: list[RequirementObligation]) -> list[RequirementObligation]:
+    """Make every explicitly listed module independently coverable."""
+    atomized: list[RequirementObligation] = []
+    for obligation in obligations:
+        modules = [module.strip() for module in obligation.modules if module.strip()]
+        if len(modules) <= 1:
+            atomized.append(obligation)
+            continue
+        for index, module in enumerate(modules, start=1):
+            atomized.append(
+                obligation.model_copy(
+                    update={
+                        "obligation_key": f"{obligation.obligation_key}.M{index:02d}",
+                        "modules": [module],
+                        "statement": f"{obligation.statement}（模块：{module}）",
+                    }
+                )
+            )
+    return atomized
 
 
 def _require_project(db, project_id: str, actor):
@@ -251,7 +370,23 @@ def _serialize_run(row):
         snapshot = json.loads(row["input_json"] or "{}")
     except json.JSONDecodeError:
         snapshot = {}
-    return {"id": row["id"], "task_id": row["task_id"], "requirement_version_id": row["requirement_version_id"], "status": row["status"], "status_label": STATUS_LABELS.get(row["status"], row["status"]), "input_snapshot": snapshot, "error_message": row["error_message"], "created_at": row["created_at"], "finished_at": row["finished_at"]}
+    return {
+        "id": row["id"],
+        "task_id": row["task_id"],
+        "requirement_version_id": row["requirement_version_id"],
+        "status": row["status"],
+        "status_label": STATUS_LABELS.get(row["status"], row["status"]),
+        "input_snapshot": snapshot,
+        "error_message": row["error_message"],
+        "coverage_status": row["coverage_status"],
+        "obligation_count": row["obligation_count"],
+        "covered_obligation_count": row["covered_obligation_count"],
+        "missing_obligations": json.loads(row["missing_obligations_json"] or "[]"),
+        "unsupported_assumptions": json.loads(row["unsupported_assumptions_json"] or "[]"),
+        "supplement_round": row["supplement_round"],
+        "created_at": row["created_at"],
+        "finished_at": row["finished_at"],
+    }
 
 
 def _serialize_point(row, point_links: dict[str, list[str]] | None = None):
@@ -272,7 +407,12 @@ def _serialize_internal_point(row):
     return serialized
 
 
-def _compute_coverage_summary(run, point_links: dict[str, list[str]], obligations: list[dict]) -> dict:
+def _compute_coverage_summary(
+    run,
+    point_links: dict[str, list[str]],
+    obligations: list[dict],
+    point_modules: dict[str, str] | None = None,
+) -> dict:
     run = dict(run) if run is not None else None
     covered_keys: set[str] = set()
     for linked_keys in point_links.values():
@@ -283,6 +423,19 @@ def _compute_coverage_summary(run, point_links: dict[str, list[str]], obligation
         for ob in obligations
         if ob["obligation_key"] not in covered_keys and ob.get("test_required", True)
     ]
+    point_modules = point_modules or {}
+    for obligation in obligations:
+        if not obligation.get("test_required", True) or not obligation.get("modules"):
+            continue
+        linked_point_ids = [point_id for point_id, keys in point_links.items() if obligation["obligation_key"] in keys]
+        covered_modules = {point_modules.get(point_id, "").strip() for point_id in linked_point_ids}
+        for module in obligation["modules"]:
+            if module.strip() and module.strip() not in covered_modules:
+                missing.append({
+                    "obligation_key": obligation["obligation_key"],
+                    "source_section": obligation["source_section"],
+                    "statement": f"{obligation['statement']}（模块：{module}）",
+                })
     coverage_status = run.get("coverage_status") if run else "pending"
     supplement_round = run.get("supplement_round") if run else 0
     unsupported_assumptions = []
@@ -291,10 +444,18 @@ def _compute_coverage_summary(run, point_links: dict[str, list[str]], obligation
             unsupported_assumptions = json.loads(run["unsupported_assumptions_json"])
         except json.JSONDecodeError:
             unsupported_assumptions = []
+    fully_covered_keys = set(covered_keys)
+    for obligation in obligations:
+        if not obligation.get("test_required", True) or not obligation.get("modules"):
+            continue
+        linked_point_ids = [point_id for point_id, keys in point_links.items() if obligation["obligation_key"] in keys]
+        covered_modules = {point_modules.get(point_id, "").strip() for point_id in linked_point_ids}
+        if any(module.strip() not in covered_modules for module in obligation["modules"]):
+            fully_covered_keys.discard(obligation["obligation_key"])
     return {
         "status": coverage_status or "pending",
         "obligation_count": len(obligations),
-        "covered_obligation_count": len([ob for ob in obligations if ob["obligation_key"] in covered_keys]),
+        "covered_obligation_count": len([ob for ob in obligations if ob["obligation_key"] in fully_covered_keys]),
         "missing_obligations": missing,
         "unsupported_assumptions": unsupported_assumptions,
         "supplement_round": supplement_round or 0,

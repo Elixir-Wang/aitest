@@ -1,0 +1,153 @@
+schema_version: v1
+project_id: project-75fec50973f2adf6
+automation_case_id: uiauto-uigen-eda941ca57507528
+source_test_case:
+  id: mtc-1b4a3792fd2cf4e3
+  title: 标准智能体测试 - 配置指定模型后发布并使用，验证三段对话回复
+  status: ''
+  updated_at: '2026-07-23 11:19:09'
+preconditions:
+- 用户已登录智能体平台；工作台中存在名为"标准智能体测试"的智能体条目；该智能体处于可发布状态；目标对话模型已在系统中可用且可选择；浏览器可正常访问 workspace
+  页面。
+variables:
+  agent_name: 标准智能体测试
+  publish_version: 1.0.0
+  publish_log: 自动化测试发布
+  test_messages:
+    - text: hi
+      expect_error_free: true
+    - text: flow1
+      expect_contains: flow_exit
+    - text: 北京今日天气
+      expect_contains: 调用完成
+  error_patterns:
+    - 系统繁忙(201)，请稍后重试。
+    - 系统繁忙(203)，正在处理中，请稍后重试
+parameters:
+  target_model:
+    label: 目标对话模型
+    type: model
+    source: production_model_snapshot
+    required: true
+    values:
+      - qwen-turbo
+      - qwen3.5-flash
+      - qwq-plus
+      - qwen-plus
+      - qwen3-max
+      - qwen3.5-plus
+      - qwen-max
+      - genai-gemini-2.5-flash
+      - genai-gemini-2.5-pro
+      - genai-gemini-2.5-flash-lite
+      - anthropic/claude-sonnet-4
+      - openai/gpt-5-nano
+      - openai/gpt-5-mini
+      - openai/gpt-5-chat
+      - deepseek-v3-2-251201
+      - DeepSeek-V3.1-Terminus
+      - qwen3-30b-a3b-instruct-2507
+      - LLM_Fix_Medium_ChEn_Chat
+      - 中文通用改写模型
+      - LLM_Flex_Turo_ChEn_Chat
+      - BR_LLM
+      - LLM_Fix_Large_MutiLingual_Chat_Latest
+      - qwen3-32b-fp8
+      - LLM_Flex_Large_MutiLingual_Chat
+      - qwen3-5-35b-a3b
+      - br-llm-wealth-v6
+      - doubao-1.5-lite-32k-250115
+      - doubao-lite-128k-240828
+      - Doubao-pro-32k-250115
+      - Doubao-pro-32k
+      - azure-gpt-4-jp
+      - azure-gpt-4o
+      - azure-gpt35-16k-jp
+      - Moonshot-v1-8k
+steps:
+- action: 点击"工作台"入口，进入工作台页面。
+  expected_result: 页面跳转至工作台，列表中可见"标准智能体测试"智能体条目。
+  id: step-1
+- action: 在工作台列表中找到"标准智能体测试"，点击该智能体的名称。
+  expected_result: 页面进入"标准智能体测试"的智能体配置页面（botSetting），可见基础配置中的"对话模型"等设置项。
+  id: step-2
+- action: 点击"对话模型"下拉框，弹出模型选项列表。
+  expected_result: 下拉框成功展开，列出可用的对话模型选项。
+  id: step-3
+- action: 在下拉框中选择目标对话模型 ${target_model}（参数化）。
+  expected_result: 下拉框收起，"对话模型"字段显示为 ${target_model}，配置自动保存（页面提示草稿已自动保存）。
+  value_ref: target_model
+  parameter:
+    name: target_model
+    label: 目标对话模型
+    type: model
+    source: production_model_snapshot
+    required: true
+  id: step-4
+- action: 点击页面中的"历史会话"按钮。
+  expected_result: 页面右侧或弹出区域显示历史会话列表区域。
+  id: step-5
+- action: 在历史会话区域点击"新建会话"。
+  expected_result: 成功创建一个新的空白会话，聊天区域清空并可输入问题。
+  id: step-6
+- action: 在问题输入框中输入"hi"，点击发送按钮。
+  expected_result: 消息"hi"出现在聊天区域作为已发送消息，智能体开始生成回复。
+  id: step-7
+- action: 等待"hi"的回复完全结束（回复流不再更新，无加载中状态）。
+  expected_result: 回复完整呈现，未出现"系统繁忙(201)，请稍后重试。"或"系统繁忙(203)，正在处理中，请稍后重试"的错误提示。
+  id: step-8
+- action: 在输入框输入"flow1"，点击发送按钮。
+  expected_result: 消息"flow1"出现在聊天区域作为已发送消息，智能体开始生成回复。
+  id: step-9
+- action: 等待"flow1"的回复完全结束。
+  expected_result: 回复完整呈现，回复内容中包含文本"flow_exit"，且未出现系统繁忙错误提示。
+  id: step-10
+- action: 在输入框输入"北京今日天气"，点击发送按钮。
+  expected_result: 消息"北京今日天气"出现在聊天区域作为已发送消息，智能体开始生成回复。
+  id: step-11
+- action: 等待"北京今日天气"的回复完全结束。
+  expected_result: 回复完整呈现，回复内容中包含文本"调用完成"，且未出现系统繁忙错误提示。
+  id: step-12
+- action: 点击智能体配置页面顶部的"发布"按钮。
+  expected_result: 弹出发布配置窗口，可见版本号、发布日志输入框及发布按钮。
+  id: step-13
+- action: 在发布版本号输入框中输入"1.0.0"。
+  expected_result: 发布版本号输入框显示"1.0.0"。
+  id: step-14
+- action: 在发布日志输入框中输入"自动化测试发布"。
+  expected_result: 发布日志输入框显示"自动化测试发布"。
+  id: step-15
+- action: 点击发布窗口中的"发布"按钮。
+  expected_result: 弹出发布确认窗口，提示"确认要发布吗？"，并显示"确认"按钮。
+  id: step-16
+- action: 在发布确认窗口中点击"确认"按钮。
+  expected_result: 窗口进入发布中状态，显示"正在发布版本，请稍等"等提示信息。
+  id: step-17
+- action: 等待发布流程完成，页面自动返回工作台。
+  expected_result: 页面成功返回工作台，"标准智能体测试"条目状态显示为"已发布"。
+  id: step-18
+- action: 在工作台列表中找到"标准智能体测试"，点击其"使用"按钮。
+  expected_result: 进入"标准智能体测试"的使用/对话页面，聊天区域可用。
+  id: step-19
+- action: 点击"历史会话"按钮，再点击"新建会话"。
+  expected_result: 成功创建一个新的空白会话，聊天区域清空。
+  id: step-20
+- action: 在输入框输入"hi"，点击发送按钮。
+  expected_result: 消息"hi"作为已发送消息出现在聊天区域，智能体开始生成回复。
+  id: step-21
+- action: 等待"hi"的回复完全结束。
+  expected_result: 回复完整呈现，未出现"系统繁忙(201)，请稍后重试。"或"系统繁忙(203)，正在处理中，请稍后重试"的错误提示。
+  id: step-22
+- action: 在输入框输入"flow1"，点击发送按钮。
+  expected_result: 消息"flow1"作为已发送消息出现在聊天区域，智能体开始生成回复。
+  id: step-23
+- action: 等待"flow1"的回复完全结束。
+  expected_result: 回复完整呈现，回复内容中包含文本"flow_exit"，且未出现系统繁忙错误提示。
+  id: step-24
+- action: 在输入框输入"北京今日天气"，点击发送按钮。
+  expected_result: 消息"北京今日天气"作为已发送消息出现在聊天区域，智能体开始生成回复。
+  id: step-25
+- action: 等待"北京今日天气"的回复完全结束。
+  expected_result: 回复完整呈现，回复内容中包含文本"调用完成"，且未出现系统繁忙错误提示。
+  id: step-26
+expected_results: []

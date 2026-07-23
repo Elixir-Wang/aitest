@@ -3,6 +3,7 @@ import {
   createEndpointStep,
   createUtilityStep,
   moveScenarioStep,
+  toScenarioStepInput,
   validateScenarioDraft,
 } from "../src/components/ai-testing/api-automation/api-scenario-model.mjs";
 import assert from "node:assert/strict";
@@ -58,6 +59,44 @@ test("creates utility steps with executable default control config", () => {
   assert.deepEqual(assign.control_config, {
     name: "variable",
     source: { type: "literal", value: "" },
+  });
+});
+
+test("serializes only writable step fields and preserves test case references", () => {
+  const step = {
+    id: "step-1",
+    scenario_id: "scenario-1",
+    project_id: "project-1",
+    step_type: "api_request",
+    api_test_case_id: "case-1",
+    endpoint_id: "apiend-orders",
+    step_order: 7,
+    name: "创建订单",
+    request_overrides: { request: {} },
+    bindings: [],
+    extractors: [],
+    assertions: [],
+    control_config: {},
+    on_failure: "stop",
+    enabled: true,
+    created_at: "created",
+    updated_at: "updated",
+  };
+
+  assert.deepEqual(toScenarioStepInput(step, 0), {
+    id: "step-1",
+    step_type: "api_request",
+    api_test_case_id: "case-1",
+    endpoint_id: "apiend-orders",
+    step_order: 0,
+    name: "创建订单",
+    request_overrides: { request: {} },
+    bindings: [],
+    extractors: [],
+    assertions: [],
+    control_config: {},
+    on_failure: "stop",
+    enabled: true,
   });
 });
 

@@ -67,6 +67,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         fonts-noto-cjk fonts-noto-color-emoji \
         nodejs npm \
         supervisor \
+        xvfb ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps from stage 2

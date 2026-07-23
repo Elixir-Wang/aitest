@@ -290,6 +290,10 @@ export type UiAutomationGenerationRun = {
   changed_files: string[];
   error_message: string;
   created_by: string;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type UiAutomationAsset = {
@@ -306,6 +310,12 @@ export type UiAutomationAsset = {
   plan_file_path: string;
   source_hash: string;
   created_by: string;
+  created_at: string;
+  updated_at: string;
+  source_title?: string;
+  latest_generation_run?: UiAutomationGenerationRun | null;
+  latest_execution_run?: UiAutomationExecutionRun | null;
+  locator_summary?: { required: number; available: number; missing: string[] };
 };
 
 export type UiAutomationExecutionRun = {
@@ -319,9 +329,27 @@ export type UiAutomationExecutionRun = {
   stdout_path: string;
   stderr_path: string;
   trace_path: string;
+  video_path: string;
   screenshot_paths: string[];
   error_message: string;
   created_by: string;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UiAutomationRunLogs = {
+  stdout: string;
+  stderr: string;
+};
+
+export type UiAutomationLiveView = {
+  status: "waiting" | "starting" | "ready" | "unavailable" | "ended";
+  message: string;
+  stream_path: string;
+  width: number;
+  height: number;
 };
 
 export type ApiTestPoint = {
@@ -352,6 +380,12 @@ export type ApiTestPointGenerationRun = {
   status_label?: string;
   input_snapshot: Record<string, unknown>;
   error_message: string;
+  coverage_status?: "pending" | "complete" | "incomplete" | "invalid";
+  obligation_count?: number;
+  covered_obligation_count?: number;
+  missing_obligations?: string[];
+  unsupported_assumptions?: string[];
+  supplement_round?: number;
   created_at: string;
   finished_at: string | null;
 };
@@ -569,6 +603,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function apiErrorMessageFromPayload(payload: unknown, fallbackMessage = "请求失败，请稍后重试。") {
   const detail = isRecord(payload) ? payload.detail : null;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => {
+        if (!isRecord(item)) return "";
+        const message = typeof item.msg === "string" ? item.msg : "";
+        const location = Array.isArray(item.loc) ? item.loc.filter((part) => part !== "body").join(".") : "";
+        return message && location ? `${location}: ${message}` : message;
+      })
+      .filter(Boolean);
+    if (messages.length > 0) return messages.join("；");
+  }
   return (
     (isRecord(detail) && typeof detail.message === "string" ? detail.message : "") ||
     (typeof detail === "string" ? detail : "") ||
@@ -872,7 +917,6 @@ export type ApiAutomationRun = {
     script_count?: number;
     endpoint_count?: number;
     case_count?: number;
-    created_by_name?: string;
     suite_path?: string;
     test_file_path?: string;
     data_file_path?: string;
@@ -884,7 +928,6 @@ export type ApiAutomationRun = {
   scenario_result_path: string;
   summary: Record<string, unknown>;
   error_message: string;
-  created_by_name: string;
   created_at: string;
   finished_at: string | null;
 };
@@ -905,6 +948,11 @@ export type ApiRepairProposal = {
   summary: string;
   confidence: number;
   proposed_changes: string[];
+  case_updates?: Array<{
+    case_id: string;
+    expected_status_code: number;
+    actual_status_code: number;
+  }>;
   script_repair_allowed: boolean;
 };
 
@@ -995,6 +1043,23 @@ export type ApiAutomationScenarioStep = {
   updated_at: string;
 };
 
+export type ApiAutomationScenarioStepInput = Pick<
+  ApiAutomationScenarioStep,
+  | "id"
+  | "step_type"
+  | "api_test_case_id"
+  | "endpoint_id"
+  | "step_order"
+  | "name"
+  | "request_overrides"
+  | "bindings"
+  | "extractors"
+  | "assertions"
+  | "control_config"
+  | "on_failure"
+  | "enabled"
+>;
+
 export type ApiAutomationScenario = {
   id: string;
   project_id: string;
@@ -1014,6 +1079,28 @@ export type ApiAutomationScenarioValidation = {
   valid: boolean;
   errors: string[];
   warnings: string[];
+};
+
+export type ApiScenarioAiPlanNode = Partial<ApiAutomationScenarioStep> & {
+  id: string;
+  type: ApiAutomationScenarioStepType;
+  endpoint_id: string | null;
+};
+
+export type ApiScenarioAiPlan = {
+  plan_id: string;
+  plan_version: number;
+  graph_version: number;
+  scenario_name: string;
+  nodes: ApiScenarioAiPlanNode[];
+  edges: Array<{ source: string; target: string; condition: string }>;
+  assumptions: string[];
+  warnings: string[];
+  unresolved_items: string[];
+  confidence: number;
+  validation: ApiAutomationScenarioValidation;
+  expected_revision: number | null;
+  expires_at: string;
 };
 
 export type ApiAutomationScenarioRevision = {
@@ -1654,6 +1741,10 @@ export function listUiAutomationAssets(projectId: string) {
   return apiRequest<UiAutomationAsset[]>(`/projects/${projectId}/ui-automation/assets`);
 }
 
+export function listUiAutomationGenerationRuns(projectId: string) {
+  return apiRequest<UiAutomationGenerationRun[]>(`/projects/${projectId}/ui-automation/generation-runs`);
+}
+
 export function createUiAutomationGenerationRun(
   projectId: string,
   payload: { test_case_id: string; environment_id: string; exploration_run_id?: string },
@@ -1668,6 +1759,28 @@ export function getUiAutomationGenerationRun(projectId: string, runId: string) {
   return apiRequest<UiAutomationGenerationRun>(`/projects/${projectId}/ui-automation/generation-runs/${runId}`);
 }
 
+export function listUiAutomationAssetGenerationRuns(projectId: string, assetId: string) {
+  return apiRequest<UiAutomationGenerationRun[]>(
+    `/projects/${projectId}/ui-automation/assets/${assetId}/generation-runs`,
+  );
+}
+
+export function listUiAutomationAssetExecutionRuns(projectId: string, assetId: string) {
+  return apiRequest<UiAutomationExecutionRun[]>(`/projects/${projectId}/ui-automation/assets/${assetId}/runs`);
+}
+
+export function getUiAutomationAsset(projectId: string, assetId: string) {
+  return apiRequest<UiAutomationAsset>(`/projects/${projectId}/ui-automation/assets/${assetId}`);
+}
+
+export function getUiAutomationRunLogs(projectId: string, runId: string) {
+  return apiRequest<UiAutomationRunLogs>(`/projects/${projectId}/ui-automation/runs/${runId}/logs`);
+}
+
+export function getUiAutomationLiveView(projectId: string, runId: string) {
+  return apiRequest<UiAutomationLiveView>(`/projects/${projectId}/ui-automation/runs/${runId}/live-view`);
+}
+
 export function createUiAutomationExecutionRun(projectId: string, assetId: string, environmentId: string) {
   return apiRequest<UiAutomationExecutionRun>(`/projects/${projectId}/ui-automation/assets/${assetId}/runs`, {
     method: "POST",
@@ -1677,6 +1790,10 @@ export function createUiAutomationExecutionRun(projectId: string, assetId: strin
 
 export function getUiAutomationExecutionRun(projectId: string, runId: string) {
   return apiRequest<UiAutomationExecutionRun>(`/projects/${projectId}/ui-automation/runs/${runId}`);
+}
+
+export function deleteUiAutomationExecutionRun(projectId: string, runId: string) {
+  return apiRequest<void>(`/projects/${projectId}/ui-automation/runs/${runId}`, { method: "DELETE" });
 }
 
 export function createApiAutomationCaseSet(projectId: string, payload: { name: string; notes: string }) {
@@ -1774,6 +1891,13 @@ export function getApiRepairSession(projectId: string, sessionId: string) {
   return apiRequest<ApiRepairSession>(`/projects/${projectId}/api-repair-sessions/${sessionId}`);
 }
 
+export function createApiRepairAttempt(projectId: string, sessionId: string, userContext = "") {
+  return apiRequest<{ session_id: string; attempt_id: string; status: string }>(
+    `/projects/${projectId}/api-repair-sessions/${sessionId}/attempts`,
+    { method: "POST", body: JSON.stringify({ user_context: userContext }) },
+  );
+}
+
 export function approveApiRepairAttempt(projectId: string, attemptId: string, comment = "") {
   return apiRequest<ApiRepairAttempt>(`/projects/${projectId}/api-repair-attempts/${attemptId}/approve`, {
     method: "POST",
@@ -1814,6 +1938,37 @@ export function listApiAutomationScenarios(projectId: string) {
   return apiRequest<ApiAutomationScenario[]>(`/projects/${projectId}/api-scenarios`);
 }
 
+export function createApiScenarioAiPlan(
+  projectId: string,
+  payload: {
+    goal: string;
+    source_scope?: { endpoint_ids?: string[]; tags?: string[] };
+    constraints?: {
+      environment_id?: string | null;
+      max_steps?: number;
+      allow_write?: boolean;
+      require_cleanup?: boolean;
+    };
+    scenario_id?: string | null;
+  },
+) {
+  return apiRequest<ApiScenarioAiPlan>(`/projects/${projectId}/api-scenarios/ai-plan`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function applyApiScenarioAiPlan(
+  projectId: string,
+  planId: string,
+  payload: { scenario_id: string; expected_revision: number; confirmation: string },
+) {
+  return apiRequest<ApiAutomationScenario>(`/projects/${projectId}/api-scenarios/ai-plans/${planId}/apply`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getApiAutomationScenario(projectId: string, scenarioId: string) {
   return apiRequest<ApiAutomationScenario>(`/projects/${projectId}/api-scenarios/${scenarioId}`);
 }
@@ -1846,7 +2001,7 @@ export function deleteApiAutomationScenario(projectId: string, scenarioId: strin
 export function replaceApiAutomationScenarioSteps(
   projectId: string,
   scenarioId: string,
-  steps: Array<Partial<ApiAutomationScenarioStep>>,
+  steps: ApiAutomationScenarioStepInput[],
 ) {
   return apiRequest<ApiAutomationScenario>(`/projects/${projectId}/api-scenarios/${scenarioId}/steps`, {
     method: "PUT",

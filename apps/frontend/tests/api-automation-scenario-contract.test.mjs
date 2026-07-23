@@ -7,6 +7,7 @@ const readSource = (path) => readFileSync(new URL(path, import.meta.url), "utf8"
 const automationPageSource = readSource("../src/app/(main)/projects/[projectId]/automation/api/page.tsx");
 const scenarioListSource = readSource("../src/components/ai-testing/api-automation/api-scenario-list.tsx");
 const scenarioEditorSource = readSource("../src/components/ai-testing/api-automation/api-scenario-editor.tsx");
+const scenarioCanvasSource = readSource("../src/components/ai-testing/api-automation/api-scenario-canvas.tsx");
 const scenarioEditorHookSource = readSource("../src/components/ai-testing/api-automation/use-api-scenario-editor.ts");
 const scenarioAssetPickerSource = readSource(
   "../src/components/ai-testing/api-automation/api-scenario-asset-picker.tsx",
@@ -78,6 +79,37 @@ test("scenario editor supports ordered steps, saving, validation, publishing, an
   assert.match(scenarioRunDrawerSource, /请求/);
   assert.match(scenarioRunDrawerSource, /响应/);
   assert.match(scenarioRunDrawerSource, /变量/);
+});
+
+test("scenario editor provides a constrained canvas backed by the existing step model", () => {
+  assert.match(scenarioEditorSource, /ApiScenarioCanvas/);
+  assert.match(scenarioEditorSource, /orchestrationMode/);
+  assert.match(scenarioEditorSource, /画布视图/);
+  assert.match(scenarioEditorSource, /列表视图/);
+  assert.match(scenarioCanvasSource, /@xyflow\/react/);
+  assert.match(scenarioCanvasSource, /ReactFlow/);
+  assert.match(scenarioCanvasSource, /MiniMap/);
+  assert.match(scenarioCanvasSource, /自动布局/);
+  assert.match(scenarioEditorSource, /隐藏节点配置/);
+  assert.match(scenarioEditorSource, /clamp\(360px,32vw,500px\)/);
+  assert.match(scenarioEditorSource, /onClearSelection/);
+  assert.match(scenarioCanvasSource, /展开节点库/);
+  assert.match(scenarioCanvasSource, /paletteOpen/);
+  assert.match(scenarioCanvasSource, /panOnScrollMode=\{PanOnScrollMode\.Free\}/);
+  assert.match(scenarioCanvasSource, /zoomOnScroll=\{false\}/);
+  assert.match(scenarioCanvasSource, /onPaneClick=\{onClearSelection\}/);
+  assert.match(scenarioCanvasSource, /hasAllPositions/);
+  assert.match(scenarioCanvasSource, /buildCanvasGraph/);
+  assert.match(scenarioCanvasSource, /h-full min-h-0 min-w-0/);
+  assert.match(scenarioCanvasSource, /steps\.length/);
+  assert.match(scenarioStepConfigSource, /minmax\(140px,0\.8fr\)/);
+  assert.match(scenarioCanvasSource, /当前画布沿用现有步骤顺序/);
+});
+
+test("scenario editor hides the run footer until a run exists", () => {
+  assert.match(scenarioEditorSource, /editor\.latestRunId \? \([\s\S]*?<footer/);
+  assert.doesNotMatch(scenarioEditorSource, /尚未运行当前场景/);
+  assert.doesNotMatch(scenarioEditorSource, /运行结果将在此处展开/);
 });
 
 test("scenario asset picker overrides the base dialog width on desktop", () => {

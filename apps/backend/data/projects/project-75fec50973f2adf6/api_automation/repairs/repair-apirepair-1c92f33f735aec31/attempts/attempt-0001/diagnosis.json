@@ -1,0 +1,172 @@
+{
+  "summary": "POST /openapi/v1/agent/analysis/ 接口 16 个失败用例全部因期望状态码与实际不符：所有 negative/boundary 用例期望 400/401，但实际接口均返回 200（HTTP 状态码），仅在业务 body 中通过 code 字段区分错误。2 个成功用例（success.minimum_valid、body.date_relation.start_equals_end）通过。",
+  "issues": [
+    {
+      "failure_ids": [
+        "apitc-09fd33cb0bb132a5",
+        "apitc-0ee6b9e5e6529e06",
+        "apitc-0fa4569487135c73",
+        "apitc-1390b8512a1c6397",
+        "apitc-3d569246208d59b0",
+        "apitc-4019628145266b77",
+        "apitc-43d80d3151916fcc",
+        "apitc-548a653ef0c5911c",
+        "apitc-601d342b42319a54",
+        "apitc-83daafe626237b5a",
+        "apitc-8773219c06858e99",
+        "apitc-9be0cd19dee2f78f",
+        "apitc-c0bfe6796bb13edf",
+        "apitc-db22381ffeef7e0f",
+        "apitc-e2d67372b8cb14a5",
+        "apitc-eb2f89327dd381be"
+      ],
+      "classification": "test_data_issue",
+      "confidence": 0.98,
+      "root_cause": "用例状态码来自未确认的生成推断，实际响应已明确返回不同状态码。",
+      "recommendation": "建议按实际响应校准测试用例预期，审批通过后同步脚本数据和数据库用例。",
+      "repairable": true
+    },
+    {
+      "failure_ids": [
+        "body.required.start_date.invalid_type",
+        "body.required.end_date.null",
+        "body.required.end_date.invalid_type",
+        "body.start_date.invalid_format",
+        "body.required.end_date.empty",
+        "body.required.end_date.missing",
+        "body.required.start_date.null",
+        "body.end_date.invalid_format",
+        "body.date_relation.start_after_end",
+        "request_body.missing",
+        "body.required.start_date.empty",
+        "request_body.empty_object",
+        "body.required.start_date.missing"
+      ],
+      "classification": "contract_ambiguity",
+      "confidence": 0.95,
+      "root_cause": "接口对所有非法/缺失/格式错误/日期关系异常的请求均返回 HTTP 200，仅在业务 JSON body 中用 code 字段（如 '400000'、'500000'）表示错误，而非使用 HTTP 4xx 状态码。测试用例按常见 REST 契约推断期望 400，与接口实际行为冲突。",
+      "recommendation": "确认接口契约：该接口对所有请求统一返回 HTTP 200，错误通过业务 code 区分。需将 negative 用例的断言从 status_code=400 改为 status_code=200 + jsonpath_equals($.code, '400000')（或对应业务码），并移除对 HTTP 4xx 的依赖。",
+      "repairable": true
+    },
+    {
+      "failure_ids": [
+        "header.required.cybertron-robot-token.empty",
+        "header.required.cybertron-robot-key.empty",
+        "header.required.username.empty"
+      ],
+      "classification": "contract_ambiguity",
+      "confidence": 0.95,
+      "root_cause": "鉴权 header 为空时接口返回 HTTP 200，业务 code 为 '400001'，而非期望的 HTTP 401。测试按常见 REST 契约推断为 401，与接口实际行为冲突。",
+      "recommendation": "确认接口契约：鉴权失败时接口返回 HTTP 200 + code='400001'。需将断言改为 status_code=200 + jsonpath_equals($.code, '400001')。",
+      "repairable": true
+    }
+  ],
+  "proposal": {
+    "target": "test_script",
+    "action": "modify_assertion",
+    "title": "将 16 条不确定用例的预期状态码按实际响应校准",
+    "summary": "这些用例的状态码没有正式契约依据，实际响应已提供可复现证据；仅生成候选修改，等待人工审批。",
+    "confidence": 0.98,
+    "proposed_changes": [
+      "cases.yaml: case_id=apitc-09fd33cb0bb132a5 (必填字段 start_date 类型错误) 的 status_code 400 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-0ee6b9e5e6529e06 (必填字段 end_date 传入 null) 的 status_code 400 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-0fa4569487135c73 (必填字段 end_date 类型错误) 的 status_code 400 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-1390b8512a1c6397 (字段 start_date 非法日期格式) 的 status_code 400 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-3d569246208d59b0 (必填字段 end_date 传入空字符串) 的 status_code 400 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-4019628145266b77 (鉴权 Header cybertron-robot-token 为空) 的 status_code 401 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-43d80d3151916fcc (必填字段 end_date 缺失) 的 status_code 400 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-548a653ef0c5911c (必填字段 start_date 传入 null) 的 status_code 400 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-601d342b42319a54 (字段 end_date 非法日期格式) 的 status_code 400 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-83daafe626237b5a (日期关系 - start_date 晚于 end_date) 的 status_code 400 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-8773219c06858e99 (请求体缺失) 的 status_code 400 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-9be0cd19dee2f78f (必填字段 start_date 传入空字符串) 的 status_code 400 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-c0bfe6796bb13edf (请求体为空对象) 的 status_code 400 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-db22381ffeef7e0f (鉴权 Header cybertron-robot-key 为空) 的 status_code 401 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-e2d67372b8cb14a5 (必填字段 start_date 缺失) 的 status_code 400 -> 200；审批后同步测试用例并确认 Oracle",
+      "cases.yaml: case_id=apitc-eb2f89327dd381be (鉴权 Header username 为空) 的 status_code 401 -> 200；审批后同步测试用例并确认 Oracle"
+    ],
+    "case_updates": [
+      {
+        "case_id": "apitc-09fd33cb0bb132a5",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-0ee6b9e5e6529e06",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-0fa4569487135c73",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-1390b8512a1c6397",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-3d569246208d59b0",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-4019628145266b77",
+        "expected_status_code": 401,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-43d80d3151916fcc",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-548a653ef0c5911c",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-601d342b42319a54",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-83daafe626237b5a",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-8773219c06858e99",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-9be0cd19dee2f78f",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-c0bfe6796bb13edf",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-db22381ffeef7e0f",
+        "expected_status_code": 401,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-e2d67372b8cb14a5",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-eb2f89327dd381be",
+        "expected_status_code": 401,
+        "actual_status_code": 200
+      }
+    ],
+    "script_repair_allowed": true
+  }
+}

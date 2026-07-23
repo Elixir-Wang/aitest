@@ -137,6 +137,8 @@ test("stopped performance runs expose a readonly AI analysis drawer", () => {
   assert.match(drawerSource, /direction="right"/);
   assert.match(drawerSource, /data-\[vaul-drawer-direction=right\]:sm:max-w-3xl/);
   assert.match(drawerSource, /window\.setInterval/);
+  assert.match(drawerSource, /function analysisFailureMessage/);
+  assert.match(drawerSource, /触发模型接口 429 频率限制/);
   assert.match(drawerSource, /2000/);
   assert.match(evidenceSource, /已证实证据/);
   assert.match(evidenceSource, /推断与建议/);

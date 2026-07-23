@@ -28,6 +28,8 @@ SYSTEM_PROMPT = """
 
 必须只使用探索证据中存在的页面、操作路径和 locator；不得编造 locator。先形成严格 AutomationPlan，
 调用 validate_automation_plan 校验，再调用 render_automation_plan 生成或更新 POM 与测试代码。
+如果 case.parameters 声明了参数，AutomationPlan.parameters 必须包含对应参数名；使用参数值选择页面文本时，
+使用 click_parameter_text 并通过 value_ref 引用参数，禁止把某个参数值固化成 locator。
 不得绕过渲染工具直接写任意 Python 测试代码。完成后调用 run_pytest_collection；生成阶段不得执行真实 UI 用例。
 """.strip()
 

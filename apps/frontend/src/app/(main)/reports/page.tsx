@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 
-import { Activity, ClipboardList, Eye, FileClock } from "lucide-react";
+import { Eye } from "lucide-react";
 
-import { ListToolbar, MetricCard, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
-import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
+import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { ProcessingState } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Checkbox } from "@/components/ui/checkbox";
 import { chineseCompletionTone, StatusBadge } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
 const reports: Array<{ id: string; project: string; name: string; status: string; updated: string }> = [];
 
@@ -28,16 +28,11 @@ export default function Page() {
   return (
     <PageShell
       breadcrumbs={moduleBreadcrumbs("reports")}
-      description="按全局或项目范围查看运行记录、Allure 报告、失败诊断和内部 Bug 记录。"
+      description="按全局或项目范围查看接口、性能和 UI 测试报告。"
       projectScope="all"
-      tabs={["运行记录", "Allure 报告", "失败诊断", "内部 Bug 记录"]}
+      tabs={["接口", "性能", "UI"]}
       title="报告中心"
     >
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard helper="真实接口接入后展示" icon={Activity} label="运行记录" value="-" />
-        <MetricCard helper="真实接口接入后展示" icon={ClipboardList} label="Allure 报告" value="-" />
-        <MetricCard helper="真实接口接入后展示" icon={FileClock} label="失败诊断" value="-" />
-      </div>
       <ShellSection>
         <ListToolbar
           createLabel="新建报告"

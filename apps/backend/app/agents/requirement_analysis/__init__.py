@@ -5,7 +5,6 @@ from app.agents.requirement_analysis.schemas import (
     ClarificationItem,
     RequirementAnalysisResult,
     RequirementInput,
-    RequirementUnderstanding,
 )
 from app.agents.requirement_analysis.service import (
     analyze_requirement,
@@ -17,7 +16,6 @@ from app.agents.requirement_analysis.service import (
 __all__ = [
     "requirement_analysis_agent",
     "RequirementInput",
-    "RequirementUnderstanding",
     "ClarificationItem",
     "RequirementAnalysisResult",
     "analyze_requirement",

@@ -1,0 +1,617 @@
+{
+  "schema_version": "v1",
+  "project_id": "project-75fec50973f2adf6",
+  "automation_case_id": "uiauto-uigen-eda941ca57507528",
+  "source_test_case_id": "mtc-1b4a3792fd2cf4e3",
+  "source_test_case_version": 1,
+  "environment_id": "default",
+  "exploration_run_id": "exp_Am3HGwQW4awyEobW17YWEw",
+  "parameters": [
+    "target_model"
+  ],
+  "page_objects": [
+    {
+      "page_key": "workspace_page",
+      "class_name": "WorkspacePage",
+      "file_path": "pages/generated/project_75fec50973f2adf6/workspace_page.py",
+      "route": "/workspace",
+      "elements": [
+        {
+          "key": "agent_name_link",
+          "locator": {
+            "strategy": "text",
+            "role": "",
+            "name": "",
+            "value": "标准智能体测试",
+            "exact": true,
+            "evidence_refs": [
+              "page-workspace__root__001"
+            ]
+          }
+        },
+        {
+          "key": "use_button",
+          "locator": {
+            "strategy": "role",
+            "role": "button",
+            "name": "使用",
+            "value": "",
+            "exact": true,
+            "evidence_refs": [
+              "page-workspace__root__001"
+            ]
+          }
+        },
+        {
+          "key": "agent_card",
+          "locator": {
+            "strategy": "text",
+            "role": "",
+            "name": "",
+            "value": "标准智能体测试",
+            "exact": true,
+            "evidence_refs": [
+              "page-workspace__root__001"
+            ]
+          }
+        },
+        {
+          "key": "status_published",
+          "locator": {
+            "strategy": "text",
+            "role": "",
+            "name": "",
+            "value": "已发布",
+            "exact": true,
+            "evidence_refs": [
+              "page-workspace__root__001"
+            ]
+          }
+        },
+        {
+          "key": "create_button",
+          "locator": {
+            "strategy": "role",
+            "role": "button",
+            "name": "创建",
+            "value": "",
+            "exact": true,
+            "evidence_refs": [
+              "page-workspace__root__001"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "page_key": "bot_settings_page",
+      "class_name": "BotSettingsPage",
+      "file_path": "pages/generated/project_75fec50973f2adf6/bot_settings_page.py",
+      "route": "",
+      "elements": [
+        {
+          "key": "model_selector",
+          "locator": {
+            "strategy": "text",
+            "role": "",
+            "name": "",
+            "value": "对话模型",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-3"
+            ]
+          }
+        },
+        {
+          "key": "history_sessions_btn",
+          "locator": {
+            "strategy": "role",
+            "role": "button",
+            "name": "历史会话",
+            "value": "",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-5"
+            ]
+          }
+        },
+        {
+          "key": "new_session_btn",
+          "locator": {
+            "strategy": "role",
+            "role": "button",
+            "name": "新建会话",
+            "value": "",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-6"
+            ]
+          }
+        },
+        {
+          "key": "chat_input",
+          "locator": {
+            "strategy": "css",
+            "role": "",
+            "name": "",
+            "value": "textarea",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-7"
+            ]
+          }
+        },
+        {
+          "key": "send_btn",
+          "locator": {
+            "strategy": "role",
+            "role": "button",
+            "name": "发送",
+            "value": "",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-7"
+            ]
+          }
+        },
+        {
+          "key": "last_response",
+          "locator": {
+            "strategy": "css",
+            "role": "",
+            "name": "",
+            "value": "[class*='message']:last-of-type",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-8"
+            ]
+          }
+        },
+        {
+          "key": "publish_btn",
+          "locator": {
+            "strategy": "text",
+            "role": "",
+            "name": "",
+            "value": "发布",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-13"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "page_key": "publish_dialog",
+      "class_name": "PublishDialogPage",
+      "file_path": "pages/generated/project_75fec50973f2adf6/publish_dialog_page.py",
+      "route": "",
+      "elements": [
+        {
+          "key": "version_input",
+          "locator": {
+            "strategy": "css",
+            "role": "",
+            "name": "",
+            "value": "input",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-14"
+            ]
+          }
+        },
+        {
+          "key": "log_input",
+          "locator": {
+            "strategy": "css",
+            "role": "",
+            "name": "",
+            "value": "textarea",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-15"
+            ]
+          }
+        },
+        {
+          "key": "publish_confirm_btn",
+          "locator": {
+            "strategy": "role",
+            "role": "button",
+            "name": "发布",
+            "value": "",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-16"
+            ]
+          }
+        },
+        {
+          "key": "confirm_dialog_text",
+          "locator": {
+            "strategy": "text",
+            "role": "",
+            "name": "",
+            "value": "确认要发布吗？",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-16"
+            ]
+          }
+        },
+        {
+          "key": "confirm_btn",
+          "locator": {
+            "strategy": "role",
+            "role": "button",
+            "name": "确认",
+            "value": "",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-17"
+            ]
+          }
+        },
+        {
+          "key": "publishing_status",
+          "locator": {
+            "strategy": "text",
+            "role": "",
+            "name": "",
+            "value": "正在发布版本",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-17"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "source_step_id": "step-1",
+      "kind": "navigate",
+      "page_key": "workspace_page",
+      "element_key": "",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-2",
+      "kind": "click",
+      "page_key": "workspace_page",
+      "element_key": "agent_name_link",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-3",
+      "kind": "click",
+      "page_key": "bot_settings_page",
+      "element_key": "model_selector",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-4",
+      "kind": "click_parameter_text",
+      "page_key": "bot_settings_page",
+      "element_key": "",
+      "value_ref": "target_model",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-5",
+      "kind": "click",
+      "page_key": "bot_settings_page",
+      "element_key": "history_sessions_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-6",
+      "kind": "click",
+      "page_key": "bot_settings_page",
+      "element_key": "new_session_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-7",
+      "kind": "fill",
+      "page_key": "bot_settings_page",
+      "element_key": "chat_input",
+      "value_ref": "",
+      "value": "hi"
+    },
+    {
+      "source_step_id": "step-7-send",
+      "kind": "click",
+      "page_key": "bot_settings_page",
+      "element_key": "send_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-8",
+      "kind": "wait_visible",
+      "page_key": "bot_settings_page",
+      "element_key": "last_response",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-9",
+      "kind": "fill",
+      "page_key": "bot_settings_page",
+      "element_key": "chat_input",
+      "value_ref": "",
+      "value": "flow1"
+    },
+    {
+      "source_step_id": "step-9-send",
+      "kind": "click",
+      "page_key": "bot_settings_page",
+      "element_key": "send_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-10",
+      "kind": "wait_visible",
+      "page_key": "bot_settings_page",
+      "element_key": "last_response",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-11",
+      "kind": "fill",
+      "page_key": "bot_settings_page",
+      "element_key": "chat_input",
+      "value_ref": "",
+      "value": "北京今日天气"
+    },
+    {
+      "source_step_id": "step-11-send",
+      "kind": "click",
+      "page_key": "bot_settings_page",
+      "element_key": "send_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-12",
+      "kind": "wait_visible",
+      "page_key": "bot_settings_page",
+      "element_key": "last_response",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-13",
+      "kind": "click",
+      "page_key": "bot_settings_page",
+      "element_key": "publish_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-14",
+      "kind": "fill",
+      "page_key": "publish_dialog",
+      "element_key": "version_input",
+      "value_ref": "",
+      "value": "1.0.0"
+    },
+    {
+      "source_step_id": "step-15",
+      "kind": "fill",
+      "page_key": "publish_dialog",
+      "element_key": "log_input",
+      "value_ref": "",
+      "value": "自动化测试发布"
+    },
+    {
+      "source_step_id": "step-16",
+      "kind": "click",
+      "page_key": "publish_dialog",
+      "element_key": "publish_confirm_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-17",
+      "kind": "click",
+      "page_key": "publish_dialog",
+      "element_key": "confirm_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-18",
+      "kind": "wait_visible",
+      "page_key": "publish_dialog",
+      "element_key": "publishing_status",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-19",
+      "kind": "navigate",
+      "page_key": "workspace_page",
+      "element_key": "",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-19-use",
+      "kind": "click",
+      "page_key": "workspace_page",
+      "element_key": "use_button",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-20",
+      "kind": "click",
+      "page_key": "bot_settings_page",
+      "element_key": "new_session_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-21",
+      "kind": "fill",
+      "page_key": "bot_settings_page",
+      "element_key": "chat_input",
+      "value_ref": "",
+      "value": "hi"
+    },
+    {
+      "source_step_id": "step-21-send",
+      "kind": "click",
+      "page_key": "bot_settings_page",
+      "element_key": "send_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-22",
+      "kind": "wait_visible",
+      "page_key": "bot_settings_page",
+      "element_key": "last_response",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-23",
+      "kind": "fill",
+      "page_key": "bot_settings_page",
+      "element_key": "chat_input",
+      "value_ref": "",
+      "value": "flow1"
+    },
+    {
+      "source_step_id": "step-23-send",
+      "kind": "click",
+      "page_key": "bot_settings_page",
+      "element_key": "send_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-24",
+      "kind": "wait_visible",
+      "page_key": "bot_settings_page",
+      "element_key": "last_response",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-25",
+      "kind": "fill",
+      "page_key": "bot_settings_page",
+      "element_key": "chat_input",
+      "value_ref": "",
+      "value": "北京今日天气"
+    },
+    {
+      "source_step_id": "step-25-send",
+      "kind": "click",
+      "page_key": "bot_settings_page",
+      "element_key": "send_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-26",
+      "kind": "wait_visible",
+      "page_key": "bot_settings_page",
+      "element_key": "last_response",
+      "value_ref": "",
+      "value": ""
+    }
+  ],
+  "assertions": [
+    {
+      "source_expected_result_id": "er-1",
+      "kind": "url",
+      "page_key": "workspace_page",
+      "element_key": "",
+      "expected_ref": "",
+      "expected": "/workspace"
+    },
+    {
+      "source_expected_result_id": "er-2",
+      "kind": "visible",
+      "page_key": "workspace_page",
+      "element_key": "agent_card",
+      "expected_ref": "",
+      "expected": ""
+    },
+    {
+      "source_expected_result_id": "er-8",
+      "kind": "text",
+      "page_key": "bot_settings_page",
+      "element_key": "last_response",
+      "expected_ref": "",
+      "expected": "flow_exit"
+    },
+    {
+      "source_expected_result_id": "er-10",
+      "kind": "text",
+      "page_key": "bot_settings_page",
+      "element_key": "last_response",
+      "expected_ref": "",
+      "expected": "flow_exit"
+    },
+    {
+      "source_expected_result_id": "er-12",
+      "kind": "text",
+      "page_key": "bot_settings_page",
+      "element_key": "last_response",
+      "expected_ref": "",
+      "expected": "调用完成"
+    },
+    {
+      "source_expected_result_id": "er-16",
+      "kind": "visible",
+      "page_key": "publish_dialog",
+      "element_key": "confirm_dialog_text",
+      "expected_ref": "",
+      "expected": ""
+    },
+    {
+      "source_expected_result_id": "er-18",
+      "kind": "visible",
+      "page_key": "workspace_page",
+      "element_key": "status_published",
+      "expected_ref": "",
+      "expected": ""
+    },
+    {
+      "source_expected_result_id": "er-24",
+      "kind": "text",
+      "page_key": "bot_settings_page",
+      "element_key": "last_response",
+      "expected_ref": "",
+      "expected": "flow_exit"
+    },
+    {
+      "source_expected_result_id": "er-26",
+      "kind": "text",
+      "page_key": "bot_settings_page",
+      "element_key": "last_response",
+      "expected_ref": "",
+      "expected": "调用完成"
+    }
+  ],
+  "artifacts": {
+    "test_file": "testcases/generated/project_75fec50973f2adf6/test_mtc_1b4a3792fd2cf4e3_uiauto_uigen_eda941ca57507528.py",
+    "data_file": "data/projects/project_75fec50973f2adf6/cases/mtc_1b4a3792fd2cf4e3_uiauto_uigen_eda941ca57507528.yaml",
+    "plan_file": "data/projects/project_75fec50973f2adf6/cases/mtc_1b4a3792fd2cf4e3_uiauto_uigen_eda941ca57507528.plan.json"
+  }
+}

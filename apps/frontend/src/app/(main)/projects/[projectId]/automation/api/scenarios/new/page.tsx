@@ -12,6 +12,7 @@ export default function NewApiScenarioPage() {
     <PageShell
       breadcrumbs={moduleBreadcrumbs("apiAutomation", { label: "新建场景" })}
       description="组合接口用例、配置变量并定义执行顺序。"
+      fillViewport
       projectScope="project"
       title="新建接口场景"
     >

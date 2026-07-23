@@ -43,6 +43,9 @@ TEST_DATA = load_yaml(__file__, "test_login.yaml")
 def test_login(case):
     api = UserAPI()
     resp = api.post_login(data=case["request"])
+    if case.get("oracle_status") in {"inferred", "needs_confirmation"}:
+        from utils.observations import record_observation
+        record_observation(case, resp)
     assert_response(resp, case["assertions"])
 ```
 

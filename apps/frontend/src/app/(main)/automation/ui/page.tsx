@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import Link from "next/link";
+
 import { Loader2, Play, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,11 +25,10 @@ import {
   apiRequest,
   createUiAutomationExecutionRun,
   createUiAutomationGenerationRun,
-  getUiAutomationExecutionRun,
   getUiAutomationGenerationRun,
   listUiAutomationAssets,
+  listUiAutomationGenerationRuns,
   type UiAutomationAsset,
-  type UiAutomationExecutionRun,
   type UiAutomationGenerationRun,
 } from "@/lib/api-client";
 import type { ExplorationEnvironment } from "@/lib/exploration-types";
@@ -42,10 +43,11 @@ type Operation = {
 
 type UiAutomationRow = {
   id: string;
-  asset: UiAutomationAsset;
   project: ApiProject;
   testCase: ApiManualTestCase | ApiTestCase | null;
   operation: Operation | null;
+  asset?: UiAutomationAsset;
+  generationRun?: UiAutomationGenerationRun;
 };
 
 const statusLabels: Record<string, string> = {
@@ -56,6 +58,9 @@ const statusLabels: Record<string, string> = {
   passed: "通过",
   failed: "失败",
   ready: "可执行",
+  waiting_manual: "等待人工处理",
+  degraded: "需要重新生成",
+  deprecated: "已废弃",
 };
 
 function labelForStatus(status: string) {
@@ -73,20 +78,24 @@ export default function Page() {
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState("");
   const [createEnvironments, setCreateEnvironments] = useState<ExplorationEnvironment[]>([]);
-  const [manualCases, setManualCases] = useState<ApiManualTestCase[]>([]);
-  const [approvedCaseSets, setApprovedCaseSets] = useState<ApiTestCaseSet[]>([]);
+  const [sourceCases, setSourceCases] = useState<Array<ApiManualTestCase | ApiTestCase>>([]);
   const [executionRow, setExecutionRow] = useState<UiAutomationRow | null>(null);
   const [executionEnvironments, setExecutionEnvironments] = useState<ExplorationEnvironment[]>([]);
   const [executionEnvironmentId, setExecutionEnvironmentId] = useState("");
   const [executionLoading, setExecutionLoading] = useState(false);
-  const [run, setRun] = useState<UiAutomationExecutionRun | UiAutomationGenerationRun | null>(null);
 
   const activeProjects = projects.filter((project) => project.status === "active");
   const filteredRows = useMemo(() => {
     const query = searchText.trim().toLowerCase();
     return selection.rows.filter((row) => {
       if (!query) return true;
-      return [row.testCase?.title, row.operation?.key, row.operation?.page_path, row.asset.test_file_path]
+      return [
+        row.testCase?.title,
+        row.operation?.key,
+        row.operation?.page_path,
+        row.asset?.test_file_path,
+        row.generationRun?.id,
+      ]
         .filter(Boolean)
         .some((value) => value?.toLowerCase().includes(query));
     });
@@ -97,8 +106,9 @@ export default function Page() {
       const active = nextProjects.filter((project) => project.status === "active");
       const projectRows = await Promise.all(
         active.map(async (project) => {
-          const [assets, operationsArtifact, testCaseSets, manualTestCases] = await Promise.all([
+          const [assets, generationRuns, operationsArtifact, testCaseSets, manualTestCases] = await Promise.all([
             listUiAutomationAssets(project.id),
+            listUiAutomationGenerationRuns(project.id),
             apiRequest<{ operations: Operation[] }>(`/page-exploration/projects/${project.id}/operations`),
             apiRequest<ApiTestCaseSet[]>(`/projects/${project.id}/test-case-sets`),
             apiRequest<ApiManualTestCase[]>(`/projects/${project.id}/test-cases`),
@@ -110,7 +120,7 @@ export default function Page() {
             ...manualTestCases,
             ...detailedSets.flatMap((set) => set.cases ?? []).filter((item) => item.status === "approved"),
           ];
-          return assets.map((asset) => {
+          const assetRows = assets.map((asset) => {
             const testCase = cases.find((item) => item.id === asset.test_case_id) ?? null;
             const operation =
               operationsArtifact.operations?.find(
@@ -120,6 +130,20 @@ export default function Page() {
               ) ?? null;
             return { id: asset.id, asset, project, testCase, operation };
           });
+          const generationRows = generationRuns
+            .filter(
+              (generationRun) =>
+                !assets.some((asset) => asset.generation_run_id === generationRun.id) &&
+                generationRun.status !== "completed",
+            )
+            .map((generationRun) => ({
+              id: generationRun.id,
+              generationRun,
+              project,
+              testCase: cases.find((item) => item.id === generationRun.test_case_id) ?? null,
+              operation: null,
+            }));
+          return [...generationRows, ...assetRows];
         }),
       );
       selection.setRows(projectRows.flat());
@@ -129,16 +153,16 @@ export default function Page() {
 
   const loadCases = useCallback(async (nextProjectId: string) => {
     if (!nextProjectId) {
-      setManualCases([]);
-      setApprovedCaseSets([]);
+      setSourceCases([]);
       return;
     }
     const sets = await apiRequest<ApiTestCaseSet[]>(`/projects/${nextProjectId}/test-case-sets`);
     const details = await Promise.all(
       sets.map((set) => apiRequest<ApiTestCaseSet>(`/projects/${nextProjectId}/test-case-sets/${set.id}`)),
     );
-    setManualCases(await apiRequest<ApiManualTestCase[]>(`/projects/${nextProjectId}/test-cases`));
-    setApprovedCaseSets(details.filter((set) => set.cases?.some((item) => item.status === "approved")));
+    const manual = await apiRequest<ApiManualTestCase[]>(`/projects/${nextProjectId}/test-cases`);
+    const approved = details.flatMap((set) => set.cases ?? []).filter((item) => item.status === "approved");
+    setSourceCases([...manual, ...approved]);
   }, []);
 
   useEffect(() => {
@@ -179,47 +203,36 @@ export default function Page() {
 
   async function createGeneration() {
     if (!selectedProjectId || !selectedSource || !selectedEnvironmentId) {
-      toast.error("请选择项目、测试用例或已采纳用例集和运行环境");
+      toast.error("请选择项目、测试用例和运行环境");
       return;
     }
     setSaving(true);
     try {
-      const [sourceType, sourceId] = selectedSource.split(":", 2);
-      const testCaseIds =
-        sourceType === "manual"
-          ? [sourceId]
-          : (approvedCaseSets.find((set) => set.id === sourceId)?.cases ?? [])
-              .filter((item) => item.status === "approved")
-              .map((item) => item.id);
-      const createdRuns = await Promise.all(
-        testCaseIds.map((testCaseId) =>
-          createUiAutomationGenerationRun(selectedProjectId, {
-            test_case_id: testCaseId,
-            environment_id: selectedEnvironmentId,
-          }),
-        ),
-      );
-      setRun(createdRuns[0] ?? null);
+      const created = await createUiAutomationGenerationRun(selectedProjectId, {
+        test_case_id: selectedSource,
+        environment_id: selectedEnvironmentId,
+      });
       setDialogOpen(false);
-      toast.success(`已创建 ${createdRuns.length} 个 UI 自动化生成任务`);
-      await Promise.all(
-        createdRuns.map(async (created) => {
-          const poll = async () => {
-            const next = await getUiAutomationGenerationRun(selectedProjectId, created.id);
-            setRun(next);
-            if (["queued", "running"].includes(next.status)) {
-              await new Promise((resolve) => window.setTimeout(resolve, 1000));
-              await poll();
-            }
-          };
-          await poll();
-        }),
-      );
+      toast.success("已创建 UI 自动化生成任务");
       await loadProjectRows(projects);
+      void pollGeneration(selectedProjectId, created.id);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "UI 自动化生成失败");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function pollGeneration(projectId: string, runId: string) {
+    try {
+      const next = await getUiAutomationGenerationRun(projectId, runId);
+      if (["queued", "running"].includes(next.status)) {
+        window.setTimeout(() => void pollGeneration(projectId, runId), 1000);
+        return;
+      }
+      await loadProjectRows(projects);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "UI 自动化生成状态刷新失败");
     }
   }
 
@@ -240,7 +253,7 @@ export default function Page() {
   }
 
   async function executeAsset() {
-    if (!executionRow || !executionEnvironmentId) {
+    if (!executionRow?.asset || !executionEnvironmentId) {
       toast.error("请选择运行环境");
       return;
     }
@@ -250,21 +263,16 @@ export default function Page() {
         executionRow.asset.id,
         executionEnvironmentId,
       );
-      setRun(created);
       setExecutionRow(null);
-      const poll = async () => {
-        const next = await getUiAutomationExecutionRun(executionRow.project.id, created.id);
-        setRun(next);
-        if (["queued", "running"].includes(next.status)) window.setTimeout(() => void poll(), 1000);
-      };
-      window.setTimeout(() => void poll(), 1000);
+      window.location.assign(
+        `/projects/${executionRow.project.id}/automation/ui/assets/${executionRow.asset.id}/runs/${created.id}`,
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "UI 自动化执行失败");
     }
   }
 
   const selectedProjectEnvironments = createEnvironments.filter((item) => item.project_id === selectedProjectId);
-  const runStatus = run?.status ?? "";
 
   return (
     <PageShell
@@ -308,33 +316,46 @@ export default function Page() {
                     <TableRow data-state={selection.selectedIds.includes(row.id) ? "selected" : undefined} key={row.id}>
                       <TableCell>
                         <Checkbox
-                          aria-label={`选择 ${row.testCase?.title ?? row.asset.id}`}
+                          aria-label={`选择 ${row.testCase?.title ?? row.asset?.id ?? row.generationRun?.id}`}
                           checked={selection.selectedIds.includes(row.id)}
+                          disabled={Boolean(row.generationRun)}
                           onCheckedChange={(checked) => selection.toggleOne(row.id, Boolean(checked))}
                         />
                       </TableCell>
-                      <TableCell
-                        className="max-w-72 truncate font-medium"
-                        title={row.testCase?.title ?? row.asset.test_file_path}
-                      >
-                        {row.testCase?.title ?? row.asset.test_file_path}
+                      <TableCell className="max-w-72 truncate font-medium">
+                        {row.asset ? (
+                          <Link
+                            className="block truncate text-foreground hover:text-primary hover:underline"
+                            href={`/projects/${row.project.id}/automation/ui/assets/${row.asset.id}`}
+                            title={row.testCase?.title ?? row.asset.test_file_path}
+                          >
+                            {row.testCase?.title ?? row.asset.test_file_path}
+                          </Link>
+                        ) : (
+                          <span className="block truncate" title={row.testCase?.title ?? row.generationRun?.id}>
+                            {row.testCase?.title ?? "UI 自动化生成任务"}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
-                        <StatusBadge tone={chineseCompletionTone(row.asset.status)}>
-                          {labelForStatus(row.asset.status)}
+                        <StatusBadge
+                          title={row.generationRun?.error_message || undefined}
+                          tone={chineseCompletionTone(row.asset?.status ?? row.generationRun?.status ?? "")}
+                        >
+                          {labelForStatus(row.asset?.status ?? row.generationRun?.status ?? "")}
                         </StatusBadge>
                       </TableCell>
                       <TableCell
                         className="max-w-64 truncate font-mono text-xs"
-                        title={row.operation?.page_path ?? row.asset.suite_path}
+                        title={row.operation?.page_path ?? row.asset?.suite_path ?? row.generationRun?.suite_path}
                       >
-                        {row.operation?.page_path ?? row.asset.suite_path}
+                        {row.operation?.page_path ?? row.asset?.suite_path ?? "生成任务"}
                       </TableCell>
                       <TableCell>{row.operation?.steps.length ?? row.testCase?.steps.length ?? "-"}</TableCell>
                       <TableCell>
                         <Button
-                          aria-label={`执行 ${row.testCase?.title ?? row.asset.id}`}
-                          disabled={["degraded", "deprecated"].includes(row.asset.status)}
+                          aria-label={`执行 ${row.testCase?.title ?? row.asset?.id ?? row.generationRun?.id}`}
+                          disabled={!row.asset || ["degraded", "deprecated"].includes(row.asset.status)}
                           onClick={() => void openExecutionDialog(row)}
                           size="icon-sm"
                         >
@@ -355,24 +376,6 @@ export default function Page() {
           </Table>
         </div>
       </ShellSection>
-
-      {run ? (
-        <ShellSection>
-          <div className="flex items-center justify-between border-b p-4">
-            <div>
-              <div className="font-medium">UI 自动化任务</div>
-              <div className="text-muted-foreground text-sm">{run.id}</div>
-            </div>
-            <StatusBadge tone={chineseCompletionTone(runStatus)}>{labelForStatus(runStatus)}</StatusBadge>
-          </div>
-          <div className="grid gap-4 p-4 text-sm sm:grid-cols-2">
-            <div>任务状态：{labelForStatus(run.status)}</div>
-            <div>环境：{run.environment_id}</div>
-            <div>结果目录：{runStatus === "completed" && "run_dir" in run ? run.run_dir || "-" : "生成任务处理中"}</div>
-            <div>错误信息：{run.error_message || "-"}</div>
-          </div>
-        </ShellSection>
-      ) : null}
 
       <Dialog
         open={Boolean(executionRow)}
@@ -447,16 +450,11 @@ export default function Page() {
               </Select>
             </Field>
             <Field>
-              <FieldLabel htmlFor="ui-automation-source">测试用例 / 已采纳用例集</FieldLabel>
-              <Select placeholder="选择测试用例或用例集" setValue={setSelectedSource} value={selectedSource}>
-                {manualCases.map((testCase) => (
-                  <SelectOption key={testCase.id} value={`manual:${testCase.id}`}>
-                    {`测试用例 · ${testCase.title}`}
-                  </SelectOption>
-                ))}
-                {approvedCaseSets.map((caseSet) => (
-                  <SelectOption key={caseSet.id} value={`set:${caseSet.id}`}>
-                    {`用例集 · ${caseSet.name}`}
+              <FieldLabel htmlFor="ui-automation-source">测试用例</FieldLabel>
+              <Select placeholder="选择测试用例" setValue={setSelectedSource} value={selectedSource}>
+                {sourceCases.map((testCase) => (
+                  <SelectOption key={testCase.id} value={testCase.id}>
+                    {testCase.title}
                   </SelectOption>
                 ))}
               </Select>

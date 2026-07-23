@@ -20,6 +20,9 @@ from app.schemas.api_automation import (
     ApiRepairRollbackIn,
     ApiRepairSessionCreateIn,
     ApiRunCreateIn,
+    ApiScenarioAiPlanApplyIn,
+    ApiScenarioAiPlanIn,
+    ApiScenarioAiPlanOut,
     ApiScenarioExecuteIn,
     ApiScenarioIn,
     ApiScenarioPublishIn,
@@ -376,6 +379,19 @@ def get_api_repair_session(project_id: str, session_id: str, actor=Depends(curre
     return self_healing.get_repair_session(project_id, session_id, actor)
 
 
+@router.post("/api-repair-sessions/{session_id}/attempts")
+def create_api_repair_attempt(
+    project_id: str,
+    session_id: str,
+    payload: ApiRepairSessionCreateIn,
+    background_tasks: BackgroundTasks,
+    actor=Depends(require_admin),
+) -> dict:
+    created = self_healing.create_next_repair_attempt(project_id, session_id, payload.user_context, actor)
+    background_tasks.add_task(self_healing.execute_repair_attempt, created["attempt_id"])
+    return created
+
+
 @router.get("/api-repair-attempts/{attempt_id}")
 def get_api_repair_attempt(project_id: str, attempt_id: str, actor=Depends(current_user)) -> dict:
     return self_healing.get_repair_attempt(project_id, attempt_id, actor)
@@ -458,6 +474,25 @@ def rollback_api_repair_session(
 @router.get("/api-scenarios")
 def list_api_scenarios(project_id: str, actor=Depends(current_user)) -> list[dict]:
     return service.list_api_scenarios(project_id, actor)
+
+
+@router.post("/api-scenarios/ai-plan", response_model=ApiScenarioAiPlanOut)
+def create_api_scenario_ai_plan(
+    project_id: str,
+    payload: ApiScenarioAiPlanIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return service.create_api_scenario_ai_plan(project_id, payload, actor)
+
+
+@router.post("/api-scenarios/ai-plans/{plan_id}/apply")
+def apply_api_scenario_ai_plan(
+    project_id: str,
+    plan_id: str,
+    payload: ApiScenarioAiPlanApplyIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return service.apply_api_scenario_ai_plan(project_id, plan_id, payload, actor)
 
 
 @router.post("/api-scenarios")

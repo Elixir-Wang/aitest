@@ -1,0 +1,40 @@
+{
+  "summary": "16个失败用例全部返回HTTP 200而非预期的400/401状态码，表明接口对非法输入未做校验，而是正常处理并返回成功响应。",
+  "issues": [
+    {
+      "failure_ids": [
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[必填字段 start_date 类型错误]",
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[必填字段 end_date 传入 null]",
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[必填字段 end_date 类型错误]",
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[字段 start_date 非法日期格式]",
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[必填字段 end_date 传入空字符串]",
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[必填字段 end_date 缺失]",
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[必填字段 start_date 传入 null]",
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[字段 end_date 非法日期格式]",
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[日期关系 - start_date 晚于 end_date]",
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[请求体缺失]",
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[必填字段 start_date 传入空字符串]",
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[请求体为空对象]",
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[必填字段 start_date 缺失]"
+      ],
+      "classification": "interface_bug",
+      "confidence": 0.95,
+      "root_cause": "接口 POST /openapi/v1/agent/analysis/ 对非法输入（必填字段缺失、null、类型错误、空字符串、非法日期格式、反向日期范围、请求体缺失/空对象）均返回 HTTP 200 而非预期的 400，表明服务端缺少输入校验逻辑。",
+      "recommendation": "服务端应增加输入参数校验：必填字段缺失/为null/空字符串应返回400；日期格式非法应返回400；start_date晚于end_date应返回400；请求体缺失或为空对象应返回400。",
+      "repairable": false
+    },
+    {
+      "failure_ids": [
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[鉴权 Header cybertron-robot-token 为空]",
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[鉴权 Header cybertron-robot-key 为空]",
+        "testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[鉴权 Header username 为空]"
+      ],
+      "classification": "interface_bug",
+      "confidence": 0.95,
+      "root_cause": "接口 POST /openapi/v1/agent/analysis/ 对鉴权 header（cybertron-robot-token、cybertron-robot-key、username）设为空字符串时仍返回 HTTP 200 而非 401，表明服务端未校验鉴权头的有效性。",
+      "recommendation": "服务端应增加鉴权校验：当 cybertron-robot-token、cybertron-robot-key、username 为空或无效时返回 401。",
+      "repairable": false
+    }
+  ],
+  "proposal": null
+}

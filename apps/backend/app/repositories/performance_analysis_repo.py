@@ -41,7 +41,7 @@ def create_analysis_session(
 def update_analysis_session(db: Connection, analysis_id: str, **fields: Any) -> None:
     if not fields:
         return
-    json_fields = {"evidence", "missing_evidence", "proposal"}
+    json_fields = {"evidence", "missing_evidence", "proposal", "selected_change_ids", "preflight"}
     allowed = {
         "status",
         "category",
@@ -52,6 +52,13 @@ def update_analysis_session(db: Connection, analysis_id: str, **fields: Any) -> 
         "evidence",
         "missing_evidence",
         "proposal",
+        "application_status",
+        "selected_change_ids",
+        "preflight",
+        "applied_script_id",
+        "applied_run_id",
+        "applied_by",
+        "applied_at",
         "model_name",
         "error_message",
         "finished_at",
@@ -113,14 +120,33 @@ def serialize_analysis_session(row: Row) -> dict[str, Any]:
     result["evidence"] = _loads(result.pop("evidence_json", "[]"), [])
     result["missing_evidence"] = _loads(result.pop("missing_evidence_json", "[]"), [])
     result["proposal"] = _loads(result.pop("proposal_json", "{}"), {})
-    result["available_actions"] = _available_actions(str(result.get("status") or ""))
+    result["selected_change_ids"] = _loads(result.pop("selected_change_ids_json", "[]"), [])
+    result["preflight"] = _loads(result.pop("preflight_json", "{}"), {})
+    result["applicable_change_ids"] = _applicable_change_ids(result["proposal"])
+    result["available_actions"] = _available_actions(
+        str(result.get("status") or ""),
+        str(result.get("application_status") or ""),
+        result["applicable_change_ids"],
+    )
     return result
 
 
-def _available_actions(status: str) -> list[str]:
+def _available_actions(status: str, application_status: str, applicable_change_ids: list[str]) -> list[str]:
     if status == "waiting_approval":
-        return ["reject", "reanalyze"]
+        actions = ["reject", "reanalyze"]
+        if applicable_change_ids and application_status in {"not_requested", "preflight_failed", "apply_failed"}:
+            actions.insert(0, "apply_and_rerun")
+        return actions
     if status in {"failed", "rejected"}:
         return ["reanalyze"]
     return []
 
+
+def _applicable_change_ids(proposal: dict[str, Any]) -> list[str]:
+    from app.services.performance_testing.repair_service import is_supported_change
+
+    return [
+        str(change.get("id"))
+        for change in proposal.get("changes", [])
+        if isinstance(change, dict) and change.get("id") and is_supported_change(change)
+    ]

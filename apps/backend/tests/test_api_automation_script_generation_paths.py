@@ -93,6 +93,33 @@ def test_validate_generated_endpoint_artifacts_accepts_exact_files(tmp_path: Pat
     service._validate_generated_endpoint_artifacts(tmp_path, artifacts)
 
 
+def test_validate_generated_endpoint_artifacts_requires_observation_for_uncertain_oracle(tmp_path: Path) -> None:
+    _, artifacts = service._prepare_endpoint_generation(tmp_path, [_endpoint()])
+    artifact = artifacts["apiend-1"]
+    artifact["test_file_path"].parent.mkdir(parents=True)
+    artifact["test_file_path"].write_text(
+        "def test_api():\n    pass\n",
+        encoding="utf-8",
+    )
+    artifact["data_file_path"].write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "id": "case-1",
+                    "endpoint_id": "apiend-1",
+                    "oracle_status": "needs_confirmation",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        service._validate_generated_endpoint_artifacts(tmp_path, artifacts)
+
+    assert exc_info.value.detail["code"] == "API_SCRIPT_ORACLE_OBSERVATION_MISSING"
+
+
 def test_write_canonical_endpoint_data_replaces_agent_output_with_exact_database_snapshot(tmp_path: Path) -> None:
     _, artifacts = service._prepare_endpoint_generation(tmp_path, [_endpoint()])
     artifact = artifacts["apiend-1"]

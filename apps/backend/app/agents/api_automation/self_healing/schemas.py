@@ -5,6 +5,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class ProposedCaseUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: str = Field(min_length=1)
+    expected_status_code: int = Field(ge=100, le=599)
+    actual_status_code: int = Field(ge=100, le=599)
+
+
 class RepairProposal(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -21,6 +29,7 @@ class RepairProposal(BaseModel):
     summary: str = Field(min_length=1)
     confidence: float = Field(ge=0, le=1)
     proposed_changes: list[str] = Field(default_factory=list)
+    case_updates: list[ProposedCaseUpdate] = Field(default_factory=list)
     script_repair_allowed: bool = False
 
 

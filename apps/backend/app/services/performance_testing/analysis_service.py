@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from app.agents.performance_testing.diagnosis.service import diagnose_performance
 from app.core.db import connect
 from app.core.exceptions import api_error
+from app.core.logging import logger
 from app.repositories import performance_analysis_repo, project_repo
 from app.services.performance_testing import run_repo
 from app.services.performance_testing.analysis_evidence import collect_performance_evidence, has_analyzable_evidence
@@ -78,13 +79,23 @@ def execute_analysis(analysis_id: str) -> None:
                 finished_at=_now(),
             )
     except Exception as exc:
+        logger.exception(
+            "performance_analysis_failed | analysis_id={} project_id={} run_id={} "
+            "error_type={} status_code={} error={}",
+            analysis_id,
+            locals().get("project_id", ""),
+            locals().get("run_id", ""),
+            type(exc).__name__,
+            getattr(exc, "status_code", ""),
+            str(exc),
+        )
         with connect() as db:
             if performance_analysis_repo.find_analysis_session(db, analysis_id):
                 performance_analysis_repo.update_analysis_session(
                     db,
                     analysis_id,
                     status="failed",
-                    error_message=f"AI 分析执行失败：{type(exc).__name__}。请检查后台日志或重新分析。",
+                    error_message=_analysis_error_message(exc),
                     finished_at=_now(),
                 )
 
@@ -136,6 +147,22 @@ def _require_visible_project(db, project_id: str, actor) -> None:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _analysis_error_message(exc: Exception) -> str:
+    """Turn provider errors into an actionable message without exposing raw details."""
+    status_code = getattr(exc, "status_code", None)
+    error_text = str(exc).lower()
+    error_type = type(exc).__name__.lower()
+    is_rate_limited = (
+        status_code == 429
+        or "ratelimit" in error_type
+        or "rate_limit" in error_text
+        or "rate limit" in error_text
+    )
+    if is_rate_limited:
+        return "AI 分析执行失败：触发模型接口 429 频率限制，可能是请求过于频繁或模型配额不足。请稍后重试或检查模型配额。"
+    return f"AI 分析执行失败：{type(exc).__name__}。请检查后台日志或重新分析。"
 
 
 __all__ = [

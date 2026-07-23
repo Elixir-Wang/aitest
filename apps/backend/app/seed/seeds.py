@@ -4,12 +4,16 @@ from app.core.security import hash_secret
 
 
 def seed_system_defaults(db: sqlite3.Connection) -> None:
+    _migrate_ui_automation_case_sources(db)
+    _ensure_ui_automation_video_column(db)
     _drop_legacy_performance_run_tables(db)
     _ensure_performance_test_columns(db)
+    _ensure_performance_analysis_columns(db)
     _ensure_api_test_script_columns(db)
     _ensure_api_automation_run_columns(db)
     _ensure_api_script_generation_runs(db)
     _ensure_api_scenario_columns(db)
+    _ensure_api_scenario_ai_plan_table(db)
     _migrate_project_environment_scope(db)
     _migrate_api_environment_auth_types(db)
     _ensure_test_case_display_order(db)
@@ -22,6 +26,142 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _migrate_legacy_site_exploration_assignment(db)
     _seed_operation_log_retention_policy(db)
     _ensure_all_projects_conversation_scope(db)
+
+
+def _migrate_ui_automation_case_sources(db: sqlite3.Connection) -> None:
+    """Split UI automation sources so manual cases retain referential integrity."""
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(ui_automation_generation_runs)")}
+    if "manual_test_case_id" in columns:
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_ui_assets_generated_case ON ui_automation_assets(project_id, test_case_id) WHERE test_case_id IS NOT NULL")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_ui_assets_manual_case ON ui_automation_assets(project_id, manual_test_case_id) WHERE manual_test_case_id IS NOT NULL")
+        return
+
+    db.commit()
+    db.execute("PRAGMA foreign_keys = OFF")
+    db.execute("PRAGMA legacy_alter_table = ON")
+    db.execute("ALTER TABLE ui_automation_execution_runs RENAME TO ui_automation_execution_runs_legacy")
+    db.execute("ALTER TABLE ui_automation_assets RENAME TO ui_automation_assets_legacy")
+    db.execute("ALTER TABLE ui_automation_generation_runs RENAME TO ui_automation_generation_runs_legacy")
+
+    db.executescript(
+        """
+        CREATE TABLE ui_automation_generation_runs (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          test_case_id TEXT,
+          manual_test_case_id TEXT,
+          environment_id TEXT NOT NULL,
+          exploration_run_id TEXT NOT NULL DEFAULT '',
+          task_id TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'queued',
+          suite_path TEXT NOT NULL DEFAULT '',
+          changed_files_json TEXT NOT NULL DEFAULT '[]',
+          error_message TEXT NOT NULL DEFAULT '',
+          created_by TEXT NOT NULL,
+          started_at TEXT,
+          finished_at TEXT,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(test_case_id) REFERENCES test_cases(id) ON DELETE CASCADE,
+          FOREIGN KEY(manual_test_case_id) REFERENCES manual_test_cases(id) ON DELETE CASCADE,
+          FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE CASCADE,
+          CHECK ((test_case_id IS NOT NULL) != (manual_test_case_id IS NOT NULL))
+        );
+        CREATE TABLE ui_automation_assets (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          test_case_id TEXT,
+          manual_test_case_id TEXT,
+          source_version INTEGER NOT NULL DEFAULT 1,
+          generation_run_id TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'ready',
+          pytest_node_id TEXT NOT NULL,
+          suite_path TEXT NOT NULL,
+          test_file_path TEXT NOT NULL,
+          data_file_path TEXT NOT NULL,
+          plan_file_path TEXT NOT NULL,
+          source_hash TEXT NOT NULL,
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(test_case_id) REFERENCES test_cases(id) ON DELETE CASCADE,
+          FOREIGN KEY(manual_test_case_id) REFERENCES manual_test_cases(id) ON DELETE CASCADE,
+          FOREIGN KEY(generation_run_id) REFERENCES ui_automation_generation_runs(id) ON DELETE CASCADE,
+          CHECK ((test_case_id IS NOT NULL) != (manual_test_case_id IS NOT NULL))
+        );
+        CREATE TABLE ui_automation_execution_runs (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          asset_id TEXT NOT NULL,
+          environment_id TEXT NOT NULL,
+          task_id TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'queued',
+          run_dir TEXT NOT NULL DEFAULT '',
+          result_json TEXT NOT NULL DEFAULT '{}',
+          stdout_path TEXT NOT NULL DEFAULT '',
+          stderr_path TEXT NOT NULL DEFAULT '',
+          trace_path TEXT NOT NULL DEFAULT '',
+          video_path TEXT NOT NULL DEFAULT '',
+          screenshot_paths_json TEXT NOT NULL DEFAULT '[]',
+          error_message TEXT NOT NULL DEFAULT '',
+          created_by TEXT NOT NULL,
+          started_at TEXT,
+          finished_at TEXT,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(asset_id) REFERENCES ui_automation_assets(id) ON DELETE CASCADE,
+          FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE CASCADE
+        );
+        """
+    )
+    db.execute(
+        """INSERT INTO ui_automation_generation_runs
+           SELECT id, project_id, test_case_id, NULL, environment_id, exploration_run_id, task_id,
+                  status, suite_path, changed_files_json, error_message, created_by, started_at,
+                  finished_at, created_at, updated_at
+           FROM ui_automation_generation_runs_legacy"""
+    )
+    db.execute(
+        """INSERT INTO ui_automation_assets
+           SELECT id, project_id, test_case_id, NULL, source_version, generation_run_id, status,
+                  pytest_node_id, suite_path, test_file_path, data_file_path, plan_file_path,
+                  source_hash, created_by, created_at, updated_at
+           FROM ui_automation_assets_legacy"""
+    )
+    db.execute(
+        """INSERT INTO ui_automation_execution_runs (
+             id, project_id, asset_id, environment_id, task_id, status, run_dir,
+             result_json, stdout_path, stderr_path, trace_path, screenshot_paths_json,
+             error_message, created_by, started_at, finished_at, created_at, updated_at
+           )
+           SELECT id, project_id, asset_id, environment_id, task_id, status, run_dir,
+                  result_json, stdout_path, stderr_path, trace_path, screenshot_paths_json,
+                  error_message, created_by, started_at, finished_at, created_at, updated_at
+           FROM ui_automation_execution_runs_legacy"""
+    )
+    db.execute("DROP TABLE ui_automation_execution_runs_legacy")
+    db.execute("DROP TABLE ui_automation_assets_legacy")
+    db.execute("DROP TABLE ui_automation_generation_runs_legacy")
+    db.execute("CREATE INDEX idx_ui_generation_project_created ON ui_automation_generation_runs(project_id, created_at)")
+    db.execute("CREATE INDEX idx_ui_assets_project_updated ON ui_automation_assets(project_id, updated_at)")
+    db.execute("CREATE UNIQUE INDEX uq_ui_assets_generated_case ON ui_automation_assets(project_id, test_case_id) WHERE test_case_id IS NOT NULL")
+    db.execute("CREATE UNIQUE INDEX uq_ui_assets_manual_case ON ui_automation_assets(project_id, manual_test_case_id) WHERE manual_test_case_id IS NOT NULL")
+    db.execute("CREATE INDEX idx_ui_execution_project_created ON ui_automation_execution_runs(project_id, created_at)")
+    db.commit()
+    db.execute("PRAGMA legacy_alter_table = OFF")
+    db.execute("PRAGMA foreign_keys = ON")
+    violations = db.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        raise RuntimeError(f"UI automation source migration has foreign key violations: {violations}")
+
+
+def _ensure_ui_automation_video_column(db: sqlite3.Connection) -> None:
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(ui_automation_execution_runs)")}
+    if "video_path" not in columns:
+        db.execute("ALTER TABLE ui_automation_execution_runs ADD COLUMN video_path TEXT NOT NULL DEFAULT ''")
 
 
 def _ensure_test_point_coverage_structure(db: sqlite3.Connection) -> None:
@@ -90,6 +230,27 @@ def _ensure_performance_test_columns(db: sqlite3.Connection) -> None:
     additions = {
         "data_config_json": "ALTER TABLE performance_tests ADD COLUMN data_config_json TEXT NOT NULL DEFAULT '{}'",
         "circuit_breaker_json": "ALTER TABLE performance_tests ADD COLUMN circuit_breaker_json TEXT NOT NULL DEFAULT '{}'",
+    }
+    for column, statement in additions.items():
+        if column not in columns:
+            db.execute(statement)
+
+
+def _ensure_performance_analysis_columns(db: sqlite3.Connection) -> None:
+    row = db.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'performance_analysis_sessions'"
+    ).fetchone()
+    if not row:
+        return
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(performance_analysis_sessions)")}
+    additions = {
+        "application_status": "ALTER TABLE performance_analysis_sessions ADD COLUMN application_status TEXT NOT NULL DEFAULT 'not_requested'",
+        "selected_change_ids_json": "ALTER TABLE performance_analysis_sessions ADD COLUMN selected_change_ids_json TEXT NOT NULL DEFAULT '[]'",
+        "preflight_json": "ALTER TABLE performance_analysis_sessions ADD COLUMN preflight_json TEXT NOT NULL DEFAULT '{}'",
+        "applied_script_id": "ALTER TABLE performance_analysis_sessions ADD COLUMN applied_script_id TEXT NOT NULL DEFAULT ''",
+        "applied_run_id": "ALTER TABLE performance_analysis_sessions ADD COLUMN applied_run_id TEXT NOT NULL DEFAULT ''",
+        "applied_by": "ALTER TABLE performance_analysis_sessions ADD COLUMN applied_by TEXT NOT NULL DEFAULT ''",
+        "applied_at": "ALTER TABLE performance_analysis_sessions ADD COLUMN applied_at TEXT",
     }
     for column, statement in additions.items():
         if column not in columns:
@@ -211,6 +372,35 @@ def _ensure_api_scenario_columns(db: sqlite3.Connection) -> None:
     for column, statement in additions.items():
         if column not in columns:
             db.execute(statement)
+
+
+def _ensure_api_scenario_ai_plan_table(db: sqlite3.Connection) -> None:
+    db.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS api_scenario_ai_plans (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          scenario_id TEXT,
+          expected_revision INTEGER,
+          goal TEXT NOT NULL,
+          request_json TEXT NOT NULL DEFAULT '{}',
+          plan_json TEXT NOT NULL DEFAULT '{}',
+          validation_json TEXT NOT NULL DEFAULT '{}',
+          status TEXT NOT NULL CHECK(status IN ('preview', 'applied', 'discarded', 'expired')) DEFAULT 'preview',
+          model_provider TEXT NOT NULL DEFAULT '',
+          model_name TEXT NOT NULL DEFAULT '',
+          created_by TEXT NOT NULL,
+          applied_by TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          expires_at TEXT NOT NULL,
+          applied_at TEXT,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(scenario_id) REFERENCES api_scenarios(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_api_scenario_ai_plans_project_created
+          ON api_scenario_ai_plans(project_id, created_at DESC);
+        """
+    )
 
 
 def _backfill_legacy_api_scenario_endpoints(db: sqlite3.Connection) -> None:

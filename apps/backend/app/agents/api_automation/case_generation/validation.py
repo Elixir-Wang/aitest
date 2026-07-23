@@ -41,6 +41,7 @@ def validate_generated_cases(
             raise ValueError(f"测试点 {case.test_point_key} 的请求路径不一致。")
         if case.test_point_key == "request_body.missing" and "body" in request:
             raise ValueError("request_body.missing 必须省略 body，不能使用空对象代替。")
+        _validate_request_mutation(case, request, endpoint)
         planned_point = planned_by_key[case.test_point_key]
         planned_oracle_status = planned_point.get("oracle_status")
         if planned_oracle_status and case.oracle_status != planned_oracle_status:
@@ -73,6 +74,79 @@ def validate_generated_cases(
     ]
     if len({repr(request) for request in success_requests}) != len(success_requests):
         raise ValueError("成功基线存在重复请求。")
+
+
+def _validate_request_mutation(
+    case: ApiGeneratedCase,
+    request: dict[str, Any],
+    endpoint: dict[str, Any],
+) -> None:
+    """Reject semantically mislabeled mutations before they reach pytest."""
+    key = case.test_point_key
+    body = request.get("body")
+    field_name = _mutation_field_name(key)
+    if key == "request_body.empty_object":
+        if body != {}:
+            raise ValueError("request_body.empty_object 必须发送 JSON 空对象。")
+        return
+    if not field_name or not key.startswith("body."):
+        return
+    if not isinstance(body, dict):
+        raise ValueError(f"测试点 {key} 的 request.body 必须是 JSON 对象。")
+    suffix = key.rsplit(".", 1)[-1]
+    if suffix == "missing":
+        if field_name in body:
+            raise ValueError(f"测试点 {key} 不应包含字段 {field_name}。")
+        return
+    if field_name not in body:
+        raise ValueError(f"测试点 {key} 必须在 request.body 中包含字段 {field_name}。")
+    value = body[field_name]
+    if suffix == "null" and value is not None:
+        raise ValueError(f"测试点 {key} 的字段值必须是 JSON null，而不是字符串或其它类型。")
+    if suffix == "empty" and value != "":
+        raise ValueError(f"测试点 {key} 的字段值必须是空字符串。")
+    if suffix == "invalid_type":
+        expected_type = _request_field_type(endpoint, field_name)
+        if expected_type and _json_type(value) == expected_type:
+            raise ValueError(
+                f"测试点 {key} 未改变字段类型：期望不同于 schema 类型 {expected_type}。"
+            )
+
+
+def _mutation_field_name(key: str) -> str:
+    parts = key.split(".")
+    if len(parts) >= 3 and parts[0] == "body":
+        return parts[2] if parts[1] == "required" else parts[1]
+    return ""
+
+
+def _request_field_type(endpoint: dict[str, Any], field_name: str) -> str:
+    request_body = endpoint.get("request_body") or {}
+    content = request_body.get("content") or {}
+    for media_type in sorted(content):
+        media = content[media_type]
+        schema = media.get("schema") if isinstance(media, dict) else None
+        properties = schema.get("properties") if isinstance(schema, dict) else None
+        field_schema = properties.get(field_name) if isinstance(properties, dict) else None
+        if isinstance(field_schema, dict):
+            return str(field_schema.get("type") or "")
+    return ""
+
+
+def _json_type(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return type(value).__name__
 
 
 def _assertion_key(assertion: dict[str, Any]) -> tuple[str, str, str]:

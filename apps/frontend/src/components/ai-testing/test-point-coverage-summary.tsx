@@ -19,10 +19,15 @@ export function TestPointCoverageSummary({ coverage }: TestPointCoverageSummaryP
         <AlertTriangle className="size-4" />
         当前测试要点未生成完整
       </div>
+      <div className="mt-2">
+        需求义务：已覆盖 {coverage.covered_obligation_count}/{coverage.obligation_count}，补生成轮次：
+        {coverage.supplement_round}
+      </div>
+      <div className="mt-1">未覆盖：{coverage.missing_obligations.length}</div>
       {coverage.missing_obligations.length > 0 ? (
         <ul className="mt-2 space-y-1">
           {coverage.missing_obligations.map((obligation) => (
-            <li key={obligation.obligation_key}>
+            <li key={`${obligation.obligation_key}:${obligation.source_section}:${obligation.statement}`}>
               {obligation.obligation_key} {obligation.statement}（{obligation.source_section}）
             </li>
           ))}

@@ -197,17 +197,7 @@ async def analyze_and_report(test_case: dict):
                     }
                     for c in result.clarifications
                 ],
-                "understanding": {
-                    "background": result.understanding.background,
-                    "goals": result.understanding.goals,
-                    "users": result.understanding.users,
-                    "scope": result.understanding.scope,
-                    "flow": result.understanding.flow,
-                    "states": result.understanding.states,
-                    "rules": result.understanding.rules,
-                    "ui": result.understanding.ui,
-                    "data": result.understanding.data
-                }
+                "understanding_markdown": result.understanding_markdown,
             }, f, indent=2, ensure_ascii=False)
 
         print(f"\n💾 详细结果已保存: {output_file}")

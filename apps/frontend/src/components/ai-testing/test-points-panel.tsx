@@ -184,7 +184,7 @@ export function TestPointsPanel({
       (p) =>
         p.title.toLowerCase().includes(keyword) ||
         p.module?.toLowerCase().includes(keyword) ||
-        p.category.toLowerCase().includes(keyword),
+        p.priority.toLowerCase().includes(keyword),
     );
   }, [data?.points, search]);
 
@@ -293,17 +293,12 @@ export function TestPointsPanel({
       ) : !data?.requirement_version_id ? (
         <IllustratedEmptyState
           className="rounded-lg border border-dashed bg-muted/10"
-          description='请先在需求分析中点击"转为最终需求"。'
+          description='请先在需求分析中点击“转为最终需求”。'
           title="暂无测试点"
         />
       ) : (
         <div className="space-y-4">
           <TestPointCoverageSummary coverage={data.coverage_summary} />
-          {data.run?.status === "failed" ? (
-            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
-              {data.run.error_message || "测试点生成失败"}
-            </div>
-          ) : null}
           {!hasPoints ? (
             <IllustratedEmptyState
               className="rounded-lg border border-dashed bg-muted/10"
@@ -313,7 +308,7 @@ export function TestPointsPanel({
           ) : null}
           {hasPoints ? (
             <ShellSection>
-              <ListToolbar onSearch={setSearch} placeholder="搜索测试点标题、模块或类型" title="测试点列表" />
+              <ListToolbar onSearch={setSearch} placeholder="搜索测试点标题、模块或优先级" title="测试点列表" />
               {editing ? (
                 <StandardMarkdownEditor content={markdownDraft} onChange={setMarkdownDraft} />
               ) : viewMode === "mindmap" ? (

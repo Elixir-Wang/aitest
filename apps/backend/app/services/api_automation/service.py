@@ -8,6 +8,7 @@ import tempfile
 import threading
 import time
 from dataclasses import asdict
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from sqlite3 import Row
 from typing import Any
@@ -36,6 +37,8 @@ from app.agents.api_automation.pytest_requests.suite import (
     suite_missing_files,
 )
 from app.agents.api_automation.pytest_requests.skill import pytest_requests_skill_fingerprint
+from app.agents.api_automation.orchestration.agent import api_scenario_orchestration_agent
+from app.agents.api_automation.orchestration.schemas import ScenarioPlanResult
 from app.core.environment_credentials import decrypt_api_environment_secret, encrypt_api_environment_secret
 from app.core.security import hash_secret
 from app.core import storage
@@ -51,6 +54,8 @@ from app.schemas.api_automation import (
     ApiEndpointUpdateIn,
     ApiEnvironmentIn,
     ApiRunCreateIn,
+    ApiScenarioAiPlanApplyIn,
+    ApiScenarioAiPlanIn,
     ApiScenarioIn,
     ApiScenarioStepIn,
     ApiScenarioStepsReplaceIn,
@@ -1306,6 +1311,19 @@ def _validate_generated_endpoint_artifacts(suite_path: Path, artifacts_by_endpoi
                 "API_SCRIPT_ARTIFACT_CASE_MISMATCH",
                 f"接口 {endpoint_id} 的生成用例集合与已选用例不一致：{artifact['data_file_key']}",
             )
+        uncertain_oracle = any(
+            case.get("oracle_status") in {"inferred", "needs_confirmation"}
+            for case in cases
+            if isinstance(case, dict)
+        )
+        if uncertain_oracle:
+            test_source = Path(artifact["test_file_path"]).read_text(encoding="utf-8", errors="replace")
+            if "record_observation" not in test_source or "oracle_status" not in test_source:
+                raise api_error(
+                    422,
+                    "API_SCRIPT_ORACLE_OBSERVATION_MISSING",
+                    f"接口 {endpoint_id} 包含不确定 Oracle 用例，但测试文件未记录实际响应：{artifact['test_file_key']}",
+                )
 
 
 def _script_artifacts_are_current(existing, suite_path: Path, endpoint: dict) -> bool:
@@ -1848,7 +1866,6 @@ def create_api_run(project_id: str, payload: ApiRunCreateIn, actor) -> dict:
             "script_count": len(script_snapshots),
             "endpoint_count": len({item["endpoint_id"] for item in script_snapshots if item["endpoint_id"]}),
             "case_count": sum(int(item["case_count"] or 0) for item in script_snapshots),
-            "created_by_name": operation_log_service.actor_display_name(actor),
         }
         api_automation_repo.create_api_run(
             db,
@@ -2042,7 +2059,6 @@ def create_api_scenario_run(
         "suite_path": storage.store_path(artifacts["suite_path"]) or str(artifacts["suite_path"]),
         "test_file_path": storage.store_path(artifacts["test_file_path"]) or str(artifacts["test_file_path"]),
         "data_file_path": storage.store_path(artifacts["data_file_path"]) or str(artifacts["data_file_path"]),
-        "created_by_name": operation_log_service.actor_display_name(actor),
     }
     with connect() as db:
         api_automation_repo.create_api_run(
@@ -2232,6 +2248,262 @@ def get_api_scenario(project_id: str, scenario_id: str, actor) -> dict:
         ).fetchall()
         serialized_steps = [_serialize_scenario_step(step) for step in steps]
         return _serialize_scenario(row, serialized_steps, asset_changes=_list_scenario_asset_changes(db, row, serialized_steps))
+
+
+def create_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, actor) -> dict:
+    """Generate a validated, non-executable scenario draft from project endpoint assets."""
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        scenario = _require_scenario(db, project_id, payload.scenario_id) if payload.scenario_id else None
+        endpoints = api_automation_repo.list_endpoints(db, project_id)
+        allowed_ids = set(payload.source_scope.endpoint_ids)
+        if allowed_ids:
+            endpoints = [endpoint for endpoint in endpoints if endpoint["id"] in allowed_ids]
+        if payload.source_scope.tags:
+            wanted_tags = {tag.lower() for tag in payload.source_scope.tags}
+            endpoints = [
+                endpoint
+                for endpoint in endpoints
+                if wanted_tags.intersection({tag.lower() for tag in api_automation_repo.loads_json(endpoint["tags_json"], [])})
+            ]
+        if not endpoints:
+            raise api_error(422, "API_SCENARIO_AI_NO_ASSETS", "当前范围内没有可用的接口资产。")
+        endpoint_context = [_serialize_endpoint(endpoint) for endpoint in endpoints[:100]]
+        expected_revision = int(scenario["revision"]) if scenario else None
+        scenario_draft_hash = _scenario_draft_hash(db, scenario) if scenario else None
+
+    try:
+        selection = resolve_model_selection("api_scenario_orchestration")
+    except (KeyError, ValueError):
+        selection = resolve_model_selection("api_test_generation")
+    prompt = json.dumps(
+        {
+            "goal": payload.goal,
+            "constraints": payload.constraints.model_dump(),
+            "current_scenario_revision": expected_revision,
+            "endpoint_assets": _redact_orchestration_assets(endpoint_context),
+        },
+        ensure_ascii=False,
+    )
+    try:
+        result = asyncio.run(
+            api_scenario_orchestration_agent(
+                build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
+            ).ainvoke({"messages": [{"role": "user", "content": prompt}]})
+        )
+        structured = result.get("structured_response") if isinstance(result, dict) else None
+        plan = structured if isinstance(structured, ScenarioPlanResult) else ScenarioPlanResult.model_validate(structured)
+    except Exception as exc:
+        raise api_error(503, "API_SCENARIO_AI_PLAN_FAILED", f"AI 编排计划生成失败：{exc}") from exc
+
+    exceeds_step_limit = len(plan.nodes) > payload.constraints.max_steps
+    validation = _validate_ai_plan(project_id, plan, endpoint_context, payload.constraints.allow_write)
+    if exceeds_step_limit:
+        validation["errors"].append(
+            f"AI 生成了 {len(plan.nodes)} 个步骤，超过上限 {payload.constraints.max_steps}。"
+        )
+        validation["valid"] = False
+    if scenario:
+        with connect() as db:
+            current_scenario = _require_scenario(db, project_id, payload.scenario_id or "")
+            existing_validation = _validate_scenario_definition(
+                db,
+                current_scenario,
+                [_ai_plan_node_to_step_dict(node.model_dump(), index, project_id, payload.scenario_id or "") for index, node in enumerate(plan.nodes)],
+            )
+        validation["errors"].extend(existing_validation["errors"])
+        validation["warnings"].extend(existing_validation["warnings"])
+        validation["valid"] = not validation["errors"]
+    plan_id = f"aiplan-{secrets.token_hex(8)}"
+    expires_at = datetime.now(UTC) + timedelta(minutes=30)
+    response = {
+        "plan_id": plan_id,
+        "plan_version": 1,
+        "graph_version": 1,
+        **plan.model_dump(),
+        "validation": validation,
+        "expected_revision": expected_revision,
+        "expires_at": expires_at.isoformat(),
+    }
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO api_scenario_ai_plans
+              (id, project_id, scenario_id, expected_revision, goal, request_json, plan_json,
+               validation_json, model_provider, model_name, created_by, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                plan_id,
+                project_id,
+                payload.scenario_id,
+                expected_revision,
+                payload.goal,
+                api_automation_repo.dumps_json(
+                    {
+                        **payload.model_dump(),
+                        "scenario_updated_at": scenario["updated_at"] if scenario else None,
+                        "scenario_draft_hash": scenario_draft_hash,
+                    }
+                ),
+                api_automation_repo.dumps_json(response),
+                api_automation_repo.dumps_json(validation),
+                selection.provider,
+                selection.model,
+                actor["id"],
+                expires_at.isoformat(),
+            ),
+        )
+    return response
+
+
+def apply_api_scenario_ai_plan(project_id: str, plan_id: str, payload: ApiScenarioAiPlanApplyIn, actor) -> dict:
+    _require_admin(actor)
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = db.execute("SELECT * FROM api_scenario_ai_plans WHERE id = ? AND project_id = ?", (plan_id, project_id)).fetchone()
+        if not row:
+            raise api_error(404, "API_SCENARIO_AI_PLAN_NOT_FOUND", "AI 编排计划不存在。")
+        if row["status"] != "preview":
+            raise api_error(409, "API_SCENARIO_AI_PLAN_NOT_APPLICABLE", "AI 编排计划已被处理。")
+        if datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00")) <= datetime.now(UTC):
+            db.execute("UPDATE api_scenario_ai_plans SET status = 'expired' WHERE id = ?", (plan_id,))
+            raise api_error(409, "API_SCENARIO_AI_PLAN_EXPIRED", "AI 编排计划已过期，请重新生成。")
+        scenario = _require_scenario(db, project_id, payload.scenario_id)
+        if int(scenario["revision"]) != payload.expected_revision:
+            raise api_error(409, "API_SCENARIO_REVISION_CONFLICT", "场景已被其他人修改，请刷新后重新应用计划。")
+        plan = api_automation_repo.loads_json(row["plan_json"], {})
+        request_data = api_automation_repo.loads_json(row["request_json"], {})
+        if (
+            request_data.get("scenario_updated_at") != scenario["updated_at"]
+            or request_data.get("scenario_draft_hash") != _scenario_draft_hash(db, scenario)
+        ):
+            raise api_error(409, "API_SCENARIO_DRAFT_CONFLICT", "场景草稿已发生变化，请重新生成 AI 编排计划。")
+        if plan.get("expected_revision") != payload.expected_revision or not plan.get("validation", {}).get("valid"):
+            raise api_error(409, "API_SCENARIO_AI_PLAN_INVALID", "AI 编排计划未通过服务端校验。")
+        steps = [_ai_plan_node_to_step(node, index) for index, node in enumerate(plan.get("nodes", []))]
+    result = replace_api_scenario_steps(project_id, payload.scenario_id, ApiScenarioStepsReplaceIn(steps=steps), actor)
+    with connect() as db:
+        db.execute(
+            "UPDATE api_scenario_ai_plans SET status = 'applied', applied_by = ?, applied_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (actor["id"], plan_id),
+        )
+    return result
+
+
+def _redact_orchestration_assets(endpoints: list[dict]) -> list[dict]:
+    return [
+        {
+            "id": endpoint["id"],
+            "method": endpoint["method"],
+            "path": endpoint["path"],
+            "summary": endpoint.get("summary", ""),
+            "description": endpoint.get("description", ""),
+            "tags": endpoint.get("tags", []),
+            "parameters": endpoint.get("parameters", []),
+            "request_body": endpoint.get("request_body", {}),
+            "responses": endpoint.get("responses", {}),
+            "auth": {"required": bool(endpoint.get("auth"))},
+        }
+        for endpoint in endpoints
+    ]
+
+
+def _scenario_draft_hash(db, scenario: Row) -> str:
+    steps = [_serialize_scenario_step(row) for row in _list_scenario_step_rows(db, scenario["id"])]
+    payload = {
+        "name": scenario["name"],
+        "description": scenario["description"],
+        "variables": api_automation_repo.loads_json(scenario["variables_json"], {}),
+        "steps": steps,
+    }
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _validate_ai_plan(project_id: str, plan: ScenarioPlanResult, endpoints: list[dict], allow_write: bool) -> dict:
+    errors: list[str] = []
+    warnings = list(plan.warnings)
+    endpoint_by_id = {endpoint["id"]: endpoint for endpoint in endpoints}
+    node_ids = {node.id for node in plan.nodes}
+    if not plan.nodes:
+        errors.append("AI 计划至少需要一个步骤。")
+    if len(node_ids) != len(plan.nodes):
+        errors.append("AI 计划存在重复节点 ID。")
+    for node in plan.nodes:
+        if node.type in {"api_request", "poll"}:
+            if not node.endpoint_id or node.endpoint_id not in endpoint_by_id:
+                errors.append(f"节点 {node.name or node.id} 引用了无效接口资产。")
+            elif not allow_write and endpoint_by_id[node.endpoint_id]["method"] in {"POST", "PUT", "PATCH", "DELETE"}:
+                errors.append(f"节点 {node.name or node.id} 包含写操作，但当前约束禁止写操作。")
+        elif node.endpoint_id:
+            errors.append(f"工具节点 {node.name or node.id} 不允许绑定接口资产。")
+        if _contains_executable_url(node.request_overrides):
+            errors.append(f"节点 {node.name or node.id} 不允许携带 AI 生成的 URL。")
+    adjacency: dict[str, set[str]] = {node_id: set() for node_id in node_ids}
+    indegree = {node_id: 0 for node_id in node_ids}
+    for edge in plan.edges:
+        if edge.source not in node_ids or edge.target not in node_ids:
+            errors.append("AI 计划存在悬空连线。")
+            continue
+        if edge.target not in adjacency[edge.source]:
+            adjacency[edge.source].add(edge.target)
+            indegree[edge.target] += 1
+    ready = [node_id for node_id, degree in indegree.items() if degree == 0]
+    visited = 0
+    while ready:
+        node_id = ready.pop()
+        visited += 1
+        for target in adjacency[node_id]:
+            indegree[target] -= 1
+            if indegree[target] == 0:
+                ready.append(target)
+    if visited != len(node_ids):
+        errors.append("AI 计划不能包含循环依赖。")
+    if plan.unresolved_items:
+        warnings.extend(f"未解决：{item}" for item in plan.unresolved_items)
+    return {"valid": not errors, "errors": errors, "warnings": warnings}
+
+
+def _contains_executable_url(value: Any) -> bool:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if str(key).lower() in {"url", "base_url", "baseurl"} and item:
+                return True
+            if _contains_executable_url(item):
+                return True
+    elif isinstance(value, list):
+        return any(_contains_executable_url(item) for item in value)
+    elif isinstance(value, str):
+        return value.strip().lower().startswith(("http://", "https://"))
+    return False
+
+
+def _ai_plan_node_to_step(node: dict, step_order: int) -> ApiScenarioStepIn:
+    return ApiScenarioStepIn(
+        id=node["id"],
+        step_type=node["type"],
+        endpoint_id=node.get("endpoint_id"),
+        step_order=step_order,
+        name=node.get("name", ""),
+        request_overrides=node.get("request_overrides", {}),
+        bindings=node.get("bindings", []),
+        extractors=node.get("extractors", []),
+        assertions=node.get("assertions", []),
+        control_config=node.get("control_config", {}),
+        on_failure=node.get("on_failure", "stop"),
+        enabled=node.get("enabled", True),
+    )
+
+
+def _ai_plan_node_to_step_dict(node: dict, step_order: int, project_id: str, scenario_id: str) -> dict:
+    step = _ai_plan_node_to_step(node, step_order)
+    return {
+        **step.model_dump(),
+        "id": step.id or f"ai-step-{step_order}",
+        "project_id": project_id,
+        "scenario_id": scenario_id,
+    }
 
 
 def replace_api_scenario_steps(
@@ -2751,6 +3023,7 @@ def _serialize_api_run(row: Row | None, db=None) -> dict:
     snapshot = api_automation_repo.loads_json(
         row["execution_snapshot_json"] if "execution_snapshot_json" in keys else "{}", {}
     )
+    snapshot.pop("created_by_name", None)
     script_ids = api_automation_repo.loads_json(row["script_ids_json"], [])
     if db is not None and not snapshot.get("environment") and row["api_environment_id"]:
         environment = api_automation_repo.find_api_environment(db, row["api_environment_id"])
@@ -2784,9 +3057,6 @@ def _serialize_api_run(row: Row | None, db=None) -> dict:
     endpoint_count = len({item.get("endpoint_id") for item in scripts if item.get("endpoint_id")})
     snapshot.setdefault("endpoint_count", endpoint_count or len(scripts) or len(script_ids))
     snapshot.setdefault("case_count", sum(int(item.get("case_count") or 0) for item in scripts))
-    created_by_name = snapshot.get("created_by_name", "")
-    if not created_by_name and "created_by_nickname" in keys:
-        created_by_name = row["created_by_nickname"] or row["created_by_username"] or row["created_by"]
     return {
         "id": row["id"],
         "project_id": row["project_id"],
@@ -2809,7 +3079,6 @@ def _serialize_api_run(row: Row | None, db=None) -> dict:
         else None,
         "summary": api_automation_repo.loads_json(row["summary_json"], {}),
         "error_message": row["error_message"],
-        "created_by_name": created_by_name or row["created_by"],
         "created_at": row["created_at"],
         "finished_at": row["finished_at"],
     }

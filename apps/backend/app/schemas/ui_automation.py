@@ -23,6 +23,10 @@ class UiAutomationGenerationRunOut(BaseModel):
     changed_files: list[str] = Field(default_factory=list)
     error_message: str = ""
     created_by: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    created_at: str = ""
+    updated_at: str = ""
 
 
 class UiAutomationAssetOut(BaseModel):
@@ -39,6 +43,15 @@ class UiAutomationAssetOut(BaseModel):
     plan_file_path: str
     source_hash: str
     created_by: str
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class UiAutomationAssetDetailOut(UiAutomationAssetOut):
+    source_title: str = ""
+    latest_generation_run: UiAutomationGenerationRunOut | None = None
+    latest_execution_run: dict | None = None
+    locator_summary: dict = Field(default_factory=dict)
 
 
 class UiAutomationExecutionCreateIn(BaseModel):
@@ -58,7 +71,24 @@ class UiAutomationExecutionRunOut(BaseModel):
     stdout_path: str = ""
     stderr_path: str = ""
     trace_path: str = ""
+    video_path: str = ""
     screenshot_paths: list[str] = Field(default_factory=list)
     error_message: str = ""
     created_by: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    created_at: str = ""
+    updated_at: str = ""
 
+
+class UiAutomationRunLogsOut(BaseModel):
+    stdout: str = ""
+    stderr: str = ""
+
+
+class UiAutomationLiveViewOut(BaseModel):
+    status: str
+    message: str = ""
+    stream_path: str = ""
+    width: int = 1440
+    height: int = 900

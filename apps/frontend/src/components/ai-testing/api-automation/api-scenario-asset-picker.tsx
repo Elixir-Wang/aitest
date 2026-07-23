@@ -27,11 +27,12 @@ type ApiScenarioAssetPickerProps = {
 };
 
 const methodTone: Record<string, string> = {
-  GET: "border-blue-200 bg-blue-50 text-blue-700",
-  POST: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  PUT: "border-amber-200 bg-amber-50 text-amber-700",
-  PATCH: "border-violet-200 bg-violet-50 text-violet-700",
-  DELETE: "border-red-200 bg-red-50 text-red-700",
+  GET: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/35 dark:bg-blue-500/15 dark:text-blue-200",
+  POST: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200",
+  PUT: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-200",
+  PATCH:
+    "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/35 dark:bg-violet-500/15 dark:text-violet-200",
+  DELETE: "border-red-200 bg-red-50 text-red-700 dark:border-red-500/35 dark:bg-red-500/15 dark:text-red-200",
 };
 
 export function ApiScenarioAssetPicker({ endpoints, open, onOpenChange, onConfirm }: ApiScenarioAssetPickerProps) {
@@ -133,8 +134,8 @@ export function ApiScenarioAssetPicker({ endpoints, open, onOpenChange, onConfir
                   className={cn(
                     "flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors",
                     selectedCount > 0
-                      ? "border-sky-200 bg-sky-50/85 text-sky-800"
-                      : "border-transparent bg-slate-100/80 text-slate-600 hover:border-slate-200 hover:bg-slate-100",
+                      ? "border-sky-200 bg-sky-50/85 text-sky-800 dark:border-sky-500/35 dark:bg-sky-500/15 dark:text-sky-200"
+                      : "border-transparent bg-slate-100/80 text-slate-600 hover:border-slate-200 hover:bg-slate-100 dark:bg-muted/35 dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/50",
                   )}
                 >
                   <Checkbox
@@ -155,7 +156,7 @@ export function ApiScenarioAssetPicker({ endpoints, open, onOpenChange, onConfir
                       <ChevronDown className="size-4 shrink-0" />
                     )}
                     <span className="min-w-0 flex-1 truncate font-medium text-sm">{group}</span>
-                    <span className="rounded-full bg-sky-100 px-2.5 py-0.5 font-semibold text-sky-700 text-xs tabular-nums">
+                    <span className="rounded-full bg-sky-100 px-2.5 py-0.5 font-semibold text-sky-700 text-xs tabular-nums dark:bg-sky-500/20 dark:text-sky-200">
                       {rows.length}
                     </span>
                   </button>
@@ -172,8 +173,8 @@ export function ApiScenarioAssetPicker({ endpoints, open, onOpenChange, onConfir
                           className={cn(
                             "flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors",
                             checked
-                              ? "border-sky-200 bg-background shadow-xs"
-                              : "hover:border-border/70 hover:bg-background/80",
+                              ? "border-sky-200 bg-background shadow-xs dark:border-sky-500/35 dark:bg-muted/35"
+                              : "hover:border-border/70 hover:bg-background/80 dark:hover:bg-muted/30",
                           )}
                           key={endpoint.id}
                         >

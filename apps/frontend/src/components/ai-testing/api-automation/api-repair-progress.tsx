@@ -1,4 +1,4 @@
-import { Check, Circle, LoaderCircle, XCircle } from "lucide-react";
+import { Check, Circle, CircleDot, LoaderCircle, XCircle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -32,11 +32,13 @@ export function ApiRepairProgress({ status }: { status: string }) {
   const failed = status === "failed";
   const finished = status === "completed";
   const diagnosisOnly = status === "proposal_ready";
+  const waitingForUser = status === "waiting_approval" || status === "ready_to_apply";
+  const visibleSteps = diagnosisOnly ? STEPS.slice(0, 1) : STEPS;
 
   return (
-    <div className="space-y-2 rounded-xl border bg-muted/25 p-3">
-      {STEPS.map((step, index) => {
-        const completed = finished || (diagnosisOnly ? index === 0 : !failed && index < activeIndex);
+    <div className="space-y-2 rounded-lg border bg-muted/25 p-3">
+      {visibleSteps.map((step, index) => {
+        const completed = finished || diagnosisOnly || (!failed && index < activeIndex);
         const active = !finished && !failed && !diagnosisOnly && index === activeIndex;
         return (
           <div className="flex items-center gap-2 text-sm" key={step.key}>
@@ -44,6 +46,8 @@ export function ApiRepairProgress({ status }: { status: string }) {
               <XCircle className="size-4 text-destructive" />
             ) : completed ? (
               <Check className="size-4 text-emerald-600" />
+            ) : active && waitingForUser ? (
+              <CircleDot className="size-4 text-blue-600" />
             ) : active ? (
               <LoaderCircle className="size-4 animate-spin text-blue-600" />
             ) : (
@@ -66,7 +70,7 @@ export function apiRepairStatusLabel(status: string) {
         queued: "等待执行",
         collecting_context: "分析失败原因",
         diagnosing: "分析失败原因",
-        proposal_ready: "诊断完成",
+        proposal_ready: "诊断完成，无需改代码",
         waiting_approval: "等待确认代码修改",
         candidate_generating: "生成候选修改",
         candidate_validating: "验证候选修改",

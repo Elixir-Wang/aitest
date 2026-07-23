@@ -89,7 +89,15 @@ def test_initialize_suite_creates_shared_framework(tmp_path):
     assert (tmp_path / "conftest.py").exists()
     assert (tmp_path / "pages/base_page.py").exists()
     assert (tmp_path / "utils/data_loader.py").exists()
+    assert (tmp_path / "scripts/save_auth_state.py").exists()
     assert (tmp_path / ".deepagents/skills/pytest-playwright-ui-generation/SKILL.md").exists()
+
+    base_page = (tmp_path / "pages/base_page.py").read_text(encoding="utf-8")
+    waiters = (tmp_path / "utils/waiters.py").read_text(encoding="utf-8")
+    conftest = (tmp_path / "conftest.py").read_text(encoding="utf-8")
+    assert "click_first_visible" in base_page
+    assert "wait_for_page_ready" in waiters
+    assert "failure-screenshots" in conftest
 
 
 def test_initialize_suite_preserves_existing_files(tmp_path):
@@ -132,3 +140,27 @@ def test_render_plan_reuses_existing_page_file_and_adds_elements(tmp_path):
 
     assert first_source == second_source
     assert second_source.count("def submit_button") == 1
+
+
+def test_render_plan_parameterizes_dynamic_text_selection(tmp_path):
+    initialize_suite(tmp_path)
+    payload = _plan().model_dump(mode="json")
+    payload["parameters"] = ["target_model"]
+    payload["steps"][2] = {
+        "source_step_id": "step-3",
+        "kind": "click_parameter_text",
+        "page_key": "login",
+        "value_ref": "target_model",
+    }
+    plan = AutomationPlan.model_validate(payload)
+    data_file = tmp_path / plan.artifacts.data_file
+    data_file.parent.mkdir(parents=True, exist_ok=True)
+    data_file.write_text("parameters:\n  target_model:\n    values: [qwen-plus]\n", encoding="utf-8")
+
+    paths = render_automation_plan(tmp_path, plan)
+    source = paths["test_file"].read_text(encoding="utf-8")
+
+    assert '@pytest.mark.parametrize(' in source
+    assert 'CASE_DATA["parameters"]["target_model"]["values"]' in source
+    assert "def test_uiauto_1(page, target_model):" in source
+    assert "login_page.visible_text(str(target_model)).click()" in source

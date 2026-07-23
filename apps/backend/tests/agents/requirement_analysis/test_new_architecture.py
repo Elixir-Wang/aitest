@@ -42,24 +42,13 @@ def test_legacy_contract_is_not_exported():
 async def test_new_api_mock(monkeypatch):
     """测试新的 API（Mock）"""
     from app.agents.requirement_analysis.schemas import (
-        RequirementUnderstanding,
         ClarificationItem,
         RequirementAnalysisResult,
     )
 
     # Mock 的返回结果
     mock_result = RequirementAnalysisResult(
-        understanding=RequirementUnderstanding(
-            background="这是需求背景",
-            goals="这是目标与价值",
-            users="这是用户角色",
-            scope="这是功能范围",
-            flow="这是业务流程",
-            states="这是状态流转",
-            rules="这是业务规则",
-            ui="这是页面与交互",
-            data="这是数据与系统交互",
-        ),
+        understanding_markdown="# 需求理解\n\n## 1. 需求背景\n这是需求背景",
         clarifications=[
             ClarificationItem(
                 id="clar-001",
@@ -102,14 +91,9 @@ async def test_new_api_mock(monkeypatch):
 
     # 验证结果
     assert result.status == "needs_clarification"
-    assert result.understanding.background == "这是需求背景"
+    assert result.understanding_markdown == "# 需求理解\n\n## 1. 需求背景\n这是需求背景"
     assert len(result.clarifications) == 1
     assert result.clarifications[0].id == "clar-001"
-
-    # 验证 Markdown 转换
-    understanding_md = result.to_understanding_markdown()
-    assert "# 需求理解" in understanding_md
-    assert "这是需求背景" in understanding_md
 
     clarification_md = result.to_clarification_markdown()
     assert "# 待澄清问题" in clarification_md
@@ -121,23 +105,12 @@ async def test_run_requirement_analysis_uses_new_input_contract(monkeypatch):
     """测试运行入口直接接收新输入契约。"""
     from app.agents.requirement_analysis.schemas import (
         ClarificationItem,
-        RequirementUnderstanding,
         RequirementAnalysisResult,
     )
 
     # Mock 结果
     mock_result = RequirementAnalysisResult(
-        understanding=RequirementUnderstanding(
-            background="背景",
-            goals="目标",
-            users="用户",
-            scope="范围",
-            flow="流程",
-            states="状态",
-            rules="规则",
-            ui="界面",
-            data="数据",
-        ),
+        understanding_markdown="# 需求理解\n\n## 1. 需求背景\n背景",
         clarifications=[
             ClarificationItem(
                 id="clar-001",
@@ -177,29 +150,21 @@ async def test_run_requirement_analysis_uses_new_input_contract(monkeypatch):
     )
 
     assert result.status == "needs_clarification"
-    assert result.understanding.background == "背景"
+    assert result.understanding_markdown.endswith("背景")
     assert len(result.clarifications) == 1
 
 
-def test_markdown_conversion():
-    """测试 Markdown 转换功能"""
+def test_markdown_output_and_clarification_conversion():
+    """需求理解 Markdown 由模型直接提供，澄清问题由后端格式化。"""
     from app.agents.requirement_analysis.schemas import (
-        RequirementUnderstanding,
         ClarificationItem,
         RequirementAnalysisResult,
     )
 
     result = RequirementAnalysisResult(
-        understanding=RequirementUnderstanding(
-            background="需求背景内容",
-            goals="目标与价值内容",
-            users="用户角色内容",
-            scope="功能范围内容",
-            flow="业务流程内容",
-            states="状态流转内容",
-            rules="业务规则内容",
-            ui="页面交互内容",
-            data="数据交互内容",
+        understanding_markdown=(
+            "# 需求理解\n\n## 1. 需求背景\n需求背景内容"
+            "\n\n## 9. 数据与系统交互\n数据交互内容"
         ),
         clarifications=[
             ClarificationItem(
@@ -214,12 +179,9 @@ def test_markdown_conversion():
         ]
     )
 
-    # 测试需求理解 Markdown
-    understanding_md = result.to_understanding_markdown()
-    assert "# 需求理解" in understanding_md
-    assert "## 1. 需求背景" in understanding_md
-    assert "需求背景内容" in understanding_md
-    assert "## 9. 数据与系统交互" in understanding_md
+    assert "# 需求理解" in result.understanding_markdown
+    assert "## 1. 需求背景" in result.understanding_markdown
+    assert "## 9. 数据与系统交互" in result.understanding_markdown
 
     # 测试澄清问题 Markdown
     clarification_md = result.to_clarification_markdown()
@@ -236,25 +198,12 @@ def test_empty_clarifications_is_now_rejected():
     真正的失败用例见 test_clarification_minimum.py::test_clarifications_empty_list_fails_validation。
     """
     from app.agents.requirement_analysis.schemas import (
-        RequirementUnderstanding,
         RequirementAnalysisResult,
     )
     from pydantic import ValidationError
 
-    understanding = RequirementUnderstanding(
-        background="背景",
-        goals="目标",
-        users="用户",
-        scope="范围",
-        flow="流程",
-        states="状态",
-        rules="规则",
-        ui="界面",
-        data="数据",
-    )
-
     with pytest.raises(ValidationError):
-        RequirementAnalysisResult(understanding=understanding, clarifications=[])
+        RequirementAnalysisResult(understanding_markdown="# 需求理解", clarifications=[])
 
 
 if __name__ == "__main__":

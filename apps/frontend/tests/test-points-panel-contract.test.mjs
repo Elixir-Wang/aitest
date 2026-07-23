@@ -30,6 +30,12 @@ test("test point generation keeps the list area visible", () => {
   assert.doesNotMatch(panelSource, /hasPoints && !regenerating/);
 });
 
+test("test points tab does not expose generation errors inline", () => {
+  assert.doesNotMatch(panelSource, /data\.run\?\.status === "failed"/);
+  assert.doesNotMatch(panelSource, /data\.run\.error_message/);
+  assert.doesNotMatch(panelSource, />测试点生成失败</);
+});
+
 test("test points panel reports refreshed generation state to its container", () => {
   assert.match(panelSource, /onOverviewChange\?: \(overview: ApiTestPointOverview\) => void/);
   assert.match(panelSource, /setData\(overview\);\s*onOverviewChange\?\.\(overview\);/);

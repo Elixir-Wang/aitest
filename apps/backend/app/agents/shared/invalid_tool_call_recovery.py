@@ -36,7 +36,8 @@ class InvalidToolCallRecoveryMiddleware(AgentMiddleware):
         if not messages or not isinstance(messages[-1], AIMessage):
             return None
 
-        invalid_calls = messages[-1].invalid_tool_calls
+        assistant_message = messages[-1]
+        invalid_calls = assistant_message.invalid_tool_calls
         if not invalid_calls:
             return None
 
@@ -50,18 +51,26 @@ class InvalidToolCallRecoveryMiddleware(AgentMiddleware):
                 f"模型连续 {retry_count} 次返回无法解析的工具调用参数，已停止重试。"
             )
 
+        # A provider can return valid and invalid calls in the same assistant
+        # message. Every call must have a corresponding ToolMessage before a
+        # retry; acknowledging only invalid_tool_calls causes the provider to
+        # reject the next request with "insufficient tool messages".
+        calls_by_id = {
+            call.get("id"): call
+            for call in [*assistant_message.tool_calls, *invalid_calls]
+            if call.get("id")
+        }
         tool_messages = [
             ToolMessage(
                 content=(
-                    "Structured output arguments were invalid JSON. "
+                    "Structured output arguments were invalid or incomplete. "
                     "Regenerate the complete response as valid JSON matching the tool schema."
                 ),
-                tool_call_id=call["id"],
+                tool_call_id=call_id,
                 name=call.get("name"),
                 status="error",
             )
-            for call in invalid_calls
-            if call.get("id")
+            for call_id, call in calls_by_id.items()
         ]
         if not tool_messages:
             raise InvalidToolCallRecoveryError("模型返回了无法关联 tool_call_id 的无效工具调用。")

@@ -150,7 +150,7 @@ def write_requirement_analysis_artifacts(run_id: str, output: RequirementAnalysi
     understanding_path = run_dir / "understanding.md"
     clarification_path = run_dir / "clarifications.md"
     result_path = run_dir / "result.json"
-    understanding_path.write_text(output.to_understanding_markdown().rstrip() + "\n", encoding="utf-8")
+    understanding_path.write_text(output.understanding_markdown.rstrip() + "\n", encoding="utf-8")
     clarification_path.write_text(output.to_clarification_markdown().rstrip() + "\n", encoding="utf-8")
     result_path.write_text(
         json.dumps(build_requirement_analysis_output_json(output), ensure_ascii=False, indent=2),
@@ -169,7 +169,7 @@ def build_requirement_analysis_output_json(output: RequirementAnalysisResult, ar
         "status": output.status,
         "summary": "需求分析完成" if output.status == "completed" else f"发现 {len(output.clarifications)} 个待澄清问题",
         "analysis_summary": "需求分析完成" if output.status == "completed" else f"发现 {len(output.clarifications)} 个待澄清问题",
-        "understanding_markdown": output.to_understanding_markdown(),
+        "understanding_markdown": output.understanding_markdown,
         "clarification_markdown": output.to_clarification_markdown(),
         "clarification_items": [item.model_dump() for item in output.clarifications],
         "artifacts": artifact_paths or {},

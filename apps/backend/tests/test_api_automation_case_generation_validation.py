@@ -122,6 +122,48 @@ def test_validation_accepts_exact_approved_oracle_fact() -> None:
     validate_generated_cases(ENDPOINT, planned, [case])
 
 
+def _typed_endpoint() -> dict:
+    return {
+        **ENDPOINT,
+        "request_body": {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["start_date"],
+                        "properties": {"start_date": {"type": "string"}},
+                    }
+                }
+            },
+        },
+    }
+
+
+def test_validation_rejects_string_encoded_null_mutation() -> None:
+    case = _case("body.required.start_date.null", request={
+        "method": "POST", "path": "/analysis", "body": {"start_date": "null"}
+    })
+    with pytest.raises(ValueError, match="JSON null"):
+        validate_generated_cases(
+            _typed_endpoint(),
+            [{"key": case.test_point_key}],
+            [case],
+        )
+
+
+def test_validation_rejects_invalid_type_that_keeps_schema_type() -> None:
+    case = _case("body.required.start_date.invalid_type", request={
+        "method": "POST", "path": "/analysis", "body": {"start_date": "20260201"}
+    })
+    with pytest.raises(ValueError, match="未改变字段类型"):
+        validate_generated_cases(
+            _typed_endpoint(),
+            [{"key": case.test_point_key}],
+            [case],
+        )
+
+
 def test_validation_rejects_missing_required_response_contract_assertion() -> None:
     planned = [
         {
