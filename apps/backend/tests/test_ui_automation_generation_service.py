@@ -133,6 +133,45 @@ def test_delete_execution_run_rejects_active_run(monkeypatch, tmp_path: Path):
         assert db.execute("SELECT id FROM ui_automation_execution_runs WHERE id = 'uirun-1'").fetchone()
 
 
+def test_stop_queued_execution_run_marks_it_cancelled(monkeypatch, tmp_path: Path):
+    _use_temp_db(monkeypatch, tmp_path)
+    _insert_execution_run(tmp_path, status="queued")
+    stop_requests = []
+    monkeypatch.setattr(service.runner, "request_stop", lambda run_id: stop_requests.append(run_id))
+
+    stopped = service.stop_execution_run("project-1", "uirun-1", ACTOR)
+
+    assert stopped["status"] == "cancelled"
+    assert stopped["finished_at"]
+    assert stopped["result"]["status"] == "cancelled"
+    assert stop_requests == ["uirun-1"]
+
+
+def test_stop_running_execution_run_marks_it_stopping(monkeypatch, tmp_path: Path):
+    _use_temp_db(monkeypatch, tmp_path)
+    _insert_execution_run(tmp_path, status="running")
+    stop_requests = []
+    monkeypatch.setattr(service.runner, "request_stop", lambda run_id: stop_requests.append(run_id))
+
+    stopping = service.stop_execution_run("project-1", "uirun-1", ACTOR)
+
+    assert stopping["status"] == "stopping"
+    assert stopping["finished_at"] is None
+    assert stop_requests == ["uirun-1"]
+
+
+def test_stop_finished_execution_run_is_idempotent(monkeypatch, tmp_path: Path):
+    _use_temp_db(monkeypatch, tmp_path)
+    _insert_execution_run(tmp_path, status="passed")
+    stop_requests = []
+    monkeypatch.setattr(service.runner, "request_stop", lambda run_id: stop_requests.append(run_id))
+
+    finished = service.stop_execution_run("project-1", "uirun-1", ACTOR)
+
+    assert finished["status"] == "passed"
+    assert stop_requests == []
+
+
 def test_init_db_migrates_legacy_ui_automation_source_columns(monkeypatch, tmp_path: Path):
     _use_temp_db(monkeypatch, tmp_path)
     with core_db.connect() as db:

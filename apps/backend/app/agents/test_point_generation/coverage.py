@@ -23,24 +23,6 @@ def evaluate_test_point_coverage(
     }
     missing = sorted(required_keys - linked_keys)
     unknown = sorted(linked_keys - all_keys)
-    module_missing: list[str] = []
-    for obligation in obligations:
-        if not obligation.test_required or not obligation.modules:
-            continue
-        covered_points = [
-            point
-            for point in points
-            if obligation.obligation_key in point.requirement_obligation_keys
-        ]
-        covered_modules = {point.module.strip() for point in covered_points if point.module.strip()}
-        for module in obligation.modules:
-            normalized_module = module.strip()
-            if normalized_module and normalized_module not in covered_modules:
-                module_missing.append(f"{obligation.obligation_key}:{normalized_module}")
-    missing.extend(sorted(module_missing))
-    fully_covered_keys = required_keys - {
-        item.split(":", 1)[0] for item in module_missing
-    }
     if unknown or unsupported_assumptions:
         status = "invalid"
     elif missing:
@@ -50,7 +32,7 @@ def evaluate_test_point_coverage(
     return TestPointCoverageResult(
         status=status,
         obligation_count=len(required_keys),
-        covered_obligation_count=len(fully_covered_keys & linked_keys),
+        covered_obligation_count=len(required_keys & linked_keys),
         missing_obligation_keys=missing,
         unknown_obligation_keys=unknown,
         unsupported_assumptions=unsupported_assumptions,

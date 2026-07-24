@@ -48,7 +48,7 @@ function getVisiblePages(currentPage: number, pageCount: number): PageItem[] {
   return [1, "ellipsis-start", currentPage - 1, currentPage, currentPage + 1, "ellipsis-end", pageCount];
 }
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 15;
 
 const PRIORITY_COLORS: Record<string, "destructive" | "secondary" | "outline"> = {
   P0: "destructive",

@@ -82,7 +82,7 @@ def _plan() -> AutomationPlan:
     )
 
 
-def test_initialize_suite_creates_shared_framework(tmp_path):
+def test_initialize_suite_creates_project_framework(tmp_path):
     changed = initialize_suite(tmp_path)
 
     assert tmp_path / "pytest.ini" in changed

@@ -1,22 +1,24 @@
 from __future__ import annotations
 
+import base64
+import json
 import os
 import secrets
-import shutil
-import subprocess
+import socket
 import threading
 import time
-from dataclasses import dataclass
-from pathlib import Path
+import urllib.error
+import urllib.request
+from dataclasses import dataclass, field
 from typing import Iterator
+
+import websocket
 
 
 VIEWPORT_WIDTH = 1440
 VIEWPORT_HEIGHT = 900
-_DISPLAY_RANGE = range(90, 190)
 _sessions: dict[str, "LiveViewSession"] = {}
 _sessions_lock = threading.Lock()
-_startup_lock = threading.Lock()
 
 
 @dataclass
@@ -25,80 +27,48 @@ class LiveViewSession:
     status: str
     message: str
     token: str = ""
-    display_number: int | None = None
-    xvfb_process: subprocess.Popen | None = None
+    cdp_port: int | None = None
+    latest_frame: bytes = b""
+    frame_sequence: int = 0
     ended_at: float | None = None
-
-    @property
-    def display(self) -> str:
-        return f":{self.display_number}" if self.display_number is not None else ""
+    stop_event: threading.Event = field(default_factory=threading.Event, repr=False)
+    frame_condition: threading.Condition = field(default_factory=threading.Condition, repr=False)
+    watcher: threading.Thread | None = field(default=None, repr=False)
 
 
 def start_session(run_id: str) -> LiveViewSession:
     if os.getenv("UI_LIVE_VIEW_ENABLED", "1").lower() not in {"1", "true", "yes", "on"}:
-        return _record_unavailable(run_id, "实时查看功能未启用。")
-
-    xvfb = shutil.which("Xvfb")
-    ffmpeg = shutil.which("ffmpeg")
-    if not xvfb or not ffmpeg:
-        return _record_unavailable(run_id, "运行环境缺少 Xvfb 或 ffmpeg，无法提供实时画面。")
-
-    with _startup_lock:
-        display_number = _allocate_display()
-        if display_number is None:
-            return _record_unavailable(run_id, "没有可用的虚拟显示器，请稍后重试。")
-        process = subprocess.Popen(
-            [
-                xvfb,
-                f":{display_number}",
-                "-screen",
-                "0",
-                f"{VIEWPORT_WIDTH}x{VIEWPORT_HEIGHT}x24",
-                "-nolisten",
-                "tcp",
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
+        return _record_session(
+            LiveViewSession(run_id=run_id, status="unavailable", message="实时查看功能未启用。")
         )
-        session = LiveViewSession(
-            run_id=run_id,
-            status="starting",
-            message="正在启动浏览器画面。",
-            token=secrets.token_urlsafe(32),
-            display_number=display_number,
-            xvfb_process=process,
-        )
-        with _sessions_lock:
-            _prune_ended_sessions()
-            _sessions[run_id] = session
 
-    socket_path = Path(f"/tmp/.X11-unix/X{display_number}")
-    for _ in range(40):
-        if process.poll() is not None:
-            break
-        if socket_path.exists():
-            session.status = "ready"
-            session.message = "浏览器画面已连接。"
-            return session
-        time.sleep(0.05)
-
-    _terminate(process)
-    session.status = "unavailable"
-    session.message = "虚拟显示器启动失败，任务将继续以无实时画面的方式执行。"
-    session.token = ""
-    session.xvfb_process = None
+    session = LiveViewSession(
+        run_id=run_id,
+        status="starting",
+        message="正在连接浏览器画面。",
+        token=secrets.token_urlsafe(32),
+        cdp_port=_allocate_local_port(),
+    )
+    _record_session(session)
+    session.watcher = threading.Thread(
+        target=_capture_screencast,
+        args=(session,),
+        name=f"ui-live-view-{run_id}",
+        daemon=True,
+    )
+    session.watcher.start()
     return session
 
 
 def finish_session(run_id: str) -> None:
-    with _sessions_lock:
-        session = _sessions.get(run_id)
+    session = get_session(run_id)
     if not session:
         return
-    if session.xvfb_process:
-        _terminate(session.xvfb_process)
-    session.xvfb_process = None
+    session.stop_event.set()
+    with session.frame_condition:
+        session.frame_condition.notify_all()
+    if session.watcher and session.watcher is not threading.current_thread():
+        session.watcher.join(timeout=2)
     session.token = ""
     session.status = "ended"
     session.message = "本次运行已结束，可查看录制视频。"
@@ -112,9 +82,11 @@ def get_session(run_id: str) -> LiveViewSession | None:
 
 def validate_stream(run_id: str, token: str) -> LiveViewSession | None:
     session = get_session(run_id)
-    if not session or session.status != "ready" or not secrets.compare_digest(session.token, token):
+    if not session or session.status not in {"starting", "ready"}:
         return None
-    if not session.xvfb_process or session.xvfb_process.poll() is not None:
+    if not session.token or not secrets.compare_digest(session.token, token):
+        return None
+    if session.stop_event.is_set():
         return None
     return session
 
@@ -123,42 +95,26 @@ def stream_mjpeg(run_id: str, token: str) -> Iterator[bytes]:
     session = validate_stream(run_id, token)
     if not session:
         return
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        return
-    process = subprocess.Popen(
-        [
-            ffmpeg,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-f",
-            "x11grab",
-            "-draw_mouse",
-            "0",
-            "-framerate",
-            os.getenv("UI_LIVE_VIEW_FPS", "8"),
-            "-video_size",
-            f"{VIEWPORT_WIDTH}x{VIEWPORT_HEIGHT}",
-            "-i",
-            session.display,
-            "-q:v",
-            "5",
-            "-f",
-            "mpjpeg",
-            "pipe:1",
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-    )
-    try:
-        while process.poll() is None and validate_stream(run_id, token):
-            chunk = process.stdout.read(64 * 1024) if process.stdout else b""
-            if not chunk:
+    delivered_sequence = 0
+    while validate_stream(run_id, token):
+        with session.frame_condition:
+            session.frame_condition.wait_for(
+                lambda: session.frame_sequence > delivered_sequence or session.stop_event.is_set(),
+                timeout=2,
+            )
+            if session.stop_event.is_set():
                 break
-            yield chunk
-    finally:
-        _terminate(process)
+            frame = session.latest_frame
+            delivered_sequence = session.frame_sequence
+        if not frame:
+            continue
+        yield (
+            b"--frame\r\n"
+            b"Content-Type: image/jpeg\r\n"
+            + f"Content-Length: {len(frame)}\r\n\r\n".encode("ascii")
+            + frame
+            + b"\r\n"
+        )
 
 
 def shutdown_all() -> None:
@@ -166,28 +122,113 @@ def shutdown_all() -> None:
         sessions = list(_sessions.values())
         _sessions.clear()
     for session in sessions:
-        if session.xvfb_process:
-            _terminate(session.xvfb_process)
+        session.stop_event.set()
+        with session.frame_condition:
+            session.frame_condition.notify_all()
+    for session in sessions:
+        if session.watcher and session.watcher is not threading.current_thread():
+            session.watcher.join(timeout=2)
 
 
-def _allocate_display() -> int | None:
-    with _sessions_lock:
-        allocated = {
-            session.display_number
-            for session in _sessions.values()
-            if session.display_number is not None and session.status in {"starting", "ready"}
-        }
-        for display_number in _DISPLAY_RANGE:
-            if display_number not in allocated and not Path(f"/tmp/.X11-unix/X{display_number}").exists():
-                return display_number
-    return None
+def _capture_screencast(session: LiveViewSession) -> None:
+    deadline = time.monotonic() + 30
+    while not session.stop_event.is_set() and time.monotonic() < deadline:
+        debugger_url = _find_page_debugger_url(session.cdp_port)
+        if not debugger_url:
+            session.stop_event.wait(0.1)
+            continue
+        try:
+            _receive_frames(session, debugger_url)
+        except (OSError, ValueError, websocket.WebSocketException):
+            if not session.stop_event.is_set():
+                session.stop_event.wait(0.1)
+        if session.latest_frame:
+            deadline = time.monotonic() + 30
+    if not session.stop_event.is_set() and not session.latest_frame:
+        session.status = "unavailable"
+        session.message = "未能连接 Chromium 实时画面，任务将继续执行并保留录像。"
+        session.token = ""
+        with session.frame_condition:
+            session.frame_condition.notify_all()
 
 
-def _record_unavailable(run_id: str, message: str) -> LiveViewSession:
-    session = LiveViewSession(run_id=run_id, status="unavailable", message=message)
+def _find_page_debugger_url(port: int | None) -> str:
+    if port is None:
+        return ""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=0.5) as response:
+            targets = json.load(response)
+    except (OSError, ValueError, urllib.error.URLError):
+        return ""
+    for target in targets:
+        if target.get("type") == "page" and target.get("webSocketDebuggerUrl"):
+            return str(target["webSocketDebuggerUrl"])
+    return ""
+
+
+def _receive_frames(session: LiveViewSession, debugger_url: str) -> None:
+    connection = websocket.create_connection(
+        debugger_url,
+        timeout=1,
+        origin=f"http://127.0.0.1:{session.cdp_port}",
+        suppress_origin=True,
+    )
+    try:
+        connection.send(json.dumps({"id": 1, "method": "Page.enable"}))
+        connection.send(
+            json.dumps(
+                {
+                    "id": 2,
+                    "method": "Page.startScreencast",
+                    "params": {
+                        "format": "jpeg",
+                        "quality": int(os.getenv("UI_LIVE_VIEW_QUALITY", "70")),
+                        "maxWidth": VIEWPORT_WIDTH,
+                        "maxHeight": VIEWPORT_HEIGHT,
+                        "everyNthFrame": 1,
+                    },
+                }
+            )
+        )
+        while not session.stop_event.is_set():
+            try:
+                payload = json.loads(connection.recv())
+            except (TimeoutError, websocket.WebSocketTimeoutException):
+                continue
+            if payload.get("method") != "Page.screencastFrame":
+                continue
+            params = payload.get("params", {})
+            frame = base64.b64decode(params.get("data", ""))
+            if frame:
+                with session.frame_condition:
+                    session.latest_frame = frame
+                    session.frame_sequence += 1
+                    session.status = "ready"
+                    session.message = "浏览器画面已连接。"
+                    session.frame_condition.notify_all()
+            connection.send(
+                json.dumps(
+                    {
+                        "id": 3,
+                        "method": "Page.screencastFrameAck",
+                        "params": {"sessionId": params.get("sessionId")},
+                    }
+                )
+            )
+    finally:
+        connection.close()
+
+
+def _allocate_local_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
+
+
+def _record_session(session: LiveViewSession) -> LiveViewSession:
     with _sessions_lock:
         _prune_ended_sessions()
-        _sessions[run_id] = session
+        _sessions[session.run_id] = session
     return session
 
 
@@ -196,17 +237,6 @@ def _prune_ended_sessions() -> None:
     expired = [run_id for run_id, session in _sessions.items() if session.ended_at and session.ended_at < cutoff]
     for run_id in expired:
         _sessions.pop(run_id, None)
-
-
-def _terminate(process: subprocess.Popen) -> None:
-    if process.poll() is not None:
-        return
-    try:
-        process.terminate()
-        process.wait(timeout=3)
-    except (OSError, subprocess.TimeoutExpired):
-        process.kill()
-        process.wait()
 
 
 __all__ = [

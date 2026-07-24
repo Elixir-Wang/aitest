@@ -24,6 +24,7 @@ def parse_test_points(markdown_content: str) -> list[dict]:
 
     points: list[dict] = []
     point_keys: set[str] = set()
+    titles: set[str] = set()
     for index, match in enumerate(matches):
         point_key = match.group(1).strip()
         title = match.group(2).strip()
@@ -34,6 +35,10 @@ def parse_test_points(markdown_content: str) -> list[dict]:
         point_keys.add(point_key)
         if not title:
             raise ValueError(f"{point_key} 缺少标题")
+        title_identity = _title_identity(title)
+        if title_identity in titles:
+            raise ValueError(f"测试点标题重复: {title}")
+        titles.add(title_identity)
 
         body_end = matches[index + 1].start() if index + 1 < len(matches) else len(content)
         body = content[match.end() : body_end].strip()
@@ -188,6 +193,10 @@ def _list_section(value: str) -> list[str]:
         return []
     items = [line.strip()[2:].strip() for line in text.splitlines() if line.strip().startswith("- ")]
     return [item for item in items if item]
+
+
+def _title_identity(title: str) -> str:
+    return " ".join(title.split()).casefold()
 
 
 __all__ = ["parse_test_points", "serialize_test_points"]

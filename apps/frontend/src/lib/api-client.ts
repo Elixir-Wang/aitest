@@ -59,20 +59,6 @@ export type ApiUser = {
   updated_at: string;
   last_login_at: string | null;
   available_actions: string[];
-  application_status: "not_requested" | "preflighting" | "preflight_failed" | "rerunning" | "completed" | "apply_failed" | "superseded";
-  applicable_change_ids: string[];
-  selected_change_ids: string[];
-  preflight: {
-    passed?: boolean;
-    status_code?: number | null;
-    final_url?: string;
-    failures?: string[];
-    response?: Record<string, unknown>;
-  };
-  applied_script_id: string;
-  applied_run_id: string;
-  applied_by: string;
-  applied_at?: string | null;
 };
 
 export type ApiModelProvider = {
@@ -1416,6 +1402,27 @@ export type PerformanceAnalysis = {
   finished_at?: string | null;
   updated_at: string;
   available_actions: string[];
+  application_status:
+    | "not_requested"
+    | "preflighting"
+    | "preflight_failed"
+    | "rerunning"
+    | "completed"
+    | "apply_failed"
+    | "superseded";
+  applicable_change_ids: string[];
+  selected_change_ids: string[];
+  preflight: {
+    passed?: boolean;
+    status_code?: number | null;
+    final_url?: string;
+    failures?: string[];
+    response?: Record<string, unknown>;
+  };
+  applied_script_id: string;
+  applied_run_id: string;
+  applied_by: string;
+  applied_at?: string | null;
 };
 
 export type PerformanceRunStartPayload = {
@@ -1599,10 +1606,10 @@ export function rejectPerformanceAnalysis(projectId: string, analysisId: string)
 }
 
 export function applyPerformanceAnalysis(projectId: string, analysisId: string, changeIds: string[]) {
-  return apiRequest<PerformanceAnalysis>(
-    `/projects/${projectId}/performance-analysis/${analysisId}/apply-and-rerun`,
-    { method: "POST", body: JSON.stringify({ change_ids: changeIds }) },
-  );
+  return apiRequest<PerformanceAnalysis>(`/projects/${projectId}/performance-analysis/${analysisId}/apply-and-rerun`, {
+    method: "POST",
+    body: JSON.stringify({ change_ids: changeIds }),
+  });
 }
 
 export function startPerformanceRun(
@@ -1811,6 +1818,12 @@ export function createUiAutomationExecutionRun(projectId: string, assetId: strin
 
 export function getUiAutomationExecutionRun(projectId: string, runId: string) {
   return apiRequest<UiAutomationExecutionRun>(`/projects/${projectId}/ui-automation/runs/${runId}`);
+}
+
+export function stopUiAutomationExecutionRun(projectId: string, runId: string) {
+  return apiRequest<UiAutomationExecutionRun>(`/projects/${projectId}/ui-automation/runs/${runId}/stop`, {
+    method: "POST",
+  });
 }
 
 export function deleteUiAutomationExecutionRun(projectId: string, runId: string) {

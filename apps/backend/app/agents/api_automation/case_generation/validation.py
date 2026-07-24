@@ -41,8 +41,8 @@ def validate_generated_cases(
             raise ValueError(f"测试点 {case.test_point_key} 的请求路径不一致。")
         if case.test_point_key == "request_body.missing" and "body" in request:
             raise ValueError("request_body.missing 必须省略 body，不能使用空对象代替。")
-        _validate_request_mutation(case, request, endpoint)
         planned_point = planned_by_key[case.test_point_key]
+        _validate_request_mutation(case, request, endpoint, planned_point)
         planned_oracle_status = planned_point.get("oracle_status")
         if planned_oracle_status and case.oracle_status != planned_oracle_status:
             raise ValueError(f"测试点 {case.test_point_key} 的 oracle_status 与测试点计划不一致。")
@@ -80,26 +80,30 @@ def _validate_request_mutation(
     case: ApiGeneratedCase,
     request: dict[str, Any],
     endpoint: dict[str, Any],
+    planned_point: dict[str, Any],
 ) -> None:
     """Reject semantically mislabeled mutations before they reach pytest."""
     key = case.test_point_key
     body = request.get("body")
-    field_name = _mutation_field_name(key)
+    field_names = _mutation_field_names(key, planned_point)
     if key == "request_body.empty_object":
         if body != {}:
             raise ValueError("request_body.empty_object 必须发送 JSON 空对象。")
         return
-    if not field_name or not key.startswith("body."):
+    if not field_names or not key.startswith("body."):
         return
     if not isinstance(body, dict):
         raise ValueError(f"测试点 {key} 的 request.body 必须是 JSON 对象。")
     suffix = key.rsplit(".", 1)[-1]
     if suffix == "missing":
-        if field_name in body:
-            raise ValueError(f"测试点 {key} 不应包含字段 {field_name}。")
+        for field_name in field_names:
+            if field_name in body:
+                raise ValueError(f"测试点 {key} 不应包含字段 {field_name}。")
         return
-    if field_name not in body:
-        raise ValueError(f"测试点 {key} 必须在 request.body 中包含字段 {field_name}。")
+    for field_name in field_names:
+        if field_name not in body:
+            raise ValueError(f"测试点 {key} 必须在 request.body 中包含字段 {field_name}。")
+    field_name = field_names[0]
     value = body[field_name]
     if suffix == "null" and value is not None:
         raise ValueError(f"测试点 {key} 的字段值必须是 JSON null，而不是字符串或其它类型。")
@@ -113,11 +117,20 @@ def _validate_request_mutation(
             )
 
 
-def _mutation_field_name(key: str) -> str:
+def _mutation_field_names(key: str, planned_point: dict[str, Any]) -> tuple[str, ...]:
+    explicit_fields = planned_point.get("target_fields") or []
+    if isinstance(explicit_fields, (list, tuple)):
+        normalized_fields = tuple(str(field) for field in explicit_fields if str(field))
+        if normalized_fields:
+            return normalized_fields
+
+    # Support old planned points only where the key shape identifies one field unambiguously.
     parts = key.split(".")
-    if len(parts) >= 3 and parts[0] == "body":
-        return parts[2] if parts[1] == "required" else parts[1]
-    return ""
+    if len(parts) == 4 and parts[:2] == ["body", "required"]:
+        return (parts[2],)
+    if len(parts) == 3 and parts[0] == "body" and parts[2] == "invalid_format":
+        return (parts[1],)
+    return ()
 
 
 def _request_field_type(endpoint: dict[str, Any], field_name: str) -> str:

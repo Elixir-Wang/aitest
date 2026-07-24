@@ -25,6 +25,14 @@ async def stream_endpoint(request):
     return StreamingResponse(events(), media_type="text/event-stream")
 
 
+async def mjpeg_stream_endpoint(request):
+    async def frames():
+        yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\njpeg-data\r\n"
+
+    return StreamingResponse(
+        frames(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
 
 async def unhandled_error_endpoint(request):
     raise RuntimeError("database is locked")
@@ -59,6 +67,52 @@ def test_api_response_middleware_wraps_json_but_preserves_streams() -> None:
     assert stream_response.headers["x-trace-id"].startswith("trace_")
 
 
+def test_api_response_middleware_starts_mjpeg_before_stream_finishes() -> None:
+    messages = []
+
+    async def app(scope, receive, send):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"multipart/x-mixed-replace; boundary=frame")],
+            }
+        )
+        assert [message["type"] for message in messages] == ["http.response.start"]
+
+        await send({"type": "http.response.body", "body": b"first-frame", "more_body": True})
+        assert messages[-1]["body"] == b"first-frame"
+        assert messages[-1]["more_body"] is True
+
+    async def run() -> None:
+        middleware = ApiResponseMiddleware(app)
+
+        async def receive():
+            return {"type": "http.request"}
+
+        async def send(message):
+            messages.append(message)
+
+        await middleware(
+            {"type": "http", "method": "GET", "path": "/api/v1/live-view", "query_string": b""},
+            receive,
+            send,
+        )
+
+    asyncio.run(run())
+
+
+def test_api_response_middleware_preserves_mjpeg_streams() -> None:
+    app = Starlette(routes=[Route("/api/v1/live-view", mjpeg_stream_endpoint)])
+    app.add_middleware(ApiResponseMiddleware)
+    client = TestClient(app)
+
+    response = client.get("/api/v1/live-view")
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"--frame\r\nContent-Type: image/jpeg")
+    assert "multipart/x-mixed-replace" in response.headers["content-type"]
+    assert response.headers["x-trace-id"].startswith("trace_")
 
 def test_api_response_middleware_preserves_empty_204_body() -> None:
     messages = []

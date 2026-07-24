@@ -99,6 +99,7 @@ test("selecting a test point in the mind map keeps the mind map visible", () => 
 });
 
 test("pagination is spaced from the table and page size updates visible rows", () => {
+  assert.match(listSource, /const PAGE_SIZE = 15;/);
   assert.match(listSource, /className="mt-4 flex flex-col gap-3 text-sm/);
   assert.match(listSource, /setRows\(paginatedPoints\)/);
 });

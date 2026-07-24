@@ -69,18 +69,18 @@ def test_coverage_rejects_unsupported_assumptions():
     assert result.unsupported_assumptions == ["数据库失败时自动重试"]
 
 
-def test_module_scoped_obligation_requires_a_point_for_each_explicit_module():
+def test_atomized_module_obligation_is_covered_by_its_explicit_link():
     obligation = RequirementObligation(
         obligation_key="REQ-001",
         source_section="配置入口",
         statement="支持模型显示开关",
         obligation_type="display",
-        modules=["自主规划Agent", "Multi-Agent - Agent节点"],
+        modules=["自主规划Agent"],
     )
     point = GeneratedTestPoint(
         point_key="planning.switch",
         title="自主规划Agent显示开关",
-        module="自主规划Agent",
+        module="模型配置弹窗",
         category="功能",
         priority="P0",
         description="验证",
@@ -90,5 +90,6 @@ def test_module_scoped_obligation_requires_a_point_for_each_explicit_module():
 
     result = evaluate_test_point_coverage([obligation], [point], [])
 
-    assert result.status == "incomplete"
-    assert "REQ-001:Multi-Agent - Agent节点" in result.missing_obligation_keys
+    assert result.status == "complete"
+    assert result.missing_obligation_keys == []
+    assert result.covered_obligation_count == 1

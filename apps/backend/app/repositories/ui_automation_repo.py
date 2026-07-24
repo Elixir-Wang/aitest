@@ -288,7 +288,7 @@ def list_execution_runs(db: Connection, project_id: str, asset_id: str) -> list[
 
 def list_active_execution_runs(db: Connection) -> list[Row]:
     return db.execute(
-        "SELECT * FROM ui_automation_execution_runs WHERE status IN ('queued', 'running')"
+        "SELECT * FROM ui_automation_execution_runs WHERE status IN ('queued', 'running', 'stopping')"
     ).fetchall()
 
 
@@ -297,6 +297,29 @@ def delete_execution_run(db: Connection, run_id: str) -> None:
 
 
 def update_execution_run(db: Connection, run_id: str, **fields) -> None:
+    assignments, values = _execution_run_update(fields)
+    if not assignments:
+        return
+    assignments.append("updated_at = CURRENT_TIMESTAMP")
+    values.append(run_id)
+    db.execute(f"UPDATE ui_automation_execution_runs SET {', '.join(assignments)} WHERE id = ?", values)
+
+
+def transition_execution_run(db: Connection, run_id: str, from_statuses: tuple[str, ...], **fields) -> bool:
+    assignments, values = _execution_run_update(fields)
+    if not assignments or not from_statuses:
+        return False
+    assignments.append("updated_at = CURRENT_TIMESTAMP")
+    placeholders = ", ".join("?" for _ in from_statuses)
+    cursor = db.execute(
+        f"UPDATE ui_automation_execution_runs SET {', '.join(assignments)} "
+        f"WHERE id = ? AND status IN ({placeholders})",
+        [*values, run_id, *from_statuses],
+    )
+    return cursor.rowcount == 1
+
+
+def _execution_run_update(fields: dict) -> tuple[list[str], list]:
     allowed = {
         "status",
         "run_dir",
@@ -320,11 +343,7 @@ def update_execution_run(db: Connection, run_id: str, **fields) -> None:
         elif key in allowed:
             assignments.append(f"{key} = ?")
             values.append(value)
-    if not assignments:
-        return
-    assignments.append("updated_at = CURRENT_TIMESTAMP")
-    values.append(run_id)
-    db.execute(f"UPDATE ui_automation_execution_runs SET {', '.join(assignments)} WHERE id = ?", values)
+    return assignments, values
 
 
 __all__ = [name for name in globals() if not name.startswith("_")]

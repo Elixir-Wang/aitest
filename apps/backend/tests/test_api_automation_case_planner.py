@@ -58,6 +58,16 @@ def test_analysis_endpoint_has_stable_complete_test_point_set() -> None:
     assert len(keys) == 18
     assert len(keys) == len(set(keys))
 
+    points_by_key = {point.key: point for point in points}
+    assert points_by_key["body.date_relation.start_equals_end"].target_fields == (
+        "start_date",
+        "end_date",
+    )
+    assert points_by_key["body.date_relation.start_after_end"].target_fields == (
+        "start_date",
+        "end_date",
+    )
+
 
 def test_minimum_and_complete_success_are_not_planned_twice_without_optional_fields() -> None:
     points = plan_api_test_points(ANALYSIS_ENDPOINT)

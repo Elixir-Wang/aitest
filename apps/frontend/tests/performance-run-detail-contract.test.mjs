@@ -125,7 +125,7 @@ test("background performance refresh failures do not show request error toasts",
   assert.doesNotMatch(consoleSource, /refresh\(\)\.catch\(\(error\) => toast\.error/);
 });
 
-test("stopped performance runs expose a readonly AI analysis drawer", () => {
+test("stopped performance runs expose an AI repair and rerun drawer", () => {
   const consoleSource = readFileSync(locustConsoleUrl, "utf8");
   assert.equal(existsSync(aiAnalysisDrawerUrl), true);
   const drawerSource = readFileSync(aiAnalysisDrawerUrl, "utf8");
@@ -144,7 +144,10 @@ test("stopped performance runs expose a readonly AI analysis drawer", () => {
   assert.match(evidenceSource, /推断与建议/);
   assert.match(progressSource, /status === "waiting_approval" \|\| status === "rejected"/);
   assert.match(drawerSource, /缺失证据/);
-  assert.match(drawerSource, /本期只读，不会自动修改配置或源码/);
+  assert.match(drawerSource, /审批后自动预检、修复配置并重新压测/);
+  assert.match(drawerSource, /applyPerformanceAnalysis/);
+  assert.match(drawerSource, /修复并重新压测/);
+  assert.match(drawerSource, /预检失败，原配置未修改/);
   assert.doesNotMatch(drawerSource, /驳回/);
   assert.doesNotMatch(drawerSource, /应用并重新压测|确认修改源码/);
 });

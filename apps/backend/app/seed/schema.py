@@ -252,6 +252,7 @@ CREATE TABLE IF NOT EXISTS test_point_generation_runs (
   obligation_count INTEGER NOT NULL DEFAULT 0,
   covered_obligation_count INTEGER NOT NULL DEFAULT 0,
   missing_obligations_json TEXT NOT NULL DEFAULT '[]',
+  obligations_json TEXT NOT NULL DEFAULT '[]',
   unsupported_assumptions_json TEXT NOT NULL DEFAULT '[]',
   supplement_round INTEGER NOT NULL DEFAULT 0,
   created_by TEXT NOT NULL,

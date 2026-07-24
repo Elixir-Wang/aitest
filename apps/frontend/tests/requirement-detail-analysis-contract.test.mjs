@@ -224,6 +224,14 @@ test("clarification questions do not render prompt prefixes or guessed fallback 
   assert.doesNotMatch(pageSource, /安全指标：所有接口必须经过身份认证/);
 });
 
+test("source excerpt dialog places its title after the issue and priority badges", () => {
+  assert.match(
+    pageSource,
+    /<div className="flex flex-wrap items-center gap-2 pr-8">[\s\S]*pendingIssueTypeLabels\[pendingIssueType\(sourceExcerptItem\)\][\s\S]*pendingItemSeverityLabel\(sourceExcerptItem\)[\s\S]*<DialogTitle[^>]*>[\s\S]*pendingItemTitle\(sourceExcerptItem\)/,
+  );
+  assert.match(pageSource, /<DialogDescription className="sr-only">查看待澄清项关联的需求原文<\/DialogDescription>/);
+});
+
 test("clarification answer payload only sends fields required by its answer type", () => {
   assert.match(pageSource, /function buildClarificationAnswerPayload/);
   assert.match(pageSource, /answer_type: "defer"/);

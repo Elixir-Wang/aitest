@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import dagre from "@dagrejs/dagre";
 import {
   Background,
   Controls,
@@ -53,11 +52,23 @@ type ScenarioNodeData = {
   endpoint?: ApiAutomationEndpoint;
   index?: number;
   selected?: boolean;
+  inputPosition?: Position;
+  outputPosition?: Position;
 };
 
 type ScenarioNode = Node<ScenarioNodeData>;
 
 const nodeTypes = { scenario: ScenarioNodeCard, terminal: TerminalNode };
+
+const STEP_NODE_WIDTH = 258;
+const STEP_NODE_HEIGHT = 112;
+const TERMINAL_NODE_SIZE = 64;
+const COLUMN_GAP = 48;
+const ROW_GAP = 72;
+const TERMINAL_GAP = 32;
+const CANVAS_MARGIN = 24;
+const MIN_READABLE_ZOOM = 0.7;
+const DEFAULT_CANVAS_WIDTH = 1200;
 
 export function ApiScenarioCanvas({
   endpoints,
@@ -68,32 +79,65 @@ export function ApiScenarioCanvas({
   onAddUtilityStep,
   onOpenAssetPicker,
 }: ApiScenarioCanvasProps) {
-  const initial = useMemo(() => buildCanvasGraph(steps, endpoints, activeStepId), [endpoints, steps, activeStepId]);
+  const initial = useMemo(
+    () => buildCanvasGraph(steps, endpoints, activeStepId, new Map(), DEFAULT_CANVAS_WIDTH),
+    [endpoints, steps, activeStepId],
+  );
   const [nodes, setNodes, onNodesChange] = useNodesState<ScenarioNode>(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
   const [paletteOpen, setPaletteOpen] = useState(true);
+  const [canvasWidth, setCanvasWidth] = useState(DEFAULT_CANVAS_WIDTH);
+  const [layoutMode, setLayoutMode] = useState<"auto" | "manual">("auto");
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const flowInstance = useRef<ReactFlowInstance<ScenarioNode> | null>(null);
+  const stepIdsRef = useRef(steps.map((step) => step.id).join("|"));
 
-  useEffect(() => {
-    setNodes((current) => {
-      const positions = new Map(current.map((node) => [node.id, node.position]));
-      return buildCanvasGraph(steps, endpoints, activeStepId, positions).nodes;
-    });
-    setEdges(buildCanvasGraph(steps, endpoints, activeStepId).edges);
-  }, [activeStepId, endpoints, setEdges, setNodes, steps]);
-
-  useEffect(() => {
-    if (!flowInstance.current) return;
+  const fitCanvas = useCallback(() => {
     window.requestAnimationFrame(() =>
-      flowInstance.current?.fitView({ padding: 0.24, minZoom: nodes.length > 2 ? 0.35 : 0.5, maxZoom: 1.2 }),
+      window.requestAnimationFrame(() =>
+        flowInstance.current?.fitView({ padding: 0.04, minZoom: MIN_READABLE_ZOOM, maxZoom: 1 }),
+      ),
     );
-  }, [nodes.length]);
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setCanvasWidth(Math.round(entry.contentRect.width));
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const stepIds = steps.map((step) => step.id).join("|");
+    const structureChanged = stepIds !== stepIdsRef.current;
+    setNodes((current) => {
+      const positions = structureChanged ? new Map() : new Map(current.map((node) => [node.id, node.position]));
+      return buildCanvasGraph(steps, endpoints, activeStepId, positions, canvasWidth).nodes;
+    });
+    setEdges(buildCanvasGraph(steps, endpoints, activeStepId, new Map(), canvasWidth).edges);
+    if (structureChanged) {
+      stepIdsRef.current = stepIds;
+      setLayoutMode("auto");
+      fitCanvas();
+    }
+  }, [activeStepId, canvasWidth, endpoints, fitCanvas, setEdges, setNodes, steps]);
+
+  useEffect(() => {
+    if (layoutMode !== "auto") return;
+    setNodes((current) => layoutCanvasNodes(current, canvasWidth));
+    fitCanvas();
+  }, [canvasWidth, fitCanvas, layoutMode, setNodes]);
 
   const handleAutoLayout = useCallback(() => {
-    const graph = buildCanvasGraph(steps, endpoints, activeStepId);
-    setNodes(layoutCanvasNodes(graph.nodes, graph.edges));
+    const graph = buildCanvasGraph(steps, endpoints, activeStepId, new Map(), canvasWidth);
+    setNodes(layoutCanvasNodes(graph.nodes, canvasWidth));
     setEdges(graph.edges);
-  }, [activeStepId, endpoints, setEdges, setNodes, steps]);
+    setLayoutMode("auto");
+    fitCanvas();
+  }, [activeStepId, canvasWidth, endpoints, fitCanvas, setEdges, setNodes, steps]);
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: ScenarioNode) => {
@@ -116,21 +160,26 @@ export function ApiScenarioCanvas({
           onOpenAssetPicker={onOpenAssetPicker}
         />
       ) : null}
-      <div className="relative h-full min-h-0 min-w-0 bg-[radial-gradient(circle_at_15%_20%,color-mix(in_srgb,var(--primary),transparent_93%),transparent_34%),var(--background)] dark:bg-[radial-gradient(circle_at_15%_20%,color-mix(in_srgb,var(--primary),transparent_88%),transparent_34%),var(--background)]">
+      <div
+        className="relative h-full min-h-0 min-w-0 bg-[radial-gradient(circle_at_15%_20%,color-mix(in_srgb,var(--primary),transparent_93%),transparent_34%),var(--background)] dark:bg-[radial-gradient(circle_at_15%_20%,color-mix(in_srgb,var(--primary),transparent_88%),transparent_34%),var(--background)]"
+        ref={canvasRef}
+      >
         <ReactFlow
           className="api-scenario-flow h-full w-full"
           edges={edges}
           fitView
-          fitViewOptions={{ padding: 0.24, minZoom: 0.35, maxZoom: 1.2 }}
+          fitViewOptions={{ padding: 0.04, minZoom: MIN_READABLE_ZOOM, maxZoom: 1 }}
           nodeTypes={nodeTypes}
           nodes={nodes}
           onEdgesChange={onEdgesChange}
           onNodeClick={handleNodeClick}
           onNodesChange={onNodesChange}
+          onNodeDragStart={() => setLayoutMode("manual")}
+          onNodeDragStop={() => setNodes((current) => orientCanvasNodes(current))}
           onPaneClick={onClearSelection}
           onInit={(instance) => {
             flowInstance.current = instance;
-            window.requestAnimationFrame(() => instance.fitView({ padding: 0.24, minZoom: 0.35, maxZoom: 1.2 }));
+            fitCanvas();
           }}
           proOptions={{ hideAttribution: true }}
           panOnScroll
@@ -140,13 +189,15 @@ export function ApiScenarioCanvas({
         >
           <Background color="color-mix(in srgb, var(--border), transparent 30%)" gap={22} size={1} />
           <Controls showInteractive={false} />
-          <MiniMap
-            className="!bottom-4 !right-4 !m-0 !h-[108px] !w-[180px] !overflow-hidden !rounded-lg !border !bg-card/90"
-            nodeColor={(node) => (node.data?.kind === "step" ? "var(--primary)" : "#94a3b8")}
-            pannable
-            zoomable
-            nodeStrokeColor="var(--border)"
-          />
+          {steps.length > 12 ? (
+            <MiniMap
+              className="!bottom-4 !right-4 !m-0 !h-[108px] !w-[180px] !overflow-hidden !rounded-lg !border !bg-card/90"
+              nodeColor={(node) => (node.data?.kind === "step" ? "var(--primary)" : "#94a3b8")}
+              pannable
+              zoomable
+              nodeStrokeColor="var(--border)"
+            />
+          ) : null}
         </ReactFlow>
         <div className="absolute top-4 left-4 flex items-center gap-2">
           <Button
@@ -162,7 +213,9 @@ export function ApiScenarioCanvas({
           <div className="pointer-events-none flex items-center gap-2 rounded-lg border bg-card/90 px-3 py-2 text-[11px] shadow-sm backdrop-blur">
             <span className="size-1.5 rounded-full bg-emerald-500" />
             <span className="font-medium">执行路径</span>
-            <span className="text-muted-foreground">{steps.length} 个节点 · 可拖拽调整布局</span>
+            <span className="text-muted-foreground">
+              {steps.length} 个节点 · {layoutMode === "auto" ? "已按画布宽度排布" : "手动布局"}
+            </span>
           </div>
         </div>
         <Button
@@ -262,8 +315,16 @@ function ScenarioNodeCard({ data }: NodeProps<ScenarioNode>) {
         data.selected ? "border-primary ring-2 ring-primary/15" : "border-border/90",
       )}
     >
-      <Handle className="!size-2 !border-2 !border-card !bg-primary" position={Position.Left} type="target" />
-      <Handle className="!size-2 !border-2 !border-card !bg-primary" position={Position.Right} type="source" />
+      <Handle
+        className="!size-2 !border-2 !border-card !bg-primary"
+        position={data.inputPosition ?? Position.Left}
+        type="target"
+      />
+      <Handle
+        className="!size-2 !border-2 !border-card !bg-primary"
+        position={data.outputPosition ?? Position.Right}
+        type="source"
+      />
       <div className="flex items-center justify-between border-b bg-muted/25 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <span
@@ -280,9 +341,14 @@ function ScenarioNodeCard({ data }: NodeProps<ScenarioNode>) {
           </span>
           <span className="truncate font-medium text-xs">{step.name}</span>
         </div>
-        <Badge className="font-mono text-[9px]" variant="outline">
-          {method}
-        </Badge>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="font-mono font-semibold text-[9px] text-muted-foreground">
+            {String((data.index ?? 0) + 1).padStart(2, "0")}
+          </span>
+          <Badge className="font-mono text-[9px]" variant="outline">
+            {method}
+          </Badge>
+        </div>
       </div>
       <div className="space-y-2 px-3 py-3">
         <div className="truncate font-mono text-[10px] text-muted-foreground">{endpoint?.path ?? "辅助步骤"}</div>
@@ -302,10 +368,18 @@ function TerminalNode({ data }: NodeProps<ScenarioNode>) {
   return (
     <div className="relative grid size-16 place-items-center rounded-full border border-primary/30 bg-primary/8 text-primary shadow-sm">
       {data.kind === "start" ? (
-        <Handle className="!size-2 !border-2 !border-card !bg-primary" position={Position.Right} type="source" />
+        <Handle
+          className="!size-2 !border-2 !border-card !bg-primary"
+          position={data.outputPosition ?? Position.Right}
+          type="source"
+        />
       ) : null}
       {data.kind === "end" ? (
-        <Handle className="!size-2 !border-2 !border-card !bg-primary" position={Position.Left} type="target" />
+        <Handle
+          className="!size-2 !border-2 !border-card !bg-primary"
+          position={data.inputPosition ?? Position.Left}
+          type="target"
+        />
       ) : null}
       <span className="font-semibold text-[10px]">{data.kind === "start" ? "开始" : "结束"}</span>
     </div>
@@ -331,6 +405,7 @@ function buildCanvasGraph(
   endpoints: ApiAutomationEndpoint[],
   activeStepId: string,
   positions = new Map<string, { x: number; y: number }>(),
+  canvasWidth = DEFAULT_CANVAS_WIDTH,
 ) {
   const nodes: ScenarioNode[] = [
     {
@@ -371,23 +446,118 @@ function buildCanvasGraph(
     style: { stroke: "color-mix(in srgb, var(--primary), transparent 25%)", strokeWidth: 1.5 },
   }));
   const hasAllPositions = nodes.every((node) => positions.has(node.id));
-  return { nodes: hasAllPositions ? nodes : layoutCanvasNodes(nodes, edges), edges };
+  return { nodes: hasAllPositions ? orientCanvasNodes(nodes) : layoutCanvasNodes(nodes, canvasWidth), edges };
 }
 
-function layoutCanvasNodes(nodes: ScenarioNode[], edges: Edge[]) {
-  const graph = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
-  graph.setGraph({ rankdir: "LR", ranksep: 76, nodesep: 44, marginx: 28, marginy: 28 });
-  for (const node of nodes) {
-    const terminal = node.data.kind !== "step";
-    graph.setNode(node.id, { width: terminal ? 64 : 258, height: terminal ? 64 : 112 });
+function layoutCanvasNodes(nodes: ScenarioNode[], canvasWidth: number) {
+  const start = nodes.find((node) => node.data.kind === "start");
+  const end = nodes.find((node) => node.data.kind === "end");
+  const steps = nodes.filter((node) => node.data.kind === "step");
+  if (!start || !end) return nodes;
+
+  if (!steps.length) {
+    const centerX = Math.max(CANVAS_MARGIN, canvasWidth / 2 - TERMINAL_NODE_SIZE - TERMINAL_GAP / 2);
+    return orientCanvasNodes([
+      { ...start, position: { x: centerX, y: CANVAS_MARGIN } },
+      { ...end, position: { x: centerX + TERMINAL_NODE_SIZE + TERMINAL_GAP, y: CANVAS_MARGIN } },
+    ]);
   }
-  for (const edge of edges) graph.setEdge(edge.source, edge.target);
-  dagre.layout(graph);
-  return nodes.map((node) => {
-    const position = graph.node(node.id);
-    const terminal = node.data.kind !== "step";
-    const width = terminal ? 64 : 258;
-    const height = terminal ? 64 : 112;
-    return { ...node, position: { x: position.x - width / 2, y: position.y - height / 2 } };
+
+  const columns = resolveColumnCount(canvasWidth, steps.length);
+  if (columns === 1) {
+    const stepX = Math.max(CANVAS_MARGIN, (canvasWidth - STEP_NODE_WIDTH) / 2);
+    const firstStepY = CANVAS_MARGIN + TERMINAL_NODE_SIZE + TERMINAL_GAP;
+    const positionedSteps = steps.map((node, index) => ({
+      ...node,
+      position: { x: stepX, y: firstStepY + index * (STEP_NODE_HEIGHT + ROW_GAP) },
+    }));
+    const lastStep = positionedSteps[positionedSteps.length - 1];
+    return orientCanvasNodes([
+      {
+        ...start,
+        position: { x: stepX + (STEP_NODE_WIDTH - TERMINAL_NODE_SIZE) / 2, y: CANVAS_MARGIN },
+      },
+      ...positionedSteps,
+      {
+        ...end,
+        position: {
+          x: stepX + (STEP_NODE_WIDTH - TERMINAL_NODE_SIZE) / 2,
+          y: lastStep.position.y + STEP_NODE_HEIGHT + TERMINAL_GAP,
+        },
+      },
+    ]);
+  }
+
+  const gridWidth = columns * STEP_NODE_WIDTH + (columns - 1) * COLUMN_GAP;
+  const gridStartX = Math.max(CANVAS_MARGIN + TERMINAL_NODE_SIZE + TERMINAL_GAP, (canvasWidth - gridWidth) / 2);
+  const positionedSteps = steps.map((node, index) => {
+    const row = Math.floor(index / columns);
+    const columnInRow = index % columns;
+    const column = row % 2 === 0 ? columnInRow : columns - 1 - columnInRow;
+    return {
+      ...node,
+      position: {
+        x: gridStartX + column * (STEP_NODE_WIDTH + COLUMN_GAP),
+        y: CANVAS_MARGIN + row * (STEP_NODE_HEIGHT + ROW_GAP),
+      },
+    };
   });
+  const firstStep = positionedSteps[0];
+  const lastStep = positionedSteps[positionedSteps.length - 1];
+  const lastRow = Math.floor((positionedSteps.length - 1) / columns);
+  const endOnRight = lastRow % 2 === 0;
+
+  return orientCanvasNodes([
+    {
+      ...start,
+      position: {
+        x: firstStep.position.x - TERMINAL_GAP - TERMINAL_NODE_SIZE,
+        y: firstStep.position.y + (STEP_NODE_HEIGHT - TERMINAL_NODE_SIZE) / 2,
+      },
+    },
+    ...positionedSteps,
+    {
+      ...end,
+      position: {
+        x: endOnRight
+          ? lastStep.position.x + STEP_NODE_WIDTH + TERMINAL_GAP
+          : lastStep.position.x - TERMINAL_GAP - TERMINAL_NODE_SIZE,
+        y: lastStep.position.y + (STEP_NODE_HEIGHT - TERMINAL_NODE_SIZE) / 2,
+      },
+    },
+  ]);
+}
+
+function resolveColumnCount(canvasWidth: number, stepCount: number) {
+  const logicalCanvasWidth = canvasWidth / MIN_READABLE_ZOOM;
+  const widthForSteps = logicalCanvasWidth - CANVAS_MARGIN * 2;
+  const columns = Math.floor((widthForSteps + COLUMN_GAP) / (STEP_NODE_WIDTH + COLUMN_GAP));
+  return Math.max(1, Math.min(4, stepCount, columns));
+}
+
+function orientCanvasNodes(nodes: ScenarioNode[]) {
+  return nodes.map((node, index) => ({
+    ...node,
+    data: {
+      ...node.data,
+      inputPosition: index > 0 ? positionToward(node, nodes[index - 1]) : undefined,
+      outputPosition: index < nodes.length - 1 ? positionToward(node, nodes[index + 1]) : undefined,
+    },
+  }));
+}
+
+function positionToward(node: ScenarioNode, other: ScenarioNode) {
+  const nodeCenter = getNodeCenter(node);
+  const otherCenter = getNodeCenter(other);
+  const horizontalDistance = Math.abs(otherCenter.x - nodeCenter.x);
+  const verticalDistance = Math.abs(otherCenter.y - nodeCenter.y);
+  if (verticalDistance > horizontalDistance) return otherCenter.y > nodeCenter.y ? Position.Bottom : Position.Top;
+  return otherCenter.x > nodeCenter.x ? Position.Right : Position.Left;
+}
+
+function getNodeCenter(node: ScenarioNode) {
+  const terminal = node.data.kind !== "step";
+  const width = terminal ? TERMINAL_NODE_SIZE : STEP_NODE_WIDTH;
+  const height = terminal ? TERMINAL_NODE_SIZE : STEP_NODE_HEIGHT;
+  return { x: node.position.x + width / 2, y: node.position.y + height / 2 };
 }

@@ -2428,19 +2428,20 @@ export default function DocumentDetailPage() {
       <Dialog onOpenChange={(open) => !open && setSourceExcerptItem(null)} open={Boolean(sourceExcerptItem)}>
         <DialogContent className="grid max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-3xl">
           <DialogHeader className="shrink-0 gap-2 px-6 pt-6 pb-4">
-            <DialogTitle>{sourceExcerptItem ? pendingItemTitle(sourceExcerptItem) : "需求原文"}</DialogTitle>
-            <DialogDescription>
-              {sourceExcerptItem ? (
-                <span className="inline-flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">{pendingIssueTypeLabels[pendingIssueType(sourceExcerptItem)]}</Badge>
-                  <Badge variant={pendingItemSeverityVariant(sourceExcerptItem)}>
-                    {pendingItemSeverityLabel(sourceExcerptItem)}
-                  </Badge>
-                </span>
-              ) : (
-                "查看待澄清项关联的需求原文"
-              )}
-            </DialogDescription>
+            {sourceExcerptItem ? (
+              <div className="flex flex-wrap items-center gap-2 pr-8">
+                <Badge variant="outline">{pendingIssueTypeLabels[pendingIssueType(sourceExcerptItem)]}</Badge>
+                <Badge variant={pendingItemSeverityVariant(sourceExcerptItem)}>
+                  {pendingItemSeverityLabel(sourceExcerptItem)}
+                </Badge>
+                <DialogTitle className="min-w-0 break-words text-left leading-6">
+                  {pendingItemTitle(sourceExcerptItem)}
+                </DialogTitle>
+              </div>
+            ) : (
+              <DialogTitle>需求原文</DialogTitle>
+            )}
+            <DialogDescription className="sr-only">查看待澄清项关联的需求原文</DialogDescription>
           </DialogHeader>
           <div className="min-h-0 overflow-auto px-6 pb-6">
             <pre className="whitespace-pre-wrap rounded-lg border bg-muted/30 p-4 text-sm leading-6">

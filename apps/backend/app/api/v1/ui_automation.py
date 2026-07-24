@@ -81,6 +81,11 @@ def get_execution_run(project_id: str, run_id: str, actor=Depends(current_user))
     return result
 
 
+@router.post("/runs/{run_id}/stop", response_model=UiAutomationExecutionRunOut)
+def stop_execution_run(project_id: str, run_id: str, actor=Depends(require_admin)) -> dict:
+    return service.stop_execution_run(project_id, run_id, actor)
+
+
 @router.delete("/runs/{run_id}", status_code=204)
 def delete_execution_run(project_id: str, run_id: str, actor=Depends(require_admin)) -> None:
     service.delete_execution_run(project_id, run_id, actor)

@@ -11,6 +11,7 @@ class ApiTestPoint:
     category: Literal["positive", "negative", "boundary", "security"]
     description: str
     oracle_status: OracleStatus
+    target_fields: tuple[str, ...] = ()
 
 
 def plan_api_test_points(
@@ -39,6 +40,7 @@ def plan_api_test_points(
                 category="negative",
                 description=f"请求体缺少必填字段 {field_name}。",
                 oracle_status=_negative_oracle_status(endpoint),
+                target_fields=(field_name,),
             )
         )
 
@@ -70,6 +72,7 @@ def plan_api_test_points(
                     category="negative",
                     description=f"字段 {field_name} 使用非法日期格式。",
                     oracle_status=_negative_oracle_status(endpoint),
+                    target_fields=(str(field_name),),
                 )
             )
 
@@ -89,12 +92,14 @@ def plan_api_test_points(
                     category="boundary",
                     description=f"字段 {start_name} 与 {end_name} 相等。",
                     oracle_status=_negative_oracle_status(endpoint),
+                    target_fields=(start_name, end_name),
                 ),
                 ApiTestPoint(
                     key=after_key,
                     category="boundary",
                     description=f"字段 {start_name} 晚于 {end_name}。",
                     oracle_status=_negative_oracle_status(endpoint),
+                    target_fields=(start_name, end_name),
                 ),
             ]
         )
@@ -111,6 +116,7 @@ def plan_api_test_points(
                 category="security",
                 description=f"鉴权 Header {name} 使用空字符串覆盖默认值。",
                 oracle_status=_negative_oracle_status(endpoint),
+                target_fields=(name,),
             )
         )
 
@@ -157,12 +163,14 @@ def _required_field_value_points(
             category="negative",
             description=f"必填字段 {field_name} 传入 null。",
             oracle_status=oracle_status,
+            target_fields=(field_name,),
         ),
         ApiTestPoint(
             key=f"body.required.{field_name}.invalid_type",
             category="negative",
             description=f"必填字段 {field_name} 传入与 schema 不一致的类型。",
             oracle_status=oracle_status,
+            target_fields=(field_name,),
         ),
     ]
     if schema.get("type") == "string":
@@ -173,6 +181,7 @@ def _required_field_value_points(
                 category="negative",
                 description=f"必填字符串字段 {field_name} 传入空字符串。",
                 oracle_status=oracle_status,
+                target_fields=(field_name,),
             ),
         )
     return points

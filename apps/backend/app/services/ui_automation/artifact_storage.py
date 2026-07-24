@@ -7,13 +7,15 @@ from pathlib import Path
 import yaml
 
 
-_shared_lock = threading.RLock()
+_project_locks: dict[str, threading.RLock] = {}
+_project_locks_guard = threading.Lock()
 
 
 @contextmanager
 def project_workspace_lock(project_id: str):
-    del project_id
-    with _shared_lock:
+    with _project_locks_guard:
+        lock = _project_locks.setdefault(project_id, threading.RLock())
+    with lock:
         yield
 
 

@@ -173,7 +173,10 @@ test("performance test detail page is removed", () => {
 test("project-native performance run workspace is present", () => {
   assert.equal(
     existsSync(
-      new URL("../src/app/(main)/projects/[projectId]/performance-tests/[testId]/runs/[runId]/page.tsx", import.meta.url),
+      new URL(
+        "../src/app/(main)/projects/[projectId]/performance-tests/[testId]/runs/[runId]/page.tsx",
+        import.meta.url,
+      ),
     ),
     true,
   );
@@ -189,12 +192,13 @@ test("project-native performance run workspace is present", () => {
   assert.match(locustConsoleSource, /下载文件/);
 });
 
-test("performance AI analysis API is readonly and project scoped", () => {
+test("performance AI analysis API supports approved repair and rerun", () => {
   assert.match(apiClientSource, /export type PerformanceAnalysis/);
   assert.match(apiClientSource, /export function createPerformanceAnalysis/);
   assert.match(apiClientSource, /export function getPerformanceAnalysis/);
   assert.match(apiClientSource, /export function listPerformanceRunAnalyses/);
   assert.match(apiClientSource, /performance-test-runs\/\$\{runId\}\/ai-analysis/);
   assert.match(apiClientSource, /performance-analysis\/\$\{analysisId\}/);
-  assert.doesNotMatch(apiClientSource, /apply-and-rerun/);
+  assert.match(apiClientSource, /export function applyPerformanceAnalysis/);
+  assert.match(apiClientSource, /apply-and-rerun/);
 });

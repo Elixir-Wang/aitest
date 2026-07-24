@@ -136,7 +136,12 @@ class _ResponseState:
 
 
 def _should_passthrough(*, method: str, path: str, content_type: str) -> bool:
-    return method == "OPTIONS" or not path.startswith("/api/v1") or "text/event-stream" in content_type
+    streaming_types = ("text/event-stream", "multipart/x-mixed-replace")
+    return (
+        method == "OPTIONS"
+        or not path.startswith("/api/v1")
+        or any(media_type in content_type for media_type in streaming_types)
+    )
 
 
 async def _send_wrapped_response(

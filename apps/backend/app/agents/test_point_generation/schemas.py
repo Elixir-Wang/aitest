@@ -40,6 +40,7 @@ class GeneratedTestPointDraft(BaseModel):
     module: str = Field(min_length=1, max_length=120)
     test_point: str = Field(min_length=1, max_length=240)
     priority: TestPointPriority
+    requirement_obligation_keys: list[str] = Field(min_length=1)
 
 
 class TestPointGenerationDraftResult(BaseModel):

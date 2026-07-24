@@ -25,6 +25,18 @@ async def generate_test_points(
 ) -> TestPointGenerationResult:
     if not input_data.requirement_content.strip():
         raise ValueError("最终需求内容为空，无法生成测试点。")
+    if missing_obligation_keys == []:
+        raise ValueError("当前没有需要补生成的需求义务。")
+    obligation_by_key = {item.obligation_key: item for item in obligations}
+    target_keys = (
+        [item.obligation_key for item in obligations]
+        if missing_obligation_keys is None
+        else list(dict.fromkeys(missing_obligation_keys))
+    )
+    unknown_target_keys = sorted(set(target_keys) - set(obligation_by_key))
+    if unknown_target_keys:
+        raise ValueError(f"补生成包含不存在的需求义务 ID：{', '.join(unknown_target_keys)}")
+    target_obligations = [obligation_by_key[key] for key in target_keys]
     content = "\n".join(
         [
             f"需求名称: {input_data.requirement_name}",
@@ -41,7 +53,7 @@ async def generate_test_points(
                         "module": item.modules[0] if item.modules else "",
                         "statement": item.statement,
                     }
-                    for item in obligations
+                    for item in target_obligations
                 ],
                 ensure_ascii=False,
             ),
@@ -53,7 +65,7 @@ async def generate_test_points(
             ),
             "",
             "本轮仅需补齐的义务 ID:",
-            json.dumps(missing_obligation_keys or [], ensure_ascii=False),
+            json.dumps(missing_obligation_keys if missing_obligation_keys is not None else [], ensure_ascii=False),
             "",
             "请使用 test-point-generation skill 生成结构化测试点。",
         ]
@@ -87,39 +99,53 @@ def _enrich_drafts(
     missing_obligation_keys: list[str] | None,
 ) -> list[GeneratedTestPoint]:
     obligation_by_key = {item.obligation_key: item for item in obligations}
-    target_keys = missing_obligation_keys or [item.obligation_key for item in obligations]
-    assigned: set[str] = set()
-    enriched: list[GeneratedTestPoint] = []
+    target_keys = (
+        [item.obligation_key for item in obligations]
+        if missing_obligation_keys is None
+        else missing_obligation_keys
+    )
+    target_key_set = set(target_keys)
+    enriched_by_key: dict[str, GeneratedTestPoint] = {}
     for draft in drafts:
-        module = draft.module.strip()
-        matching = [
-            key for key in target_keys
-            if key not in assigned and module in obligation_by_key[key].modules
-        ]
-        if not matching:
-            matching = [key for key in target_keys if key not in assigned][:1]
-        if not matching:
-            # Ignore extra model rows once this supplement's obligations are covered.
-            continue
-        assigned.update(matching)
+        matching = list(dict.fromkeys(draft.requirement_obligation_keys))
+        invalid_keys = sorted(set(matching) - target_key_set)
+        if invalid_keys:
+            raise ValueError(f"模型关联了本轮范围外的需求义务 ID：{', '.join(invalid_keys)}")
+        linked_modules = {
+            module.strip()
+            for key in matching
+            for module in obligation_by_key[key].modules
+            if module.strip()
+        }
+        if len(linked_modules) > 1:
+            raise ValueError("同一测试点不能关联多个不同模块的需求义务。")
+        module = next(iter(linked_modules), draft.module.strip())
         test_point = draft.test_point.strip()
         point_key = "tp-" + hashlib.sha1(f"{module}\n{test_point}".encode()).hexdigest()[:16]
-        enriched.append(
-            GeneratedTestPoint(
-                point_key=point_key,
-                title=test_point,
-                module=module,
-                category="功能",
-                priority=draft.priority,
-                description=test_point,
-                preconditions=[],
-                verification_points=[test_point],
-                source_refs=["最终需求"],
-                notes="",
-                requirement_obligation_keys=matching,
+        existing = enriched_by_key.get(point_key)
+        if existing is not None:
+            enriched_by_key[point_key] = existing.model_copy(
+                update={
+                    "requirement_obligation_keys": list(
+                        dict.fromkeys(existing.requirement_obligation_keys + matching)
+                    )
+                }
             )
+            continue
+        enriched_by_key[point_key] = GeneratedTestPoint(
+            point_key=point_key,
+            title=_qualified_title(module, test_point),
+            module=module,
+            category="功能",
+            priority=draft.priority,
+            description=test_point,
+            preconditions=[],
+            verification_points=[test_point],
+            source_refs=["最终需求"],
+            notes="",
+            requirement_obligation_keys=matching,
         )
-    return enriched
+    return list(enriched_by_key.values())
 
 
 def _validate_generation_result(
@@ -130,6 +156,17 @@ def _validate_generation_result(
     duplicate_keys = sorted({key for key in point_keys if point_keys.count(key) > 1})
     if duplicate_keys:
         raise ValueError(f"模型返回了重复的测试点 key：{', '.join(duplicate_keys)}")
+
+    title_identities = [_title_identity(point.title) for point in result.points]
+    duplicate_titles = sorted(
+        {
+            point.title
+            for point, identity in zip(result.points, title_identities, strict=True)
+            if title_identities.count(identity) > 1
+        }
+    )
+    if duplicate_titles:
+        raise ValueError(f"模型返回了重复的测试点标题：{', '.join(duplicate_titles)}")
 
     obligation_keys = {obligation.obligation_key for obligation in obligations}
     unknown_keys = sorted(
@@ -142,6 +179,19 @@ def _validate_generation_result(
     )
     if unknown_keys:
         raise ValueError(f"模型返回了不存在的需求义务 ID：{', '.join(unknown_keys)}")
+
+
+def _qualified_title(module: str, test_point: str) -> str:
+    prefix = f"{module} - " if module else ""
+    title = test_point if prefix and test_point.startswith(prefix) else f"{prefix}{test_point}"
+    if len(title) <= 240:
+        return title
+    digest = hashlib.sha1(title.encode()).hexdigest()[:8]
+    return f"{title[:230]}-{digest}"
+
+
+def _title_identity(title: str) -> str:
+    return " ".join(title.split()).casefold()
 
 
 __all__ = ["generate_test_points"]

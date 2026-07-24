@@ -7,6 +7,7 @@ from app.core import db as core_db
 from app.core import storage
 from app.repositories import test_point_repo
 from app.schemas.test_point import TestPointMarkdownUpdateIn as MarkdownUpdateIn
+from app.schemas.test_point import TestPointUpdateIn as PointUpdateIn
 from app.seed.init_db import init_db
 from app.services import test_point_service
 from app.services.test_point_markdown import parse_test_points, serialize_test_points
@@ -161,6 +162,23 @@ def test_save_markdown_rejects_invalid_document_without_changing_points(
 
     after = test_point_service.get_overview("project-1", "doc-1", ADMIN)
     assert after["points"] == before["points"]
+
+
+def test_update_point_rejects_duplicate_title(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_test_points()
+
+    with pytest.raises(HTTPException) as error:
+        test_point_service.update_point(
+            "project-1",
+            "doc-1",
+            "tp-login.failure",
+            PointUpdateIn(title="登录成功"),
+            ADMIN,
+        )
+
+    assert error.value.status_code == 409
+    assert error.value.detail["message"] == "测试点标题已存在，请使用能够区分测试目标的唯一标题。"
 
 
 def test_save_markdown_requires_admin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):

@@ -179,6 +179,7 @@ def _ensure_test_point_coverage_structure(db: sqlite3.Connection) -> None:
         "obligation_count": "ALTER TABLE test_point_generation_runs ADD COLUMN obligation_count INTEGER NOT NULL DEFAULT 0",
         "covered_obligation_count": "ALTER TABLE test_point_generation_runs ADD COLUMN covered_obligation_count INTEGER NOT NULL DEFAULT 0",
         "missing_obligations_json": "ALTER TABLE test_point_generation_runs ADD COLUMN missing_obligations_json TEXT NOT NULL DEFAULT '[]'",
+        "obligations_json": "ALTER TABLE test_point_generation_runs ADD COLUMN obligations_json TEXT NOT NULL DEFAULT '[]'",
         "unsupported_assumptions_json": "ALTER TABLE test_point_generation_runs ADD COLUMN unsupported_assumptions_json TEXT NOT NULL DEFAULT '[]'",
         "supplement_round": "ALTER TABLE test_point_generation_runs ADD COLUMN supplement_round INTEGER NOT NULL DEFAULT 0",
     }

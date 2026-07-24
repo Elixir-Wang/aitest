@@ -4,12 +4,19 @@ import { useCallback, useEffect, useState } from "react";
 
 import Link from "next/link";
 
-import { ArrowLeft, Download, ImageIcon, Loader2, MonitorPlay, Play, Radio, RefreshCw } from "lucide-react";
+import { ArrowLeft, Download, ImageIcon, Loader2, MonitorPlay, Play, Radio, RefreshCw, Square } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { chineseCompletionTone, StatusBadge } from "@/components/ui/status-badge";
 import {
   API_BASE_URL,
@@ -19,12 +26,14 @@ import {
   getUiAutomationExecutionRun,
   getUiAutomationLiveView,
   getUiAutomationRunLogs,
+  stopUiAutomationExecutionRun,
   type UiAutomationExecutionRun,
   type UiAutomationLiveView,
 } from "@/lib/api-client";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
-const activeStatuses = new Set(["queued", "running"]);
+const activeStatuses = new Set(["queued", "running", "stopping"]);
+const stoppableStatuses = new Set(["queued", "running"]);
 
 export function UiAutomationRunDetail({
   projectId,
@@ -41,6 +50,8 @@ export function UiAutomationRunDetail({
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [rerunning, setRerunning] = useState(false);
+  const [stopDialogOpen, setStopDialogOpen] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [liveViewOpen, setLiveViewOpen] = useState(false);
   const [liveView, setLiveView] = useState<UiAutomationLiveView | null>(null);
   const [liveViewLoading, setLiveViewLoading] = useState(false);
@@ -177,6 +188,22 @@ export function UiAutomationRunDetail({
     }
   }
 
+  async function stopRun() {
+    if (!run || !stoppableStatuses.has(run.status)) return;
+    setStopping(true);
+    try {
+      const updated = await stopUiAutomationExecutionRun(projectId, runId);
+      setRun(updated);
+      setStopDialogOpen(false);
+      toast.success(updated.status === "cancelled" ? "运行已停止" : "已提交停止请求");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "停止运行失败");
+      await loadDetail(false);
+    } finally {
+      setStopping(false);
+    }
+  }
+
   return (
     <PageShell
       breadcrumbs={moduleBreadcrumbs(
@@ -212,14 +239,26 @@ export function UiAutomationRunDetail({
               {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
               刷新
             </Button>
-            <Button
-              disabled={!run || activeStatuses.has(run.status) || rerunning}
-              onClick={() => void rerun()}
-              variant="outline"
-            >
-              {rerunning ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-              重新执行
-            </Button>
+            {run && activeStatuses.has(run.status) ? (
+              <Button
+                aria-label="停止本次运行"
+                disabled={run.status === "stopping" || stopping}
+                onClick={() => setStopDialogOpen(true)}
+                variant="destructive"
+              >
+                {run.status === "stopping" || stopping ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Square className="size-4 fill-current" />
+                )}
+                {run.status === "stopping" || stopping ? "停止中…" : "停止运行"}
+              </Button>
+            ) : (
+              <Button disabled={!run || rerunning} onClick={() => void rerun()} variant="outline">
+                {rerunning ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+                重新执行
+              </Button>
+            )}
             <Button disabled={!run} onClick={() => setLiveViewOpen(true)} variant="outline">
               <MonitorPlay className="size-4" />
               {activeStatuses.has(run?.status ?? "") ? "实时查看" : "浏览器回放"}
@@ -313,6 +352,30 @@ export function UiAutomationRunDetail({
         ) : null}
       </ShellSection>
 
+      <Dialog
+        onOpenChange={(open) => {
+          if (!stopping) setStopDialogOpen(open);
+        }}
+        open={stopDialogOpen}
+      >
+        <DialogContent showCloseButton={!stopping}>
+          <DialogHeader>
+            <DialogTitle>停止此次运行？</DialogTitle>
+            <DialogDescription>停止后不能继续本次运行，已生成的日志、截图和录像仍会保留。</DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-muted-foreground text-xs">{runId}</div>
+          <DialogFooter>
+            <Button disabled={stopping} onClick={() => setStopDialogOpen(false)} type="button" variant="outline">
+              取消
+            </Button>
+            <Button disabled={stopping} onClick={() => void stopRun()} type="button" variant="destructive">
+              {stopping ? <Loader2 className="size-4 animate-spin" /> : <Square className="size-4 fill-current" />}
+              {stopping ? "停止中…" : "停止运行"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog onOpenChange={setLiveViewOpen} open={liveViewOpen}>
         <DialogContent className="grid h-[min(58rem,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-none grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden bg-zinc-950 p-0 text-zinc-100 sm:max-w-7xl">
           <DialogHeader className="border-zinc-800 border-b px-5 py-4 pr-14">
@@ -380,9 +443,10 @@ function statusLabel(status: string) {
       {
         queued: "排队中",
         running: "执行中",
+        stopping: "停止中",
         passed: "通过",
         failed: "失败",
-        cancelled: "已取消",
+        cancelled: "已停止",
       } as Record<string, string>
     )[status] ?? status
   );

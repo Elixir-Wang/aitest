@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -10,20 +11,39 @@ def disable_live_view(monkeypatch):
     monkeypatch.setenv("UI_LIVE_VIEW_ENABLED", "0")
 
 
+def _stub_process(
+    monkeypatch,
+    captured: dict,
+    *,
+    returncode: int = 0,
+    stdout: str = "1 passed",
+    stderr: str = "",
+    on_communicate=None,
+):
+    class Process:
+        pid = 12345
+
+        def __init__(self, command, **kwargs):
+            self.returncode = returncode
+            captured["command"] = command
+            captured["kwargs"] = kwargs
+
+        def communicate(self, timeout=None):
+            captured["timeout"] = timeout
+            if on_communicate:
+                on_communicate()
+            return stdout, stderr
+
+        def poll(self):
+            return self.returncode
+
+    monkeypatch.setattr(runner.subprocess, "Popen", Process)
+
+
 def test_run_case_executes_exact_node_and_writes_generic_result(monkeypatch, tmp_path: Path):
     captured = {}
 
-    class Completed:
-        returncode = 0
-        stdout = "1 passed"
-        stderr = ""
-
-    def fake_run(command, **kwargs):
-        captured["command"] = command
-        captured["kwargs"] = kwargs
-        return Completed()
-
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    _stub_process(monkeypatch, captured)
 
     result = runner.run_case(
         run_id="uirun-1",
@@ -43,12 +63,14 @@ def test_run_case_executes_exact_node_and_writes_generic_result(monkeypatch, tmp
 
 
 def test_runner_redacts_sensitive_output(monkeypatch, tmp_path: Path):
-    class Completed:
-        returncode = 1
-        stdout = "password=secret token=abc"
-        stderr = "authorization: bearer xyz"
-
-    monkeypatch.setattr(runner.subprocess, "run", lambda *args, **kwargs: Completed())
+    captured = {}
+    _stub_process(
+        monkeypatch,
+        captured,
+        returncode=1,
+        stdout="password=secret token=abc",
+        stderr="authorization: bearer xyz",
+    )
 
     result = runner.run_case(
         run_id="uirun-1",
@@ -67,19 +89,10 @@ def test_runner_redacts_sensitive_output(monkeypatch, tmp_path: Path):
 def test_runner_uses_headed_browser_with_xvfb_when_enabled(monkeypatch, tmp_path: Path):
     captured = {}
 
-    class Completed:
-        returncode = 0
-        stdout = "1 passed"
-        stderr = ""
-
     monkeypatch.setenv("UI_HEADED", "1")
     monkeypatch.delenv("DISPLAY", raising=False)
     monkeypatch.setattr(runner.shutil, "which", lambda name: "/usr/bin/xvfb-run" if name == "xvfb-run" else None)
-    monkeypatch.setattr(
-        runner.subprocess,
-        "run",
-        lambda command, **kwargs: captured.update(command=command, kwargs=kwargs) or Completed(),
-    )
+    _stub_process(monkeypatch, captured)
 
     runner.run_case(
         run_id="uirun-headed",
@@ -95,18 +108,14 @@ def test_runner_uses_headed_browser_with_xvfb_when_enabled(monkeypatch, tmp_path
 
 
 def test_runner_collects_recorded_video(monkeypatch, tmp_path: Path):
-    class Completed:
-        returncode = 0
-        stdout = "1 passed"
-        stderr = ""
+    captured = {}
 
-    def fake_run(command, **kwargs):
+    def write_video():
         video = tmp_path / "run" / "browser" / "case" / "video.webm"
         video.parent.mkdir(parents=True, exist_ok=True)
         video.write_bytes(b"video")
-        return Completed()
 
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    _stub_process(monkeypatch, captured, on_communicate=write_video)
 
     result = runner.run_case(
         run_id="uirun-video",
@@ -119,25 +128,16 @@ def test_runner_collects_recorded_video(monkeypatch, tmp_path: Path):
     assert result["video_path"].endswith("video.webm")
 
 
-def test_runner_uses_live_display_and_cleans_it_up(monkeypatch, tmp_path: Path):
+def test_runner_passes_live_cdp_port_and_cleans_it_up(monkeypatch, tmp_path: Path):
     captured = {}
 
     class Session:
-        status = "ready"
-        display = ":97"
-
-    class Completed:
-        returncode = 0
-        stdout = "1 passed"
-        stderr = ""
+        status = "starting"
+        cdp_port = 39521
 
     monkeypatch.setattr(runner.live_view, "start_session", lambda run_id: Session())
     monkeypatch.setattr(runner.live_view, "finish_session", lambda run_id: captured.update(finished=run_id))
-    monkeypatch.setattr(
-        runner.subprocess,
-        "run",
-        lambda command, **kwargs: captured.update(command=command, kwargs=kwargs) or Completed(),
-    )
+    _stub_process(monkeypatch, captured)
 
     runner.run_case(
         run_id="uirun-live",
@@ -147,6 +147,28 @@ def test_runner_uses_live_display_and_cleans_it_up(monkeypatch, tmp_path: Path):
         environment={"site_url": "https://example.test", "storage_state_path": ""},
     )
 
-    assert "--headed" in captured["command"]
-    assert captured["kwargs"]["env"]["DISPLAY"] == ":97"
+    assert "--headed" not in captured["command"]
+    assert "app.services.ui_automation.live_pytest_plugin" in captured["command"]
+    assert captured["kwargs"]["env"]["UI_LIVE_CDP_PORT"] == "39521"
+    assert captured["kwargs"]["env"]["PYTHONPATH"].split(os.pathsep)[0].endswith("apps/backend")
     assert captured["finished"] == "uirun-live"
+
+
+def test_request_stop_marks_run_and_terminates_active_process(monkeypatch):
+    class Process:
+        def poll(self):
+            return None
+
+    process = Process()
+    terminated = []
+    monkeypatch.setattr(runner, "_terminate_process", lambda item: terminated.append(item))
+    monkeypatch.setattr(runner, "_force_kill_after_grace", lambda item: None)
+    runner._PROCESSES["uirun-stop"] = process
+
+    try:
+        assert runner.request_stop("uirun-stop") is True
+        assert "uirun-stop" in runner._STOP_REQUESTED
+        assert terminated == [process]
+    finally:
+        runner._PROCESSES.pop("uirun-stop", None)
+        runner.clear_stop_request("uirun-stop")

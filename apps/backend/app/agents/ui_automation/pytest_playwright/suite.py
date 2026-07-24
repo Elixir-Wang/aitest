@@ -4,15 +4,18 @@ import re
 import shutil
 from pathlib import Path
 
-from app.core.settings import PROJECT_FILE_STORAGE_ROOT
+from app.core import settings
 
 
 BUILTIN_SKILL_ROOT = Path(__file__).parent / "skills" / "pytest-playwright-ui-generation"
 
 
 def project_suite_path(project_id: str) -> Path:
-    del project_id
-    return PROJECT_FILE_STORAGE_ROOT.parent / "ui_automation" / "pytest_playwright"
+    return settings.PROJECT_FILE_STORAGE_ROOT / project_id / "ui_automation" / "pytest_playwright"
+
+
+def legacy_shared_suite_path() -> Path:
+    return settings.PROJECT_FILE_STORAGE_ROOT.parent / "ui_automation" / "pytest_playwright"
 
 
 def ensure_suite_root(suite_path: Path) -> Path:
@@ -69,6 +72,7 @@ def _slugify(value: str) -> str:
 __all__ = [
     "case_artifact_paths",
     "ensure_suite_root",
+    "legacy_shared_suite_path",
     "project_suite_path",
     "relative_suite_path",
     "resolve_suite_file",

@@ -75,6 +75,7 @@ test("API client exposes UI automation asset, generation, and execution contract
   assert.match(apiClientSource, /export function listUiAutomationAssetExecutionRuns/);
   assert.match(apiClientSource, /export function getUiAutomationRunLogs/);
   assert.match(apiClientSource, /export function getUiAutomationLiveView/);
+  assert.match(apiClientSource, /export function stopUiAutomationExecutionRun/);
   assert.match(apiClientSource, /export function deleteUiAutomationExecutionRun/);
 });
 
@@ -129,6 +130,10 @@ test("UI automation run detail exposes logs and browser evidence", () => {
   assert.match(runDetailSource, /实时查看/);
   assert.match(runDetailSource, /浏览器操作过程/);
   assert.match(runDetailSource, /liveView\.stream_path/);
+  assert.match(runDetailSource, /停止此次运行？/);
+  assert.match(runDetailSource, /停止运行/);
+  assert.match(runDetailSource, /停止中…/);
+  assert.match(runDetailSource, /stopUiAutomationExecutionRun/);
   assert.doesNotMatch(runDetailSource, /结构化结果/);
   assert.doesNotMatch(runDetailSource, /JSON\.stringify\(run\.result/);
 });

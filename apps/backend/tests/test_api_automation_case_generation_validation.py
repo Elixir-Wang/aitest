@@ -164,6 +164,47 @@ def test_validation_rejects_invalid_type_that_keeps_schema_type() -> None:
         )
 
 
+def test_validation_accepts_date_relation_with_explicit_target_fields() -> None:
+    endpoint = _typed_endpoint()
+    endpoint["request_body"]["content"]["application/json"]["schema"]["properties"][
+        "end_date"
+    ] = {"type": "string"}
+    case = _case(
+        "body.date_relation.start_equals_end",
+        coverage="boundary",
+        request={
+            "method": "POST",
+            "path": "/analysis",
+            "body": {"start_date": "2026-02-01", "end_date": "2026-02-01"},
+        },
+    )
+
+    validate_generated_cases(
+        endpoint,
+        [{"key": case.test_point_key, "target_fields": ["start_date", "end_date"]}],
+        [case],
+    )
+
+
+def test_validation_rejects_date_relation_missing_a_target_field() -> None:
+    case = _case(
+        "body.date_relation.start_equals_end",
+        coverage="boundary",
+        request={
+            "method": "POST",
+            "path": "/analysis",
+            "body": {"start_date": "2026-02-01"},
+        },
+    )
+
+    with pytest.raises(ValueError, match="必须在 request.body 中包含字段 end_date"):
+        validate_generated_cases(
+            _typed_endpoint(),
+            [{"key": case.test_point_key, "target_fields": ["start_date", "end_date"]}],
+            [case],
+        )
+
+
 def test_validation_rejects_missing_required_response_contract_assertion() -> None:
     planned = [
         {

@@ -8,8 +8,6 @@ from typing import Any
 from urllib.parse import urljoin
 
 import httpx
-from pydantic import ValidationError
-
 from app.agents.performance_testing.script_generation.planner import build_default_plan
 from app.core.db import connect
 from app.core.exceptions import api_error
@@ -150,7 +148,7 @@ def apply_and_rerun(project_id: str, analysis_id: str, change_ids: list[str], ac
             performance_test_id=candidate["id"],
             project_id=project_id,
             version=performance_script_repo.next_version(db, candidate["id"]),
-            generation_source="ai_repair",
+            generation_source="ai_plan",
             template_version=TEMPLATE_VERSION,
             input_hash=_plan_hash(plan.model_dump(mode="json")),
             plan=plan.model_dump(mode="json"),
@@ -217,7 +215,7 @@ def _candidate_configuration(current: dict[str, Any], changes: list[dict[str, An
         before = _decode_json_literal(change.get("before"))
         if before != actual:
             raise api_error(409, "PERFORMANCE_REPAIR_BASELINE_CHANGED", f"配置 {target} 已变化，请重新分析。")
-        _set_path(candidate, target, change.get("after"))
+        _set_path(candidate, target, _decode_json_literal(change.get("after")))
 
     if candidate["data_config"].get("json_rows") and candidate["data_config"].get("source") == "fixed":
         candidate["data_config"]["source"] = "json"
@@ -227,7 +225,8 @@ def _candidate_configuration(current: dict[str, Any], changes: list[dict[str, An
     candidate["success_rules"] = [
         PerformanceSuccessRule.model_validate(rule).model_dump(mode="json") for rule in candidate["success_rules"]
     ]
-    service._validate_non_sensitive_headers(candidate["request_config"]["headers"])
+    if any(_normalize_target(str(change["target"])) == "request_config.headers" for change in changes):
+        service._validate_non_sensitive_headers(candidate["request_config"]["headers"])
     return candidate
 
 

@@ -42,7 +42,7 @@ def requeue_run(db: Connection, run_id: str) -> None:
     db.execute(
         """UPDATE test_point_generation_runs
         SET status = 'queued', error_message = '', coverage_status = 'pending',
-            missing_obligations_json = '[]', unsupported_assumptions_json = '[]',
+            missing_obligations_json = '[]', obligations_json = '[]', unsupported_assumptions_json = '[]',
             supplement_round = 0, finished_at = NULL, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?""",
         (run_id,),

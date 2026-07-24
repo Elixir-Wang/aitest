@@ -21,6 +21,7 @@ def test_ui_automation_routes_are_registered():
     assert "/projects/{project_id}/ui-automation/assets/{asset_id}/files" not in paths
     assert "/projects/{project_id}/ui-automation/assets/{asset_id}/files/{file_kind}" not in paths
     assert "/projects/{project_id}/ui-automation/runs/{run_id}" in paths
+    assert "/projects/{project_id}/ui-automation/runs/{run_id}/stop" in paths
     assert "/projects/{project_id}/ui-automation/runs/{run_id}/logs" in paths
     assert "/projects/{project_id}/ui-automation/runs/{run_id}/live-view" in paths
     assert "/projects/{project_id}/ui-automation/runs/{run_id}/live-view/stream" in paths

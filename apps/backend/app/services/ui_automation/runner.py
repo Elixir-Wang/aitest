@@ -3,12 +3,19 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import shutil
+import threading
 from pathlib import Path
 
 from . import live_view
+
+
+_PROCESSES: dict[str, subprocess.Popen[str]] = {}
+_STOP_REQUESTED: set[str] = set()
+_PROCESS_LOCK = threading.Lock()
 
 
 SENSITIVE_RE = re.compile(
@@ -41,40 +48,64 @@ def run_case(
         sys.executable,
         "-m",
         "pytest",
+        "-p",
+        "app.services.ui_automation.live_pytest_plugin",
         "--tracing=retain-on-failure",
         "--video=on",
         f"--output={browser_output}",
         pytest_node_id,
     ]
     live_session = live_view.start_session(run_id)
-    if live_session.status == "ready":
-        process_env["DISPLAY"] = live_session.display
-        command.insert(4, "--headed")
-    elif os.getenv("UI_HEADED", "0").lower() in {"1", "true", "yes", "on"}:
+    if live_session.cdp_port is not None:
+        process_env["UI_LIVE_CDP_PORT"] = str(live_session.cdp_port)
+        backend_root = str(Path(__file__).resolve().parents[3])
+        existing_pythonpath = process_env.get("PYTHONPATH", "")
+        process_env["PYTHONPATH"] = os.pathsep.join(filter(None, [backend_root, existing_pythonpath]))
+    if os.getenv("UI_HEADED", "0").lower() in {"1", "true", "yes", "on"}:
         command.insert(4, "--headed")
         xvfb_run = shutil.which("xvfb-run")
         if xvfb_run and not process_env.get("DISPLAY"):
             command = [xvfb_run, "--auto-servernum", "--server-args=-screen 0 1440x900x24", *command]
+    process: subprocess.Popen[str] | None = None
+    timed_out = False
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             command,
             cwd=suite_path,
             text=True,
-            capture_output=True,
-            timeout=timeout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             env=process_env,
+            start_new_session=os.name != "nt",
         )
+        with _PROCESS_LOCK:
+            _PROCESSES[run_id] = process
+            stop_requested = run_id in _STOP_REQUESTED
+        if stop_requested:
+            _terminate_process(process)
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            _terminate_process(process, force=True)
+            stdout, stderr = process.communicate()
     finally:
+        with _PROCESS_LOCK:
+            _PROCESSES.pop(run_id, None)
+            stop_requested = run_id in _STOP_REQUESTED
+            _STOP_REQUESTED.discard(run_id)
         live_view.finish_session(run_id)
-    stdout_path.write_text(_redact(completed.stdout), encoding="utf-8")
-    stderr_path.write_text(_redact(completed.stderr), encoding="utf-8")
-    status = "passed" if completed.returncode == 0 else "failed"
+    stdout_path.write_text(_redact(stdout), encoding="utf-8")
+    stderr_path.write_text(_redact(stderr), encoding="utf-8")
+    status = "cancelled" if stop_requested else "passed" if process.returncode == 0 else "failed"
     result = {
         "run_id": run_id,
         "status": status,
-        "exitcode": completed.returncode,
+        "exitcode": process.returncode,
         "pytest_node_id": pytest_node_id,
     }
+    if timed_out:
+        result["error_message"] = f"UI 自动化执行超过 {timeout} 秒，已终止。"
     result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     traces = sorted(browser_output.rglob("trace.zip"))
     screenshots = sorted(browser_output.rglob("*.png"))
@@ -88,6 +119,43 @@ def run_case(
         "screenshot_paths": [str(path) for path in screenshots],
         "video_path": str(videos[0]) if videos else "",
     }
+
+
+def request_stop(run_id: str) -> bool:
+    with _PROCESS_LOCK:
+        _STOP_REQUESTED.add(run_id)
+        process = _PROCESSES.get(run_id)
+    if process is not None and process.poll() is None:
+        _terminate_process(process)
+        threading.Thread(target=_force_kill_after_grace, args=(process,), daemon=True).start()
+    return process is not None
+
+
+def clear_stop_request(run_id: str) -> None:
+    with _PROCESS_LOCK:
+        _STOP_REQUESTED.discard(run_id)
+
+
+def _terminate_process(process: subprocess.Popen[str], *, force: bool = False) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        if os.name != "nt":
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL if force else signal.SIGTERM)
+        elif force:
+            process.kill()
+        else:
+            process.terminate()
+    except (OSError, ProcessLookupError):
+        if process.poll() is None:
+            process.kill() if force else process.terminate()
+
+
+def _force_kill_after_grace(process: subprocess.Popen[str]) -> None:
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        _terminate_process(process, force=True)
 
 
 def _build_environment(environment: dict, result_path: Path) -> dict[str, str]:
@@ -105,4 +173,4 @@ def _redact(value: str) -> str:
     return SENSITIVE_RE.sub(lambda match: f"{match.group(1)}***", value or "")
 
 
-__all__ = ["run_case"]
+__all__ = ["clear_stop_request", "request_stop", "run_case"]

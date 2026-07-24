@@ -27,7 +27,7 @@ from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path, store_path
 from app.repositories import environment_repo, exploration_artifact_repo, exploration_run_repo, project_repo, test_case_repo, ui_automation_repo
 
-from . import artifact_storage, context, live_view, runner
+from . import artifact_storage, context, live_view, migration, runner
 
 
 CAPABILITY_ID = "ui_test_generation"
@@ -90,6 +90,12 @@ def execute_generation_run(run_id: str) -> dict:
         ui_automation_repo.update_generation_run(db, run_id, status="running", started_at=_now())
         row = ui_automation_repo.find_generation_run(db, run_id)
 
+    _ensure_project_suite_migrated(row["project_id"])
+    with artifact_storage.project_workspace_lock(row["project_id"]):
+        return _execute_generation_run_in_workspace(row)
+
+
+def _execute_generation_run_in_workspace(row) -> dict:
     suite_path = project_suite_path(row["project_id"])
     snapshots: list[tuple[Path, bytes | None]] = []
     try:
@@ -249,7 +255,7 @@ def delete_execution_run(project_id: str, run_id: str, actor) -> None:
         row = ui_automation_repo.find_execution_run(db, run_id)
         if not row or row["project_id"] != project_id:
             raise api_error(404, "UI_EXECUTION_RUN_NOT_FOUND", "UI 自动化执行任务不存在。")
-        if row["status"] in {"queued", "running"}:
+        if row["status"] in {"queued", "running", "stopping"}:
             raise api_error(409, "UI_EXECUTION_RUN_ACTIVE", "排队中或执行中的运行记录不能删除。")
 
         asset = ui_automation_repo.find_asset(db, row["asset_id"])
@@ -290,18 +296,72 @@ def create_execution_run(project_id: str, asset_id: str, environment_id: str, ac
         return _serialize_execution_run(ui_automation_repo.find_execution_run(db, run_id))
 
 
+def stop_execution_run(project_id: str, run_id: str, actor) -> dict:
+    _require_admin(actor)
+    should_stop_process = False
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = ui_automation_repo.find_execution_run(db, run_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "UI_EXECUTION_RUN_NOT_FOUND", "UI 自动化执行任务不存在。")
+        cancelled = {
+            "run_id": run_id,
+            "status": "cancelled",
+            "exitcode": None,
+        }
+        cancelled_queued = ui_automation_repo.transition_execution_run(
+            db,
+            run_id,
+            ("queued",),
+            status="cancelled",
+            result=cancelled,
+            finished_at=_now(),
+        )
+        marked_stopping = False
+        if not cancelled_queued:
+            marked_stopping = ui_automation_repo.transition_execution_run(
+                db,
+                run_id,
+                ("running",),
+                status="stopping",
+            )
+        current = ui_automation_repo.find_execution_run(db, run_id)
+        should_stop_process = cancelled_queued or marked_stopping or current["status"] == "stopping"
+
+    if should_stop_process:
+        runner.request_stop(run_id)
+    with connect() as db:
+        return _serialize_execution_run(ui_automation_repo.find_execution_run(db, run_id))
+
+
 def execute_execution_run(run_id: str) -> dict:
     with connect() as db:
         row = ui_automation_repo.find_execution_run(db, run_id)
-        if not row or row["status"] not in {"queued", "running"}:
+        if not row or row["status"] != "queued":
+            runner.clear_stop_request(run_id)
+            return _serialize_execution_run(row) if row else {}
+        project_id = row["project_id"]
+    _ensure_project_suite_migrated(project_id)
+    with connect() as db:
+        row = ui_automation_repo.find_execution_run(db, run_id)
+        if not row or row["status"] != "queued":
+            runner.clear_stop_request(run_id)
             return _serialize_execution_run(row) if row else {}
         asset = ui_automation_repo.find_asset(db, row["asset_id"])
         environment = environment_repo.find_by_id(db, row["environment_id"])
         suite_path = resolve_stored_path(asset["suite_path"]) or Path(asset["suite_path"])
         run_dir = suite_path / "runs" / run_id
-        ui_automation_repo.update_execution_run(
-            db, run_id, status="running", run_dir=store_path(run_dir) or str(run_dir), started_at=_now()
+        started = ui_automation_repo.transition_execution_run(
+            db,
+            run_id,
+            ("queued",),
+            status="running",
+            run_dir=store_path(run_dir) or str(run_dir),
+            started_at=_now(),
         )
+        if not started:
+            runner.clear_stop_request(run_id)
+            return _serialize_execution_run(ui_automation_repo.find_execution_run(db, run_id))
     try:
         result = runner.run_case(
             run_id=run_id,
@@ -314,23 +374,52 @@ def execute_execution_run(run_id: str) -> dict:
             },
         )
         with connect() as db:
-            ui_automation_repo.update_execution_run(
+            update = {
+                "status": result["status"],
+                "run_dir": store_path(run_dir) or str(run_dir),
+                "result": result,
+                "stdout_path": store_path(Path(result["stdout_path"])) or result["stdout_path"],
+                "stderr_path": store_path(Path(result["stderr_path"])) or result["stderr_path"],
+                "trace_path": store_path(Path(result["trace_path"])) if result.get("trace_path") else "",
+                "video_path": store_path(Path(result["video_path"])) if result.get("video_path") else "",
+                "screenshot_paths": result.get("screenshot_paths", []),
+                "error_message": result.get("error_message", ""),
+                "finished_at": _now(),
+            }
+            finalized = ui_automation_repo.transition_execution_run(
                 db,
                 run_id,
-                status=result["status"],
-                run_dir=store_path(run_dir) or str(run_dir),
-                result=result,
-                stdout_path=store_path(Path(result["stdout_path"])) or result["stdout_path"],
-                stderr_path=store_path(Path(result["stderr_path"])) or result["stderr_path"],
-                trace_path=store_path(Path(result["trace_path"])) if result.get("trace_path") else "",
-                video_path=store_path(Path(result["video_path"])) if result.get("video_path") else "",
-                screenshot_paths=result.get("screenshot_paths", []),
-                finished_at=_now(),
+                ("running",),
+                **update,
             )
+            if not finalized:
+                cancelled_result = {**result, "status": "cancelled"}
+                ui_automation_repo.transition_execution_run(
+                    db,
+                    run_id,
+                    ("stopping",),
+                    **{**update, "status": "cancelled", "result": cancelled_result, "error_message": ""},
+                )
             return _serialize_execution_run(ui_automation_repo.find_execution_run(db, run_id))
     except Exception as exc:
         with connect() as db:
-            ui_automation_repo.update_execution_run(db, run_id, status="failed", error_message=str(exc)[:4000], finished_at=_now())
+            finalized = ui_automation_repo.transition_execution_run(
+                db,
+                run_id,
+                ("running",),
+                status="failed",
+                error_message=str(exc)[:4000],
+                finished_at=_now(),
+            )
+            if not finalized:
+                ui_automation_repo.transition_execution_run(
+                    db,
+                    run_id,
+                    ("stopping",),
+                    status="cancelled",
+                    error_message="",
+                    finished_at=_now(),
+                )
             return _serialize_execution_run(ui_automation_repo.find_execution_run(db, run_id))
 
 
@@ -374,8 +463,8 @@ def recover_interrupted_ui_automation_tasks() -> None:
             ui_automation_repo.update_execution_run(
                 db,
                 row["id"],
-                status="failed",
-                error_message="服务重启时中断的 UI 自动化执行任务。",
+                status="cancelled" if row["status"] == "stopping" else "failed",
+                error_message="" if row["status"] == "stopping" else "服务重启时中断的 UI 自动化执行任务。",
                 finished_at=_now(),
             )
 
@@ -436,7 +525,7 @@ def stream_execution_live_view(project_id: str, run_id: str, token: str):
         raise api_error(404, "UI_LIVE_VIEW_NOT_FOUND", "实时浏览器画面不存在或已结束。")
     return StreamingResponse(
         live_view.stream_mjpeg(run_id, token),
-        media_type="multipart/x-mixed-replace; boundary=ffmpeg",
+        media_type="multipart/x-mixed-replace; boundary=frame",
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate",
             "X-Accel-Buffering": "no",
@@ -473,6 +562,13 @@ def _require_visible_project(db, project_id: str, actor):
     if actor["role"] in {"admin", "guest"} or actor["project_scope"] == "全部项目" or project["name"] == actor["project_scope"]:
         return project
     raise api_error(403, "PERMISSION_DENIED", "无权访问该项目。")
+
+
+def _ensure_project_suite_migrated(project_id: str) -> Path:
+    with artifact_storage.project_workspace_lock(project_id):
+        with connect() as db:
+            migration.migrate_legacy_project_suite(db, project_id)
+    return project_suite_path(project_id)
 
 
 def _find_source_case(db, case_id: str):
@@ -616,4 +712,5 @@ __all__ = [
     "list_generation_runs",
     "recover_interrupted_ui_automation_tasks",
     "stream_execution_live_view",
+    "stop_execution_run",
 ]

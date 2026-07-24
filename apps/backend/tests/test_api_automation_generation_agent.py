@@ -631,7 +631,11 @@ def test_persist_generation_item_cases_corrects_fixed_success_code_for_boundary_
                         test_point_key="body.date_relation.start_equals_end",
                         oracle_status="needs_confirmation",
                         coverage="boundary",
-                        request={"method": "POST", "path": "/analysis"},
+                        request={
+                            "method": "POST",
+                            "path": "/analysis",
+                            "body": {"start_date": "2026-02-01", "end_date": "2026-02-01"},
+                        },
                         assertions=[
                             {"type": "status_code", "expected": 200},
                             {"type": "jsonpath_equals", "path": "$.code", "expected": 0},
@@ -643,6 +647,7 @@ def test_persist_generation_item_cases_corrects_fixed_success_code_for_boundary_
                 {
                     "key": "body.date_relation.start_equals_end",
                     "oracle_status": "needs_confirmation",
+                    "target_fields": ["start_date", "end_date"],
                 }
             ],
         )

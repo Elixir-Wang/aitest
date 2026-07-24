@@ -89,6 +89,7 @@ test("scenario editor provides a constrained canvas backed by the existing step 
   assert.match(scenarioCanvasSource, /@xyflow\/react/);
   assert.match(scenarioCanvasSource, /ReactFlow/);
   assert.match(scenarioCanvasSource, /MiniMap/);
+  assert.match(scenarioCanvasSource, /steps\.length > 12/);
   assert.match(scenarioCanvasSource, /自动布局/);
   assert.match(scenarioEditorSource, /隐藏节点配置/);
   assert.match(scenarioEditorSource, /clamp\(360px,32vw,500px\)/);
@@ -100,6 +101,14 @@ test("scenario editor provides a constrained canvas backed by the existing step 
   assert.match(scenarioCanvasSource, /onPaneClick=\{onClearSelection\}/);
   assert.match(scenarioCanvasSource, /hasAllPositions/);
   assert.match(scenarioCanvasSource, /buildCanvasGraph/);
+  assert.match(scenarioCanvasSource, /ResizeObserver/);
+  assert.match(scenarioCanvasSource, /resolveColumnCount/);
+  assert.match(scenarioCanvasSource, /row % 2 === 0/);
+  assert.match(scenarioCanvasSource, /orientCanvasNodes/);
+  assert.match(scenarioCanvasSource, /inputPosition/);
+  assert.match(scenarioCanvasSource, /outputPosition/);
+  assert.match(scenarioCanvasSource, /MIN_READABLE_ZOOM = 0\.7/);
+  assert.doesNotMatch(scenarioCanvasSource, /rankdir: "LR"/);
   assert.match(scenarioCanvasSource, /h-full min-h-0 min-w-0/);
   assert.match(scenarioCanvasSource, /steps\.length/);
   assert.match(scenarioStepConfigSource, /minmax\(140px,0\.8fr\)/);

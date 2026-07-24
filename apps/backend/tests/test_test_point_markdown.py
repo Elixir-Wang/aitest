@@ -49,6 +49,18 @@ def test_parse_test_points_rejects_duplicate_point_key():
         parse_test_points(markdown_content)
 
 
+def test_parse_test_points_rejects_duplicate_title():
+    markdown_content = serialize_test_points(
+        [
+            sample_point(),
+            sample_point(point_key="login.same-title", module="另一个模块"),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="测试点标题重复: 正确账号密码登录成功"):
+        parse_test_points(markdown_content)
+
+
 def test_parse_test_points_rejects_missing_verification_points():
     markdown_content = serialize_test_points([sample_point()]).replace(
         "- 登录成功并进入首页\n- 建立有效会话",

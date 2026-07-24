@@ -43,22 +43,23 @@ disable-model-invocation: true
 
 ## 核心输出字段
 
-模型只输出以下三个字段。测试点 key、描述、验证点、来源引用和需求义务关联由后端生成，禁止输出其他字段。
+模型只输出以下四个字段。测试点 key、描述、验证点和来源引用由后端生成，禁止输出其他字段。
 
 | 字段 | 说明 |
 |------|------|
 | **module** | 所属模块 |
 | **test_point** | 测试点名称，简洁描述要验证的行为 |
 | **priority** | 优先级：P0 / P1 / P2 / P3 |
+| **requirement_obligation_keys** | 当前测试点覆盖的需求义务 ID，必须来自本轮输入 |
 
 顶层输出对象必须包含：
 
-- `points`：仅包含 `module`、`test_point`、`priority` 的非空测试点数组
+- `points`：仅包含 `module`、`test_point`、`priority`、`requirement_obligation_keys` 的非空测试点数组
 
 ## 输出示例
 
 ```json
-{"points":[{"module":"对话模型配置弹窗","test_point":"支持思考模式的模型显示开关","priority":"P0"}]}
+{"points":[{"module":"对话模型配置弹窗","test_point":"支持思考模式的模型显示开关","priority":"P0","requirement_obligation_keys":["REQ-003.M01"]}]}
 ```
 
 ## 硬约束
@@ -71,3 +72,6 @@ disable-model-invocation: true
 5. 当输入包含“本轮仅需补齐的义务 ID”时，只生成这些缺口，不重复生成已覆盖测试点
 6. 不得添加最终需求未定义的异常、权限、并发、安全、性能和日志行为
 7. 不得把待澄清项或候选选项当作最终需求
+8. 每个测试点必须明确填写 `requirement_obligation_keys`，不得关联本轮输入范围外的义务 ID
+9. 同一测试点只能关联同一模块下的需求义务
+10. `test_point` 在同一模块内必须唯一；名称必须明确表达可区分的测试目标，不得输出同名测试点

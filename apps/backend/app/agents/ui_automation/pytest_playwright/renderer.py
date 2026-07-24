@@ -11,8 +11,8 @@ from .suite import ensure_suite_root, resolve_suite_file
 SUITE_FILES = {
     "AGENTS.md": """# Pytest Playwright Suite Instructions
 
-- Keep one shared suite for the whole platform.
-- Keep each business project's pages, tests, and data inside its backend-provided project namespace.
+- Keep this suite scoped to its owning business project.
+- Keep pages, tests, and data inside the backend-provided project namespace.
 - Preserve files not selected by the current generation request.
 - Only edit backend-provided artifact paths.
 - Derived case data may be normalized, but secrets must remain environment references.
@@ -238,7 +238,7 @@ if __name__ == "__main__":
 """,
     ".deepagents/skills/pytest-playwright-ui-generation/SKILL.md": """---
 name: pytest-playwright-ui-generation
-description: Generate one project-namespaced pytest Playwright case inside the platform-shared suite.
+description: Generate one project-namespaced pytest Playwright case inside its business project's suite.
 ---
 
 # Rules

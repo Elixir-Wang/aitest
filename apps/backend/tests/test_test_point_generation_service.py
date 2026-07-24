@@ -57,6 +57,13 @@ def _seed_run(*, with_existing_point: bool = False) -> None:
             created_by="u-admin",
         )
         if with_existing_point:
+            test_point_repo.replace_obligations(
+                db,
+                project_id="project-1",
+                document_id="doc-1",
+                version_id="version-1",
+                obligations=[item.model_dump() for item in _obligations().obligations],
+            )
             test_point_repo.replace_points(
                 db,
                 run_id="run-1",
@@ -64,6 +71,11 @@ def _seed_run(*, with_existing_point: bool = False) -> None:
                 document_id="doc-1",
                 version_id="version-1",
                 points=[_stored_point("existing", "旧的完整测试点")],
+            )
+            test_point_repo.replace_point_obligation_links(
+                db,
+                version_id="version-1",
+                links={"tp-existing": ["REQ-001"]},
             )
 
 
@@ -180,7 +192,34 @@ def test_generation_supplements_only_missing_obligations(
     assert sorted(key for values in links.values() for key in values) == ["REQ-001", "REQ-002"]
 
 
-def test_generation_fails_after_three_supplements_and_preserves_existing_points(
+def test_generation_merges_obligation_links_when_supplement_reuses_point_key(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_run()
+
+    async def fake_extract(input_data):
+        return _obligations()
+
+    async def fake_generate(input_data, *, obligations, existing_points=None, missing_obligation_keys=None):
+        obligation_key = "REQ-002" if missing_obligation_keys else "REQ-001"
+        return GenerationResult(points=[_generated_point("shared-point", obligation_key)])
+
+    monkeypatch.setattr(test_point_service, "extract_requirement_obligations", fake_extract)
+    monkeypatch.setattr(test_point_service, "generate_test_points", fake_generate)
+
+    asyncio.run(test_point_service.execute_generation_run("run-1"))
+
+    with core_db.connect() as db:
+        run = test_point_repo.find_run(db, "run-1")
+        links = test_point_repo.list_point_obligation_links(db, "version-1")
+
+    assert run["status"] == "completed"
+    assert list(links.values()) == [["REQ-001", "REQ-002"]]
+
+
+def test_generation_stops_after_no_progress_and_preserves_existing_points_and_links(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
@@ -205,8 +244,11 @@ def test_generation_fails_after_three_supplements_and_preserves_existing_points(
     assert run["status"] == "failed"
     assert run["coverage_status"] == "incomplete"
     assert json.loads(run["missing_obligations_json"]) == ["REQ-002"]
-    assert run["supplement_round"] == 3
+    assert run["supplement_round"] == 1
     assert [point["title"] for point in points] == ["旧的完整测试点"]
+    with core_db.connect() as db:
+        links = test_point_repo.list_point_obligation_links(db, "version-1")
+    assert links == {"tp-existing": ["REQ-001"]}
 
 
 def test_first_incomplete_generation_persists_missing_obligation_details(
@@ -239,3 +281,74 @@ def test_first_incomplete_generation_persists_missing_obligation_details(
             "statement": "规则二",
         }
     ]
+    assert overview["coverage_summary"]["covered_obligation_count"] == 1
+    assert overview["coverage_summary"]["obligation_count"] == 2
+
+
+def test_failed_overview_uses_run_coverage_without_duplicate_module_gaps(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_run(with_existing_point=True)
+    with core_db.connect() as db:
+        test_point_repo.update_run(
+            db,
+            "run-1",
+            status="failed",
+            coverage_status="incomplete",
+            obligation_count=2,
+            covered_obligation_count=1,
+            missing_obligations_json=json.dumps(["REQ-002:模块"], ensure_ascii=False),
+            supplement_round=1,
+        )
+
+    overview = test_point_service.get_overview(
+        "project-1",
+        "doc-1",
+        {"id": "u-admin", "role": "admin", "project_scope": "全部项目"},
+    )
+
+    assert overview["coverage_summary"]["covered_obligation_count"] == 1
+    assert overview["coverage_summary"]["obligation_count"] == 2
+    assert [item["obligation_key"] for item in overview["coverage_summary"]["missing_obligations"]] == ["REQ-002"]
+
+
+def test_publish_failure_rolls_back_points_obligations_and_links(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_run(with_existing_point=True)
+
+    async def fake_extract(input_data):
+        return _obligations()
+
+    async def fake_generate(input_data, *, obligations, existing_points=None, missing_obligation_keys=None):
+        return GenerationResult(
+            points=[
+                _generated_point("point-1", "REQ-001"),
+                _generated_point("point-2", "REQ-002"),
+            ]
+        )
+
+    def fail_replace_points(*args, **kwargs):
+        raise RuntimeError("publish failed")
+
+    monkeypatch.setattr(test_point_service, "extract_requirement_obligations", fake_extract)
+    monkeypatch.setattr(test_point_service, "generate_test_points", fake_generate)
+    monkeypatch.setattr(test_point_repo, "replace_points", fail_replace_points)
+
+    asyncio.run(test_point_service.execute_generation_run("run-1"))
+
+    with core_db.connect() as db:
+        run = test_point_repo.find_run(db, "run-1")
+        points = test_point_repo.list_points(db, "doc-1", "version-1")
+        obligations = test_point_repo.list_obligations(db, "doc-1", "version-1")
+        links = test_point_repo.list_point_obligation_links(db, "version-1")
+
+    assert run["status"] == "failed"
+    assert run["error_message"] == "publish failed"
+    assert [point["title"] for point in points] == ["旧的完整测试点"]
+    assert [item["obligation_key"] for item in obligations] == ["REQ-001", "REQ-002"]
+    assert links == {"tp-existing": ["REQ-001"]}

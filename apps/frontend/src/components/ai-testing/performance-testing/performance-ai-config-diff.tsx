@@ -1,5 +1,5 @@
-import type { PerformanceAnalysisChange } from "@/lib/api-client";
 import { Checkbox } from "@/components/ui/checkbox";
+import type { PerformanceAnalysisChange } from "@/lib/api-client";
 
 export function PerformanceAiConfigDiff({
   changes,
@@ -21,33 +21,41 @@ export function PerformanceAiConfigDiff({
           const applicable = applicableChangeIds.includes(change.id);
           const selected = selectedChangeIds.includes(change.id);
           return (
-          <article className={applicable ? "overflow-hidden rounded-lg border" : "overflow-hidden rounded-lg border opacity-60"} key={change.id}>
-            <div className="flex items-center justify-between gap-3 border-b bg-muted/30 px-3 py-2">
-              <label className="flex min-w-0 items-center gap-2">
-                {onSelectionChange ? (
-                  <Checkbox
-                    checked={selected}
-                    disabled={!applicable}
-                    onCheckedChange={(checked) =>
-                      onSelectionChange(
-                        checked
-                          ? [...selectedChangeIds, change.id]
-                          : selectedChangeIds.filter((id) => id !== change.id),
-                      )
-                    }
-                  />
-                ) : null}
-                <span className="truncate font-mono text-xs">{change.target}</span>
-              </label>
-              <span className="text-[10px] text-muted-foreground">风险：{riskLabel(change.risk_level)}</span>
-            </div>
-            <div className="grid gap-px bg-border md:grid-cols-2">
-              <DiffValue label="修改前" tone="before" value={change.before} />
-              <DiffValue label="建议值" tone="after" value={change.after} />
-            </div>
-            <p className="border-t px-3 py-2 text-muted-foreground text-xs">{change.reason}</p>
-            {!applicable ? <p className="border-t px-3 py-2 text-amber-700 text-xs">该建议涉及非结构化源码，不能直接自动应用。</p> : null}
-          </article>
+            <article
+              className={
+                applicable ? "overflow-hidden rounded-lg border" : "overflow-hidden rounded-lg border opacity-60"
+              }
+              key={change.id}
+            >
+              <div className="flex items-center justify-between gap-3 border-b bg-muted/30 px-3 py-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  {onSelectionChange ? (
+                    <Checkbox
+                      checked={selected}
+                      disabled={!applicable}
+                      aria-label={`选择修复 ${change.target}`}
+                      onCheckedChange={(checked) =>
+                        onSelectionChange(
+                          checked
+                            ? [...selectedChangeIds, change.id]
+                            : selectedChangeIds.filter((id) => id !== change.id),
+                        )
+                      }
+                    />
+                  ) : null}
+                  <span className="truncate font-mono text-xs">{change.target}</span>
+                </div>
+                <span className="text-[10px] text-muted-foreground">风险：{riskLabel(change.risk_level)}</span>
+              </div>
+              <div className="grid gap-px bg-border md:grid-cols-2">
+                <DiffValue label="修改前" tone="before" value={change.before} />
+                <DiffValue label="建议值" tone="after" value={change.after} />
+              </div>
+              <p className="border-t px-3 py-2 text-muted-foreground text-xs">{change.reason}</p>
+              {!applicable ? (
+                <p className="border-t px-3 py-2 text-amber-700 text-xs">该建议涉及非结构化源码，不能直接自动应用。</p>
+              ) : null}
+            </article>
           );
         })}
       </div>

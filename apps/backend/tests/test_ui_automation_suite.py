@@ -9,15 +9,15 @@ from app.agents.ui_automation.pytest_playwright.suite import (
 )
 
 
-def test_all_business_projects_share_one_suite(monkeypatch, tmp_path):
+def test_business_projects_use_isolated_suites(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "app.agents.ui_automation.pytest_playwright.suite.PROJECT_FILE_STORAGE_ROOT",
+        "app.agents.ui_automation.pytest_playwright.suite.settings.PROJECT_FILE_STORAGE_ROOT",
         tmp_path,
     )
 
-    expected = tmp_path.parent / "ui_automation" / "pytest_playwright"
-    assert project_suite_path("project-1") == expected
-    assert project_suite_path("project-2") == expected
+    assert project_suite_path("project-1") == tmp_path / "project-1/ui_automation/pytest_playwright"
+    assert project_suite_path("project-2") == tmp_path / "project-2/ui_automation/pytest_playwright"
+    assert project_suite_path("project-1") != project_suite_path("project-2")
 
 
 def test_resolve_suite_file_rejects_directory_escape(tmp_path):

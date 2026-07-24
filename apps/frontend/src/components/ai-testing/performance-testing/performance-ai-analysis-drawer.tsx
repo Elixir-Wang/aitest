@@ -5,8 +5,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Bot, LoaderCircle, RefreshCw, ShieldCheck, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,6 +15,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Drawer,
   DrawerContent,
@@ -62,8 +62,10 @@ export function PerformanceAiAnalysisDrawer({
 
   useEffect(() => {
     if (!analysis) return;
-    setSelectedChangeIds(analysis.selected_change_ids.length ? analysis.selected_change_ids : analysis.applicable_change_ids);
-  }, [analysis?.id, analysis?.application_status]);
+    setSelectedChangeIds(
+      analysis.selected_change_ids.length ? analysis.selected_change_ids : analysis.applicable_change_ids,
+    );
+  }, [analysis]);
 
   const refresh = useCallback(
     async (analysisId: string) => {
@@ -217,13 +219,18 @@ export function PerformanceAiAnalysisDrawer({
             <AlertDialogHeader>
               <AlertDialogTitle>应用 AI 修复并重新压测？</AlertDialogTitle>
               <AlertDialogDescription>
-                将应用 {selectedChangeIds.length} 项已选配置，先发送一次预检请求。预检通过后保存新脚本版本并自动启动压测；失败时保留原配置。
+                将应用 {selectedChangeIds.length}{" "}
+                项已选配置，先发送一次预检请求。预检通过后保存新脚本版本并自动启动压测；失败时保留原配置。
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>取消</AlertDialogCancel>
               <AlertDialogAction disabled={repairing} onClick={() => void applyRepair()}>
-                {repairing ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <WandSparkles className="mr-2 size-4" />}
+                {repairing ? (
+                  <LoaderCircle className="mr-2 size-4 animate-spin" />
+                ) : (
+                  <WandSparkles className="mr-2 size-4" />
+                )}
                 确认修复
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -253,7 +260,11 @@ function ApplicationResult({ analysis }: { analysis: PerformanceAnalysis }) {
           {analysis.preflight.final_url ? ` · ${analysis.preflight.final_url}` : ""}
         </p>
       ) : null}
-      {(analysis.preflight.failures ?? []).map((failure) => <p className="text-destructive text-xs" key={failure}>{failure}</p>)}
+      {(analysis.preflight.failures ?? []).map((failure) => (
+        <p className="text-destructive text-xs" key={failure}>
+          {failure}
+        </p>
+      ))}
     </section>
   );
 }

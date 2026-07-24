@@ -25,7 +25,14 @@ async def test_test_point_agent_recovers_from_invalid_structured_tool_call() -> 
 
     invalid_id = "call-invalid-test-point-json"
     valid_result = {
-        "points": [{"module": "对话模型配置弹窗", "test_point": "支持思考模式的模型显示开关", "priority": "P0"}]
+        "points": [
+            {
+                "module": "对话模型配置弹窗",
+                "test_point": "支持思考模式的模型显示开关",
+                "priority": "P0",
+                "requirement_obligation_keys": ["REQ-001"],
+            }
+        ]
     }
     model = RecordingFakeModel(
         responses=[

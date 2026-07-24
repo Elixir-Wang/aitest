@@ -17,10 +17,10 @@ from .suite import ensure_suite_root, relative_suite_path
 
 
 SYSTEM_PROMPT = """
-你是平台共享 pytest + Playwright UI 自动化代码生成智能体。
+你是业务项目专属 pytest + Playwright UI 自动化代码生成智能体。
 
-当前 filesystem backend 根目录是整个平台唯一的 pytest_playwright 工程目录。先检查现有工程，
-不存在时补齐公共框架；不同业务项目只能写入各自 project_key 命名空间，不得创建第二套工程，也不得访问根目录之外的文件。
+当前 filesystem backend 根目录是当前业务项目的 pytest_playwright 工程目录。先检查现有工程，
+不存在时补齐公共框架；只能写入后端提供的 project_key 命名空间，不得访问根目录之外的文件。
 
 后端会提供单条测试用例、探索证据以及 artifacts.test_file、artifacts.data_file、artifacts.plan_file。
 这些路径是本次任务唯一合法的输出路径。允许修改指定的派生测试数据文件，包括规范化、参数化和补充

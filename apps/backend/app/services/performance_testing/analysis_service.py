@@ -60,7 +60,7 @@ def execute_analysis(analysis_id: str) -> None:
             "changes": [change.model_dump(mode="json") for change in diagnosis.proposed_changes],
             "requires_second_approval": diagnosis.requires_second_approval,
             "can_auto_rerun": diagnosis.can_auto_rerun,
-            "readonly": True,
+            "readonly": False,
         }
         with connect() as db:
             performance_analysis_repo.update_analysis_session(
