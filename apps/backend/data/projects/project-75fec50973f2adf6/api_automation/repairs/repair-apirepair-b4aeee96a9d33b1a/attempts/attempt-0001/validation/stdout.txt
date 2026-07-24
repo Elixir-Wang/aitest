@@ -1,0 +1,10 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.1, pluggy-1.6.0
+rootdir: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\api_automation\repairs\repair-apirepair-b4aeee96a9d33b1a\attempts\attempt-0001\workspace
+configfile: pytest.ini
+plugins: anyio-4.13.0, langsmith-0.8.5, locust-2.45.0, base-url-2.1.0, json-report-1.5.0, metadata-3.1.1, playwright-0.8.0
+collected 0 items
+
+--------------------------------- JSON report ---------------------------------
+report saved to: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\api_automation\repairs\repair-apirepair-b4aeee96a9d33b1a\attempts\attempt-0001\validation\report.json
+============================ no tests ran in 0.04s ============================

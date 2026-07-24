@@ -172,7 +172,7 @@ export default function Page() {
     const searchableValues =
       item.itemType === "case"
         ? [item.title, item.project_name, item.preconditions, item.notes]
-        : [item.name, item.requirement_doc_title, testCaseSetStatusLabel(item), item.generation_scope_text];
+        : [item.name, testCaseSetStatusLabel(item)];
     return searchableValues.some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase()));
   });
 
@@ -529,8 +529,6 @@ export default function Page() {
                 </TableHead>
                 <TableHead>名称</TableHead>
                 <TableHead>类型</TableHead>
-                <TableHead>需求</TableHead>
-                <TableHead>生成范围</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>用例数量</TableHead>
                 <TableHead>更新时间</TableHead>
@@ -538,7 +536,7 @@ export default function Page() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? <TableLoadingRow colSpan={9} label="测试用例加载中" /> : null}
+              {loading ? <TableLoadingRow colSpan={7} label="测试用例加载中" /> : null}
               {!loading
                 ? filteredRows.map((item) => (
                     <TableRow
@@ -572,14 +570,6 @@ export default function Page() {
                         )}
                       </TableCell>
                       <TableCell>{item.itemType === "case" ? "测试用例" : "测试用例集"}</TableCell>
-                      <TableCell>{item.itemType === "case" ? "—" : item.requirement_doc_title}</TableCell>
-                      <TableCell>
-                        {item.itemType === "case"
-                          ? "—"
-                          : item.generation_scope_type === "all"
-                            ? "全部需求内容"
-                            : item.generation_scope_text}
-                      </TableCell>
                       <TableCell>
                         <Badge
                           variant={item.itemType === "set" && item.status === "generating" ? "outline" : "secondary"}
@@ -641,7 +631,7 @@ export default function Page() {
                 : null}
               {!loading && filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={9}>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={7}>
                     暂无测试用例。可手工新建测试用例，或根据需求生成测试用例集。
                   </TableCell>
                 </TableRow>

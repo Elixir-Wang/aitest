@@ -1,0 +1,734 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.1, pluggy-1.6.0
+rootdir: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\api_automation\pytest_requests
+configfile: pytest.ini
+plugins: anyio-4.13.0, langsmith-0.8.5, locust-2.45.0, base-url-2.1.0, json-report-1.5.0, metadata-3.1.1, playwright-0.8.0
+collected 18 items
+
+testcases\openapi\v1\agent\analysis\post\test_api.py FFF.FFFFFF.FFFFFFF  [100%]
+
+================================== FAILURES ===================================
+__________ test_agent_analysis[body.required.end_date.invalid_type] ___________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-077a95bcaeedf340', 'coverage': 'negative', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+___________ test_agent_analysis[body.date_relation.start_after_end] ___________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-2a05ee2cb0ea0f9d', 'coverage': 'boundary', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+______________ test_agent_analysis[body.required.end_date.empty] ______________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-2cff0dfadb1acb8f', 'coverage': 'negative', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+______________ test_agent_analysis[body.required.end_date.null] _______________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-5485b9434f35d187', 'coverage': 'negative', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_____________ test_agent_analysis[body.required.start_date.null] ______________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-5697d3585fb2f17b', 'coverage': 'negative', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_____________ test_agent_analysis[header.required.username.empty] _____________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-590e908322fce51b', 'coverage': 'security', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+____________ test_agent_analysis[body.required.start_date.missing] ____________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-8a888eda4f7b41a1', 'coverage': 'negative', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_________ test_agent_analysis[body.required.start_date.invalid_type] __________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-916dea05f3943949', 'coverage': 'negative', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_______________ test_agent_analysis[request_body.empty_object] ________________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-97307516db8d343c', 'coverage': 'negative', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_____________ test_agent_analysis[body.required.end_date.missing] _____________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-ad8e5f9482d4ff17', 'coverage': 'negative', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_______ test_agent_analysis[header.required.cybertron-robot-key.empty] ________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-d119aa75b8786354', 'coverage': 'security', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+__________________ test_agent_analysis[request_body.missing] __________________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-d405f2d53bf50228', 'coverage': 'negative', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_____________ test_agent_analysis[body.start_date.invalid_format] _____________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-e4b8174301f193c9', 'coverage': 'negative', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+______ test_agent_analysis[header.required.cybertron-robot-token.empty] _______
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-e842c110044146f2', 'coverage': 'security', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+_____________ test_agent_analysis[body.required.start_date.empty] _____________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-eeff1d3847a6b1ce', 'coverage': 'negative', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+______________ test_agent_analysis[body.end_date.invalid_format] ______________
+
+api_client = <support.client.ApiClient object at 0x000001E9BDD56270>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-f2d1573c416a0df7', 'coverage': 'negative', 'created_at': '2026-07-24 02:05:04', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(api_client, case):
+        """智能体数据分析 - 参数化测试"""
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        oracle_status = case.get("oracle_status", "needs_confirmation")
+    
+        # inferred / needs_confirmation: 先记录观察证据，再执行当前最佳断言
+        if oracle_status in ("inferred", "needs_confirmation"):
+            record_observation(case, response)
+    
+        # 执行断言（所有 oracle_status 都执行）
+        assertions = case.get("assertions", [])
+        if assertions:
+>           assert_response(response, assertions)
+
+testcases\openapi\v1\agent\analysis\post\test_api.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+utils\assert_utils.py:43: in assert_response
+    assert_response_assertions(response, assertions)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils\assertions.py:103: AssertionError
+--------------------------------- JSON report ---------------------------------
+report saved to: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\api_automation\runs\apirun-9bfb2a89feb551d5\report.json
+=========================== short test summary info ===========================
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[body.required.end_date.invalid_type]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[body.date_relation.start_after_end]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[body.required.end_date.empty]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[body.required.end_date.null]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[body.required.start_date.null]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[header.required.username.empty]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[body.required.start_date.missing]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[body.required.start_date.invalid_type]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[request_body.empty_object]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[body.required.end_date.missing]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[header.required.cybertron-robot-key.empty]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[request_body.missing]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[body.start_date.invalid_format]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[header.required.cybertron-robot-token.empty]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[body.required.start_date.empty]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[body.end_date.invalid_format]
+======================== 16 failed, 2 passed in 2.60s =========================
