@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.agents.manual_test_case_generation.schemas import ManualTestCaseAiGenerateIn, ManualTestCaseAiGenerateOut
 
@@ -120,6 +120,12 @@ class TestCaseReviewIn(BaseModel):
     steps: list[TestCaseStep] | None = None
     expected_result: str | None = None
 
+    @model_validator(mode="after")
+    def _require_rejection_feedback(self):
+        if self.status == "rejected" and not self.review_feedback:
+            raise ValueError("不采纳原因不能为空。")
+        return self
+
     @field_validator("review_feedback", "preconditions", "expected_result", mode="before")
     @classmethod
     def _strip_strings(cls, value: object) -> object:
@@ -156,6 +162,14 @@ class TestCaseReviewIn(BaseModel):
 class TestCaseReviewOut(BaseModel):
     case: "TestCaseOut"
     review_stats: TestCaseReviewStatsOut
+    knowledge_record: "RejectedCaseKnowledgeRecordOut | None" = None
+
+
+class RejectedCaseKnowledgeRecordOut(BaseModel):
+    record_id: str
+    file_id: str
+    file_name: str
+    status: Literal["active", "inactive"]
 
 
 class TestCaseOut(BaseModel):

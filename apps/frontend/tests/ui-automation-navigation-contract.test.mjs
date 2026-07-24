@@ -130,6 +130,9 @@ test("UI automation run detail exposes logs and browser evidence", () => {
   assert.match(runDetailSource, /实时查看/);
   assert.match(runDetailSource, /浏览器操作过程/);
   assert.match(runDetailSource, /liveView\.stream_path/);
+  assert.match(runDetailSource, /h-dvh w-screen max-w-none/);
+  assert.match(runDetailSource, /liveView\.width/);
+  assert.match(runDetailSource, /liveView\.height/);
   assert.match(runDetailSource, /停止此次运行？/);
   assert.match(runDetailSource, /停止运行/);
   assert.match(runDetailSource, /停止中…/);

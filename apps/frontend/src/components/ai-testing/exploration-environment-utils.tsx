@@ -85,6 +85,22 @@ export function formatAuthStateExpiresAt(expiresAt: string | null | undefined) {
   return expiresAt ? formatDateTime(expiresAt) : "有效期未知";
 }
 
+export function formatAuthStateTimeRemaining(expiresAt: string | null | undefined, now = new Date()) {
+  if (!expiresAt) return "有效期未知";
+
+  const expiresAtTimestamp = new Date(expiresAt).getTime();
+  if (Number.isNaN(expiresAtTimestamp)) return "有效期未知";
+
+  const remainingMinutes = Math.ceil((expiresAtTimestamp - now.getTime()) / 60_000);
+  if (remainingMinutes <= 0) return "已过期";
+  if (remainingMinutes < 60) return `${remainingMinutes} 分钟后过期`;
+
+  const remainingHours = Math.ceil(remainingMinutes / 60);
+  if (remainingHours < 24) return `约 ${remainingHours} 小时后过期`;
+
+  return `约 ${Math.ceil(remainingHours / 24)} 天后过期`;
+}
+
 export function formFromEnvironment(environment: ExplorationEnvironment): EnvironmentForm {
   return {
     projectId: environment.project_id,

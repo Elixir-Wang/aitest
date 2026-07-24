@@ -6,10 +6,14 @@ const workspaceSource = readFileSync(
   new URL("../src/components/ai-testing/exploration-workspace.tsx", import.meta.url),
   "utf8",
 );
+const environmentUtilsSource = readFileSync(
+  new URL("../src/components/ai-testing/exploration-environment-utils.tsx", import.meta.url),
+  "utf8",
+);
 
 test("manual auth controls require the saved environment to enable manual captcha", () => {
   assert.match(
-    workspaceSource,
+    environmentUtilsSource,
     /function isManualAuthEnabled\(environment: ExplorationEnvironment \| null\)[\s\S]*environment\.login_strategy === "account_password"[\s\S]*environment\.captcha_strategy === "manual"[\s\S]*environment\.reuse_auth_state/,
   );
   assert.match(
@@ -59,13 +63,21 @@ test("credential status is based on saved credentials", () => {
 });
 
 test("manual auth action buttons stay on one row on wide dialogs", () => {
-  assert.match(
-    workspaceSource,
-    /className="flex shrink-0 flex-wrap gap-2 lg:flex-nowrap lg:justify-end"/,
-  );
+  assert.match(workspaceSource, /className="flex shrink-0 flex-wrap gap-2 lg:flex-nowrap lg:justify-end"/);
   assert.match(workspaceSource, /className="whitespace-nowrap"[\s\S]*打开登录/);
   assert.match(workspaceSource, /className="whitespace-nowrap"[\s\S]*保存登录态/);
   assert.match(workspaceSource, /className="whitespace-nowrap"[\s\S]*取消/);
+});
+
+test("auth state uses a restrained accent and a separate expiry column", () => {
+  assert.match(workspaceSource, /valid: "登录态有效"/);
+  assert.match(workspaceSource, /{authStateSummaryLabel}/);
+  assert.match(workspaceSource, /formatAuthStateTimeRemaining\(selectedAuthStateExpiresAt\)/);
+  assert.match(workspaceSource, /有效期至 {formatAuthStateExpiresAt\(selectedAuthStateExpiresAt\)}/);
+  assert.match(workspaceSource, /before:w-0\.5/);
+  assert.match(workspaceSource, /before:bg-emerald-500/);
+  assert.match(workspaceSource, /sm:text-right/);
+  assert.doesNotMatch(workspaceSource, /bg-emerald-50\/70/);
 });
 
 test("exploration workspace does not expose execution or interaction modes", () => {

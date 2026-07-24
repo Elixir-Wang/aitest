@@ -147,14 +147,14 @@ def update_case_review(
         f"""
         UPDATE test_cases
         SET status = ?,
-            review_feedback = ?,
+            review_feedback = '',
             reviewed_by = ?,
             reviewed_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
             {content_sql}
         WHERE id = ?
         """,
-        (status, review_feedback if status == "rejected" else "", reviewed_by, *content_params, case_id),
+        (status, reviewed_by, *content_params, case_id),
     )
 
 
@@ -185,19 +185,6 @@ def review_stats_by_set(db: Connection, test_case_set_id: str) -> dict:
         "adoption_rate": approved_count / reviewed_count if reviewed_count else 0,
         "review_progress": reviewed_count / case_count if case_count else 0,
     }
-
-
-def list_rejected_case_feedback_by_set(db: Connection, test_case_set_id: str) -> list[Row]:
-    return db.execute(
-        """
-        SELECT id, title, module, priority, preconditions, steps_json, expected_result, review_feedback
-        FROM test_cases
-        WHERE test_case_set_id = ?
-          AND status = 'rejected'
-        ORDER BY updated_at DESC, id ASC
-        """,
-        (test_case_set_id,),
-    ).fetchall()
 
 
 def find_generation_run(db: Connection, run_id: str) -> Row | None:
@@ -310,6 +297,17 @@ def update_generation_run_status(db: Connection, run_id: str, *, status: str, er
     )
 
 
+def update_generation_run_input(db: Connection, run_id: str, input_json: str) -> None:
+    db.execute(
+        """
+        UPDATE test_case_generation_runs
+        SET input_json = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (input_json, run_id),
+    )
+
+
 def replace_cases(db: Connection, *, test_case_set_id: str, project_id: str, cases: list[dict]) -> None:
     db.execute("DELETE FROM test_cases WHERE test_case_set_id = ?", (test_case_set_id,))
     for case in cases:
@@ -371,3 +369,15 @@ def latest_generation_run(db: Connection, test_case_set_id: str) -> Row | None:
         (test_case_set_id,),
     ).fetchone()
 
+
+def latest_completed_generation_run(db: Connection, test_case_set_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT *
+        FROM test_case_generation_runs
+        WHERE test_case_set_id = ? AND status = 'completed'
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (test_case_set_id,),
+    ).fetchone()

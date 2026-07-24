@@ -327,10 +327,10 @@ function LoginPage() {
 
   return (
     <div className="grid min-h-dvh lg:grid-cols-2">
-      <div className="relative hidden flex-col justify-between overflow-hidden bg-primary p-12 text-primary-foreground lg:flex">
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-white p-12 text-foreground lg:flex dark:bg-background">
         <div className="relative z-20">
           <div className="flex items-center gap-2 font-semibold text-lg">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary-foreground/10 backdrop-blur-sm">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Sparkles className="size-4" />
             </div>
             <span>AI 测试系统</span>

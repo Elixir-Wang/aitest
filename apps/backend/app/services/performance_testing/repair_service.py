@@ -225,8 +225,6 @@ def _candidate_configuration(current: dict[str, Any], changes: list[dict[str, An
     candidate["success_rules"] = [
         PerformanceSuccessRule.model_validate(rule).model_dump(mode="json") for rule in candidate["success_rules"]
     ]
-    if any(_normalize_target(str(change["target"])) == "request_config.headers" for change in changes):
-        service._validate_non_sensitive_headers(candidate["request_config"]["headers"])
     return candidate
 
 

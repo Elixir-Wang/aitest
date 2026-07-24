@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from app.core import db as db_core
 from app.core import settings
 from app.core.db import connect
+from app.core.environment_credentials import encrypt_api_environment_secret
 from app.repositories import api_automation_repo
 from app.schemas.performance_test import PerformanceTestCreateIn
 from app.seed.init_db import init_db
@@ -131,6 +132,63 @@ def test_pending_script_edit_rerenders_and_revalidates(monkeypatch: pytest.Monke
     assert updated["validation_status"] == "pending_confirmation"
     assert updated["validation_result"]["valid"] is True
     assert "changed" in updated["code"]
+
+
+def test_script_generation_keeps_all_headers_and_shows_runtime_values(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    performance_test = _create_test()
+    with connect() as db:
+        db.execute(
+            "UPDATE api_test_environments SET auth_type = ?, auth_config_json = ? WHERE id = ?",
+            (
+                "cybertron_agent",
+                api_automation_repo.dumps_json(
+                    {
+                        "username": "robot-user",
+                        "cybertron_robot_key_encrypted": encrypt_api_environment_secret("real-key"),
+                        "cybertron_robot_token_encrypted": encrypt_api_environment_secret("real-token"),
+                    }
+                ),
+                "environment-project-1",
+            ),
+        )
+        db.execute(
+            "UPDATE performance_tests SET request_config_json = ? WHERE id = ?",
+            (
+                api_automation_repo.dumps_json(
+                    {
+                        "headers": {
+                            "X-Business": "keep",
+                            "cybertron-robot-key": "bad-key",
+                            "cybertron-robot-token": "bad-token",
+                            "username": "bad-user",
+                        }
+                    }
+                ),
+                performance_test["id"],
+            ),
+        )
+
+    generated = script_service.generate_script("project-1", performance_test["id"], ADMIN)
+
+    assert generated["plan"]["request"]["headers"] == {
+        "X-Business": "keep",
+        "username": "robot-user",
+        "cybertron-robot-key": "real-key",
+        "cybertron-robot-token": "real-token",
+    }
+    assert "real-key" in generated["code"]
+    assert "real-token" in generated["code"]
+    assert generated["runtime_preview"]["plan_headers"] == generated["plan"]["request"]["headers"]
+    assert generated["runtime_preview"]["env_headers"] == {
+        "username": "robot-user",
+        "cybertron-robot-key": "real-key",
+        "cybertron-robot-token": "real-token",
+    }
+    assert generated["runtime_preview"]["request"]["headers"] == generated["plan"]["request"]["headers"]
 
 
 def test_script_lookup_is_project_isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

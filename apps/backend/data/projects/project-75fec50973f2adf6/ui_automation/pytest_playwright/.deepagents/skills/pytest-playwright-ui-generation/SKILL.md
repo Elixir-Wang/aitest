@@ -13,6 +13,8 @@ description: Generate or update one UI automation case in the owning business pr
    - Copy declared `case.parameters` keys into `AutomationPlan.parameters`.
    - Use `click_parameter_text` with `value_ref` when a step selects the current parameter value.
    - Never replace a parameter reference with one concrete value.
+   - After sending a chat message, use `wait_for_response` with an assistant-only response locator.
+   - Do not use `wait_visible` for response completion or assume an initial welcome message exists.
 6. Validate the plan, render it through the deterministic tool, and run pytest collection.
 
 # Prohibitions

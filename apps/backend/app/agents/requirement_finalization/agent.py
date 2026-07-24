@@ -18,7 +18,7 @@ def requirement_finalization_agent(model, load_references: bool = True):
         tools=[],
         system_prompt=SYSTEM_PROMPT,
         middleware=[skill_middleware],
-        response_format=ToolStrategy(RequirementFinalizationOutput),
+        response_format=ToolStrategy(RequirementFinalizationOutput, handle_errors=False),
     )
 
 

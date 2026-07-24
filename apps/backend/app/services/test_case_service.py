@@ -4,16 +4,17 @@ from pathlib import Path
 
 from app.agents.test_case_generation import generate_test_cases
 from app.agents.test_case_generation.schemas import (
-    RejectedTestCaseFeedback,
     TestCaseGenerationInput,
     TestCaseGenerationResult,
 )
+from app.agents.rejected_case_search import RejectedCaseSearchInput, search_rejected_cases
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
 from app.repositories import document_repo, project_repo, test_case_repo, test_point_repo
 from app.schemas.test_case import ManualTestCaseCreateIn, TestCaseReviewIn, TestCaseSetCreateIn
 from app.services.test_case_xmind_exporter import build_test_case_set_xmind, safe_xmind_filename
+from app.services import rejected_case_knowledge
 
 
 STATUS_LABELS = {
@@ -112,7 +113,7 @@ def delete_test_case_set(project_id: str, set_id: str, actor) -> None:
 def review_test_case(project_id: str, set_id: str, case_id: str, payload: TestCaseReviewIn, actor) -> dict:
     _require_admin(actor)
     with connect() as db:
-        _require_visible_project(db, project_id, actor)
+        project = _require_visible_project(db, project_id, actor)
         row = test_case_repo.find_set_by_id(db, set_id)
         if not row or row["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "测试用例集不存在。")
@@ -120,11 +121,53 @@ def review_test_case(project_id: str, set_id: str, case_id: str, payload: TestCa
         if not test_case or test_case["test_case_set_id"] != set_id or test_case["project_id"] != project_id:
             raise api_error(404, "NOT_FOUND", "测试用例不存在。")
 
+        requirement = document_repo.find_by_project_and_id(db, project_id, row["requirement_doc_id"])
+        generation_run = test_case_repo.latest_completed_generation_run(db, set_id)
+        if not requirement or not generation_run:
+            raise api_error(409, "TEST_CASE_GENERATION_ORIGIN_MISSING", "测试用例缺少可追溯的生成来源。")
+        version_id = _generation_run_input_snapshot(dict(generation_run)).get("final_requirement_version_id")
+        requirement_version = document_repo.find_version(db, version_id) if version_id else None
+        if not requirement_version:
+            requirement_version = document_repo.find_version(db, requirement["current_version_id"])
+        if not requirement_version:
+            raise api_error(409, "TEST_CASE_GENERATION_ORIGIN_MISSING", "测试用例对应的需求版本不存在。")
+
+        serialized_case = _serialize_case(test_case)
+        project_data = dict(project)
+        requirement_data = dict(requirement)
+        requirement_version_data = dict(requirement_version)
+        generation_run_id = generation_run["id"]
+
+    knowledge_record = None
+    try:
+        if payload.status == "rejected":
+            knowledge_record = rejected_case_knowledge.upsert_rejected_case(
+                project=project_data,
+                requirement=requirement_data,
+                requirement_version=requirement_version_data,
+                generation_run_id=generation_run_id,
+                test_case_set_id=set_id,
+                test_case=serialized_case,
+                reason=payload.review_feedback,
+                actor=actor,
+            )
+        else:
+            knowledge_record = rejected_case_knowledge.deactivate_record(
+                project=project_data,
+                requirement=requirement_data,
+                generation_run_id=generation_run_id,
+                case_id=case_id,
+                actor=actor,
+            )
+    except ValueError as exc:
+        raise api_error(503, "REJECTED_CASE_KNOWLEDGE_UNAVAILABLE", str(exc)) from exc
+
+    with connect() as db:
         test_case_repo.update_case_review(
             db,
             case_id=case_id,
             status=payload.status,
-            review_feedback=payload.review_feedback,
+            review_feedback="",
             reviewed_by=actor["id"],
             preconditions=payload.preconditions,
             steps_json=json.dumps(_steps_to_jsonable(payload.steps), ensure_ascii=False) if payload.steps is not None else None,
@@ -136,8 +179,12 @@ def review_test_case(project_id: str, set_id: str, case_id: str, payload: TestCa
         review_stats = test_case_repo.review_stats_by_set(db, set_id)
         _sync_set_review_status(db, set_id, review_stats)
         return {
-            "case": _serialize_case(updated_case),
+            "case": _serialize_case(
+                updated_case,
+                review_feedback=payload.review_feedback if payload.status == "rejected" else "",
+            ),
             "review_stats": review_stats,
+            "knowledge_record": knowledge_record,
         }
 
 
@@ -168,9 +215,6 @@ def regenerate_test_case_set(project_id: str, set_id: str, actor) -> dict:
             requirement=requirement,
             final_requirement_version=final_requirement_version,
             payload=payload,
-            rejected_case_feedback=_serialize_rejected_feedback_rows(
-                test_case_repo.list_rejected_case_feedback_by_set(db, set_id)
-            ),
         )
         test_case_repo.update_set_status(db, set_id, status="generating")
         test_case_repo.create_generation_run(
@@ -249,6 +293,9 @@ async def execute_test_case_generation_run(run_id: str) -> None:
             return
 
         generation_input = _build_generation_input(run_context)
+        references = await _search_rejected_case_references(run_context, generation_input)
+        _save_knowledge_search_metadata(run_context, references)
+        generation_input = generation_input.model_copy(update={"rejected_case_references": references})
         result = await generate_test_cases(generation_input)
         _complete_generation_run(run_context, result)
     except Exception as exc:  # noqa: BLE001 - background task must persist failures for the UI
@@ -274,7 +321,9 @@ def _build_generation_input(run_context: dict) -> TestCaseGenerationInput:
         if not requirement:
             raise ValueError("需求文档不存在，无法生成测试用例。")
 
-        version = document_repo.find_version(db, requirement["current_version_id"]) if requirement["current_version_id"] else None
+        snapshot = _generation_run_input_snapshot(run_context)
+        version_id = snapshot.get("final_requirement_version_id")
+        version = document_repo.find_version(db, version_id) if version_id else None
         if not version or version["source_action"] not in {"requirement_analysis", "requirement_analysis_finalize", "edit"}:
             raise ValueError("该需求文档尚未生成最终需求，请先完成需求分析。")
         point_rows = test_point_repo.list_points(db, requirement["id"], version["id"])
@@ -303,11 +352,42 @@ def _build_generation_input(run_context: dict) -> TestCaseGenerationInput:
             }
             for row in point_rows
         ],
-        rejected_case_feedback=[
-            RejectedTestCaseFeedback.model_validate(item)
-            for item in _generation_run_input_snapshot(run_context).get("rejected_case_feedback", [])
-        ],
     )
+
+
+async def _search_rejected_case_references(
+    run_context: dict,
+    generation_input: TestCaseGenerationInput,
+):
+    snapshot = _generation_run_input_snapshot(run_context)
+    documents = rejected_case_knowledge.collect_project_documents(run_context["project_id"])
+    result = await search_rejected_cases(
+        RejectedCaseSearchInput(
+            project_id=run_context["project_id"],
+            project_name=snapshot.get("project_name", ""),
+            requirement_id=run_context["requirement_doc_id"],
+            requirement_name=generation_input.requirement_name,
+            requirement_version_id=snapshot.get("final_requirement_version_id", ""),
+            requirement_version_no=int(snapshot.get("final_requirement_version_no") or 0),
+            requirement_content=generation_input.requirement_content,
+            generation_scope=generation_input.generation_scope,
+            test_points=generation_input.test_points,
+            source_documents=documents,
+        )
+    )
+    return result.matches
+
+
+def _save_knowledge_search_metadata(run_context: dict, references) -> None:
+    snapshot = _generation_run_input_snapshot(run_context)
+    snapshot["knowledge_search"] = {
+        "status": "completed",
+        "matched_count": len(references),
+        "used_record_ids": [reference.record_id for reference in references],
+        "used_file_ids": sorted({reference.source_file_id for reference in references}),
+    }
+    with connect() as db:
+        test_case_repo.update_generation_run_input(db, run_context["id"], json.dumps(snapshot, ensure_ascii=False))
 
 
 def _read_final_requirement_content(version) -> str:
@@ -406,7 +486,6 @@ def _generation_input_snapshot(
     requirement,
     final_requirement_version,
     payload: TestCaseSetCreateIn,
-    rejected_case_feedback: list[dict] | None = None,
 ) -> dict:
     return {
         "project_id": project["id"],
@@ -418,7 +497,6 @@ def _generation_input_snapshot(
         "generation_scope_type": payload.generation_scope_type,
         "generation_scope_text": payload.generation_scope_text,
         "notes": payload.notes,
-        "rejected_case_feedback": rejected_case_feedback or [],
     }
 
 
@@ -444,7 +522,28 @@ def _serialize_set(db, row, *, include_cases: bool = False) -> dict:
         "review_stats": test_case_repo.review_stats_by_set(db, row["id"]),
     }
     if include_cases:
-        result["cases"] = [_serialize_case(case) for case in test_case_repo.list_cases_by_set(db, row["id"])]
+        feedback_by_case_id = {}
+        completed_run = test_case_repo.latest_completed_generation_run(db, row["id"])
+        try:
+            knowledge_records = rejected_case_knowledge.list_records_for_set(
+                row["project_id"],
+                row["requirement_doc_id"],
+                row["id"],
+                completed_run["id"] if completed_run else None,
+            )
+            feedback_by_case_id = {
+                case_id: record.reason
+                for case_id, record in knowledge_records.items()
+                if record.status == "active"
+                and completed_run
+                and record.generation_run_id == completed_run["id"]
+            }
+        except ValueError:
+            feedback_by_case_id = {}
+        result["cases"] = [
+            _serialize_case(case, review_feedback=feedback_by_case_id.get(case["id"], ""))
+            for case in test_case_repo.list_cases_by_set(db, row["id"])
+        ]
     return result
 
 
@@ -457,7 +556,7 @@ def _sync_set_review_status(db, set_id: str, review_stats: dict) -> None:
     test_case_repo.update_set_status(db, set_id, status=next_status)
 
 
-def _serialize_case(row) -> dict:
+def _serialize_case(row, *, review_feedback: str | None = None) -> dict:
     try:
         raw_steps = json.loads(row["steps_json"] or "[]")
     except json.JSONDecodeError:
@@ -474,7 +573,7 @@ def _serialize_case(row) -> dict:
         "steps": _normalize_step_rows(raw_steps, fallback_expected_result=expected_result),
         "expected_result": expected_result,
         "status": row["status"],
-        "review_feedback": row["review_feedback"],
+        "review_feedback": row["review_feedback"] if review_feedback is None else review_feedback,
         "reviewed_by": row["reviewed_by"],
         "reviewed_at": row["reviewed_at"],
         "created_at": row["created_at"],
@@ -499,28 +598,6 @@ def _serialize_manual_case(row) -> dict:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
-
-
-def _serialize_rejected_feedback_rows(rows) -> list[dict]:
-    rejected_feedback = []
-    for row in rows:
-        try:
-            raw_steps = json.loads(row["steps_json"] or "[]")
-        except json.JSONDecodeError:
-            raw_steps = []
-        expected_result = row["expected_result"]
-        rejected_feedback.append(
-            {
-                "title": row["title"],
-                "module": row["module"],
-                "priority": row["priority"],
-                "preconditions": row["preconditions"],
-                "steps": _normalize_step_rows(raw_steps, fallback_expected_result=expected_result),
-                "expected_result": expected_result,
-                "review_feedback": row["review_feedback"],
-            }
-        )
-    return rejected_feedback
 
 
 def _steps_to_jsonable(steps) -> list[dict]:

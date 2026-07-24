@@ -126,3 +126,33 @@ def test_pytest_plugin_appends_cdp_launch_arguments_after_fixture_setup(monkeypa
         "--remote-debugging-port=39521",
         "--remote-allow-origins=*",
     ]
+
+
+def test_pytest_plugin_sets_browser_viewport_after_fixture_setup(monkeypatch):
+    monkeypatch.setenv("UI_VIEWPORT_WIDTH", "1440")
+    monkeypatch.setenv("UI_VIEWPORT_HEIGHT", "900")
+    fixturedef = type("FixtureDef", (), {"argname": "browser_context_args"})()
+    context_args = {"locale": "zh-CN"}
+    outcome = type("Outcome", (), {"get_result": lambda self: context_args})()
+    hook = live_pytest_plugin.pytest_fixture_setup(fixturedef, None)
+
+    next(hook)
+    with pytest.raises(StopIteration):
+        hook.send(outcome)
+
+    assert context_args["viewport"] == {"width": 1440, "height": 900}
+
+
+def test_pytest_plugin_stops_process_group_when_runner_parent_exits(monkeypatch):
+    calls = []
+    monkeypatch.setattr(live_pytest_plugin, "_parent_is_alive", lambda parent_pid: False)
+    monkeypatch.setattr(live_pytest_plugin.os, "getpgrp", lambda: 321)
+    monkeypatch.setattr(
+        live_pytest_plugin.os,
+        "killpg",
+        lambda process_group, sig: calls.append((process_group, sig)),
+    )
+
+    live_pytest_plugin._watch_runner_parent(123)
+
+    assert calls == [(321, live_pytest_plugin.signal.SIGTERM)]

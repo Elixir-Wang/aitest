@@ -4,7 +4,6 @@ import secrets
 from typing import Any
 
 from app.core.db import connect
-from app.core.environment_credentials import decrypt_api_environment_secret
 from app.core.exceptions import api_error
 from app.repositories import (
     api_automation_repo,
@@ -26,6 +25,11 @@ def generate_script(project_id: str, test_id: str, actor) -> dict[str, Any]:
         service._require_visible_project(db, project_id, actor)
         test_row = service._require_performance_test(db, project_id, test_id)
         performance_test = performance_test_repo.serialize_performance_test(test_row)
+        environment = api_automation_repo.find_api_environment(db, test_row["api_environment_id"])
+        performance_test["request_config"]["headers"] = {
+            **dict(performance_test["request_config"].get("headers") or {}),
+            **service._environment_runtime_headers(environment),
+        }
         plan, generation_source, model_id = build_ai_or_default_plan(performance_test)
         code = render_locust_script(plan)
         validation = validate_locust_script(plan, code)
@@ -128,15 +132,15 @@ def _serialize_required_script(db, project_id: str, test_id: str, script_id: str
 
 
 def _build_runtime_preview(db, project_id: str, test_id: str, script: dict[str, Any]) -> dict[str, Any]:
-    """合并环境注入头和 plan 头，复用 run_service 实际压测时的合并规则（env 先、plan 后）。"""
+    """Build the complete request preview with current environment headers."""
     test_row = service._require_performance_test(db, project_id, test_id)
     environment = None
     if test_row["api_environment_id"]:
         environment = api_automation_repo.find_api_environment(db, test_row["api_environment_id"])
-    env_headers = _environment_runtime_headers(environment) if environment else {}
+    env_headers = service._environment_runtime_headers(environment)
     plan_request = dict(script.get("plan", {}).get("request") or {})
     plan_headers = dict(plan_request.get("headers") or {})
-    merged_headers = {**env_headers, **plan_headers}
+    merged_headers = {**plan_headers, **env_headers}
     return {
         "request": {
             "method": plan_request.get("method", ""),
@@ -148,40 +152,11 @@ def _build_runtime_preview(db, project_id: str, test_id: str, script: dict[str, 
         "success_rules": list(script.get("plan", {}).get("success_rules") or []),
         "env_headers": env_headers,
         "plan_headers": plan_headers,
+        "managed_header_names": sorted(service._environment_managed_header_names(environment)),
     }
 
 
-def _environment_runtime_headers(row) -> dict[str, str]:
-    """与 run_service._runtime_environment 注入规则保持一致：env 的 default_headers + auth 注入。"""
-    if row is None:
-        return {}
-    headers = {
-        str(key): str(value)
-        for key, value in api_automation_repo.loads_json(row["default_headers_json"], {}).items()
-    }
-    auth_config = api_automation_repo.loads_json(row["auth_config_json"], {})
-    auth_type = row["auth_type"]
-    if auth_type == "static_bearer" and auth_config.get("token_encrypted"):
-        token = decrypt_api_environment_secret(auth_config["token_encrypted"]) or ""
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-    if auth_type == "static_headers":
-        for key, encrypted in auth_config.get("headers_encrypted", {}).items():
-            headers[str(key)] = decrypt_api_environment_secret(str(encrypted)) or ""
-    if auth_type == "cookie" and auth_config.get("cookie_name"):
-        cookie_value = decrypt_api_environment_secret(auth_config.get("cookie_value_encrypted", "")) or ""
-        if cookie_value:
-            headers["Cookie"] = f"{auth_config['cookie_name']}={cookie_value}"
-    if auth_type == "cybertron_agent":
-        if auth_config.get("username"):
-            headers["username"] = str(auth_config["username"])
-        robot_key = decrypt_api_environment_secret(auth_config.get("cybertron_robot_key_encrypted", "")) or ""
-        robot_token = decrypt_api_environment_secret(auth_config.get("cybertron_robot_token_encrypted", "")) or ""
-        if robot_key:
-            headers["cybertron-robot-key"] = robot_key
-        if robot_token:
-            headers["cybertron-robot-token"] = robot_token
-    return headers
+_environment_runtime_headers = service._environment_runtime_headers
 
 
 def _plan_hash(plan: LocustScriptPlan) -> str:

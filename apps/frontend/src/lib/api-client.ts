@@ -247,6 +247,12 @@ export type ApiTestCaseReviewUpdate = {
 export type ApiTestCaseReviewResult = {
   case: ApiTestCase;
   review_stats: ApiTestCaseReviewStats;
+  knowledge_record: {
+    record_id: string;
+    file_id: string;
+    file_name: string;
+    status: "active" | "inactive";
+  } | null;
 };
 
 export type ApiTestCaseSet = {
@@ -1280,6 +1286,7 @@ export type PerformanceScript = {
     success_rules: PerformanceSuccessRule[];
     env_headers: Record<string, string>;
     plan_headers: Record<string, unknown>;
+    managed_header_names: string[];
   } | null;
 };
 

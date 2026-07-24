@@ -41,6 +41,36 @@ def test_list_running_tasks_returns_empty_when_no_task(monkeypatch: pytest.Monke
     assert task_service.list_running_tasks(ACTOR) == []
 
 
+def test_task_center_hides_only_expired_terminal_tasks(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_project(db)
+        db.execute(
+            """
+            INSERT INTO project_environments (id, project_id, name, site_url, created_by)
+            VALUES ('env-1', 'project-1', '测试环境', 'https://example.test', 'u-admin')
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO exploration_runs
+              (id, project_id, environment_id, title, status, created_by, created_at, updated_at)
+            VALUES
+              ('old-completed', 'project-1', 'env-1', '过期任务', 'completed', 'u-admin',
+               datetime('now', '-11 days'), datetime('now', '-11 days')),
+              ('recent-completed', 'project-1', 'env-1', '近期任务', 'completed', 'u-admin',
+               datetime('now', '-9 days'), datetime('now', '-9 days')),
+              ('old-running', 'project-1', 'env-1', '长期运行任务', 'running', 'u-admin',
+               datetime('now', '-11 days'), datetime('now', '-11 days'))
+            """
+        )
+
+    result = task_service.list_tasks(ACTOR)
+
+    assert {task["source_id"] for task in result["items"]} == {"recent-completed", "old-running"}
+    assert result["total"] == 2
+
+
 def test_list_running_tasks_excludes_pending_exploration(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     with core_db.connect() as db:
@@ -160,7 +190,7 @@ def test_requirement_file_task_uses_file_mapping_created_timestamp(monkeypatch: 
         db.execute(
             """
             UPDATE source_documents
-            SET updated_at = '2026-06-04 16:59:19'
+            SET updated_at = datetime('now')
             WHERE id = 'doc-1'
             """
         )
@@ -168,14 +198,21 @@ def test_requirement_file_task_uses_file_mapping_created_timestamp(monkeypatch: 
             """
             INSERT INTO source_document_file_mappings
               (id, document_id, source_file_path, original_filename, file_format, conversion_status, created_by, created_at)
-            VALUES ('file-1', 'doc-1', 'uploads/login.docx', 'login.docx', 'docx', 'success', 'u-admin', '2026-06-04 16:58:01')
+            VALUES ('file-1', 'doc-1', 'uploads/login.docx', 'login.docx', 'docx', 'success', 'u-admin', datetime('now', '-1 minute'))
             """
         )
+        mapping_created_at = db.execute(
+            "SELECT created_at FROM source_document_file_mappings WHERE id = 'file-1'"
+        ).fetchone()["created_at"]
+        document_updated_at = db.execute(
+            "SELECT updated_at FROM source_documents WHERE id = 'doc-1'"
+        ).fetchone()["updated_at"]
 
     result = task_service.list_tasks(ACTOR, module="requirement")
 
     assert result["items"][0]["id"] == "requirement_file:file-1"
-    assert result["items"][0]["created_at"] == "2026-06-04 16:58:01"
+    assert result["items"][0]["created_at"] == mapping_created_at
+    assert result["items"][0]["created_at"] != document_updated_at
 
 
 def test_requirement_analysis_run_is_visible_as_requirement_review_task(

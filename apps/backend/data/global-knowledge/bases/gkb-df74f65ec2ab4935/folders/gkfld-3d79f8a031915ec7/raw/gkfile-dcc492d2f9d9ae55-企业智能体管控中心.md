@@ -1,6 +1,6 @@
 企业智能体管控中心**仅对本企业内拥有管理员权限的用户**开放访问，管理员可在此页面对已订阅和已发布的智能体进行全生命周期管理，包括搜索筛选、对话历史查询、数据分析、版本更新、长期记忆配置等功能，助力企业智能体的运营与维护。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1704080.5156793564103324.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1704080.5156793564103324.png)
 
 # 搜索和筛选
 
@@ -10,33 +10,33 @@
 
 智能体管控中心采用卡片布局展示智能体核心信息，同时提供丰富的管理操作入口，支持对智能体进行管理操作。另外，点击标签管理按钮，即可打开标签管理弹窗，对分组进行添加、编辑以及移除。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1704090.4056491141666355.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1704090.4056491141666355.png)
 
 # 查询对话历史
 
 支持整通会话查询和单条日志查询，记录智能体与用户的交互过程，快速定位问题、优化智能体。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1704110.24780353989531723.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1704110.24780353989531723.png)
 
 ## 整通会话查询
 
 整通会话历史完整还原用户与智能体的交互过程
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1704120.5700552827023693.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1704120.5700552827023693.png)
 
 点击智能体回复下方按钮可以查看单条会话的**详细日志**和**回复来源**。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1704130.06984404752775142.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1704130.06984404752775142.png)
 
 ## 单条日志查询
 
 提供日志的多维度筛选与查询功能，支持精准定位单条日志。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1704140.986290872596675.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1704140.986290872596675.png)
 
 点击单条日志，可跳转详细日志页。展示会话处理的完整日志信息，包括基础信息、调用树、时间轴、节点详情、输入内容展示以及输出结果展示。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1704150.5313663081933543.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1704150.5313663081933543.png)
 
 # 数据分析
 
@@ -46,7 +46,7 @@
 
 数据统计页提供智能体核心运营数据概述。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1704160.4808208915685004.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1704160.4808208915685004.png)
 
  
 
@@ -61,7 +61,7 @@
 
 用户洞察页提供多维度数据助力了解用户行为。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1704170.02026574924601321.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1704170.02026574924601321.png)
 
 * 关键用户指标：展示DAU、MAU、30日用户留存率等关键用户指标；
  
@@ -76,7 +76,7 @@
 
 Agent管控中心支持配置智能体的长期记忆功能，空间长期记忆模拟大脑的长期记忆，通过LLM能力，提取用户表述中的关键内容进行存储、向量化。这一功能旨在提升机器人与用户的交互能力和应用价值。尤其在持续服务、个性化体验和复杂任务处理方面具有明显优势。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1704180.27625878071372156.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1704180.27625878071372156.png)
 
 # 配置可用平台
 
@@ -91,13 +91,13 @@ Agent管控中心支持配置智能体的长期记忆功能，空间长期记忆
 4. 确认选择后，点击右上角**确认更新**，系统将保存配置并跳转回发布管控中心。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1704190.9526163338713077.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1704190.9526163338713077.png)
 
 # 检查更新
 
 当订阅来的智能体发布更新时，点击智能体卡片查看版本信息，可按需选择“同步更新”或“暂不更新”完成版本管理。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1704200.1962840346291277.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1704200.1962840346291277.png)
 
 # 取消订阅
 

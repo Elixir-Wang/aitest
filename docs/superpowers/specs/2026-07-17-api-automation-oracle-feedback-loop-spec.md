@@ -144,7 +144,7 @@ needs_confirmation
 
 - 默认执行；
 - 记录真实响应、响应体、响应头和执行错误；
-- 结果状态为 `observed`，不直接判定为通过或失败；
+- 观察证据写入运行摘要，不覆盖测试运行的通过或失败状态；
 - 执行完成后生成审批建议。
 
 ### 5.2 执行结果状态
@@ -154,16 +154,16 @@ needs_confirmation
 ```text
 passed
 failed
-observed
 blocked
 error
 ```
 
-- `passed`：Oracle 可用，实际响应满足预期。
-- `failed`：Oracle 可用，实际响应不满足预期。
-- `observed`：用例执行成功，但没有可靠 Oracle，仅完成事实采集。
+- `passed`：测试执行完成且断言全部通过；观察证据作为附加摘要保留。
+- `failed`：测试执行存在失败断言。
 - `blocked`：执行前置条件不足，例如环境不可用或缺少必要数据。
 - `error`：执行器自身异常，例如网络错误、解析错误或脚本异常。
+
+历史数据中的 `observed` 状态按 `passed` 兼容展示。
 
 ### 5.3 审批状态
 
@@ -527,7 +527,7 @@ POST /projects/{project_id}/api-test-cases/{case_id}/reconcile
 执行器增加 `assertion_mode` 和 `observation_mode`：
 
 - `assertion_mode` 执行断言并生成 `passed/failed`；
-- `observation_mode` 保存实际响应并生成 `observed`。
+- `observation_mode` 保存实际响应，但不覆盖 pytest 生成的 `passed/failed` 状态。
 
 ### 12.4 推断模块
 
@@ -613,7 +613,7 @@ legacy.<case_id>
 
 - 测试点数量由纯规则规划器根据 OpenAPI 字段、请求体、日期关系和可执行鉴权 Header 确定，LLM 只能补全每个测试点的请求与说明，不能删减、合并或新增 key。
 - `oracle_status` 保持单字段三态：`confirmed`、`inferred`、`needs_confirmation`；三种状态均可执行，不再设置生成或执行门禁。
-- `inferred` 执行当前推断断言并保存脱敏观察，`needs_confirmation` 发送真实请求但不执行无事实依据的强断言；存在观察证据且 pytest 无失败时，运行状态为 `observed`。
+- `inferred` 执行当前推断断言并保存脱敏观察，`needs_confirmation` 发送真实请求并保存观察证据；存在观察证据且 pytest 无失败时，运行状态仍为 `passed`。
 - 生成的 pytest + requests 项目通过 `API_OBSERVATION_RESULT_PATH` 写入观察结果，使用跨进程文件锁、锁内合并和原子替换，且对响应 Header 与 Body 进行敏感信息脱敏。
 - 运行完成后，系统自动为 `inferred` 和 `needs_confirmation` 用例创建待审批 Oracle 建议；同一 `run_id + case_id` 只允许一条建议，推断失败只进入运行摘要，不改变测试运行状态。
 - 审批支持 `case_only` 与 `case_and_endpoint_asset`。审批通过会创建用例版本、更新当前用例断言并将状态改为 `confirmed`；后者另外写入独立的 endpoint Oracle fact，不覆盖原始 OpenAPI。

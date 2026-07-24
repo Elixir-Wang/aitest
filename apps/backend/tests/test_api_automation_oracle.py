@@ -179,7 +179,7 @@ def test_execute_api_run_records_automatic_oracle_proposal_summary(
         service,
         "run_script_suite",
         lambda **kwargs: {
-            "status": "observed",
+            "status": "passed",
             "summary": {"total": 1, "passed": 1, "failed": 0, "observed": 1},
             "error_message": "",
             "stdout_path": str(tmp_path / "stdout.txt"),
@@ -192,7 +192,7 @@ def test_execute_api_run_records_automatic_oracle_proposal_summary(
 
     completed = service.execute_api_run("apirun-1")
 
-    assert completed["status"] == "observed"
+    assert completed["status"] == "passed"
     assert completed["summary"]["oracle_proposals"] == {"created": 1, "skipped": 0, "errors": []}
 
 

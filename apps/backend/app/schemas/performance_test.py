@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
 
 class PerformanceRequestConfig(BaseModel):
@@ -118,6 +118,14 @@ class PerformanceSuccessRule(BaseModel):
         elif not self.json_path.strip():
             raise ValueError("JSONPath 规则必须填写 json_path")
         return self
+
+    @model_serializer(mode="plain")
+    def serialize_rule(self) -> dict[str, Any]:
+        if self.kind == "status_code":
+            return {"kind": self.kind, "status_codes": self.status_codes}
+        if self.kind == "jsonpath_exists":
+            return {"kind": self.kind, "json_path": self.json_path}
+        return {"kind": self.kind, "json_path": self.json_path, "expected": self.expected}
 
 
 def default_success_rules() -> list[PerformanceSuccessRule]:

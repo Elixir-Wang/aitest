@@ -1,0 +1,172 @@
+{
+  "summary": "POST /openapi/v1/agent/analysis/ 接口16个用例失败，根因分为两类：(1) 13个 negative/boundary 用例期望400但实际返回200（接口对无效输入宽容处理），(2) 3个 security 用例期望401但实际返回200（鉴权失败返回200+业务错误码而非401）。两类均为测试数据/预期与接口实际行为不匹配。",
+  "issues": [
+    {
+      "failure_ids": [
+        "apitc-022d6c538dcbb10b",
+        "apitc-23052cfe1f9828c9",
+        "apitc-3eda24072f112e7a",
+        "apitc-5e9eb87efcd53621",
+        "apitc-67497b216225fc45",
+        "apitc-8ff955527c1bf4d9",
+        "apitc-90aad278780f2786",
+        "apitc-9e49aa741cedf1c8",
+        "apitc-b9a45abb8beebd6c",
+        "apitc-bd061763adcd9586",
+        "apitc-df9b471f7db1b089",
+        "apitc-dfe32c0c4d6843b7",
+        "apitc-ecbf6361ea6c6566",
+        "apitc-ed6c520c76803bba",
+        "apitc-f7feeae612cb4e89",
+        "apitc-ff789377f6291a9e"
+      ],
+      "classification": "test_data_issue",
+      "confidence": 0.98,
+      "root_cause": "用例状态码来自未确认的生成推断，实际响应已明确返回不同状态码。",
+      "recommendation": "建议按实际响应校准测试用例预期，审批通过后同步脚本数据和数据库用例。",
+      "repairable": true
+    },
+    {
+      "failure_ids": [
+        "test_agent_analysis[request_body.missing]",
+        "test_agent_analysis[body.required.start_date.invalid_type]",
+        "test_agent_analysis[body.end_date.invalid_format]",
+        "test_agent_analysis[body.date_relation.start_after_end]",
+        "test_agent_analysis[body.required.start_date.missing]",
+        "test_agent_analysis[body.required.start_date.empty]",
+        "test_agent_analysis[body.required.end_date.empty]",
+        "test_agent_analysis[body.required.end_date.invalid_type]",
+        "test_agent_analysis[body.required.end_date.missing]",
+        "test_agent_analysis[request_body.empty_object]",
+        "test_agent_analysis[body.required.end_date.null]",
+        "test_agent_analysis[body.required.start_date.null]",
+        "test_agent_analysis[body.start_date.invalid_format]"
+      ],
+      "classification": "test_data_issue",
+      "confidence": 0.95,
+      "root_cause": "13个 negative/boundary 用例的测试数据预期状态码为400，但接口实际返回200（code=400000或000000）。接口对缺失字段、空字符串、null、非法类型、非法日期格式、日期范围颠倒等输入均返回200而非400，说明接口未对这些输入做严格的400拒绝处理。测试数据中的预期状态码（400）与接口实际行为（200）不匹配。",
+      "recommendation": "将13个用例的预期状态码从400改为200，并根据实际响应体调整断言（code=400000时验证错误消息，code=000000时验证正常数据）。",
+      "repairable": true
+    },
+    {
+      "failure_ids": [
+        "test_agent_analysis[header.required.cybertron-robot-token.empty]",
+        "test_agent_analysis[header.required.username.empty]",
+        "test_agent_analysis[header.required.cybertron-robot-key.empty]"
+      ],
+      "classification": "contract_ambiguity",
+      "confidence": 0.9,
+      "root_cause": "3个 security 用例预期鉴权失败返回401，但接口实际返回200（code=400001，message提示缺少鉴权参数）。接口文档未声明鉴权失败时的状态码和响应结构，实际行为是返回200+业务错误码而非HTTP 401。测试数据中的预期（401）与接口实际行为（200）存在契约歧义。",
+      "recommendation": "将3个 security 用例的预期状态码从401改为200，并根据实际响应体（code=400001, message）调整断言。",
+      "repairable": true
+    }
+  ],
+  "proposal": {
+    "target": "test_script",
+    "action": "modify_assertion",
+    "title": "将 16 条不确定用例的预期状态码按实际响应校准",
+    "summary": "这些用例的状态码没有正式契约依据，实际响应已提供可复现证据；仅生成候选修改，等待人工审批。",
+    "confidence": 0.98,
+    "proposed_changes": [
+      "cases.yaml: case_id=apitc-022d6c538dcbb10b (智能体数据分析 - 请求体不发送（requestBody 缺失）) 的 status_code 400 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-23052cfe1f9828c9 (智能体数据分析 - 鉴权 header cybertron-robot-token 为空) 的 status_code 401 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-3eda24072f112e7a (智能体数据分析 - 必填字段 start_date 传入非法类型（数字）) 的 status_code 400 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-5e9eb87efcd53621 (智能体数据分析 - 鉴权 header username 为空) 的 status_code 401 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-67497b216225fc45 (智能体数据分析 - 字段 end_date 使用非法日期格式) 的 status_code 400 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-8ff955527c1bf4d9 (智能体数据分析 - 日期关系：start_date 晚于 end_date) 的 status_code 400 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-90aad278780f2786 (智能体数据分析 - 请求体缺少必填字段 start_date) 的 status_code 400 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-9e49aa741cedf1c8 (智能体数据分析 - 必填字段 start_date 传入空字符串) 的 status_code 400 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-b9a45abb8beebd6c (智能体数据分析 - 必填字段 end_date 传入空字符串) 的 status_code 400 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-bd061763adcd9586 (智能体数据分析 - 必填字段 end_date 传入非法类型（布尔值）) 的 status_code 400 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-df9b471f7db1b089 (智能体数据分析 - 请求体缺少必填字段 end_date) 的 status_code 400 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-dfe32c0c4d6843b7 (智能体数据分析 - 请求体发送空 JSON 对象) 的 status_code 400 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-ecbf6361ea6c6566 (智能体数据分析 - 必填字段 end_date 传入 null) 的 status_code 400 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-ed6c520c76803bba (智能体数据分析 - 鉴权 header cybertron-robot-key 为空) 的 status_code 401 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-f7feeae612cb4e89 (智能体数据分析 - 必填字段 start_date 传入 null) 的 status_code 400 -> 200；审批后同步测试用例并确认测试预期",
+      "cases.yaml: case_id=apitc-ff789377f6291a9e (智能体数据分析 - 字段 start_date 使用非法日期格式) 的 status_code 400 -> 200；审批后同步测试用例并确认测试预期"
+    ],
+    "case_updates": [
+      {
+        "case_id": "apitc-022d6c538dcbb10b",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-23052cfe1f9828c9",
+        "expected_status_code": 401,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-3eda24072f112e7a",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-5e9eb87efcd53621",
+        "expected_status_code": 401,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-67497b216225fc45",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-8ff955527c1bf4d9",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-90aad278780f2786",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-9e49aa741cedf1c8",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-b9a45abb8beebd6c",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-bd061763adcd9586",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-df9b471f7db1b089",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-dfe32c0c4d6843b7",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-ecbf6361ea6c6566",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-ed6c520c76803bba",
+        "expected_status_code": 401,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-f7feeae612cb4e89",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-ff789377f6291a9e",
+        "expected_status_code": 400,
+        "actual_status_code": 200
+      }
+    ],
+    "script_repair_allowed": true
+  }
+}

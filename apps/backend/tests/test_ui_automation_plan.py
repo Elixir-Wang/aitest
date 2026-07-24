@@ -113,3 +113,68 @@ def test_automation_plan_rejects_another_project_namespace():
 
     with pytest.raises(ValidationError, match="当前业务项目命名空间"):
         AutomationPlan.model_validate(payload)
+
+
+def test_wait_for_response_must_follow_send_action_on_same_page():
+    payload = {
+        "schema_version": "v1",
+        "project_id": "project-1",
+        "automation_case_id": "uiauto-1",
+        "source_test_case_id": "case-1",
+        "source_test_case_version": 1,
+        "environment_id": "env-1",
+        "page_objects": [],
+        "steps": [
+            {
+                "source_step_id": "step-1",
+                "kind": "fill",
+                "page_key": "chat",
+                "element_key": "input",
+                "value": "hi",
+            },
+            {
+                "source_step_id": "step-2",
+                "kind": "wait_for_response",
+                "page_key": "chat",
+                "element_key": "last_response",
+            },
+        ],
+        "assertions": [],
+        "artifacts": {
+            "test_file": "testcases/generated/project_1/test_chat.py",
+            "data_file": "data/projects/project_1/cases/chat.yaml",
+            "plan_file": "data/projects/project_1/cases/chat.plan.json",
+        },
+    }
+
+    with pytest.raises(ValidationError, match="必须紧跟发送消息"):
+        AutomationPlan.model_validate(payload)
+
+
+def test_assertion_checkpoint_must_reference_existing_step():
+    payload = {
+        "schema_version": "v1",
+        "project_id": "project-1",
+        "automation_case_id": "uiauto-1",
+        "source_test_case_id": "case-1",
+        "source_test_case_version": 1,
+        "environment_id": "env-1",
+        "page_objects": [],
+        "steps": [],
+        "assertions": [
+            {
+                "source_expected_result_id": "expected-1",
+                "after_step_id": "missing-step",
+                "kind": "url",
+                "expected": "/workspace",
+            }
+        ],
+        "artifacts": {
+            "test_file": "testcases/generated/project_1/test_login.py",
+            "data_file": "data/projects/project_1/cases/login.yaml",
+            "plan_file": "data/projects/project_1/cases/login.plan.json",
+        },
+    }
+
+    with pytest.raises(ValidationError, match="断言检查点不存在"):
+        AutomationPlan.model_validate(payload)

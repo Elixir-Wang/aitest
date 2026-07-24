@@ -99,6 +99,15 @@ test("scenario editor provides a constrained canvas backed by the existing step 
   assert.match(scenarioCanvasSource, /panOnScrollMode=\{PanOnScrollMode\.Free\}/);
   assert.match(scenarioCanvasSource, /zoomOnScroll=\{false\}/);
   assert.match(scenarioCanvasSource, /onPaneClick=\{onClearSelection\}/);
+  assert.match(scenarioEditorSource, /onDeleteStep=\{\(stepId\)/);
+  assert.doesNotMatch(scenarioCanvasSource, /NodeToolbar/);
+  assert.match(scenarioCanvasSource, /删除节点/);
+  assert.match(scenarioCanvasSource, /\{method\}[\s\S]*?删除节点/);
+  assert.match(scenarioCanvasSource, /event\.key !== "Delete" && event\.key !== "Backspace"/);
+  assert.match(scenarioCanvasSource, /!canvasRef\.current\?\.contains\(target\)/);
+  assert.match(scenarioCanvasSource, /onDeleteStep\(pendingDeleteStep\.id\)/);
+  assert.match(scenarioEditorHookSource, /draftVersionRef/);
+  assert.match(scenarioEditorHookSource, /draftVersion === draftVersionRef\.current/);
   assert.match(scenarioCanvasSource, /hasAllPositions/);
   assert.match(scenarioCanvasSource, /buildCanvasGraph/);
   assert.match(scenarioCanvasSource, /ResizeObserver/);

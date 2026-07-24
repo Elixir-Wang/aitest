@@ -162,7 +162,28 @@ export function TestPointsPanel({
     if (!data?.requirement_version_id) return;
     setRegenerating(true);
     try {
-      await generateTestPoints(projectId, documentId);
+      const run = await generateTestPoints(projectId, documentId);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              run,
+              points: [],
+              markdown_content: "",
+              coverage_summary: {
+                status: "pending",
+                obligation_count: 0,
+                covered_obligation_count: 0,
+                missing_obligations: [],
+                unsupported_assumptions: [],
+                supplement_round: 0,
+              },
+            }
+          : current,
+      );
+      setMarkdownDraft("");
+      setEditing(false);
+      setSelectedPointId(null);
       toast.success(hasPoints ? "测试点正在重新生成中..." : "测试点正在生成中...");
       notifyAiTaskStarted();
       void load(true);
@@ -190,6 +211,28 @@ export function TestPointsPanel({
 
   function handleSelectPoint(pointId: string) {
     setSelectedPointId(pointId);
+  }
+
+  async function handleEditPoint(pointId: string, title: string) {
+    try {
+      await apiRequest(`/projects/${projectId}/requirements/${documentId}/test-points/${pointId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title }),
+      });
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              points: current.points.map((point) => (point.id === pointId ? { ...point, title } : point)),
+            }
+          : current,
+      );
+      await load(true);
+      toast.success("测试要点已更新");
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "测试要点更新失败");
+      throw requestError;
+    }
   }
 
   const testPointActions = data?.requirement_version_id ? (
@@ -293,7 +336,7 @@ export function TestPointsPanel({
       ) : !data?.requirement_version_id ? (
         <IllustratedEmptyState
           className="rounded-lg border border-dashed bg-muted/10"
-          description='请先在需求分析中点击“转为最终需求”。'
+          description="请先在需求分析中点击“转为最终需求”。"
           title="暂无测试点"
         />
       ) : (
@@ -315,8 +358,10 @@ export function TestPointsPanel({
                 <div className="flex min-h-[32rem] flex-none rounded-lg border" ref={mindMapContainerRef}>
                   <TestPointMindMap
                     active={true}
+                    editable={canEdit}
                     points={filteredPoints}
                     selectedPointId={selectedPointId}
+                    onEditPoint={handleEditPoint}
                     onSelectPoint={handleSelectPoint}
                   />
                 </div>

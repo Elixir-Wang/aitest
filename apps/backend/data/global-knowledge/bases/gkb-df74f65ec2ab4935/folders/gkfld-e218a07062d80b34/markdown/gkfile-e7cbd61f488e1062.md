@@ -13,7 +13,7 @@
 
 在探索广场找到您感兴趣的智能体，点击智能体卡片跳转试用页，可在左侧与智能体交互对话，右侧为详情展示区，帮您全面了解智能体信息。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1659450.8729601991713917.png)![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1659460.25572507780076037.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1659450.8729601991713917.png)![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1659460.25572507780076037.png)
 
 # 订阅 / 取消订阅智能体
 
@@ -26,13 +26,13 @@
 
 个人用户可在**工作台**找到已订阅的智能体。支持卡片与列表视图展示。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_104712_3736330.40236413305432883.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_104712_3736330.40236413305432883.png)
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_104723_1868080.12385803610356838.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_104723_1868080.12385803610356838.png)
 
 点击卡片进入对话页面，立即使用。智能体对话页左侧为对话区，底部设输入框，支持文本输入和语音输入。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1659460.8944475709669458.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1659460.8944475709669458.png)
 
 对话页核心功能如下：
 

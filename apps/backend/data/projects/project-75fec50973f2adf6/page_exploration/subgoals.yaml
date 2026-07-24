@@ -1,31 +1,22 @@
 run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
 project_id: project-75fec50973f2adf6
-updated_at: '2026-07-23T02:43:38.713791+00:00'
+updated_at: '2026-07-24T08:28:21.343416+00:00'
 items:
 - id: ''
-  content: 打开工作台主页，验证'创建智能体'入口
+  content: 步骤1：点击左侧边栏「工作台」进入工作台界面。完成判据：页面切换到工作台视图，URL或页面内容变化
   status: completed
 - id: ''
-  content: 点击'创建'按钮，弹出创建类型下拉
+  content: 步骤2：点击「创建智能体」按钮，进入创建流程。完成判据：出现创建智能体的对话框/页面
   status: completed
 - id: ''
-  content: 从下拉中选择'自主规划 Agent'，打开新建 Agent 表单
+  content: 步骤3：选择「自主规划Agent」类型。完成判据：自主规划Agent被选中/高亮
   status: completed
 - id: ''
-  content: 填写 Agent 名称（避开已存在的'哈哈'）并提交创建
+  content: 步骤4：输入智能体名称「哈哈」，创建智能体。完成判据：名称字段已填入「哈哈」
   status: completed
 - id: ''
-  content: 进入 botSetting 编辑页（Prompt 等字段可填）
+  content: 步骤5：在角色设定输入框中输入「你是一个友好的助手」。完成判据：角色设定字段已填入内容
   status: completed
 - id: ''
-  content: 填入角色 Prompt「你是一个友好的助手」
-  status: completed
-- id: ''
-  content: 点击顶部'发布'按钮，跳转到 agentRelease 发布页
-  status: completed
-- id: ''
-  content: 在 agentRelease 页填写发布日志并点击最终'发布'按钮
-  status: completed
-- id: ''
-  content: 验证发布成功（URL version=1.0.0 + 发布中状态）
+  content: 步骤6：点击发布按钮，输入版本号和发布日志，再次点击发布。完成判据：发布成功提示或跳转
   status: completed

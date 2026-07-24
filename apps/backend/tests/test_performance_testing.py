@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from app.core import db as db_core
 from app.core import settings
 from app.core.db import connect
+from app.core.environment_credentials import encrypt_api_environment_secret
 from app.repositories import api_automation_repo
 from app.schemas.performance_test import (
     PerformanceCircuitBreaker,
@@ -18,7 +19,7 @@ from app.schemas.performance_test import (
     PerformanceTestUpdateIn,
 )
 from app.seed.init_db import init_db
-from app.services.performance_testing import run_repo, service
+from app.services.performance_testing import headless_worker, run_repo, service
 
 
 ADMIN = {"id": "u-admin", "role": "admin", "project_scope": "全部项目"}
@@ -243,10 +244,35 @@ def test_create_and_update_performance_test(monkeypatch: pytest.MonkeyPatch, tmp
     assert listed["latest_run_at"] is None
 
 
-def test_delete_performance_test_rejects_active_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_delete_performance_test_stops_active_run_and_removes_all_related_data(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_assets()
-    created = service.create_performance_test("project-1", _payload(), ADMIN)
+    payload = _payload()
+    payload.data_config = PerformanceDataConfig(
+        source="csv",
+        csv_file_name="users.csv",
+        json_rows=[{"user_id": "1"}],
+    )
+    created = service.create_performance_test("project-1", payload, ADMIN)
+    run_dir = settings.PROJECT_FILE_STORAGE_ROOT / "project-1" / "performance_testing" / "runs" / "perfrun-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "stdout.log").write_text("running", encoding="utf-8")
+    data_dir = settings.PROJECT_FILE_STORAGE_ROOT / "project-1" / "performance_testing" / "data" / created["id"]
+    stopped: list[str] = []
+
+    def stop_run(run_id: str) -> bool:
+        stopped.append(run_id)
+        with connect() as db:
+            db.execute(
+                "UPDATE performance_test_runs SET status = 'stopped' WHERE id = ?",
+                (run_id,),
+            )
+        return True
+
+    monkeypatch.setattr(headless_worker, "stop_headless_run_and_wait", stop_run)
 
     with connect() as db:
         db.execute(
@@ -271,12 +297,15 @@ def test_delete_performance_test_rejects_active_run(monkeypatch: pytest.MonkeyPa
         run_repo.update_run_status(db, "perfrun-1", "starting")
         run_repo.update_run_status(db, "perfrun-1", "running")
 
-    with pytest.raises(HTTPException) as exc_info:
-        service.delete_performance_test("project-1", created["id"], ADMIN)
+    service.delete_performance_test("project-1", created["id"], ADMIN)
 
-    assert exc_info.value.detail["code"] == "PERFORMANCE_TEST_RUN_ACTIVE"
+    assert stopped == ["perfrun-1"]
     with connect() as db:
-        assert db.execute("SELECT id FROM performance_tests WHERE id = ?", (created["id"],)).fetchone() is not None
+        assert db.execute("SELECT id FROM performance_tests WHERE id = ?", (created["id"],)).fetchone() is None
+        assert db.execute("SELECT id FROM performance_test_runs WHERE id = 'perfrun-1'").fetchone() is None
+        assert db.execute("SELECT id FROM performance_test_scripts WHERE id = 'perfscript-1'").fetchone() is None
+    assert not run_dir.exists()
+    assert not data_dir.exists()
 
 
 def test_delete_performance_test_removes_all_run_artifacts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -367,18 +396,38 @@ def test_request_preview_uses_schema_mock_and_shows_cybertron_headers(
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_assets()
+    with connect() as db:
+        db.execute(
+            "UPDATE api_test_environments SET auth_type = ?, auth_config_json = ? WHERE id = ?",
+            (
+                "cybertron_agent",
+                api_automation_repo.dumps_json(
+                    {
+                        "username": "robot-user",
+                        "cybertron_robot_key_encrypted": encrypt_api_environment_secret("environment-key"),
+                        "cybertron_robot_token_encrypted": encrypt_api_environment_secret("environment-token"),
+                    }
+                ),
+                "environment-project-1",
+            ),
+        )
 
     preview = service.preview_performance_request(
         "project-1",
-        PerformanceRequestPreviewIn(endpoint_id="endpoint-project-1"),
+        PerformanceRequestPreviewIn(
+            endpoint_id="endpoint-project-1",
+            api_environment_id="environment-project-1",
+        ),
         ADMIN,
     )
 
     assert preview["request_config"]["path_parameters"] == {"item_id": "${uuid}"}
     assert preview["request_config"]["query_parameters"] == {"page": 1, "limit": 5}
     assert preview["request_config"]["headers"] == {
-        "cybertron-robot-key": "robot-key-example",
-        "cybertron-robot-token": "robot-token-example",
+        "username": "robot-user",
+        "cybertron-robot-key": "environment-key",
+        "cybertron-robot-token": "environment-token",
+        "Authorization": "a",
     }
     assert preview["request_config"]["body"] == {
         "name": "mock-name",
@@ -387,8 +436,116 @@ def test_request_preview_uses_schema_mock_and_shows_cybertron_headers(
     }
     assert preview["success_rules"] == [{"kind": "status_code", "status_codes": [200, 201]}]
     assert preview["provenance"]["body"] == "openapi_schema"
-    assert any("Authorization" in warning for warning in preview["warnings"])
-    assert all("cybertron-robot" not in warning for warning in preview["warnings"])
+    assert preview["warnings"] == []
+
+    created = service.create_performance_test(
+        "project-1",
+        PerformanceTestCreateIn(
+            name="环境鉴权隔离",
+            endpoint_id="endpoint-project-1",
+            api_environment_id="environment-project-1",
+            request_config={
+                "headers": {
+                    "X-Business": "keep",
+                    "cybertron-robot-key": "bad-key",
+                    "cybertron-robot-token": "bad-token",
+                    "username": "bad-user",
+                }
+            },
+        ),
+        ADMIN,
+    )
+    assert created["request_config"]["headers"] == {
+        "X-Business": "keep",
+        "username": "robot-user",
+        "cybertron-robot-key": "environment-key",
+        "cybertron-robot-token": "environment-token",
+    }
+
+
+def test_request_preview_prefers_confirmed_positive_case_and_business_assertions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_assets()
+    with connect() as db:
+        common = {
+            "project_id": "project-1",
+            "endpoint_id": "endpoint-project-1",
+            "source_test_case_id": None,
+            "generation_run_id": None,
+            "priority": "P1",
+            "source": "ai_generated",
+            "preconditions": [],
+            "test_data": {},
+            "expected": {},
+            "variables": {},
+            "data_origin": {},
+            "data_file_path": "",
+            "notes": "",
+            "created_by": "u-admin",
+        }
+        api_automation_repo.create_api_test_case(
+            db,
+            case_id="case-negative",
+            title="缺少必填字段",
+            coverage="negative",
+            request={"method": "GET", "path": "/api/items/{item_id}", "headers": {}, "body": {}},
+            assertions=[{"type": "status_code", "expected": 400}],
+            **common,
+        )
+        api_automation_repo.create_api_test_case(
+            db,
+            case_id="case-positive",
+            title="最小合法请求",
+            coverage="positive",
+            oracle_status="confirmed",
+            request={
+                "method": "GET",
+                "path": "/api/items/{item_id}",
+                "headers": {"X-Business": "normal"},
+                "body": {"name": "positive-case", "count": 7, "tags": ["smoke"]},
+            },
+            assertions=[
+                {"type": "status_code", "expected": 200},
+                {"type": "jsonpath_exists", "path": "$.code", "expected": True},
+                {"type": "jsonpath_equals", "path": "$.code", "expected": "000000"},
+                {"type": "jsonpath_equals", "path": "$.message", "expected": "ok"},
+                {"type": "jsonpath_exists", "path": "$.message", "expected": True},
+                {"type": "jsonpath_exists", "path": "$.data", "expected": True},
+                {"type": "jsonpath_exists", "path": "$.data.user_cnt", "expected": True},
+                {"type": "jsonpath_type", "path": "$.data", "expected": "object"},
+            ],
+            **common,
+        )
+
+    preview = service.preview_performance_request(
+        "project-1",
+        PerformanceRequestPreviewIn(
+            endpoint_id="endpoint-project-1",
+            api_environment_id="environment-project-1",
+        ),
+        ADMIN,
+    )
+
+    assert preview["request_config"]["body"] == {
+        "name": "positive-case",
+        "count": 7,
+        "tags": ["smoke"],
+    }
+    assert preview["request_config"]["headers"] == {
+        "Authorization": "a",
+        "cybertron-robot-key": "robot-key-example",
+        "cybertron-robot-token": "robot-token-example",
+        "X-Business": "normal",
+    }
+    assert preview["success_rules"] == [
+        {"kind": "status_code", "status_codes": [200]},
+        {"kind": "jsonpath_equals", "json_path": "$.code", "expected": "000000"},
+    ]
+    assert preview["provenance"]["body"] == "positive_api_test_case"
+    assert preview["provenance"]["positive_case_id"] == "case-positive"
 
 
 def test_create_rejects_cross_project_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -406,21 +563,20 @@ def test_create_rejects_cross_project_environment(monkeypatch: pytest.MonkeyPatc
     assert exc_info.value.detail["code"] == "PERFORMANCE_ENVIRONMENT_INVALID"
 
 
-def test_sensitive_headers_must_come_from_api_environment(
+def test_sensitive_headers_are_kept_in_performance_request(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_assets()
 
-    with pytest.raises(HTTPException) as exc_info:
-        service.create_performance_test(
-            "project-1",
-            _payload(request_config={"headers": {"Authorization": "Bearer unsafe"}}),
-            ADMIN,
-        )
+    created = service.create_performance_test(
+        "project-1",
+        _payload(request_config={"headers": {"Authorization": "Bearer visible"}}),
+        ADMIN,
+    )
 
-    assert exc_info.value.detail["code"] == "PERFORMANCE_SENSITIVE_HEADER_OVERRIDE"
+    assert created["request_config"]["headers"] == {"Authorization": "Bearer visible"}
 
 
 def test_performance_script_state_excludes_running(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

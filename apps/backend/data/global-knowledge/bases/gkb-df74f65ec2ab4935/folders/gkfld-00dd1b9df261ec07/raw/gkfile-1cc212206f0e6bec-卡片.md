@@ -15,7 +15,7 @@
 
 卡片列表展示卡片名称、描述、发布状态、创建人、引用智能体数量和操作入口。支持通过关键词搜索卡片，并可在卡片视图和列表视图之间切换。
 
-![卡片资源库](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202606/2026-06-10_162711_1498470.2262823956755422.png)
+![卡片资源库](https://www.cybotstar.cn/agent-document-content/media/1/202606/2026-06-10_162711_1498470.2262823956755422.png)
 
 卡片状态包括：
 
@@ -30,7 +30,7 @@
 2. 在新建卡片弹窗中填写卡片名称和卡片描述。
 3. 点击【确定】，系统创建卡片并进入卡片编辑器。
 
-![新建卡片](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202606/2026-06-10_162712_8105530.42412616515969903.png)
+![新建卡片](https://www.cybotstar.cn/agent-document-content/media/1/202606/2026-06-10_162712_8105530.42412616515969903.png)
 
 字段说明：
 
@@ -62,7 +62,7 @@
 
 顶部工具栏用于返回资源库、修改卡片信息、查看保存状态、预览、保存模板、发布和查看历史版本。
 
-![卡片编辑器](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202606/2026-06-10_162714_6778970.10885425702701679.png)
+![卡片编辑器](https://www.cybotstar.cn/agent-document-content/media/1/202606/2026-06-10_162714_6778970.10885425702701679.png)
 
 ## 2.1 自动保存
 
@@ -152,11 +152,11 @@
 
 卡片变量用于接收智能体运行过程中产生的数据。同一张卡片绑定到不同智能体或不同节点时，可以通过变量映射展示不同数据。
 
-![创建卡片变量](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202606/2026-06-10_162716_1924850.5022712634100669.png)
+![创建卡片变量](https://www.cybotstar.cn/agent-document-content/media/1/202606/2026-06-10_162716_1924850.5022712634100669.png)
 
 创建成功后，变量会显示在左侧变量列表中。
 
-![卡片变量列表](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202606/2026-06-10_162717_8295870.7685113844604278.png)
+![卡片变量列表](https://www.cybotstar.cn/agent-document-content/media/1/202606/2026-06-10_162717_8295870.7685113844604278.png)
 
 ## 4.1 创建变量
 
@@ -248,11 +248,11 @@ Array 和 Object 使用 JSON 编辑器填写默认值。若 JSON 格式错误，
 - 按钮、选择项和表单交互是否符合预期。
 - 条件显示是否正确。
 
-![PC 端卡片预览](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202606/2026-06-10_162719_3252740.10584589853966209.png)
+![PC 端卡片预览](https://www.cybotstar.cn/agent-document-content/media/1/202606/2026-06-10_162719_3252740.10584589853966209.png)
 
 切换至【移动端】后，可以检查窄屏下的内容排列和交互效果。
 
-![移动端卡片预览](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202606/2026-06-10_162720_9656530.26450804536334105.png)
+![移动端卡片预览](https://www.cybotstar.cn/agent-document-content/media/1/202606/2026-06-10_162720_9656530.26450804536334105.png)
 
 ## 6.2 发布卡片
 
@@ -263,7 +263,7 @@ Array 和 Object 使用 JSON 编辑器填写默认值。若 JSON 格式错误，
 - **版本号**：选填，最长 64 个字符。系统会获取建议的下一版本号；留空时可由后端自动生成。
 - **发布描述**：选填，最多 500 个字符，用于记录本次版本的修改内容。
 
-![卡片发布配置](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202606/2026-06-10_162722_6289220.4241442020409468.png)
+![卡片发布配置](https://www.cybotstar.cn/agent-document-content/media/1/202606/2026-06-10_162722_6289220.4241442020409468.png)
 
 若版本号使用三段数字格式，每段范围为：
 
@@ -279,7 +279,7 @@ Array 和 Object 使用 JSON 编辑器填写默认值。若 JSON 格式错误，
 
 点击顶部历史版本图标，可查看当前草稿和所有已发布版本。
 
-![卡片历史版本](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202606/2026-06-10_162724_4688090.6301259708908221.png)
+![卡片历史版本](https://www.cybotstar.cn/agent-document-content/media/1/202606/2026-06-10_162724_4688090.6301259708908221.png)
 
 版本列表展示：
 

@@ -1,0 +1,12 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.6, pytest-9.0.1, pluggy-1.6.0
+rootdir: /Users/wanghongbao/project/test_project/apps/backend/data/projects/project-75fec50973f2adf6/api_automation/pytest_requests
+configfile: pytest.ini
+plugins: json-report-1.5.0, metadata-3.1.1, locust-2.45.0, base-url-2.1.0, langsmith-0.8.5, playwright-0.8.0, anyio-4.13.0
+collected 18 items
+
+testcases/openapi/v1/agent/analysis/post/test_api.py ..................  [100%]
+
+--------------------------------- JSON report ----------------------------------
+report saved to: /Users/wanghongbao/project/test_project/apps/backend/data/projects/project-75fec50973f2adf6/api_automation/runs/apirun-4c83c25069a98df0/report.json
+============================== 18 passed in 3.30s ==============================

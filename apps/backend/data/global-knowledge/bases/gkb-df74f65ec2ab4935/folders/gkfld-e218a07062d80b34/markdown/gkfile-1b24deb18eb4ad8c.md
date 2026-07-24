@@ -13,7 +13,7 @@
 
 在探索广场找到您感兴趣的智能体，点击智能体卡片跳转试用页，可在左侧与智能体交互对话，右侧为详情展示区，帮您全面了解智能体信息。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1658410.18323811745384044.png)![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1658420.6977081705721239.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1658410.18323811745384044.png)![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1658420.6977081705721239.png)
 
 # 订阅 / 取消订阅智能体
 
@@ -22,13 +22,13 @@
 * **取消订阅**：取消订阅需具备**企业管理员权限**（仅管理员可访问智能体管理页）。进入企业智能体管理页后，搜索筛选找到目标订阅类智能体，选择**取消订阅**，可将该智能体从企业工坊移除。取消订阅后，企业内所有用户将无法在企业工坊查看和使用该智能体。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1658430.6832141654332065.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1658430.6832141654332065.png)
 
 # 与智能体对话交互
 
 订阅成功后，企业内所有用户（含业务人员、管理员）均可访问企业工坊，浏览、使用企业内可用智能体，点击智能体卡片可直接**使用智能体**。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1658440.5131139341013061.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1658440.5131139341013061.png)
 
 对话页核心功能如下：
 

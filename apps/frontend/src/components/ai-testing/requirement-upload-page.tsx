@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageShell, type PageBreadcrumb, ShellSection } from "@/components/ai-testing/page-shell";
+import { type PageBreadcrumb, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -16,9 +16,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
-import { API_BASE_URL, type ApiProject, apiErrorFromXhr, apiRequest } from "@/lib/api-client";
+import { type ApiProject, apiRequest } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
-import { useAuthStore } from "@/stores/auth-store";
+import {
+  DEFAULT_REQUIREMENT_UPLOAD_CONFIG,
+  getRequirementUploadConfig,
+  type RequirementUploadConfig,
+  requirementUploadFileKey,
+  uploadRequirementFiles,
+} from "@/lib/requirement-upload-client";
 
 type RequirementUploadPageProps = {
   title: string;
@@ -38,21 +44,6 @@ type RequirementOption = {
 
 type UploadMode = "new" | "append";
 
-type UploadResponse = {
-  document: {
-    id: string;
-    project_id: string;
-    name: string;
-  };
-  files: Array<{
-    id: string;
-    original_filename: string;
-    conversion_status: string;
-    conversion_summary: string;
-    created_at: string;
-  }>;
-};
-
 export function RequirementUploadPage({
   title,
   breadcrumbs,
@@ -64,7 +55,6 @@ export function RequirementUploadPage({
 }: RequirementUploadPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = useAuthStore((state) => state.token);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [name, setName] = useState("");
@@ -74,6 +64,7 @@ export function RequirementUploadPage({
   const [requirements, setRequirements] = useState<RequirementOption[]>([]);
   const [existingDocumentId, setExistingDocumentId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [uploadConfig, setUploadConfig] = useState<RequirementUploadConfig>(DEFAULT_REQUIREMENT_UPLOAD_CONFIG);
   const [uploadStates, setUploadStates] = useState<
     Record<string, { progress: number; status: "idle" | "uploading" | "completed" | "error" }>
   >({});
@@ -125,6 +116,27 @@ export function RequirementUploadPage({
     };
   }, [mode, projectId]);
 
+  useEffect(() => {
+    if (!projectId) {
+      return;
+    }
+    let ignore = false;
+    void getRequirementUploadConfig(projectId)
+      .then((config) => {
+        if (!ignore) {
+          setUploadConfig(config);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setUploadConfig(DEFAULT_REQUIREMENT_UPLOAD_CONFIG);
+        }
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [projectId]);
+
   async function submitUpload() {
     const unsupportedFile = files.find((file) => !isSupportedRequirementFile(file));
     if (unsupportedFile) {
@@ -133,6 +145,20 @@ export function RequirementUploadPage({
     }
     if (files.length === 0) {
       toast.error("请选择至少一个需求文件");
+      return;
+    }
+    if (files.length > uploadConfig.max_files) {
+      toast.error(`单次最多上传 ${uploadConfig.max_files} 个文件`);
+      return;
+    }
+    const oversizedFile = files.find((file) => file.size > uploadConfig.max_file_size_bytes);
+    if (oversizedFile) {
+      toast.error(`单文件不能超过 ${formatMegabytes(uploadConfig.max_file_size_bytes)}MB：${oversizedFile.name}`);
+      return;
+    }
+    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+    if (totalSize > uploadConfig.max_batch_size_bytes) {
+      toast.error(`单次上传文件总大小不能超过 ${formatMegabytes(uploadConfig.max_batch_size_bytes)}MB`);
       return;
     }
     if (!projectId) {
@@ -153,13 +179,27 @@ export function RequirementUploadPage({
 
     setSubmitting(true);
     const nextUploadStates = Object.fromEntries(
-      files.map((file) => [getFileKey(file), { progress: 1, status: "uploading" as const }]),
+      files.map((file) => [requirementUploadFileKey(file), { progress: 1, status: "uploading" as const }]),
     );
     setUploadStates(nextUploadStates);
     try {
-      const result = await uploadFiles();
+      const result = await uploadRequirementFiles({
+        projectId,
+        files,
+        mode,
+        documentName: name,
+        existingDocumentId,
+        onProgress: (file, progress) => {
+          setUploadStates((current) => ({
+            ...current,
+            [requirementUploadFileKey(file)]: { progress, status: "uploading" },
+          }));
+        },
+      });
       setUploadStates(
-        Object.fromEntries(files.map((file) => [getFileKey(file), { progress: 100, status: "completed" as const }])),
+        Object.fromEntries(
+          files.map((file) => [requirementUploadFileKey(file), { progress: 100, status: "completed" as const }]),
+        ),
       );
       if (mode === "new") {
         toast.success("需求文件已添加，开始进行需求文件标准化");
@@ -177,57 +217,12 @@ export function RequirementUploadPage({
         path: `/projects/${projectId}/requirements`,
       });
       setUploadStates(
-        Object.fromEntries(files.map((file) => [getFileKey(file), { progress: 0, status: "error" as const }])),
+        Object.fromEntries(
+          files.map((file) => [requirementUploadFileKey(file), { progress: 0, status: "error" as const }]),
+        ),
       );
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  function uploadFiles() {
-    return new Promise<UploadResponse>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", `${API_BASE_URL}/projects/${projectId}/requirements`);
-      if (token) {
-        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-      }
-      xhr.upload.onprogress = (event) => {
-        if (!event.lengthComputable) {
-          return;
-        }
-        const progress = Math.min(99, Math.round((event.loaded / event.total) * 100));
-        setUploadStates(
-          Object.fromEntries(files.map((file) => [getFileKey(file), { progress, status: "uploading" as const }])),
-        );
-      };
-      xhr.onload = () => {
-        const payload = tryParseJson(xhr.responseText);
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(payload?.data ?? payload);
-          return;
-        }
-        reject(apiErrorFromXhr(xhr, "需求上传失败"));
-      };
-      xhr.onerror = () => reject(apiErrorFromXhr(xhr, "网络异常，需求上传失败"));
-      const formData = new FormData();
-      formData.append("mode", mode);
-      if (mode === "new") {
-        formData.append("document_name", name.trim());
-      } else {
-        formData.append("existing_document_id", existingDocumentId);
-      }
-      for (const file of files) {
-        formData.append("files", file);
-      }
-      xhr.send(formData);
-    });
-  }
-
-  function tryParseJson(value: string) {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return null;
     }
   }
 
@@ -313,8 +308,7 @@ export function RequirementUploadPage({
             <FieldLabel>图片解析</FieldLabel>
             <RadioGroup className="grid gap-2 sm:grid-cols-2" value="no">
               <Label className="flex cursor-default items-center gap-3 rounded-lg border p-3 text-sm">
-                <RadioGroupItem value="no" />
-                否
+                <RadioGroupItem value="no" />否
               </Label>
               <Label className="flex cursor-not-allowed items-center gap-3 rounded-lg border p-3 text-muted-foreground text-sm">
                 <RadioGroupItem disabled value="yes" />
@@ -335,8 +329,9 @@ export function RequirementUploadPage({
                 "text/plain": [".txt"],
               }}
               files={files}
-              hint="仅支持 PDF、Word（doc/docx）、TXT、MD 文件；选择完成后统一提交"
-              maxFiles={10}
+              hint={`最多 ${uploadConfig.max_files} 个文件，单文件不超过 ${formatMegabytes(uploadConfig.max_file_size_bytes)}MB`}
+              maxFileSize={uploadConfig.max_file_size_bytes}
+              maxFiles={uploadConfig.max_files}
               uploadStates={uploadStates}
               onFilesChange={handleFilesChange}
             />
@@ -362,10 +357,6 @@ function isSupportedRequirementFile(file: File) {
   return /\.(pdf|doc|docx|txt|md|markdown)$/i.test(file.name);
 }
 
-function getFileKey(file: File) {
-  return `${file.name}-${file.lastModified}-${file.size}`;
-}
-
 function fileNameWithoutExtension(filename: string) {
   const baseName = filename.replace(/\\/g, "/").split("/").pop() ?? filename;
   const dotIndex = baseName.lastIndexOf(".");
@@ -373,4 +364,8 @@ function fileNameWithoutExtension(filename: string) {
     return baseName;
   }
   return baseName.slice(0, dotIndex);
+}
+
+function formatMegabytes(bytes: number) {
+  return Math.round(bytes / 1024 / 1024);
 }

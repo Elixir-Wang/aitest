@@ -146,8 +146,12 @@ def list_points(db: Connection, document_id: str, version_id: str) -> list[Row]:
     ).fetchall()
 
 
-def replace_points(db: Connection, *, run_id: str, project_id: str, document_id: str, version_id: str, points: list[dict]) -> None:
+def clear_points_for_version(db: Connection, version_id: str) -> None:
     db.execute("DELETE FROM test_points WHERE requirement_version_id = ?", (version_id,))
+
+
+def replace_points(db: Connection, *, run_id: str, project_id: str, document_id: str, version_id: str, points: list[dict]) -> None:
+    clear_points_for_version(db, version_id)
     for point in points:
         db.execute(
             """INSERT INTO test_points

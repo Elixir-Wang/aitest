@@ -6,7 +6,7 @@
 
 **Agent = LLM+ 记忆 + 规划技能 + 工具使用**
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-02_1407120.5211655098133043.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-02_1407120.5211655098133043.png)
 
 # 产品定位
 

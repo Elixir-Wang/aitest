@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ from app.core.db import connect
 from app.seed.init_db import init_db
 from app.services.performance_testing import headless_worker
 from app.services.performance_testing import run_repo
+from app.services.performance_testing.locust_runtime import runtime_locustfile_source
 
 
 def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -44,6 +46,29 @@ def _seed_run_dependencies() -> None:
             """,
             ("perfscript-1", "perftest-1", "project-1"),
         )
+
+
+def test_runtime_locustfile_captures_redacted_response_evidence() -> None:
+    source = runtime_locustfile_source()
+
+    compile(source, "locustfile.py", "exec")
+    assert '"response_excerpt": _response_excerpt(response)' in source
+    assert '"response_headers": _trace_headers(response)' in source
+    assert 'normalized.endswith("_key")' in source
+
+
+def test_runtime_locustfile_uses_current_environment_headers() -> None:
+    source = runtime_locustfile_source()
+
+    plan_position = source.index('**dict(PLAN["request"].get("headers") or {})')
+    environment_position = source.index('**dict(RUNTIME["environment"].get("headers") or {})')
+    assert plan_position < environment_position
+
+
+def test_runtime_locustfile_removes_trailing_slash_from_base_url() -> None:
+    source = runtime_locustfile_source()
+
+    assert 'PerformanceUser.host = str(RUNTIME["environment"]["api_base_url"]).rstrip("/")' in source
 
 
 def test_run_repository_persists_status_stats_failures_and_events(
@@ -235,7 +260,8 @@ def test_collect_locust_results_imports_csv_counts_without_duplicate_event_rows(
     )
     (run_dir / "locust-events.jsonl").write_text(
         '{"kind":"failure","request_type":"POST","name":"POST /items",'
-        '"reason":"404 Not Found","status_code":404}\n',
+        '"reason":"404 Not Found","status_code":404,'
+        '"response_excerpt":"{\\"code\\":\\"400001\\",\\"message\\":\\"invalid key\\"}"}\n',
         encoding="utf-8",
     )
 
@@ -257,6 +283,8 @@ def test_collect_locust_results_imports_csv_counts_without_duplicate_event_rows(
     assert failures[0]["request_name"] == "POST /items"
     assert failures[0]["reason"] == "404 Not Found"
     assert failures[0]["count"] == 3
+    assert failures[0]["sample_status_code"] == 404
+    assert json.loads(failures[0]["sample_response_excerpt"])["code"] == "400001"
 
 
 def test_collect_locust_results_replaces_stale_failures_and_normalizes_catch_response_error(

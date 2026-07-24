@@ -1,5 +1,9 @@
 import secrets
 import shutil
+import os
+import tempfile
+import threading
+from contextlib import contextmanager
 
 from fastapi import UploadFile
 
@@ -21,6 +25,8 @@ BASE_STATUSES = {
 }
 
 VAULT_UPLOAD_ALLOWED_TYPES = {"md"}
+_FILE_LOCKS: dict[str, threading.Lock] = {}
+_FILE_LOCKS_GUARD = threading.Lock()
 
 
 def list_bases(*, actor, keyword: str = "") -> dict:
@@ -152,6 +158,92 @@ async def upload_files_to_folder(base_id: str, folder_id: str, files: list[Uploa
     return {"files": [_serialize_vault_file(row, include_content=False) for row in rows if row]}
 
 
+def upsert_markdown_file(
+    base_id: str,
+    folder_id: str,
+    *,
+    display_name: str,
+    markdown_content: str,
+    actor,
+) -> dict:
+    """Create or atomically replace a registered Markdown knowledge file."""
+    _require_admin(actor)
+    safe_name = safe_filename_for_storage(display_name)
+    _validate_vault_upload_filename(safe_name)
+    if not markdown_content.strip():
+        raise api_error(400, "GLOBAL_KNOWLEDGE_FILE_EMPTY", "知识文件内容不能为空。")
+
+    lock_key = f"{base_id}/{folder_id}/{safe_name}"
+    with _file_lock(lock_key):
+        with connect() as db:
+            _require_base(db, base_id)
+            folder = global_knowledge_repo.find_folder_in_base(db, base_id, folder_id)
+            if not folder:
+                raise api_error(404, "GLOBAL_KNOWLEDGE_FOLDER_NOT_FOUND", "目标文件夹不存在。")
+            existing = global_knowledge_repo.find_vault_file_by_folder_and_name(db, folder_id, safe_name)
+
+        file_id = existing["id"] if existing else f"gkfile-{secrets.token_hex(8)}"
+        folder_dir = global_knowledge_folder_dir(base_id, folder_id)
+        raw_dir = folder_dir / "raw"
+        markdown_dir = folder_dir / "markdown"
+        raw_path = raw_dir / f"{file_id}-{safe_name}"
+        markdown_path = markdown_dir / f"{file_id}.md"
+        raw_bytes = markdown_content.encode("utf-8")
+
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        markdown_dir.mkdir(parents=True, exist_ok=True)
+        raw_tmp = _write_temp_file(raw_dir, raw_bytes)
+        markdown_tmp = _write_temp_file(markdown_dir, raw_bytes)
+        old_raw = raw_path.read_bytes() if raw_path.exists() else None
+        old_markdown = markdown_path.read_bytes() if markdown_path.exists() else None
+        try:
+            os.replace(raw_tmp, raw_path)
+            os.replace(markdown_tmp, markdown_path)
+            with connect() as db:
+                if existing:
+                    global_knowledge_repo.update_vault_file_content(
+                        db,
+                        file_id,
+                        original_filename=safe_name,
+                        display_name=safe_name,
+                        file_size=len(raw_bytes),
+                        raw_path=store_path(raw_path) or str(raw_path),
+                        markdown_path=store_path(markdown_path) or str(markdown_path),
+                        markdown_content=markdown_content,
+                    )
+                else:
+                    global_knowledge_repo.create_vault_file(
+                        db,
+                        file_id=file_id,
+                        base_id=base_id,
+                        folder_id=folder_id,
+                        original_filename=safe_name,
+                        display_name=safe_name,
+                        file_type="md",
+                        file_size=len(raw_bytes),
+                        raw_path=store_path(raw_path) or str(raw_path),
+                        markdown_path=store_path(markdown_path) or str(markdown_path),
+                        markdown_content=markdown_content,
+                        conversion_status="success",
+                        conversion_summary="文件已作为 Markdown 内容保存。",
+                    )
+                global_knowledge_repo.touch_base(db, base_id)
+        except Exception:
+            _restore_file(raw_path, old_raw)
+            _restore_file(markdown_path, old_markdown)
+            raise
+        finally:
+            for temp_path in (raw_tmp, markdown_tmp):
+                try:
+                    temp_path.unlink()
+                except FileNotFoundError:
+                    pass
+
+        with connect() as db:
+            row = global_knowledge_repo.find_vault_file(db, base_id, file_id)
+        return _serialize_vault_file(row, include_content=True)
+
+
 def get_vault_file(base_id: str, file_id: str, actor) -> dict:
     with connect() as db:
         _require_base(db, base_id)
@@ -219,6 +311,41 @@ def _validate_vault_upload_filename(filename: str) -> None:
     file_type = file_format_for_filename(filename)
     if file_type not in VAULT_UPLOAD_ALLOWED_TYPES:
         raise api_error(400, "GLOBAL_KNOWLEDGE_FILE_TYPE_NOT_ALLOWED", "仅支持上传 Markdown（.md）文件。")
+
+
+@contextmanager
+def _file_lock(key: str):
+    with _FILE_LOCKS_GUARD:
+        lock = _FILE_LOCKS.setdefault(key, threading.Lock())
+    with lock:
+        yield
+
+
+def _write_temp_file(directory, content: bytes):
+    descriptor, temp_name = tempfile.mkstemp(prefix=".knowledge-", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except Exception:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise
+    return directory / temp_name.rsplit("/", 1)[-1]
+
+
+def _restore_file(path, content: bytes | None) -> None:
+    if content is None:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        return
+    restore_tmp = _write_temp_file(path.parent, content)
+    os.replace(restore_tmp, path)
 
 
 async def _save_vault_file(base_id: str, folder_id: str, upload: UploadFile, index: int) -> dict:

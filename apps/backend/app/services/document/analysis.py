@@ -479,6 +479,8 @@ async def finalize_requirement_analysis(
         raise api_error(502, "REQUIREMENT_FINALIZATION_EMPTY_OUTPUT", "最终需求智能体返回内容为空。")
 
     try:
+        from .version_retention import delete_pruned_version_files, prune_document_versions
+
         with connect() as db:
             document = document_repo.find_by_project_and_id(db, project_id, document_id)
             if not document:
@@ -533,9 +535,10 @@ async def finalize_requirement_analysis(
                 status="completed",
                 summary=diff_summary,
             )
-
+            pruned_version_paths = prune_document_versions(db, document_id)
             finalized_analysis = document_repo.find_requirement_analysis(db, analysis["id"])
             version = document_repo.find_version(db, version_id)
+        delete_pruned_version_files(pruned_version_paths)
     except Exception as exc:
         _mark_requirement_finalization_failed(finalization_run_id, str(exc))
         raise

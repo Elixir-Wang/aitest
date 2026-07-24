@@ -377,11 +377,16 @@ export function UiAutomationRunDetail({
       </Dialog>
 
       <Dialog onOpenChange={setLiveViewOpen} open={liveViewOpen}>
-        <DialogContent className="grid h-[min(58rem,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-none grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden bg-zinc-950 p-0 text-zinc-100 sm:max-w-7xl">
+        <DialogContent className="top-0 left-0 grid h-dvh w-screen max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-none bg-zinc-950 p-0 text-zinc-100 sm:max-w-none">
           <DialogHeader className="border-zinc-800 border-b px-5 py-4 pr-14">
             <div className="flex flex-wrap items-center gap-3">
               <DialogTitle className="text-zinc-100">浏览器操作过程</DialogTitle>
               <LiveStatus status={liveView?.status ?? (liveViewLoading ? "starting" : "waiting")} />
+              {liveView ? (
+                <span className="font-mono text-xs text-zinc-500">
+                  {liveView.width} × {liveView.height}
+                </span>
+              ) : null}
             </div>
             <DialogDescription className="text-zinc-400">
               {liveView?.message ?? "正在连接运行中的浏览器画面。"}
@@ -392,14 +397,14 @@ export function UiAutomationRunDetail({
               // biome-ignore lint/performance/noImgElement: MJPEG live streams are rendered by the browser image decoder.
               <img
                 alt="UI 自动化实时浏览器画面"
-                className="max-h-full max-w-full object-contain"
+                className="block h-full w-full object-contain"
                 height={liveView.height}
                 src={`${API_BASE_URL}${liveView.stream_path}`}
                 width={liveView.width}
               />
             ) : null}
             {liveView?.status === "ended" && videoUrl ? (
-              <video className="max-h-full max-w-full" controls src={videoUrl}>
+              <video className="h-full w-full object-contain" controls src={videoUrl}>
                 <track kind="captions" label="执行步骤" src="data:text/vtt,WEBVTT" srcLang="zh-CN" />
               </video>
             ) : null}

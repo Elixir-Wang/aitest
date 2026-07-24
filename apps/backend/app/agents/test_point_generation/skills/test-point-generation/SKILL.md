@@ -48,7 +48,7 @@ disable-model-invocation: true
 | 字段 | 说明 |
 |------|------|
 | **module** | 所属模块 |
-| **test_point** | 测试点名称，简洁描述要验证的行为 |
+| **test_point** | 简短且全局唯一的测试点名称，只描述要验证的行为，不带模块路径前缀 |
 | **priority** | 优先级：P0 / P1 / P2 / P3 |
 | **requirement_obligation_keys** | 当前测试点覆盖的需求义务 ID，必须来自本轮输入 |
 
@@ -59,7 +59,7 @@ disable-model-invocation: true
 ## 输出示例
 
 ```json
-{"points":[{"module":"对话模型配置弹窗","test_point":"支持思考模式的模型显示开关","priority":"P0","requirement_obligation_keys":["REQ-003.M01"]}]}
+{"points":[{"module":"自主规划Agent - 对话模型配置弹窗","test_point":"自主规划Agent显示思考模式开关","priority":"P0","requirement_obligation_keys":["REQ-003.M01"]}]}
 ```
 
 ## 硬约束
@@ -74,4 +74,6 @@ disable-model-invocation: true
 7. 不得把待澄清项或候选选项当作最终需求
 8. 每个测试点必须明确填写 `requirement_obligation_keys`，不得关联本轮输入范围外的义务 ID
 9. 同一测试点只能关联同一模块下的需求义务
-10. `test_point` 在同一模块内必须唯一；名称必须明确表达可区分的测试目标，不得输出同名测试点
+10. `test_point` 在整份测试点清单中必须全局唯一；即使所属模块不同，也不得输出同名测试点
+11. `test_point` 只写简短、直接的测试目标，不得拼接完整 `module`，不得使用“模块 - 子模块 - 测试目标”形式；模块归属只写入 `module` 字段
+12. 多个模块验证相同行为时，使用最短业务对象融入自然语句来区分名称，例如“自主规划Agent显示思考模式开关”和“Multi-Agent节点显示思考模式开关”，不得复用同名标题

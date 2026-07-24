@@ -13,12 +13,12 @@
 5. 点击弹窗右下角创建，即可完成智能体创建并直接进入基础配置页面。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-09_1032280.38696960121752066.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-09_1032280.38696960121752066.png)
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-22_154746_1159490.3820536825504455.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-22_154746_1159490.3820536825504455.png)
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-09_1032290.42375048827753636.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-09_1032290.42375048827753636.png)
 
 创建好的智能体可以在您的**工作台**再次找到，进行使用和配置。
 
@@ -30,10 +30,10 @@
 
 基础模型是智能体的 “大脑”，决定了理解能力、响应速度和推理精度，平台提供多种模型选项，可根据功能复杂度、交互量选择适配需求的基础模型。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-09_1032290.7233639725470434.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-09_1032290.7233639725470434.png)
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-22_153956_0103540.421891986808443.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-22_153956_0103540.421891986808443.png)
 
 ## 角色设定
 
@@ -41,19 +41,19 @@
 
 平台提供了大模型优化功能，方便您只输入简单的要求，就能够输入较完整的提示词。例如输入“一款语音陪伴助手”，点击大模型优化后效果如下，点击**使用**自动插入角色设定模块，您也可以根据您的实际需求再对提示词进行优化。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-09_1032290.8944718895009088.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-09_1032290.8944718895009088.png)
 
 # 为智能体添加技能（可选）
 
 技能是智能体的 “具体能力”，如查询数据、统计分析、流程触发等，平台提供技能模板，也支持自定义开发，让智能体适配你的专属需求。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-09_1032300.5305790023572734.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-09_1032300.5305790023572734.png)
 
 ## 添加知识
 
 知识是智能体的 “知识库”，可直接用于回答用户问题，同时缓解大模型 “幻觉” 问题 —— 即避免编造不存在的信息，大幅提升回答准确性。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-09_1032300.28632773790857124.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-09_1032300.28632773790857124.png)
 
 ## 添加功能
 
@@ -70,4 +70,4 @@
 3. 选择并配置发布平台（默认勾选API调用、网页），确认配置信息无误后点击**发布**提交申请；
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-09_1032300.7939572336189622.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-09_1032300.7939572336189622.png)

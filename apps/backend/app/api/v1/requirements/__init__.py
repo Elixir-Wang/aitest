@@ -23,6 +23,7 @@ from app.api.v1.requirements import (
     files,
     metadata,
     test_points,
+    uploads,
     versions,
 )
 from app.dependencies.auth import current_user
@@ -31,6 +32,7 @@ from app.services.document import documents as document_documents
 # 占位 router：所有路径都来自子模块，主 router 自身不挂任何路径，仅用于聚合子路由。
 # 真实的 prefix 在子模块的 router 上声明。
 router = APIRouter()
+router.include_router(uploads.router)
 router.include_router(documents.router)
 router.include_router(files.router)
 router.include_router(versions.router)

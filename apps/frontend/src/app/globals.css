@@ -1129,3 +1129,83 @@ html {
 .dark .markdown-enhanced blockquote strong:first-child {
   color: hsl(30 100% 60% / 1);
 }
+
+.markdown-preview.rejected-case-markdown {
+  max-width: 960px;
+  margin: 0 auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  line-height: 1.75;
+  padding: clamp(0.5rem, 2vw, 1.5rem);
+}
+
+.markdown-preview.rejected-case-markdown:hover {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.markdown-preview.rejected-case-markdown h1 {
+  width: auto;
+  margin: 0 0 0.35rem;
+  padding: 0;
+  text-align: left;
+  font-size: 1.55rem;
+}
+
+.markdown-preview.rejected-case-markdown h1:hover {
+  color: var(--foreground);
+  transform: none;
+}
+
+.markdown-preview.rejected-case-markdown h1::after {
+  display: none;
+}
+
+.markdown-preview.rejected-case-markdown h2 {
+  display: block;
+  margin: 2.25rem 0 1rem;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 1.2rem;
+  padding: 1.5rem 0 0;
+  box-shadow: none;
+}
+
+.markdown-preview.rejected-case-markdown h2:hover {
+  color: var(--foreground);
+  box-shadow: none;
+  transform: none;
+}
+
+.markdown-preview.rejected-case-markdown h3 {
+  margin-top: 1.4rem;
+  padding-left: 0;
+  font-size: 1rem;
+}
+
+.markdown-preview.rejected-case-markdown h3::before {
+  display: none;
+}
+
+.markdown-preview.rejected-case-markdown h3:hover {
+  color: var(--foreground);
+  padding-left: 0;
+}
+
+.markdown-preview.rejected-case-markdown blockquote {
+  margin: 0.9rem 0 1rem;
+  border-left-color: #d97706;
+  border-radius: 4px;
+  background: color-mix(in srgb, #f59e0b, transparent 92%);
+  box-shadow: none;
+}
+
+.markdown-preview.rejected-case-markdown blockquote:hover {
+  background: color-mix(in srgb, #f59e0b, transparent 92%);
+  box-shadow: none;
+  transform: none;
+}

@@ -183,6 +183,43 @@ def update_vault_file_sort_order(db: Connection, file_id: str, sort_order: int) 
     )
 
 
+def update_vault_file_content(
+    db: Connection,
+    file_id: str,
+    *,
+    original_filename: str,
+    display_name: str,
+    file_size: int,
+    raw_path: str,
+    markdown_path: str,
+    markdown_content: str,
+) -> None:
+    db.execute(
+        """
+        UPDATE global_knowledge_vault_files
+        SET original_filename = ?,
+            display_name = ?,
+            file_size = ?,
+            raw_path = ?,
+            markdown_path = ?,
+            markdown_content = ?,
+            conversion_status = 'success',
+            conversion_summary = '文件已作为 Markdown 内容保存。',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (
+            original_filename,
+            display_name,
+            file_size,
+            raw_path,
+            markdown_path,
+            markdown_content,
+            file_id,
+        ),
+    )
+
+
 def create_vault_file(
     db: Connection,
     *,

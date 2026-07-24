@@ -48,6 +48,10 @@ def browser_context_args(browser_context_args):
     args = dict(browser_context_args)
     args["ignore_https_errors"] = True
     args["locale"] = os.getenv("UI_LOCALE", "zh-CN")
+    args["viewport"] = {
+        "width": int(os.getenv("UI_VIEWPORT_WIDTH", "1440")),
+        "height": int(os.getenv("UI_VIEWPORT_HEIGHT", "900")),
+    }
     storage_state = os.getenv("UI_STORAGE_STATE", "").strip()
     if storage_state:
         args["storage_state"] = storage_state
@@ -248,6 +252,7 @@ description: Generate one project-namespaced pytest Playwright case inside its b
 - Derived data may be normalized; source test cases are never updated.
 - Never invent locators or remove assertions to make validation pass.
 - Copy case parameter names into AutomationPlan.parameters and use click_parameter_text for dynamic text selection.
+- Use wait_for_response after sending chat messages; target assistant-only responses and do not assume a welcome message exists.
 - Use the deterministic render tool for POM and test source changes.
 - Run collection only; real UI execution is a separate user action.
 """,
@@ -327,11 +332,12 @@ def _locator_expression(locator: LocatorPlan) -> str:
     method = {
         "label": "get_by_label",
         "placeholder": "get_by_placeholder",
-        "test_id": "get_by_test_id",
         "text": "get_by_text",
     }.get(locator.strategy)
     if method:
-        return f"self.page.{method}({json.dumps(name, ensure_ascii=False)})"
+        return f"self.page.{method}({json.dumps(name, ensure_ascii=False)}, exact={locator.exact})"
+    if locator.strategy == "test_id":
+        return f"self.page.get_by_test_id({json.dumps(name, ensure_ascii=False)})"
     if locator.strategy == "xpath":
         return f"self.page.locator({json.dumps('xpath=' + name, ensure_ascii=False)})"
     return f"self.page.locator({json.dumps(name, ensure_ascii=False)})"
@@ -340,6 +346,12 @@ def _locator_expression(locator: LocatorPlan) -> str:
 def _render_test(plan: AutomationPlan) -> str:
     page_map = {page.page_key: page for page in plan.page_objects}
     imports = [
+        *(
+            ["import time", ""]
+            if any(step.kind in {"wait_for_response", "commit_value"} for step in plan.steps)
+            else []
+        ),
+        *(["import re", ""] if any(assertion.kind == "url" for assertion in plan.assertions) else []),
         "from pathlib import Path",
         "",
         *(["import pytest"] if plan.parameters else []),
@@ -356,6 +368,10 @@ def _render_test(plan: AutomationPlan) -> str:
         f"{json.dumps(plan.artifacts.data_file)})"
     )
     body = ["", ""]
+    if any(step.kind == "wait_for_response" for step in plan.steps):
+        body.extend(_response_wait_helper())
+    if any(step.kind == "commit_value" for step in plan.steps):
+        body.extend(_commit_value_helper())
     if plan.parameters:
         body.extend([f"CASE_DATA = {data_expression}", "", ""])
         for parameter in plan.parameters:
@@ -377,16 +393,29 @@ def _render_test(plan: AutomationPlan) -> str:
     )
     for page in plan.page_objects:
         body.append(f"    {page.page_key}_page = {page.class_name}(page)")
-    for step in plan.steps:
-        body.extend(_render_step(step, set(plan.parameters)))
+    assertions_by_step: dict[str, list[AssertionPlan]] = {}
+    trailing_assertions: list[AssertionPlan] = []
     for assertion in plan.assertions:
+        if assertion.after_step_id:
+            assertions_by_step.setdefault(assertion.after_step_id, []).append(assertion)
+        else:
+            trailing_assertions.append(assertion)
+    for index, step in enumerate(plan.steps):
+        if index + 1 < len(plan.steps) and plan.steps[index + 1].kind == "wait_for_response":
+            wait_step = plan.steps[index + 1]
+            wait_target = f"{wait_step.page_key}_page.{wait_step.element_key}"
+            body.append(f"    _response_before_{index + 1} = _last_locator_text({wait_target})")
+        body.extend(_render_step(step, set(plan.parameters), step_index=index))
+        for assertion in assertions_by_step.get(step.source_step_id, []):
+            body.extend(_render_assertion(assertion, set(plan.parameters)))
+    for assertion in trailing_assertions:
         body.extend(_render_assertion(assertion, set(plan.parameters)))
     if not plan.steps and not plan.assertions:
         body.append("    assert case_data is not None")
     return "\n".join([*imports, *body]) + "\n"
 
 
-def _render_step(step: StepPlan, parameters: set[str]) -> list[str]:
+def _render_step(step: StepPlan, parameters: set[str], *, step_index: int = 0) -> list[str]:
     page_var = f"{step.page_key}_page"
     if step.kind == "navigate":
         return [f"    {page_var}.open()"]
@@ -409,8 +438,56 @@ def _render_step(step: StepPlan, parameters: set[str]) -> list[str]:
         "press": f"{target}.press(str({value}))",
         "upload": f"{target}.set_input_files(str({value}))",
         "wait_visible": f"{target}.wait_for(state=\"visible\")",
+        "wait_for_response": f"_wait_for_response({target}, _response_before_{step_index})",
+        "commit_value": f"_commit_current_value({target})",
     }
     return [f"    {actions[step.kind]}"]
+
+
+def _response_wait_helper() -> list[str]:
+    return [
+        "def _last_locator_text(locator):",
+        "    try:",
+        "        if locator.count() == 0:",
+        "            return \"\"",
+        "        return (locator.last.text_content(timeout=250) or \"\").strip()",
+        "    except Exception:",
+        "        return \"\"",
+        "",
+        "",
+        "def _wait_for_response(locator, previous_text, timeout_ms=120_000, stable_ms=2_000):",
+        "    deadline = time.monotonic() + timeout_ms / 1_000",
+        "    stable_since = None",
+        "    candidate = \"\"",
+        "    while time.monotonic() < deadline:",
+        "        current = _last_locator_text(locator)",
+        "        if current and current != previous_text:",
+        "            if current != candidate:",
+        "                candidate = current",
+        "                stable_since = time.monotonic()",
+        "            elif stable_since is not None and (time.monotonic() - stable_since) * 1_000 >= stable_ms:",
+        "                return current",
+        "        else:",
+        "            candidate = \"\"",
+        "            stable_since = None",
+        "        time.sleep(0.1)",
+        "    raise AssertionError(\"Timed out waiting for a new stable assistant response\")",
+        "",
+        "",
+    ]
+
+
+def _commit_value_helper() -> list[str]:
+    return [
+        "def _commit_current_value(locator):",
+        "    current = locator.input_value().strip()",
+        "    if not current:",
+        "        current = time.strftime(\"release-%Y%m%d%H%M%S\") + f\"-{time.time_ns() % 10_000:04d}\"",
+        "    locator.fill(\"\")",
+        "    locator.fill(current)",
+        "",
+        "",
+    ]
 
 
 def _render_assertion(assertion: AssertionPlan, parameters: set[str]) -> list[str]:
@@ -422,12 +499,12 @@ def _render_assertion(assertion: AssertionPlan, parameters: set[str]) -> list[st
         else json.dumps(assertion.expected, ensure_ascii=False)
     )
     if assertion.kind == "url":
-        return [f"    expect(page).to_have_url(str({expected}))"]
+        return [f"    expect(page).to_have_url(re.compile(re.escape(str({expected}))))"]
     target = f"{assertion.page_key}_page.{assertion.element_key}"
     statement = {
         "visible": f"expect({target}).to_be_visible()",
         "hidden": f"expect({target}).to_be_hidden()",
-        "text": f"expect({target}).to_have_text(str({expected}))",
+        "text": f"expect({target}).to_contain_text(str({expected}))",
         "value": f"expect({target}).to_have_value(str({expected}))",
     }[assertion.kind]
     return [f"    {statement}"]

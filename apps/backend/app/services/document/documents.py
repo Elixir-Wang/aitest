@@ -259,6 +259,8 @@ def update_document(project_id: str, document_id: str, payload: SourceDocumentUp
     if not markdown_content:
         raise api_error(422, "DOCUMENT_MARKDOWN_REQUIRED", "最终需求稿不能为空。")
 
+    from .version_retention import delete_pruned_version_files, prune_document_versions
+
     with connect() as db:
         existing = document_repo.find_by_project_and_id(db, project_id, document_id)
         if not existing:
@@ -287,6 +289,9 @@ def update_document(project_id: str, document_id: str, payload: SourceDocumentUp
             created_by=actor["id"],
         )
         document_repo.update_current_version(db, document_id, version_id, DOCUMENT_VERSIONED_STATUS)
+        pruned_version_paths = prune_document_versions(db, document_id)
+
+    delete_pruned_version_files(pruned_version_paths)
 
     result = get_document_detail(project_id, document_id, actor)
     operation_log_service.record_change(

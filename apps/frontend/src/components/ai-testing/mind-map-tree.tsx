@@ -48,9 +48,11 @@ export type MindMapItemConfig<T> = {
 
 export type MindMapTreeProps<T> = {
   active: boolean;
+  editable?: boolean;
   items: T[];
   config: MindMapItemConfig<T>;
   selectedId: string | null;
+  onEdit?: (id: string, text: string) => Promise<void> | void;
   onSelect: (id: string) => void;
 };
 
@@ -117,11 +119,20 @@ function placePriorityTagsBeforeTitles(container: HTMLElement) {
   }
 }
 
-export function MindMapTree<T>({ active, items, config, selectedId, onSelect }: MindMapTreeProps<T>) {
+export function MindMapTree<T>({
+  active,
+  editable = false,
+  items,
+  config,
+  selectedId,
+  onEdit,
+  onSelect,
+}: MindMapTreeProps<T>) {
   const isDark = usePreferencesStore((state) => state.themeMode === "dark");
   const containerRef = useRef<HTMLDivElement>(null);
   const instanceRef = useRef<SimpleMindMapInstance | null>(null);
   const onSelectRef = useRef(onSelect);
+  const onEditRef = useRef(onEdit);
   const selectedIdRef = useRef(selectedId);
   const [rendering, setRendering] = useState(true);
   const [scale, setScale] = useState(1);
@@ -145,6 +156,10 @@ export function MindMapTree<T>({ active, items, config, selectedId, onSelect }: 
   useEffect(() => {
     onSelectRef.current = onSelect;
   }, [onSelect]);
+
+  useEffect(() => {
+    onEditRef.current = onEdit;
+  }, [onEdit]);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -196,7 +211,10 @@ export function MindMapTree<T>({ active, items, config, selectedId, onSelect }: 
         el: containerRef.current,
         data,
         layout: "logicalStructure",
-        readonly: true,
+        readonly: !editable,
+        beforeTextEdit: (node) => Boolean(node.getData("nodeId")),
+        customCheckEnableShortcut: (event) =>
+          event.target instanceof HTMLElement && event.target.classList.contains("smm-node-edit-wrap"),
         fit: false,
         mousewheelAction: "move",
         enableFreeDrag: true,
@@ -290,14 +308,33 @@ export function MindMapTree<T>({ active, items, config, selectedId, onSelect }: 
         if (typeof nodeId === "string" && nodeId) onSelectRef.current(nodeId);
       };
       const handleScale = (nextScale: number) => setScale(nextScale);
+      const handleTextEditEnd = (
+        _editor: HTMLElement,
+        _activeNodes: unknown[],
+        node: { active(): void; getData(key: string): unknown },
+      ) => {
+        const nodeId = node.getData("nodeId");
+        const nextText = node.getData("text");
+        if (typeof nodeId !== "string" || !nodeId || typeof nextText !== "string") return;
+
+        const previousText = items.find((item) => config.getId(item) === nodeId);
+        if (!previousText || config.getText(previousText) === nextText.trim()) return;
+
+        void Promise.resolve(onEditRef.current?.(nodeId, nextText.trim())).catch(() => {
+          if (!mindMap) return;
+          mindMap.execCommand("SET_NODE_TEXT", node, config.getText(previousText));
+        });
+      };
 
       mindMap.on("node_tree_render_end", handleRenderEnd);
       mindMap.on("node_click", handleNodeClick);
       mindMap.on("scale", handleScale);
+      mindMap.on("hide_text_edit", handleTextEditEnd);
       removeListeners = () => {
         mindMap?.off("node_tree_render_end", handleRenderEnd);
         mindMap?.off("node_click", handleNodeClick);
         mindMap?.off("scale", handleScale);
+        mindMap?.off("hide_text_edit", handleTextEditEnd);
       };
       instanceRef.current = mindMap;
     }
@@ -337,7 +374,7 @@ export function MindMapTree<T>({ active, items, config, selectedId, onSelect }: 
       }
       if (instanceRef.current === mindMap) instanceRef.current = null;
     };
-  }, [active, data, isDark]);
+  }, [active, config, data, editable, isDark, items]);
 
   function fitMindMap() {
     instanceRef.current?.view.fit();
@@ -364,10 +401,14 @@ export function MindMapTree<T>({ active, items, config, selectedId, onSelect }: 
   }
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden bg-[#fbfcfe] dark:bg-background">
+    <div className="relative min-h-0 flex-1 overflow-hidden bg-[#fbfcfe] dark:bg-background [&_.smm-quick-create-child-btn]:hidden">
       <div className="pointer-events-none absolute top-4 left-4 z-10 flex items-center gap-2 rounded-lg border bg-white/90 px-3 py-2 text-slate-500 text-xs shadow-sm backdrop-blur dark:bg-card/90 dark:text-muted-foreground dark:shadow-none">
         {rendering ? <Loader2 className="size-3.5 animate-spin" /> : null}
-        {rendering ? "正在绘制脑图" : "双指移动 · 捏合缩放 · 拖动画布 · 点击节点查看详情"}
+        {rendering
+          ? "正在绘制脑图"
+          : editable
+            ? "双指移动 · 捏合缩放 · 拖动画布 · 双击测试要点编辑"
+            : "双指移动 · 捏合缩放 · 拖动画布 · 点击节点查看详情"}
       </div>
       <div className="absolute top-4 right-4 z-10">
         <Tooltip>

@@ -231,10 +231,11 @@ test("review detail header shows module path without status priority or time", (
   assert.doesNotMatch(reviewPageSource, /formatDateTime/);
 });
 
-test("reject dialog collects optional feedback", () => {
+test("reject dialog requires feedback and persists it to knowledge", () => {
   assert.match(reviewPageSource, /<DialogTitle(?: className="[^"]+")?>不采纳此用例<\/DialogTitle>/);
   assert.match(reviewPageSource, /不采纳原因/);
-  assert.match(reviewPageSource, /跳过说明并不采纳/);
-  assert.match(reviewPageSource, /保存不采纳/);
+  assert.doesNotMatch(reviewPageSource, /跳过说明并不采纳/);
+  assert.match(reviewPageSource, /保存并沉淀知识/);
+  assert.match(reviewPageSource, /disabled=\{!rejectDialog\.feedback\.trim\(\)/);
   assert.match(reviewPageSource, /placeholder="例如：步骤缺少异常分支、预期结果不可验证、与需求不一致"/);
 });

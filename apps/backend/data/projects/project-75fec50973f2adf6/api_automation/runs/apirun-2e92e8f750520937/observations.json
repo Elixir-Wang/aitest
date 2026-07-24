@@ -1,0 +1,41 @@
+{
+  "observations": [
+    {
+      "case_id": "apitc-0e6799f3334b6a7f",
+      "test_point_key": "body.date_relation.start_equals_end",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 03:53:37 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "227",
+        "Connection": "keep-alive",
+        "allow": "POST, OPTIONS",
+        "content-language": "en",
+        "log-id": "2c11eb5ac0dd875bc4b487203eb98490",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-2c11eb5ac0dd875bc4b487203eb98490-15a78c01d394fa45-01",
+        "vary": "Accept, Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "215",
+        "x-frame-options": "DENY",
+        "x-trace-id": "2c11eb5ac0dd875bc4b487203eb98490"
+      },
+      "response_body": {
+        "code": "000000",
+        "message": "ok",
+        "data": {
+          "user_cnt": 0,
+          "question_cnt": 0,
+          "answer_cnt": 0,
+          "useful_cnt": 0,
+          "useless_cnt": 0,
+          "user_per_question_cnt": 0,
+          "normal_answer_rate": 0.0,
+          "useful_rate": 0.0,
+          "useless_rate": 0.0
+        }
+      }
+    }
+  ]
+}

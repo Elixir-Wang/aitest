@@ -14,4 +14,4 @@ edges:
   action: click
   from_url: /botSetting
   to_url: /agentRelease
-  observed_at: '2026-07-23T02:42:53.277736+00:00'
+  observed_at: '2026-07-24T08:27:59.272570+00:00'

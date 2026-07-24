@@ -1,4 +1,6 @@
 from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
+
 from app.agents.document_editor.schemas import DocumentEditOutput
 
 
@@ -24,5 +26,5 @@ def document_editor_agent(model):
         model=model,
         tools=[],
         system_prompt=SYSTEM_PROMPT,
-        response_format=DocumentEditOutput,
+        response_format=ToolStrategy(DocumentEditOutput),
     )

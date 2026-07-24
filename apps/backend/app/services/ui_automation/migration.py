@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import filecmp
 import json
 import re
 import shutil
@@ -23,6 +24,8 @@ def migrate_legacy_project_suite(db: sqlite3.Connection, project_id: str) -> dic
         "suite_path": str(target_root),
         "migrated": False,
         "copied_paths": [],
+        "conflicting_paths": [],
+        "run_ids": [],
     }
     if target_root == legacy_root or not legacy_root.is_dir():
         initialize_suite(target_root)
@@ -40,12 +43,6 @@ def migrate_legacy_project_suite(db: sqlite3.Connection, project_id: str) -> dic
         "SELECT * FROM ui_automation_execution_runs WHERE project_id = ?",
         (project_id,),
     ).fetchall()
-    needs_migration = any(_path_is_within(row["suite_path"], legacy_root) for row in (*generation_rows, *asset_rows))
-    needs_migration = needs_migration or any(_path_is_within(row["run_dir"], legacy_root) for row in execution_rows)
-    if not needs_migration:
-        initialize_suite(target_root)
-        return report
-
     initialize_suite(target_root)
     project_key = _slugify(project_id)
     project_sources = (
@@ -61,15 +58,18 @@ def migrate_legacy_project_suite(db: sqlite3.Connection, project_id: str) -> dic
     )
     for source, target in project_sources:
         if source.is_dir():
-            _copy_tree(source, target)
-            report["copied_paths"].append(str(target))
+            copied, conflicts = _copy_tree_missing(source, target)
+            report["copied_paths"].extend(str(path) for path in copied)
+            report["conflicting_paths"].extend(str(path) for path in conflicts)
 
     for row in execution_rows:
+        report["run_ids"].append(row["id"])
         source_run = legacy_root / "runs" / row["id"]
         target_run = target_root / "runs" / row["id"]
         if source_run.is_dir():
-            _copy_tree(source_run, target_run)
-            report["copied_paths"].append(str(target_run))
+            copied, conflicts = _copy_tree_missing(source_run, target_run)
+            report["copied_paths"].extend(str(path) for path in copied)
+            report["conflicting_paths"].extend(str(path) for path in conflicts)
         _update_execution_paths(db, row, legacy_root=legacy_root, target_root=target_root)
 
     stored_target = _store_path(target_root)
@@ -81,22 +81,39 @@ def migrate_legacy_project_suite(db: sqlite3.Connection, project_id: str) -> dic
         "UPDATE ui_automation_assets SET suite_path = ? WHERE project_id = ?",
         (stored_target, project_id),
     )
-    report["migrated"] = bool(report["copied_paths"] or execution_rows)
+    had_legacy_database_paths = any(
+        _path_is_within(row["suite_path"], legacy_root) for row in (*generation_rows, *asset_rows)
+    ) or any(_path_is_within(row["run_dir"], legacy_root) for row in execution_rows)
+    report["migrated"] = bool(report["copied_paths"] or had_legacy_database_paths)
     return report
 
 
-def remove_migrated_legacy_project_files(project_id: str, run_ids: list[str]) -> None:
+def remove_migrated_legacy_project_files(project_id: str, run_ids: list[str]) -> list[str]:
     legacy_root = legacy_shared_suite_path().resolve()
+    target_root = project_suite_path(project_id).resolve()
     project_key = _slugify(project_id)
     targets = [
-        legacy_root / "pages" / "generated" / project_key,
-        legacy_root / "testcases" / "generated" / project_key,
-        legacy_root / "data" / "projects" / project_key,
-        *(legacy_root / "runs" / run_id for run_id in run_ids),
+        (
+            legacy_root / "pages" / "generated" / project_key,
+            target_root / "pages" / "generated" / project_key,
+        ),
+        (
+            legacy_root / "testcases" / "generated" / project_key,
+            target_root / "testcases" / "generated" / project_key,
+        ),
+        (
+            legacy_root / "data" / "projects" / project_key,
+            target_root / "data" / "projects" / project_key,
+        ),
+        *((legacy_root / "runs" / run_id, target_root / "runs" / run_id) for run_id in run_ids),
     ]
-    for target in targets:
-        if target.is_dir():
-            shutil.rmtree(target)
+    removed = []
+    for source, target in targets:
+        if source.is_dir() and _tree_is_migrated(source, target):
+            shutil.rmtree(source)
+            removed.append(str(source))
+    _remove_empty_directories(legacy_root)
+    return removed
 
 
 def _update_execution_paths(
@@ -188,13 +205,56 @@ def _store_path(path: Path | None) -> str:
         return str(path)
 
 
-def _copy_tree(source: Path, target: Path) -> None:
-    shutil.copytree(
-        source,
-        target,
-        dirs_exist_ok=True,
-        ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", "*.pyc"),
-    )
+def _copy_tree_missing(source: Path, target: Path) -> tuple[list[Path], list[Path]]:
+    copied = []
+    conflicts = []
+    target.mkdir(parents=True, exist_ok=True)
+    for source_path in sorted(source.rglob("*")):
+        if _is_ignored(source_path, source):
+            continue
+        target_path = target / source_path.relative_to(source)
+        if source_path.is_dir():
+            target_path.mkdir(parents=True, exist_ok=True)
+        elif source_path.is_file() and not target_path.exists():
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, target_path)
+            copied.append(target_path)
+        elif source_path.is_file() and (
+            not target_path.is_file() or not filecmp.cmp(source_path, target_path, shallow=False)
+        ):
+            conflicts.append(target_path)
+    return copied, conflicts
+
+
+def _tree_is_migrated(source: Path, target: Path) -> bool:
+    if not target.is_dir():
+        return False
+    for source_path in source.rglob("*"):
+        if not source_path.is_file() or _is_ignored(source_path, source):
+            continue
+        target_path = target / source_path.relative_to(source)
+        if not target_path.is_file() or not filecmp.cmp(source_path, target_path, shallow=False):
+            return False
+    return True
+
+
+def _is_ignored(path: Path, root: Path) -> bool:
+    relative = path.relative_to(root)
+    return path.suffix == ".pyc" or any(part in {"__pycache__", ".pytest_cache"} for part in relative.parts)
+
+
+def _remove_empty_directories(root: Path) -> None:
+    if not root.is_dir():
+        return
+    for path in sorted((item for item in root.rglob("*") if item.is_dir()), reverse=True):
+        try:
+            path.rmdir()
+        except OSError:
+            pass
+    try:
+        root.rmdir()
+    except OSError:
+        pass
 
 
 def _slugify(value: str) -> str:

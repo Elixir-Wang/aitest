@@ -8,7 +8,6 @@ import { Check, ChevronRight, CircleX, Download, List, Loader2, Network, Pencil,
 import { toast } from "sonner";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
-import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { TestCaseMindMap } from "@/components/ai-testing/test-case-mind-map";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +36,7 @@ import {
 } from "@/lib/api-client";
 import { testCasePriorityVisual } from "@/lib/test-case-priority";
 import { cn } from "@/lib/utils";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
 type ReviewFilter = "all" | "ready_for_review" | "approved" | "rejected";
@@ -240,8 +240,15 @@ export default function TestCaseReviewPage() {
 
   async function rejectCurrent(feedback: string) {
     const caseId = rejectDialog.caseId;
-    setRejectDialog({ open: false, caseId: "", feedback: "" });
-    await updateReview(caseId, { status: "rejected", review_feedback: feedback }, { moveNext: true });
+    const reason = feedback.trim();
+    if (!reason) {
+      toast.error("请填写不采纳原因");
+      return;
+    }
+    const saved = await updateReview(caseId, { status: "rejected", review_feedback: reason }, { moveNext: true });
+    if (saved) {
+      setRejectDialog({ open: false, caseId: "", feedback: "" });
+    }
   }
 
   async function saveCaseContent() {
@@ -289,7 +296,7 @@ export default function TestCaseReviewPage() {
   return (
     <PageShell
       breadcrumbs={moduleBreadcrumbs("testCases", ...(testCaseSet ? [{ label: testCaseSet.name }] : []))}
-      description="逐条采纳或不采纳生成用例，并沉淀下次重新生成需要避开的反馈。"
+      description="逐条采纳或不采纳生成用例，并沉淀后续生成需要参考的反馈。"
       fillViewport
       title={testCaseSet?.name ?? "测试用例评审"}
     >
@@ -510,7 +517,7 @@ export default function TestCaseReviewPage() {
             <div className="flex flex-col gap-2">
               <DialogTitle className="font-semibold text-lg leading-none">不采纳此用例</DialogTitle>
               <DialogDescription className="mx-auto max-w-md text-balance leading-6">
-                可以补充原因，重新生成时会参考这些信息。也可以不填写。
+                原因将沉淀到不采纳用例库，后续生成会检索并参考。
               </DialogDescription>
             </div>
           </DialogHeader>
@@ -533,12 +540,13 @@ export default function TestCaseReviewPage() {
             >
               取消
             </Button>
-            <Button className="sm:w-auto" onClick={() => rejectCurrent("")} variant="outline">
-              <X className="size-4" />
-              跳过说明并不采纳
-            </Button>
-            <Button className="sm:w-auto" onClick={() => rejectCurrent(rejectDialog.feedback)}>
-              保存不采纳
+            <Button
+              className="sm:w-auto"
+              disabled={!rejectDialog.feedback.trim() || savingCaseId === rejectDialog.caseId}
+              onClick={() => rejectCurrent(rejectDialog.feedback)}
+            >
+              {savingCaseId === rejectDialog.caseId ? <Loader2 className="size-4 animate-spin" /> : null}
+              保存并沉淀知识
             </Button>
           </DialogFooter>
         </DialogContent>

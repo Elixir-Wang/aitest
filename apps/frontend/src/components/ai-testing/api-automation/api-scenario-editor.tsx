@@ -14,8 +14,10 @@ import {
   Clock3,
   GitBranch,
   LayoutDashboard,
+  ListChecks,
   ListTree,
   Loader2,
+  LockKeyhole,
   PanelRightClose,
   PanelRightOpen,
   Play,
@@ -30,7 +32,15 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -275,6 +285,10 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
                   editor.actions.setActiveStepId("");
                   setConfigPanelOpen(false);
                 }}
+                onDeleteStep={(stepId) => {
+                  editor.actions.removeStep(stepId);
+                  setConfigPanelOpen(false);
+                }}
                 onOpenAssetPicker={() => setAssetPickerOpen(true)}
                 onSelectStep={(stepId) => {
                   editor.actions.setActiveStepId(stepId);
@@ -487,108 +501,192 @@ function AiOrchestrationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="top-0 left-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 auto-rows-max content-start overflow-y-auto rounded-none bg-white sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[85vh] sm:w-full sm:max-w-3xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl dark:bg-zinc-950">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="size-4 text-primary" />
-            AI 编排接口场景
-          </DialogTitle>
-          <DialogDescription>AI 只生成可审阅草稿，应用后仍需检查和发布。</DialogDescription>
+      <DialogContent className="top-0 left-0 grid h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-none bg-background p-0 shadow-2xl sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[min(760px,calc(100vh-2rem))] sm:w-[calc(100vw-2rem)] sm:max-w-[760px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl">
+        <DialogHeader className="relative overflow-hidden border-b bg-muted/20 px-5 py-5 pr-14 sm:px-6">
+          <div className="flex items-start gap-3.5">
+            <div className="relative grid size-10 shrink-0 place-items-center rounded-lg border border-primary/20 bg-primary/10 text-primary shadow-sm">
+              <GitBranch className="size-5" />
+              <Sparkles className="absolute -top-1 -right-1 size-3.5 rounded-full bg-background p-0.5" />
+            </div>
+            <div className="min-w-0 space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <DialogTitle className="font-semibold text-lg leading-6">AI 编排接口场景</DialogTitle>
+                <Badge
+                  className="h-5 border-primary/20 bg-primary/8 px-2 font-medium text-[10px] text-primary"
+                  variant="outline"
+                >
+                  生成草稿
+                </Badge>
+              </div>
+              <DialogDescription className="max-w-xl leading-5">
+                描述业务目标，AI 将基于当前接口资产组织执行链路。
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
         {!plan ? (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="font-medium text-sm" htmlFor="ai-scenario-goal">
-                业务目标
-              </label>
+          <div className="min-h-0 space-y-5 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <label className="font-semibold text-sm" htmlFor="ai-scenario-goal">
+                  业务目标
+                </label>
+                <span className="text-[11px] text-muted-foreground">AI 仅使用已导入的接口资产</span>
+              </div>
               <Textarea
+                className="min-h-36 resize-none bg-card px-3.5 py-3 leading-6 shadow-xs placeholder:leading-6 sm:min-h-40"
                 id="ai-scenario-goal"
                 onChange={(event) => setGoal(event.target.value)}
-                placeholder="例如：登录后创建订单，提取订单 ID，并验证订单状态"
-                rows={6}
+                placeholder="例如：用户登录后创建订单，提取订单 ID，再查询并验证订单状态为待支付"
+                rows={5}
                 value={goal}
               />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-2 text-sm" htmlFor="ai-scenario-max-steps">
-                <span className="font-medium">最大步骤数</span>
-                <Input
-                  id="ai-scenario-max-steps"
-                  max={100}
-                  min={1}
-                  onChange={(event) => setMaxSteps(Number(event.target.value) || 1)}
-                  type="number"
-                  value={maxSteps}
-                />
-              </label>
-              <label
-                className="flex items-center gap-2 self-end rounded-md border px-3 py-2.5 text-sm"
-                htmlFor="ai-scenario-allow-write"
-              >
-                <input
-                  id="ai-scenario-allow-write"
-                  checked={allowWrite}
-                  className="size-4 accent-primary"
-                  onChange={(event) => setAllowWrite(event.target.checked)}
-                  type="checkbox"
-                />
-                允许 POST、PUT、PATCH、DELETE 写操作
-              </label>
-            </div>
-            <div className="flex justify-end">
-              <Button
-                disabled={busy || !goal.trim()}
-                onClick={() => void onGenerate(goal.trim(), allowWrite, maxSteps)}
-              >
-                {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
-                生成编排草稿
-              </Button>
+            <div className="space-y-2.5">
+              <div className="font-semibold text-sm">生成设置</div>
+              <div className="grid overflow-hidden rounded-lg border bg-card sm:grid-cols-[240px_minmax(0,1fr)]">
+                <label
+                  className="flex min-h-20 items-center gap-3 border-b px-4 py-3.5 sm:border-r sm:border-b-0"
+                  htmlFor="ai-scenario-max-steps"
+                >
+                  <span className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                    <ListChecks className="size-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block whitespace-nowrap font-medium text-sm">最大步骤数</span>
+                    <span className="mt-0.5 block text-[11px] text-muted-foreground">限制链路复杂度</span>
+                  </span>
+                  <Input
+                    className="h-9 w-16 text-center font-semibold tabular-nums"
+                    id="ai-scenario-max-steps"
+                    max={100}
+                    min={1}
+                    onChange={(event) => setMaxSteps(Number(event.target.value) || 1)}
+                    type="number"
+                    value={maxSteps}
+                  />
+                </label>
+                <label
+                  className="group flex min-h-20 cursor-pointer items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/25 has-focus-visible:bg-muted/25"
+                  htmlFor="ai-scenario-allow-write"
+                >
+                  <span className="grid size-8 shrink-0 place-items-center rounded-md bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+                    <LockKeyhole className="size-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium text-sm">允许写操作</span>
+                    <span className="mt-0.5 block text-[11px] text-muted-foreground leading-4">
+                      可编排 POST、PUT、PATCH、DELETE 接口
+                    </span>
+                  </span>
+                  <Checkbox
+                    checked={allowWrite}
+                    className="size-5"
+                    id="ai-scenario-allow-write"
+                    onCheckedChange={(checked) => setAllowWrite(checked === true)}
+                  />
+                </label>
+              </div>
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/25 p-3">
-              <div>
-                <div className="font-semibold text-sm">{plan.scenario_name}</div>
-                <div className="mt-1 text-muted-foreground text-xs">
-                  {plan.nodes.length} 个步骤 · 置信度 {Math.round(plan.confidence * 100)}%
+          <div className="min-h-0 space-y-4 overflow-y-auto bg-muted/10 px-5 py-5 sm:px-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4 shadow-xs">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                  <GitBranch className="size-4" />
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate font-semibold text-sm">{plan.scenario_name}</div>
+                  <div className="mt-1 text-muted-foreground text-xs">
+                    {plan.nodes.length} 个步骤 · 置信度 {Math.round(plan.confidence * 100)}%
+                  </div>
                 </div>
               </div>
-              <Badge variant={plan.validation.valid ? "secondary" : "destructive"}>
+              <Badge
+                className={cn(
+                  "h-6",
+                  plan.validation.valid &&
+                    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200",
+                )}
+                variant={plan.validation.valid ? "outline" : "destructive"}
+              >
+                {plan.validation.valid ? <CheckCircle2 className="size-3.5" /> : <AlertTriangle className="size-3.5" />}
                 {plan.validation.valid ? "校验通过" : `${plan.validation.errors.length} 个错误`}
               </Badge>
             </div>
-            <div className="space-y-2">
+            <div className="overflow-hidden rounded-lg border bg-card">
               {plan.nodes.map((node, index) => (
-                <div className="flex items-center gap-3 rounded-md border p-3" key={node.id}>
-                  <span className="grid size-6 shrink-0 place-items-center rounded bg-muted text-xs">{index + 1}</span>
+                <div
+                  className="relative flex min-h-16 items-center gap-3 border-b px-4 py-3 last:border-b-0"
+                  key={node.id}
+                >
+                  {index < plan.nodes.length - 1 ? (
+                    <span className="absolute top-10 bottom-[-17px] left-[29px] w-px bg-border" />
+                  ) : null}
+                  <span className="z-10 grid size-7 shrink-0 place-items-center rounded-full border bg-background font-semibold text-[11px] text-primary shadow-xs">
+                    {index + 1}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium text-sm">{node.name || node.id}</div>
-                    <div className="truncate text-muted-foreground text-xs">
-                      {node.type} · {node.endpoint_id ?? "辅助节点"}
+                    <div className="mt-1 flex min-w-0 items-center gap-2 text-muted-foreground text-xs">
+                      <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] uppercase">
+                        {node.type}
+                      </span>
+                      <span className="truncate font-mono text-[11px]">{node.endpoint_id ?? "辅助节点"}</span>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
             {[...plan.validation.errors, ...plan.validation.warnings].length ? (
-              <div className="space-y-1 rounded-md border border-amber-300/60 bg-amber-50/60 p-3 text-amber-900 text-xs dark:bg-amber-500/10 dark:text-amber-200">
+              <div className="space-y-1.5 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3.5 text-amber-900 text-xs dark:bg-amber-500/10 dark:text-amber-200">
                 {[...plan.validation.errors, ...plan.validation.warnings].map((item) => (
-                  <div key={item}>{item}</div>
+                  <div className="flex gap-2" key={item}>
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                    <span>{item}</span>
+                  </div>
                 ))}
               </div>
             ) : null}
-            <div className="flex justify-end gap-2">
+          </div>
+        )}
+        <DialogFooter className="mx-0 mb-0 min-h-16 items-center rounded-none border-t bg-background px-5 py-3 sm:justify-between sm:px-6">
+          <div className="hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex">
+            <ShieldCheck className="size-3.5 text-primary" />
+            应用前可预览并校验全部步骤
+          </div>
+          {!plan ? (
+            <div className="flex w-full gap-2 sm:w-auto">
+              <Button
+                className="flex-1 sm:flex-none"
+                disabled={busy}
+                onClick={() => onOpenChange(false)}
+                variant="outline"
+              >
+                取消
+              </Button>
+              <Button
+                className="flex-1 px-4 shadow-sm sm:flex-none"
+                disabled={busy || !goal.trim()}
+                onClick={() => void onGenerate(goal.trim(), allowWrite, maxSteps)}
+              >
+                {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                {busy ? "正在生成" : "生成编排草稿"}
+              </Button>
+            </div>
+          ) : (
+            <div className="flex w-full gap-2 sm:w-auto">
               <Button disabled={busy} onClick={onDiscard} variant="outline">
                 放弃计划
               </Button>
-              <Button disabled={busy || !plan.validation.valid} onClick={onApply}>
+              <Button className="flex-1 px-4 sm:flex-none" disabled={busy || !plan.validation.valid} onClick={onApply}>
                 {busy ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
                 应用到草稿
               </Button>
             </div>
-          </div>
-        )}
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -600,6 +698,7 @@ function runStatusLabel(status: string) {
       queued: "排队中",
       running: "运行中",
       passed: "已通过",
+      observed: "已通过",
       failed: "失败",
       cancelled: "已取消",
       interrupted: "已中断",

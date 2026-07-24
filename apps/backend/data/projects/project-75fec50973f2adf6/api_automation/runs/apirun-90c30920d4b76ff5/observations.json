@@ -1,0 +1,504 @@
+{
+  "observations": [
+    {
+      "case_id": "apitc-0698af50d9361082",
+      "test_point_key": "request_body.empty_object",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:02 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "105",
+        "Connection": "keep-alive",
+        "content-language": "en",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-2dc7fa6da67671f0d48959a9af9cc916-2d2e8f738e4ed341-01",
+        "vary": "Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "60",
+        "x-frame-options": "DENY",
+        "x-trace-id": "2dc7fa6da67671f0d48959a9af9cc916"
+      },
+      "response_body": {
+        "code": "400000",
+        "message": "Missing start_date LOG_ID:2dc7fa6da67671f0d48959a9af9cc916",
+        "data": null
+      }
+    },
+    {
+      "case_id": "apitc-10e12d996cfd0015",
+      "test_point_key": "body.required.start_date.missing",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:02 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "105",
+        "Connection": "keep-alive",
+        "content-language": "en",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-71d5a14df0d52bb4ae091da62462f95f-6001337801322bd9-01",
+        "vary": "Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "44",
+        "x-frame-options": "DENY",
+        "x-trace-id": "71d5a14df0d52bb4ae091da62462f95f"
+      },
+      "response_body": {
+        "code": "400000",
+        "message": "Missing start_date LOG_ID:71d5a14df0d52bb4ae091da62462f95f",
+        "data": null
+      }
+    },
+    {
+      "case_id": "apitc-27d8ade16ad9ce99",
+      "test_point_key": "body.required.start_date.empty",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:03 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "105",
+        "Connection": "keep-alive",
+        "content-language": "en",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-598d7201e1f20f2c846beac82f2c4ff0-60bf07c2c77b150a-01",
+        "vary": "Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "37",
+        "x-frame-options": "DENY",
+        "x-trace-id": "598d7201e1f20f2c846beac82f2c4ff0"
+      },
+      "response_body": {
+        "code": "400000",
+        "message": "Missing start_date LOG_ID:598d7201e1f20f2c846beac82f2c4ff0",
+        "data": null
+      }
+    },
+    {
+      "case_id": "apitc-2c9cb0cf8b3a9b4a",
+      "test_point_key": "request_body.missing",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:03 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "105",
+        "Connection": "keep-alive",
+        "content-language": "en",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-01603cc1a603642e2c3a3465e4980a46-cd2c7b7e0a4a10cb-01",
+        "vary": "Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "30",
+        "x-frame-options": "DENY",
+        "x-trace-id": "01603cc1a603642e2c3a3465e4980a46"
+      },
+      "response_body": {
+        "code": "400000",
+        "message": "Missing start_date LOG_ID:01603cc1a603642e2c3a3465e4980a46",
+        "data": null
+      }
+    },
+    {
+      "case_id": "apitc-3c63b63bbdbe5b71",
+      "test_point_key": "body.required.end_date.invalid_type",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:03 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "227",
+        "Connection": "keep-alive",
+        "allow": "POST, OPTIONS",
+        "content-language": "en",
+        "log-id": "251fac88da5b1dd069918a4c0a3109a6",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-251fac88da5b1dd069918a4c0a3109a6-072ee414d497c3e0-01",
+        "vary": "Accept, Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "63",
+        "x-frame-options": "DENY",
+        "x-trace-id": "251fac88da5b1dd069918a4c0a3109a6"
+      },
+      "response_body": {
+        "code": "000000",
+        "message": "ok",
+        "data": {
+          "user_cnt": 0,
+          "question_cnt": 0,
+          "answer_cnt": 0,
+          "useful_cnt": 0,
+          "useless_cnt": 0,
+          "user_per_question_cnt": 0,
+          "normal_answer_rate": 0.0,
+          "useful_rate": 0.0,
+          "useless_rate": 0.0
+        }
+      }
+    },
+    {
+      "case_id": "apitc-3eb81b5c5a25f1ee",
+      "test_point_key": "body.required.end_date.empty",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:03 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "103",
+        "Connection": "keep-alive",
+        "content-language": "en",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-8d377a4663af914e6bb26972f9fad734-806a81fd5c758835-01",
+        "vary": "Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "58",
+        "x-frame-options": "DENY",
+        "x-trace-id": "8d377a4663af914e6bb26972f9fad734"
+      },
+      "response_body": {
+        "code": "400000",
+        "message": "Missing end_date LOG_ID:8d377a4663af914e6bb26972f9fad734",
+        "data": null
+      }
+    },
+    {
+      "case_id": "apitc-4578ba70b96994dc",
+      "test_point_key": "body.date_relation.start_equals_end",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:03 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "227",
+        "Connection": "keep-alive",
+        "allow": "POST, OPTIONS",
+        "content-language": "en",
+        "log-id": "ef6288aa1859973d8f3c0c86cec9e5e7",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-ef6288aa1859973d8f3c0c86cec9e5e7-81fa63320a0d5100-01",
+        "vary": "Accept, Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "137",
+        "x-frame-options": "DENY",
+        "x-trace-id": "ef6288aa1859973d8f3c0c86cec9e5e7"
+      },
+      "response_body": {
+        "code": "000000",
+        "message": "ok",
+        "data": {
+          "user_cnt": 0,
+          "question_cnt": 0,
+          "answer_cnt": 0,
+          "useful_cnt": 0,
+          "useless_cnt": 0,
+          "user_per_question_cnt": 0,
+          "normal_answer_rate": 0.0,
+          "useful_rate": 0.0,
+          "useless_rate": 0.0
+        }
+      }
+    },
+    {
+      "case_id": "apitc-485f36deace612e1",
+      "test_point_key": "body.required.start_date.null",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:03 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "105",
+        "Connection": "keep-alive",
+        "content-language": "en",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-e274f285294eea721b1153a5f9f459fc-42fa8dca5aafcb9e-01",
+        "vary": "Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "41",
+        "x-frame-options": "DENY",
+        "x-trace-id": "e274f285294eea721b1153a5f9f459fc"
+      },
+      "response_body": {
+        "code": "400000",
+        "message": "Missing start_date LOG_ID:e274f285294eea721b1153a5f9f459fc",
+        "data": null
+      }
+    },
+    {
+      "case_id": "apitc-7084d955069d7d70",
+      "test_point_key": "body.required.start_date.invalid_type",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:04 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "227",
+        "Connection": "keep-alive",
+        "allow": "POST, OPTIONS",
+        "content-language": "en",
+        "log-id": "1b1691bfd7630856d0e602d2fc404b18",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-1b1691bfd7630856d0e602d2fc404b18-1ce420d1570c5982-01",
+        "vary": "Accept, Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "309",
+        "x-frame-options": "DENY",
+        "x-trace-id": "1b1691bfd7630856d0e602d2fc404b18"
+      },
+      "response_body": {
+        "code": "000000",
+        "message": "ok",
+        "data": {
+          "user_cnt": 0,
+          "question_cnt": 0,
+          "answer_cnt": 0,
+          "useful_cnt": 0,
+          "useless_cnt": 0,
+          "user_per_question_cnt": 0,
+          "normal_answer_rate": 0.0,
+          "useful_rate": 0.0,
+          "useless_rate": 0.0
+        }
+      }
+    },
+    {
+      "case_id": "apitc-8b95f258254e1eda",
+      "test_point_key": "body.end_date.invalid_format",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:04 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "227",
+        "Connection": "keep-alive",
+        "allow": "POST, OPTIONS",
+        "content-language": "en",
+        "log-id": "5f2ace75ca3e0770968e397bee81df58",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-5f2ace75ca3e0770968e397bee81df58-d49a8f5a7d343319-01",
+        "vary": "Accept, Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "94",
+        "x-frame-options": "DENY",
+        "x-trace-id": "5f2ace75ca3e0770968e397bee81df58"
+      },
+      "response_body": {
+        "code": "000000",
+        "message": "ok",
+        "data": {
+          "user_cnt": 0,
+          "question_cnt": 0,
+          "answer_cnt": 0,
+          "useful_cnt": 0,
+          "useless_cnt": 0,
+          "user_per_question_cnt": 0,
+          "normal_answer_rate": 0.0,
+          "useful_rate": 0.0,
+          "useless_rate": 0.0
+        }
+      }
+    },
+    {
+      "case_id": "apitc-9062a559b00b9b88",
+      "test_point_key": "header.required.cybertron-robot-token.empty",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:04 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "168",
+        "Connection": "keep-alive",
+        "content-language": "en",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-c15ad754a67fc3f0ae2b034f17a69855-ebe6d5c347f9bcbf-01",
+        "vary": "Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "18",
+        "x-frame-options": "DENY",
+        "x-trace-id": "c15ad754a67fc3f0ae2b034f17a69855"
+      },
+      "response_body": {
+        "code": "400001",
+        "message": "please make sure username, robot_key and robot_token is provided. LOG_ID:c15ad754a67fc3f0ae2b034f17a69855",
+        "type": "string",
+        "data": ""
+      }
+    },
+    {
+      "case_id": "apitc-9a8044b9dc3a7ecb",
+      "test_point_key": "body.date_relation.start_after_end",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:04 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "227",
+        "Connection": "keep-alive",
+        "allow": "POST, OPTIONS",
+        "content-language": "en",
+        "log-id": "729d3086a2e60c7a01f274131c5fe8ec",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-729d3086a2e60c7a01f274131c5fe8ec-18a645c4a1161d37-01",
+        "vary": "Accept, Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "167",
+        "x-frame-options": "DENY",
+        "x-trace-id": "729d3086a2e60c7a01f274131c5fe8ec"
+      },
+      "response_body": {
+        "code": "000000",
+        "message": "ok",
+        "data": {
+          "user_cnt": 0,
+          "question_cnt": 0,
+          "answer_cnt": 0,
+          "useful_cnt": 0,
+          "useless_cnt": 0,
+          "user_per_question_cnt": 0,
+          "normal_answer_rate": 0.0,
+          "useful_rate": 0.0,
+          "useless_rate": 0.0
+        }
+      }
+    },
+    {
+      "case_id": "apitc-af82804af7aeec24",
+      "test_point_key": "header.required.cybertron-robot-key.empty",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:04 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "168",
+        "Connection": "keep-alive",
+        "content-language": "en",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-5f8cb35e2c0ca5fa5adece430209699e-b645b73f042d6ac7-01",
+        "vary": "Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "13",
+        "x-frame-options": "DENY",
+        "x-trace-id": "5f8cb35e2c0ca5fa5adece430209699e"
+      },
+      "response_body": {
+        "code": "400001",
+        "message": "please make sure username, robot_key and robot_token is provided. LOG_ID:5f8cb35e2c0ca5fa5adece430209699e",
+        "type": "string",
+        "data": ""
+      }
+    },
+    {
+      "case_id": "apitc-b3059a1b62ecd65f",
+      "test_point_key": "body.required.end_date.null",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:04 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "103",
+        "Connection": "keep-alive",
+        "content-language": "en",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-acd44f0c7e89e78e7bad367456bb1d4e-b020d43302896029-01",
+        "vary": "Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "35",
+        "x-frame-options": "DENY",
+        "x-trace-id": "acd44f0c7e89e78e7bad367456bb1d4e"
+      },
+      "response_body": {
+        "code": "400000",
+        "message": "Missing end_date LOG_ID:acd44f0c7e89e78e7bad367456bb1d4e",
+        "data": null
+      }
+    },
+    {
+      "case_id": "apitc-f481362154a1fb8b",
+      "test_point_key": "body.start_date.invalid_format",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:05 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "227",
+        "Connection": "keep-alive",
+        "allow": "POST, OPTIONS",
+        "content-language": "en",
+        "log-id": "3554ac5f9e213c1849f818f7bc2f3027",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-3554ac5f9e213c1849f818f7bc2f3027-21300cc6a4405b7b-01",
+        "vary": "Accept, Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "376",
+        "x-frame-options": "DENY",
+        "x-trace-id": "3554ac5f9e213c1849f818f7bc2f3027"
+      },
+      "response_body": {
+        "code": "000000",
+        "message": "ok",
+        "data": {
+          "user_cnt": 0,
+          "question_cnt": 0,
+          "answer_cnt": 0,
+          "useful_cnt": 0,
+          "useless_cnt": 0,
+          "user_per_question_cnt": 0,
+          "normal_answer_rate": 0.0,
+          "useful_rate": 0.0,
+          "useless_rate": 0.0
+        }
+      }
+    },
+    {
+      "case_id": "apitc-f5d2477e8e3da7b4",
+      "test_point_key": "body.required.end_date.missing",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:05 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "103",
+        "Connection": "keep-alive",
+        "content-language": "en",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-2646ec3b697726bbb02d4ddae79def32-360911992ca5cc56-01",
+        "vary": "Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "56",
+        "x-frame-options": "DENY",
+        "x-trace-id": "2646ec3b697726bbb02d4ddae79def32"
+      },
+      "response_body": {
+        "code": "400000",
+        "message": "Missing end_date LOG_ID:2646ec3b697726bbb02d4ddae79def32",
+        "data": null
+      }
+    },
+    {
+      "case_id": "apitc-f7496b8a80835594",
+      "test_point_key": "header.required.username.empty",
+      "status_code": 200,
+      "response_headers": {
+        "Server": "nginx",
+        "Date": "Fri, 24 Jul 2026 07:56:05 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "168",
+        "Connection": "keep-alive",
+        "content-language": "en",
+        "referrer-policy": "same-origin",
+        "traceparent": "00-ec3fa9561e1361415bb82d8332b2d9fd-5545c6bef21d93d9-01",
+        "vary": "Accept-Language, origin, Cookie",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "19",
+        "x-frame-options": "DENY",
+        "x-trace-id": "ec3fa9561e1361415bb82d8332b2d9fd"
+      },
+      "response_body": {
+        "code": "400001",
+        "message": "please make sure username, robot_key and robot_token is provided. LOG_ID:ec3fa9561e1361415bb82d8332b2d9fd",
+        "type": "string",
+        "data": ""
+      }
+    }
+  ]
+}

@@ -19,14 +19,16 @@ import {
   type ApiProject,
   ApiRequestError,
   apiRequest,
-  createPerformanceScenario,
+  createPerformanceTest,
+  generatePerformanceScript,
   listApiAutomationEndpoints,
   listApiAutomationEnvironments,
   type PerformanceCircuitBreaker,
   type PerformanceDataConfig,
+  type PerformanceLoadConfig,
   type PerformanceLoadStage,
   type PerformanceRequestPreview,
-  type PerformanceScenarioCreatePayload,
+  type PerformanceSuccessRule,
   previewPerformanceRequest,
 } from "@/lib/api-client";
 
@@ -34,29 +36,25 @@ import { LoadStageEditor } from "./load-stage-editor";
 import { PerformanceDataEditor } from "./performance-data-editor";
 
 type NumericDraft = {
+  users: string;
+  spawnRate: string;
+  duration: string;
   waitMin: string;
   waitMax: string;
   timeout: string;
   maxFailPercent: string;
   maxAverageMs: string;
-  users: string;
-  spawnRate: string;
-  warmup: string;
-  measurement: string;
-  stopTimeout: string;
 };
 
 const initialNumbers: NumericDraft = {
+  users: "10",
+  spawnRate: "1",
+  duration: "60",
   waitMin: "1",
   waitMax: "3",
   timeout: "30",
   maxFailPercent: "0",
   maxAverageMs: "3000",
-  users: "10",
-  spawnRate: "1",
-  warmup: "30",
-  measurement: "60",
-  stopTimeout: "10",
 };
 
 const initialDataConfig: PerformanceDataConfig = {
@@ -74,11 +72,13 @@ const initialCircuitBreaker: PerformanceCircuitBreaker = {
   consecutive_windows: 3,
 };
 
-export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectId?: string }) {
+const initialSuccessRules: PerformanceSuccessRule[] = [{ kind: "status_code", status_codes: [200] }];
+
+export function PerformanceTestForm() {
   const router = useRouter();
   const previewSequence = useRef(0);
   const [projects, setProjects] = useState<ApiProject[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
   const [endpoints, setEndpoints] = useState<ApiAutomationEndpoint[]>([]);
   const [environments, setEnvironments] = useState<ApiAutomationEnvironment[]>([]);
   const [endpointId, setEndpointId] = useState("");
@@ -90,7 +90,8 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
   const [headersJson, setHeadersJson] = useState("{}");
   const [bodyJson, setBodyJson] = useState("null");
   const [successCodes, setSuccessCodes] = useState("200");
-  const [mode, setMode] = useState<"fixed" | "staged">("fixed");
+  const [successRules, setSuccessRules] = useState<PerformanceSuccessRule[]>(initialSuccessRules);
+  const [mode, setMode] = useState<PerformanceLoadConfig["mode"]>("fixed");
   const [stages, setStages] = useState<PerformanceLoadStage[]>([]);
   const [dataConfig, setDataConfig] = useState<PerformanceDataConfig>(initialDataConfig);
   const [circuitBreaker, setCircuitBreaker] = useState<PerformanceCircuitBreaker>(initialCircuitBreaker);
@@ -105,12 +106,9 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
       .then((rows) => {
         const active = rows.filter((project) => project.status === "active");
         setProjects(active);
-        if (initialProjectId && active.some((project) => project.id === initialProjectId)) {
-          setSelectedProjectId(initialProjectId);
-        }
       })
       .catch((error) => toast.error(apiErrorMessage(error, "项目加载失败")));
-  }, [initialProjectId]);
+  }, []);
 
   useEffect(() => {
     setEndpoints([]);
@@ -123,6 +121,8 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
     setQueryJson("{}");
     setHeadersJson("{}");
     setBodyJson("null");
+    setSuccessCodes("200");
+    setSuccessRules(initialSuccessRules);
     setDataConfig(initialDataConfig);
     if (!selectedProjectId) return;
     let ignore = false;
@@ -131,11 +131,6 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
         if (ignore) return;
         setEndpoints(endpointRows);
         setEnvironments(environmentRows);
-        setEndpointId(endpointRows[0]?.id ?? "");
-        setEnvironmentId(environmentRows[0]?.id ?? "");
-        if (environmentRows[0]) {
-          setNumbers((current) => ({ ...current, timeout: String(environmentRows[0].timeout_seconds) }));
-        }
       })
       .catch((error) => toast.error(apiErrorMessage(error, "接口资产加载失败")));
     return () => {
@@ -146,6 +141,9 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
   useEffect(() => {
     if (!selectedProjectId || !endpointId) return;
     const sequence = ++previewSequence.current;
+    setPreview(null);
+    setSuccessCodes("200");
+    setSuccessRules(initialSuccessRules);
     setPreviewing(true);
     previewPerformanceRequest(selectedProjectId, {
       endpoint_id: endpointId,
@@ -160,8 +158,8 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
         setBodyJson(formatJson(result.request_config.body));
         const statusRule = result.success_rules.find((rule) => rule.kind === "status_code");
         setSuccessCodes((statusRule?.status_codes ?? [200]).join(", "));
+        setSuccessRules(result.success_rules);
         setRequestTouched(false);
-        setName((current) => current.trim() || `${result.endpoint.name}性能测试`);
       })
       .catch((error) => {
         if (sequence === previewSequence.current) toast.error(apiErrorMessage(error, "请求配置预览失败"));
@@ -171,14 +169,22 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
       });
   }, [endpointId, environmentId, selectedProjectId]);
 
-  function changeMode(nextMode: "fixed" | "staged") {
+  function changeMode(nextMode: PerformanceLoadConfig["mode"]) {
     setMode(nextMode);
-    setStages(nextMode === "fixed" ? [] : defaultStages("gradient"));
+    setStages(defaultStages(nextMode));
   }
 
   function changeEndpoint(nextEndpointId: string) {
     if (requestTouched && !window.confirm("切换接口会重置当前请求配置，继续？")) return;
     setEndpointId(nextEndpointId);
+  }
+
+  function changeEnvironment(nextEnvironmentId: string) {
+    setEnvironmentId(nextEnvironmentId);
+    const environment = environments.find((item) => item.id === nextEnvironmentId);
+    if (environment) {
+      setNumbers((current) => ({ ...current, timeout: String(environment.timeout_seconds) }));
+    }
   }
 
   function updateNumber(field: keyof NumericDraft, value: string) {
@@ -190,83 +196,47 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
       toast.error("请选择项目、环境和接口，并填写测试名称");
       return;
     }
-    if (mode === "staged" && stages.length === 0) {
+    if (!preview || preview.endpoint.id !== endpointId) {
+      toast.error("请求配置预览尚未完成，请稍后重试");
+      return;
+    }
+    if (mode !== "fixed" && stages.length === 0) {
       toast.error("当前测试模式至少需要一个负载阶段");
       return;
     }
     setSaving(true);
     try {
-      const loadProfile =
-        mode === "fixed"
-          ? {
-              mode: "fixed",
-              target_users: positiveNumber(numbers.users, "目标用户数"),
-              spawn_rate: positiveNumber(numbers.spawnRate, "爬升速率"),
-              warmup_seconds: nonNegativeInteger(numbers.warmup, "预热时长"),
-              measurement_seconds: positiveNumber(numbers.measurement, "测量时长"),
-              stop_timeout_seconds: nonNegativeInteger(numbers.stopTimeout, "停止超时"),
-            }
-          : {
-              mode: "staged",
-              stages: stages.map((stage) => ({
-                name: stage.name,
-                target_users: stage.target_users,
-                spawn_rate: stage.spawn_rate,
-                hold_seconds: stage.hold_seconds,
-                record_metrics: true,
-              })),
-              stop_timeout_seconds: nonNegativeInteger(numbers.stopTimeout, "停止超时"),
-            };
-      const payload: PerformanceScenarioCreatePayload = {
+      const created = await createPerformanceTest(selectedProjectId, {
         name: name.trim(),
         description: description.trim(),
+        target_type: "endpoint",
+        endpoint_id: endpointId,
         api_environment_id: environmentId,
-        scenario_definition: {
-          personas: [
-            {
-              id: "default",
-              name: "默认用户",
-              wait_time: {
-                min_seconds: positiveNumber(numbers.waitMin, "最小等待时间"),
-                max_seconds: positiveNumber(numbers.waitMax, "最大等待时间"),
-              },
-              steps: [
-                {
-                  type: "http",
-                  endpoint_id: endpointId,
-                  request: {
-                    path_parameters: parseObject(pathJson, "Path 参数"),
-                    query_parameters: parseObject(queryJson, "Query 参数"),
-                    headers: parseObject(headersJson, "Headers"),
-                    body: parseJson(bodyJson, "Request Body"),
-                    timeout_seconds: positiveNumber(numbers.timeout, "请求超时"),
-                  },
-                  assertions: [
-                    {
-                      kind: "status_code",
-                      status_codes: successCodes
-                        .split(",")
-                        .map((value) => Number(value.trim()))
-                        .filter(Number.isInteger),
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
+        request_config: {
+          path_parameters: parseObject(pathJson, "Path 参数"),
+          query_parameters: parseObject(queryJson, "Query 参数"),
+          headers: parseObject(headersJson, "Headers"),
+          body: parseJson(bodyJson, "Request Body"),
+          random_seed: null,
         },
-        load_profile: loadProfile,
-        data_source: {
-          source: dataConfig.source,
-          selection_strategy: dataConfig.selection_strategy,
-          rows: dataConfig.json_rows,
+        load_config: {
+          mode,
+          users: positiveInteger(numbers.users, "用户数"),
+          spawn_rate: positiveNumber(numbers.spawnRate, "启动速率"),
+          measurement_duration_seconds: positiveInteger(numbers.duration, "运行时长"),
+          wait_time_min_seconds: positiveNumber(numbers.waitMin, "最小等待时间"),
+          wait_time_max_seconds: positiveNumber(numbers.waitMax, "最大等待时间"),
+          request_timeout_seconds: positiveNumber(numbers.timeout, "请求超时"),
+          stages: mode === "fixed" ? [] : stages,
         },
-        quality_gate: compactGoal(numbers),
-        safety_policy: circuitBreaker,
-      };
-      await createPerformanceScenario(selectedProjectId, payload);
-      toast.success("托管性能场景已创建");
-      router.push(`/projects/${selectedProjectId}/performance-tests`);
+        data_config: dataConfig,
+        circuit_breaker: circuitBreaker,
+        performance_goal: compactGoal(numbers),
+        success_rules: withStatusCodes(successRules, parseStatusCodes(successCodes)),
+      });
+      const script = await generatePerformanceScript(selectedProjectId, created.id);
+      toast.success("性能测试已创建，Locust 脚本已生成");
+      router.push(`/projects/${selectedProjectId}/performance-tests/${created.id}/scripts/${script.id}`);
     } catch (error) {
       toast.error(apiErrorMessage(error, "性能测试创建失败"));
     } finally {
@@ -291,7 +261,7 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
               </Button>
               <Button disabled={saving || previewing} onClick={() => void submit()}>
                 {saving ? <LoaderCircle className="animate-spin" /> : <Check />}
-                创建托管性能场景
+                保存并生成 Locust 脚本
               </Button>
             </div>
           </div>
@@ -326,12 +296,7 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
 
           <Field>
             <FieldLabel htmlFor="test-environment">环境 *</FieldLabel>
-            <Select
-              id="test-environment"
-              placeholder="选择环境"
-              setValue={(value) => setEnvironmentId(value)}
-              value={environmentId}
-            >
+            <Select id="test-environment" placeholder="选择环境" setValue={changeEnvironment} value={environmentId}>
               <SelectOption value="">选择环境</SelectOption>
               {environments.map((environment) => (
                 <SelectOption key={environment.id} value={environment.id}>
@@ -359,15 +324,18 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="test-mode">负载计划</FieldLabel>
+            <FieldLabel htmlFor="test-mode">测试模式</FieldLabel>
             <Select
               id="test-mode"
               placeholder="选择测试模式"
-              setValue={(value) => changeMode(value as "fixed" | "staged")}
+              setValue={(value) => changeMode(value as PerformanceLoadConfig["mode"])}
               value={mode}
             >
               <SelectOption value="fixed">固定负载</SelectOption>
-              <SelectOption value="staged">阶段负载</SelectOption>
+              <SelectOption value="gradient">手动梯度</SelectOption>
+              <SelectOption value="stress">压力测试</SelectOption>
+              <SelectOption value="spike">峰值测试</SelectOption>
+              <SelectOption value="endurance">耐久测试</SelectOption>
             </Select>
           </Field>
 
@@ -473,63 +441,6 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
             />
           </Field>
 
-          {mode === "fixed" ? (
-            <>
-              <Field>
-                <FieldLabel htmlFor="test-users">目标用户数</FieldLabel>
-                <Input
-                  id="test-users"
-                  min={1}
-                  onChange={(event) => updateNumber("users", event.target.value)}
-                  type="number"
-                  value={numbers.users}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="test-spawn-rate">爬升速率（用户/秒）</FieldLabel>
-                <Input
-                  id="test-spawn-rate"
-                  min={0.1}
-                  onChange={(event) => updateNumber("spawnRate", event.target.value)}
-                  step={0.1}
-                  type="number"
-                  value={numbers.spawnRate}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="test-warmup">预热时长（秒）</FieldLabel>
-                <Input
-                  id="test-warmup"
-                  min={0}
-                  onChange={(event) => updateNumber("warmup", event.target.value)}
-                  type="number"
-                  value={numbers.warmup}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="test-measurement">测量时长（秒）</FieldLabel>
-                <Input
-                  id="test-measurement"
-                  min={1}
-                  onChange={(event) => updateNumber("measurement", event.target.value)}
-                  type="number"
-                  value={numbers.measurement}
-                />
-              </Field>
-            </>
-          ) : null}
-
-          <Field>
-            <FieldLabel htmlFor="test-stop-timeout">停止超时（秒）</FieldLabel>
-            <Input
-              id="test-stop-timeout"
-              min={0}
-              onChange={(event) => updateNumber("stopTimeout", event.target.value)}
-              type="number"
-              value={numbers.stopTimeout}
-            />
-          </Field>
-
           {/* 测试数据区块 */}
           <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
             <FileText className="size-4 text-muted-foreground" />
@@ -545,6 +456,42 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
             <Gauge className="size-4 text-muted-foreground" />
             <h3 className="font-semibold text-base">负载配置</h3>
           </div>
+
+          <Field>
+            <FieldLabel htmlFor="test-users">用户数</FieldLabel>
+            <Input
+              id="test-users"
+              min={1}
+              onChange={(event) => updateNumber("users", event.target.value)}
+              step={1}
+              type="number"
+              value={numbers.users}
+            />
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="test-spawn-rate">启动速率（用户/秒）</FieldLabel>
+            <Input
+              id="test-spawn-rate"
+              min={0.1}
+              onChange={(event) => updateNumber("spawnRate", event.target.value)}
+              step={0.1}
+              type="number"
+              value={numbers.spawnRate}
+            />
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="test-duration">运行时长（秒）</FieldLabel>
+            <Input
+              id="test-duration"
+              min={1}
+              onChange={(event) => updateNumber("duration", event.target.value)}
+              step={1}
+              type="number"
+              value={numbers.duration}
+            />
+          </Field>
 
           <Field>
             <FieldLabel htmlFor="test-wait-min">最小等待时间（秒）</FieldLabel>
@@ -583,7 +530,7 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
           </Field>
 
           <Field className="md:col-span-2">
-            <LoadStageEditor mode={mode === "staged" ? "gradient" : "fixed"} onChange={setStages} stages={stages} />
+            <LoadStageEditor mode={mode} onChange={setStages} stages={stages} />
           </Field>
 
           {/* 性能目标区块 */}
@@ -687,7 +634,8 @@ export function PerformanceTestForm({ initialProjectId = "" }: { initialProjectI
   );
 }
 
-function defaultStages(mode: "gradient" | "spike" | "endurance"): PerformanceLoadStage[] {
+function defaultStages(mode: PerformanceLoadConfig["mode"]): PerformanceLoadStage[] {
+  if (mode === "fixed") return [];
   if (mode === "spike") {
     return [
       { name: "正常负载", target_users: 20, spawn_rate: 5, hold_seconds: 180, order: 0 },
@@ -734,15 +682,31 @@ function parseObject(value: string, label: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
+function parseStatusCodes(value: string): number[] {
+  const parts = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const codes = parts.map(Number);
+  if (codes.length === 0 || codes.some((code) => !Number.isInteger(code) || code < 100 || code > 599)) {
+    throw new Error("成功状态码必须是 100 到 599 之间的整数，多个状态码用逗号分隔");
+  }
+  return [...new Set(codes)];
+}
+
+function withStatusCodes(rules: PerformanceSuccessRule[], statusCodes: number[]): PerformanceSuccessRule[] {
+  return [{ kind: "status_code", status_codes: statusCodes }, ...rules.filter((rule) => rule.kind !== "status_code")];
+}
+
 function positiveNumber(value: string, label: string) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`${label} 必须大于 0`);
   return parsed;
 }
 
-function nonNegativeInteger(value: string, label: string) {
+function positiveInteger(value: string, label: string) {
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 0) throw new Error(`${label} 必须是非负整数`);
+  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`${label} 必须是大于 0 的整数`);
   return parsed;
 }
 

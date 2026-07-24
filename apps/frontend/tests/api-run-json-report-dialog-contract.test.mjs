@@ -19,8 +19,8 @@ test("API run JSON report opens in a large dialog instead of rendering below the
   assert.doesNotMatch(runDetailSource, /\{report \? <div><div className="mb-2 font-semibold text-sm">JSON 报告<\/div>/);
 });
 
-test("API run detail localizes observed status and hides internal identity metadata", () => {
-  assert.match(runDetailSource, /observed: "已观察"/);
+test("API run detail treats legacy observed status as passed and hides internal identity metadata", () => {
+  assert.match(runDetailSource, /observed: "通过"/);
   assert.doesNotMatch(
     runDetailSource,
     /<p className="mt-2 break-all font-mono text-muted-foreground text-sm">\{runId\}<\/p>/,

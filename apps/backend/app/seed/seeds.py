@@ -852,11 +852,20 @@ def _migrate_api_environment_auth_types(db: sqlite3.Connection) -> None:
 def _seed_operation_log_retention_policy(db: sqlite3.Connection) -> None:
     exists = db.execute("SELECT id FROM operation_log_retention_policy WHERE id = 'default'").fetchone()
     if exists:
+        db.execute(
+            """
+            UPDATE operation_log_retention_policy
+            SET retention_days = 10,
+                updated_by = 'system',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = 'default' AND retention_days > 10
+            """
+        )
         return
     db.execute(
         """
         INSERT INTO operation_log_retention_policy (id, retention_days, max_rows, protect_high_risk)
-        VALUES ('default', 180, 100000, 1)
+        VALUES ('default', 10, 100000, 1)
         """
     )
 

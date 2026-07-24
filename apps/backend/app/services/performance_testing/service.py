@@ -9,6 +9,7 @@ from typing import Any
 
 from app.core import settings
 from app.core.db import connect
+from app.core.environment_credentials import decrypt_api_environment_secret
 from app.core.exceptions import api_error
 from app.repositories import api_automation_repo, performance_script_repo, performance_test_repo, project_repo
 from app.schemas.performance_test import PerformanceRequestPreviewIn, PerformanceTestCreateIn, PerformanceTestUpdateIn
@@ -21,6 +22,10 @@ SENSITIVE_HEADER_NAMES = {
     "set-cookie",
     "x-api-key",
     "api-key",
+}
+ENVIRONMENT_AUTH_HEADER_NAMES = {
+    "cybertron-robot-key",
+    "cybertron-robot-token",
 }
 
 
@@ -54,22 +59,29 @@ def preview_performance_request(
             api_environment_id=payload.api_environment_id,
             require_environment=False,
         )
-        return _build_request_preview(endpoint, environment)
+        positive_case = _select_positive_case(db, project_id, endpoint["id"])
+        return _build_request_preview(endpoint, environment, positive_case)
 
 
 def create_performance_test(project_id: str, payload: PerformanceTestCreateIn, actor) -> dict[str, Any]:
     with connect() as db:
         _require_visible_project(db, project_id, actor)
-        endpoint, _ = _validate_references(
+        endpoint, environment = _validate_references(
             db,
             project_id,
             endpoint_id=payload.endpoint_id,
             api_environment_id=payload.api_environment_id,
         )
-        _validate_non_sensitive_headers(payload.request_config.headers)
-        success_rules = [rule.model_dump(mode="json", exclude_none=True) for rule in payload.success_rules]
+        request_config = payload.request_config.model_dump(mode="json")
+        request_config["headers"] = {
+            **dict(request_config.get("headers") or {}),
+            **_environment_runtime_headers(environment),
+        }
+        success_rules = _minimal_success_rules(
+            [rule.model_dump(mode="json") for rule in payload.success_rules]
+        )
         if "success_rules" not in payload.model_fields_set:
-            success_rules = [{"kind": "status_code", "status_codes": _documented_success_codes(endpoint)}]
+            success_rules = _documented_success_rules(endpoint)
         test_id = f"perftest-{secrets.token_hex(8)}"
         data_config = payload.data_config.model_dump(mode="json")
         csv_target = _csv_data_target(project_id, test_id, data_config)
@@ -85,7 +97,7 @@ def create_performance_test(project_id: str, payload: PerformanceTestCreateIn, a
                 target_type=payload.target_type,
                 endpoint_id=payload.endpoint_id,
                 api_environment_id=payload.api_environment_id,
-                request_config=payload.request_config.model_dump(mode="json"),
+                request_config=request_config,
                 load_config=payload.load_config.model_dump(mode="json"),
                 data_config=data_config,
                 circuit_breaker=payload.circuit_breaker.model_dump(mode="json"),
@@ -150,26 +162,33 @@ def update_performance_test(
         raw_fields = payload.model_dump(exclude_unset=True)
         endpoint_id = raw_fields.get("endpoint_id", current["endpoint_id"])
         api_environment_id = raw_fields.get("api_environment_id", current["api_environment_id"])
-        _validate_references(
+        _, environment = _validate_references(
             db,
             project_id,
             endpoint_id=endpoint_id,
             api_environment_id=api_environment_id,
         )
+        normalized_request_config = None
         if payload.request_config is not None:
-            _validate_non_sensitive_headers(payload.request_config.headers)
+            normalized_request_config = payload.request_config.model_dump(mode="json")
+            normalized_request_config["headers"] = {
+                **dict(normalized_request_config.get("headers") or {}),
+                **_environment_runtime_headers(environment),
+            }
 
         fields: dict[str, Any] = {}
         for field in payload.model_fields_set:
             value = getattr(payload, field)
-            if field in {"request_config", "load_config", "data_config", "circuit_breaker", "performance_goal"} and value is not None:
+            if field == "request_config" and normalized_request_config is not None:
+                fields[field] = normalized_request_config
+            elif field in {"load_config", "data_config", "circuit_breaker", "performance_goal"} and value is not None:
                 fields[field] = value.model_dump(
                     mode="json",
                     exclude_none=True,
                     exclude_unset=field == "performance_goal",
                 )
             elif field == "success_rules" and value is not None:
-                fields[field] = [rule.model_dump(mode="json", exclude_none=True) for rule in value]
+                fields[field] = _minimal_success_rules([rule.model_dump(mode="json") for rule in value])
             elif field in {"name", "description"} and isinstance(value, str):
                 fields[field] = value.strip()
             else:
@@ -209,12 +228,28 @@ def delete_performance_test(project_id: str, test_id: str, actor) -> None:
             "SELECT id, status FROM performance_test_runs WHERE project_id = ? AND performance_test_id = ?",
             (project_id, test_id),
         ).fetchall()
-        if any(row["status"] in {"created", "starting", "running", "stopping"} for row in runs):
-            raise api_error(409, "PERFORMANCE_TEST_RUN_ACTIVE", "当前压测正在运行，请停止压测后再删除。")
+    _stop_active_test_runs(runs)
+
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        _require_performance_test(db, project_id, test_id)
+        runs = db.execute(
+            "SELECT id, status FROM performance_test_runs WHERE project_id = ? AND performance_test_id = ?",
+            (project_id, test_id),
+        ).fetchall()
+    _stop_active_test_runs(runs)
+
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        _require_performance_test(db, project_id, test_id)
+        runs = db.execute(
+            "SELECT id, status FROM performance_test_runs WHERE project_id = ? AND performance_test_id = ?",
+            (project_id, test_id),
+        ).fetchall()
         run_ids = [row["id"] for row in runs]
         performance_script_repo.delete_scripts_by_test(db, test_id)
         performance_test_repo.delete_performance_test(db, test_id)
-    _cleanup_test_artifacts(project_id, run_ids)
+    _cleanup_test_artifacts(project_id, test_id, run_ids)
     operation_log_service.record_change(
         log_type="audit",
         module="performance_testing",
@@ -262,20 +297,16 @@ def _documented_success_codes(endpoint) -> list[int]:
     return codes or [200]
 
 
-def _build_request_preview(endpoint, environment=None) -> dict[str, Any]:
+def _build_request_preview(endpoint, environment=None, positive_case=None) -> dict[str, Any]:
     provenance: dict[str, str] = {}
     warnings: list[str] = []
     path_parameters: dict[str, Any] = {}
     query_parameters: dict[str, Any] = {}
     headers: dict[str, Any] = {}
-
-    # Load environment headers if available
-    environment_headers: dict[str, Any] = {}
-    if environment:
-        environment_headers = api_automation_repo.loads_json(environment.get("default_headers_json") or "{}", {})
-        # Mark headers from environment
-        for name in environment_headers:
-            provenance[f"headers.{name}"] = "environment"
+    environment_headers = _environment_runtime_headers(environment)
+    headers.update(environment_headers)
+    for name in environment_headers:
+        provenance[f"headers.{name}"] = "environment"
 
     for parameter in api_automation_repo.loads_json(endpoint["parameters_json"], []):
         if not isinstance(parameter, dict):
@@ -291,9 +322,6 @@ def _build_request_preview(endpoint, environment=None) -> dict[str, Any]:
                 headers[name] = environment_headers[env_key]
                 provenance[f"headers.{name}"] = "environment"
                 continue
-            if name.lower() in SENSITIVE_HEADER_NAMES:
-                warnings.append(f"敏感 Header {name} 将由接口自动化环境注入。")
-                continue
         value, source = _parameter_value(parameter)
         target = {"path": path_parameters, "query": query_parameters, "header": headers}[location]
         target[name] = value
@@ -303,8 +331,17 @@ def _build_request_preview(endpoint, environment=None) -> dict[str, Any]:
     if body_source:
         provenance["body"] = body_source
 
-    success_codes = _documented_success_codes(endpoint)
-    provenance["success_rules"] = "openapi_response"
+    success_rules = _documented_success_rules(endpoint)
+    if positive_case is not None:
+        case_request = api_automation_repo.loads_json(positive_case["request_json"], {})
+        case_headers = case_request.get("headers") if isinstance(case_request.get("headers"), dict) else {}
+        headers.update(case_headers)
+        if "body" in case_request:
+            body = case_request["body"]
+            provenance["body"] = "positive_api_test_case"
+        success_rules = _positive_case_success_rules(positive_case, success_rules)
+        provenance["positive_case_id"] = positive_case["id"]
+    provenance["success_rules"] = "positive_api_test_case" if positive_case is not None else "openapi_response"
     return {
         "endpoint": {
             "id": endpoint["id"],
@@ -319,10 +356,141 @@ def _build_request_preview(endpoint, environment=None) -> dict[str, Any]:
             "body": body,
             "random_seed": None,
         },
-        "success_rules": [{"kind": "status_code", "status_codes": success_codes}],
+        "success_rules": success_rules,
         "provenance": provenance,
         "warnings": list(dict.fromkeys(warnings)),
     }
+
+
+def _select_positive_case(db, project_id: str, endpoint_id: str):
+    cases = [
+        row
+        for row in api_automation_repo.list_api_test_cases(db, project_id, endpoint_id=endpoint_id)
+        if row["coverage"] == "positive"
+    ]
+    if not cases:
+        return None
+    rank = {"confirmed": 0, "inferred": 1, "needs_confirmation": 2}
+    best_rank = min(rank.get(str(row["oracle_status"]), 3) for row in cases)
+    preferred = [row for row in cases if rank.get(str(row["oracle_status"]), 3) == best_rank]
+    return max(preferred, key=lambda row: (str(row["updated_at"]), row["id"]))
+
+
+def _positive_case_success_rules(positive_case, fallback: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rules: list[dict[str, Any]] = []
+    for assertion in api_automation_repo.loads_json(positive_case["assertions_json"], []):
+        if not isinstance(assertion, dict):
+            continue
+        kind = str(assertion.get("type") or "")
+        if kind == "status_code":
+            expected = assertion.get("expected")
+            codes = expected if isinstance(expected, list) else [expected]
+            valid_codes = [code for code in codes if isinstance(code, int) and 100 <= code <= 599]
+            if valid_codes:
+                rules.append({"kind": "status_code", "status_codes": valid_codes})
+        elif kind in {"jsonpath_exists", "jsonpath_equals"} and str(assertion.get("path") or "").strip():
+            rule = {"kind": kind, "json_path": str(assertion["path"])}
+            if kind == "jsonpath_equals":
+                rule["expected"] = assertion.get("expected")
+            rules.append(rule)
+    status_rule = next((rule for rule in rules if rule["kind"] == "status_code"), None)
+    if status_rule is None:
+        status_rule = next((rule for rule in fallback if rule["kind"] == "status_code"), None)
+
+    equals_rules = [rule for rule in rules if rule["kind"] == "jsonpath_equals"]
+    if not equals_rules:
+        equals_rules = [rule for rule in fallback if rule["kind"] == "jsonpath_equals"]
+    business_rule = next((rule for rule in equals_rules if rule["json_path"] == "$.code"), None)
+    if business_rule is None:
+        business_rule = next(iter(equals_rules), None)
+
+    selected = [rule for rule in (status_rule, business_rule) if rule is not None]
+    return _minimal_success_rules(selected or fallback)
+
+
+def _minimal_success_rules(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    equals_paths = {
+        str(rule.get("json_path") or "")
+        for rule in rules
+        if rule.get("kind") == "jsonpath_equals" and str(rule.get("json_path") or "")
+    }
+    minimal: list[dict[str, Any]] = []
+    for rule in rules:
+        if rule.get("kind") == "jsonpath_exists" and str(rule.get("json_path") or "") in equals_paths:
+            continue
+        if rule not in minimal:
+            minimal.append(rule)
+    return minimal
+
+
+def _documented_success_rules(endpoint) -> list[dict[str, Any]]:
+    rules: list[dict[str, Any]] = [
+        {"kind": "status_code", "status_codes": _documented_success_codes(endpoint)}
+    ]
+    responses = api_automation_repo.loads_json(endpoint["responses_json"], {})
+    for status, response in responses.items():
+        if not str(status).isdigit() or not 200 <= int(status) < 300 or not isinstance(response, dict):
+            continue
+        content = response.get("content") if isinstance(response.get("content"), dict) else {}
+        for media in content.values():
+            if not isinstance(media, dict):
+                continue
+            examples = media.get("examples") if isinstance(media.get("examples"), dict) else {}
+            candidates = [media.get("example"), *(item.get("value") for item in examples.values() if isinstance(item, dict))]
+            sample = next((item for item in candidates if isinstance(item, dict)), None)
+            if sample and sample.get("code") is not None:
+                rules.append({"kind": "jsonpath_equals", "json_path": "$.code", "expected": sample["code"]})
+                return rules
+    return rules
+
+
+def _environment_managed_header_names(environment) -> set[str]:
+    managed = set(ENVIRONMENT_AUTH_HEADER_NAMES)
+    if environment is None:
+        return managed
+    auth_type = str(environment["auth_type"] or "")
+    auth_config = api_automation_repo.loads_json(environment["auth_config_json"], {})
+    if auth_type == "static_bearer":
+        managed.add("authorization")
+    if auth_type == "static_headers":
+        managed.update(str(name).lower() for name in auth_config.get("headers_encrypted", {}))
+    if auth_type == "cookie":
+        managed.add("cookie")
+    if auth_type == "cybertron_agent":
+        managed.add("username")
+    return managed
+
+
+def _environment_runtime_headers(row) -> dict[str, str]:
+    if row is None:
+        return {}
+    headers = {
+        str(key): str(value)
+        for key, value in api_automation_repo.loads_json(row["default_headers_json"], {}).items()
+    }
+    auth_config = api_automation_repo.loads_json(row["auth_config_json"], {})
+    auth_type = row["auth_type"]
+    if auth_type == "static_bearer" and auth_config.get("token_encrypted"):
+        token = decrypt_api_environment_secret(auth_config["token_encrypted"]) or ""
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+    if auth_type == "static_headers":
+        for key, encrypted in auth_config.get("headers_encrypted", {}).items():
+            headers[str(key)] = decrypt_api_environment_secret(str(encrypted)) or ""
+    if auth_type == "cookie" and auth_config.get("cookie_name"):
+        cookie_value = decrypt_api_environment_secret(auth_config.get("cookie_value_encrypted", "")) or ""
+        if cookie_value:
+            headers["Cookie"] = f"{auth_config['cookie_name']}={cookie_value}"
+    if auth_type == "cybertron_agent":
+        if auth_config.get("username"):
+            headers["username"] = str(auth_config["username"])
+        robot_key = decrypt_api_environment_secret(auth_config.get("cybertron_robot_key_encrypted", "")) or ""
+        robot_token = decrypt_api_environment_secret(auth_config.get("cybertron_robot_token_encrypted", "")) or ""
+        if robot_key:
+            headers["cybertron-robot-key"] = robot_key
+        if robot_token:
+            headers["cybertron-robot-token"] = robot_token
+    return headers
 
 
 def _parameter_value(parameter: dict[str, Any]) -> tuple[Any, str]:
@@ -472,16 +640,6 @@ def _schema_placeholder(schema: dict[str, Any], depth: int = 0) -> Any:
     return None
 
 
-def _validate_non_sensitive_headers(headers: dict[str, Any]) -> None:
-    sensitive = sorted(key for key in headers if key.strip().lower() in SENSITIVE_HEADER_NAMES)
-    if sensitive:
-        raise api_error(
-            400,
-            "PERFORMANCE_SENSITIVE_HEADER_OVERRIDE",
-            f"敏感 Header 必须通过接口自动化环境注入：{', '.join(sensitive)}",
-        )
-
-
 def _require_visible_project(db, project_id: str, actor):
     project = project_repo.find_by_id(db, project_id)
     if not project:
@@ -500,10 +658,22 @@ def _require_performance_test(db, project_id: str, test_id: str):
     return row
 
 
-def _cleanup_test_artifacts(project_id: str, run_ids: list[str]) -> None:
+def _stop_active_test_runs(runs) -> None:
     from app.services.performance_testing import headless_worker
 
+    for run in runs:
+        if run["status"] not in {"starting", "running", "stopping"}:
+            continue
+        if not headless_worker.stop_headless_run_and_wait(run["id"]):
+            raise api_error(
+                409,
+                "PERFORMANCE_TEST_RUN_STOP_TIMEOUT",
+                "终止运行中的压测超时，请稍后重试删除。",
+            )
+
+
+def _cleanup_test_artifacts(project_id: str, test_id: str, run_ids: list[str]) -> None:
     perf_root = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "performance_testing"
     for run_id in run_ids:
-        headless_worker.stop_headless_run(run_id)
         shutil.rmtree(perf_root / "runs" / run_id, ignore_errors=True)
+    shutil.rmtree(perf_root / "data" / test_id, ignore_errors=True)

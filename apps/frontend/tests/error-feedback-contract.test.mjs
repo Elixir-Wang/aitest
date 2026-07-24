@@ -22,6 +22,8 @@ test("error feedback toast stays selectable and does not override the global dur
 });
 
 test("global sonner toast uses variant card styling and disables swipe gestures", () => {
+  assert.doesNotMatch(sonnerSource, /from "next-themes"/);
+  assert.match(sonnerSource, /usePreferencesStore\(\(state\) => \(state\.themeMode === "dark" \? "dark" : "light"\)\)/);
   assert.match(sonnerSource, /closeButton/);
   assert.match(sonnerSource, /duration=\{5000\}/);
   assert.match(sonnerSource, /swipeDirections=\{\[\]\}/);
@@ -35,5 +37,5 @@ test("global sonner toast uses variant card styling and disables swipe gestures"
   assert.match(sonnerSource, /error:\s*"bg-card border-destructive\/50 text-foreground"/);
   assert.match(sonnerSource, /warning:\s*"bg-card border-amber-600\/50 text-foreground"/);
   assert.match(sonnerSource, /title:\s*"select-text text-xs font-medium leading-none"/);
-  assert.match(sonnerSource, /description:\s*"select-text text-xs text-muted-foreground"/);
+  assert.match(sonnerSource, /description:\s*"select-text text-xs !text-muted-foreground"/);
 });

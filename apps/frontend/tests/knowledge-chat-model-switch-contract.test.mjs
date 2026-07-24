@@ -20,6 +20,10 @@ function sourceBetween(startMarker, endMarker) {
   return pageSource.slice(startIndex, endIndex);
 }
 
+test("knowledge page names the project scope tab as knowledge Q&A", () => {
+  assert.match(pageSource, /value: "project", label: "知识库问答"/);
+});
+
 test("knowledge chat input exposes model switch instead of source mode switch", () => {
   assert.doesNotMatch(inputSource, /sourceModes/);
   assert.doesNotMatch(inputSource, /onSourceChange/);

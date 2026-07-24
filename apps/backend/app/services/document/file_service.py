@@ -7,6 +7,7 @@ from loguru import logger
 
 from app.core.db import connect
 from app.core.exceptions import api_error
+from app.core import settings
 from app.core.storage import project_requirement_dir, resolve_stored_path, store_path
 from app.repositories import document_repo, project_repo
 from app.services.document.serializer import serialize_document_from_db, serialize_file_mapping
@@ -23,6 +24,7 @@ CONVERSION_FAILED_STATUS = "failed"
 CONVERSION_PENDING_STATUS = "pending"
 CONVERSION_PROCESSING_STATUS = "processing"
 MAPPING_PENDING_MERGE_STATUS = "pending_merge"
+SUPPORTED_UPLOAD_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".md", ".markdown"}
 
 
 def sync_document_status(db, document_id: str) -> None:
@@ -60,6 +62,25 @@ async def upload_documents(
 ) -> dict:
     if not files:
         raise api_error(400, "DOCUMENT_UPLOAD_EMPTY", "请至少上传一个需求文件。")
+    if len(files) > settings.REQUIREMENT_UPLOAD_MAX_FILES:
+        raise api_error(
+            422,
+            "UPLOAD_FILE_COUNT_EXCEEDED",
+            f"单次最多上传 {settings.REQUIREMENT_UPLOAD_MAX_FILES} 个文件。",
+        )
+    declared_batch_size = sum(upload.size or 0 for upload in files)
+    if declared_batch_size > settings.REQUIREMENT_UPLOAD_MAX_BATCH_SIZE_BYTES:
+        raise api_error(413, "UPLOAD_BATCH_TOO_LARGE", "单次上传文件总大小超过限制。")
+    for upload in files:
+        filename = safe_filename_for_storage(upload.filename or "")
+        if Path(filename).suffix.lower() not in SUPPORTED_UPLOAD_EXTENSIONS:
+            raise api_error(422, "UPLOAD_FILE_TYPE_UNSUPPORTED", f"不支持该文件类型：{filename}")
+        if upload.size is not None and upload.size > settings.REQUIREMENT_UPLOAD_MAX_FILE_SIZE_BYTES:
+            raise api_error(
+                413,
+                "UPLOAD_FILE_TOO_LARGE",
+                f"单文件不能超过 {settings.REQUIREMENT_UPLOAD_MAX_FILE_SIZE_BYTES // 1024 // 1024}MB：{filename}",
+            )
     if mode not in {"new", "append"}:
         raise api_error(400, "DOCUMENT_UPLOAD_MODE_INVALID", "上传模式不正确。")
 
@@ -296,10 +317,6 @@ async def save_source_file(
     *,
     file_role: str = "supporting",
 ) -> str:
-    raw_bytes = await upload.read()
-    if not raw_bytes:
-        raise api_error(400, "DOCUMENT_UPLOAD_EMPTY", "上传文件不能为空。")
-
     mapping_id = f"docmap-{secrets.token_hex(8)}"
     safe_filename = safe_filename_for_storage(upload.filename or f"requirement-{index}")
     file_format = file_format_for_filename(safe_filename)
@@ -308,7 +325,24 @@ async def save_source_file(
     markdown_path = standard_markdown_path(project_id, document_id, mapping_id)
     original_path.parent.mkdir(parents=True, exist_ok=True)
     markdown_path.parent.mkdir(parents=True, exist_ok=True)
-    original_path.write_bytes(raw_bytes)
+    received = 0
+    try:
+        with original_path.open("wb") as target:
+            while chunk := await upload.read(1024 * 1024):
+                received += len(chunk)
+                if received > settings.REQUIREMENT_UPLOAD_MAX_FILE_SIZE_BYTES:
+                    raise api_error(
+                        413,
+                        "UPLOAD_FILE_TOO_LARGE",
+                        f"单文件不能超过 {settings.REQUIREMENT_UPLOAD_MAX_FILE_SIZE_BYTES // 1024 // 1024}MB：{safe_filename}",
+                    )
+                target.write(chunk)
+    except Exception:
+        original_path.unlink(missing_ok=True)
+        raise
+    if received == 0:
+        original_path.unlink(missing_ok=True)
+        raise api_error(400, "DOCUMENT_UPLOAD_EMPTY", "上传文件不能为空。")
 
     document_repo.create_file_mapping(
         db,

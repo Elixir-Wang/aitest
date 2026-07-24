@@ -9,6 +9,8 @@ declare module "simple-mind-map" {
     data: unknown;
     layout?: string;
     readonly?: boolean;
+    beforeTextEdit?: (node: MindMapNode) => boolean | Promise<boolean>;
+    customCheckEnableShortcut?: (event: KeyboardEvent) => boolean;
     fit?: boolean;
     mousewheelAction?: string;
     enableFreeDrag?: boolean;
@@ -47,9 +49,18 @@ declare module "simple-mind-map" {
     on(event: "node_tree_render_end", listener: () => void): void;
     on(event: "node_click", listener: (node: MindMapNode) => void): void;
     on(event: "scale", listener: (scale: number) => void): void;
+    on(
+      event: "hide_text_edit",
+      listener: (editor: HTMLElement, activeNodes: MindMapNode[], node: MindMapNode) => void,
+    ): void;
     off(event: "node_tree_render_end", listener: () => void): void;
     off(event: "node_click", listener: (node: MindMapNode) => void): void;
     off(event: "scale", listener: (scale: number) => void): void;
+    off(
+      event: "hide_text_edit",
+      listener: (editor: HTMLElement, activeNodes: MindMapNode[], node: MindMapNode) => void,
+    ): void;
+    execCommand(command: "SET_NODE_TEXT", node: MindMapNode, text: string): void;
     resize(): void;
     destroy(): void;
   }

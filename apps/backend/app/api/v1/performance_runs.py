@@ -12,7 +12,7 @@ from app.core import settings
 from app.core.db import connect
 from app.dependencies.auth import current_user
 from app.repositories import api_automation_repo, performance_script_repo, project_repo
-from app.services.performance_testing import analysis_service, headless_worker, run_repo
+from app.services.performance_testing import analysis_service, headless_worker, run_repo, service
 from app.services.performance_testing import repair_service
 from app.schemas.performance_analysis import PerformanceAnalysisApplyIn
 
@@ -465,6 +465,7 @@ def _build_runtime_environment(row) -> dict:
     return {
         "api_base_url": row["api_base_url"],
         "headers": headers,
+        "managed_header_names": sorted(service._environment_managed_header_names(row)),
         "variables": api_automation_repo.loads_json(row["variables_json"], {}),
         "verify_ssl": bool(row["verify_ssl"]),
     }

@@ -11,11 +11,11 @@
 
 创建好的智能体可以在您的工作空间再次找到，进行使用和配置。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-19_104017_2964050.5946357737818481.png)![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1611500.3920132524493922.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-19_104017_2964050.5946357737818481.png)![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1611500.3920132524493922.png)
 
 # Multi-Agent基础配置
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1611500.7889495691662558.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1611500.7889495691662558.png)
 
 ## 欢迎语
 
@@ -31,7 +31,7 @@
 
 # 添加Agent节点
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1611510.3890306946194483.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1611510.3890306946194483.png)
 
 1. 进入Multi-Agent配置页，点击屏幕下方工具栏【添加节点】；
  
@@ -46,13 +46,13 @@
  * 每个智能体只允许一条入线连接。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1611510.1205668778708533.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1611510.1205668778708533.png)
 
 3. 配置Agent，包括：
  
  1. **对话模型**：百融百工已接入多款大模型，除了我们的自研大模型Bairong系列之外，也支持部分Qwen、GPT、DeepSeek、doubao等系列模型，可点击基础设置模型栏右侧齿轮按钮进入模型配置弹窗更改对话模型，在这里也可以对发散程度、Top-P以及回复上限进行调整。
  
- ![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1611520.29911595042366934.png)
+ ![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1611520.29911595042366934.png)
  
  * 对话模型种类：包含Bairong、Qwen、GPT、DeepSeek、doubao等多种模型可选择；
  
@@ -77,7 +77,7 @@
 配置知识库能让智能体在对话时检索并使用您配置的知识内容，从而给出更贴合业务的回答。
 可以根据实际场景，统一配置所有知识库的全局策略，也可以针对某一个知识库单独优化。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202606/2026-06-04_112617_0369850.44252261625358036.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202606/2026-06-04_112617_0369850.44252261625358036.png)
 **知识库全局设置**
 点击知识库标题栏右侧的设置图标，可对该子 Agent 下全部知识库进行统一配置。
 
@@ -122,4 +122,4 @@
 
 在您完成Agent配置与调试后，若想让其正式投入使用，需要先完成发布操作。目前支持API调用、网页URL集成以及网站嵌入。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1611520.7128463572424371.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1611520.7128463572424371.png)

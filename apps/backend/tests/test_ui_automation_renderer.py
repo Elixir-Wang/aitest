@@ -98,6 +98,8 @@ def test_initialize_suite_creates_project_framework(tmp_path):
     assert "click_first_visible" in base_page
     assert "wait_for_page_ready" in waiters
     assert "failure-screenshots" in conftest
+    assert '"width": int(os.getenv("UI_VIEWPORT_WIDTH", "1440"))' in conftest
+    assert '"height": int(os.getenv("UI_VIEWPORT_HEIGHT", "900"))' in conftest
 
 
 def test_initialize_suite_preserves_existing_files(tmp_path):
@@ -164,3 +166,80 @@ def test_render_plan_parameterizes_dynamic_text_selection(tmp_path):
     assert 'CASE_DATA["parameters"]["target_model"]["values"]' in source
     assert "def test_uiauto_1(page, target_model):" in source
     assert "login_page.visible_text(str(target_model)).click()" in source
+
+
+def test_render_plan_waits_for_new_stable_response_without_welcome_message(tmp_path):
+    initialize_suite(tmp_path)
+    payload = _plan().model_dump(mode="json")
+    payload["page_objects"][0]["elements"].append(
+        {
+            "key": "last_response",
+            "locator": {
+                "strategy": "css",
+                "value": ".assistant-message:last-child",
+                "evidence_refs": ["trace.zip#assistant-message"],
+            },
+        }
+    )
+    payload["steps"].append(
+        {
+            "source_step_id": "step-4",
+            "kind": "wait_for_response",
+            "page_key": "login",
+            "element_key": "last_response",
+        }
+    )
+    plan = AutomationPlan.model_validate(payload)
+
+    source = render_automation_plan(tmp_path, plan)["test_file"].read_text(encoding="utf-8")
+
+    snapshot = "_response_before_3 = _last_locator_text(login_page.last_response)"
+    assert source.index(snapshot) < source.index("login_page.submit_button.click()")
+    assert "_wait_for_response(login_page.last_response, _response_before_3)" in source
+    assert "if current and current != previous_text:" in source
+    assert "stable_ms=2_000" in source
+
+
+def test_render_plan_places_assertion_after_its_checkpoint_step(tmp_path):
+    initialize_suite(tmp_path)
+    payload = _plan().model_dump(mode="json")
+    payload["assertions"][0]["after_step_id"] = "step-1"
+    payload["assertions"].append(
+        {
+            "source_expected_result_id": "expected-url",
+            "after_step_id": "step-3",
+            "kind": "url",
+            "expected": "/workspace",
+        }
+    )
+
+    source = render_automation_plan(tmp_path, AutomationPlan.model_validate(payload))[
+        "test_file"
+    ].read_text(encoding="utf-8")
+
+    assert source.index("expect(login_page.submit_button).to_be_visible()") < source.index(
+        "login_page.username_input.fill"
+    )
+    assert source.index("login_page.submit_button.click()") < source.index(
+        "expect(page).to_have_url(re.compile(re.escape(str(\"/workspace\"))))"
+    )
+
+
+def test_render_plan_commits_auto_populated_input_without_hardcoded_value(tmp_path):
+    initialize_suite(tmp_path)
+    payload = _plan().model_dump(mode="json")
+    payload["steps"][1] = {
+        "source_step_id": "step-2",
+        "kind": "commit_value",
+        "page_key": "login",
+        "element_key": "username_input",
+    }
+
+    source = render_automation_plan(tmp_path, AutomationPlan.model_validate(payload))[
+        "test_file"
+    ].read_text(encoding="utf-8")
+
+    assert "def _commit_current_value(locator):" in source
+    assert "current = locator.input_value().strip()" in source
+    assert 'time.strftime("release-%Y%m%d%H%M%S")' in source
+    assert "_commit_current_value(login_page.username_input)" in source

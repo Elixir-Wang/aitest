@@ -1,0 +1,814 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.6, pytest-9.0.1, pluggy-1.6.0
+rootdir: /Users/wanghongbao/project/test_project/apps/backend/data/projects/project-75fec50973f2adf6/api_automation/pytest_requests
+configfile: pytest.ini
+plugins: json-report-1.5.0, metadata-3.1.1, locust-2.45.0, base-url-2.1.0, langsmith-0.8.5, playwright-0.8.0, anyio-4.13.0
+collected 18 items
+
+testcases/openapi/v1/agent/analysis/post/test_api.py FF.FFFFFFFFFFFFF.F  [100%]
+
+=================================== FAILURES ===================================
+_________ TestAgentAnalysis.test_agent_analysis[request_body.missing] __________
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10af39810>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-022d6c538dcbb10b', 'coverage': 'negative', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 400
+E                     实际状态码: 200
+E                     响应体: {"code": "400000", "message": "Missing start_date LOG_ID:a6c915843a596a8f3c7830c492b8d371", "data": null}
+
+support/assertions.py:12: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[header.required.cybertron-robot-token.empty] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10af39450>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-23052cfe1f9828c9', 'coverage': 'security', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 401
+E                     实际状态码: 200
+E                     响应体: {"code": "400001", "message": "please make sure username, robot_key and robot_token is provided. LOG_ID:6ee2fce54b4d08c534f2dc76ef9e5280", "type": "string", "data": ""}
+
+support/assertions.py:12: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[body.required.start_date.invalid_type] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10ae9f6f0>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-3eda24072f112e7a', 'coverage': 'negative', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 400
+E                     实际状态码: 200
+E                     响应体: {"code": "000000", "message": "ok", "data": {"user_cnt": 0, "question_cnt": 0, "answer_cnt": 0, "useful_cnt": 0, "useless_cnt": 0, "user_per_question_cnt": 0, "normal_answer_rate": 0.0, "useful_rate":
+
+support/assertions.py:12: AssertionError
+____ TestAgentAnalysis.test_agent_analysis[header.required.username.empty] _____
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10aeeec30>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-5e9eb87efcd53621', 'coverage': 'security', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 401
+E                     实际状态码: 200
+E                     响应体: {"code": "400001", "message": "please make sure username, robot_key and robot_token is provided. LOG_ID:ad8ffd21840ffea670c9288b99abc209", "type": "string", "data": ""}
+
+support/assertions.py:12: AssertionError
+_____ TestAgentAnalysis.test_agent_analysis[body.end_date.invalid_format] ______
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10af5cc00>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-67497b216225fc45', 'coverage': 'negative', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 400
+E                     实际状态码: 200
+E                     响应体: {"code": "000000", "message": "ok", "data": {"user_cnt": 0, "question_cnt": 0, "answer_cnt": 0, "useful_cnt": 0, "useless_cnt": 0, "user_per_question_cnt": 0, "normal_answer_rate": 0.0, "useful_rate":
+
+support/assertions.py:12: AssertionError
+__ TestAgentAnalysis.test_agent_analysis[body.date_relation.start_after_end] ___
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10af5d040>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-8ff955527c1bf4d9', 'coverage': 'boundary', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 400
+E                     实际状态码: 200
+E                     响应体: {"code": "000000", "message": "ok", "data": {"user_cnt": 0, "question_cnt": 0, "answer_cnt": 0, "useful_cnt": 0, "useless_cnt": 0, "user_per_question_cnt": 0, "normal_answer_rate": 0.0, "useful_rate":
+
+support/assertions.py:12: AssertionError
+___ TestAgentAnalysis.test_agent_analysis[body.required.start_date.missing] ____
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10af1c050>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-90aad278780f2786', 'coverage': 'negative', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 400
+E                     实际状态码: 200
+E                     响应体: {"code": "400000", "message": "Missing start_date LOG_ID:52e6efc13993ea5f94374d774376a75f", "data": null}
+
+support/assertions.py:12: AssertionError
+____ TestAgentAnalysis.test_agent_analysis[body.required.start_date.empty] _____
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10af1fb50>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-9e49aa741cedf1c8', 'coverage': 'negative', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 400
+E                     实际状态码: 200
+E                     响应体: {"code": "400000", "message": "Missing start_date LOG_ID:49c11c2a29535654856aac5467bf3ea5", "data": null}
+
+support/assertions.py:12: AssertionError
+_____ TestAgentAnalysis.test_agent_analysis[body.required.end_date.empty] ______
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10ae974d0>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-b9a45abb8beebd6c', 'coverage': 'negative', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 400
+E                     实际状态码: 200
+E                     响应体: {"code": "400000", "message": "Missing end_date LOG_ID:ee875abdac300a4e893d05e733eb8256", "data": null}
+
+support/assertions.py:12: AssertionError
+__ TestAgentAnalysis.test_agent_analysis[body.required.end_date.invalid_type] __
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10ae977a0>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-bd061763adcd9586', 'coverage': 'negative', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 400
+E                     实际状态码: 200
+E                     响应体: {"code": "000000", "message": "ok", "data": {"user_cnt": 0, "question_cnt": 0, "answer_cnt": 0, "useful_cnt": 0, "useless_cnt": 0, "user_per_question_cnt": 0, "normal_answer_rate": 0.0, "useful_rate":
+
+support/assertions.py:12: AssertionError
+____ TestAgentAnalysis.test_agent_analysis[body.required.end_date.missing] _____
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10b118830>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-df9b471f7db1b089', 'coverage': 'negative', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 400
+E                     实际状态码: 200
+E                     响应体: {"code": "400000", "message": "Missing end_date LOG_ID:fac24a7e3ca127beebe683b5a4707e1d", "data": null}
+
+support/assertions.py:12: AssertionError
+_______ TestAgentAnalysis.test_agent_analysis[request_body.empty_object] _______
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10b11ac10>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-dfe32c0c4d6843b7', 'coverage': 'negative', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 400
+E                     实际状态码: 200
+E                     响应体: {"code": "400000", "message": "Missing start_date LOG_ID:06194b148d9e6b2928f339bce040b3ea", "data": null}
+
+support/assertions.py:12: AssertionError
+______ TestAgentAnalysis.test_agent_analysis[body.required.end_date.null] ______
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10af98c80>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-ecbf6361ea6c6566', 'coverage': 'negative', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 400
+E                     实际状态码: 200
+E                     响应体: {"code": "400000", "message": "Missing end_date LOG_ID:43cce0d54d7c3a65b27bc2a687541ed3", "data": null}
+
+support/assertions.py:12: AssertionError
+_ TestAgentAnalysis.test_agent_analysis[header.required.cybertron-robot-key.empty] _
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10af8c650>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-ed6c520c76803bba', 'coverage': 'security', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 401
+E                     实际状态码: 200
+E                     响应体: {"code": "400001", "message": "please make sure username, robot_key and robot_token is provided. LOG_ID:d3c96c228796d731567a6fa403526456", "type": "string", "data": ""}
+
+support/assertions.py:12: AssertionError
+_____ TestAgentAnalysis.test_agent_analysis[body.required.start_date.null] _____
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10af8ca10>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-f7feeae612cb4e89', 'coverage': 'negative', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 400
+E                     实际状态码: 200
+E                     响应体: {"code": "400000", "message": "Missing start_date LOG_ID:0ec52950d8024f843393c11318b88fd7", "data": null}
+
+support/assertions.py:12: AssertionError
+____ TestAgentAnalysis.test_agent_analysis[body.start_date.invalid_format] _____
+
+self = <testcases.openapi.v1.agent.analysis.post.test_api.TestAgentAnalysis object at 0x10af92780>
+api_client = <support.client.ApiClient object at 0x10af45400>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'js...npath_exists'}], 'case_id': 'apitc-ff789377f6291a9e', 'coverage': 'negative', 'created_at': '2026-07-24 14:40:27', ...}
+
+    @pytest.mark.parametrize(
+        "case",
+        load_cases(__file__, DATA_FILE),
+        ids=lambda c: c.get("test_point_key", c.get("id", "")),
+    )
+    def test_agent_analysis(self, api_client, case: dict):
+        request_data = _build_request(case)
+        response = api_client.request(request_data, case.get("test_data"))
+    
+        # needs_confirmation / inferred 用例：先记录脱敏观察证据
+        oracle_status = case.get("oracle_status", "")
+        if oracle_status in ("needs_confirmation", "inferred"):
+            record_observation(case, response)
+    
+        # 执行断言
+>       assert_response_assertions(response, case.get("assertions", []))
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}, {'expected': True, 'path': '$.code', 'type': 'jsonpath_exists'}, {'expected': True, 'path': '$.message', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+>               assert response.status_code == expected, (
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+E                   AssertionError: [断言1] status_code 失败
+E                     期望状态码: 400
+E                     实际状态码: 200
+E                     响应体: {"code": "000000", "message": "ok", "data": {"user_cnt": 0, "question_cnt": 0, "answer_cnt": 0, "useful_cnt": 0, "useless_cnt": 0, "user_per_question_cnt": 0, "normal_answer_rate": 0.0, "useful_rate":
+
+support/assertions.py:12: AssertionError
+--------------------------------- JSON report ----------------------------------
+report saved to: /Users/wanghongbao/project/test_project/apps/backend/data/projects/project-75fec50973f2adf6/api_automation/runs/apirun-639a4ff3d6203eb7/report.json
+=========================== short test summary info ============================
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[request_body.missing]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[header.required.cybertron-robot-token.empty]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[body.required.start_date.invalid_type]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[header.required.username.empty]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[body.end_date.invalid_format]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[body.date_relation.start_after_end]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[body.required.start_date.missing]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[body.required.start_date.empty]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[body.required.end_date.empty]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[body.required.end_date.invalid_type]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[body.required.end_date.missing]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[request_body.empty_object]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[body.required.end_date.null]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[header.required.cybertron-robot-key.empty]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[body.required.start_date.null]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::TestAgentAnalysis::test_agent_analysis[body.start_date.invalid_format]
+========================= 16 failed, 2 passed in 2.27s =========================

@@ -5,6 +5,8 @@ import hashlib
 import json
 import secrets
 import shutil
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -31,6 +33,57 @@ from . import artifact_storage, context, live_view, migration, runner
 
 
 CAPABILITY_ID = "ui_test_generation"
+_BACKGROUND_THREADS: set[threading.Thread] = set()
+_BACKGROUND_LOCK = threading.Lock()
+_BACKGROUND_SHUTTING_DOWN = False
+
+
+def prepare_background_tasks() -> None:
+    global _BACKGROUND_SHUTTING_DOWN
+    with _BACKGROUND_LOCK:
+        _BACKGROUND_SHUTTING_DOWN = False
+
+
+def schedule_generation_run(run_id: str) -> bool:
+    return _schedule_background(execute_generation_run, run_id, name=f"ui-generation-{run_id}")
+
+
+def schedule_execution_run(run_id: str) -> bool:
+    return _schedule_background(execute_execution_run, run_id, name=f"ui-execution-{run_id}")
+
+
+def shutdown_background_tasks(*, timeout: float = 5) -> None:
+    global _BACKGROUND_SHUTTING_DOWN
+    with _BACKGROUND_LOCK:
+        _BACKGROUND_SHUTTING_DOWN = True
+        threads = list(_BACKGROUND_THREADS)
+
+    live_view.shutdown_all()
+    runner.shutdown_all()
+
+    deadline = time.monotonic() + max(timeout, 0)
+    for thread in threads:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        thread.join(timeout=remaining)
+
+
+def _schedule_background(function, run_id: str, *, name: str) -> bool:
+    def run() -> None:
+        try:
+            function(run_id)
+        finally:
+            with _BACKGROUND_LOCK:
+                _BACKGROUND_THREADS.discard(thread)
+
+    with _BACKGROUND_LOCK:
+        if _BACKGROUND_SHUTTING_DOWN:
+            return False
+        thread = threading.Thread(target=run, name=name, daemon=True)
+        _BACKGROUND_THREADS.add(thread)
+        thread.start()
+    return True
 
 
 def create_generation_run(project_id: str, payload: dict, actor) -> dict:
@@ -567,7 +620,8 @@ def _require_visible_project(db, project_id: str, actor):
 def _ensure_project_suite_migrated(project_id: str) -> Path:
     with artifact_storage.project_workspace_lock(project_id):
         with connect() as db:
-            migration.migrate_legacy_project_suite(db, project_id)
+            report = migration.migrate_legacy_project_suite(db, project_id)
+        migration.remove_migrated_legacy_project_files(project_id, report["run_ids"])
     return project_suite_path(project_id)
 
 
@@ -710,7 +764,11 @@ __all__ = [
     "list_asset_generation_runs",
     "list_assets",
     "list_generation_runs",
+    "prepare_background_tasks",
     "recover_interrupted_ui_automation_tasks",
+    "schedule_execution_run",
+    "schedule_generation_run",
+    "shutdown_background_tasks",
     "stream_execution_live_view",
     "stop_execution_run",
 ]

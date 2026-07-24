@@ -7,6 +7,14 @@ const panelSource = readFileSync(
   "utf8",
 );
 const listSource = readFileSync(new URL("../src/components/ai-testing/test-points-list.tsx", import.meta.url), "utf8");
+const mindMapSource = readFileSync(
+  new URL("../src/components/ai-testing/test-point-mind-map.tsx", import.meta.url),
+  "utf8",
+);
+const mindMapTreeSource = readFileSync(
+  new URL("../src/components/ai-testing/mind-map-tree.tsx", import.meta.url),
+  "utf8",
+);
 const apiClientSource = readFileSync(new URL("../src/lib/api-client.ts", import.meta.url), "utf8");
 const requirementPageSource = readFileSync(
   new URL("../src/app/(main)/projects/[projectId]/requirements/[documentId]/page.tsx", import.meta.url),
@@ -28,6 +36,11 @@ test("test point generation keeps the list area visible", () => {
   assert.match(panelSource, /\{hasPoints \? \(/);
   assert.doesNotMatch(panelSource, /测试点生成中\.\.\./);
   assert.doesNotMatch(panelSource, /hasPoints && !regenerating/);
+});
+
+test("regenerating test points clears the current list immediately", () => {
+  assert.match(panelSource, /const run = await generateTestPoints\(projectId, documentId\)/);
+  assert.match(panelSource, /setData\(\(current\) =>[\s\S]*?points: \[\][\s\S]*?markdown_content: ""/);
 });
 
 test("test points tab does not expose generation errors inline", () => {
@@ -87,8 +100,23 @@ test("test points list uses the requested title and column order", () => {
   assert.doesNotMatch(listSource, /<TableHead[^>]*>来源<\/TableHead>/);
 });
 
-test("test point titles open the detail dialog", () => {
-  assert.match(listSource, /onClick=\{\(\) => openDetail\(point\)\}[\s\S]*?\{point\.title\}/);
+test("test points list does not expose point details", () => {
+  const apiTestPointType = apiClientSource.match(/export type ApiTestPoint = \{([\s\S]*?)\n\};/)?.[1] ?? "";
+
+  assert.match(listSource, /<span className="block max-w-full truncate">\{point\.title\}<\/span>/);
+  assert.doesNotMatch(listSource, /TestPointDetailDialog/);
+  assert.doesNotMatch(listSource, /openDetail/);
+  assert.doesNotMatch(listSource, /查看详情/);
+  assert.doesNotMatch(listSource, /point\.description/);
+  assert.doesNotMatch(listSource, /point\.preconditions/);
+  assert.doesNotMatch(listSource, /point\.verification_points/);
+  assert.doesNotMatch(listSource, /point\.source_refs/);
+  assert.doesNotMatch(listSource, /point\.notes/);
+  assert.match(apiTestPointType, /id: string;/);
+  assert.match(apiTestPointType, /title: string;/);
+  assert.match(apiTestPointType, /module: string;/);
+  assert.match(apiTestPointType, /priority: string;/);
+  assert.doesNotMatch(apiTestPointType, /description|preconditions|verification_points|source_refs|notes|category/);
 });
 
 test("selecting a test point in the mind map keeps the mind map visible", () => {
@@ -98,22 +126,27 @@ test("selecting a test point in the mind map keeps the mind map visible", () => 
   assert.doesNotMatch(handler, /setViewMode\("list"\)/);
 });
 
+test("editing a test point in the mind map persists and updates the shared list data", () => {
+  assert.match(panelSource, /method: "PATCH"/);
+  assert.match(panelSource, /body: JSON\.stringify\(\{ title \}\)/);
+  assert.match(
+    panelSource,
+    /points: current\.points\.map\(\(point\) => \(point\.id === pointId \? \{ \.\.\.point, title \} : point\)\)/,
+  );
+  assert.match(panelSource, /editable=\{canEdit\}/);
+  assert.match(panelSource, /onEditPoint=\{handleEditPoint\}/);
+  assert.match(mindMapSource, /editable=\{rest\.editable\}/);
+  assert.match(mindMapSource, /onEdit=\{onEditPoint\}/);
+  assert.match(mindMapTreeSource, /\[&_\.smm-quick-create-child-btn\]:hidden/);
+});
+
 test("pagination is spaced from the table and page size updates visible rows", () => {
   assert.match(listSource, /const PAGE_SIZE = 15;/);
   assert.match(listSource, /className="mt-4 flex flex-col gap-3 text-sm/);
   assert.match(listSource, /setRows\(paginatedPoints\)/);
 });
 
-test("test point detail dialog overrides the shared desktop width", () => {
-  assert.match(listSource, /style=\{\{ maxWidth: "56rem" \}\}/);
-  assert.match(listSource, /w-\[calc\(100%-2rem\)\]/);
-});
-
-test("test point detail header shows badges then title without a public point key", () => {
-  assert.match(
-    listSource,
-    /<div className="flex[^"]*">[\s\S]*?<Badge[^>]*>[\s\S]*?<Badge[^>]*>[\s\S]*?<DialogTitle[^>]*>\{point\.title\}<\/DialogTitle>[\s\S]*?<\/div>/,
-  );
+test("test points list does not expose a public point key", () => {
   assert.doesNotMatch(listSource, />ID:<\/span>/);
   assert.doesNotMatch(listSource, /point\.point_key/);
   assert.doesNotMatch(apiClientSource, /\n\s*point_key: string;/);

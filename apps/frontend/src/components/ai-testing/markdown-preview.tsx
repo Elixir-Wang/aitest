@@ -29,7 +29,7 @@ export function MarkdownPreview({
   emptyText = "当前版本暂无可展示内容。",
   onVaultFileClick,
 }: MarkdownPreviewProps) {
-  const markdown = content.trim();
+  const markdown = prepareMarkdownForPreview(content);
   const previewImages = useMemo(() => extractMarkdownImages(markdown), [markdown]);
   const [previewImageIndex, setPreviewImageIndex] = useState<number | null>(null);
   const previewImage = previewImageIndex === null ? null : previewImages[previewImageIndex];
@@ -171,6 +171,13 @@ export function MarkdownPreview({
       </Dialog>
     </>
   );
+}
+
+export function prepareMarkdownForPreview(content: string) {
+  return content
+    .replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .trim();
 }
 
 type MarkdownAstNode = {

@@ -57,7 +57,7 @@ def get_overview(project_id: str, document_id: str, actor) -> dict:
             "requirement_version_id": version["id"],
             "requirement_version_no": version["version_no"],
             "run": _serialize_run(run),
-            "points": [_serialize_point(row, point_links) for row in rows],
+            "points": [_serialize_point(row) for row in rows],
             "markdown_content": serialize_test_points([_serialize_internal_point(row) for row in rows]),
             "coverage_summary": _compute_coverage_summary(
                 run,
@@ -103,7 +103,7 @@ def update_point(project_id: str, document_id: str, point_id: str, payload: Test
                     "测试点标题已存在，请使用能够区分测试目标的唯一标题。",
                 )
         test_point_repo.update_point(db, point_id, values)
-        return _serialize_point(test_point_repo.find_point(db, point_id), {})
+        return _serialize_point(test_point_repo.find_point(db, point_id))
 
 
 def delete_point(project_id: str, document_id: str, point_id: str, actor) -> None:
@@ -179,6 +179,7 @@ def enqueue_generation(project_id: str, document_id: str, actor, *, require_admi
                 return _serialize_run(existing)
             if existing["status"] in {"completed", "failed"}:
                 test_point_repo.requeue_run(db, existing["id"])
+                test_point_repo.clear_points_for_version(db, version["id"])
                 run = test_point_repo.find_run(db, existing["id"])
                 logger.info("enqueue_generation: requeued run | run_id={}, previous_status={}", existing["id"], existing["status"])
                 return _serialize_run(run)
@@ -230,7 +231,6 @@ async def execute_generation_run(run_id: str) -> None:
         )
         if not obligations:
             raise ValueError("最终需求未提取出可验证的测试义务。")
-        unsupported_from_extraction = list(obligation_result.unverifiable_items)
         logger.info("execute_generation_run: calling generate_test_points | run_id={}, requirement={}, obligations_count={}", run_id, document["name"], len(obligations))
         generation_input = TestPointGenerationInput(
             requirement_name=document["name"],
@@ -241,7 +241,7 @@ async def execute_generation_run(run_id: str) -> None:
             had_existing_points = bool(test_point_repo.list_points(db, run["document_id"], run["requirement_version_id"]))
         existing_points: list = []
         merged_points: dict[str, object] = {}
-        unsupported_assumptions = list(unsupported_from_extraction)
+        unsupported_assumptions: list[str] = []
         missing_keys: list[str] | None = None
         final_coverage = None
         completed_supplement_round = 0
@@ -435,22 +435,30 @@ def _serialize_run(row):
     }
 
 
-def _serialize_point(row, point_links: dict[str, list[str]] | None = None):
+def _serialize_point(row):
     if not row:
         return None
-    serialized = {"id": row["id"], "project_id": row["project_id"], "document_id": row["document_id"], "requirement_version_id": row["requirement_version_id"], "generation_run_id": row["generation_run_id"], "title": row["title"], "module": row["module"], "category": row["category"], "priority": row["priority"], "description": row["description"], "preconditions": json.loads(row["preconditions_json"] or "[]"), "verification_points": json.loads(row["verification_points_json"] or "[]"), "source_refs": json.loads(row["source_refs_json"] or "[]"), "notes": row["notes"], "created_at": row["created_at"], "updated_at": row["updated_at"]}
-    if point_links is not None:
-        linked_keys = point_links.get(row["id"], [])
-        serialized["requirement_obligations"] = [{"obligation_key": k, "source_section": "", "statement": ""} for k in linked_keys]
-    else:
-        serialized["requirement_obligations"] = []
-    return serialized
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "module": row["module"],
+        "priority": row["priority"],
+    }
 
 
 def _serialize_internal_point(row):
-    serialized = _serialize_point(row, None)
-    serialized["point_key"] = row["point_key"]
-    return serialized
+    return {
+        "point_key": row["point_key"],
+        "title": row["title"],
+        "module": row["module"],
+        "category": row["category"],
+        "priority": row["priority"],
+        "description": row["description"],
+        "preconditions": json.loads(row["preconditions_json"] or "[]"),
+        "verification_points": json.loads(row["verification_points_json"] or "[]"),
+        "source_refs": json.loads(row["source_refs_json"] or "[]"),
+        "notes": row["notes"],
+    }
 
 
 def _compute_coverage_summary(

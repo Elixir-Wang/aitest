@@ -5,7 +5,17 @@ description: 在当前业务项目的 pytest_requests 目录中生成或更新 p
 
 # pytest + Requests 项目生成
 
-你直接操作当前项目的 pytest_requests 根目录。先读取现有文件，再决定创建或修改哪些文件；不要创建第二个测试项目。
+你直接操作虚拟文件系统的根目录 `/`；`/` 已经是当前业务项目的 pytest_requests 项目根目录。
+先读取 `/` 和 `/AGENTS.md`，再决定创建或修改哪些文件；不要创建第二个测试项目。
+
+## 虚拟路径契约
+
+- `/` 不是 pytest_requests 项目的上级目录。禁止创建 `/pytest_requests` 或 `pytest_requests/pytest_requests`。
+- 后端传入的 `artifacts.*` 都相对于 `/`。工具需要绝对路径时，只在 artifact 路径前加一次 `/`。
+- 例如 `testcases/example/post/test_api.py` 的唯一正确虚拟路径是 `/testcases/example/post/test_api.py`，
+  不是 `/pytest_requests/testcases/example/post/test_api.py`。
+- 禁止构造 `/Users/...`、`/home/...` 等宿主机路径。禁止用 `cp`、`rsync`、`shutil` 或临时脚本在虚拟路径与宿主机路径之间复制或搬运文件。
+- 所有读写都必须保持在 `/` 内。
 
 ## 核心约束
 

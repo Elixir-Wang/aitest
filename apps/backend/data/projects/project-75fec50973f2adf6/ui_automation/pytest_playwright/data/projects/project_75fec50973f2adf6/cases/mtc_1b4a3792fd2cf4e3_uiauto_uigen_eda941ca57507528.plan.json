@@ -32,13 +32,14 @@
         {
           "key": "use_button",
           "locator": {
-            "strategy": "role",
-            "role": "button",
-            "name": "使用",
-            "value": "",
+            "strategy": "xpath",
+            "role": "",
+            "name": "",
+            "value": "//*[contains(concat(' ', normalize-space(@class), ' '), ' agent-item-card ')][.//*[normalize-space()='标准智能体测试']]//*[normalize-space()='使用']",
             "exact": true,
             "evidence_refs": [
-              "page-workspace__root__001"
+              "page-workspace__root__001",
+              "uirun-manual-qwen-plus-response-fix-12/trace.zip#agent-card-use-span"
             ]
           }
         },
@@ -58,13 +59,14 @@
         {
           "key": "status_published",
           "locator": {
-            "strategy": "text",
+            "strategy": "xpath",
             "role": "",
             "name": "",
-            "value": "已发布",
+            "value": "//*[contains(concat(' ', normalize-space(@class), ' '), ' agent-item-card ')][.//*[normalize-space()='标准智能体测试']]//span[normalize-space()='已发布']",
             "exact": true,
             "evidence_refs": [
-              "page-workspace__root__001"
+              "page-workspace__root__001",
+              "uirun-manual-qwen-plus-no-plugin-19/failure-screenshot#standard-agent-published-status"
             ]
           }
         },
@@ -92,91 +94,128 @@
         {
           "key": "model_selector",
           "locator": {
-            "strategy": "text",
+            "strategy": "css",
             "role": "",
             "name": "",
-            "value": "对话模型",
+            "value": ".model-setting .select",
             "exact": true,
             "evidence_refs": [
-              "mtc-1b4a3792fd2cf4e3-step-3"
+              "mtc-1b4a3792fd2cf4e3-step-3",
+              "uirun-manual-qwen-plus-response-fix-2/trace.zip#.model-setting-.select"
             ]
           }
         },
         {
           "key": "history_sessions_btn",
           "locator": {
-            "strategy": "role",
-            "role": "button",
-            "name": "历史会话",
-            "value": "",
+            "strategy": "css",
+            "role": "",
+            "name": "",
+            "value": ".right-pane .chat-head .radius-right",
             "exact": true,
             "evidence_refs": [
-              "mtc-1b4a3792fd2cf4e3-step-5"
+              "mtc-1b4a3792fd2cf4e3-step-5",
+              "uirun-manual-qwen-plus-response-fix-3/trace.zip#.chat-head-svg-icon-history"
+            ]
+          }
+        },
+        {
+          "key": "published_history_sessions_btn",
+          "locator": {
+            "strategy": "css",
+            "role": "",
+            "name": "",
+            "value": ".teleport-to-agent-header .avatar-info-wrap .radius-right",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-20",
+              "uirun-manual-qwen-plus-response-fix-15/trace.zip#.teleport-to-agent-header-.avatar-info-wrap-.radius-right"
             ]
           }
         },
         {
           "key": "new_session_btn",
           "locator": {
-            "strategy": "role",
-            "role": "button",
-            "name": "新建会话",
-            "value": "",
+            "strategy": "css",
+            "role": "",
+            "name": "",
+            "value": ".conversation-list .new-conversation-btn",
             "exact": true,
             "evidence_refs": [
-              "mtc-1b4a3792fd2cf4e3-step-6"
+              "mtc-1b4a3792fd2cf4e3-step-6",
+              "uirun-manual-qwen-plus-response-fix-3/trace.zip#svg-icon-chat-new-line",
+              "uirun-manual-qwen-plus-response-fix-5/trace.zip#.new-conversation-btn"
             ]
           }
         },
         {
           "key": "chat_input",
           "locator": {
-            "strategy": "css",
+            "strategy": "placeholder",
             "role": "",
             "name": "",
-            "value": "textarea",
+            "value": "请输入问题，按Shift+Enter换行",
             "exact": true,
             "evidence_refs": [
-              "mtc-1b4a3792fd2cf4e3-step-7"
+              "mtc-1b4a3792fd2cf4e3-step-7",
+              "uirun-manual-qwen-plus-response-fix-2/failure-screenshot#chat-placeholder"
             ]
           }
         },
         {
           "key": "send_btn",
           "locator": {
-            "strategy": "role",
-            "role": "button",
-            "name": "发送",
-            "value": "",
+            "strategy": "css",
+            "role": "",
+            "name": "",
+            "value": ".chat-bottom-tools .sent-btn[role='button']",
             "exact": true,
             "evidence_refs": [
-              "mtc-1b4a3792fd2cf4e3-step-7"
+              "mtc-1b4a3792fd2cf4e3-step-7",
+              "uirun-manual-qwen-plus-response-fix-3/trace.zip#.sent-btn"
             ]
           }
         },
         {
           "key": "last_response",
           "locator": {
-            "strategy": "css",
+            "strategy": "xpath",
             "role": "",
             "name": "",
-            "value": "[class*='message']:last-of-type",
+            "value": "(//*[contains(concat(' ', normalize-space(@class), ' '), ' bot-chart-content-item-left ')]//*[contains(concat(' ', normalize-space(@class), ' '), ' bot-chart-content-content ')])[last()]",
             "exact": true,
             "evidence_refs": [
-              "mtc-1b4a3792fd2cf4e3-step-8"
+              "mtc-1b4a3792fd2cf4e3-step-8",
+              "uirun-227ca1e659cbf551/trace.zip#bot-chart-content-item-left",
+              "uirun-manual-qwen-plus-response-fix-7/failure-screenshot#flow-exit-after-assistant"
+            ]
+          }
+        },
+        {
+          "key": "flow_exit_status",
+          "locator": {
+            "strategy": "text",
+            "role": "",
+            "name": "",
+            "value": "flow_exit",
+            "exact": true,
+            "evidence_refs": [
+              "mtc-1b4a3792fd2cf4e3-step-10",
+              "uirun-manual-qwen-plus-response-fix-16/failure-screenshot#flow_exit-status-node"
             ]
           }
         },
         {
           "key": "publish_btn",
           "locator": {
-            "strategy": "text",
-            "role": "",
-            "name": "",
-            "value": "发布",
+            "strategy": "role",
+            "role": "button",
+            "name": "发布",
+            "value": "",
             "exact": true,
             "evidence_refs": [
-              "mtc-1b4a3792fd2cf4e3-step-13"
+              "mtc-1b4a3792fd2cf4e3-step-13",
+              "uirun-manual-qwen-plus-response-fix-8/stdout#unique-publish-button"
             ]
           }
         }
@@ -191,39 +230,42 @@
         {
           "key": "version_input",
           "locator": {
-            "strategy": "css",
+            "strategy": "placeholder",
             "role": "",
             "name": "",
-            "value": "input",
+            "value": "支持自定义版本号；若为 X.Y.Z 格式，最大 99.9.9",
             "exact": true,
             "evidence_refs": [
-              "mtc-1b4a3792fd2cf4e3-step-14"
+              "mtc-1b4a3792fd2cf4e3-step-14",
+              "agentRelease-live-dom#version-placeholder"
             ]
           }
         },
         {
           "key": "log_input",
           "locator": {
-            "strategy": "css",
+            "strategy": "placeholder",
             "role": "",
             "name": "",
-            "value": "textarea",
+            "value": "请填写发布日志",
             "exact": true,
             "evidence_refs": [
-              "mtc-1b4a3792fd2cf4e3-step-15"
+              "mtc-1b4a3792fd2cf4e3-step-15",
+              "agentRelease-live-dom#release-log-placeholder"
             ]
           }
         },
         {
           "key": "publish_confirm_btn",
           "locator": {
-            "strategy": "role",
-            "role": "button",
-            "name": "发布",
-            "value": "",
+            "strategy": "text",
+            "role": "",
+            "name": "",
+            "value": "发布",
             "exact": true,
             "evidence_refs": [
-              "mtc-1b4a3792fd2cf4e3-step-16"
+              "mtc-1b4a3792fd2cf4e3-step-16",
+              "agentRelease-live-dom#unique-publish-span"
             ]
           }
         },
@@ -243,13 +285,14 @@
         {
           "key": "confirm_btn",
           "locator": {
-            "strategy": "role",
-            "role": "button",
-            "name": "确认",
-            "value": "",
+            "strategy": "css",
+            "role": "",
+            "name": "",
+            "value": ".confirm-dialog.uui-modal-root button.uui-btn-primary:visible",
             "exact": true,
             "evidence_refs": [
-              "mtc-1b4a3792fd2cf4e3-step-17"
+              "mtc-1b4a3792fd2cf4e3-step-17",
+              "uirun-manual-qwen-plus-response-fix-13/trace.zip#visible-confirm-dialog-button"
             ]
           }
         },
@@ -259,10 +302,11 @@
             "strategy": "text",
             "role": "",
             "name": "",
-            "value": "正在发布版本",
+            "value": "已成功发布",
             "exact": true,
             "evidence_refs": [
-              "mtc-1b4a3792fd2cf4e3-step-17"
+              "mtc-1b4a3792fd2cf4e3-step-17",
+              "uirun-manual-qwen-plus-response-fix-11/failure-screenshot#published-success"
             ]
           }
         }
@@ -319,6 +363,14 @@
       "value": ""
     },
     {
+      "source_step_id": "step-6-close-history",
+      "kind": "click",
+      "page_key": "bot_settings_page",
+      "element_key": "history_sessions_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
       "source_step_id": "step-7",
       "kind": "fill",
       "page_key": "bot_settings_page",
@@ -336,7 +388,7 @@
     },
     {
       "source_step_id": "step-8",
-      "kind": "wait_visible",
+      "kind": "wait_for_response",
       "page_key": "bot_settings_page",
       "element_key": "last_response",
       "value_ref": "",
@@ -360,31 +412,7 @@
     },
     {
       "source_step_id": "step-10",
-      "kind": "wait_visible",
-      "page_key": "bot_settings_page",
-      "element_key": "last_response",
-      "value_ref": "",
-      "value": ""
-    },
-    {
-      "source_step_id": "step-11",
-      "kind": "fill",
-      "page_key": "bot_settings_page",
-      "element_key": "chat_input",
-      "value_ref": "",
-      "value": "北京今日天气"
-    },
-    {
-      "source_step_id": "step-11-send",
-      "kind": "click",
-      "page_key": "bot_settings_page",
-      "element_key": "send_btn",
-      "value_ref": "",
-      "value": ""
-    },
-    {
-      "source_step_id": "step-12",
-      "kind": "wait_visible",
+      "kind": "wait_for_response",
       "page_key": "bot_settings_page",
       "element_key": "last_response",
       "value_ref": "",
@@ -400,11 +428,11 @@
     },
     {
       "source_step_id": "step-14",
-      "kind": "fill",
+      "kind": "commit_value",
       "page_key": "publish_dialog",
       "element_key": "version_input",
       "value_ref": "",
-      "value": "1.0.0"
+      "value": ""
     },
     {
       "source_step_id": "step-15",
@@ -455,10 +483,26 @@
       "value": ""
     },
     {
+      "source_step_id": "step-20-history",
+      "kind": "click",
+      "page_key": "bot_settings_page",
+      "element_key": "published_history_sessions_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
       "source_step_id": "step-20",
       "kind": "click",
       "page_key": "bot_settings_page",
       "element_key": "new_session_btn",
+      "value_ref": "",
+      "value": ""
+    },
+    {
+      "source_step_id": "step-20-close-history",
+      "kind": "click",
+      "page_key": "bot_settings_page",
+      "element_key": "published_history_sessions_btn",
       "value_ref": "",
       "value": ""
     },
@@ -480,7 +524,7 @@
     },
     {
       "source_step_id": "step-22",
-      "kind": "wait_visible",
+      "kind": "wait_for_response",
       "page_key": "bot_settings_page",
       "element_key": "last_response",
       "value_ref": "",
@@ -504,31 +548,7 @@
     },
     {
       "source_step_id": "step-24",
-      "kind": "wait_visible",
-      "page_key": "bot_settings_page",
-      "element_key": "last_response",
-      "value_ref": "",
-      "value": ""
-    },
-    {
-      "source_step_id": "step-25",
-      "kind": "fill",
-      "page_key": "bot_settings_page",
-      "element_key": "chat_input",
-      "value_ref": "",
-      "value": "北京今日天气"
-    },
-    {
-      "source_step_id": "step-25-send",
-      "kind": "click",
-      "page_key": "bot_settings_page",
-      "element_key": "send_btn",
-      "value_ref": "",
-      "value": ""
-    },
-    {
-      "source_step_id": "step-26",
-      "kind": "wait_visible",
+      "kind": "wait_for_response",
       "page_key": "bot_settings_page",
       "element_key": "last_response",
       "value_ref": "",
@@ -538,6 +558,7 @@
   "assertions": [
     {
       "source_expected_result_id": "er-1",
+      "after_step_id": "step-1",
       "kind": "url",
       "page_key": "workspace_page",
       "element_key": "",
@@ -546,6 +567,7 @@
     },
     {
       "source_expected_result_id": "er-2",
+      "after_step_id": "step-1",
       "kind": "visible",
       "page_key": "workspace_page",
       "element_key": "agent_card",
@@ -554,30 +576,25 @@
     },
     {
       "source_expected_result_id": "er-8",
-      "kind": "text",
+      "after_step_id": "step-8",
+      "kind": "visible",
       "page_key": "bot_settings_page",
       "element_key": "last_response",
       "expected_ref": "",
-      "expected": "flow_exit"
+      "expected": ""
     },
     {
       "source_expected_result_id": "er-10",
+      "after_step_id": "step-10",
       "kind": "text",
       "page_key": "bot_settings_page",
-      "element_key": "last_response",
+      "element_key": "flow_exit_status",
       "expected_ref": "",
       "expected": "flow_exit"
     },
     {
-      "source_expected_result_id": "er-12",
-      "kind": "text",
-      "page_key": "bot_settings_page",
-      "element_key": "last_response",
-      "expected_ref": "",
-      "expected": "调用完成"
-    },
-    {
       "source_expected_result_id": "er-16",
+      "after_step_id": "step-16",
       "kind": "visible",
       "page_key": "publish_dialog",
       "element_key": "confirm_dialog_text",
@@ -586,6 +603,7 @@
     },
     {
       "source_expected_result_id": "er-18",
+      "after_step_id": "step-19",
       "kind": "visible",
       "page_key": "workspace_page",
       "element_key": "status_published",
@@ -594,19 +612,12 @@
     },
     {
       "source_expected_result_id": "er-24",
+      "after_step_id": "step-24",
       "kind": "text",
       "page_key": "bot_settings_page",
-      "element_key": "last_response",
+      "element_key": "flow_exit_status",
       "expected_ref": "",
       "expected": "flow_exit"
-    },
-    {
-      "source_expected_result_id": "er-26",
-      "kind": "text",
-      "page_key": "bot_settings_page",
-      "element_key": "last_response",
-      "expected_ref": "",
-      "expected": "调用完成"
     }
   ],
   "artifacts": {

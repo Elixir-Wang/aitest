@@ -32,7 +32,7 @@
 
 支持通过邀请链接邀请其他用户加入当前空间，实现跨成员协作与资源共享。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142490.0569053012388977.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142490.0569053012388977.png)
 
 空间管理者可在成员管理页面生成邀请链接，并根据协作需求为被邀请成员分配不同角色。支持以下两种邀请方式：
 
@@ -56,7 +56,7 @@
 
 配置完成后，点击【复制链接】即可生成对应邀请链接，并分享给需要加入空间的用户。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142490.3580534907774845.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142490.3580534907774845.png)
 
 接受他人的空间邀请后，即可进入对方的空间。在对方空间中，可根据被分配的角色和权限，使用对方创建的智能体，无需重复搭建，高效协同工作。
 
@@ -64,7 +64,7 @@
 
 空间管理员与空间所有者可对成员进行权限变更，具体包括智能体权限变更和知识库权限变更，相关功能将在 1.4智能体权限配置 和 1.5章节知识库权限配置 中详细说明。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142500.5442867117309523.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142500.5442867117309523.png)
 
 #### 删除成员
 
@@ -75,7 +75,7 @@
 2. 点击【删除成员】即可，删除后对方将无法再访问该空间及内部所有资源。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142500.09829851413158608.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142500.09829851413158608.png)
 
 ### 1.4 智能体权限配置
 
@@ -93,12 +93,12 @@
 
 * 若成员角色为空间管理者，默认拥有所有智能体权限，无法进行单独的智能体权限变更。
  
- ![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142500.4599959458325831.png)
+ ![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142500.4599959458325831.png)
  
 * 若成员角色为空间成员，管理员可以逐一设置其对各个智能体的操作权限。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142510.7542844069705932.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142510.7542844069705932.png)
 
 ### 1.5 知识库权限配置
 
@@ -108,7 +108,7 @@
 
 对于空间成员, 可为其逐一设置其对各个知识库的访问编辑权限。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142510.06914319928736923.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142510.06914319928736923.png)
 
 #### 操作方式
 
@@ -127,9 +127,9 @@
 * 空间内已有资源与成员关系将保留不变。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142510.973404179749536.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142510.973404179749536.png)
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142510.5761436202295085.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142510.5761436202295085.png)
 
 #### 删除空间
 
@@ -138,7 +138,7 @@
 * 请务必在删除前备份重要数据，确认无使用需求后再操作。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142520.8451945916788367.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142520.8451945916788367.png)
 
 * * *
 
@@ -189,23 +189,23 @@
  
 2. 点击【邀请成员】按钮；
  
- ![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142520.8716895236399654.png)
+ ![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142520.8716895236399654.png)
  
 3. 输入目标用户用户名选择成员后，为其设定角色，随后点击【确认】完成邀请。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142520.2736705422579606.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142520.2736705422579606.png)
 
 #### 权限变更
 
 1. 进入空间管理页，在空间成员列表中找到要操作的成员；
  
- ![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142530.03565999235525852.png)
+ ![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142530.03565999235525852.png)
  
 2. 点击成员按钮，重新选择成员角色，确定即可生效。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142530.03946078414025134.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142530.03946078414025134.png)
 
 #### 删除成员
 
@@ -214,7 +214,7 @@
 2. 点击【删除成员】即可，删除后对方将无法再访问该空间及内部所有资源。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142540.43513601187676654.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142540.43513601187676654.png)
 
 ### 2.4 智能体权限配置
 
@@ -237,18 +237,18 @@
 
 1. 邀请成员：在【智能体设置】页，点击【邀请成员】，输入用户名并为其分配角色；
  
- ![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142540.825819855810092.png)
+ ![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142540.825819855810092.png)
  
- ![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142540.7604007123495744.png)
+ ![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142540.7604007123495744.png)
  
 2. 权限变更：点击成员右侧，【权限变更】进行修改；
  
- ![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142550.5870934022678578.png)
+ ![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142550.5870934022678578.png)
  
 3. 移除成员：点击对应成员右侧【移除成员】按钮，确认后即可将该成员移出当前智能体。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142550.593356397703645.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142550.593356397703645.png)
 
 ### 2.5 资源库权限配置
 
@@ -271,20 +271,20 @@
 
 1. 邀请成员：在知识库设置页面点击【邀请成员】，输入目标用户 ID，并为成员分配对应角色后完成邀请；
  
- ![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142550.22185296967486856.png)
+ ![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142550.22185296967486856.png)
  
- ![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142560.037061591838285945.png)
+ ![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142560.037061591838285945.png)
  
 2. 权限变更：点击对应成员右侧【权限变更】按钮，可调整当前成员的角色及权限配置；
  
- ![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142560.8282929272624373.png)
+ ![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142560.8282929272624373.png)
  
- ![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142560.8533079252349531.png)
+ ![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142560.8533079252349531.png)
  
 3. 移除成员：点击对应成员右侧【移除成员】按钮，确认后即可将该成员移出当前知识库。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142570.4777567816468524.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142570.4777567816468524.png)
 
 ### 2.6 删除空间
 
@@ -295,4 +295,4 @@
 * 请务必在删除前备份重要数据，确认无使用需求后再操作。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-29_1142570.619628778450287.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-29_1142570.619628778450287.png)

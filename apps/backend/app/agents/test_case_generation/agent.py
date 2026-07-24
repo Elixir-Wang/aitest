@@ -5,6 +5,7 @@ from pathlib import Path
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 
+from app.agents.shared.invalid_tool_call_recovery import InvalidToolCallRecoveryMiddleware
 from app.agents.shared.skill_middleware import SkillMiddleware
 from app.agents.test_case_generation.schemas import TestCaseGenerationResult
 
@@ -44,7 +45,7 @@ def test_case_generation_agent(
         model=model,
         tools=[],
         system_prompt=base_prompt,         # 基础提示词
-        middleware=[skill_middleware],      # ⭐ Skill 中间件
+        middleware=[skill_middleware, InvalidToolCallRecoveryMiddleware()],
         response_format=ToolStrategy(TestCaseGenerationResult),
     )
 

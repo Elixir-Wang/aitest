@@ -8,6 +8,7 @@ from app.agents.requirement_finalization.schemas import (
 )
 
 CAPABILITY_ID = "requirement_analysis"
+MAX_FINALIZATION_ATTEMPTS = 2
 
 
 async def run_requirement_finalization(input_data: RequirementFinalizationInput) -> RequirementFinalizationOutput:
@@ -27,8 +28,21 @@ async def run_requirement_finalization(input_data: RequirementFinalizationInput)
     )
     selection = resolve_model_selection(CAPABILITY_ID)
     model = build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
-    agent = requirement_finalization_agent(model)
-    result = await agent.ainvoke({"messages": [{"role": "user", "content": content}]})
+    last_error: Exception | None = None
+    for _attempt in range(MAX_FINALIZATION_ATTEMPTS):
+        agent = requirement_finalization_agent(model)
+        try:
+            result = await agent.ainvoke({"messages": [{"role": "user", "content": content}]})
+            return _parse_finalization_output(result)
+        except Exception as exc:
+            last_error = exc
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("最终需求智能体未执行。")
+
+
+def _parse_finalization_output(result) -> RequirementFinalizationOutput:
     if not isinstance(result, dict):
         raise ValueError("最终需求智能体输出格式不正确。")
     structured = result.get("structured_response")

@@ -30,6 +30,10 @@ def test_agent_uses_project_suite_as_filesystem_root(monkeypatch, tmp_path: Path
     assert captured["kwargs"]["skills"] == [".deepagents/skills"]
     assert (suite_path / ".deepagents" / "skills" / "pytest-requests-code-generation" / "SKILL.md").is_file()
     assert "utils/data_loader.py" in captured["kwargs"]["system_prompt"]
+    assert "虚拟根目录 `/` 已经是" in captured["kwargs"]["system_prompt"]
+    assert "禁止创建 `/pytest_requests`" in captured["kwargs"]["system_prompt"]
+    assert "/testcases/example/post/test_api.py" in captured["kwargs"]["system_prompt"]
+    assert "`cp`、`rsync`、`shutil`" in captured["kwargs"]["system_prompt"]
     assert any(tool.name == "run_pytest_collection" for tool in captured["kwargs"]["tools"])
 
 
@@ -66,5 +70,8 @@ def test_endpoint_generation_requires_backend_artifact_targets(monkeypatch, tmp_
     assert result == {"messages": []}
     assert "artifacts.test_file" in content
     assert "唯一合法" in content
+    assert "`/` 已经是 pytest_requests" in content
+    assert "禁止创建 `/pytest_requests`" in content
+    assert "只在前面加一次 `/`" in content
     assert "testcases/openapi/v1/agent/analysis/post/test_api.py" in content
     assert "testcases/openapi/v1/agent/analysis/post/cases.yaml" in content

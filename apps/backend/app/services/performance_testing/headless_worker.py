@@ -20,6 +20,7 @@ from app.services.performance_testing.locust_runtime import runtime_locustfile_s
 
 _PROCESSES: dict[str, subprocess.Popen] = {}
 _STOP_REQUESTED: set[str] = set()
+_MONITOR_FINISHED: dict[str, threading.Event] = {}
 _PROCESS_LOCK = threading.Lock()
 
 
@@ -153,12 +154,19 @@ def start_headless_run(run_id: str, options: dict[str, Any] | None = None) -> bo
             _prune_run_history(db, run["project_id"], run["performance_test_id"])
         raise
 
+    monitor_finished = threading.Event()
+    monitor = threading.Thread(
+        target=_monitor_run_guarded,
+        args=(run_id, process, stdout_file, stderr_file, run_dir, monitor_finished),
+        daemon=True,
+    )
     with _PROCESS_LOCK:
         _PROCESSES[run_id] = process
+        _MONITOR_FINISHED[run_id] = monitor_finished
     with connect() as db:
         run_repo.update_run_status(db, run_id, "starting")
         run_repo.append_event(db, run_id, "worker_started", "info", "性能测试 Worker 已启动", {"pid": process.pid})
-    threading.Thread(target=_monitor_run, args=(run_id, process, stdout_file, stderr_file, run_dir), daemon=True).start()
+    monitor.start()
     return True
 
 
@@ -254,6 +262,7 @@ def _collect_locust_results(db, run_id: str, run_dir: Path) -> None:
                 "source": "locust_csv",
             })
     run_repo.clear_failure_details(db, run_id)
+    locust_events = _read_locust_events(run_dir / "locust-events.jsonl")
     imported_failures = False
     failures_path = run_dir / "result_failures.csv"
     if failures_path.exists():
@@ -261,6 +270,15 @@ def _collect_locust_results(db, run_id: str, run_dir: Path) -> None:
             for row in csv.DictReader(handle):
                 imported_failures = True
                 reason = _normalize_failure_reason(str(row.get("Error") or ""))
+                event = _matching_failure_event(
+                    locust_events,
+                    method=str(row.get("Method") or ""),
+                    name=str(row.get("Name") or ""),
+                    reason=reason,
+                )
+                status_code = _failure_status_code(reason)
+                if status_code is None and event and event.get("status_code"):
+                    status_code = int(event["status_code"])
                 run_repo.upsert_failure(
                     db,
                     run_id=run_id,
@@ -268,7 +286,8 @@ def _collect_locust_results(db, run_id: str, run_dir: Path) -> None:
                     method=str(row.get("Method") or ""),
                     reason=reason,
                     count=int(float(row.get("Occurrences") or 1)),
-                    status_code=_failure_status_code(reason),
+                    status_code=status_code,
+                    response_excerpt=str(event.get("response_excerpt") or "") if event else "",
                 )
     imported_exceptions = False
     exceptions_path = run_dir / "result_exceptions.csv"
@@ -285,13 +304,8 @@ def _collect_locust_results(db, run_id: str, run_dir: Path) -> None:
                     message=message,
                     count=int(float(row.get("Count") or 1)),
                 )
-    events_path = run_dir / "locust-events.jsonl"
-    if events_path.exists():
-        for line in events_path.read_text(encoding="utf-8").splitlines():
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+    if locust_events:
+        for event in locust_events:
             if event.get("kind") == "failure" and not imported_failures:
                 run_repo.upsert_failure(
                     db,
@@ -300,6 +314,7 @@ def _collect_locust_results(db, run_id: str, run_dir: Path) -> None:
                     method=str(event.get("request_type") or ""),
                     reason=_normalize_failure_reason(str(event.get("reason") or "HTTP failure")),
                     status_code=int(event["status_code"]) if event.get("status_code") else None,
+                    response_excerpt=str(event.get("response_excerpt") or ""),
                 )
             elif event.get("kind") == "exception" and not imported_exceptions:
                 run_repo.upsert_exception(
@@ -310,6 +325,69 @@ def _collect_locust_results(db, run_id: str, run_dir: Path) -> None:
                     message=str(event.get("message") or "")[:2000],
                 )
     run_repo.set_report_directory(db, run_id, str(run_dir))
+
+
+def _read_locust_events(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    events: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            events.append(event)
+    return events
+
+
+def _matching_failure_event(
+    events: list[dict[str, Any]],
+    *,
+    method: str,
+    name: str,
+    reason: str,
+) -> dict[str, Any] | None:
+    exact = next(
+        (
+            event
+            for event in events
+            if event.get("kind") == "failure"
+            and str(event.get("request_type") or "") == method
+            and str(event.get("name") or "") == name
+            and _normalize_failure_reason(str(event.get("reason") or "")) == reason
+        ),
+        None,
+    )
+    if exact:
+        return exact
+    return next(
+        (
+            event
+            for event in events
+            if event.get("kind") == "failure"
+            and str(event.get("request_type") or "") == method
+            and str(event.get("name") or "") == name
+        ),
+        None,
+    )
+
+
+def _monitor_run_guarded(
+    run_id: str,
+    process: subprocess.Popen,
+    stdout_file,
+    stderr_file,
+    run_dir: Path,
+    finished: threading.Event,
+) -> None:
+    try:
+        _monitor_run(run_id, process, stdout_file, stderr_file, run_dir)
+    finally:
+        finished.set()
+        with _PROCESS_LOCK:
+            if _MONITOR_FINISHED.get(run_id) is finished:
+                _MONITOR_FINISHED.pop(run_id, None)
 
 
 def _monitor_run(
@@ -381,6 +459,15 @@ def stop_headless_run(run_id: str) -> bool:
     except subprocess.TimeoutExpired:
         process.kill()
     return True
+
+
+def stop_headless_run_and_wait(run_id: str, *, timeout: float = 15.0) -> bool:
+    with _PROCESS_LOCK:
+        finished = _MONITOR_FINISHED.get(run_id)
+    stop_headless_run(run_id)
+    if finished is None:
+        return True
+    return finished.wait(timeout)
 
 
 def reset_headless_stats(run_id: str) -> bool:

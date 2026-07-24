@@ -127,6 +127,30 @@ def _stored_point(key: str, title: str) -> dict:
     }
 
 
+def test_enqueue_regeneration_clears_existing_points_and_links(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_run(with_existing_point=True)
+    with core_db.connect() as db:
+        test_point_repo.update_run(db, "run-1", status="completed")
+
+    run = test_point_service.enqueue_generation(
+        "project-1",
+        "doc-1",
+        {"id": "u-admin", "role": "admin", "project_scope": "全部项目"},
+    )
+
+    with core_db.connect() as db:
+        points = test_point_repo.list_points(db, "doc-1", "version-1")
+        links = test_point_repo.list_point_obligation_links(db, "version-1")
+
+    assert run["status"] == "queued"
+    assert points == []
+    assert links == {}
+
+
 def test_atomize_module_obligations_keeps_multi_agent_independently_coverable():
     obligations = test_point_service._atomize_module_obligations(
         [
@@ -190,6 +214,44 @@ def test_generation_supplements_only_missing_obligations(
     assert run["covered_obligation_count"] == 2
     assert {point["point_key"] for point in points} == {"point-1", "point-2"}
     assert sorted(key for values in links.values() for key in values) == ["REQ-001", "REQ-002"]
+
+
+def test_generation_ignores_unverifiable_requirement_items(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_run()
+    calls = []
+
+    async def fake_extract(input_data):
+        return _obligations().model_copy(
+            update={"unverifiable_items": ["Go 版本待补充", "超过限制后的处理未定义"]}
+        )
+
+    async def fake_generate(input_data, *, obligations, existing_points=None, missing_obligation_keys=None):
+        calls.append(missing_obligation_keys)
+        return GenerationResult(
+            points=[
+                _generated_point("point-1", "REQ-001"),
+                _generated_point("point-2", "REQ-002"),
+            ]
+        )
+
+    monkeypatch.setattr(test_point_service, "extract_requirement_obligations", fake_extract)
+    monkeypatch.setattr(test_point_service, "generate_test_points", fake_generate)
+
+    asyncio.run(test_point_service.execute_generation_run("run-1"))
+
+    with core_db.connect() as db:
+        run = test_point_repo.find_run(db, "run-1")
+
+    assert calls == [None]
+    assert run["status"] == "completed"
+    assert run["coverage_status"] == "complete"
+    assert run["obligation_count"] == 2
+    assert run["covered_obligation_count"] == 2
+    assert json.loads(run["unsupported_assumptions_json"]) == []
 
 
 def test_generation_merges_obligation_links_when_supplement_reuses_point_key(

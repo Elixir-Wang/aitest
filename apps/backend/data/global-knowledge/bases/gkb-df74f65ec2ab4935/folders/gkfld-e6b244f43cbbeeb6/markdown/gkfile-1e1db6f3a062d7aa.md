@@ -5,15 +5,15 @@
 打开对话流按钮，点击**【点击编辑】对话流**进入对话流编排，点击跳转逻辑配置
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_113126_7499200.030853975482710405.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_113126_7499200.030853975482710405.png)
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-19_180135_7766180.7380933497922822.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-19_180135_7766180.7380933497922822.png)
 
 
 ## 新会话从某一工作流开始
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_113407_8944550.5030196074972548.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_113407_8944550.5030196074972548.png)
  
 1. 新会话是否从某一对话流开始一栏**打开**；
  
@@ -27,14 +27,14 @@
 1. 点击意图项管理中新增一项添加意图并绑定工作流；
 
  
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-18_141127_5048610.49844497506377095.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-18_141127_5048610.49844497506377095.png)
  
 2. 输入意图名称（需清晰体现意图场景，便于管理）；
  
 3. 点击意图设置按钮，配置意图识别方式和执行动作，在执行动作配置处选择该意图跳转的工作流；
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-21_184022_6899260.1779229505382688.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-21_184022_6899260.1779229505382688.png)
 
 ### 意图识别方式配置
 
@@ -43,7 +43,7 @@
 2. **优先级排序**：关键词识别 > 正则表达式 > 向量语义识别 > 小模型 / 微调模型 > 大模型判断。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-21_184152_6320960.11182856820574705.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-21_184152_6320960.11182856820574705.png)
 
 
 | 意图识别方式 | 说明 |
@@ -51,9 +51,9 @@
 | **关键词识别** | 采用关键词方式识别意图，可选择手动输入关键词或上传 `.xls`、`.xlsx`、`.csv` 类型的文件批量上传关键词，同时选择匹配方式：
 • **精准包含匹配**：用户的回答只要包含关键词即可命中。
 • **完全匹配**：用户输入与关键词一字不差才可命中。 
- ![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-21_190828_5811400.15442748987893806.png) |
+ ![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-21_190828_5811400.15442748987893806.png) |
 | **正则表达式** | 采用正则表达式识别意图，需自行填写正则表达式，支持 Java 版本语法。界面右下角提供测试功能：输入正则表达式和测试数据，可实时查看匹配结果。 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-02_1429040.11099002830540083.png) |
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-02_1429040.11099002830540083.png) |
 | **向量语义识别** | 通过向量方式进行意图识别，支持三种参考问法配置方式：
 • 手动输入
 • 上传 `.xls`、`.xlsx`、`.csv` 文件导入
@@ -67,10 +67,10 @@
  – embedding + 大模型召回
  – embedding + rerank + 大模型召回
 • 支持开启大模型精排：可选择模型、设置意图数量及自定义 prompt，对候选意图进行精细排序与选择。
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-02_1429040.15366769553515003.png) |
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-02_1429040.15366769553515003.png) |
 | **小模型/微调模型** | 使用专用于特定领域的微调小模型进行意图识别。支持通过训推平台上架定制模型，并通过角色授权，面向特定用户开放使用。当前支持符合 OpenAI 协议的模型调用。 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-02_1429050.8072884738002178.png) |
-| **大模型判断** | 直接使用大模型进行意图识别。大模型根据预设的意图描述（description）对用户输入进行语义理解与分类判断。 ![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-21_190324_4781280.49418156266721824.png) |
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-02_1429050.8072884738002178.png) |
+| **大模型判断** | 直接使用大模型进行意图识别。大模型根据预设的意图描述（description）对用户输入进行语义理解与分类判断。 ![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-21_190324_4781280.49418156266721824.png) |
 | **其他** | 其他意图固定处于意图列表末尾，允许修改意图名称，意图描述（必填，用于提升意图识别的准确率），支持配置按钮操作。参考问法，仅支持正向问法，最多10000条；
 
 **执行动作配置**（三选一，默认为“继续执行原流程”）：
@@ -79,7 +79,7 @@
  – 对话流中未命中意图时，继续执行当前对话流后续节点。
 • **跳转至对话流**：选择一个agent内配置的对话流，跳转时携带全量对话历史和 chatflow 变量；所选对话流将标记“关联意图：其他”。
 • **跳转至 agent**：选择当前空间下已发布的 agent，跳转时携带全量对话历史、agent 变量、chatflow 变量，并以用户最后一轮 query 触发新 agent。 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-21_190735_0442140.9230037863319706.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-21_190735_0442140.9230037863319706.png)
 **other意图参与向量语义识别模式检索，构建rag+动态提示词llm的通用意图识别模式** 
 •默认一个other意图，适用于单agent场景； 
 • 高级配置支持两个other意图，用于other in agent和other out of agent判断，适用于涉及多agent多层意图的复杂判断；
@@ -87,7 +87,7 @@
 • 意图名称：默认other2，必填；
 • 意图描述：必填，无默认值； 
 •参考问法：非必填； 
-• 执行动作：跳转至对话流或跳转至agent，必填。![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-21_190552_4412030.28600743002764395.png)
+• 执行动作：跳转至对话流或跳转至agent，必填。![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-21_190552_4412030.28600743002764395.png)
 
 
 ### 执行动作配置
@@ -113,13 +113,13 @@
  ● 发生agent跳转，释放所有未结束的对话流；
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-21_185641_6851180.9072194203510836.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-21_185641_6851180.9072194203510836.png)
 
 ### 反向词库配置
 
 反向词库用于**二次校验**：当系统命中某一意图后，将进一步判断是否命中反向词库；若命中，优先执行反向词库配置的动作，覆盖原意图的执行逻辑。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-02_1429060.5543820690117499.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-02_1429060.5543820690117499.png)
 
 * 反向词库设置：可配置关键词词表、匹配方式，同时指定命中反向词库后需跳转的对话流；
  
@@ -135,7 +135,7 @@
 若任一**意图项启用了向量语义识别**，需先完成本配置，否则向量语义识别功能不生效（核心为配置模型组合及参数）。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-21_193359_2024380.7443247913849911.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-21_193359_2024380.7443247913849911.png)
 
 向量语义识别通过embedding、rerank、大模型的组合，支持4种细分模式：
 
@@ -177,20 +177,20 @@
 
 ### 小模型/微调配置
 选择角色授权的意图微调模型。
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_114752_6901240.12677035204501785.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_114752_6901240.12677035204501785.png)
 
 ### 大模型配置
 
 专门用于配置**意图识别中大模型判断**相关参数，包含LLM模型与Prompt。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-02_1429070.17705390398945753.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-02_1429070.17705390398945753.png)
 
 # 意图条件库
 支持预定义意图条件，配置好意图识别的方式，在全局意图或对话流语义判断节点绑定。
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_114907_1650560.8179951752126942.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_114907_1650560.8179951752126942.png)
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_115107_0051780.050835499796273664.png)
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_115136_4822200.44791908707544936.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_115107_0051780.050835499796273664.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_115136_4822200.44791908707544936.png)
 
 # 全局意图观测配置
 

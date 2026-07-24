@@ -5,7 +5,7 @@ from typing import Any
 
 from app.agents.model_selection import build_agent_model, resolve_model_selection
 from app.agents.performance_testing.script_generation.agent import performance_script_generation_agent
-from app.agents.performance_testing.script_generation.planner import SENSITIVE_HEADER_NAMES, build_default_plan
+from app.agents.performance_testing.script_generation.planner import build_default_plan
 from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan
 
 
@@ -48,11 +48,7 @@ def build_ai_or_default_plan(performance_test: dict[str, Any]) -> tuple[LocustSc
         plan.request.method = default.request.method
         plan.request.path = default.request.path
         plan.request.name = default.request.name
-        plan.request.headers = {
-            key: value
-            for key, value in plan.request.headers.items()
-            if key.strip().lower() not in SENSITIVE_HEADER_NAMES
-        }
+        plan.request.headers = default.request.headers
         plan.load = default.load
         plan.data = default.data
         return plan, "ai_plan", selection.model

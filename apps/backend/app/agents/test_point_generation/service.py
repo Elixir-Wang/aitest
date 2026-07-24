@@ -64,6 +64,9 @@ async def generate_test_points(
                 ensure_ascii=False,
             ),
             "",
+            "测试点名称规则:",
+            "test_point 只写简短、可区分的测试目标，不得拼接完整 module 或模块层级路径；相同行为涉及不同对象时，用最短业务对象自然区分；名称在全部已生成和本轮测试点中必须唯一。",
+            "",
             "本轮仅需补齐的义务 ID:",
             json.dumps(missing_obligation_keys if missing_obligation_keys is not None else [], ensure_ascii=False),
             "",
@@ -88,7 +91,11 @@ async def generate_test_points(
             missing_obligation_keys=missing_obligation_keys,
         )
     )
-    _validate_generation_result(generation_result, obligations)
+    _validate_generation_result(
+        generation_result,
+        obligations,
+        existing_points=existing_points,
+    )
     return generation_result
 
 
@@ -134,7 +141,7 @@ def _enrich_drafts(
             continue
         enriched_by_key[point_key] = GeneratedTestPoint(
             point_key=point_key,
-            title=_qualified_title(module, test_point),
+            title=test_point,
             module=module,
             category="功能",
             priority=draft.priority,
@@ -151,17 +158,20 @@ def _enrich_drafts(
 def _validate_generation_result(
     result: TestPointGenerationResult,
     obligations: list[RequirementObligation],
+    *,
+    existing_points: list[GeneratedTestPoint] | None = None,
 ) -> None:
     point_keys = [point.point_key for point in result.points]
     duplicate_keys = sorted({key for key in point_keys if point_keys.count(key) > 1})
     if duplicate_keys:
         raise ValueError(f"模型返回了重复的测试点 key：{', '.join(duplicate_keys)}")
 
-    title_identities = [_title_identity(point.title) for point in result.points]
+    all_points = [*(existing_points or []), *result.points]
+    title_identities = [_title_identity(point.title) for point in all_points]
     duplicate_titles = sorted(
         {
             point.title
-            for point, identity in zip(result.points, title_identities, strict=True)
+            for point, identity in zip(all_points, title_identities, strict=True)
             if title_identities.count(identity) > 1
         }
     )
@@ -179,15 +189,6 @@ def _validate_generation_result(
     )
     if unknown_keys:
         raise ValueError(f"模型返回了不存在的需求义务 ID：{', '.join(unknown_keys)}")
-
-
-def _qualified_title(module: str, test_point: str) -> str:
-    prefix = f"{module} - " if module else ""
-    title = test_point if prefix and test_point.startswith(prefix) else f"{prefix}{test_point}"
-    if len(title) <= 240:
-        return title
-    digest = hashlib.sha1(title.encode()).hexdigest()[:8]
-    return f"{title[:230]}-{digest}"
 
 
 def _title_identity(title: str) -> str:

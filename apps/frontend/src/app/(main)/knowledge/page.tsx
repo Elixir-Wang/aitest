@@ -89,7 +89,7 @@ function ProjectKnowledgeIcon({ className }: { className?: string }) {
 }
 
 const knowledgeScopes = [
-  { value: "project", label: "项目知识库", icon: FolderKanban },
+  { value: "project", label: "知识库问答", icon: FolderKanban },
   { value: "company", label: "公司知识库", icon: Building2 },
 ] as const;
 const emptyCompanyForm = {
@@ -2165,7 +2165,11 @@ function CompanyKnowledgeVault({
     return (
       <div data-toc-ignore id={COMPANY_KNOWLEDGE_PREVIEW_ID}>
         <MarkdownPreview
-          className="requirement-document-preview"
+          className={
+            content.startsWith("---\nschema: rejected-test-case-library/")
+              ? "requirement-document-preview rejected-case-markdown"
+              : "requirement-document-preview"
+          }
           content={content}
           emptyText="暂无 Markdown 内容。"
           onVaultFileClick={(fileId) => {

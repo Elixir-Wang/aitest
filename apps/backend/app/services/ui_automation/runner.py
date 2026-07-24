@@ -8,6 +8,7 @@ import subprocess
 import sys
 import shutil
 import threading
+import time
 from pathlib import Path
 
 from . import live_view
@@ -44,6 +45,9 @@ def run_case(
     result_path = run_dir / "result.json"
     process_env = _build_environment(environment, result_path)
     process_env["UI_ARTIFACT_DIR"] = str(browser_output)
+    process_env["UI_RUNNER_PARENT_PID"] = str(os.getpid())
+    process_env["UI_VIEWPORT_WIDTH"] = str(live_view.VIEWPORT_WIDTH)
+    process_env["UI_VIEWPORT_HEIGHT"] = str(live_view.VIEWPORT_HEIGHT)
     command = [
         sys.executable,
         "-m",
@@ -62,10 +66,11 @@ def run_case(
         existing_pythonpath = process_env.get("PYTHONPATH", "")
         process_env["PYTHONPATH"] = os.pathsep.join(filter(None, [backend_root, existing_pythonpath]))
     if os.getenv("UI_HEADED", "0").lower() in {"1", "true", "yes", "on"}:
-        command.insert(4, "--headed")
+        command.insert(-1, "--headed")
         xvfb_run = shutil.which("xvfb-run")
         if xvfb_run and not process_env.get("DISPLAY"):
-            command = [xvfb_run, "--auto-servernum", "--server-args=-screen 0 1440x900x24", *command]
+            screen = f"{live_view.VIEWPORT_WIDTH}x{live_view.VIEWPORT_HEIGHT}x24"
+            command = [xvfb_run, "--auto-servernum", f"--server-args=-screen 0 {screen}", *command]
     process: subprocess.Popen[str] | None = None
     timed_out = False
     try:
@@ -136,6 +141,30 @@ def clear_stop_request(run_id: str) -> None:
         _STOP_REQUESTED.discard(run_id)
 
 
+def shutdown_all(*, grace_seconds: float = 3) -> None:
+    """Stop every pytest process owned by this backend process."""
+    with _PROCESS_LOCK:
+        processes = list(_PROCESSES.items())
+        _STOP_REQUESTED.update(run_id for run_id, _ in processes)
+
+    for _, process in processes:
+        _terminate_process(process)
+
+    deadline = time.monotonic() + max(grace_seconds, 0)
+    for _, process in processes:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            break
+
+    for _, process in processes:
+        if process.poll() is None:
+            _terminate_process(process, force=True)
+
+
 def _terminate_process(process: subprocess.Popen[str], *, force: bool = False) -> None:
     if process.poll() is not None:
         return
@@ -173,4 +202,4 @@ def _redact(value: str) -> str:
     return SENSITIVE_RE.sub(lambda match: f"{match.group(1)}***", value or "")
 
 
-__all__ = ["clear_stop_request", "request_stop", "run_case"]
+__all__ = ["clear_stop_request", "request_stop", "run_case", "shutdown_all"]

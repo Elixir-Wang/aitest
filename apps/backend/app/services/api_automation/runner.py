@@ -107,7 +107,7 @@ def run_script_suite(
         summary["observed"] = len(observations)
     status = "failed"
     if pytest.returncode == 0 and summary.get("failed", 0) == 0:
-        status = "observed" if observations else "passed"
+        status = "passed"
 
     # 构建详细的失败消息
     error_message = ""

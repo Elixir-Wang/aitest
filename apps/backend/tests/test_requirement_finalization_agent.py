@@ -1,6 +1,8 @@
 import asyncio
 from types import SimpleNamespace
 
+import pytest
+
 from app.agents.model_selection import ModelSelection
 
 
@@ -75,6 +77,120 @@ def test_requirement_finalization_agent_uses_tool_strategy_response_format(monke
 
     assert isinstance(seen["response_format"], ToolStrategy)
     assert seen["response_format"].schema is RequirementFinalizationOutput
+    assert seen["response_format"].handle_errors is False
+
+
+@pytest.mark.anyio
+async def test_requirement_finalization_does_not_retry_invalid_tool_call_in_same_conversation():
+    from typing import Any
+
+    from langchain.agents.structured_output import StructuredOutputValidationError
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage, BaseMessage
+    from typing_extensions import override
+
+    from app.agents.requirement_finalization.agent import requirement_finalization_agent
+
+    class RecordingFakeModel(FakeMessagesListChatModel):
+        requests: list[list[BaseMessage]] = []
+
+        @override
+        def bind_tools(self, tools: Any, **kwargs: Any):
+            return self
+
+        @override
+        def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any):
+            self.requests.append(messages)
+            return super()._generate(messages, *args, **kwargs)
+
+    incomplete_id = "call-valid-but-incomplete"
+    invalid_id = "call-invalid-json"
+    model = RecordingFakeModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": incomplete_id,
+                        "name": "RequirementFinalizationOutput",
+                        "args": {},
+                        "type": "tool_call",
+                    }
+                ],
+                invalid_tool_calls=[
+                    {
+                        "id": invalid_id,
+                        "name": "RequirementFinalizationOutput",
+                        "args": '{"final_requirement_markdown": "# 最终需求',
+                        "error": "invalid JSON",
+                        "type": "invalid_tool_call",
+                    }
+                ],
+            ),
+        ]
+    )
+
+    agent = requirement_finalization_agent(model, load_references=False)
+    with pytest.raises(StructuredOutputValidationError):
+        await agent.ainvoke({"messages": [{"role": "user", "content": "generate"}]})
+
+    assert len(model.requests) == 1
+
+
+def test_requirement_finalization_retries_with_fresh_agent_context(monkeypatch):
+    from app.agents.requirement_finalization import service
+    from app.agents.requirement_finalization.schemas import RequirementFinalizationInput
+
+    payloads = []
+    created_agents = []
+
+    class FakeAgent:
+        def __init__(self, result=None, error=None):
+            self.result = result
+            self.error = error
+
+        async def ainvoke(self, payload):
+            payloads.append(payload)
+            if self.error:
+                raise self.error
+            return self.result
+
+    responses = iter(
+        [
+            FakeAgent(error=ValueError("malformed structured output")),
+            FakeAgent(
+                result={
+                    "structured_response": {
+                        "final_requirement_markdown": "# 最终需求\n",
+                        "change_summary": "已生成最终需求",
+                    }
+                }
+            ),
+        ]
+    )
+
+    def fake_agent_factory(model):
+        agent = next(responses)
+        created_agents.append(agent)
+        return agent
+
+    monkeypatch.setattr(service, "resolve_model_selection", lambda capability_id: _model_selection())
+    monkeypatch.setattr(service, "build_agent_model", lambda selection, *, extra_body=None: "model")
+    monkeypatch.setattr(service, "requirement_finalization_agent", fake_agent_factory)
+
+    result = asyncio.run(
+        service.run_requirement_finalization(
+            RequirementFinalizationInput(
+                document_name="需求",
+                standard_markdown="# 标准需求\n",
+                preliminary_markdown="# 初步需求\n",
+            )
+        )
+    )
+
+    assert result.final_requirement_markdown == "# 最终需求\n"
+    assert len(created_agents) == 2
+    assert payloads[0] == payloads[1]
 
 
 def test_requirement_finalization_disables_thinking_for_reasoning_models(monkeypatch):

@@ -4,7 +4,7 @@
 
 语音通话功能通过语音转文本（ASR）与文本转语音（TTS）两大核心模块，结合打断检测、静默时长等辅助设置，实现流畅自然的语音交互体验。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-02_1431250.6104301896056135.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-02_1431250.6104301896056135.png)
 
 ## 语音转文本模型（ASR）设置
 
@@ -55,7 +55,7 @@ TTS负责把文字转换成语音播报，您可以自定义声音的音色、�
 
 助手模式主打主动互动，通过“推送模式”和“推送范围”等设置，让助手能在合适的时间、向合适的对象推送信息。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-02_1431250.4484968156641961.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-02_1431250.4484968156641961.png)
 
 ## 推送模式
 

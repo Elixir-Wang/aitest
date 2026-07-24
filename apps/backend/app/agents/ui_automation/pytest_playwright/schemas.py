@@ -17,6 +17,8 @@ StepKind = Literal[
     "press",
     "upload",
     "wait_visible",
+    "wait_for_response",
+    "commit_value",
     "click_parameter_text",
 ]
 AssertionKind = Literal["visible", "hidden", "text", "url", "value"]
@@ -79,6 +81,7 @@ class StepPlan(StrictModel):
 
 class AssertionPlan(StrictModel):
     source_expected_result_id: str = Field(min_length=1)
+    after_step_id: str = ""
     kind: AssertionKind
     page_key: str = ""
     element_key: str = ""
@@ -130,6 +133,21 @@ class AutomationPlan(StrictModel):
             raise ValueError("测试文件路径必须位于当前业务项目命名空间。")
         if not self.artifacts.data_file.startswith(data_prefix) or not self.artifacts.plan_file.startswith(data_prefix):
             raise ValueError("数据和计划文件路径必须位于当前业务项目命名空间。")
+        for index, step in enumerate(self.steps):
+            if step.kind != "wait_for_response":
+                continue
+            if index == 0 or self.steps[index - 1].kind not in {"click", "press"}:
+                raise ValueError("wait_for_response 必须紧跟发送消息的 click 或 press 步骤。")
+            if self.steps[index - 1].page_key != step.page_key:
+                raise ValueError("wait_for_response 必须与前一个发送步骤属于同一页面。")
+        step_ids = {step.source_step_id for step in self.steps}
+        invalid_checkpoints = [
+            assertion.after_step_id
+            for assertion in self.assertions
+            if assertion.after_step_id and assertion.after_step_id not in step_ids
+        ]
+        if invalid_checkpoints:
+            raise ValueError(f"断言检查点不存在: {', '.join(invalid_checkpoints)}")
         return self
 
 

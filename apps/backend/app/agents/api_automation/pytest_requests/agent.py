@@ -15,8 +15,16 @@ from app.agents.api_automation.pytest_requests.suite import ensure_suite_root
 SYSTEM_PROMPT = """
 你是一个项目级 pytest + requests 自动化测试智能体。
 
-你只能操作当前 filesystem backend 的根目录，它就是当前业务项目的 pytest_requests 项目目录。
-先检查现有目录和文件，再执行初始化或接口增量生成；不要创建第二个测试项目。
+## 虚拟路径契约
+
+- filesystem backend 向你暴露的虚拟根目录 `/` 已经是当前业务项目的 pytest_requests 项目根目录。
+- `/` 不是 pytest_requests 的上级目录；禁止创建 `/pytest_requests` 或 `pytest_requests/pytest_requests`。
+- 后端传入的 `artifacts.*` 都是相对于虚拟根目录 `/` 的路径。工具需要绝对路径时，只在它们前面加一次 `/`。
+- 例如 `artifacts.test_file` 为 `testcases/example/post/test_api.py` 时，唯一正确的虚拟路径是
+  `/testcases/example/post/test_api.py`，不是 `/pytest_requests/testcases/example/post/test_api.py`。
+- 你看不到也不需要知道宿主机物理路径。禁止构造 `/Users/...`、`/home/...` 等宿主机路径，禁止用 `cp`、`rsync`、`shutil` 或临时脚本在虚拟根目录与物理路径之间复制或搬运文件。
+
+开始时直接检查 `/` 和 `/AGENTS.md`，再执行初始化或接口增量生成。所有读写都必须发生在 `/` 内，不要创建第二个测试项目。
 
 初始化阶段必须先确保公共框架存在，包括 AGENTS.md、pytest.ini、conftest.py、
 api/client.py、testcases/conftest.py、utils/__init__.py、utils/data_loader.py、utils/assertions.py、
@@ -64,7 +72,9 @@ async def initialize_pytest_requests_suite(*, model, suite_path: Path, max_actio
                 {
                     "role": "user",
                     "content": (
-                        "初始化当前 pytest_requests 项目。先检查现有目录，补齐缺失的公共框架文件（包括 AGENTS.md），"
+                        "初始化当前虚拟根目录 `/`。`/` 已经是 pytest_requests 项目根目录，"
+                        "禁止再创建 `/pytest_requests`，也禁止使用宿主机绝对路径或复制脚本搬运文件。"
+                        "先检查 `/` 的现有目录，补齐缺失的公共框架文件（包括 `/AGENTS.md`），"
                         "不要删除已有 endpoint 测试。完成后调用 run_pytest_collection 验证整个项目；"
                         "如果 collection 失败，读取错误并修复，直到成功或达到工具调用上限。"
                     ),
@@ -96,10 +106,13 @@ async def generate_pytest_requests_endpoints(
                 {
                     "role": "user",
                     "content": (
-                        "在当前 pytest_requests 项目中生成或更新选中的接口测试。先读取现有项目结构和 AGENTS.md，"
+                        "在当前虚拟根目录 `/` 中生成或更新选中的接口测试。`/` 已经是 pytest_requests "
+                        "项目根目录；禁止创建 `/pytest_requests`，禁止使用宿主机绝对路径，禁止通过复制脚本搬运文件。"
+                        "先读取 `/` 和 `/AGENTS.md`，"
                         "只处理下面 JSON 中的 endpoint 及其 cases，保留未选中的 endpoint 文件。复用已有公共 client、"
                         "fixture、loader 和 assertions；不要创建第二个测试项目。每个 endpoint 的 artifacts.test_file 和 "
-                        "artifacts.data_file 是唯一合法输出文件，必须创建或更新这些精确路径，不得自行选择其他文件名或目录。"
+                        "artifacts.data_file 是相对于 `/` 的唯一合法文件；工具需要绝对路径时只在前面加一次 `/`。"
+                        "必须创建或更新这些精确路径，不得自行选择其他文件名或目录。"
                         "artifacts.data_file 已由后端根据数据库快照写入，只允许读取，禁止覆盖、追加或改变其 YAML 结构；"
                         "仅生成或更新 artifacts.test_file。"
                         "修改后先收集变更测试，再收集整个项目，"

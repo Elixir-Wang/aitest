@@ -17,10 +17,12 @@ from app.agents.test_case_generation.schemas import (
 )
 from app.core import db as core_db
 from app.core import storage
+from app.core import settings
 from app.seed.init_db import init_db
 from app.seed.seeds import _ensure_test_case_display_order
 from app.schemas.test_case import ManualTestCaseCreateIn, TestCaseReviewIn, TestCaseSetCreateIn
 from app.services import task_service, test_case_service
+from app.services.knowledge import global_service as global_knowledge_service
 
 
 ACTOR = {"id": "u-admin", "role": "admin", "nickname": "管理员", "username": "admin", "project_scope": "全部项目"}
@@ -46,6 +48,12 @@ def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(core_db, "DB_PATH", data_dir / "ai_testing.db")
     monkeypatch.setattr(storage, "PROJECT_FILE_STORAGE_ROOT", data_dir / "projects")
     init_db()
+    knowledge_base = global_knowledge_service.create_base(
+        name="测试知识库",
+        description="测试用不采纳知识库",
+        actor=ACTOR,
+    )
+    monkeypatch.setattr(settings, "REJECTED_CASE_KNOWLEDGE_BASE_ID", knowledge_base["id"])
 
 
 def _seed_project_requirement_and_exploration() -> None:
@@ -800,7 +808,7 @@ def test_review_test_case_updates_status_feedback_and_stats(
     assert pending_set["status_label"] == "待评审"
 
 
-def test_review_test_case_allows_empty_rejection_feedback(
+def test_review_test_case_rejects_empty_rejection_feedback(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -841,16 +849,8 @@ def test_review_test_case_allows_empty_rejection_feedback(
         ),
     )
 
-    result = test_case_service.review_test_case(
-        "project-1",
-        created["id"],
-        f"{created['id']}-tc-001",
-        TestCaseReviewIn(status="rejected"),
-        ACTOR,
-    )
-
-    assert result["case"]["status"] == "rejected"
-    assert result["case"]["review_feedback"] == ""
+    with pytest.raises(ValidationError, match="不采纳原因不能为空"):
+        TestCaseReviewIn(status="rejected")
 
 
 def test_review_test_case_can_update_case_content(
@@ -1024,7 +1024,7 @@ def test_regenerate_test_case_set_creates_new_run_for_existing_set(
     assert regenerated["generation_run"]["input_snapshot"]["notes"] == "优先覆盖主流程"
 
 
-def test_regenerate_test_case_set_carries_rejected_case_feedback(
+def test_regenerate_test_case_set_uses_knowledge_instead_of_database_feedback_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1074,22 +1074,11 @@ def test_regenerate_test_case_set_carries_rejected_case_feedback(
     )
 
     regenerated = test_case_service.regenerate_test_case_set("project-1", created["id"], ACTOR)
-    feedback = regenerated["generation_run"]["input_snapshot"]["rejected_case_feedback"]
-
-    assert feedback == [
-        {
-            "title": "旧登录用例",
-            "module": "登录",
-            "priority": "P1",
-            "preconditions": "已有账号。",
-            "steps": [
-                {"action": "打开登录页", "expected_result": "展示登录表单。"},
-                {"action": "输入账号密码", "expected_result": "账号密码填写完成。"},
-            ],
-            "expected_result": "展示登录页。",
-            "review_feedback": "缺少异常输入覆盖",
-        }
-    ]
+    assert "rejected_case_feedback" not in regenerated["generation_run"]["input_snapshot"]
+    records = test_case_service.rejected_case_knowledge.list_records_for_set(
+        "project-1", "doc-1", created["id"]
+    )
+    assert records[case_id].reason == "缺少异常输入覆盖"
 
 
 def test_recover_interrupted_test_case_generation_runs_marks_active_runs_failed(

@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from app.core.db import connect
 from app.repositories import document_repo, requirement_analysis_run_repo
 from app.services import operation_log_service
@@ -7,6 +9,7 @@ WAITING_GROUP = "waiting"
 FAILED_GROUP = "failed"
 COMPLETED_GROUP = "completed"
 REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES = 120
+TASK_RETENTION_DAYS = 10
 
 RUNNING_GROUPS = {RUNNING_GROUP}
 RUNNING_INDICATOR_SOURCE_TYPES = {
@@ -137,6 +140,7 @@ def list_tasks(
 ) -> dict:
     recover_stale_requirement_analysis_runs(project_id=project_id)
     tasks = _collect_visible_tasks(actor)
+    tasks = [task for task in tasks if _is_retained_task(task)]
     tasks = _filter_tasks(tasks, project_id=project_id, status_group=status_group, module=module, keyword=keyword)
     tasks.sort(key=lambda item: (item["updated_at"], item["created_at"], item["id"]), reverse=True)
     total = len(tasks)
@@ -659,6 +663,32 @@ def _filter_tasks(
             )
         )
     ]
+
+
+def _is_retained_task(task: dict, *, now: datetime | None = None) -> bool:
+    if task["status_group"] in {RUNNING_GROUP, WAITING_GROUP}:
+        return True
+    if task["status_group"] not in {FAILED_GROUP, COMPLETED_GROUP}:
+        return True
+    updated_at = _parse_utc_timestamp(task.get("updated_at"))
+    if updated_at is None:
+        return True
+    current_time = now or datetime.now(timezone.utc)
+    if current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    return updated_at >= current_time.astimezone(timezone.utc) - timedelta(days=TASK_RETENTION_DAYS)
+
+
+def _parse_utc_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _placeholders(values: dict) -> str:

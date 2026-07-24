@@ -1,7 +1,7 @@
 """AI capability for generating controlled Locust script plans."""
 
 from .agent import performance_script_generation_agent
-from .planner import SENSITIVE_HEADER_NAMES, build_default_plan
+from .planner import build_default_plan
 from .schemas import (
     LocustDataPlan,
     LocustLoadPlan,
@@ -18,7 +18,6 @@ __all__ = [
     "build_ai_or_default_plan",
     "build_default_plan",
     "script_plan_input",
-    "SENSITIVE_HEADER_NAMES",
     "LocustDataPlan",
     "LocustLoadPlan",
     "LocustLoadStagePlan",

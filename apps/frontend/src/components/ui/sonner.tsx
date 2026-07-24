@@ -1,11 +1,11 @@
 "use client"
 
-import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
+import { usePreferencesStore } from "@/stores/preferences/preferences-provider"
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
+  const theme = usePreferencesStore((state) => (state.themeMode === "dark" ? "dark" : "light"))
 
   return (
     <Sonner
@@ -48,7 +48,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
           warning: "bg-card border-amber-600/50 text-foreground",
           error: "bg-card border-destructive/50 text-foreground",
           title: "select-text text-xs font-medium leading-none",
-          description: "select-text text-xs text-muted-foreground",
+          description: "select-text text-xs !text-muted-foreground",
           closeButton:
             "!right-3 !left-auto !top-1/2 !size-9 !-translate-y-1/2 ![transform:none] !rounded-md border border-transparent bg-muted/70 p-0 text-xs text-muted-foreground transition-colors after:content-['关闭'] hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 [&>svg]:hidden",
           actionButton:

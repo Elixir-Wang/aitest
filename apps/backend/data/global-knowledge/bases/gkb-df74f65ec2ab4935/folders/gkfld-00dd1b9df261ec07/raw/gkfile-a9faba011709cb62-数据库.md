@@ -19,7 +19,7 @@
 * 支持形式：目前支持「本地上传」和「在线连接」两种数据库创建方式。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656070.9053106807180561.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656070.9053106807180561.png)
 
 #### 1.1.1.1本地上传新建数据库
 
@@ -36,9 +36,9 @@
 
 上传要求：
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656080.29348077590980337.png)![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656080.3827633029560248.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656080.29348077590980337.png)![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656080.3827633029560248.png)
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656080.6774471835345451.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656080.6774471835345451.png)
 
 * 支持格式：excel/csv；
  
@@ -58,7 +58,7 @@
 
 如：本表格展示了海外项目需求的信息数据，包含六个字段，分别为：项目名称、优先级、需求描述、状态、预计上线时间、负责人。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656090.2461872245679807.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656090.2461872245679807.png)
 
 * 字段配置：展示从上传的文件中解析到的字段及信息；
  
@@ -75,7 +75,7 @@
 
 数据表批量导入/数据导出：数据表上传成功后可进行数据的批量上传/数据导出操作。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656090.8173402050129535.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656090.8173402050129535.png)
 
 * 批量导入：批量导入的数据列字段及数据类型需要和当前数据表配置保持一致，否则无法上传。
  
@@ -84,11 +84,11 @@
 
 数据表详情查看：点击橘色表头名称查看数据详情
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656100.3468656430265671.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656100.3468656430265671.png)
 
 数据表单条数据编辑：支持数据表内**单条数据**的修改和删除。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656100.2956948795106652.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656100.2956948795106652.png)
 
 * 修改：更改单条数据细节。
  
@@ -97,7 +97,7 @@
 
 #### 1.1.1.2 在线连接新建数据库
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656100.07333415657122799.png)![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656110.2823795498583346.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656100.07333415657122799.png)![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656110.2823795498583346.png)
 
 * 数据库名称：用户可根据个人需求命名数据库；
  
@@ -113,17 +113,17 @@
 
 导入部分数据表：勾选需要上传的数据表并导入
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656110.23094382385828116.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656110.23094382385828116.png)
 
 新增数据表：支持从在线数据库中选择并上传尚未导入的数据表。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656120.4871158147772138.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656120.4871158147772138.png)
 
 删除：单条数据删除（二次弹窗设置有效防止误触）。
 
 ### 1.1.2 数据库编辑
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656120.7862067161449976.png)![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656130.7488177563960543.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656120.7862067161449976.png)![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656130.7488177563960543.png)
 
 * 入口：需要编辑的数据库右下角—\[修改数据库\]。
  
@@ -153,7 +153,7 @@
 * 数据库页面，点击任一数据库卡片，进入该数据库的数据列表页，数据列表页点击左侧列表中【数据库设置】进入设置
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656130.7923546039420445.png)![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656140.21105662251211665.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656130.7923546039420445.png)![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656140.21105662251211665.png)
 
 ### 1.3.2 数据表检索
 
@@ -355,7 +355,7 @@
 1. 问答训练为空时，通过页面中间\[点击新增\]/右上角\[+新增\]进行新增；
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656140.9553415694304195.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656140.9553415694304195.png)
 
 2. 问答训练不为空时，右上角\[+新增\]进行新增。
  
@@ -404,7 +404,7 @@
 * 导出格式：标题包含问题、回答、状态三部分。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656140.813373464903447.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656140.813373464903447.png)
 
 * 上限：最多支持导出10w条问答对。
  
@@ -437,31 +437,31 @@
 1. 柱状图：居中显示度量内容；
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656150.7630802743778091.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656150.7630802743778091.png)
 
 2. 折线图：居中显示度量内容，同时有多条折线在一张图表中时，折线颜色有明显区。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656150.46685644382981106.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656150.46685644382981106.png)
 
 3. 饼图：居中显示图形。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656160.8294883664946795.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656160.8294883664946795.png)
 
 #### 1.5.1.2 表格形式
 
 * 首行显示表头、对话框底端生成总结。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656160.44351716026592714.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656160.44351716026592714.png)
 
 #### 1.5.1.3 SQL形式
 
 * 以代码块形式输出的SQL语句可运行；
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656170.23239088175609357.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656170.23239088175609357.png)
 
 ### 1.5.2 单表/多表形式
 
@@ -470,11 +470,11 @@
 * 机器人在**一个**数据表中查找信息以回答用户的问题。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656170.6056003663462693.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656170.6056003663462693.png)
 
 #### 1.5.2.2 多表问答
 
 * 机器人在多个数据表中查找信息、处理多个表之间的关联关系以回答用户的问题。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1656180.7988954704366874.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1656180.7988954704366874.png)

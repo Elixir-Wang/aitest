@@ -1,8 +1,6 @@
-from fastapi import BackgroundTasks
-
 from app.api.v1 import ui_automation
 from app.api.v1 import v1_router
-from app.schemas.ui_automation import UiAutomationGenerateIn
+from app.schemas.ui_automation import UiAutomationExecutionCreateIn, UiAutomationGenerateIn
 
 
 def test_generation_input_accepts_one_case_only():
@@ -34,7 +32,7 @@ def test_ui_automation_routes_are_registered():
     assert delete_route.status_code == 204
 
 
-def test_generation_route_schedules_background_execution(monkeypatch):
+def test_generation_route_schedules_managed_execution(monkeypatch):
     captured = {}
 
     monkeypatch.setattr(
@@ -43,18 +41,46 @@ def test_generation_route_schedules_background_execution(monkeypatch):
         lambda project_id, payload, actor: {"id": "uigen-1", "project_id": project_id, **payload},
     )
 
-    class FakeBackgroundTasks:
-        def add_task(self, function, *args, **kwargs):
-            captured["function"] = function
-            captured["args"] = args
+    monkeypatch.setattr(
+        ui_automation.service,
+        "schedule_generation_run",
+        lambda run_id: captured.update(run_id=run_id),
+    )
 
     result = ui_automation.create_generation_run(
         "project-1",
         UiAutomationGenerateIn(test_case_id="case-1", environment_id="env-1"),
-        FakeBackgroundTasks(),
         actor={"id": "user-1"},
     )
 
     assert result["id"] == "uigen-1"
-    assert captured["function"] is ui_automation.service.execute_generation_run
-    assert captured["args"] == ("uigen-1",)
+    assert captured == {"run_id": "uigen-1"}
+
+
+def test_execution_route_schedules_managed_execution(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        ui_automation.service,
+        "create_execution_run",
+        lambda project_id, asset_id, environment_id, actor: {
+            "id": "uirun-1",
+            "project_id": project_id,
+            "asset_id": asset_id,
+            "environment_id": environment_id,
+        },
+    )
+    monkeypatch.setattr(
+        ui_automation.service,
+        "schedule_execution_run",
+        lambda run_id: captured.update(run_id=run_id),
+    )
+
+    result = ui_automation.create_execution_run(
+        "project-1",
+        "uiasset-1",
+        UiAutomationExecutionCreateIn(environment_id="env-1"),
+        actor={"id": "user-1"},
+    )
+
+    assert result["id"] == "uirun-1"
+    assert captured == {"run_id": "uirun-1"}

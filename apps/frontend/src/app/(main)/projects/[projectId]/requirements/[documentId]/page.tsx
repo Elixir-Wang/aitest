@@ -70,16 +70,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import {
-  API_BASE_URL,
   ApiRequestError,
   type ApiTaskItem,
   type ApiTestPointOverview,
   apiBlobRequest,
-  apiErrorFromXhr,
   apiRequest,
   formatDateTime,
 } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
+import {
+  DEFAULT_REQUIREMENT_UPLOAD_CONFIG,
+  getRequirementUploadConfig,
+  type RequirementUploadConfig,
+  requirementUploadFileKey,
+  uploadRequirementFiles,
+} from "@/lib/requirement-upload-client";
 import { cn } from "@/lib/utils";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useAuthStore } from "@/stores/auth-store";
@@ -545,11 +550,11 @@ export default function DocumentDetailPage() {
   const [activeRestoredPendingItemId, setActiveRestoredPendingItemId] = useState("");
   const [finalizeConfirmOpen, setFinalizeConfirmOpen] = useState(false);
   const [reviewClearConfirmOpen, setReviewClearConfirmOpen] = useState(false);
-  const token = useAuthStore((state) => state.token);
   const authUser = useAuthStore((state) => state.user);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
+  const [uploadConfig, setUploadConfig] = useState<RequirementUploadConfig>(DEFAULT_REQUIREMENT_UPLOAD_CONFIG);
   const [uploadStates, setUploadStates] = useState<
     Record<string, { progress: number; status: "idle" | "uploading" | "completed" | "error" }>
   >({});
@@ -883,6 +888,24 @@ export default function DocumentDetailPage() {
     void loadLatestAnalysis();
     void loadRequirementVersions({ silent: true });
   }, [loadLatestAnalysis, loadOverview, loadRequirementVersions, loadTestPointOverview, searchParams]);
+
+  useEffect(() => {
+    let ignore = false;
+    void getRequirementUploadConfig(projectId)
+      .then((config) => {
+        if (!ignore) {
+          setUploadConfig(config);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setUploadConfig(DEFAULT_REQUIREMENT_UPLOAD_CONFIG);
+        }
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [projectId]);
 
   useEffect(() => {
     selectedFileRef.current = selectedFile;
@@ -1596,49 +1619,45 @@ export default function DocumentDetailPage() {
       toast.error(`仅支持 PDF、Word、TXT、MD 文件：${unsupported.name}`);
       return;
     }
+    if (uploadFiles.length > uploadConfig.max_files) {
+      toast.error(`单次最多上传 ${uploadConfig.max_files} 个文件`);
+      return;
+    }
+    const oversizedFile = uploadFiles.find((file) => file.size > uploadConfig.max_file_size_bytes);
+    if (oversizedFile) {
+      toast.error(`单文件不能超过 ${formatMegabytes(uploadConfig.max_file_size_bytes)}MB：${oversizedFile.name}`);
+      return;
+    }
+    const totalSize = uploadFiles.reduce((sum, file) => sum + file.size, 0);
+    if (totalSize > uploadConfig.max_batch_size_bytes) {
+      toast.error(`单次上传文件总大小不能超过 ${formatMegabytes(uploadConfig.max_batch_size_bytes)}MB`);
+      return;
+    }
 
     setUploadSubmitting(true);
     setUploadStates(
       Object.fromEntries(
-        uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress: 1, status: "uploading" as const }]),
+        uploadFiles.map((file) => [requirementUploadFileKey(file), { progress: 1, status: "uploading" as const }]),
       ),
     );
 
     try {
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", `${API_BASE_URL}/projects/${projectId}/requirements`);
-        if (token) {
-          xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-        }
-        xhr.upload.onprogress = (event) => {
-          if (!event.lengthComputable) return;
-          const progress = Math.min(99, Math.round((event.loaded / event.total) * 100));
-          setUploadStates(
-            Object.fromEntries(
-              uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress, status: "uploading" as const }]),
-            ),
-          );
-        };
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-            return;
-          }
-          reject(apiErrorFromXhr(xhr, "文件上传失败"));
-        };
-        xhr.onerror = () => reject(apiErrorFromXhr(xhr, "网络异常，文件上传失败"));
-        const formData = new FormData();
-        formData.append("mode", "append");
-        formData.append("existing_document_id", documentId);
-        for (const f of uploadFiles) {
-          formData.append("files", f);
-        }
-        xhr.send(formData);
+      await uploadRequirementFiles({
+        projectId,
+        files: uploadFiles,
+        mode: "append",
+        documentName: "",
+        existingDocumentId: documentId,
+        onProgress: (file, progress) => {
+          setUploadStates((current) => ({
+            ...current,
+            [requirementUploadFileKey(file)]: { progress, status: "uploading" },
+          }));
+        },
       });
       setUploadStates(
         Object.fromEntries(
-          uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress: 100, status: "completed" as const }]),
+          uploadFiles.map((file) => [requirementUploadFileKey(file), { progress: 100, status: "completed" as const }]),
         ),
       );
       toast.success("文件已上传，正在后台生成标准文件");
@@ -1653,7 +1672,9 @@ export default function DocumentDetailPage() {
         path: `/projects/${projectId}/requirements`,
       });
       setUploadStates(
-        Object.fromEntries(uploadFiles.map((f) => [`${f.name}-${f.size}`, { progress: 0, status: "error" as const }])),
+        Object.fromEntries(
+          uploadFiles.map((file) => [requirementUploadFileKey(file), { progress: 0, status: "error" as const }]),
+        ),
       );
     } finally {
       setUploadSubmitting(false);
@@ -1867,8 +1888,9 @@ export default function DocumentDetailPage() {
                   "text/plain": [".txt"],
                 }}
                 files={uploadFiles}
-                hint="仅支持 PDF、Word（doc/docx）、TXT、MD 文件"
-                maxFiles={10}
+                hint={`最多 ${uploadConfig.max_files} 个文件，单文件不超过 ${formatMegabytes(uploadConfig.max_file_size_bytes)}MB`}
+                maxFileSize={uploadConfig.max_file_size_bytes}
+                maxFiles={uploadConfig.max_files}
                 uploadStates={uploadStates}
                 onFilesChange={setUploadFiles}
               />
@@ -2503,7 +2525,7 @@ export default function DocumentDetailPage() {
                               </Badge>
                               <Badge variant={pendingItemSeverityVariant(item)}>{pendingItemSeverityLabel(item)}</Badge>
                             </div>
-                            <span className="block min-w-0 break-words text-foreground text-sm leading-6 indent-[10.5rem]">
+                            <span className="block min-w-0 break-words indent-[10.5rem] text-foreground text-sm leading-6">
                               {itemHeading}
                             </span>
                           </div>
@@ -2760,6 +2782,10 @@ function StandardFileState({
 
 function displayFilename(filename: string) {
   return filename.split(/[\\/]/).filter(Boolean).pop() ?? filename;
+}
+
+function formatMegabytes(bytes: number) {
+  return Math.round(bytes / 1024 / 1024);
 }
 
 function standardMarkdownFilename(filename: string) {

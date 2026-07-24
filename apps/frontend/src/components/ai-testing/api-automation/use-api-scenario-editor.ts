@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
@@ -69,8 +69,10 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
   const [runDrawerOpen, setRunDrawerOpen] = useState(false);
   const [aiPlan, setAiPlan] = useState<ApiScenarioAiPlan | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
+  const draftVersionRef = useRef(0);
 
   const applyScenario = useCallback((nextScenario: ApiAutomationScenario) => {
+    draftVersionRef.current += 1;
     setScenario(nextScenario);
     setDraft({
       name: nextScenario.name,
@@ -134,9 +136,14 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
   );
   const localValidation = useMemo(() => validateScenarioDraft(draft), [draft]);
 
+  function markDraftChanged() {
+    draftVersionRef.current += 1;
+    setDirty(true);
+  }
+
   function updateScenarioMeta(updates: Partial<Omit<ScenarioDraft, "steps">>) {
     setDraft((current) => ({ ...current, ...updates }));
-    setDirty(true);
+    markDraftChanged();
   }
 
   function addEndpointSteps(endpointIds: string[]) {
@@ -152,7 +159,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       setActiveStepId(created[0]?.id ?? "");
       return { ...current, steps: [...current.steps, ...created] };
     });
-    setDirty(true);
+    markDraftChanged();
   }
 
   function addUtilityStep(stepType: Exclude<ApiAutomationScenarioStep["step_type"], "api_request">) {
@@ -162,7 +169,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       steps: [...current.steps, { ...step, step_order: current.steps.length }],
     }));
     setActiveStepId(step.id);
-    setDirty(true);
+    markDraftChanged();
   }
 
   function updateStep(stepId: string, updates: Partial<ApiAutomationScenarioStep>) {
@@ -170,7 +177,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       ...current,
       steps: current.steps.map((step) => (step.id === stepId ? { ...step, ...updates } : step)),
     }));
-    setDirty(true);
+    markDraftChanged();
   }
 
   function removeStep(stepId: string) {
@@ -181,16 +188,17 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
         .map((step, stepOrder) => ({ ...step, step_order: stepOrder })),
     }));
     setActiveStepId((current) => (current === stepId ? "" : current));
-    setDirty(true);
+    markDraftChanged();
   }
 
   function reorderSteps(activeId: string, overId: string) {
     setDraft((current) => ({ ...current, steps: moveScenarioStep(current.steps, activeId, overId) }));
-    setDirty(true);
+    markDraftChanged();
   }
 
   const saveScenario = useCallback(
     async (showToast = true) => {
+      const draftVersion = draftVersionRef.current;
       const name = draft.name.trim();
       if (!name) throw new Error("请填写场景名称");
       const creating = !scenario;
@@ -210,7 +218,11 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
         target.id,
         draft.steps.map((step, stepOrder) => toScenarioStepInput(step, stepOrder)),
       );
-      applyScenario(saved);
+      if (draftVersion === draftVersionRef.current) {
+        applyScenario(saved);
+      } else {
+        setScenario((current) => current ?? saved);
+      }
       setValidation(null);
       if (creating) router.replace(`/projects/${projectId}/automation/api/scenarios/${saved.id}`);
       if (showToast) toast.success(creating ? "场景已创建" : "场景已保存");

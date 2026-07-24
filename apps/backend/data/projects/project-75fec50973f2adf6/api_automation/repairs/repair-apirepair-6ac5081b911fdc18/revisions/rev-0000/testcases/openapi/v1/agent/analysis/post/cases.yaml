@@ -1,0 +1,621 @@
+- id: apitc-0698af50d9361082
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 请求体为空 JSON 对象
+  test_point_key: request_body.empty_object
+  oracle_status: needs_confirmation
+  test_description: 发送空 JSON 对象 {}，缺少必填字段 start_date 和 end_date，验证接口返回错误。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body: {}
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 文档未声明空 JSON 对象时的具体状态码和错误响应。当前推断为 400 Bad Request。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-0698af50d9361082
+- id: apitc-10e12d996cfd0015
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 请求体缺少必填字段 start_date
+  test_point_key: body.required.start_date.missing
+  oracle_status: needs_confirmation
+  test_description: 请求体只包含 end_date，缺少必填字段 start_date，验证接口返回错误。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 文档未声明缺少必填字段 start_date 时的具体状态码和错误响应。当前推断为 400 Bad Request，这是 REST 接口的常见契约。实际执行后需根据响应调整
+    status_code 和业务断言。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-10e12d996cfd0015
+- id: apitc-27d8ade16ad9ce99
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 必填字段 start_date 传入空字符串
+  test_point_key: body.required.start_date.empty
+  oracle_status: needs_confirmation
+  test_description: start_date 传入空字符串，验证接口对空字符串的拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: ''
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 文档未声明空字符串输入时的具体状态码和错误响应。当前推断为 400 Bad Request。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-27d8ade16ad9ce99
+- id: apitc-2c9cb0cf8b3a9b4a
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 请求体缺失（不发送 body）
+  test_point_key: request_body.missing
+  oracle_status: needs_confirmation
+  test_description: 不发送请求体，验证接口对缺失 requestBody 的拒绝行为。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 文档未声明 requestBody 缺失时的具体状态码和错误响应。当前推断为 400 Bad Request。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-2c9cb0cf8b3a9b4a
+- id: apitc-3c63b63bbdbe5b71
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 必填字段 end_date 传入非法类型（布尔值）
+  test_point_key: body.required.end_date.invalid_type
+  oracle_status: needs_confirmation
+  test_description: end_date 传入布尔值 true 而非字符串，验证接口对类型错误的拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: '2026-02-01'
+      end_date: true
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 文档未声明类型错误时的具体状态码和错误响应。当前推断为 400 Bad Request。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-3c63b63bbdbe5b71
+- id: apitc-3eb81b5c5a25f1ee
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 必填字段 end_date 传入空字符串
+  test_point_key: body.required.end_date.empty
+  oracle_status: needs_confirmation
+  test_description: end_date 传入空字符串，验证接口对空字符串的拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: '2026-02-01'
+      end_date: ''
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 文档未声明空字符串输入时的具体状态码和错误响应。当前推断为 400 Bad Request。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-3eb81b5c5a25f1ee
+- id: apitc-4578ba70b96994dc
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 日期关系：start_date 等于 end_date
+  test_point_key: body.date_relation.start_equals_end
+  oracle_status: needs_confirmation
+  test_description: start_date 与 end_date 设为相同日期，验证接口对相等日期范围的处理。
+  priority: P2
+  coverage: boundary
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-01'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 200
+  - type: content_type
+    path: ''
+    expected: application/json
+  - type: jsonpath_exists
+    path: $.code
+    expected: true
+  - type: jsonpath_type
+    path: $.code
+    expected: string
+  - type: jsonpath_equals
+    path: $.code
+    expected: '000000'
+  - type: jsonpath_exists
+    path: $.message
+    expected: true
+  - type: jsonpath_type
+    path: $.message
+    expected: string
+  - type: jsonpath_exists
+    path: $.data
+    expected: true
+  - type: jsonpath_type
+    path: $.data
+    expected: object
+  - type: jsonpath_exists
+    path: $.data.user_cnt
+    expected: true
+  - type: jsonpath_type
+    path: $.data.user_cnt
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.question_cnt
+    expected: true
+  - type: jsonpath_type
+    path: $.data.question_cnt
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.answer_cnt
+    expected: true
+  - type: jsonpath_type
+    path: $.data.answer_cnt
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.useful_cnt
+    expected: true
+  - type: jsonpath_type
+    path: $.data.useful_cnt
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.useless_cnt
+    expected: true
+  - type: jsonpath_type
+    path: $.data.useless_cnt
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.user_per_question_cnt
+    expected: true
+  - type: jsonpath_type
+    path: $.data.user_per_question_cnt
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.normal_answer_rate
+    expected: true
+  - type: jsonpath_type
+    path: $.data.normal_answer_rate
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.useful_rate
+    expected: true
+  - type: jsonpath_type
+    path: $.data.useful_rate
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.useless_rate
+    expected: true
+  - type: jsonpath_type
+    path: $.data.useless_rate
+    expected: number
+  notes: 文档未明确说明 start_date 等于 end_date 时的行为。当前推断为成功返回（200），因为单日范围在语义上合法。实际执行后需确认接口是否接受相等日期。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-4578ba70b96994dc
+- id: apitc-485f36deace612e1
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 必填字段 start_date 传入 null
+  test_point_key: body.required.start_date.null
+  oracle_status: needs_confirmation
+  test_description: start_date 传入 null，验证接口对 null 值的拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: null
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 文档未声明 null 值输入时的具体状态码和错误响应。当前推断为 400 Bad Request。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-485f36deace612e1
+- id: apitc-4f2ac354b9ef812a
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 最小合法请求（必填字段）
+  test_point_key: success.minimum_valid
+  oracle_status: confirmed
+  test_description: 使用必填字段 start_date 和 end_date 构造最小合法请求，验证成功返回统计数据。
+  priority: P0
+  coverage: positive
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 200
+  - type: content_type
+    path: ''
+    expected: application/json
+  - type: jsonpath_exists
+    path: $.code
+    expected: true
+  - type: jsonpath_type
+    path: $.code
+    expected: string
+  - type: jsonpath_equals
+    path: $.code
+    expected: '000000'
+  - type: jsonpath_exists
+    path: $.message
+    expected: true
+  - type: jsonpath_type
+    path: $.message
+    expected: string
+  - type: jsonpath_exists
+    path: $.data
+    expected: true
+  - type: jsonpath_type
+    path: $.data
+    expected: object
+  - type: jsonpath_exists
+    path: $.data.user_cnt
+    expected: true
+  - type: jsonpath_type
+    path: $.data.user_cnt
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.question_cnt
+    expected: true
+  - type: jsonpath_type
+    path: $.data.question_cnt
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.answer_cnt
+    expected: true
+  - type: jsonpath_type
+    path: $.data.answer_cnt
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.useful_cnt
+    expected: true
+  - type: jsonpath_type
+    path: $.data.useful_cnt
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.useless_cnt
+    expected: true
+  - type: jsonpath_type
+    path: $.data.useless_cnt
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.user_per_question_cnt
+    expected: true
+  - type: jsonpath_type
+    path: $.data.user_per_question_cnt
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.normal_answer_rate
+    expected: true
+  - type: jsonpath_type
+    path: $.data.normal_answer_rate
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.useful_rate
+    expected: true
+  - type: jsonpath_type
+    path: $.data.useful_rate
+    expected: number
+  - type: jsonpath_exists
+    path: $.data.useless_rate
+    expected: true
+  - type: jsonpath_type
+    path: $.data.useless_rate
+    expected: number
+  notes: ''
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-4f2ac354b9ef812a
+- id: apitc-7084d955069d7d70
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 必填字段 start_date 传入非法类型（数字）
+  test_point_key: body.required.start_date.invalid_type
+  oracle_status: needs_confirmation
+  test_description: start_date 传入数字 12345 而非字符串，验证接口对类型错误的拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: 12345
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 文档未声明类型错误时的具体状态码和错误响应。当前推断为 400 Bad Request。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-7084d955069d7d70
+- id: apitc-8b95f258254e1eda
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 字段 end_date 使用非法日期格式
+  test_point_key: body.end_date.invalid_format
+  oracle_status: needs_confirmation
+  test_description: end_date 传入非法日期格式 '2026/02/05'（斜杠分隔），验证接口对非法日期格式的拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: '2026-02-01'
+      end_date: 2026/02/05
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 文档未声明非法日期格式时的具体状态码和错误响应。当前推断为 400 Bad Request。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-8b95f258254e1eda
+- id: apitc-9062a559b00b9b88
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 鉴权 header cybertron-robot-token 为空
+  test_point_key: header.required.cybertron-robot-token.empty
+  oracle_status: needs_confirmation
+  test_description: 将 cybertron-robot-token 设为空字符串覆盖默认值，验证接口对空鉴权 header 的拒绝行为。
+  priority: P1
+  coverage: security
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers:
+      cybertron-robot-token: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 401
+  notes: 文档未声明鉴权 header 为空时的具体状态码和错误响应。当前推断为 401 Unauthorized。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-9062a559b00b9b88
+- id: apitc-9a8044b9dc3a7ecb
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 日期关系：start_date 晚于 end_date
+  test_point_key: body.date_relation.start_after_end
+  oracle_status: needs_confirmation
+  test_description: start_date 设为晚于 end_date 的日期，验证接口对无效日期范围的拒绝行为。
+  priority: P2
+  coverage: boundary
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: '2026-02-10'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 文档未声明 start_date 晚于 end_date 时的具体状态码和错误响应。当前推断为 400 Bad Request，因为该日期范围在业务上无效。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-9a8044b9dc3a7ecb
+- id: apitc-af82804af7aeec24
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 鉴权 header cybertron-robot-key 为空
+  test_point_key: header.required.cybertron-robot-key.empty
+  oracle_status: needs_confirmation
+  test_description: 将 cybertron-robot-key 设为空字符串覆盖默认值，验证接口对空鉴权 header 的拒绝行为。
+  priority: P1
+  coverage: security
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers:
+      cybertron-robot-key: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 401
+  notes: 文档未声明鉴权 header 为空时的具体状态码和错误响应。当前推断为 401 Unauthorized，这是鉴权失败的常见契约。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-af82804af7aeec24
+- id: apitc-b3059a1b62ecd65f
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 必填字段 end_date 传入 null
+  test_point_key: body.required.end_date.null
+  oracle_status: needs_confirmation
+  test_description: end_date 传入 null，验证接口对 null 值的拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: '2026-02-01'
+      end_date: null
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 文档未声明 null 值输入时的具体状态码和错误响应。当前推断为 400 Bad Request。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-b3059a1b62ecd65f
+- id: apitc-f481362154a1fb8b
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 字段 start_date 使用非法日期格式
+  test_point_key: body.start_date.invalid_format
+  oracle_status: needs_confirmation
+  test_description: start_date 传入非日期格式字符串 'not-a-date'，验证接口对非法日期格式的拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: not-a-date
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 文档未声明非法日期格式时的具体状态码和错误响应。当前推断为 400 Bad Request。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-f481362154a1fb8b
+- id: apitc-f5d2477e8e3da7b4
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 请求体缺少必填字段 end_date
+  test_point_key: body.required.end_date.missing
+  oracle_status: needs_confirmation
+  test_description: 请求体只包含 start_date，缺少必填字段 end_date，验证接口返回错误。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: '2026-02-01'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: 文档未声明缺少必填字段 end_date 时的具体状态码和错误响应。当前推断为 400 Bad Request。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-f5d2477e8e3da7b4
+- id: apitc-f7496b8a80835594
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 鉴权 header username 为空
+  test_point_key: header.required.username.empty
+  oracle_status: needs_confirmation
+  test_description: 将 username 设为空字符串覆盖默认值，验证接口对空鉴权 header 的拒绝行为。
+  priority: P1
+  coverage: security
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers:
+      username: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 401
+  notes: 文档未声明鉴权 header 为空时的具体状态码和错误响应。当前推断为 401 Unauthorized。实际执行后需根据响应调整。
+  created_at: '2026-07-24 07:52:38'
+  updated_at: '2026-07-24 07:52:38'
+  case_id: apitc-f7496b8a80835594

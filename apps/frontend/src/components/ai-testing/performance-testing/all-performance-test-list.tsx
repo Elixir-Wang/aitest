@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { ArrowRight, Gauge, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Eye, Gauge, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
@@ -23,6 +23,8 @@ import {
   type PerformanceTest,
 } from "@/lib/api-client";
 
+import { PerformanceTestParamsDialog } from "./performance-test-params-dialog";
+
 type ProjectPerformanceTest = PerformanceTest & { projectId: string; projectName: string };
 
 export function AllPerformanceTestList() {
@@ -33,6 +35,7 @@ export function AllPerformanceTestList() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
+  const [paramsItem, setParamsItem] = useState<PerformanceTest | null>(null);
 
   const itemProjectIdMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -226,6 +229,11 @@ export function AllPerformanceTestList() {
                     <RowActions
                       actions={[
                         {
+                          label: "查看参数",
+                          icon: Eye,
+                          onSelect: () => setParamsItem(item),
+                        },
+                        {
                           label: "脚本审核",
                           icon: ArrowRight,
                           href: item.latest_script_id
@@ -249,6 +257,7 @@ export function AllPerformanceTestList() {
           </TableBody>
         </Table>
       </div>
+      <PerformanceTestParamsDialog item={paramsItem} onOpenChange={(open) => !open && setParamsItem(null)} />
     </ShellSection>
   );
 }

@@ -2,6 +2,15 @@
 
 You are operating inside the root of one business project's pytest + requests suite.
 
+## Virtual Path Contract
+
+- The virtual filesystem root `/` is already the pytest_requests suite root.
+- `/` is not the parent of the suite. Never create `/pytest_requests` or a nested `pytest_requests/pytest_requests` project.
+- Every backend-provided `artifacts.*` path is relative to `/`. If a tool requires an absolute path, prefix the artifact path with `/` exactly once.
+- For example, `testcases/example/post/test_api.py` maps to `/testcases/example/post/test_api.py`, never `/pytest_requests/testcases/example/post/test_api.py`.
+- Never construct host paths such as `/Users/...` or `/home/...`. Do not use `cp`, `rsync`, `shutil`, or temporary scripts to copy files between virtual and host paths.
+- Inspect `/` and `/AGENTS.md` directly. Keep every read and write inside `/`.
+
 ## Rules
 
 - Inspect the existing suite before editing it.

@@ -5,26 +5,13 @@ from typing import Any
 from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan
 
 
-SENSITIVE_HEADER_NAMES = {
-    "authorization",
-    "cookie",
-    "set-cookie",
-    "x-api-key",
-    "api-key",
-}
-
-
 def build_default_plan(performance_test: dict[str, Any]) -> LocustScriptPlan:
     request_config = dict(performance_test.get("request_config") or {})
     load_config = dict(performance_test.get("load_config") or {})
     data_config = dict(performance_test.get("data_config") or {})
     method = str(performance_test.get("endpoint_method") or "GET").upper()
     path = str(performance_test.get("endpoint_path") or "/")
-    headers = {
-        str(key): value
-        for key, value in dict(request_config.get("headers") or {}).items()
-        if str(key).strip().lower() not in SENSITIVE_HEADER_NAMES
-    }
+    headers = {str(key): value for key, value in dict(request_config.get("headers") or {}).items()}
     return LocustScriptPlan.model_validate(
         {
             "test_id": performance_test["id"],
@@ -56,4 +43,4 @@ def build_default_plan(performance_test: dict[str, Any]) -> LocustScriptPlan:
     )
 
 
-__all__ = ["SENSITIVE_HEADER_NAMES", "build_default_plan"]
+__all__ = ["build_default_plan"]

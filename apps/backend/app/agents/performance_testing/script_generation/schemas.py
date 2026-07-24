@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 
 class LocustRequestPlan(BaseModel):
@@ -61,6 +61,14 @@ class LocustSuccessRulePlan(BaseModel):
     json_path: str = ""
     expected: Any = None
 
+    @model_serializer(mode="plain")
+    def serialize_rule(self) -> dict[str, Any]:
+        if self.kind == "status_code":
+            return {"kind": self.kind, "status_codes": self.status_codes}
+        if self.kind == "jsonpath_exists":
+            return {"kind": self.kind, "json_path": self.json_path}
+        return {"kind": self.kind, "json_path": self.json_path, "expected": self.expected}
+
 
 class LocustScriptPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -72,6 +80,21 @@ class LocustScriptPlan(BaseModel):
     load: LocustLoadPlan
     data: LocustDataPlan = Field(default_factory=LocustDataPlan)
     success_rules: list[LocustSuccessRulePlan]
+
+    @model_validator(mode="after")
+    def remove_redundant_success_rules(self) -> "LocustScriptPlan":
+        equals_paths = {rule.json_path for rule in self.success_rules if rule.kind == "jsonpath_equals"}
+        unique: list[LocustSuccessRulePlan] = []
+        serialized: set[str] = set()
+        for rule in self.success_rules:
+            if rule.kind == "jsonpath_exists" and rule.json_path in equals_paths:
+                continue
+            key = repr(rule.model_dump(mode="json"))
+            if key not in serialized:
+                unique.append(rule)
+                serialized.add(key)
+        self.success_rules = unique
+        return self
 
 
 class ScriptValidationResult(BaseModel):

@@ -1,0 +1,272 @@
+- id: apitc-00ede898ded9008f
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-f0c9dc7d87e495d2
+  title: 创建智能体会话 - 必填 username 传入 null
+  test_point_key: body.required.username.null
+  oracle_status: needs_confirmation
+  test_description: 必填字段 username 传入 null，验证服务端对 null 的拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/conversation/segment/create/
+    query: ''
+    headers: ''
+    body:
+      username: null
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: body.required.username.null：username 为 required，传入 null 违反必填约束。文档未声明错误响应，状态码
+    400 为推断值。
+  created_at: '2026-07-21 02:01:58'
+  updated_at: '2026-07-21 02:01:58'
+  case_id: apitc-00ede898ded9008f
+- id: apitc-437f1fec9ce62ef2
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-f0c9dc7d87e495d2
+  title: 创建智能体会话 - 必填 username 传入非法类型
+  test_point_key: body.required.username.invalid_type
+  oracle_status: needs_confirmation
+  test_description: 必填字段 username 传入数字，与 schema 声明的 string 类型不一致，验证服务端对类型错误的拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/conversation/segment/create/
+    query: ''
+    headers: ''
+    body:
+      username: 12345
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: body.required.username.invalid_type：schema 声明 username 为 string，传入数字 12345
+    触发类型不匹配。文档未声明错误响应，状态码 400 为推断值。
+  created_at: '2026-07-21 02:01:58'
+  updated_at: '2026-07-21 02:01:58'
+  case_id: apitc-437f1fec9ce62ef2
+- id: apitc-6338ec6abab9a7db
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-f0c9dc7d87e495d2
+  title: 创建智能体会话 - 请求体发送空 JSON 对象
+  test_point_key: request_body.empty_object
+  oracle_status: needs_confirmation
+  test_description: 请求体为合法 JSON 空对象，未提供必填 username，验证服务端拒绝行为。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/conversation/segment/create/
+    query: ''
+    headers: ''
+    body: ''
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: request_body.empty_object：请求体为空 JSON 对象 {}，未提供必填字段 username。文档未声明错误响应，状态码
+    400 为推断值。
+  created_at: '2026-07-21 02:01:58'
+  updated_at: '2026-07-21 02:01:58'
+  case_id: apitc-6338ec6abab9a7db
+- id: apitc-94106c052106b6db
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-f0c9dc7d87e495d2
+  title: 创建智能体会话 - 鉴权 header username 为空
+  test_point_key: header.required.username.empty
+  oracle_status: needs_confirmation
+  test_description: 使用空字符串覆盖鉴权 header username 的默认值，验证服务端拒绝行为。
+  priority: P1
+  coverage: security
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/conversation/segment/create/
+    query: ''
+    headers:
+      username: ''
+    body:
+      username: example-string
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 401
+  notes: header.required.username.empty：以空字符串覆盖环境默认鉴权头 username。文档未声明错误响应，状态码 401
+    为推断值；执行后应结合实际响应确认。body 字段保持合法以隔离鉴权空值因素。
+  created_at: '2026-07-21 02:01:58'
+  updated_at: '2026-07-21 02:01:58'
+  case_id: apitc-94106c052106b6db
+- id: apitc-9ccbc7dd9c0b7516
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-f0c9dc7d87e495d2
+  title: 创建智能体会话 - 鉴权 header cybertron-robot-token 为空
+  test_point_key: header.required.cybertron-robot-token.empty
+  oracle_status: needs_confirmation
+  test_description: 使用空字符串覆盖鉴权 header cybertron-robot-token 的默认值，验证服务端拒绝行为。
+  priority: P1
+  coverage: security
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/conversation/segment/create/
+    query: ''
+    headers:
+      cybertron-robot-token: ''
+    body:
+      username: example-string
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 401
+  notes: header.required.cybertron-robot-token.empty：以空字符串覆盖环境默认鉴权头 cybertron-robot-token。文档未声明错误响应，状态码
+    401 为推断值；执行后应结合实际响应确认。body 字段保持合法以隔离鉴权空值因素。
+  created_at: '2026-07-21 02:01:58'
+  updated_at: '2026-07-21 02:01:58'
+  case_id: apitc-9ccbc7dd9c0b7516
+- id: apitc-a8e58d28c0bcd5ca
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-f0c9dc7d87e495d2
+  title: 创建智能体会话 - 请求体缺少必填字段 username
+  test_point_key: body.required.username.missing
+  oracle_status: needs_confirmation
+  test_description: 请求体中缺少必填字段 username，验证服务端拒绝该请求。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/conversation/segment/create/
+    query: ''
+    headers: ''
+    body: ''
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: body.required.username.missing：依据 OpenAPI required=[username]，缺少必填字段。文档未声明具体错误响应或业务码，使用最常见的
+    400 作为可执行断言；执行后应结合实际响应确认状态码与业务码。
+  created_at: '2026-07-21 02:01:58'
+  updated_at: '2026-07-21 02:01:58'
+  case_id: apitc-a8e58d28c0bcd5ca
+- id: apitc-b173202bc7252bee
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-f0c9dc7d87e495d2
+  title: 创建智能体会话 - 不发送请求体
+  test_point_key: request_body.missing
+  oracle_status: needs_confirmation
+  test_description: 完全不发送 requestBody，验证服务端对缺失请求体的拒绝行为。
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/conversation/segment/create/
+    query: ''
+    headers: ''
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: request_body.missing：OpenAPI 声明 requestBody.required=true。文档未声明错误响应，状态码 400
+    为推断值，执行后应结合实际响应确认。
+  created_at: '2026-07-21 02:01:58'
+  updated_at: '2026-07-21 02:01:58'
+  case_id: apitc-b173202bc7252bee
+- id: apitc-d97642b968a182aa
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-f0c9dc7d87e495d2
+  title: 创建智能体会话 - 最小合法请求成功
+  test_point_key: success.minimum_valid
+  oracle_status: confirmed
+  test_description: 使用必填 body 字段 username 构造最小合法请求，验证会话创建成功。
+  priority: P0
+  coverage: positive
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/conversation/segment/create/
+    query: ''
+    headers: ''
+    body:
+      username: example-string
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 200
+  - type: jsonpath_exists
+    path: $.data.segment_code
+    expected: true
+  notes: success.minimum_valid：使用 body 必填字段 username（OpenAPI 示例值 example-string）构造最小合法请求。响应断言基于
+    200 文档定义的成功结构；data.segment_code 为文档声明的关键返回字段。鉴权 header 由环境执行器注入。
+  created_at: '2026-07-21 02:01:58'
+  updated_at: '2026-07-21 02:01:58'
+  case_id: apitc-d97642b968a182aa
+- id: apitc-df7cc9834a73870b
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-f0c9dc7d87e495d2
+  title: 创建智能体会话 - 鉴权 header cybertron-robot-key 为空
+  test_point_key: header.required.cybertron-robot-key.empty
+  oracle_status: needs_confirmation
+  test_description: 使用空字符串覆盖鉴权 header cybertron-robot-key 的默认值，验证服务端拒绝行为。
+  priority: P1
+  coverage: security
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/conversation/segment/create/
+    query: ''
+    headers:
+      cybertron-robot-key: ''
+    body:
+      username: example-string
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 401
+  notes: header.required.cybertron-robot-key.empty：以空字符串覆盖环境默认鉴权头 cybertron-robot-key。文档未声明错误响应，状态码
+    401 为推断值；执行后应结合实际响应确认。body 字段保持合法以隔离鉴权空值因素。
+  created_at: '2026-07-21 02:01:58'
+  updated_at: '2026-07-21 02:01:58'
+  case_id: apitc-df7cc9834a73870b
+- id: apitc-eb91d5e25084ea34
+  project_id: project-75fec50973f2adf6
+  endpoint_id: apiend-f0c9dc7d87e495d2
+  title: 创建智能体会话 - 必填 username 传入空字符串
+  test_point_key: body.required.username.empty
+  oracle_status: needs_confirmation
+  test_description: 必填字符串字段 username 传入空字符串，验证服务端对空值的拒绝行为。
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/conversation/segment/create/
+    query: ''
+    headers: ''
+    body:
+      username: ''
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: body.required.username.empty：username 字段类型为 string，传入 ""。schema 未声明 minLength，文档未规定空字符串处理，状态码
+    400 为推断值。
+  created_at: '2026-07-21 02:01:58'
+  updated_at: '2026-07-21 02:01:58'
+  case_id: apitc-eb91d5e25084ea34

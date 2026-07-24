@@ -1,0 +1,246 @@
+- id: apitc-1464c591f5587521
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 鉴权 header cybertron-robot-key 为空
+  test_point_key: header.required.cybertron-robot-key.empty
+  oracle_status: confirmed
+  test_description: ''
+  priority: P1
+  coverage: security
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers:
+      cybertron-robot-key: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 200
+  notes: 以空字符串覆盖默认的 cybertron-robot-key header。文档未声明该场景的具体状态码和错误响应体，预期 401 为常见鉴权失败推断。执行失败后应结合实际响应调整断言。
+    AI 修复根据实际响应将状态码从 401 校准为 200，经人工审批后生效。
+  created_at: '2026-07-24 08:01:30'
+  updated_at: '2026-07-24 08:01:30'
+- id: apitc-1ab647b12903f195
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 必填字段 start_date 传入 null
+  test_point_key: body.required.start_date.null
+  oracle_status: confirmed
+  test_description: ''
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: null
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 200
+  notes: start_date 传入 null。文档未声明该场景的具体状态码和错误响应体，预期 400 为常见 REST 推断。执行失败后应结合实际响应调整断言。
+    AI 修复根据实际响应将状态码从 400 校准为 200，经人工审批后生效。
+  created_at: '2026-07-24 08:01:30'
+  updated_at: '2026-07-24 08:01:30'
+- id: apitc-4a2e7e146f60f505
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 字段 start_date 使用非法日期格式
+  test_point_key: body.start_date.invalid_format
+  oracle_status: confirmed
+  test_description: ''
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: 2026/02/01
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 200
+  notes: start_date 使用斜杠分隔的日期格式（2026/02/01），不符合示例中的 YYYY-MM-DD 格式。文档未声明该场景的具体状态码和错误响应体，预期
+    400 为常见 REST 推断。执行失败后应结合实际响应调整断言。 AI 修复根据实际响应将状态码从 400 校准为 200，经人工审批后生效。
+  created_at: '2026-07-24 08:01:30'
+  updated_at: '2026-07-24 08:01:30'
+- id: apitc-652f0b80d8b76da5
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 请求体缺失（不发送 body）
+  test_point_key: request_body.missing
+  oracle_status: confirmed
+  test_description: ''
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 200
+  notes: 不发送 requestBody。文档未声明该场景的具体状态码和错误响应体，预期 400 为常见 REST 推断。执行失败后应结合实际响应调整断言。
+    AI 修复根据实际响应将状态码从 400 校准为 200，经人工审批后生效。
+  created_at: '2026-07-24 08:01:30'
+  updated_at: '2026-07-24 08:01:30'
+- id: apitc-7117de6e9bc4bbbc
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 请求体发送空 JSON 对象
+  test_point_key: request_body.empty_json
+  oracle_status: confirmed
+  test_description: ''
+  priority: P1
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body: {}
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 200
+  notes: 发送空 JSON 对象 {}。文档未声明该场景的具体状态码和错误响应体，预期 400 为常见 REST 推断。执行失败后应结合实际响应调整断言。
+    AI 修复根据实际响应将状态码从 400 校准为 200，经人工审批后生效。
+  created_at: '2026-07-24 08:01:30'
+  updated_at: '2026-07-24 08:01:30'
+- id: apitc-7e7e7e7e7e7e7e7e
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 最小合法请求成功
+  test_point_key: positive.minimal_valid
+  oracle_status: confirmed
+  test_description: ''
+  priority: P0
+  coverage: positive
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 200
+  - type: jsonpath_exists
+    path: $.data
+  notes: 最小合法请求，预期返回 200 和 data 字段。
+  created_at: '2026-07-24 08:01:30'
+  updated_at: '2026-07-24 08:01:30'
+- id: apitc-8f8f8f8f8f8f8f8f
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 鉴权 header username 为空
+  test_point_key: header.required.username.empty
+  oracle_status: needs_confirmation
+  test_description: ''
+  priority: P1
+  coverage: security
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers:
+      username: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 401
+  notes: 以空字符串覆盖默认的 username header。文档未声明该场景的具体状态码和错误响应体，预期 401 为常见鉴权失败推断。执行失败后应结合实际响应调整断言。
+  created_at: '2026-07-24 08:01:30'
+  updated_at: '2026-07-24 08:01:30'
+- id: apitc-9f9f9f9f9f9f9f9f
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 鉴权 header cybertron-robot-token 为空
+  test_point_key: header.required.cybertron-robot-token.empty
+  oracle_status: needs_confirmation
+  test_description: ''
+  priority: P1
+  coverage: security
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers:
+      cybertron-robot-token: ''
+    body:
+      start_date: '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 401
+  notes: 以空字符串覆盖默认的 cybertron-robot-token header。文档未声明该场景的具体状态码和错误响应体，预期 401 为常见鉴权失败推断。执行失败后应结合实际响应调整断言。
+  created_at: '2026-07-24 08:01:30'
+  updated_at: '2026-07-24 08:01:30'
+- id: apitc-afafafafafafafaf
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 必填字段 start_date 传入非法类型（数组）
+  test_point_key: body.start_date.invalid_type
+  oracle_status: needs_confirmation
+  test_description: ''
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date:
+      - '2026-02-01'
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: start_date 传入数组类型。文档未声明该场景的具体状态码和错误响应体，预期 400 为常见 REST 推断。执行失败后应结合实际响应调整断言。
+  created_at: '2026-07-24 08:01:30'
+  updated_at: '2026-07-24 08:01:30'
+- id: apitc-bfbfbfbfbfbfbfbf
+  endpoint_id: apiend-6434c35096aa611b
+  title: 智能体数据分析 - 必填字段 start_date 传入空字符串
+  test_point_key: body.required.start_date.empty_string
+  oracle_status: needs_confirmation
+  test_description: ''
+  priority: P2
+  coverage: negative
+  preconditions: []
+  request:
+    method: POST
+    path: /openapi/v1/agent/analysis/
+    headers: {}
+    body:
+      start_date: ''
+      end_date: '2026-02-05'
+  test_data: {}
+  assertions:
+  - type: status_code
+    path: ''
+    expected: 400
+  notes: start_date 传入空字符串。文档未声明该场景的具体状态码和错误响应体，预期 400 为常见 REST 推断。执行失败后应结合实际响应调整断言。
+  created_at: '2026-07-24 08:01:30'
+  updated_at: '2026-07-24 08:01:30'

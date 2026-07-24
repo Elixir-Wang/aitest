@@ -80,7 +80,7 @@ def test_enrich_drafts_uses_explicit_obligation_link_and_canonical_module():
     )
 
     assert points[0].module == "自主规划Agent - 对话模型配置弹窗"
-    assert points[0].title == "自主规划Agent - 对话模型配置弹窗 - 显示思考模式开关"
+    assert points[0].title == "显示思考模式开关"
     assert points[0].requirement_obligation_keys == ["REQ-001.M01"]
 
 
@@ -110,7 +110,7 @@ def test_enrich_drafts_merges_same_module_and_title_obligation_links():
     )
 
     assert len(points) == 1
-    assert points[0].title == "对话模型配置弹窗 - 显示思考模式开关"
+    assert points[0].title == "显示思考模式开关"
     assert points[0].requirement_obligation_keys == ["REQ-001", "REQ-002"]
 
 
@@ -174,6 +174,30 @@ def test_generation_result_rejects_duplicate_titles_with_different_keys():
 
     with pytest.raises(ValueError, match="重复的测试点标题"):
         _validate_generation_result(result, [obligation])
+
+
+def test_generation_result_rejects_title_already_used_by_existing_point():
+    result = GenerationResult(
+        points=[
+            _point(
+                point_key="new-point",
+                module="Multi-Agent - Agent节点",
+                requirement_obligation_keys=["REQ-002"],
+            )
+        ]
+    )
+    obligations = [
+        RequirementObligation(
+            obligation_key=key,
+            source_section="需求",
+            statement="支持思考模式",
+            obligation_type="display",
+        )
+        for key in ["REQ-001", "REQ-002"]
+    ]
+
+    with pytest.raises(ValueError, match="重复的测试点标题"):
+        _validate_generation_result(result, obligations, existing_points=[_point()])
 
 
 def test_generation_result_rejects_unknown_obligation_keys():

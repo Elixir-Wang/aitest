@@ -4,14 +4,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.api.v1 import v1_router
+from app.core.db import connect
 from app.core.logging import setup_logging, shutdown_logging
 from app.core.response import ApiResponseMiddleware, ApiUnhandledExceptionMiddleware
 from app.seed.init_db import init_db
-from app.core.db import connect
-from app.services.performance_testing import run_repo
-from app.services import task_service, test_case_service, test_point_service
+from app.services import retention_cleanup_service, task_service, test_case_service, test_point_service
 from app.services.api_automation import service as api_automation_service
-from app.services.ui_automation import live_view as ui_automation_live_view
+from app.services.performance_testing import run_repo
 from app.services.ui_automation import service as ui_automation_service
 from app.services.page_exploration import event_bus, page_exploration_service
 
@@ -61,13 +60,16 @@ def startup() -> None:
     test_point_service.recover_interrupted_generation_runs()
     api_automation_service.recover_interrupted_api_automation_tasks()
     ui_automation_service.recover_interrupted_ui_automation_tasks()
+    ui_automation_service.prepare_background_tasks()
+    retention_cleanup_service.schedule_cleanup()
     logger.info("Application started — AI Testing System API v0.1.0")
 
 
 @app.on_event("shutdown")
 def shutdown() -> None:
     event_bus.close_all()
-    ui_automation_live_view.shutdown_all()
+    retention_cleanup_service.shutdown_cleanup()
+    ui_automation_service.shutdown_background_tasks()
     # 杀掉所有 browser-session.mjs Node 子进程（正常路径由 runtime_context 关闭，
     # 但 Ctrl+C / kill 时 ContextVar 未执行，需要兜底）
     import subprocess, sys

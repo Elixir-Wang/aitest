@@ -75,7 +75,7 @@ def test_runner_cleans_stale_outputs_writes_env_and_parses_report(monkeypatch, t
     assert result["scenario_result_path"] == str(run_dir / "scenario-result.json")
 
 
-def test_runner_returns_observed_when_observation_evidence_exists(monkeypatch, tmp_path: Path) -> None:
+def test_runner_returns_passed_and_preserves_observation_evidence(monkeypatch, tmp_path: Path) -> None:
     suite_path = tmp_path / "suite"
     run_dir = tmp_path / "run"
     suite_path.mkdir()
@@ -114,7 +114,7 @@ def test_runner_returns_observed_when_observation_evidence_exists(monkeypatch, t
         timeout=30,
     )
 
-    assert result["status"] == "observed"
+    assert result["status"] == "passed"
     assert result["summary"]["observed"] == 1
     assert result["observation_result_path"] == str(run_dir / "observations.json")
 

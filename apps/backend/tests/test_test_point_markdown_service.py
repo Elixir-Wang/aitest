@@ -97,7 +97,7 @@ def test_overview_contains_serialized_markdown(monkeypatch: pytest.MonkeyPatch, 
 
     assert overview["markdown_content"].startswith("# 测试点\n")
     assert "### [login.success] 登录成功" in overview["markdown_content"]
-    assert all("point_key" not in point for point in overview["points"])
+    assert all(set(point) == {"id", "title", "module", "priority"} for point in overview["points"])
 
 
 def test_save_markdown_preserves_existing_ids_and_syncs_additions_and_deletions(
@@ -133,7 +133,7 @@ def test_save_markdown_preserves_existing_ids_and_syncs_additions_and_deletions(
         ADMIN,
     )
 
-    assert all("point_key" not in point for point in updated["points"])
+    assert all(set(point) == {"id", "title", "module", "priority"} for point in updated["points"])
     with core_db.connect() as db:
         rows = test_point_repo.list_points(db, "doc-1", "version-1")
     by_key = {row["point_key"]: row for row in rows}

@@ -11,12 +11,12 @@ import {
   authStateStatusLabels,
   captchaStrategyLabels,
   captchaStrategyOptions,
-  EnvironmentAuthStateBadge,
   type EnvironmentForm,
   emptyEnvironmentForm,
   environmentLoginStrategyOptions,
   explorationStatusLabels,
   formatAuthStateExpiresAt,
+  formatAuthStateTimeRemaining,
   formFromEnvironment,
   formMatchesSavedManualAuthConfig,
   isActiveManualAuthSession,
@@ -399,6 +399,25 @@ export function ExplorationWorkspace({
     form.loginStrategy === "account_password" &&
     form.captchaStrategy === "ai_letter";
   const manualAuthSessionActive = isActiveManualAuthSession(manualAuthSession);
+  const authStateSummaryLabel =
+    {
+      expired: "登录态已过期",
+      login_failed: "登录态获取失败",
+      logging_in: "正在获取登录态",
+      none: "暂无登录态",
+      unknown: "登录态未检测",
+      valid: "登录态有效",
+    }[selectedAuthStateStatus] ?? `登录态${authStateStatusLabels[selectedAuthStateStatus] ?? selectedAuthStateStatus}`;
+  const authStateAccentClassName =
+    selectedAuthStateStatus === "valid"
+      ? "before:bg-emerald-500"
+      : selectedAuthStateStatus === "expired" || selectedAuthStateStatus === "login_failed"
+        ? "before:bg-red-500"
+        : selectedAuthStateStatus === "unknown"
+          ? "before:bg-amber-500"
+          : selectedAuthStateStatus === "logging_in"
+            ? "before:bg-blue-500"
+            : "before:bg-muted-foreground/40";
 
   const syncManualAuthState = useCallback(
     (session: ManualAuthSession, environmentId: string) => {
@@ -1179,20 +1198,11 @@ export function ExplorationWorkspace({
                 </div>
                 <Field className="sm:col-span-2">
                   <div className="font-medium text-sm">登录态信息</div>
-                  <div className="grid gap-3 rounded-md border bg-muted/20 px-3 py-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                  <div
+                    className={`relative grid overflow-hidden rounded-md border bg-muted/20 py-3 pr-3 pl-4 before:absolute before:inset-y-0 before:left-0 before:w-0.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-5 ${authStateAccentClassName}`}
+                  >
                     <div className="min-w-0 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground text-xs">登录态</span>
-                        <EnvironmentAuthStateBadge
-                          message={editingEnvironment?.auth_state_message}
-                          status={selectedAuthStateStatus}
-                        />
-                      </div>
-                      {selectedAuthStateStatus === "valid" || selectedAuthStateStatus === "expired" ? (
-                        <p className="text-muted-foreground text-xs">
-                          有效期：{formatAuthStateExpiresAt(selectedAuthStateExpiresAt)}
-                        </p>
-                      ) : null}
+                      <div className="font-medium text-sm">{authStateSummaryLabel}</div>
                       {showManualAuthControls ? (
                         <div className="space-y-1 text-xs">
                           <p className="text-muted-foreground">
@@ -1224,44 +1234,56 @@ export function ExplorationWorkspace({
                         <p className="text-muted-foreground text-xs">仅人工登录策略需要手动保存登录态。</p>
                       )}
                     </div>
-                    {showManualAuthControls ? (
-                      <div className="flex shrink-0 flex-wrap gap-2 lg:flex-nowrap lg:justify-end">
-                        <Button
-                          className="whitespace-nowrap"
-                          disabled={manualAuthAction === "start"}
-                          onClick={startManualAuth}
-                          type="button"
-                          variant="outline"
-                        >
-                          <LogIn className="size-4" />
-                          打开登录
-                        </Button>
-                        {manualAuthSession ? (
-                          <>
-                            <Button
-                              className="whitespace-nowrap"
-                              disabled={manualAuthAction === "save"}
-                              onClick={saveManualAuth}
-                              type="button"
-                              variant="outline"
-                            >
-                              <Save className="size-4" />
-                              保存登录态
-                            </Button>
-                            <Button
-                              className="whitespace-nowrap"
-                              disabled={manualAuthAction === "cancel"}
-                              onClick={() => void cancelManualAuth()}
-                              type="button"
-                              variant="ghost"
-                            >
-                              <X className="size-4" />
-                              取消
-                            </Button>
-                          </>
-                        ) : null}
-                      </div>
-                    ) : null}
+                    <div className="mt-3 flex shrink-0 flex-wrap items-center gap-3 sm:mt-0 sm:flex-nowrap sm:justify-end">
+                      {selectedAuthStateStatus === "valid" || selectedAuthStateStatus === "expired" ? (
+                        <div className="min-w-32 sm:text-right">
+                          <div className="font-medium text-xs">
+                            {formatAuthStateTimeRemaining(selectedAuthStateExpiresAt)}
+                          </div>
+                          <div className="mt-0.5 whitespace-nowrap text-[11px] text-muted-foreground tabular-nums">
+                            有效期至 {formatAuthStateExpiresAt(selectedAuthStateExpiresAt)}
+                          </div>
+                        </div>
+                      ) : null}
+                      {showManualAuthControls ? (
+                        <div className="flex shrink-0 flex-wrap gap-2 lg:flex-nowrap lg:justify-end">
+                          <Button
+                            className="whitespace-nowrap"
+                            disabled={manualAuthAction === "start"}
+                            onClick={startManualAuth}
+                            type="button"
+                            variant="outline"
+                          >
+                            <LogIn className="size-4" />
+                            打开登录
+                          </Button>
+                          {manualAuthSession ? (
+                            <>
+                              <Button
+                                className="whitespace-nowrap"
+                                disabled={manualAuthAction === "save"}
+                                onClick={saveManualAuth}
+                                type="button"
+                                variant="outline"
+                              >
+                                <Save className="size-4" />
+                                保存登录态
+                              </Button>
+                              <Button
+                                className="whitespace-nowrap"
+                                disabled={manualAuthAction === "cancel"}
+                                onClick={() => void cancelManualAuth()}
+                                type="button"
+                                variant="ghost"
+                              >
+                                <X className="size-4" />
+                                取消
+                              </Button>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </Field>
               </>

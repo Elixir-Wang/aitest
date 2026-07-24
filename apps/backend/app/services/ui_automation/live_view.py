@@ -100,7 +100,10 @@ def stream_mjpeg(run_id: str, token: str) -> Iterator[bytes]:
         with session.frame_condition:
             session.frame_condition.wait_for(
                 lambda: session.frame_sequence > delivered_sequence or session.stop_event.is_set(),
-                timeout=2,
+                # StreamingResponse iterates this sync generator in a worker
+                # thread. Keep the wait short so Uvicorn can cancel it during
+                # graceful shutdown before an external supervisor escalates.
+                timeout=0.25,
             )
             if session.stop_event.is_set():
                 break

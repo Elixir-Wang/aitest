@@ -55,11 +55,12 @@ def _performance_test() -> dict:
     }
 
 
-def test_default_plan_excludes_sensitive_headers() -> None:
+def test_default_plan_keeps_all_headers() -> None:
     plan = build_default_plan(_performance_test())
 
     assert plan.request.headers == {
         "X-Request-Source": "performance",
+        "Authorization": "Bearer must-not-leak",
         "cybertron-robot-key": "robot-key",
         "cybertron-robot-token": "robot-token",
     }
@@ -75,11 +76,35 @@ def test_renderer_uses_locust_http_user_and_controlled_request() -> None:
     assert "class PerformanceUser(HttpUser):" in source
     assert "catch_response=True" in source
     assert "between(0.5, 1.5)" in source
-    assert "Authorization" not in source
+    assert "Authorization" in source
     assert "cybertron-robot-key" in source
     assert "cybertron-robot-token" in source
     assert "self.client.request(" in source
     assert "LoadTestShape" not in source
+
+
+def test_renderer_keeps_http_and_business_success_rules() -> None:
+    performance_test = _performance_test()
+    performance_test["success_rules"] = [
+        {"kind": "status_code", "status_codes": [200]},
+        {"kind": "jsonpath_exists", "json_path": "$.code"},
+        {"kind": "jsonpath_equals", "json_path": "$.code", "expected": "000000"},
+    ]
+
+    plan = build_default_plan(performance_test)
+    source = render_locust_script(plan)
+
+    assert [rule.kind for rule in plan.success_rules] == ["status_code", "jsonpath_equals"]
+    assert plan.success_rules[1].json_path == "$.code"
+    assert plan.success_rules[1].expected == "000000"
+    assert plan.model_dump(mode="json")["success_rules"] == [
+        {"kind": "status_code", "status_codes": [200]},
+        {"kind": "jsonpath_equals", "json_path": "$.code", "expected": "000000"},
+    ]
+    assert 'rule["kind"].startswith("jsonpath_")' in source
+    assert "JSONPath mismatch" in source
+    assert source.count("payload = response.json()") == 1
+    assert "payload_loaded = False" in source
 
 
 def test_renderer_resolves_single_brace_path_parameters() -> None:
@@ -168,12 +193,12 @@ def test_validator_rejects_forbidden_import() -> None:
     assert any("os" in error for error in result.errors)
 
 
-def test_ai_plan_input_is_whitelisted() -> None:
+def test_ai_plan_input_keeps_all_request_headers() -> None:
     payload = script_plan_input(_performance_test())
 
     serialized = str(payload)
-    assert "Authorization" not in serialized
-    assert "must-not-leak" not in serialized
+    assert "Authorization" in serialized
+    assert "must-not-leak" in serialized
     assert "cybertron-robot-key" in serialized
     assert set(payload) == {"test_id", "endpoint", "request", "load", "data", "success_rules"}
 

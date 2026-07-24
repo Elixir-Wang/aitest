@@ -14,10 +14,10 @@ from generated_locustfile import *
 
 RUNTIME = json.loads(Path(__file__).with_name("runtime.json").read_text(encoding="utf-8"))
 PLAN["request"]["headers"] = {
-    **dict(RUNTIME["environment"].get("headers") or {}),
     **dict(PLAN["request"].get("headers") or {}),
+    **dict(RUNTIME["environment"].get("headers") or {}),
 }
-PerformanceUser.host = RUNTIME["environment"]["api_base_url"]
+PerformanceUser.host = str(RUNTIME["environment"]["api_base_url"]).rstrip("/")
 
 EVENT_LOG = Path(__file__).with_name("locust-events.jsonl")
 CONTROL_FILE = Path(__file__).with_name("locust-control.json")
@@ -29,6 +29,43 @@ def _append_event(payload):
             "occurred_at": datetime.now(timezone.utc).isoformat(),
             **payload,
         }, ensure_ascii=False) + "\\n")
+
+
+def _redact_response_value(value, key=""):
+    normalized = str(key).lower().replace("-", "_")
+    if any(marker in normalized for marker in ("password", "secret", "token", "api_key", "credential")):
+        return "***"
+    if normalized == "key" or normalized.endswith("_key") or normalized == "authorization":
+        return "***"
+    if isinstance(value, dict):
+        return {str(item_key): _redact_response_value(item, item_key) for item_key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_response_value(item) for item in value[:20]]
+    if isinstance(value, str):
+        return value[:1000]
+    return value
+
+
+def _response_excerpt(response):
+    if response is None:
+        return ""
+    try:
+        payload = response.json()
+    except (TypeError, ValueError):
+        return ""
+    if isinstance(payload, dict):
+        payload = {key: payload[key] for key in ("code", "message", "type", "error", "detail") if key in payload}
+    return json.dumps(_redact_response_value(payload), ensure_ascii=False)[:2000]
+
+
+def _trace_headers(response):
+    if response is None:
+        return {}
+    return {
+        key: response.headers[key]
+        for key in ("log-id", "x-trace-id", "traceparent")
+        if response.headers.get(key)
+    }
 
 
 def _control_loop(environment):
@@ -63,6 +100,8 @@ def _on_request(request_type, name, response_time, response_length, response, co
             "response_time": response_time,
             "status_code": getattr(response, "status_code", None),
             "reason": str(exception or getattr(response, "reason", "HTTP failure"))[:1000],
+            "response_excerpt": _response_excerpt(response),
+            "response_headers": _trace_headers(response),
         })
 
 

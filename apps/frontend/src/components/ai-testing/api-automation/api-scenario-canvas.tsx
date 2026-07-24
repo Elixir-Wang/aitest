@@ -29,9 +29,20 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Trash2,
   Variable,
 } from "lucide-react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { ApiAutomationEndpoint, ApiAutomationScenarioStep } from "@/lib/api-client";
@@ -43,6 +54,7 @@ type ApiScenarioCanvasProps = {
   activeStepId: string;
   onSelectStep: (stepId: string) => void;
   onClearSelection: () => void;
+  onDeleteStep: (stepId: string) => void;
   onAddUtilityStep: (stepType: Exclude<ApiAutomationScenarioStep["step_type"], "api_request">) => void;
   onOpenAssetPicker: () => void;
 };
@@ -55,6 +67,7 @@ type ScenarioNodeData = {
   selected?: boolean;
   inputPosition?: Position;
   outputPosition?: Position;
+  onRequestDelete?: (step: ApiAutomationScenarioStep) => void;
 };
 
 type ScenarioNode = Node<ScenarioNodeData>;
@@ -77,12 +90,15 @@ export function ApiScenarioCanvas({
   activeStepId,
   onSelectStep,
   onClearSelection,
+  onDeleteStep,
   onAddUtilityStep,
   onOpenAssetPicker,
 }: ApiScenarioCanvasProps) {
+  const [pendingDeleteStep, setPendingDeleteStep] = useState<ApiAutomationScenarioStep | null>(null);
+  const requestDeleteStep = useCallback((step: ApiAutomationScenarioStep) => setPendingDeleteStep(step), []);
   const initial = useMemo(
-    () => buildCanvasGraph(steps, endpoints, activeStepId, new Map(), DEFAULT_CANVAS_WIDTH),
-    [endpoints, steps, activeStepId],
+    () => buildCanvasGraph(steps, endpoints, activeStepId, new Map(), DEFAULT_CANVAS_WIDTH, requestDeleteStep),
+    [endpoints, steps, activeStepId, requestDeleteStep],
   );
   const [nodes, setNodes, onNodesChange] = useNodesState<ScenarioNode>(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
@@ -116,15 +132,15 @@ export function ApiScenarioCanvas({
     const structureChanged = stepIds !== stepIdsRef.current;
     setNodes((current) => {
       const positions = structureChanged ? new Map() : new Map(current.map((node) => [node.id, node.position]));
-      return buildCanvasGraph(steps, endpoints, activeStepId, positions, canvasWidth).nodes;
+      return buildCanvasGraph(steps, endpoints, activeStepId, positions, canvasWidth, requestDeleteStep).nodes;
     });
-    setEdges(buildCanvasGraph(steps, endpoints, activeStepId, new Map(), canvasWidth).edges);
+    setEdges(buildCanvasGraph(steps, endpoints, activeStepId, new Map(), canvasWidth, requestDeleteStep).edges);
     if (structureChanged) {
       stepIdsRef.current = stepIds;
       setLayoutMode("auto");
       fitCanvas();
     }
-  }, [activeStepId, canvasWidth, endpoints, fitCanvas, setEdges, setNodes, steps]);
+  }, [activeStepId, canvasWidth, endpoints, fitCanvas, requestDeleteStep, setEdges, setNodes, steps]);
 
   useEffect(() => {
     if (layoutMode !== "auto") return;
@@ -133,12 +149,34 @@ export function ApiScenarioCanvas({
   }, [canvasWidth, fitCanvas, layoutMode, setNodes]);
 
   const handleAutoLayout = useCallback(() => {
-    const graph = buildCanvasGraph(steps, endpoints, activeStepId, new Map(), canvasWidth);
+    const graph = buildCanvasGraph(steps, endpoints, activeStepId, new Map(), canvasWidth, requestDeleteStep);
     setNodes(layoutCanvasNodes(graph.nodes, canvasWidth));
     setEdges(graph.edges);
     setLayoutMode("auto");
     fitCanvas();
-  }, [activeStepId, canvasWidth, endpoints, fitCanvas, setEdges, setNodes, steps]);
+  }, [activeStepId, canvasWidth, endpoints, fitCanvas, requestDeleteStep, setEdges, setNodes, steps]);
+
+  useEffect(() => {
+    const handleDeleteKey = (event: KeyboardEvent) => {
+      if (!activeStepId || (event.key !== "Delete" && event.key !== "Backspace")) return;
+      const target = event.target;
+      if (
+        !(target instanceof HTMLElement) ||
+        !canvasRef.current?.contains(target) ||
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+      const activeStep = steps.find((step) => step.id === activeStepId);
+      if (!activeStep) return;
+      event.preventDefault();
+      requestDeleteStep(activeStep);
+    };
+    window.addEventListener("keydown", handleDeleteKey);
+    return () => window.removeEventListener("keydown", handleDeleteKey);
+  }, [activeStepId, requestDeleteStep, steps]);
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: ScenarioNode) => {
@@ -230,6 +268,33 @@ export function ApiScenarioCanvas({
           自动布局
         </Button>
       </div>
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteStep(null);
+        }}
+        open={Boolean(pendingDeleteStep)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除节点“{pendingDeleteStep?.name}”？</AlertDialogTitle>
+            <AlertDialogDescription>
+              节点会从当前草稿中移除并重新排列执行顺序。后续步骤如引用了该节点的输出，需要重新配置。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                if (pendingDeleteStep) onDeleteStep(pendingDeleteStep.id);
+                setPendingDeleteStep(null);
+              }}
+            >
+              删除节点
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -349,6 +414,19 @@ function ScenarioNodeCard({ data }: NodeProps<ScenarioNode>) {
           <Badge className="font-mono text-[9px]" variant="outline">
             {method}
           </Badge>
+          <Button
+            aria-label={`删除节点 ${step.name}`}
+            className="nodrag nopan -mr-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            onClick={(event) => {
+              event.stopPropagation();
+              data.onRequestDelete?.(step);
+            }}
+            size="icon-xs"
+            title="删除节点"
+            variant="ghost"
+          >
+            <Trash2 />
+          </Button>
         </div>
       </div>
       <div className="space-y-2 px-3 py-3">
@@ -407,6 +485,7 @@ function buildCanvasGraph(
   activeStepId: string,
   positions = new Map<string, { x: number; y: number }>(),
   canvasWidth = DEFAULT_CANVAS_WIDTH,
+  onRequestDelete?: (step: ApiAutomationScenarioStep) => void,
 ) {
   const nodes: ScenarioNode[] = [
     {
@@ -425,6 +504,7 @@ function buildCanvasGraph(
         endpoint: endpoints.find((endpoint) => endpoint.id === step.endpoint_id),
         index,
         selected: step.id === activeStepId,
+        onRequestDelete,
       },
       position: positions.get(step.id) ?? { x: 240 + index * 300, y: 140 },
     })),

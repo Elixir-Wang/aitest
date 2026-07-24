@@ -1,0 +1,542 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.6, pytest-9.0.1, pluggy-1.6.0
+rootdir: /Users/wanghongbao/project/test_project/apps/backend/data/projects/project-75fec50973f2adf6/api_automation/pytest_requests
+configfile: pytest.ini
+plugins: json-report-1.5.0, metadata-3.1.1, locust-2.45.0, base-url-2.1.0, langsmith-0.8.5, playwright-0.8.0, anyio-4.13.0
+collected 18 items
+
+testcases/openapi/v1/agent/analysis/post/test_api.py FFFFFFFFFFF.FFF.FF  [100%]
+
+=================================== FAILURES ===================================
+_________________ test_agent_analysis[apitc-1464c591f5587521] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-1464c591f5587521', 'coverage': 'security', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-1ab647b12903f195] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-1ab647b12903f195', 'coverage': 'negative', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-4a2e7e146f60f505] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-4a2e7e146f60f505', 'coverage': 'negative', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-652f0b80d8b76da5] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-652f0b80d8b76da5', 'coverage': 'negative', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-7117de6e9bc4bbbc] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-7117de6e9bc4bbbc', 'coverage': 'boundary', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-722a8db220fcd8e1] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-722a8db220fcd8e1', 'coverage': 'negative', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-7e3d8646bfe27be3] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-7e3d8646bfe27be3', 'coverage': 'negative', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-7eeaed2c90d7fd6b] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-7eeaed2c90d7fd6b', 'coverage': 'security', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-8074bdb19ffa244c] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-8074bdb19ffa244c', 'coverage': 'negative', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-8ba2babaf54cbf99] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-8ba2babaf54cbf99', 'coverage': 'negative', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-8ca94fab683eb774] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-8ca94fab683eb774', 'coverage': 'negative', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-9afd22c5c661a5a2] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-9afd22c5c661a5a2', 'coverage': 'negative', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-9f0ddb3393a1faaf] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 401, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-9f0ddb3393a1faaf', 'coverage': 'security', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 401, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-b30e4bff074f51f1] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-b30e4bff074f51f1', 'coverage': 'negative', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-bb9ccce3c7c8cc93] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-bb9ccce3c7c8cc93', 'coverage': 'negative', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+_________________ test_agent_analysis[apitc-f13325061a4da612] __________________
+
+api_client = <support.client.ApiClient object at 0x10b439010>
+case = {'assertions': [{'expected': 400, 'path': '', 'type': 'status_code'}], 'case_id': 'apitc-f13325061a4da612', 'coverage': 'negative', 'created_at': '2026-07-24 08:01:30', ...}
+
+    @pytest.mark.parametrize("case", CASES, ids=_get_case_id)
+    def test_agent_analysis(api_client, case: dict):
+        request_data = case.get("request", {})
+        assertions = case.get("assertions", [])
+    
+        response = api_client.request(request_data)
+    
+        if _needs_observation(case):
+            record_observation(case, response)
+    
+>       assert_response_assertions(response, assertions)
+
+testcases/openapi/v1/agent/analysis/post/test_api.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 400, 'path': '', 'type': 'status_code'}]
+
+    def assert_response_assertions(response, assertions: list) -> None:
+        for assertion in assertions:
+            atype = assertion.get("type")
+            if atype == "status_code":
+>               assert response.status_code == assertion["expected"]
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AssertionError
+
+utils/assertions.py:103: AssertionError
+--------------------------------- JSON report ----------------------------------
+report saved to: /Users/wanghongbao/project/test_project/apps/backend/data/projects/project-75fec50973f2adf6/api_automation/runs/apirun-1744be2d286e6e29/report.json
+=========================== short test summary info ============================
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-1464c591f5587521]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-1ab647b12903f195]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-4a2e7e146f60f505]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-652f0b80d8b76da5]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-7117de6e9bc4bbbc]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-722a8db220fcd8e1]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-7e3d8646bfe27be3]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-7eeaed2c90d7fd6b]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-8074bdb19ffa244c]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-8ba2babaf54cbf99]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-8ca94fab683eb774]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-9afd22c5c661a5a2]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-9f0ddb3393a1faaf]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-b30e4bff074f51f1]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-bb9ccce3c7c8cc93]
+FAILED testcases/openapi/v1/agent/analysis/post/test_api.py::test_agent_analysis[apitc-f13325061a4da612]
+========================= 16 failed, 2 passed in 2.99s =========================

@@ -97,7 +97,7 @@ class OperationLogRetentionPolicyOut(BaseModel):
 
 
 class OperationLogRetentionPolicyUpdate(BaseModel):
-    retention_days: int = Field(ge=1, le=3650)
+    retention_days: int = Field(ge=1, le=10)
     max_rows: int = Field(ge=100, le=10_000_000)
     protect_high_risk: bool = True
 

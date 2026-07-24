@@ -44,6 +44,22 @@ def test_headless_command_enables_full_history_for_realtime_sampling(tmp_path: P
     assert "--csv-full-history" in command
 
 
+def test_stop_headless_run_and_wait_waits_for_monitor_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
+    finished = headless_worker.threading.Event()
+    headless_worker._MONITOR_FINISHED["perfrun-1"] = finished
+
+    def stop_run(run_id: str) -> bool:
+        assert run_id == "perfrun-1"
+        finished.set()
+        return True
+
+    monkeypatch.setattr(headless_worker, "stop_headless_run", stop_run)
+    try:
+        assert headless_worker.stop_headless_run_and_wait("perfrun-1", timeout=0.1) is True
+    finally:
+        headless_worker._MONITOR_FINISHED.pop("perfrun-1", None)
+
+
 def test_prune_run_history_removes_old_run_directories(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
     run_dir = tmp_path / "project-1" / "performance_testing" / "runs" / "perfrun-old"

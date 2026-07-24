@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
-import { ArrowRight, Gauge, Trash2 } from "lucide-react";
+import { ArrowRight, Eye, Gauge, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ListToolbar, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
@@ -21,6 +21,8 @@ import {
   type PerformanceTest,
 } from "@/lib/api-client";
 
+import { PerformanceTestParamsDialog } from "./performance-test-params-dialog";
+
 export function PerformanceTestList({ projectId }: { projectId: string }) {
   const router = useRouter();
   const [items, setItems] = useState<PerformanceTest[]>([]);
@@ -28,6 +30,7 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
+  const [paramsItem, setParamsItem] = useState<PerformanceTest | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,7 +92,7 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
         createLabel="新建性能测试"
         description=""
         onBatchDelete={busy || visibleSelectedIds.length === 0 ? undefined : () => removeItems(visibleSelectedIds)}
-        onCreate={() => router.push(`/performance-tests/new?projectId=${projectId}`)}
+        onCreate={() => router.push("/performance-tests/new")}
         onSearch={setSearch}
         placeholder="搜索名称或环境"
         selectedCount={visibleSelectedIds.length}
@@ -159,6 +162,11 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
                   <RowActions
                     actions={[
                       {
+                        label: "查看参数",
+                        icon: Eye,
+                        onSelect: () => setParamsItem(item),
+                      },
+                      {
                         label: "脚本审核",
                         icon: ArrowRight,
                         href: item.latest_script_id
@@ -188,9 +196,7 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
                       <p className="font-medium text-sm">暂无性能测试</p>
                       <p className="text-muted-foreground text-xs">从一个已有接口和环境开始。</p>
                     </div>
-                    <Button onClick={() => router.push(`/performance-tests/new?projectId=${projectId}`)}>
-                      新建性能测试
-                    </Button>
+                    <Button onClick={() => router.push("/performance-tests/new")}>新建性能测试</Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -198,6 +204,7 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
           </TableBody>
         </Table>
       </div>
+      <PerformanceTestParamsDialog item={paramsItem} onOpenChange={(open) => !open && setParamsItem(null)} />
     </ShellSection>
   );
 }

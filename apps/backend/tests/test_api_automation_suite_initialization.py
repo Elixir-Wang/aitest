@@ -33,3 +33,6 @@ def test_initialize_suite_uses_same_project_root(monkeypatch, tmp_path: Path) ->
     assert captured["suite_path"] == tmp_path
     assert captured["max_actions"] == 12
     assert "补齐缺失的公共框架文件" in captured["payload"]["messages"][0]["content"]
+    assert "`/` 已经是 pytest_requests" in captured["payload"]["messages"][0]["content"]
+    assert "禁止再创建 `/pytest_requests`" in captured["payload"]["messages"][0]["content"]
+    assert "禁止使用宿主机绝对路径" in captured["payload"]["messages"][0]["content"]

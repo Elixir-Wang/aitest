@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse
 
 from app.dependencies.auth import current_user, require_admin
@@ -24,11 +24,10 @@ router = APIRouter(prefix="/projects/{project_id}/ui-automation", tags=["ui-auto
 def create_generation_run(
     project_id: str,
     payload: UiAutomationGenerateIn,
-    background_tasks: BackgroundTasks,
     actor=Depends(require_admin),
 ) -> dict:
     created = service.create_generation_run(project_id, payload.model_dump(), actor)
-    background_tasks.add_task(service.execute_generation_run, created["id"])
+    service.schedule_generation_run(created["id"])
     return created
 
 
@@ -67,11 +66,10 @@ def create_execution_run(
     project_id: str,
     asset_id: str,
     payload: UiAutomationExecutionCreateIn,
-    background_tasks: BackgroundTasks,
     actor=Depends(require_admin),
 ) -> dict:
     created = service.create_execution_run(project_id, asset_id, payload.environment_id, actor)
-    background_tasks.add_task(service.execute_execution_run, created["id"])
+    service.schedule_execution_run(created["id"])
     return created
 
 

@@ -15,29 +15,29 @@
 
 目前对话流已全面升级为用户当前自主规划Agent的专属资产，创建自主规划Agent，点击[高级配置]，[点击编辑]对话流进入对话流编排页面。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_152414_6128530.47780239058165896.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_152414_6128530.47780239058165896.png)
 
 # 功能介绍
 ## 1.对话流列表管理
 
 左侧侧边栏集中展示了当前智能体下的所有对话流，点击即可无缝切换画布内容；可以随时折叠侧边栏以最大化编辑空间 ，支持新建、删除、复制等操作管理对话流
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_152452_4968020.6349819180735438.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_152452_4968020.6349819180735438.png)
 
 
 **新建**：点击“+”号可新建对话流，需要填写对话流名称(必填)、对话流描述(必填)完成创建。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_153133_3306640.4586929014012062.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_153133_3306640.4586929014012062.png)
 
 **复制**：点击对话流列表右上角的复制图标，可从已有对话流复制对话流，可以选择来源Agent，填写新副本对话流名称(必填)、对话流描述(必填)信息，选择具体的现有对话流一键复制。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_153439_6006730.9770385490271222.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_153439_6006730.9770385490271222.png)
 **删除**：点击指定对话流右侧“...”，点击“删除”可删除当前对话流。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-14_175223_9215660.6348562542204946.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-14_175223_9215660.6348562542204946.png)
 **导入**：点击下载按钮，选择需要导入的对话流文件可将指定的对话流文件导入到当前工作流。
 **导出**：点击指定对话流右侧“...”，点击“导出”可导出当前对话流。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-14_180604_3499690.3553933994152785.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-14_180604_3499690.3553933994152785.png)
 **发布**：当agent发布后，对话流会跟随Agent一并发布生效。
 
 
@@ -56,7 +56,7 @@
 * 实体可以选择系统预定义的，也可以进行新建自定义实体。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1654290.5184096439702272.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1654290.5184096439702272.png)
 
 ### 2.2 变量管理
 
@@ -74,7 +74,7 @@
  
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_120845_3965500.5355746372067514.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_120845_3965500.5355746372067514.png)
 
 ### 2.3 文件管理
 
@@ -100,7 +100,7 @@
 * 现有文件类别无法满足用户需求的，用户可进行文件类别的新建（可删除）。需手动添加如下字段：
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1654300.20770380929393517.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1654300.20770380929393517.png)
 
 1. 文件类别：必填。阐述文件基本性质，命名可以参考默认类别。名称只能包含字母、数字、\_ （下划线）、空格和中文，且必须以字母或中文开头；
  
@@ -131,21 +131,21 @@
  
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_161920_8542450.42711052711503505.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_161920_8542450.42711052711503505.png)
 
 ### 3.2 文本回复
 
 ==「文本回复」节点，可输出指定话术。==支持用&引用变量、用@引用实体。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_162020_1738700.7776047073484017.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_162020_1738700.7776047073484017.png)
 
 ### 3.3 收集用户回复至变量
 
 ==「收集用户回复至变量」节点可将用户在此轮回复的内容赋值到{last\_user\_response}变量中==，赋值变量后，可以将上一轮用户的回复内容动态添加至后续节点编排中。如：大模型回复、大模型变量赋值、文本回复、收集实体信息填槽（实体引导语）等众多节点，可在输入信息中使用“&”引用此变量用于结合用户上一轮的回复内容进一步进行内容的生成、拼接、加工。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_162106_1673370.6574184751441566.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_162106_1673370.6574184751441566.png)
 
 ### 3.4 收集实体信息填槽
 
@@ -154,7 +154,7 @@
 当该节点存在多个实体收集任务时，一个实体收集任务成功后，将继续收集下一个实体或流转到其他节点中。收集成功后的实体信息可在后续节点中使用“@”进行引用。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_162251_7553890.7754133372649897.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_162251_7553890.7754133372649897.png)
 
 
 ### 3.5 收集用户上传文件
@@ -164,7 +164,7 @@
 该节点支持多个文件类别（上限：20）的配置，并支持文件的顺序调换。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_162434_5569730.7455985612407074.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_162434_5569730.7455985612407074.png)
 新增文件类型后将展示在下方
 
 * 文件上传引导话术：用户prompt触发对话流后，机器人引导用户上传相关文件的引导语。如该流程需上传多个文件类别，可统一话术为“请上传您的合同、证件信息、机票、出差申请表”（按需编辑添加）；
@@ -191,21 +191,21 @@
 ==「大模型变量赋值」节点，可通过大模型的自然语言理解能力，从用户的输入内容中分析、判断、提取相关信息作为输出内容，并可直接将输出内容赋值至自定义的变量中。 ==获得的变量信息可在后续节点中使用“&”进行引用。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_162712_4956960.6246018028605212.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_162712_4956960.6246018028605212.png)
 
 ### 3.7 普通变量赋值
 
 「普通变量赋值」节点，可将指定的信息填写至输入框赋值到某一变量中，以便后续节点使用。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_162745_6562550.9044307537452796.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_162745_6562550.9044307537452796.png)
 
 ### 3.8 知识检索变量赋值
 
 「知识检索变量赋值」节点，可按照“知识库检索词”对知识库进行检索召回，并将召回内容赋值至变量。支持按知识库进行筛选，也支持按关键词对文件名（数据集名）进行二次过滤。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_162937_9192370.2775636136916947.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_162937_9192370.2775636136916947.png)
 
 
 ### 3.9 长期记忆赋值
@@ -253,18 +253,18 @@
 选定需要配置变量的智能体：
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_163044_5517260.5156990922359902.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_163044_5517260.5156990922359902.png)
 
 选定后，选择需要配置的变量：
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1654350.2526676264967386.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1654350.2526676264967386.png)
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1654350.5509799632994662.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1654350.5509799632994662.png)
 
 之后即可在上方进行变量赋值。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_163546_2040800.01657838644145715.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_163546_2040800.01657838644145715.png)
 
 **3.9.2.2 写入记忆点**
 
@@ -285,7 +285,7 @@
 选择需要写入记忆点的智能体：
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_163654_5040400.7619989908825436.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_163654_5040400.7619989908825436.png)
 
 即可对其进行记忆点的写入。
 
@@ -294,7 +294,7 @@
 长期记忆读取节点用于从已有记忆中取出所需信息。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_163727_9206440.5938140665319278.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_163727_9206440.5938140665319278.png)
 
 支持三种读取方式：**记忆检索召回**、**记忆变量读取**、**记忆画像读取**。
 
@@ -313,7 +313,7 @@
 若选择「全部记忆」
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_163812_2897700.5495926178296942.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_163812_2897700.5495926178296942.png)
 
 **智能体范围：**
 
@@ -322,7 +322,7 @@
 跨智能体检索时自动合并去重。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_163845_7685690.5198917254358795.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_163845_7685690.5198917254358795.png)
 
 **用于长期记忆检索的问题：**
 
@@ -347,9 +347,9 @@
 **使用示例：**
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_164006_5197990.16137533110239177.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_164006_5197990.16137533110239177.png)
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_164056_3008870.99627923886185.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_164056_3008870.99627923886185.png)
 
 
 配置「用户的性格怎么样」作为检索问题，在「转人工」、「本文回复」这两个智能体中检索全部记忆（用户画像信息、用户记忆点信息、记忆变量），检索的记忆内容相关程度为0.5~1，返回的结果为「用户画像信息」、「用户记忆点信息」、「记忆变量」各5条（与图中长期记忆召回数相同），结果将存储在「last\_user\_response」中。
@@ -359,7 +359,7 @@
 用于直接读取长期记忆中存储的变量内容，并赋值给当前对话流变量。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_164335_4435450.21278368667124004.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_164335_4435450.21278368667124004.png)
 
 在配置项1的左侧选择智能体，选择完毕后选择想要读取的记忆变量。
 
@@ -370,7 +370,7 @@
 用于读取用户画像类信息（如性别、职业、兴趣标签等）并赋值到变量中。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_164412_3021470.5194212673200046.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_164412_3021470.5194212673200046.png)
 
 在配置项上方选择智能体。
 
@@ -383,17 +383,17 @@
 ### 3.10 文件检索变量赋值
 「文件检索变量赋值」节点，通过限定知识库检索范围，添加文件检索条件以及按需设置召回文件上限，对知识库进行检索召回，并将召回内容赋值至变量。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_120013_9016160.9000669226767446.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_120013_9016160.9000669226767446.png)
 
 
 添加文件检索条件，可以通过“文件名”或者“文件类型”两种方式进行限制。
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_120140_9029210.0029466890787116506.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_120140_9029210.0029466890787116506.png)
 ### 3.11 文件解析
 
 \[文件解析节点\]可以对文件进行解析，用户需要选择上传文件的类型(与收集用户上传资料类型一致)与所赋值的变量。对传入资料进行设置后可以对解析方式与赋值进行相关设置，通过对文件解析变量赋值可以将解析结果传入对于变量，方便后续调用与处理。在自定义解析方式中可点击【+】对相关类型文件的解析模型与提示词进行撰写，例如图片/PDF类型的问价支持多模态模型的选择，包含PP-sturctureV3模型，Qwen2.5-VL-72B-Instruct-AWQ模型等。同时可在下方撰写针对性的提示词。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_164711_6403120.4434428952541164.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_164711_6403120.4434428952541164.png)
 
 
 ### 3.12 条件判断
@@ -401,33 +401,33 @@
 「条件判断」是使用条件判断语句，对前文对话中收集到的变量、实体信息按照条件逻辑进行分类，不同的类型可流转至不同的流程分支。结合「收集用户回复至变量」、「大模型变量复制」节点，三者联用，可根据用户不同表述，输出不同回复内容。如，根据用户是否核实了开票信息，用户的回复中可能存在：语音、图像、其他等三种情况。可根据不同的情况链接不同的后续节点，实现流程的逻辑闭环。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_165210_6382340.4644862997245488.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_165210_6382340.4644862997245488.png)
 
 ### 3.13 语义判断
 
 「语义判断」节点可以用语义相关度做用户回复的语义分类，使用起来更灵活。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_165342_9737440.5001031864676178.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_165342_9737440.5001031864676178.png)
 
 ### 3.14 API调用
 
 「API调用」节点，可在该步骤进行外部API调用。支持GET、POST，支持调用预览。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_165435_1933110.5676872006408225.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_165435_1933110.5676872006408225.png)
 
 ### 3.15 代码执行
 
 「代码执行」节点，可在该节点执行指定代码，支持自定义，定义输入、输出变量，支持执行预览。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_165514_1239200.6400016088567221.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_165514_1239200.6400016088567221.png)
 
 ### 3.16 跳转对话流/Agent
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_165704_6572560.9069472740276042.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_165704_6572560.9069472740276042.png)
 
 
 「跳转对话流/Agent」节点中：
@@ -463,7 +463,7 @@
 注：**该节点后不可再连接其他节点**。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_165848_8898310.6881198303275643.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_165848_8898310.6881198303275643.png)
 
 ### 3.18 插件
 
@@ -477,7 +477,7 @@
  
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_165937_7686570.8732576755696058.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_165937_7686570.8732576755696058.png)
 
 🔍 二、选择插件
 
@@ -517,10 +517,10 @@
 点击「查看参数与示例」，将展示该插件的完整接口信息：
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_170022_2523400.2951255041717512.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_170022_2523400.2951255041717512.png)
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1654500.0687140209490753.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1654500.0687140209490753.png)
 
 🛠 四、配置输入与输出变量
 
@@ -555,7 +555,7 @@
 「数据库」→ 右侧「添加资源」
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_160022_0670310.3575604091863135.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_160022_0670310.3575604091863135.png)
 
 
 在此页面开始配置「数据上传方式」（只支持「本地上传」方式）、数据库名称、数据库描述、语种、嵌入模型，以及针对于对话流「数据库节点」的权限设置——是否允许进行 查询、新增、编辑、删除。
@@ -563,14 +563,14 @@
 **对话流中数据库节点配置路径**： 进入「对话流」 → 左侧「资源」 → 「资源库」
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_170420_2526650.30333800664234634.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_170420_2526650.30333800664234634.png)
 
  
 
 将数据库节点拖动至画布上后，数据库节点就出现在画布上，默认初始操作类型为「SQL自定义」类型。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_170505_9225310.26598165806659657.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_170505_9225310.26598165806659657.png)
 
 点击在节点类型下拉菜单中可选择以下五种操作方式：
 
@@ -593,7 +593,7 @@
  
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_170528_7541580.9249170112385672.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_170528_7541580.9249170112385672.png)
 
 #### 3.19.1 SQL 自定义（目前仅支持单库多表）
 
@@ -603,18 +603,18 @@
  
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_172503_9659350.30415665377978196.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_172503_9659350.30415665377978196.png)
 
 当进行第二次添加时，列表仅显示剩余可添加的表。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_172541_7012730.8311801270195124.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_172541_7012730.8311801270195124.png)
 
 * **查看表结构** 点击「查看」按钮可弹窗查看该表结构信息，
  
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_172613_9171990.8635874679454981.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_172613_9171990.8635874679454981.png)
 
 * 包含以下字段：
  
@@ -630,7 +630,7 @@
  
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_172634_6791430.8961270247034714.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_172634_6791430.8961270247034714.png)
 
 * 弹窗右上角点击「x」即可关闭。
  
@@ -653,13 +653,13 @@
  
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_172733_4932580.9984491344450186.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_172733_4932580.9984491344450186.png)
 
 1. **数据校验** 必填字段必须填写且符合字段类型要求，不符合规范的数据将无法执行节点。
  
 
 ![]
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_172916_2196400.6551052557045499.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_172916_2196400.6551052557045499.png)
 
 若新增数据成功，可返回数据库对应的表查看新增数据内容。
 
@@ -678,7 +678,7 @@
 * 查询字段即最终输出内容中包含的字段集合。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_173145_8695270.24150805424566857.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_173145_8695270.24150805424566857.png)
 
 **（2）查询条件**
 
@@ -696,7 +696,7 @@
  
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_173248_8593740.17155867005287273.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_173248_8593740.17155867005287273.png)
 
 **（3）条件关系**
 
@@ -708,7 +708,7 @@
  
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_173337_4591040.18474729055821704.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_173337_4591040.18474729055821704.png)
 
 **（4）查询上限**
 
@@ -728,7 +728,7 @@
 此时我们下拉变量框，即可将`outputlist`赋值到其中一个变量中暂存。
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_173432_8826100.9562399018275405.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_173432_8826100.9562399018275405.png)
 
 #### 3.19.4 删除数据
 
@@ -742,7 +742,7 @@
  
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_173545_2957560.4283798163895508.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_173545_2957560.4283798163895508.png)
 
 #### 3.19.5 更新数据
 
@@ -756,9 +756,9 @@
  
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_173703_4837460.33942648330199554.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_173703_4837460.33942648330199554.png)
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1654590.28564471863422825.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1654590.28564471863422825.png)
 
 * 若更新条件缺失，则无法运行节点。
  
@@ -775,13 +775,13 @@
 
 **注：数据库节点操作需具备相应数据库权限，否则将触发权限报错。**
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1654590.3776093757414104.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1654590.3776093757414104.png)
 
 **（2）在线连接数据库**
 
 在线连接数据库需要分别配置正式库和测试库。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_191654_7202900.2625207422911747.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_191654_7202900.2625207422911747.png)
 
 ## 3.20 对话流节点复制
 
@@ -797,7 +797,7 @@
 * 复制内容包括节点、节点的配置、节点之间的连线 。粘贴完成之后，全节点处于选中状态，可整体位移。
 
  
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-14_180342_3835840.15579474343925936.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-14_180342_3835840.15579474343925936.png)
 
 
 ## 4、对话测试
@@ -813,22 +813,22 @@
 「对话测试」日志信息展示每轮对话的详细节点执行信息，包括每个节点的执行状态、耗时、输入、输出等信息；（一个输入多个输出视为一轮对话），点击回复框的文档标识可以查看详细日志。
 
 **日志入口**：
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_161120_9189910.019059980706737534.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_161120_9189910.019059980706737534.png)
 
 详细日志页面信息展示节点详情、输入和输出内容。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_161328_5305570.0237363419274792.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_161328_5305570.0237363419274792.png)
 
 **1.基础信息展示**：显示 “消息 ID”、 “状态”、 “整体耗时”、“整体 Tokens”
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-24_103446_9824260.7551555055169105.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-24_103446_9824260.7551555055169105.png)
 **2.日志列表**：详细日志信息支持调用树和时间轴两种展示；
 * **调用树**展示本轮对话的涉及的所有节点，以树形结构展示会话处理的调用层级，按节点请求发起时间顺序排列，每个节点展示“节点类型-节点名称”；
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-24_103000_3658580.8839398255858869.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-24_103000_3658580.8839398255858869.png)
 * **时间轴**形式展示节点类型、名称、开始时间点、结束时间点、hover展示耗时；
 
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-24_103036_8425650.7492050750439553.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-24_103036_8425650.7492050750439553.png)
  **交互规则**：点击某一节点，右侧 “节点详情” 区域同步更新为该节点的详细信息。
 **3.节点详情**：
 * 基础属性：
@@ -873,14 +873,14 @@
 总耗时：本轮对话的所有节点的总耗时（各节点相加）；
 大模型token数：本轮对话的所有大模型相关节点的总token数（各节点相加）；
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-24_102607_4458490.48840175333283253.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-24_102607_4458490.48840175333283253.png)
 
 ## 4.3 历史测试
 「对话测试」支持查看历史测试记录，点击测试对话框右上角时钟标识可查看历史测试记录、新建测试以及对历史记录批量管理。
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202604/2026-04-23_154934_8619470.17747893724896735.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202604/2026-04-23_154934_8619470.17747893724896735.png)
 
 ## 5、多人协作
 当前低代码平台的工作流画布支持多人在线协作编辑，且采用实时自动保存机制：用户对画布的任何改动（节点增删、拖拽、配置修改等）都会立即自动保存。
 当两个用户同时编辑同一画布：后保存的用户收到版本冲突提示“已有用户更新草稿配置，当前操作未生效，请主动刷新获取最新草稿后重新编辑“。用户手动刷新页面后，能拉取到最新画布内容进行编辑。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202605/2026-05-28_185154_4072430.026456712347917577.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202605/2026-05-28_185154_4072430.026456712347917577.png)

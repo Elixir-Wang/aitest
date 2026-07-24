@@ -1,0 +1,143 @@
+{
+  "summary": "POST /openapi/v1/agent/analysis/ 接口16个测试用例失败，根因均为接口返回200而非测试预期的400/401。实际响应表明该接口对无效输入（缺失字段、空值、非法类型、非法日期格式、鉴权头为空等）均返回200并在业务JSON体中通过业务码（code字段）指示错误，而非使用HTTP状态码。测试用例的断言（期望HTTP 400/401）与接口实际行为不匹配。",
+  "issues": [
+    {
+      "failure_ids": [
+        "apitc-0698af50d9361082",
+        "apitc-10e12d996cfd0015",
+        "apitc-27d8ade16ad9ce99",
+        "apitc-2c9cb0cf8b3a9b4a",
+        "apitc-3eb81b5c5a25f1ee",
+        "apitc-485f36deace612e1",
+        "apitc-7084d955069d7d70",
+        "apitc-8b95f258254e1eda",
+        "apitc-9a8044b9dc3a7ecb",
+        "apitc-b3059a1b62ecd65f",
+        "apitc-f481362154a1fb8b",
+        "apitc-f5d2477e8e3da7b4"
+      ],
+      "classification": "contract_ambiguity",
+      "confidence": 0.95,
+      "root_cause": "接口契约未声明400/401响应schema，实际行为是始终返回200并在业务JSON体中通过code字段（如400000、400001）指示错误。测试用例基于常见REST约定推断HTTP状态码应为400/401，与接口实际行为冲突。",
+      "recommendation": "确认接口契约：该接口对所有请求（包括无效输入）均返回HTTP 200，错误信息通过业务码code字段表达。需将测试断言从HTTP状态码改为检查响应body中的code字段值。",
+      "repairable": true
+    },
+    {
+      "failure_ids": [
+        "apitc-9062a559b00b9b88",
+        "apitc-af82804af7aeec24",
+        "apitc-f7496b8a80835594"
+      ],
+      "classification": "contract_ambiguity",
+      "confidence": 0.95,
+      "root_cause": "鉴权头为空时接口返回HTTP 200，body中code=400001表示鉴权失败。测试用例预期HTTP 401，与接口实际行为冲突。接口契约未声明鉴权失败时的HTTP状态码。",
+      "recommendation": "确认接口契约：鉴权失败时接口返回HTTP 200，业务码400001。需将测试断言从HTTP 401改为检查code=400001。",
+      "repairable": true
+    },
+    {
+      "failure_ids": [
+        "apitc-3c63b63bbdbe5b71"
+      ],
+      "classification": "contract_ambiguity",
+      "confidence": 0.95,
+      "root_cause": "end_date传入布尔值true时，接口返回HTTP 200且code=000000（成功），说明接口对非法类型进行了宽松处理（可能进行了类型转换），而非返回400错误。测试用例预期400与接口实际行为冲突。",
+      "recommendation": "确认接口契约：end_date传入布尔值时接口视为合法请求并成功处理。需将测试断言从HTTP 400改为检查code=000000，或确认这是否为接口缺陷。",
+      "repairable": true
+    }
+  ],
+  "proposal": {
+    "target": "test_script",
+    "action": "modify_assertion",
+    "title": "修正测试断言：将HTTP状态码断言改为业务码断言",
+    "summary": "接口实际行为是始终返回HTTP 200，错误通过业务码code字段表达。需将13个needs_confirmation用例的断言从HTTP状态码改为检查响应body中的code字段。",
+    "confidence": 0.95,
+    "proposed_changes": [
+      "testcases/openapi/v1/agent/analysis/post/test_api.py: 对于所有oracle_status=needs_confirmation且预期400的用例，将断言从{'expected': 400, 'type': 'status_code'}改为检查响应body中code字段：添加断言{'type': 'jsonpath_equals', 'path': '$.code', 'expected': '400000'}",
+      "testcases/openapi/v1/agent/analysis/post/test_api.py: 对于鉴权头为空（预期401）的3个用例（apitc-9062a559b00b9b88, apitc-af82804af7aeec24, apitc-f7496b8a80835594），将断言从{'expected': 401, 'type': 'status_code'}改为检查code=400001：添加断言{'type': 'jsonpath_equals', 'path': '$.code', 'expected': '400001'}",
+      "testcases/openapi/v1/agent/analysis/post/test_api.py: 对于end_date传入布尔值的用例（apitc-3c63b63bbdbe5b71），实际返回200且code=000000，需将断言从HTTP 400改为检查code=000000，或标记为待确认接口缺陷"
+    ],
+    "case_updates": [
+      {
+        "case_id": "apitc-0698af50d9361082",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-10e12d996cfd0015",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-27d8ade16ad9ce99",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-2c9cb0cf8b3a9b4a",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-3eb81b5c5a25f1ee",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-485f36deace612e1",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-7084d955069d7d70",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-8b95f258254e1eda",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-9a8044b9dc3a7ecb",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-b3059a1b62ecd65f",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-f481362154a1fb8b",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-f5d2477e8e3da7b4",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-9062a559b00b9b88",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-af82804af7aeec24",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-f7496b8a80835594",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      },
+      {
+        "case_id": "apitc-3c63b63bbdbe5b71",
+        "expected_status_code": 200,
+        "actual_status_code": 200
+      }
+    ],
+    "script_repair_allowed": true
+  }
+}

@@ -96,6 +96,18 @@ def find_active_analysis_for_run(db: Connection, run_id: str) -> Row | None:
     ).fetchone()
 
 
+def find_analysis_for_applied_run(db: Connection, run_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT * FROM performance_analysis_sessions
+        WHERE applied_run_id = ? AND preflight_json <> '{}'
+        ORDER BY applied_at DESC, updated_at DESC
+        LIMIT 1
+        """,
+        (run_id,),
+    ).fetchone()
+
+
 def list_analysis_sessions(db: Connection, project_id: str, run_id: str) -> list[Row]:
     return db.execute(
         """

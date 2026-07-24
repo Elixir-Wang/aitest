@@ -111,6 +111,23 @@ def cleanup_logs(db: Connection, filters: dict) -> int:
     return cursor.rowcount
 
 
+def cleanup_logs_before(db: Connection, *, before_time: str, batch_size: int) -> int:
+    cursor = db.execute(
+        """
+        DELETE FROM operation_logs
+        WHERE id IN (
+          SELECT id
+          FROM operation_logs
+          WHERE created_at < ?
+          ORDER BY created_at ASC
+          LIMIT ?
+        )
+        """,
+        (before_time, batch_size),
+    )
+    return cursor.rowcount
+
+
 def _build_where(filters: dict) -> tuple[str, tuple]:
     clauses = []
     params: list[object] = []

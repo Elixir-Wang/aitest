@@ -1,6 +1,6 @@
 企业智能体监控大盘仅对本企业内拥有管理员权限的用户开放访问。管理员可通过本页面实时查看企业智能体资产的核心运营数据、使用情况及业务分布等关键信息，为企业智能体的运营管理与优化决策提供数据支撑。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1703310.2511611244763593.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1703310.2511611244763593.png)
 
 # 数据概览
 
@@ -15,22 +15,22 @@
 * 总Token消耗量：统计所有企业智能体的Token消耗量，同时包括智能体主LLM的Token消耗和对话流内LLM的Token消耗，鼠标悬浮至卡片可查看输入Token和输出Token。
  
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1703330.15316960031714777.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1703330.15316960031714777.png)
 
 # 智能体使用量Top16
 
 以列表形式展示企业内使用量排名前10的智能体，列表项包含智能体图标及名称，帮助管理员快速识别高价值智能体。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1703330.2223759459088147.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1703330.2223759459088147.png)
 
 # 智能体业务分布
 
 以柱状图形式呈现所有企业智能体在各分组标签内的数量分布，直观反映不同业务线的智能体应用规模。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1703340.13631423298804157.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1703340.13631423298804157.png)
 
 # 智能体调用量分布
 
 统计所有企业智能体调用量在分组标签内的分布情况，使用柱状图反映智能体调用量分布趋势，助力管理员了解不同业务线智能体的实际使用热度。
 
-![](https://saibotan-pre.100credit.cn/agent-document-content/media/1/202603/2026-03-06_1703340.21315071050757628.png)
+![](https://www.cybotstar.cn/agent-document-content/media/1/202603/2026-03-06_1703340.21315071050757628.png)

@@ -40,9 +40,9 @@ def test_list_tasks_orders_by_updated_time_desc(monkeypatch: pytest.MonkeyPatch,
               (id, project_id, document_id, primary_mapping_id, status, summary, created_by, created_at, updated_at)
             VALUES
               ('run-old-created-new-updated', 'project-1', 'doc-1', 'file-1', 'needs_clarification',
-               '等待澄清。', 'u-admin', '2026-06-04 10:00:00', '2026-06-04 15:00:00'),
+               '等待澄清。', 'u-admin', datetime('now', '-4 hours'), datetime('now', '-1 hour')),
               ('run-new-created-old-updated', 'project-1', 'doc-1', 'file-1', 'completed',
-               '已完成。', 'u-admin', '2026-06-04 14:00:00', '2026-06-04 14:30:00')
+               '已完成。', 'u-admin', datetime('now', '-2 hours'), datetime('now', '-2 hours'))
             """
         )
 

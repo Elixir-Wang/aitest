@@ -40,6 +40,10 @@ const scriptReviewSource = readFileSync(
   new URL("../src/components/ai-testing/performance-testing/script-review.tsx", import.meta.url),
   "utf8",
 );
+const paramsDialogSource = readFileSync(
+  new URL("../src/components/ai-testing/performance-testing/performance-test-params-dialog.tsx", import.meta.url),
+  "utf8",
+);
 const scriptPageSource = readFileSync(
   new URL(
     "../src/app/(main)/projects/[projectId]/performance-tests/[testId]/scripts/[scriptId]/page.tsx",
@@ -94,6 +98,17 @@ test("performance create form reuses endpoint and environment assets without sec
   assert.doesNotMatch(formSource, /password|token|cookie|api_key/i);
 });
 
+test("performance create form does not preselect its identifying fields", () => {
+  assert.match(formSource, /const \[selectedProjectId, setSelectedProjectId\] = useState\(""\)/);
+  assert.match(formSource, /const \[endpointId, setEndpointId\] = useState\(""\)/);
+  assert.match(formSource, /const \[environmentId, setEnvironmentId\] = useState\(""\)/);
+  assert.match(formSource, /const \[name, setName\] = useState\(""\)/);
+  assert.doesNotMatch(formSource, /initialProjectId/);
+  assert.doesNotMatch(formSource, /setEndpointId\(endpointRows\[0\]/);
+  assert.doesNotMatch(formSource, /setEnvironmentId\(environmentRows\[0\]/);
+  assert.doesNotMatch(formSource, /setName\(\(current\).*result\.endpoint\.name/);
+});
+
 test("performance request configuration is endpoint-only and hides empty sections", () => {
   assert.doesNotMatch(formSource, /请求数据来源/);
   assert.doesNotMatch(formSource, /listApiAutomationTestCases/);
@@ -105,9 +120,16 @@ test("performance request configuration is endpoint-only and hides empty section
   assert.match(formSource, /hasBody\(preview\?\.request_config\.body\)/);
 });
 
+test("performance create form preserves preview business success rules", () => {
+  assert.match(formSource, /setSuccessRules\(result\.success_rules\)/);
+  assert.match(formSource, /success_rules: withStatusCodes\(successRules, parseStatusCodes\(successCodes\)\)/);
+  assert.match(formSource, /rules\.filter\(\(rule\) => rule\.kind !== "status_code"\)/);
+  assert.match(formSource, /if \(!preview \|\| preview\.endpoint\.id !== endpointId\)/);
+});
+
 test("global performance create route owns project selection and structured editors", () => {
   assert.match(globalCreatePageSource, /<PerformanceTestForm/);
-  assert.match(globalCreatePageSource, /useSearchParams/);
+  assert.doesNotMatch(globalCreatePageSource, /useSearchParams|initialProjectId/);
   assert.match(stageEditorSource, /目标用户数/);
   assert.match(stageEditorSource, /保持时长/);
   assert.match(dataEditorSource, /JSON 数据列表/);
@@ -131,6 +153,18 @@ test("performance lists use native shell sections and expose creation actions", 
   assert.match(projectListSource, /createLabel="新建性能测试"/);
 });
 
+test("performance lists expose created parameters in a reusable read-only dialog", () => {
+  assert.match(projectListSource, /label: "查看参数"/);
+  assert.match(allListSource, /label: "查看参数"/);
+  assert.match(projectListSource, /<PerformanceTestParamsDialog/);
+  assert.match(allListSource, /<PerformanceTestParamsDialog/);
+  assert.match(paramsDialogSource, /创建参数/);
+  assert.match(paramsDialogSource, /request_config: item\.request_config/);
+  assert.match(paramsDialogSource, /load_config: item\.load_config/);
+  assert.match(paramsDialogSource, /performance_goal: item\.performance_goal/);
+  assert.match(paramsDialogSource, /<OneClipboard/);
+});
+
 test("deleting a performance test confirms all history will be removed", () => {
   assert.match(projectListSource, /将同时删除该条目下的全部压测历史/);
   assert.match(allListSource, /将同时删除该条目下的全部压测历史/);
@@ -147,6 +181,7 @@ test("performance script API and review route support generation, edits, and con
   assert.match(scriptReviewSource, /只读 Locust 脚本/);
   assert.match(scriptReviewSource, /validation_status/);
   assert.match(scriptReviewSource, /确认脚本/);
+  assert.match(scriptReviewSource, /preview\?\.request\?\.headers \?\? planRequest\.headers/);
 });
 
 test("performance script review reuses the clipboard control and keeps JSON editors white", () => {

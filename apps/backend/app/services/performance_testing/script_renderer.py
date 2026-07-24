@@ -91,16 +91,20 @@ class PerformanceUser(HttpUser):
             timeout=request["timeout_seconds"],
             catch_response=True,
         ) as response:
+            payload = None
+            payload_loaded = False
             for rule in PLAN["success_rules"]:
                 if rule["kind"] == "status_code" and response.status_code not in rule["status_codes"]:
                     response.failure(f"unexpected status code: {{response.status_code}}")
                     return
                 if rule["kind"].startswith("jsonpath_"):
-                    try:
-                        payload = response.json()
-                    except ValueError:
-                        response.failure("response is not JSON")
-                        return
+                    if not payload_loaded:
+                        try:
+                            payload = response.json()
+                        except ValueError:
+                            response.failure("response is not JSON")
+                            return
+                        payload_loaded = True
                     exists, actual = _json_path(payload, rule["json_path"])
                     if rule["kind"] == "jsonpath_exists" and not exists:
                         response.failure(f"JSONPath missing: {{rule['json_path']}}")

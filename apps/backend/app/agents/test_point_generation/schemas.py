@@ -38,7 +38,11 @@ class GeneratedTestPointDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     module: str = Field(min_length=1, max_length=120)
-    test_point: str = Field(min_length=1, max_length=240)
+    test_point: str = Field(
+        min_length=1,
+        max_length=240,
+        description="简短且全局唯一的测试目标名称，不得拼接完整所属模块或模块层级路径，必要时用最短业务对象自然区分",
+    )
     priority: TestPointPriority
     requirement_obligation_keys: list[str] = Field(min_length=1)
 

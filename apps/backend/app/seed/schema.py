@@ -1239,10 +1239,16 @@ CREATE INDEX IF NOT EXISTS idx_operation_logs_result ON operation_logs(result);
 
 CREATE TABLE IF NOT EXISTS operation_log_retention_policy (
   id TEXT PRIMARY KEY,
-  retention_days INTEGER NOT NULL DEFAULT 180,
+  retention_days INTEGER NOT NULL DEFAULT 10,
   max_rows INTEGER NOT NULL DEFAULT 100000,
   protect_high_risk INTEGER NOT NULL DEFAULT 1,
   updated_by TEXT NOT NULL DEFAULT 'system',
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS retention_cleanup_state (
+  job_name TEXT PRIMARY KEY,
+  last_success_at TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

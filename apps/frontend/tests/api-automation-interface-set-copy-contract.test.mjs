@@ -159,6 +159,12 @@ test("project api automation exposes interface environment after interface asset
   assert.doesNotMatch(projectPageSource, /<CardTitle className="text-base">环境详情<\/CardTitle>/);
 });
 
+test("project api automation run history treats legacy observed runs as passed", () => {
+  assert.doesNotMatch(projectPageSource, /\["observed",/);
+  assert.match(projectPageSource, /observed: "通过"/);
+  assert.match(projectPageSource, /observed:\s*"border-emerald-200 bg-emerald-50 text-emerald-700/);
+});
+
 test("project api automation case tab shows generated endpoints and case table without status filters", () => {
   assert.doesNotMatch(projectPageSource, /apiCaseDetailOpen/);
   assert.match(

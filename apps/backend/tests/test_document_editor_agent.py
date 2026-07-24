@@ -1,4 +1,5 @@
 import pytest
+from langchain.agents.structured_output import ToolStrategy
 from pydantic import SecretStr
 
 from app.agents.document_editor import schemas
@@ -25,7 +26,8 @@ def test_document_editor_agent_uses_langchain_create_agent(monkeypatch: pytest.M
     assert agent == "agent"
     assert calls["model"] == "model"
     assert calls["tools"] == []
-    assert calls["response_format"] is DocumentEditOutput
+    assert isinstance(calls["response_format"], ToolStrategy)
+    assert calls["response_format"].schema is DocumentEditOutput
     assert "文档修改智能体" in calls["system_prompt"]
 
 

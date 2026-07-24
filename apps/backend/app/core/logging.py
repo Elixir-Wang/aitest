@@ -7,7 +7,7 @@
     access/YYYY-MM-DD.log  — 每个 HTTP 请求的进出记录
     agent/YYYY-MM-DD.log   — AI Agent 执行全程记录
 
-轮转策略：每天 00:00 轮转，保留 30 天，旧文件 zip 压缩，异步写入不阻塞主线程。
+轮转策略：每天 00:00 轮转，保留 10 天，旧文件 zip 压缩，异步写入不阻塞主线程。
 trace_id 通过 contextvars 在同一请求的所有日志行中自动注入。
 """
 
@@ -104,7 +104,7 @@ def setup_logging(level: str = "INFO") -> None:
         format=_FILE_FMT,
         level=level,
         rotation="00:00",
-        retention="30 days",
+        retention="10 days",
         compression="zip",
         encoding="utf-8",
         backtrace=True,
@@ -119,7 +119,7 @@ def setup_logging(level: str = "INFO") -> None:
         format=_FILE_FMT,
         level="WARNING",
         rotation="00:00",
-        retention="30 days",
+        retention="10 days",
         compression="zip",
         encoding="utf-8",
         backtrace=True,
@@ -134,7 +134,7 @@ def setup_logging(level: str = "INFO") -> None:
         format=_ACCESS_FMT,
         level="INFO",
         rotation="00:00",
-        retention="30 days",
+        retention="10 days",
         compression="zip",
         encoding="utf-8",
         enqueue=True,
@@ -147,7 +147,7 @@ def setup_logging(level: str = "INFO") -> None:
         format=_FILE_FMT,
         level="DEBUG",
         rotation="00:00",
-        retention="30 days",
+        retention="10 days",
         compression="zip",
         encoding="utf-8",
         backtrace=True,

@@ -57,6 +57,9 @@ def test_run_case_executes_exact_node_and_writes_generic_result(monkeypatch, tmp
     assert captured["command"][-1] == "testcases/generated/test_login.py::test_uiauto_1"
     assert captured["kwargs"]["env"]["UI_BASE_URL"] == "https://example.test"
     assert captured["kwargs"]["env"]["UI_ARTIFACT_DIR"].endswith("run/browser")
+    assert captured["kwargs"]["env"]["UI_RUNNER_PARENT_PID"] == str(os.getpid())
+    assert captured["kwargs"]["env"]["UI_VIEWPORT_WIDTH"] == "1440"
+    assert captured["kwargs"]["env"]["UI_VIEWPORT_HEIGHT"] == "900"
     assert result["status"] == "passed"
     assert Path(result["result_path"]).exists()
     assert Path(result["stdout_path"]).read_text(encoding="utf-8") == "1 passed"
@@ -103,8 +106,11 @@ def test_runner_uses_headed_browser_with_xvfb_when_enabled(monkeypatch, tmp_path
     )
 
     assert captured["command"][0] == "/usr/bin/xvfb-run"
+    assert "--server-args=-screen 0 1440x900x24" in captured["command"]
     assert "--headed" in captured["command"]
     assert "--video=on" in captured["command"]
+    plugin_index = captured["command"].index("-p")
+    assert captured["command"][plugin_index + 1] == "app.services.ui_automation.live_pytest_plugin"
 
 
 def test_runner_collects_recorded_video(monkeypatch, tmp_path: Path):
@@ -172,3 +178,27 @@ def test_request_stop_marks_run_and_terminates_active_process(monkeypatch):
     finally:
         runner._PROCESSES.pop("uirun-stop", None)
         runner.clear_stop_request("uirun-stop")
+
+
+def test_shutdown_all_terminates_then_force_kills_active_processes(monkeypatch):
+    class Process:
+        def poll(self):
+            return None
+
+    process = Process()
+    terminated = []
+    monkeypatch.setattr(
+        runner,
+        "_terminate_process",
+        lambda item, force=False: terminated.append((item, force)),
+    )
+    runner._PROCESSES["uirun-shutdown"] = process
+
+    try:
+        runner.shutdown_all(grace_seconds=0)
+
+        assert "uirun-shutdown" in runner._STOP_REQUESTED
+        assert terminated == [(process, False), (process, True)]
+    finally:
+        runner._PROCESSES.pop("uirun-shutdown", None)
+        runner.clear_stop_request("uirun-shutdown")

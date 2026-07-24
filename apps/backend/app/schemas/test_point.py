@@ -32,22 +32,9 @@ class TestPointRequirementObligationOut(BaseModel):
 
 class TestPointOut(BaseModel):
     id: str
-    project_id: str
-    document_id: str
-    requirement_version_id: str
-    generation_run_id: str
     title: str
     module: str
-    category: str
     priority: str
-    description: str
-    preconditions: list[str]
-    verification_points: list[str]
-    source_refs: list[str]
-    requirement_obligations: list[TestPointRequirementObligationOut]
-    notes: str
-    created_at: str
-    updated_at: str
 
 
 class TestPointGenerationRunOut(BaseModel):
