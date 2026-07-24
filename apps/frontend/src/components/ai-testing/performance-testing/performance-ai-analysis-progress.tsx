@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 const STEPS = [
   { key: "collecting", label: "收集运行证据" },
   { key: "analyzing", label: "对照接口定义并分析失败模式" },
-  { key: "waiting_approval", label: "生成只读诊断建议" },
+  { key: "waiting_approval", label: "生成可审批的修复建议" },
 ] as const;
 
 export function PerformanceAiAnalysisProgress({ status }: { status: PerformanceAnalysis["status"] }) {

@@ -342,13 +342,13 @@ export function UiAutomationRunDetail({
             ) : null}
             {(liveViewLoading || liveView?.status === "waiting" || liveView?.status === "starting") &&
             liveView?.status !== "ready" ? (
-              <div className="flex flex-col items-center gap-3 text-zinc-400 text-sm">
+              <div className="flex flex-col items-center gap-3 text-sm text-zinc-400">
                 <Loader2 className="size-6 animate-spin" />
                 <span>{liveView?.message ?? "正在连接浏览器画面"}</span>
               </div>
             ) : null}
             {liveView?.status === "unavailable" || (liveView?.status === "ended" && !videoUrl) ? (
-              <div className="flex max-w-md flex-col items-center gap-3 px-6 text-center text-zinc-400 text-sm">
+              <div className="flex max-w-md flex-col items-center gap-3 px-6 text-center text-sm text-zinc-400">
                 <MonitorPlay className="size-8 text-zinc-500" />
                 <span>{liveView.message}</span>
               </div>

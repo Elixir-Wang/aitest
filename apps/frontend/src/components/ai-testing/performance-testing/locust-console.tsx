@@ -318,6 +318,9 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
       </header>
       <PerformanceAiAnalysisDrawer
         onOpenChange={setAnalysisOpen}
+        onRepairApplied={(nextRunId) => {
+          router.push(`/projects/${projectId}/performance-tests/${testId}/runs/${nextRunId}`);
+        }}
         open={analysisOpen}
         projectId={projectId}
         runId={runId}

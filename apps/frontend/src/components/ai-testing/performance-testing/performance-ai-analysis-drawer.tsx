@@ -2,11 +2,21 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Bot, LoaderCircle, RefreshCw, ShieldCheck } from "lucide-react";
+import { Bot, LoaderCircle, RefreshCw, ShieldCheck, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Drawer,
   DrawerContent,
@@ -17,6 +27,7 @@ import {
 } from "@/components/ui/drawer";
 import {
   ApiRequestError,
+  applyPerformanceAnalysis,
   createPerformanceAnalysis,
   getPerformanceAnalysis,
   listPerformanceRunAnalyses,
@@ -34,15 +45,25 @@ export function PerformanceAiAnalysisDrawer({
   runId,
   open,
   onOpenChange,
+  onRepairApplied,
 }: {
   projectId: string;
   runId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onRepairApplied?: (runId: string) => void;
 }) {
   const [analysis, setAnalysis] = useState<PerformanceAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
   const [working, setWorking] = useState(false);
+  const [repairing, setRepairing] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [selectedChangeIds, setSelectedChangeIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!analysis) return;
+    setSelectedChangeIds(analysis.selected_change_ids.length ? analysis.selected_change_ids : analysis.applicable_change_ids);
+  }, [analysis?.id, analysis?.application_status]);
 
   const refresh = useCallback(
     async (analysisId: string) => {
@@ -90,6 +111,28 @@ export function PerformanceAiAnalysisDrawer({
     return () => window.clearInterval(timer);
   }, [analysis, open, refresh]);
 
+  async function applyRepair() {
+    if (!analysis) return;
+    setRepairing(true);
+    try {
+      const next = await applyPerformanceAnalysis(projectId, analysis.id, selectedChangeIds);
+      setAnalysis(next);
+      if (next.application_status === "completed" && next.applied_run_id) {
+        toast.success("AI 修复已应用，新的压测已启动");
+        onOpenChange(false);
+        onRepairApplied?.(next.applied_run_id);
+      } else if (next.application_status === "preflight_failed") {
+        toast.error("修复预检失败，原配置未修改");
+      }
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+      if (analysis) void refresh(analysis.id).catch(() => undefined);
+    } finally {
+      setRepairing(false);
+      setConfirmOpen(false);
+    }
+  }
+
   return (
     <Drawer direction="right" onOpenChange={onOpenChange} open={open}>
       <DrawerContent className="h-full w-full data-[vaul-drawer-direction=right]:sm:max-w-3xl">
@@ -99,7 +142,7 @@ export function PerformanceAiAnalysisDrawer({
             <DrawerTitle>性能压测 AI 分析</DrawerTitle>
             {analysis ? <Badge variant="outline">第 {analysis.analysis_version} 次</Badge> : null}
           </div>
-          <DrawerDescription>运行 {runId} · 本期只读，不会自动修改配置或源码</DrawerDescription>
+          <DrawerDescription>运行 {runId} · 审批后自动预检、修复配置并重新压测</DrawerDescription>
         </DrawerHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
@@ -138,17 +181,30 @@ export function PerformanceAiAnalysisDrawer({
                   </ul>
                 </section>
               ) : null}
-              <PerformanceAiConfigDiff changes={analysis.proposal.changes ?? []} />
+              <PerformanceAiConfigDiff
+                applicableChangeIds={analysis.applicable_change_ids}
+                changes={analysis.proposal.changes ?? []}
+                onSelectionChange={setSelectedChangeIds}
+                selectedChangeIds={selectedChangeIds}
+              />
+              <ApplicationResult analysis={analysis} />
               <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-800 text-xs dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">
                 <ShieldCheck className="mt-0.5 size-4 shrink-0" />
-                分析输入已经过敏感信息脱敏；当前版本只生成诊断和建议，不执行修改。
+                认证信息不会由 AI 写入；修复仅应用选中的白名单配置，并在单请求预检通过后启动新压测。
               </div>
             </div>
           ) : null}
         </div>
 
         <DrawerFooter className="flex-row justify-end border-t">
+          {analysis?.available_actions.includes("apply_and_rerun") ? (
+            <Button disabled={repairing || selectedChangeIds.length === 0} onClick={() => setConfirmOpen(true)}>
+              <WandSparkles className="mr-2 size-4" />
+              修复并重新压测
+            </Button>
+          ) : null}
           <Button
+            variant="outline"
             disabled={working || Boolean(analysis && ACTIVE_STATUSES.has(analysis.status))}
             onClick={() => void create()}
           >
@@ -156,8 +212,49 @@ export function PerformanceAiAnalysisDrawer({
             重新分析
           </Button>
         </DrawerFooter>
+        <AlertDialog onOpenChange={setConfirmOpen} open={confirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>应用 AI 修复并重新压测？</AlertDialogTitle>
+              <AlertDialogDescription>
+                将应用 {selectedChangeIds.length} 项已选配置，先发送一次预检请求。预检通过后保存新脚本版本并自动启动压测；失败时保留原配置。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction disabled={repairing} onClick={() => void applyRepair()}>
+                {repairing ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <WandSparkles className="mr-2 size-4" />}
+                确认修复
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DrawerContent>
     </Drawer>
+  );
+}
+
+function ApplicationResult({ analysis }: { analysis: PerformanceAnalysis }) {
+  if (analysis.application_status === "not_requested") return null;
+  const labels: Record<string, string> = {
+    preflighting: "正在执行单请求预检",
+    preflight_failed: "预检失败，未应用修复",
+    rerunning: "修复已应用，正在启动新压测",
+    completed: "修复完成，新压测已启动",
+    apply_failed: "修复应用或重跑启动失败",
+    superseded: "原配置已变化，需要重新分析",
+  };
+  return (
+    <section className="space-y-2 rounded-lg border p-3 text-sm">
+      <h3 className="font-semibold">{labels[analysis.application_status] ?? analysis.application_status}</h3>
+      {analysis.preflight.status_code !== undefined ? (
+        <p className="text-muted-foreground text-xs">
+          预检状态码：{analysis.preflight.status_code ?? "无响应"}
+          {analysis.preflight.final_url ? ` · ${analysis.preflight.final_url}` : ""}
+        </p>
+      ) : null}
+      {(analysis.preflight.failures ?? []).map((failure) => <p className="text-destructive text-xs" key={failure}>{failure}</p>)}
+    </section>
   );
 }
 

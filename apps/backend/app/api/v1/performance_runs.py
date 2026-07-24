@@ -13,6 +13,8 @@ from app.core.db import connect
 from app.dependencies.auth import current_user
 from app.repositories import api_automation_repo, performance_script_repo, project_repo
 from app.services.performance_testing import analysis_service, headless_worker, run_repo
+from app.services.performance_testing import repair_service
+from app.schemas.performance_analysis import PerformanceAnalysisApplyIn
 
 
 test_router = APIRouter(prefix="/projects/{project_id}/performance-tests/{test_id}", tags=["performance-tests"])
@@ -126,6 +128,16 @@ def get_performance_analysis(project_id: str, analysis_id: str, actor=Depends(cu
 @analysis_router.post("/{analysis_id}/reject")
 def reject_performance_analysis(project_id: str, analysis_id: str, actor=Depends(current_user)) -> dict:
     return analysis_service.reject_analysis(project_id, analysis_id, actor)
+
+
+@analysis_router.post("/{analysis_id}/apply-and-rerun")
+def apply_performance_analysis(
+    project_id: str,
+    analysis_id: str,
+    payload: PerformanceAnalysisApplyIn,
+    actor=Depends(current_user),
+) -> dict:
+    return repair_service.apply_and_rerun(project_id, analysis_id, payload.change_ids, actor)
 
 
 @run_router.get("/{run_id}/stats")
