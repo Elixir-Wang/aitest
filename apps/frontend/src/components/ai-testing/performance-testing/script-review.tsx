@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { CheckCircle2, FileCode2, ShieldCheck } from "lucide-react";
 import { codeToTokens } from "shiki";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

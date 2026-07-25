@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { ArrowRight, Eye, Gauge, Plus, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { ListToolbar, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { Badge } from "@/components/ui/badge";

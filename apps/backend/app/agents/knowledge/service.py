@@ -193,13 +193,26 @@ def _manifest(input_data: KnowledgeQueryInput) -> str:
         "所有路径都是虚拟绝对路径，必须按清单原样使用，不得映射为宿主机真实文件路径。",
         "",
         "来源优先级：",
-        "1. /requirements/ 下的项目最终需求文档是当前项目业务事实最高依据。",
-        "2. /company-knowledge/ 下的公司知识库只提供通用测试方法、平台规范、模板和跨项目经验。",
-        "3. 如果两类来源冲突，以项目最终需求为准。",
+        "1. /final-requirements/ 下的最终需求是当前项目业务事实最高依据。",
+        "2. /explorations/、/test-cases/ 和 /api-information/ 是项目探索、验证与接口实现的补充依据。",
+        "3. /company-knowledge/ 只提供通用测试方法、平台规范、模板和跨项目经验。",
+        "4. 来源冲突时，以项目最终需求为准，并在回答中说明冲突。",
         "",
     ]
-    for index, document in enumerate(input_data.source_documents, start=1):
-        lines.append(f"- `{_document_path(index, document)}`: {document.source_title or document.source_id}")
+    grouped: dict[str, int] = {}
+    for document in input_data.source_documents:
+        directory = {
+            "requirement": "/final-requirements/",
+            "exploration": "/explorations/",
+            "test_case": "/test-cases/",
+            "api_information": "/api-information/",
+            "company_knowledge": "/company-knowledge/",
+        }[document.source_type]
+        grouped[directory] = grouped.get(directory, 0) + 1
+    lines.append("可搜索目录：")
+    lines.extend(f"- `{directory}`：{count} 个文件" for directory, count in sorted(grouped.items()))
+    lines.append("")
+    lines.append("请先使用 glob 或 grep 定位相关内容，再读取必要文件。")
     return "\n".join(lines)
 
 
@@ -213,9 +226,17 @@ def _document_path(index: int, document: KnowledgeSourceDocumentInput) -> str:
         ]
         name = _safe_path_part(document.file_name or document.source_title or document.file_id)
         return str(PurePosixPath("/") / "company-knowledge" / base / PurePosixPath(*folder_parts) / f"{index:03d}-{_markdown_name(name)}")
+    directory = {
+        "requirement": "final-requirements",
+        "exploration": "explorations",
+        "test_case": "test-cases",
+        "api_information": "api-information",
+    }[document.source_type]
     name = _safe_path_part(document.document_name or document.source_title)
     version = document.version_no if document.version_no is not None else "unknown"
-    return str(PurePosixPath("/") / "requirements" / f"{index:03d}-{name}-v{version}.md")
+    suffix = f"-v{version}" if document.source_type == "requirement" else ""
+    extension = _safe_path_part(document.file_extension.lstrip(".")) or "md"
+    return str(PurePosixPath("/") / directory / f"{index:03d}-{name}{suffix}.{extension}")
 
 
 def _markdown_name(name: str) -> str:
@@ -235,7 +256,7 @@ def _document_metadata(document: KnowledgeSourceDocumentInput) -> dict[str, Any]
             "folder_path": document.folder_path,
         }
     return {
-        "source_type": "requirement",
+        "source_type": document.source_type,
         "source_id": document.source_id or document.version_id,
         "source_title": document.source_title or f"{document.document_name} v{document.version_no}",
         "project_id": document.project_id,

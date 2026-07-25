@@ -26,15 +26,16 @@ import {
   Pencil,
   Plus,
   Search,
+  Settings2,
   Trash2,
   TriangleAlert,
   Upload,
   User,
 } from "lucide-react";
 
+import { KnowledgeSearchSettings } from "@/components/ai-testing/knowledge-search-settings";
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
-import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -82,6 +83,7 @@ import {
   formatDateTime,
 } from "@/lib/api-client";
 import { createId } from "@/lib/create-id.mjs";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
 function ProjectKnowledgeIcon({ className }: { className?: string }) {
@@ -91,6 +93,7 @@ function ProjectKnowledgeIcon({ className }: { className?: string }) {
 const knowledgeScopes = [
   { value: "project", label: "知识库问答", icon: FolderKanban },
   { value: "company", label: "公司知识库", icon: Building2 },
+  { value: "settings", label: "检索设置", icon: Settings2 },
 ] as const;
 const emptyCompanyForm = {
   name: "",
@@ -348,6 +351,7 @@ export default function Page() {
     [item.name, item.description].some((value) => value.toLowerCase().includes(searchText.trim().toLowerCase())),
   );
   const isCompanyKnowledge = activeScope === "company";
+  const isSearchSettings = activeScope === "settings";
   const activeProjects = projects.filter((project) => project.status !== "archived");
   const activeProjectIdsKey = activeProjects.map((project) => project.id).join("|");
   const activeCurrentProject = activeProjects.find((project) => project.id === currentProjectId) ?? null;
@@ -358,6 +362,7 @@ export default function Page() {
       : effectiveKnowledgeScope === "project"
         ? knowledgeProjectId
         : null;
+  const effectiveProjectName = activeProjects.find((project) => project.id === effectiveProjectId)?.name ?? null;
   const projectId = effectiveProjectId;
   const projectResetKey = `${effectiveKnowledgeScope}:${effectiveProjectId ?? ""}`;
   useEffect(() => {
@@ -528,7 +533,7 @@ export default function Page() {
   );
 
   useEffect(() => {
-    if (isCompanyKnowledge) {
+    if (isCompanyKnowledge || isSearchSettings) {
       return;
     }
     if (effectiveKnowledgeScope === "all") {
@@ -539,7 +544,7 @@ export default function Page() {
       return;
     }
     void loadProjectConversations("project", effectiveProjectId);
-  }, [effectiveKnowledgeScope, effectiveProjectId, isCompanyKnowledge, loadProjectConversations]);
+  }, [effectiveKnowledgeScope, effectiveProjectId, isCompanyKnowledge, isSearchSettings, loadProjectConversations]);
 
   function createProjectConversation() {
     setActiveProjectConversationId(null);
@@ -1290,7 +1295,14 @@ export default function Page() {
           )}
         </>
       ) : null}
-      {!isCompanyKnowledge ? (
+      {isSearchSettings ? (
+        <KnowledgeSearchSettings
+          projectId={effectiveProjectId}
+          projectName={effectiveProjectName}
+          scope={effectiveKnowledgeScope}
+        />
+      ) : null}
+      {!isCompanyKnowledge && !isSearchSettings ? (
         <ProjectKnowledgeWorkspace
           activeConversationId={activeProjectConversationId}
           conversations={projectConversations}

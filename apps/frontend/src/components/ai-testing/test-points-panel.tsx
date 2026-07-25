@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { List, Loader2, Network, Pencil, RefreshCw, Save, X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
 import { ListToolbar, ShellSection } from "@/components/ai-testing/page-shell";

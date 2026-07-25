@@ -203,6 +203,18 @@ def list_endpoints(
     ).fetchall()
 
 
+def list_scenarios(db: Connection, project_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT *
+        FROM api_scenarios
+        WHERE project_id = ?
+        ORDER BY name ASC, id ASC
+        """,
+        (project_id,),
+    ).fetchall()
+
+
 def find_endpoint(db: Connection, endpoint_id: str) -> Row | None:
     return db.execute("SELECT * FROM api_endpoints WHERE id = ?", (endpoint_id,)).fetchone()
 

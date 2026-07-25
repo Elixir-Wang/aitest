@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { Bot, ChevronLeft, Copy, FileJson, Loader2, Play, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { ApiRepairDrawer } from "@/components/ai-testing/api-automation/api-repair-drawer";
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";

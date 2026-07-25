@@ -1,3 +1,4 @@
+import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -97,6 +98,46 @@ class ApiEndpointDebugIn(_StrippedModel):
     query_params: dict[str, Any] = Field(default_factory=dict)
     headers: dict[str, Any] = Field(default_factory=dict)
     body: Any = None
+
+
+MAX_API_DEBUG_FILE_BYTES = 20 * 1024 * 1024
+MAX_API_DEBUG_TOTAL_FILE_BYTES = 50 * 1024 * 1024
+
+
+def parse_api_endpoint_debug_form(form: Any) -> tuple[ApiEndpointDebugIn, dict[str, tuple[str, Any, str, int]]]:
+    raw_payload = form.get("payload")
+    if not isinstance(raw_payload, str) or not raw_payload.strip():
+        raise ValueError("缺少调试请求 payload。")
+    try:
+        payload = ApiEndpointDebugIn.model_validate(json.loads(raw_payload))
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ValueError("调试请求 payload 格式不正确。") from exc
+
+    files: dict[str, tuple[str, Any, str, int]] = {}
+    total_size = 0
+    for key, item in form.multi_items():
+        if not isinstance(key, str) or not key.startswith("file::"):
+            continue
+        field_name = key.removeprefix("file::").strip()
+        filename = str(getattr(item, "filename", "") or "").strip()
+        file_object = getattr(item, "file", None)
+        if not field_name or not filename or file_object is None:
+            raise ValueError("调试文件字段格式不正确。")
+        if field_name in files:
+            raise ValueError(f"文件字段 {field_name} 只允许上传一个文件。")
+        size = int(getattr(item, "size", 0) or 0)
+        if size > MAX_API_DEBUG_FILE_BYTES:
+            raise ValueError(f"文件 {filename} 超过 20 MB 限制。")
+        total_size += size
+        if total_size > MAX_API_DEBUG_TOTAL_FILE_BYTES:
+            raise ValueError("单次调试请求的文件总大小超过 50 MB 限制。")
+        files[field_name] = (
+            filename,
+            file_object,
+            str(getattr(item, "content_type", "") or "application/octet-stream"),
+            size,
+        )
+    return payload, files
 
 
 class ApiEndpointDebugOut(BaseModel):

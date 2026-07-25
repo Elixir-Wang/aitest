@@ -287,8 +287,11 @@ def test_all_project_knowledge_query_collects_active_project_sources(monkeypatch
 
     async def fake_stream_knowledge_agent(input_data, **_kwargs):
         captured_project_names.append([doc.project_name for doc in input_data.source_documents])
+        references = "\n".join(
+            f"- [需求] {doc.project_name} / {doc.document_name}" for doc in input_data.source_documents
+        )
         output = KnowledgeQueryOutput(
-            answer="已查询全部项目。",
+            answer=f"已查询全部项目。\n\n参考来源：\n{references}",
             used_requirement_versions=[doc.version_id for doc in input_data.source_documents],
             knowledge_queried=True,
         )
@@ -658,7 +661,7 @@ def test_knowledge_agent_payload_uses_deepagents_file_data_format() -> None:
 
     files = payload["files"]
     assert files["/README.md"]["encoding"] == "utf-8"
-    requirement_file = next(path for path in files if path.startswith("/requirements/"))
+    requirement_file = next(path for path in files if path.startswith("/final-requirements/"))
     assert files[requirement_file]["content"].startswith("<!-- source_metadata:")
     assert isinstance(files[requirement_file]["content"], str)
 

@@ -4,11 +4,43 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from app.dependencies.auth import current_user
-from app.schemas.knowledge import KnowledgeQueryRequest
+from app.schemas.knowledge import KnowledgeQueryRequest, KnowledgeSearchSettingsUpdate
 from app.services.knowledge import service as knowledge_service
 
 router = APIRouter(prefix="/projects/{project_id}/knowledge", tags=["knowledge"])
 global_router = APIRouter(prefix="/knowledge", tags=["knowledge"])
+
+
+@global_router.get("/search-settings")
+def get_global_knowledge_search_settings(actor=Depends(current_user)) -> dict:
+    return knowledge_service.get_knowledge_search_settings("__all_projects__")
+
+
+@global_router.put("/search-settings")
+def update_global_knowledge_search_settings(
+    payload: KnowledgeSearchSettingsUpdate,
+    actor=Depends(current_user),
+) -> dict:
+    return knowledge_service.update_knowledge_search_settings("__all_projects__", payload, actor)
+
+
+@router.get("/search-settings")
+def get_project_knowledge_search_settings(project_id: str, actor=Depends(current_user)) -> dict:
+    return knowledge_service.get_knowledge_search_settings(project_id)
+
+
+@router.put("/search-settings")
+def update_project_knowledge_search_settings(
+    project_id: str,
+    payload: KnowledgeSearchSettingsUpdate,
+    actor=Depends(current_user),
+) -> dict:
+    return knowledge_service.update_knowledge_search_settings(project_id, payload, actor)
+
+
+@router.delete("/search-settings")
+def delete_project_knowledge_search_settings(project_id: str, actor=Depends(current_user)) -> dict:
+    return knowledge_service.delete_project_knowledge_search_settings(project_id, actor)
 
 
 @router.post("/query")

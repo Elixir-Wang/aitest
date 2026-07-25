@@ -666,10 +666,6 @@ def _filter_tasks(
 
 
 def _is_retained_task(task: dict, *, now: datetime | None = None) -> bool:
-    if task["status_group"] in {RUNNING_GROUP, WAITING_GROUP}:
-        return True
-    if task["status_group"] not in {FAILED_GROUP, COMPLETED_GROUP}:
-        return True
     updated_at = _parse_utc_timestamp(task.get("updated_at"))
     if updated_at is None:
         return True

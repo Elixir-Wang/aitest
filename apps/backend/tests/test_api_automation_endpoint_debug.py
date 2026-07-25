@@ -1,3 +1,4 @@
+import io
 from pathlib import Path
 
 import pytest
@@ -7,7 +8,7 @@ from app.core import settings, storage
 from app.core.db import connect
 from app.repositories import api_automation_repo
 from app.seed.init_db import init_db
-from app.schemas.api_automation import ApiEndpointDebugIn, ApiEnvironmentIn
+from app.schemas.api_automation import ApiEndpointDebugIn, ApiEnvironmentIn, parse_api_endpoint_debug_form
 from app.services.api_automation import service
 
 
@@ -182,6 +183,104 @@ def test_debug_project_endpoint_uses_request_body_content_type(
     )
 
     assert captured["headers"]["Content-Type"] == "application/x-www-form-urlencoded"
+    assert captured["data"] == {"name": "demo"}
+    assert captured["json"] is None
+
+
+def test_debug_project_endpoint_sends_multipart_fields_and_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint()
+    with connect() as db:
+        api_automation_repo.upsert_endpoint(
+            db,
+            endpoint_id="apiend-multipart",
+            project_id="project-1",
+            document_id=None,
+            method="POST",
+            path="/upload",
+            normalized_path="/upload",
+            summary="上传",
+            description="",
+            tags=["knowledge"],
+            parameters=[],
+            request_body={"content": {"multipart/form-data": {"schema": {"type": "object"}}}},
+            responses={"200": {"description": "ok"}},
+            auth={},
+            source={"source_type": "manual"},
+            created_by=ACTOR["id"],
+        )
+    environment = service.create_api_environment(
+        "project-1",
+        ApiEnvironmentIn(name="测试环境", api_base_url="https://api.example.test", default_headers={}),
+        ACTOR,
+    )
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        headers = {}
+        text = "{}"
+
+        class elapsed:
+            @staticmethod
+            def total_seconds() -> float:
+                return 0.001
+
+        @staticmethod
+        def json() -> dict:
+            return {}
+
+    def fake_request(**kwargs):
+        captured.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr(service.requests, "request", fake_request)
+
+    result = service.debug_project_endpoint(
+        "project-1",
+        "apiend-multipart",
+        ApiEndpointDebugIn(api_environment_id=environment["id"], body={"username": "tester"}),
+        ACTOR,
+        files={"file": ("demo.txt", io.BytesIO(b"hello"), "text/plain", 5)},
+    )
+
+    assert captured["data"] == {"username": "tester"}
+    assert captured["json"] is None
+    assert captured["files"]["file"][:3] == ("demo.txt", captured["files"]["file"][1], "text/plain")
+    assert captured["files"]["file"][1].read() == b"hello"
+    assert all(key.lower() != "content-type" for key in captured["headers"])
+    assert result["request"]["files"] == {
+        "file": {"filename": "demo.txt", "content_type": "text/plain", "size": 5}
+    }
+
+
+def test_parse_api_endpoint_debug_form_restores_payload_and_files() -> None:
+    class FakeUpload:
+        filename = "demo.txt"
+        file = io.BytesIO(b"hello")
+        content_type = "text/plain"
+        size = 5
+
+    class FakeForm:
+        @staticmethod
+        def get(key):
+            if key == "payload":
+                return '{"api_environment_id":"apienv-1","body":{"username":"tester"}}'
+            return None
+
+        @staticmethod
+        def multi_items():
+            return [("payload", FakeForm.get("payload")), ("file::file", FakeUpload())]
+
+    payload, files = parse_api_endpoint_debug_form(FakeForm())
+
+    assert payload.api_environment_id == "apienv-1"
+    assert payload.body == {"username": "tester"}
+    assert files["file"][0] == "demo.txt"
+    assert files["file"][1].read() == b"hello"
+    assert files["file"][2:] == ("text/plain", 5)
 
 
 def test_debug_project_endpoint_preserves_explicit_content_type(

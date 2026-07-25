@@ -56,6 +56,22 @@ export function reportError(error: unknown, options: ErrorFeedbackOptions): Repo
   return item;
 }
 
+export function persistDisplayedError(
+  message: Parameters<typeof toast.error>[0],
+  options?: Parameters<typeof toast.error>[1],
+): ReportedError {
+  const title = displayedText(message, "前端错误").slice(0, 120);
+  const item: ReportedError = {
+    title,
+    message: displayedText(options?.description, title).slice(0, 500),
+    pageUrl: typeof window === "undefined" ? "" : window.location.href,
+    actionLabel: title,
+    occurredAt: new Date().toISOString(),
+  };
+  void submitClientErrorLog(item);
+  return item;
+}
+
 async function submitClientErrorLog(error: ReportedError): Promise<void> {
   try {
     await apiRequest("/operation-logs/client-errors", {
@@ -81,6 +97,10 @@ async function submitClientErrorLog(error: ReportedError): Promise<void> {
 function safeErrorMessage(error: unknown, fallbackMessage: string) {
   const message = error instanceof Error ? error.message : typeof error === "string" ? error : fallbackMessage;
   return maskSensitiveText(message || fallbackMessage).slice(0, 500);
+}
+
+function displayedText(value: unknown, fallback: string) {
+  return maskSensitiveText(typeof value === "string" && value.trim() ? value : fallback);
 }
 
 function sanitizePath(path: string) {

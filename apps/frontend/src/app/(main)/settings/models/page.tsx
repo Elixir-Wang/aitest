@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { Eye, EyeOff, Pencil, TestTube, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";

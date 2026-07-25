@@ -60,6 +60,17 @@ CREATE TABLE IF NOT EXISTS projects (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS knowledge_search_source_settings (
+  scope_key TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  enabled INTEGER NOT NULL CHECK(enabled IN (0, 1)),
+  created_by TEXT NOT NULL,
+  updated_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (scope_key, source_type)
+);
+
 CREATE TABLE IF NOT EXISTS source_documents (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,

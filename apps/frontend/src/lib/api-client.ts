@@ -712,7 +712,9 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   }
 
   const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
+  if (!(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
@@ -1695,7 +1697,24 @@ export function deleteApiAutomationEndpoint(projectId: string, endpointId: strin
   });
 }
 
-export function debugApiAutomationEndpoint(projectId: string, endpointId: string, payload: ApiAutomationDebugPayload) {
+export function debugApiAutomationEndpoint(
+  projectId: string,
+  endpointId: string,
+  payload: ApiAutomationDebugPayload,
+  files: Record<string, File | null> = {},
+) {
+  const selectedFiles = Object.entries(files).filter((entry): entry is [string, File] => entry[1] instanceof File);
+  if (selectedFiles.length > 0) {
+    const formData = new FormData();
+    formData.append("payload", JSON.stringify(payload));
+    for (const [fieldName, file] of selectedFiles) {
+      formData.append(`file::${fieldName}`, file, file.name);
+    }
+    return apiRequest<ApiAutomationDebugResult>(`/projects/${projectId}/api-endpoints/${endpointId}/debug`, {
+      method: "POST",
+      body: formData,
+    });
+  }
   return apiRequest<ApiAutomationDebugResult>(`/projects/${projectId}/api-endpoints/${endpointId}/debug`, {
     method: "POST",
     body: JSON.stringify(payload),
@@ -2203,6 +2222,7 @@ export function operationLogModuleToLabel(module: string) {
     (
       {
         agent: "智能体",
+        api_automation: "接口自动化",
         auth: "登录认证",
         environment: "环境",
         exploration: "站点探索",
@@ -2210,6 +2230,7 @@ export function operationLogModuleToLabel(module: string) {
         knowledge: "知识库",
         model: "模型配置",
         operation_log: "系统日志",
+        performance_testing: "性能测试",
         project: "项目",
         requirement: "需求",
         system_setting: "系统设置",

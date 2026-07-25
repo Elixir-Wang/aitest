@@ -5,7 +5,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { useParams, useSearchParams } from "next/navigation";
 
 import { Check, ChevronRight, CircleX, Download, List, Loader2, Network, Pencil, Search, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { TestCaseMindMap } from "@/components/ai-testing/test-case-mind-map";

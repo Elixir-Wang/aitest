@@ -58,4 +58,6 @@ test("operation log labels cover persisted system actions and modules", () => {
   assert.match(apiClientSource, /stop_stale_test_case_generation: "停止过期用例生成"/);
   assert.match(apiClientSource, /test_case: "测试用例"/);
   assert.match(apiClientSource, /api: "接口"/);
+  assert.match(apiClientSource, /api_automation: "接口自动化"/);
+  assert.match(apiClientSource, /performance_testing: "性能测试"/);
 });

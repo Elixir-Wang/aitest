@@ -1,11 +1,11 @@
 from app.agents.document_editor.agent import document_editor_agent
 from app.agents.document_editor.schemas import DocumentEditInput, DocumentEditOutput
-from app.agents.model_selection import build_agent_model, resolve_model_selection
+from app.agents.model_selection import build_agent_model, resolve_model_selection, thinking_disabled_extra_body
 
 
 def edit_document(input_data: DocumentEditInput) -> DocumentEditOutput:
     selection = resolve_model_selection("document_editor")
-    model = build_agent_model(selection)
+    model = build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
     agent = document_editor_agent(model)
 
     result = agent.invoke(

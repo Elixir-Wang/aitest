@@ -41,7 +41,7 @@ def test_list_running_tasks_returns_empty_when_no_task(monkeypatch: pytest.Monke
     assert task_service.list_running_tasks(ACTOR) == []
 
 
-def test_task_center_hides_only_expired_terminal_tasks(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_task_center_hides_all_tasks_older_than_retention_window(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     with core_db.connect() as db:
         _seed_project(db)
@@ -67,8 +67,8 @@ def test_task_center_hides_only_expired_terminal_tasks(monkeypatch: pytest.Monke
 
     result = task_service.list_tasks(ACTOR)
 
-    assert {task["source_id"] for task in result["items"]} == {"recent-completed", "old-running"}
-    assert result["total"] == 2
+    assert {task["source_id"] for task in result["items"]} == {"recent-completed"}
+    assert result["total"] == 1
 
 
 def test_list_running_tasks_excludes_pending_exploration(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

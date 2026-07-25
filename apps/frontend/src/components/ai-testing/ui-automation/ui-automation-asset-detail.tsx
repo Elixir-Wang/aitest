@@ -23,7 +23,7 @@ import {
   Workflow,
   XCircle,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import {

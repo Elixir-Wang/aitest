@@ -57,6 +57,19 @@ def list_cases_by_set(db: Connection, test_case_set_id: str) -> list[Row]:
     ).fetchall()
 
 
+def list_approved_cases_by_project(db: Connection, project_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT tc.*, tcs.name AS test_case_set_name
+        FROM test_cases tc
+        JOIN test_case_sets tcs ON tcs.id = tc.test_case_set_id
+        WHERE tc.project_id = ? AND tc.status = 'approved'
+        ORDER BY tcs.name ASC, tc.module ASC, tc.display_order ASC, tc.id ASC
+        """,
+        (project_id,),
+    ).fetchall()
+
+
 def find_case_by_id(db: Connection, case_id: str) -> Row | None:
     return db.execute("SELECT * FROM test_cases WHERE id = ?", (case_id,)).fetchone()
 

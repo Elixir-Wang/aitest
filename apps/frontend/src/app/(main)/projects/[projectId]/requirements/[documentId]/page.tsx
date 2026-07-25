@@ -23,7 +23,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { OriginalFilePreview } from "@/components/ai-testing/original-file-preview";

@@ -327,7 +327,14 @@ def delete_project_endpoint(project_id: str, endpoint_id: str, actor) -> None:
     )
 
 
-def debug_project_endpoint(project_id: str, endpoint_id: str, payload: ApiEndpointDebugIn, actor) -> dict:
+def debug_project_endpoint(
+    project_id: str,
+    endpoint_id: str,
+    payload: ApiEndpointDebugIn,
+    actor,
+    *,
+    files: dict[str, tuple[str, Any, str, int]] | None = None,
+) -> dict:
     with connect() as db:
         _require_visible_project(db, project_id, actor)
         endpoint_row = api_automation_repo.find_endpoint(db, endpoint_id)
@@ -336,7 +343,7 @@ def debug_project_endpoint(project_id: str, endpoint_id: str, payload: ApiEndpoi
         endpoint = _serialize_endpoint(endpoint_row)
         environment = _build_debug_environment(db, project_id, payload.api_environment_id)
 
-    request = _build_debug_request(endpoint, environment, payload)
+    request = _build_debug_request(endpoint, environment, payload, files=files)
     started = time.perf_counter()
     try:
         response = requests.request(
@@ -345,7 +352,8 @@ def debug_project_endpoint(project_id: str, endpoint_id: str, payload: ApiEndpoi
             params=request["query_params"],
             headers=request["headers"],
             json=request["json_body"],
-            data=request["raw_body"],
+            data=request["form_body"] if request["form_body"] is not None else request["raw_body"],
+            files=request["files"] or None,
             timeout=environment["timeout_seconds"],
             verify=environment["verify_ssl"],
             allow_redirects=False,
@@ -3399,16 +3407,31 @@ def _build_debug_environment(db, project_id: str, api_environment_id: str | None
     }
 
 
-def _build_debug_request(endpoint: dict, environment: dict, payload: ApiEndpointDebugIn) -> dict:
+def _build_debug_request(
+    endpoint: dict,
+    environment: dict,
+    payload: ApiEndpointDebugIn,
+    *,
+    files: dict[str, tuple[str, Any, str, int]] | None = None,
+) -> dict:
     url = _build_debug_url(environment["api_base_url"], endpoint["path"], payload.path_params)
     headers = {**environment["headers"], **_stringify_mapping(payload.headers)}
     query_params = _clean_mapping(payload.query_params)
     body = payload.body
     json_body = None
+    form_body = None
     raw_body = None
-    if isinstance(body, (dict, list)):
+    content_type = _request_body_content_type(endpoint.get("request_body", {}))
+    normalized_content_type = content_type.split(";", 1)[0].strip().lower()
+    request_files = files or {}
+    if normalized_content_type == "multipart/form-data":
+        form_body = body if isinstance(body, dict) else {}
+        _pop_header_case_insensitive(headers, "Content-Type")
+    elif normalized_content_type == "application/x-www-form-urlencoded" and isinstance(body, dict):
+        form_body = body
+        _setdefault_header_case_insensitive(headers, "Content-Type", content_type)
+    elif isinstance(body, (dict, list)):
         json_body = body
-        content_type = _request_body_content_type(endpoint.get("request_body", {}))
         if content_type:
             _setdefault_header_case_insensitive(headers, "Content-Type", content_type)
     elif body is not None and str(body) != "":
@@ -3419,7 +3442,14 @@ def _build_debug_request(endpoint: dict, environment: dict, payload: ApiEndpoint
         "query_params": query_params,
         "headers": headers,
         "json_body": json_body,
+        "form_body": form_body,
         "raw_body": raw_body,
+        "files": {field: value[:3] for field, value in request_files.items()},
+        "file_summaries": {
+            field: {"filename": value[0], "content_type": value[2], "size": value[3]}
+            for field, value in request_files.items()
+        },
+        "content_type": normalized_content_type,
     }
 
 
@@ -3443,7 +3473,15 @@ def _public_debug_request(request: dict) -> dict:
         "url": request["url"],
         "query_params": request["query_params"],
         "headers": _mask_debug_headers(request["headers"]),
-        "body": request["json_body"] if request["json_body"] is not None else request["raw_body"],
+        "content_type": request["content_type"],
+        "body": (
+            request["json_body"]
+            if request["json_body"] is not None
+            else request["form_body"]
+            if request["form_body"] is not None
+            else request["raw_body"]
+        ),
+        "files": request["file_summaries"],
     }
 
 
@@ -3595,6 +3633,12 @@ def _setdefault_header_case_insensitive(headers: dict[str, str], key: str, value
     if any(existing_key.lower() == key.lower() for existing_key in headers):
         return
     headers[key] = value
+
+
+def _pop_header_case_insensitive(headers: dict[str, str], key: str) -> None:
+    for existing_key in list(headers):
+        if existing_key.lower() == key.lower():
+            headers.pop(existing_key, None)
 
 
 def _require_visible_project(db, project_id: str, actor):

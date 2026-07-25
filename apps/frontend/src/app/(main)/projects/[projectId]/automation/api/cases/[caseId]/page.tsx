@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { ArrowLeft, CheckCircle2, ClipboardCheck, Code2, Loader2, RefreshCw, ShieldAlert } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Badge } from "@/components/ui/badge";

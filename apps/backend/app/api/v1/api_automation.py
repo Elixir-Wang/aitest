@@ -1,5 +1,6 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 
+from app.core.exceptions import api_error
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.api_automation import (
     ApiAutomationGenerateIn,
@@ -34,6 +35,7 @@ from app.schemas.api_automation import (
     ApiTestCaseSetOut,
     ApiTestCaseOut,
     OpenAPIImportIn,
+    parse_api_endpoint_debug_form,
 )
 from app.services.api_automation import self_healing, service
 
@@ -78,13 +80,27 @@ def get_api_endpoint(project_id: str, endpoint_id: str, actor=Depends(current_us
 
 
 @router.post("/api-endpoints/{endpoint_id}/debug", response_model=ApiEndpointDebugOut)
-def debug_api_endpoint(
+async def debug_api_endpoint(
     project_id: str,
     endpoint_id: str,
-    payload: ApiEndpointDebugIn,
+    request: Request,
     actor=Depends(current_user),
 ) -> dict:
-    return service.debug_project_endpoint(project_id, endpoint_id, payload, actor)
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    files = {}
+    try:
+        if content_type == "multipart/form-data":
+            payload, files = parse_api_endpoint_debug_form(await request.form())
+        else:
+            payload = ApiEndpointDebugIn.model_validate(await request.json())
+    except (ValueError, TypeError) as exc:
+        raise api_error(422, "API_DEBUG_PAYLOAD_INVALID", str(exc) or "调试请求参数格式不正确。") from exc
+
+    try:
+        return service.debug_project_endpoint(project_id, endpoint_id, payload, actor, files=files)
+    finally:
+        for _, file_object, _, _ in files.values():
+            file_object.close()
 
 
 @router.patch("/api-endpoints/{endpoint_id}", response_model=ApiEndpointOut)

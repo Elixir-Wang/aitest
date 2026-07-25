@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
@@ -26,7 +26,6 @@ import {
   WandSparkles,
   X,
 } from "lucide-react";
-import { toast } from "sonner";
 
 import { ApiScenarioList } from "@/components/ai-testing/api-automation/api-scenario-list";
 import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
@@ -83,6 +82,7 @@ import {
   listApiAutomationTestCases,
   updateApiAutomationEnvironment,
 } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
@@ -167,13 +167,24 @@ type EndpointDebugForm = {
   pathParams: Record<string, string>;
   queryParams: Record<string, string>;
   headers: Record<string, string>;
+  bodyValues: Record<string, string>;
+  bodyFiles: Record<string, File | null>;
   bodyText: string;
+};
+type DebugRequestBodyField = {
+  name: string;
+  type: string;
+  required: boolean;
+  description: string;
+  schema: Record<string, unknown>;
 };
 const emptyDebugForm: EndpointDebugForm = {
   environmentId: "",
   pathParams: {},
   queryParams: {},
   headers: {},
+  bodyValues: {},
+  bodyFiles: {},
   bodyText: "",
 };
 
@@ -1064,7 +1075,14 @@ export default function Page() {
     }
     let body: unknown = null;
     try {
-      body = parseDebugBody(debugForm.bodyText);
+      const contentType = getRequestBodyContentType(activeEndpoint.request_body);
+      body = isStructuredRequestBody(contentType)
+        ? parseStructuredDebugBody(
+            getRequestBodyFields(activeEndpoint.request_body),
+            debugForm.bodyValues,
+            debugForm.bodyFiles,
+          )
+        : parseDebugBody(debugForm.bodyText);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "调试参数格式不正确");
       return;
@@ -1073,13 +1091,20 @@ export default function Page() {
     setDebugBusy(true);
     setDebugResult(null);
     try {
-      const result = await debugApiAutomationEndpoint(projectId, activeEndpoint.id, {
-        api_environment_id: debugForm.environmentId,
-        path_params: debugForm.pathParams,
-        query_params: debugForm.queryParams,
-        headers: debugForm.headers,
-        body,
-      });
+      const result = await debugApiAutomationEndpoint(
+        projectId,
+        activeEndpoint.id,
+        {
+          api_environment_id: debugForm.environmentId,
+          path_params: debugForm.pathParams,
+          query_params: debugForm.queryParams,
+          headers: debugForm.headers,
+          body,
+        },
+        normalizeContentType(getRequestBodyContentType(activeEndpoint.request_body)) === "multipart/form-data"
+          ? debugForm.bodyFiles
+          : {},
+      );
       setDebugResult(result);
       if (result.error_message) {
         toast.error("请求发送失败");
@@ -2405,13 +2430,60 @@ export default function Page() {
                     value={getRequestBodyContentType(activeEndpoint.request_body) || "application/json"}
                   />
                 </div>
-                <Textarea
-                  className="max-h-64 min-h-0 overflow-y-auto font-mono text-xs"
-                  onChange={(event) => setDebugForm((current) => ({ ...current, bodyText: event.target.value }))}
-                  placeholder='{"key":"value"}'
-                  rows={getTextareaRows(debugForm.bodyText, 3, 12)}
-                  value={debugForm.bodyText}
-                />
+                {isStructuredRequestBody(getRequestBodyContentType(activeEndpoint.request_body)) ? (
+                  <div className="divide-y rounded-lg border">
+                    {getRequestBodyFields(activeEndpoint.request_body).map((field) => (
+                      <div
+                        className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,3fr)]"
+                        key={field.name}
+                      >
+                        <div className="min-w-0 space-y-1.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <code className="font-semibold text-sm">{field.name}</code>
+                            <Badge className="font-mono text-[11px]" variant="secondary">
+                              {field.type}
+                            </Badge>
+                            {field.required ? (
+                              <Badge className="border-red-100 bg-red-50 text-red-600" variant="outline">
+                                必填
+                              </Badge>
+                            ) : null}
+                          </div>
+                          {field.description ? (
+                            <p className="whitespace-pre-wrap text-muted-foreground text-sm leading-6">
+                              {field.description}
+                            </p>
+                          ) : null}
+                        </div>
+                        <DebugRequestBodyFieldInput
+                          field={field}
+                          file={debugForm.bodyFiles[field.name] ?? null}
+                          onFileChange={(file) =>
+                            setDebugForm((current) => ({
+                              ...current,
+                              bodyFiles: { ...current.bodyFiles, [field.name]: file },
+                            }))
+                          }
+                          onValueChange={(value) =>
+                            setDebugForm((current) => ({
+                              ...current,
+                              bodyValues: { ...current.bodyValues, [field.name]: value },
+                            }))
+                          }
+                          value={debugForm.bodyValues[field.name] ?? ""}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Textarea
+                    className="max-h-64 min-h-0 overflow-y-auto font-mono text-xs"
+                    onChange={(event) => setDebugForm((current) => ({ ...current, bodyText: event.target.value }))}
+                    placeholder='{"key":"value"}'
+                    rows={getTextareaRows(debugForm.bodyText, 3, 12)}
+                    value={debugForm.bodyText}
+                  />
+                )}
               </div>
             ) : null}
 
@@ -2678,12 +2750,15 @@ function DebugResultBlock({ title, value, variant = "JSON" }: { title: string; v
 function formatPythonRequestsSnippet(request: Record<string, unknown>) {
   const method = String(request.method ?? "GET").toLowerCase();
   const url = String(request.url ?? "");
+  const contentType = String(request.content_type ?? "").toLowerCase();
   const queryParams = plainObject(request.query_params);
   const headers = plainObject(request.headers);
+  const files = plainObject(request.files);
   const body = request.body;
   const hasParams = Object.keys(queryParams).length > 0;
   const hasHeaders = Object.keys(headers).length > 0;
   const hasBody = body !== null && body !== undefined && body !== "";
+  const hasFiles = Object.keys(files).length > 0;
   const requestArgs: string[] = ["url"];
 
   const lines = ["import requests", "", `url = ${pythonLiteral(url)}`];
@@ -2700,7 +2775,25 @@ function formatPythonRequestsSnippet(request: Record<string, unknown>) {
 
   if (hasBody) {
     lines.push("", `payload = ${pythonLiteral(body)}`);
-    requestArgs.push(isJsonLikeBody(body) ? "json=payload" : "data=payload");
+    if (contentType === "application/json" || contentType.endsWith("+json") || (!contentType && isJsonLikeBody(body))) {
+      requestArgs.push("json=payload");
+    } else {
+      requestArgs.push("data=payload");
+    }
+  }
+
+  if (hasFiles) {
+    lines.push("", "files = {");
+    for (const [fieldName, rawMetadata] of Object.entries(files)) {
+      const metadata = plainObject(rawMetadata);
+      const filename = String(metadata.filename ?? "upload.bin");
+      const fileContentType = String(metadata.content_type ?? "application/octet-stream");
+      lines.push(
+        `    ${pythonLiteral(fieldName)}: (${pythonLiteral(filename)}, open(${pythonLiteral(filename)}, "rb"), ${pythonLiteral(fileContentType)}),`,
+      );
+    }
+    lines.push("}");
+    requestArgs.push("files=files");
   }
 
   const requestCall = isRequestsShortcutMethod(method)
@@ -2795,15 +2888,124 @@ function EnvironmentAuthBadge({ authType }: { authType: string }) {
 
 function formFromEndpoint(endpoint: ApiAutomationEndpoint, environmentId: string): EndpointDebugForm {
   const requestSchema = getRequestBodySchema(endpoint.request_body);
+  const requestBodyFields = getRequestBodyFields(endpoint.request_body);
+  const structuredRequestBody = isStructuredRequestBody(getRequestBodyContentType(endpoint.request_body));
   const bodyExample =
-    Object.keys(requestSchema).length > 0 ? JSON.stringify(exampleFromSchema(requestSchema), null, 2) : "";
+    !structuredRequestBody && Object.keys(requestSchema).length > 0
+      ? JSON.stringify(exampleFromSchema(requestSchema), null, 2)
+      : "";
   return {
     environmentId,
     pathParams: rowsToEmptyValues(getParameterRows(endpoint.parameters, "path")),
     queryParams: rowsToEmptyValues(getParameterRows(endpoint.parameters, "query")),
     headers: {},
+    bodyValues: Object.fromEntries(
+      requestBodyFields
+        .filter((field) => !isBinarySchema(field.schema))
+        .map((field) => [field.name, initialFieldValue(field.schema)]),
+    ),
+    bodyFiles: Object.fromEntries(
+      requestBodyFields.filter((field) => isBinarySchema(field.schema)).map((field) => [field.name, null]),
+    ),
     bodyText: bodyExample,
   };
+}
+
+function DebugRequestBodyFieldInput({
+  field,
+  file,
+  onFileChange,
+  onValueChange,
+  value,
+}: {
+  field: DebugRequestBodyField;
+  file: File | null;
+  onFileChange: (file: File | null) => void;
+  onValueChange: (value: string) => void;
+  value: string;
+}) {
+  const inputId = useId();
+  const enumOptions = Array.isArray(field.schema.enum) ? field.schema.enum.map((option) => String(option)) : [];
+  const schemaType = asString(field.schema.type);
+
+  if (isBinarySchema(field.schema)) {
+    return (
+      <div className="space-y-2">
+        <Input
+          className="sr-only"
+          id={inputId}
+          key={`${field.name}-${file?.name ?? "empty"}`}
+          onChange={(event) => {
+            const selectedFile = event.target.files?.[0] ?? null;
+            if (selectedFile && selectedFile.size > 20 * 1024 * 1024) {
+              toast.error("单文件不能超过 20 MB");
+              event.currentTarget.value = "";
+              return;
+            }
+            onFileChange(selectedFile);
+          }}
+          type="file"
+        />
+        <label
+          className="flex h-9 w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-input bg-transparent px-3 text-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 hover:bg-muted/50"
+          htmlFor={inputId}
+        >
+          <span className={cn("truncate", file ? "text-foreground" : "text-muted-foreground")}>
+            {file?.name ?? "点击选择文件"}
+          </span>
+          <span className="shrink-0 font-medium text-primary">{file ? "重新选择" : "浏览"}</span>
+        </label>
+        {file ? (
+          <div className="flex items-center justify-between gap-3 text-muted-foreground text-xs">
+            <span className="truncate">
+              {file.name} · {formatDebugFileSize(file.size)}
+            </span>
+            <Button onClick={() => onFileChange(null)} size="sm" type="button" variant="ghost">
+              清除
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (enumOptions.length > 0 || schemaType === "boolean") {
+    const options = enumOptions.length > 0 ? enumOptions : ["true", "false"];
+    return (
+      <Select onValueChange={onValueChange} value={value || undefined}>
+        <SelectTrigger>
+          <SelectValue placeholder={`选择 ${field.name}`} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option} value={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }
+
+  if (schemaType === "object" || schemaType === "array") {
+    return (
+      <Textarea
+        className="min-h-20 font-mono text-xs"
+        onChange={(event) => onValueChange(event.target.value)}
+        placeholder={schemaType === "array" ? "[]" : "{}"}
+        value={value}
+      />
+    );
+  }
+
+  return (
+    <Input
+      onChange={(event) => onValueChange(event.target.value)}
+      placeholder={`输入 ${field.name}`}
+      type={schemaType === "integer" || schemaType === "number" ? "number" : "text"}
+      value={value}
+    />
+  );
 }
 
 function formFromEnvironment(environment: ApiAutomationEnvironment): EnvironmentForm {
@@ -2839,6 +3041,57 @@ function parseDebugBody(value: string): unknown {
   } catch {
     throw new Error("请求体必须是合法 JSON");
   }
+}
+
+function parseStructuredDebugBody(
+  fields: DebugRequestBodyField[],
+  values: Record<string, string>,
+  files: Record<string, File | null>,
+) {
+  const body: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (isBinarySchema(field.schema)) {
+      if (field.required && !files[field.name]) {
+        throw new Error(`请上传 ${field.name}`);
+      }
+      continue;
+    }
+
+    const rawValue = values[field.name] ?? "";
+    if (!rawValue.trim()) {
+      if (field.required) {
+        throw new Error(`请填写 ${field.name}`);
+      }
+      continue;
+    }
+
+    const schemaType = asString(field.schema.type);
+    if (schemaType === "integer" || schemaType === "number") {
+      const numericValue = Number(rawValue);
+      if (!Number.isFinite(numericValue) || (schemaType === "integer" && !Number.isInteger(numericValue))) {
+        throw new Error(`${field.name} 必须是${schemaType === "integer" ? "整数" : "数字"}`);
+      }
+      body[field.name] = numericValue;
+      continue;
+    }
+    if (schemaType === "boolean") {
+      if (!new Set(["true", "false"]).has(rawValue)) {
+        throw new Error(`${field.name} 必须是布尔值`);
+      }
+      body[field.name] = rawValue === "true";
+      continue;
+    }
+    if (schemaType === "object" || schemaType === "array") {
+      try {
+        body[field.name] = JSON.parse(rawValue);
+      } catch {
+        throw new Error(`${field.name} 必须是合法 JSON`);
+      }
+      continue;
+    }
+    body[field.name] = rawValue;
+  }
+  return body;
 }
 
 function runStatusLabel(status: string) {
@@ -3131,8 +3384,63 @@ function getRequestBodyRows(requestBody: Record<string, unknown>): ApiFieldRow[]
   });
 }
 
+function getRequestBodyFields(requestBody: Record<string, unknown>): DebugRequestBodyField[] {
+  const schema = getRequestBodySchema(requestBody);
+  const properties = asRecord(schema.properties);
+  const required = new Set(asStringArray(schema.required));
+  if (Object.keys(properties).length === 0) {
+    return Object.keys(schema).length > 0
+      ? [
+          {
+            name: "body",
+            type: getSchemaType(schema),
+            required: Boolean(requestBody.required),
+            description: asString(requestBody.description) || asString(schema.description),
+            schema,
+          },
+        ]
+      : [];
+  }
+  return Object.entries(properties).map(([name, value]) => {
+    const fieldSchema = asRecord(value);
+    return {
+      name,
+      type: getSchemaType(fieldSchema),
+      required: required.has(name),
+      description: asString(fieldSchema.description),
+      schema: fieldSchema,
+    };
+  });
+}
+
 function getRequestBodyContentType(requestBody: Record<string, unknown>) {
   return Object.keys(asRecord(requestBody.content))[0] ?? "";
+}
+
+function normalizeContentType(value: string) {
+  return value.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+}
+
+function isStructuredRequestBody(contentType: string) {
+  return new Set(["multipart/form-data", "application/x-www-form-urlencoded"]).has(normalizeContentType(contentType));
+}
+
+function isBinarySchema(schema: Record<string, unknown>) {
+  return asString(schema.type) === "string" && asString(schema.format) === "binary";
+}
+
+function initialFieldValue(schema: Record<string, unknown>) {
+  const initialValue = schema.example ?? schema.default;
+  if (initialValue === undefined || initialValue === null) {
+    return "";
+  }
+  return typeof initialValue === "object" ? JSON.stringify(initialValue, null, 2) : String(initialValue);
+}
+
+function formatDebugFileSize(size: number) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function getRequestBodySchema(requestBody: Record<string, unknown>) {

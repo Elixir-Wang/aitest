@@ -161,7 +161,11 @@ def test_document_editor_service_returns_structured_response(monkeypatch: pytest
             return {"structured_response": output}
 
     monkeypatch.setattr("app.agents.document_editor.service.resolve_model_selection", lambda capability_id: "selection")
-    monkeypatch.setattr("app.agents.document_editor.service.build_agent_model", lambda selection: "model")
+    monkeypatch.setattr("app.agents.document_editor.service.thinking_disabled_extra_body", lambda selection: None)
+    monkeypatch.setattr(
+        "app.agents.document_editor.service.build_agent_model",
+        lambda selection, *, extra_body=None: "model",
+    )
     monkeypatch.setattr("app.agents.document_editor.service.document_editor_agent", lambda model: FakeAgent())
 
     result = edit_document(
@@ -172,6 +176,43 @@ def test_document_editor_service_returns_structured_response(monkeypatch: pytest
     )
 
     assert result is output
+
+
+def test_document_editor_service_disables_thinking_for_structured_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.agents.document_editor.service import edit_document
+
+    selection = ModelSelection(
+        provider="DeepSeek",
+        model="deepseek-v4-flash",
+        base_url="https://api.deepseek.com",
+        api_key="sk-test",
+    )
+    output = DocumentEditOutput(
+        edited_content="# New title",
+        change_summary="Updated title.",
+    )
+    model_calls = {}
+
+    class FakeAgent:
+        def invoke(self, payload):
+            return {"structured_response": output}
+
+    def fake_build_agent_model(received_selection, *, extra_body=None):
+        model_calls["selection"] = received_selection
+        model_calls["extra_body"] = extra_body
+        return "model"
+
+    monkeypatch.setattr("app.agents.document_editor.service.resolve_model_selection", lambda capability_id: selection)
+    monkeypatch.setattr("app.agents.document_editor.service.build_agent_model", fake_build_agent_model)
+    monkeypatch.setattr("app.agents.document_editor.service.document_editor_agent", lambda model: FakeAgent())
+
+    result = edit_document(DocumentEditInput(content="# Old title", instruction="把标题改成 New title"))
+
+    assert result is output
+    assert model_calls == {
+        "selection": selection,
+        "extra_body": {"thinking": {"type": "disabled"}},
+    }
 
 
 def test_document_editor_service_allows_empty_content_for_unchanged_result(
@@ -190,7 +231,11 @@ def test_document_editor_service_allows_empty_content_for_unchanged_result(
             return {"structured_response": output}
 
     monkeypatch.setattr("app.agents.document_editor.service.resolve_model_selection", lambda capability_id: "selection")
-    monkeypatch.setattr("app.agents.document_editor.service.build_agent_model", lambda selection: "model")
+    monkeypatch.setattr("app.agents.document_editor.service.thinking_disabled_extra_body", lambda selection: None)
+    monkeypatch.setattr(
+        "app.agents.document_editor.service.build_agent_model",
+        lambda selection, *, extra_body=None: "model",
+    )
     monkeypatch.setattr("app.agents.document_editor.service.document_editor_agent", lambda model: FakeAgent())
 
     result = edit_document(
@@ -214,7 +259,11 @@ def test_document_editor_service_rejects_missing_structured_response(monkeypatch
             return {}
 
     monkeypatch.setattr("app.agents.document_editor.service.resolve_model_selection", lambda capability_id: "selection")
-    monkeypatch.setattr("app.agents.document_editor.service.build_agent_model", lambda selection: "model")
+    monkeypatch.setattr("app.agents.document_editor.service.thinking_disabled_extra_body", lambda selection: None)
+    monkeypatch.setattr(
+        "app.agents.document_editor.service.build_agent_model",
+        lambda selection, *, extra_body=None: "model",
+    )
     monkeypatch.setattr("app.agents.document_editor.service.document_editor_agent", lambda model: FakeAgent())
 
     with pytest.raises(ValueError, match="未返回结构化结果"):

@@ -17,6 +17,15 @@ class KnowledgeQueryRequest(BaseModel):
     conversation_id: str | None = None
 
 
+class KnowledgeSearchSourceSetting(BaseModel):
+    source_type: str
+    enabled: bool
+
+
+class KnowledgeSearchSettingsUpdate(BaseModel):
+    sources: list[KnowledgeSearchSourceSetting]
+
+
 class KnowledgeConversation(BaseModel):
     id: str
     project_id: str

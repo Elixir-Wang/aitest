@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import re
 import uuid
@@ -9,7 +10,17 @@ from typing import Any
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
-from app.repositories import document_repo, global_knowledge_repo, knowledge_conversation_repo, project_repo
+from app.repositories import (
+    api_automation_repo,
+    document_repo,
+    exploration_artifact_repo,
+    exploration_run_repo,
+    global_knowledge_repo,
+    knowledge_conversation_repo,
+    knowledge_search_source_settings_repo,
+    project_repo,
+    test_case_repo,
+)
 from app.agents.knowledge.schemas import (
     KnowledgeQueryInput,
     KnowledgeQueryOutput,
@@ -20,6 +31,7 @@ from app.schemas.knowledge import (
     KnowledgeConversationDetail,
     KnowledgeConversationMessage,
     KnowledgeQueryRequest,
+    KnowledgeSearchSettingsUpdate,
 )
 from app.services import operation_log_service
 from app.agents.knowledge import service as knowledge_agent_service
@@ -31,6 +43,101 @@ KNOWLEDGE_QUERY_TIMEOUT_MESSAGE = "项目知识库查询超时，请稍后继续
 KNOWLEDGE_QUERY_FAILED_MESSAGE = "项目知识库查询失败，请稍后重试。"
 KNOWLEDGE_QUERY_EMPTY_MESSAGE = "项目知识库未返回有效结果，请换个问法再试。"
 ALL_PROJECTS_CONVERSATION_PROJECT_ID = "__all_projects__"
+KNOWLEDGE_SEARCH_SOURCE_TYPES = (
+    "final_requirements",
+    "explorations",
+    "test_cases",
+    "api_information",
+    "company_knowledge",
+)
+DEFAULT_KNOWLEDGE_SEARCH_SOURCES = {
+    "final_requirements": True,
+    "explorations": True,
+    "test_cases": False,
+    "api_information": False,
+    "company_knowledge": True,
+}
+
+
+def resolve_knowledge_search_settings(db, scope_key: str) -> dict[str, dict[str, bool | str]]:
+    global_values = {
+        row["source_type"]: bool(row["enabled"])
+        for row in knowledge_search_source_settings_repo.list_by_scope(db, ALL_PROJECTS_CONVERSATION_PROJECT_ID)
+    }
+    project_values = (
+        {
+            row["source_type"]: bool(row["enabled"])
+            for row in knowledge_search_source_settings_repo.list_by_scope(db, scope_key)
+        }
+        if scope_key != ALL_PROJECTS_CONVERSATION_PROJECT_ID
+        else {}
+    )
+    resolved: dict[str, dict[str, bool | str]] = {}
+    for source_type in KNOWLEDGE_SEARCH_SOURCE_TYPES:
+        if source_type in project_values:
+            resolved[source_type] = {"enabled": project_values[source_type], "origin": "project", "inherited": False}
+        elif source_type in global_values:
+            resolved[source_type] = {"enabled": global_values[source_type], "origin": "global", "inherited": True}
+        else:
+            resolved[source_type] = {
+                "enabled": DEFAULT_KNOWLEDGE_SEARCH_SOURCES[source_type],
+                "origin": "system",
+                "inherited": scope_key != ALL_PROJECTS_CONVERSATION_PROJECT_ID,
+            }
+    return resolved
+
+
+def get_knowledge_search_settings(scope_key: str) -> dict:
+    with connect() as db:
+        if scope_key != ALL_PROJECTS_CONVERSATION_PROJECT_ID:
+            _require_project(db, scope_key)
+        resolved = resolve_knowledge_search_settings(db, scope_key)
+    return {
+        "scope": "global" if scope_key == ALL_PROJECTS_CONVERSATION_PROJECT_ID else "project",
+        "scope_key": scope_key,
+        "project_id": None if scope_key == ALL_PROJECTS_CONVERSATION_PROJECT_ID else scope_key,
+        "sources": [
+            {"source_type": source_type, **value}
+            for source_type, value in resolved.items()
+        ],
+    }
+
+
+def update_knowledge_search_settings(scope_key: str, payload: KnowledgeSearchSettingsUpdate, actor) -> dict:
+    _require_knowledge_settings_admin(actor)
+    values = _validate_knowledge_search_settings(payload)
+    with connect() as db:
+        if scope_key != ALL_PROJECTS_CONVERSATION_PROJECT_ID:
+            _require_project(db, scope_key)
+        knowledge_search_source_settings_repo.replace_scope(
+            db,
+            scope_key,
+            values,
+            actor_id=actor["id"],
+        )
+    return get_knowledge_search_settings(scope_key)
+
+
+def delete_project_knowledge_search_settings(project_id: str, actor) -> dict:
+    _require_knowledge_settings_admin(actor)
+    with connect() as db:
+        _require_project(db, project_id)
+        knowledge_search_source_settings_repo.delete_scope(db, project_id)
+    return get_knowledge_search_settings(project_id)
+
+
+def _validate_knowledge_search_settings(payload: KnowledgeSearchSettingsUpdate) -> dict[str, bool]:
+    values = {item.source_type: item.enabled for item in payload.sources}
+    if len(values) != len(payload.sources) or any(source_type not in KNOWLEDGE_SEARCH_SOURCE_TYPES for source_type in values):
+        raise api_error(400, "KNOWLEDGE_SEARCH_SOURCE_INVALID", "检索来源配置无效。")
+    if not values or not any(values.values()):
+        raise api_error(400, "KNOWLEDGE_SEARCH_SOURCE_REQUIRED", "请至少启用一个检索来源。")
+    return values
+
+
+def _require_knowledge_settings_admin(actor) -> None:
+    if actor.get("role") != "admin":
+        raise api_error(403, "KNOWLEDGE_SEARCH_SETTINGS_FORBIDDEN", "只有管理员可以修改检索设置。")
 
 
 async def query_project_knowledge(project_id: str, actor, request: KnowledgeQueryRequest) -> dict:
@@ -402,20 +509,24 @@ def _collect_query_input(
 ) -> tuple[KnowledgeQueryInput, list[str], list[str], list[str]]:
     with connect() as db:
         project = _require_project(db, project_id)
+        enabled_sources = {
+            source_type: bool(value["enabled"])
+            for source_type, value in resolve_knowledge_search_settings(db, project_id).items()
+        }
         source_documents, source_version_ids, blockers = _collect_project_sources(
             db,
             project,
-            request,
+            enabled_sources,
         )
-        company_sources, company_file_ids, company_blockers = _collect_company_knowledge_sources(db, request)
+        company_sources, company_file_ids, company_blockers = _collect_company_knowledge_sources(
+            db,
+            enabled=enabled_sources["company_knowledge"],
+        )
         source_documents.extend(company_sources)
         blockers.extend(company_blockers)
 
     if not source_documents:
-        if request.include_requirements:
-            blockers.append("当前项目没有可用于查询的最终需求文档版本。")
-        if request.include_company_knowledge:
-            blockers.append("当前没有可读取的公司知识库文件。")
+        blockers.append("当前启用的检索来源没有可读取内容。")
     return (
         KnowledgeQueryInput(
             project_id=project_id,
@@ -435,6 +546,10 @@ def _collect_all_project_query_input(
 ) -> tuple[KnowledgeQueryInput, list[str], list[str], list[str]]:
     with connect() as db:
         projects = project_repo.list_visible(db, actor)
+        enabled_sources = {
+            source_type: bool(value["enabled"])
+            for source_type, value in resolve_knowledge_search_settings(db, ALL_PROJECTS_CONVERSATION_PROJECT_ID).items()
+        }
         source_documents: list[KnowledgeSourceDocumentInput] = []
         source_version_ids: list[str] = []
         blockers: list[str] = []
@@ -443,19 +558,19 @@ def _collect_all_project_query_input(
                 project_source_documents,
                 project_source_version_ids,
                 project_blockers,
-            ) = _collect_project_sources(db, project, request)
+            ) = _collect_project_sources(db, project, enabled_sources)
             source_documents.extend(project_source_documents)
             source_version_ids.extend(project_source_version_ids)
             blockers.extend(project_blockers)
-        company_sources, company_file_ids, company_blockers = _collect_company_knowledge_sources(db, request)
+        company_sources, company_file_ids, company_blockers = _collect_company_knowledge_sources(
+            db,
+            enabled=enabled_sources["company_knowledge"],
+        )
         source_documents.extend(company_sources)
         blockers.extend(company_blockers)
 
     if not source_documents:
-        if request.include_requirements:
-            blockers.append("当前可见项目没有可用于查询的最终需求文档版本。")
-        if request.include_company_knowledge:
-            blockers.append("当前没有可读取的公司知识库文件。")
+        blockers.append("当前启用的检索来源没有可读取内容。")
     else:
         blockers = []
     return (
@@ -474,14 +589,14 @@ def _collect_all_project_query_input(
 def _collect_project_sources(
     db,
     project,
-    request: KnowledgeQueryRequest,
+    enabled_sources: dict[str, bool],
 ) -> tuple[list[KnowledgeSourceDocumentInput], list[str], list[str]]:
     project_id = project["id"]
     project_name = project["name"]
     source_documents: list[KnowledgeSourceDocumentInput] = []
     source_version_ids: list[str] = []
     blockers: list[str] = []
-    if request.include_requirements:
+    if enabled_sources["final_requirements"]:
         for doc in document_repo.list_by_project(db, project_id):
             if not doc["current_version_id"]:
                 continue
@@ -508,14 +623,21 @@ def _collect_project_sources(
                 )
             )
 
+    if enabled_sources["explorations"]:
+        source_documents.extend(_collect_exploration_sources(db, project))
+    if enabled_sources["test_cases"]:
+        source_documents.extend(_collect_test_case_sources(db, project))
+    if enabled_sources["api_information"]:
+        source_documents.extend(_collect_api_information_sources(db, project))
     return source_documents, source_version_ids, blockers
 
 
 def _collect_company_knowledge_sources(
     db,
-    request: KnowledgeQueryRequest,
+    *,
+    enabled: bool,
 ) -> tuple[list[KnowledgeSourceDocumentInput], list[str], list[str]]:
-    if not request.include_company_knowledge:
+    if not enabled:
         return [], [], []
     source_documents: list[KnowledgeSourceDocumentInput] = []
     file_ids: list[str] = []
@@ -546,6 +668,119 @@ def _collect_company_knowledge_sources(
     if not source_documents:
         blockers.append("当前没有可读取的公司知识库文件。")
     return source_documents, file_ids, blockers
+
+
+def _collect_exploration_sources(db, project) -> list[KnowledgeSourceDocumentInput]:
+    documents: list[KnowledgeSourceDocumentInput] = []
+    for run in exploration_run_repo.list_by_project(db, project["id"]):
+        for artifact in exploration_artifact_repo.list_by_run(db, run["id"]):
+            path = resolve_stored_path(artifact["file_path"]) or Path(artifact["file_path"])
+            if not path.exists() or path.suffix.lower() not in {".md", ".markdown", ".json", ".yaml", ".yml", ".txt"}:
+                continue
+            try:
+                content = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            if not content.strip():
+                continue
+            documents.append(
+                KnowledgeSourceDocumentInput(
+                    source_type="exploration",
+                    source_id=artifact["id"],
+                    source_title=artifact["title"] or artifact["artifact_type"],
+                    project_id=project["id"],
+                    project_name=project["name"],
+                    document_id=run["id"],
+                    document_name=artifact["artifact_type"],
+                    file_extension=path.suffix.lstrip(".") or "txt",
+                    markdown_content=content,
+                )
+            )
+    return documents
+
+
+def _collect_test_case_sources(db, project) -> list[KnowledgeSourceDocumentInput]:
+    documents: list[KnowledgeSourceDocumentInput] = []
+    for case in test_case_repo.list_approved_cases_by_project(db, project["id"]):
+        steps = _json_text(case["steps_json"])
+        content = "\n".join(
+            [
+                f"# {case['title']}",
+                f"用例集：{case['test_case_set_name']}",
+                f"模块：{case['module']}",
+                f"优先级：{case['priority']}",
+                f"前置条件：{case['preconditions']}",
+                f"步骤：{steps}",
+                f"预期结果：{case['expected_result']}",
+            ]
+        )
+        documents.append(
+            KnowledgeSourceDocumentInput(
+                source_type="test_case",
+                source_id=case["id"],
+                source_title=case["title"],
+                project_id=project["id"],
+                project_name=project["name"],
+                document_id=case["test_case_set_id"],
+                document_name=case["test_case_set_name"],
+                markdown_content=content,
+            )
+        )
+    return documents
+
+
+def _collect_api_information_sources(db, project) -> list[KnowledgeSourceDocumentInput]:
+    documents: list[KnowledgeSourceDocumentInput] = []
+    for endpoint in api_automation_repo.list_endpoints(db, project["id"]):
+        content = "\n".join(
+            [
+                f"# {endpoint['method']} {endpoint['path']}",
+                f"摘要：{endpoint['summary']}",
+                f"描述：{endpoint['description']}",
+                f"参数：{_json_text(endpoint['parameters_json'])}",
+                f"请求体：{_json_text(endpoint['request_body_json'])}",
+                f"响应：{_json_text(endpoint['responses_json'])}",
+            ]
+        )
+        documents.append(
+            KnowledgeSourceDocumentInput(
+                source_type="api_information",
+                source_id=endpoint["id"],
+                source_title=f"{endpoint['method']} {endpoint['path']}",
+                project_id=project["id"],
+                project_name=project["name"],
+                document_id=endpoint["document_id"] or "",
+                document_name="接口资产",
+                markdown_content=content,
+            )
+        )
+    for scenario in api_automation_repo.list_scenarios(db, project["id"]):
+        documents.append(
+            KnowledgeSourceDocumentInput(
+                source_type="api_information",
+                source_id=scenario["id"],
+                source_title=scenario["name"],
+                project_id=project["id"],
+                project_name=project["name"],
+                document_name="接口场景",
+                markdown_content="\n".join(
+                    [
+                        f"# {scenario['name']}",
+                        f"状态：{scenario['status']}",
+                        f"描述：{scenario['description']}",
+                        f"变量：{_json_text(scenario['variables_json'])}",
+                    ]
+                ),
+            )
+        )
+    return documents
+
+
+def _json_text(value: str) -> str:
+    try:
+        return json.dumps(json.loads(value or "{}"), ensure_ascii=False)
+    except (TypeError, json.JSONDecodeError):
+        return value or ""
 
 
 def _read_company_knowledge_markdown(file_row) -> str:

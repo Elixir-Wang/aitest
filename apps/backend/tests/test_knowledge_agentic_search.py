@@ -107,8 +107,8 @@ def test_knowledge_agent_payload_uses_virtual_files():
     assert "project-1" not in user_content
     assert "测试项目" not in user_content
     assert "/README.md" in payload["files"]
-    assert any(path.startswith("/requirements/") for path in payload["files"])
-    file_data = next(value for key, value in payload["files"].items() if key.startswith("/requirements/"))
+    assert any(path.startswith("/final-requirements/") for path in payload["files"])
+    file_data = next(value for key, value in payload["files"].items() if key.startswith("/final-requirements/"))
     content = file_data["content"]
     assert "source_metadata" in content
     assert "version-1" in content
